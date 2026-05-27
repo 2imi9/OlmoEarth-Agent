@@ -307,7 +307,7 @@ The tool catalog above is the contract. Everything in this section is implementa
 
 | Layer | Reference |
 |---|---|
-| LLM | [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) — text-only, function calling. Served on Blackwell via [TensorRT-LLM ≥0.17](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) or vLLM. No fine-tuning in v0.4 scope. |
+| LLM | [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) — text-only with function calling (model has a native vision encoder; we don't use it in v0.4). Served on Blackwell via **vLLM ≥0.19.0** (the upstream-recommended path for this NVFP4 checkpoint): `vllm serve unsloth/Qwen3.6-35B-A3B-NVFP4 --trust-remote-code --dtype bfloat16 --max-model-len 4096`. Agent sessions set `chat_template_kwargs.preserve_thinking=True` per the model card's agent guidance. No fine-tuning in v0.4 scope. |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) — LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
 | Skills | 16 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1–#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) — the agent vendors them rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
 | Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub, GEE, OSM, USGS Water, NOAA — last four added by skill #13). |
@@ -399,7 +399,7 @@ Skills-first. Each P0–P3 phase is a single PR; each Skill-* row is one PR (per
 | **P0 — Scaffolding** | done — [PR #2](https://github.com/2imi9/OlmoEarth-Agent/pull/2) | `pyproject.toml`, `.pre-commit-config.yaml`, `CHANGELOG.md`, `.env.example`, empty `src/olmoearth_agent/` package | Scaffold lands; lint/test/type-check pipeline runs |
 | **P1 — Studio API gap closure** | done — [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
 | **P2 — Skills/scope rewrite** | this PR | PLAN.md v0.4 + SKILLS.md (16-skill catalog) | Multimodal parked; skills are the unit of progress |
-| **P3 — LLM serving + harness MVP** | next | Qwen3.6-35B-A3B-NVFP4 served via TRT-LLM/vLLM with function calling enabled; DeerFlow v2 lead-agent ported; provenance middleware enforcing rule §3.13 | A trivial function call (e.g. `load_context`) round-trips through the LLM |
+| **P3 — LLM serving + harness MVP** | next | Qwen3.6-35B-A3B-NVFP4 served via vLLM ≥0.19.0 (`vllm serve unsloth/Qwen3.6-35B-A3B-NVFP4 --trust-remote-code --dtype bfloat16 --max-model-len 4096`) with function calling enabled and `preserve_thinking=True` for multi-turn agent runs; DeerFlow v2 lead-agent ported; provenance middleware enforcing rule §3.13 | A trivial function call (e.g. `load_context`) round-trips through the LLM |
 | **Skill-5 — `olmoearth-predict`** | after P3 | Core run primitive: submit / poll / pixel-value / features / files | `SKILLS.md` §5 acceptance criteria met against live Studio API |
 | **Skill-1 — `olmoearth-studio-upload`** | TBD | MIME / 10K / multi-metric guards | A 12K-row Windows-origin GeoJSON imports clean |
 | **Skill-8 — `olmoearth-evaluate`** | TBD | Spatial-block CV + NNDM-LOO | Numbers reproduce Ploton 2020's documented inflation pattern on a held-out test |
@@ -412,29 +412,11 @@ P0–P2 are the foundation. P3 + Skill-5 is the first vertical slice where the a
 
 ## 7. Future work (parked)
 
-Two tracks were in scope through v0.3 and are now explicitly deferred. They re-activate only if a v0.4-scope skill empirically needs them.
+Two tracks were in scope through v0.3 and are now deferred. Re-activate only if a v0.4-scope skill empirically needs them.
 
-### 7.1 Multimodal stack
+**7.1 Multimodal stack.** Text-only + function calling is sufficient when Studio returns metrics / GeoJSON / manifest hashes through tool returns. Parked: [Prismatic VLMs](https://arxiv.org/abs/2402.07865), [LLaVA-1.5](https://arxiv.org/abs/2310.03744)/[BLIP-2](https://arxiv.org/abs/2301.12597)/[Honeybee](https://arxiv.org/abs/2312.06742)/[MoVA](https://arxiv.org/abs/2404.13046)/[MoE-LLaVA](https://arxiv.org/abs/2401.15947) projector designs, [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embedding stream, [Unsloth NVFP4 fine-tuning](https://developer.nvidia.com/blog/train-an-llm-on-an-nvidia-blackwell-desktop-with-unsloth-and-scale-it/). Note: the Qwen3.6 checkpoint *does* ship a native vision encoder — re-opening this track means using or replacing that tower, not training one from scratch.
 
-The text-only LLM with function calling is sufficient when Studio handles all imagery and returns metrics / GeoJSON / manifest hashes through tool returns. The agent does not need to *see* pixels to do its job. If a future skill (e.g. a successor to skill #11 cloud-mask-audit) cannot be solved by calling existing tools and genuinely needs image-level reasoning the LLM can't fake, this track re-opens.
-
-Parked components:
-- [Prismatic VLMs](https://arxiv.org/abs/2402.07865) (Karamcheti et al., ICML 2024) — fused vision encoder (DINOv2 + SigLIP)
-- MLP / Q-Former / [MoVA](https://arxiv.org/abs/2404.13046) / [MoME](https://arxiv.org/abs/2407.12709) projector designs
-- [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embedding stream as parallel input
-- LoRA / projector training on Blackwell via [Unsloth + NVFP4](https://developer.nvidia.com/blog/train-an-llm-on-an-nvidia-blackwell-desktop-with-unsloth-and-scale-it/)
-- Adapter references: [LLaVA-1.5](https://arxiv.org/abs/2310.03744), [BLIP-2](https://arxiv.org/abs/2301.12597), [Honeybee](https://arxiv.org/abs/2312.06742), [MoE-LLaVA](https://arxiv.org/abs/2401.15947)
-
-### 7.2 Train-time self-improvement
-
-Inference-time techniques that don't require weight updates (Reflexion / Self-Refine / repeated-sampling-plus-verifier) may be folded into individual skills as they ship. Train-time techniques (STaR / SWiRL / GRPO / DAPO) are parked until trace volume justifies the investment.
-
-Parked references (from [Stanford CS329A](https://cs329a.stanford.edu/)):
-- [Reflexion](https://arxiv.org/abs/2303.11366), [Self-Refine](https://arxiv.org/abs/2303.17651)
-- [STaR](https://arxiv.org/abs/2203.14465), [SWiRL](https://arxiv.org/abs/2504.04736)
-- [Large Language Monkeys](https://arxiv.org/abs/2407.21787), [Archon](https://arxiv.org/abs/2409.15254)
-- [GRPO / DeepSeekMath](https://arxiv.org/abs/2402.03300), [DAPO](https://arxiv.org/abs/2503.14476)
-- Eval references: [METR long-task horizon](https://arxiv.org/abs/2503.14499), [KernelBench](https://arxiv.org/abs/2502.10517)
+**7.2 Train-time self-improvement.** Inference-time techniques without weight updates ([Reflexion](https://arxiv.org/abs/2303.11366), [Self-Refine](https://arxiv.org/abs/2303.17651), repeated-sampling+verifier per [Monkeys](https://arxiv.org/abs/2407.21787)/[Archon](https://arxiv.org/abs/2409.15254)) may be folded into individual skills as they ship. Train-time ([STaR](https://arxiv.org/abs/2203.14465), [SWiRL](https://arxiv.org/abs/2504.04736), [GRPO](https://arxiv.org/abs/2402.03300), [DAPO](https://arxiv.org/abs/2503.14476)) parked until trace volume justifies. Eval framing: [METR horizon](https://arxiv.org/abs/2503.14499), [KernelBench](https://arxiv.org/abs/2502.10517). Source course: [Stanford CS329A](https://cs329a.stanford.edu/).
 
 ---
 
@@ -449,8 +431,8 @@ https://github.com/bytedance/deer-flow · https://deerflow.tech/ · https://gith
 **Skills — NVIDIA AI-Q + agentskills.io**
 https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html · https://docs.nvidia.com/aiq-blueprint/latest/customization/mcp-tools.html · https://docs.nvidia.com/aiq-blueprint/latest/deployment/observability.html · https://github.com/NVIDIA-AI-Blueprints/aiq · https://github.com/NVIDIA/skills · https://agentskills.io · https://developer.nvidia.com/blog/add-a-specialized-deep-research-skill-to-agent-harnesses/ · https://developer.nvidia.com/blog/nvidia-verified-agent-skills-provide-capability-governance-for-ai-agents/
 
-**LLM (in-scope for v0.4)**
-https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4 · https://huggingface.co/Qwen/Qwen3.6-35B-A3B · https://github.com/QwenLM/Qwen3.6 · https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/
+**LLM + serving (in-scope for v0.4)**
+https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4 · https://huggingface.co/Qwen/Qwen3.6-35B-A3B · https://github.com/QwenLM/Qwen3.6 · https://docs.vllm.ai/ · https://github.com/2imi9/vllm · https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/
 
 **Parked tracks** — see §7.1 (multimodal) and §7.2 (self-improvement) above for full reference lists.
 

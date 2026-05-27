@@ -6,21 +6,21 @@ Detailed spec for the 16 skills the agent ships with. Each skill is an [agentski
 
 **Status:** v0.4 spec, 2026-05-27. Implementation rolls out one PR per skill; tracking in `CHANGELOG.md`.
 
-## Existing implementations (upstream source)
+## Existing implementations (upstream)
 
-Three skills are already implemented in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17). The OlmoEarth Agent vendors them rather than re-implementing:
+Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17). The agent vendors them rather than re-implementing.
 
-| Existing in upstream | Maps to this catalog | Note |
-|---|---|---|
-| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified** | Upstream unifies Studio import and rslearn config emission into a single skill with `scripts/audit.py`, `scripts/fetch_aoi.py`, `scripts/write_config.py`. Encodes the 8 known prep pitfalls + 7-criteria audit. Recognizes all three verified schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
-| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3** | Matches the catalog spec — 14 verified presets + cross-field validator. |
-| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4** | Matches the catalog spec — embeddings-vs-fine-tune decision + runnable `.ipynb` with Nano/Tiny/Base/Large extractors and kNN/linear-probe heads. |
+| Upstream | Catalog mapping |
+|---|---|
+| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified** — 8 prep pitfalls + 7-criteria audit; recognizes all three schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
+| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3** — 14 verified presets + cross-field validator. |
+| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4** — embeddings-vs-fine-tune decision + Nano/Tiny/Base/Large notebook. |
 
-**Open question for skills #1 + #2:** keep the catalog split (Studio-import path vs rslearn-config path as distinct skills) or unify them to match the upstream `olmoearth-data-prep` skill? Argument for split: sharper LLM trigger per agentskills.io progressive disclosure (a Studio-only upload should not load the rslearn-config branch). Argument for unify: matches working upstream impl; less integration friction. **Defer until first end-to-end skill PR; document either choice in `CHANGELOG.md`.**
+Skills #5–#15 are forward-looking spec. Skill #16 targets [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio).
 
-Skills #5–#15 are forward-looking spec — no existing implementations in the upstream repo as of 2026-05-17. Skill #16 (`roger-annotation-bridge`) targets the [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio) annotation system.
+**Open decision (defer to first end-to-end skill PR):** split catalog #1/#2 vs unify like upstream. Split → sharper progressive-disclosure trigger; unify → matches working impl.
 
-**Skill description convention.** The upstream `olmoearth-data-prep` `SKILL.md` frontmatter uses **trigger-heavy descriptions** (multi-sentence "Use whenever…", "Trigger even when…") because progressive disclosure loads only the description at boot — the more anchors the LLM has, the cleaner the routing. Match that style for new skills.
+**Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever…", "Trigger even when…") because the description is the LLM's routing surface. Match it.
 
 ---
 
@@ -340,8 +340,6 @@ See [`CONTRIBUTING.md` §3](CONTRIBUTING.md#3-branch-and-pr-workflow) for branch
 
 ## Vendoring policy
 
-The upstream [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) repo is the canonical home for skills #1–#4. The OlmoEarth Agent vendors them so the agent ships with a known-good version pinned to a specific upstream commit; upstream improvements flow in through periodic re-vendoring PRs, not direct edits to the agent's copy.
-
-Vendoring choice (decide in the first skill PR):
-- **Option A — Git submodule.** Track a specific upstream SHA; `git submodule update --remote` to roll forward. Cleanest provenance; harder for casual contributors.
-- **Option B — Copy + `skill-card.md` provenance.** Copy the folder; record upstream URL + commit SHA + license in `skill-card.md`. Simpler; drift risk if the contributor forgets the bump.
+[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) is canonical for skills #1–#4; agent vendors at a pinned commit. Decide in the first skill PR:
+- **A. Git submodule** — track an upstream SHA; cleanest provenance, harder for casual contributors.
+- **B. Copy + provenance in `skill-card.md`** — simpler, drift risk if the bump is forgotten.

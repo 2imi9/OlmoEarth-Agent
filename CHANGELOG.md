@@ -61,7 +61,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - `PLAN.md` §4 "Underlying stack" table collapsed from 7 rows to 5:
   dropped "Vision–language model" + "Geospatial encoder stream" +
   "Self-improvement"; added explicit "LLM" row pinning Qwen3.6-35B-A3B-NVFP4
-  served via TensorRT-LLM/vLLM.
+  served via **vLLM ≥0.19.0** (upstream-recommended path for this NVFP4
+  checkpoint; full `vllm serve` command in §4). Agent sessions use
+  `chat_template_kwargs.preserve_thinking=True` per the model card.
+- `PLAN.md` §7 "Future work" trimmed from per-bullet ref lists to two
+  prose paragraphs. Noted that Qwen3.6 ships a native vision encoder,
+  so re-opening §7.1 means using/replacing that tower, not training
+  one from scratch.
+- `SKILLS.md` "Existing implementations" + "Vendoring policy" sections
+  tightened (split-vs-unify and submodule-vs-copy decisions left as
+  one-line options rather than verbose A/B writeups).
 - `PLAN.md` §6 roadmap rewritten from 7 generic phases (P0–P6) to
   skill-first: P0–P2 done (scaffold / gap closure / this rewrite),
   P3 = LLM serving + harness MVP, then one PR per skill ordered by
