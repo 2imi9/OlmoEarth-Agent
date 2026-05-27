@@ -15,6 +15,36 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   (pinned hook versions modeled on earth2studio), `.env.example` template,
   empty `src/olmoearth_agent/` package skeleton with `py.typed` marker, and
   this `CHANGELOG.md` file.
+- `PLAN.md` §4: explicit Studio API spec-version pin (`openapi.json` v0.1.0,
+  pre-1.0) and verified findings on Firebase auth, `PredictionResultAccessLevel`,
+  `PredictionUpdate` rename-only, free-form `PredictionRead.progress`,
+  `*-management/` doc stubs, and the `TaskStatus`-vs-`PredictionStatus` enum split.
+- `PLAN.md` §1: new `olmoearth.create_label` tool row (the Studio API treats
+  labelset metadata and individual label classes as separate POSTs).
+- `PLAN.md` §2: new `LabelsetSpec`, `LabelDef`, `DataPrepLabelSchema` dataclasses
+  (clean separation between Studio-API schemas and the OlmoEarth dataset-prep
+  layer's field names).
+
+### Changed
+- `PLAN.md` bumped to v0.3.
+- `PLAN.md` §4: rewritten "Studio gaps" subsection from v0.1/v0.2's three
+  UNVERIFIED items to verified findings — webhook absence CLOSED, fine-tune
+  `model_id` field CONFIRMED but provenance still UNVERIFIED, rate limits
+  CLOSED-as-undocumented.
+- `PLAN.md` §5 example: uses `LabelsetSpec` + `create_label` flow and notes
+  that every Studio Prediction requires a `model_id`.
+
+### Fixed
+- `PLAN.md` §2 `PredictionStatus.state` enum corrected against the live
+  `components.schemas.PredictionStatus`: `queued`→`pending`, `succeeded`→
+  `completed`, added `cancelled` as a fifth terminal state.
+- `PLAN.md` §2 `LabelSchema` retired — the v0.2 shape (`sample_category`,
+  `es_label`, `oe_labels`) is the OlmoEarth dataset-prep / rslearn layer's
+  schema, NOT the Studio API. Renamed to `DataPrepLabelSchema` and
+  documented as a different layer; `LabelsetSpec` + `LabelDef` replace it
+  for the API surface.
+- `PLAN.md` §2 `PredictionRef.kind` docstring clarifies it's a client-side
+  dispatch key, not a Studio API field (the API has no `kind` / `task_type`).
 
 ## [0.0.2] - 2026-05-27
 
