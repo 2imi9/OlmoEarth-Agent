@@ -6,6 +6,22 @@ Detailed spec for the 16 skills the agent ships with. Each skill is an [agentski
 
 **Status:** v0.4 spec, 2026-05-27. Implementation rolls out one PR per skill; tracking in `CHANGELOG.md`.
 
+## Existing implementations (upstream source)
+
+Three skills are already implemented in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17). The OlmoEarth Agent vendors them rather than re-implementing:
+
+| Existing in upstream | Maps to this catalog | Note |
+|---|---|---|
+| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified** | Upstream unifies Studio import and rslearn config emission into a single skill with `scripts/audit.py`, `scripts/fetch_aoi.py`, `scripts/write_config.py`. Encodes the 8 known prep pitfalls + 7-criteria audit. Recognizes all three verified schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
+| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3** | Matches the catalog spec — 14 verified presets + cross-field validator. |
+| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4** | Matches the catalog spec — embeddings-vs-fine-tune decision + runnable `.ipynb` with Nano/Tiny/Base/Large extractors and kNN/linear-probe heads. |
+
+**Open question for skills #1 + #2:** keep the catalog split (Studio-import path vs rslearn-config path as distinct skills) or unify them to match the upstream `olmoearth-data-prep` skill? Argument for split: sharper LLM trigger per agentskills.io progressive disclosure (a Studio-only upload should not load the rslearn-config branch). Argument for unify: matches working upstream impl; less integration friction. **Defer until first end-to-end skill PR; document either choice in `CHANGELOG.md`.**
+
+Skills #5–#15 are forward-looking spec — no existing implementations in the upstream repo as of 2026-05-17. Skill #16 (`roger-annotation-bridge`) targets the [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio) annotation system.
+
+**Skill description convention.** The upstream `olmoearth-data-prep` `SKILL.md` frontmatter uses **trigger-heavy descriptions** (multi-sentence "Use whenever…", "Trigger even when…") because progressive disclosure loads only the description at boot — the more anchors the LLM has, the cleaner the routing. Match that style for new skills.
+
 ---
 
 ## Catalog
@@ -37,12 +53,14 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 
 ### 1. `olmoearth-studio-upload`
 
+**Upstream:** unified with skill #2 inside [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep). See the [`SKILL.md`](https://raw.githubusercontent.com/2imi9/OlmoEarth-Skills/main/skills/olmoearth-data-prep/SKILL.md) and `scripts/audit.py`, `scripts/write_config.py`. Split-vs-unify decision tracked above.
+
 **In:** labels as GeoJSON / CSV / Shapefile.
 **Out:** Studio-importable file.
 
 **What.** `sample_category` schema enforcement, sharding at 10K records, dual file extension to bypass Windows MIME rejection, multi-metric file split when more than one numeric column is present.
 
-**Why.** Onboarding friction is the most repeated dropoff point for case providers. Studio uploads break silently: Windows rejects `.geojson` as `application/octet-stream`, and uploads above 10K records hit the 1-hour timeout. Without a defensive uploader, partner teams lose hours per case to format errors that surface only after retry. The existing [`olmoearth-data-prep`](file:///C:/Users/Frank/.claude/skills/olmoearth-data-prep) skill encodes 8 such pitfalls; splitting the Studio path makes the trigger sharper.
+**Why.** Onboarding friction is the most repeated dropoff point for case providers. Studio uploads break silently: Windows rejects `.geojson` as `application/octet-stream`, and uploads above 10K records hit the 1-hour timeout. Without a defensive uploader, partner teams lose hours per case to format errors that surface only after retry.
 
 **Tools composed.**
 - `olmoearth.upload_labels` (`PLAN.md` §1).
@@ -51,6 +69,8 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 ---
 
 ### 2. `olmoearth-rslearn-config`
+
+**Upstream:** unified with skill #1 inside [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep). The upstream skill emits both AWF-style (1 sentinel2 layer with 3 zoom_offset bandsets) and production-style (12 per-month layers) `dataset.json` layouts.
 
 **In:** labels + AOIs.
 **Out:** `rslearn` `dataset.json` + Lightning YAML.
@@ -69,10 +89,12 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 
 ### 3. `olmoearth-studio-job-config`
 
+**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config). Vendor as-is.
+
 **In:** task description.
 **Out:** Studio wizard answers.
 
-**What.** Picks output type (per-pixel / window / detection / embeddings), model size, time-frame mode, imagery sources, patch size. 14 verified presets plus a cross-field validator.
+**What.** Picks output type (per-pixel / window / detection / embeddings), model size (Nano / Tiny / Base), time-frame mode (period vs single-moment-with-context vs single-moment), imagery sources (S2 alone vs +S1), patch size (160 / 320 / 640 / 1280 m). 14 verified presets (crop / mangrove / land cover / soil moisture / biomass / vessel / solar / oil slick / flood / drought / burn scar / embeddings) plus a cross-field validator.
 
 **Why.** Cross-field traps exist: detection with 320 m patch fails silently, Landsat is not yet available as a source, embeddings mode is incompatible with single-moment time frame. Researchers without OlmoEarth-specific intuition iterate on a misconfigured wizard for days. The validator catches the trap before the job is submitted.
 
@@ -82,6 +104,8 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 ---
 
 ### 4. `olmoearth-embeddings`
+
+**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings). Vendor as-is; grounded in the AWF Kenya tutorial's accuracy/time/VRAM table. Handles the small-dataset (<100 samples), limited-compute (T4 / Colab), similarity-search, and "no labels yet" cases.
 
 **In:** task profile (label volume, class balance, target VRAM, target latency).
 **Out:** embeddings-vs-fine-tune decision + runnable `.ipynb`.
@@ -282,6 +306,8 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 
 ### 16. `roger-annotation-bridge`
 
+**Upstream target:** [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio) — the annotation tool being bridged. Export schema needs to be confirmed against this repo before the skill ships.
+
 **In:** Roger Studio annotation export.
 **Out:** OlmoEarth Studio labelset + labels via `olmoearth-studio-upload`.
 
@@ -293,7 +319,7 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 - Skill #1 (`olmoearth-studio-upload`) for the final write.
 - Skill-local: `roger_export_parse`, `field_reconcile`, `annotation_dedupe`.
 
-**Status.** Sketch only. The Roger Studio export schema needs to be confirmed before this skill ships — flagged UNVERIFIED.
+**Status.** Sketch only. The Roger Studio export schema needs to be confirmed against [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio) before this skill ships — flagged UNVERIFIED.
 
 ---
 
@@ -304,10 +330,18 @@ Implementation order tracks `PLAN.md` §6. First skill to ship is **#5 `olmoeart
 ## Adding a skill
 
 A new skill is one PR with:
-1. A folder under `skills/<skill-name>/` containing `SKILL.md` + `skill-card.md` + `scripts/` + optional `references/`, `assets/`.
+1. A folder under `skills/<skill-name>/` containing `SKILL.md` + `skill-card.md` + `scripts/` + optional `references/`, `assets/`. For skills already in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills), vendor the folder verbatim (git submodule or copy + provenance note in `skill-card.md`) rather than re-implementing.
 2. Any new global tools added to `PLAN.md` §1.
 3. A `tests/skills/test_<skill_name>.py` exercising the skill end-to-end against the live Studio API (mark with `@pytest.mark.integration`).
 4. An entry in this `SKILLS.md` matching the per-skill template above.
 5. A `CHANGELOG.md` line under `### Added`.
 
 See [`CONTRIBUTING.md` §3](CONTRIBUTING.md#3-branch-and-pr-workflow) for branch naming.
+
+## Vendoring policy
+
+The upstream [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) repo is the canonical home for skills #1–#4. The OlmoEarth Agent vendors them so the agent ships with a known-good version pinned to a specific upstream commit; upstream improvements flow in through periodic re-vendoring PRs, not direct edits to the agent's copy.
+
+Vendoring choice (decide in the first skill PR):
+- **Option A — Git submodule.** Track a specific upstream SHA; `git submodule update --remote` to roll forward. Cleanest provenance; harder for casual contributors.
+- **Option B — Copy + `skill-card.md` provenance.** Copy the folder; record upstream URL + commit SHA + license in `skill-card.md`. Simpler; drift risk if the contributor forgets the bump.

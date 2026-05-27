@@ -30,6 +30,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   Skakun CMIX 2022 cloud masks, WorldCereal 2025 lessons, IAMAP, NASA
   Similarity Search, etc.). Skill #16 (`roger-annotation-bridge`) added
   alongside the 15 from Ziming's source spec.
+- `SKILLS.md`: "Existing implementations (upstream source)" section
+  pinning skills #1–#4 to [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
+  — upstream unifies skills #1 + #2 as `olmoearth-data-prep`
+  (split-vs-unify decision deferred to first end-to-end skill PR).
+  Skill #16 target pinned to [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio).
+- `SKILLS.md`: "Vendoring policy" section — submodule vs copy-with-
+  provenance choice deferred to first vendoring PR.
+- `PLAN.md` §4 Skills row: references upstream
+  [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
+  as canonical home for skills #1–#4.
 - `PLAN.md` §1: three new global tools — `olmoearth.pixel_value`,
   `olmoearth.features_search`, `olmoearth.fetch_embedding` (used by skills
   #4, #5, #9, #10).
