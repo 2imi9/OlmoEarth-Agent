@@ -24,6 +24,70 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - `PLAN.md` §2: new `LabelsetSpec`, `LabelDef`, `DataPrepLabelSchema` dataclasses
   (clean separation between Studio-API schemas and the OlmoEarth dataset-prep
   layer's field names).
+- **`SKILLS.md`** — detailed 16-skill catalog (Prep / Configure / Run /
+  Analyze / Integrate / Report). Each skill has what / why / tools-composed
+  with academic citations (Ploton 2020 spatial CV, Meyer-Pebesma 2021 AOA,
+  Skakun CMIX 2022 cloud masks, WorldCereal 2025 lessons, IAMAP, NASA
+  Similarity Search, etc.). Skill #16 (`roger-annotation-bridge`) added
+  alongside the 15 from Ziming's source spec.
+- `SKILLS.md`: "Existing implementations (upstream source)" section
+  pinning skills #1–#4 to [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
+  — upstream unifies skills #1 + #2 as `olmoearth-data-prep`
+  (split-vs-unify decision deferred to first end-to-end skill PR).
+  Skill #16 target pinned to [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio).
+- `SKILLS.md`: "Vendoring policy" section — submodule vs copy-with-
+  provenance choice deferred to first vendoring PR.
+- `PLAN.md` §4 Skills row: references upstream
+  [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
+  as canonical home for skills #1–#4.
+- `PLAN.md` §1: three new global tools — `olmoearth.pixel_value`,
+  `olmoearth.features_search`, `olmoearth.fetch_embedding` (used by skills
+  #4, #5, #9, #10).
+- `PLAN.md` §2: four new dataclasses — `PixelValueResult`, `FeatureMatch`,
+  `EmbeddingVector`, `ProvenanceManifest`.
+- `PLAN.md` §3: new operational rule **13 — Provenance manifest** (every
+  `olmoearth.*` API call writes a `ProvenanceManifest` entry via
+  `provenance_middleware` from skill #14).
+- `PLAN.md` §7: new "Future work (parked)" section documenting the
+  multimodal stack and train-time self-improvement tracks that are
+  explicitly deferred.
+
+### Changed
+- `PLAN.md` bumped to **v0.4**. Scope narrowed to text-only LLM
+  (`unsloth/Qwen3.6-35B-A3B-NVFP4`) with function calling. Multimodal
+  stack (Prismatic / Q-Former / OlmoEarth embedding stream / NVFP4
+  fine-tuning) moved to §7.1 Future work; train-time self-improvement
+  moved to §7.2.
+- `PLAN.md` §4 "Underlying stack" table collapsed from 7 rows to 5:
+  dropped "Vision–language model" + "Geospatial encoder stream" +
+  "Self-improvement"; added explicit "LLM" row pinning Qwen3.6-35B-A3B-NVFP4
+  served via **vLLM ≥0.19.0** (upstream-recommended path for this NVFP4
+  checkpoint; full `vllm serve` command in §4). Agent sessions use
+  `chat_template_kwargs.preserve_thinking=True` per the model card.
+- `PLAN.md` §7 "Future work" trimmed from per-bullet ref lists to two
+  prose paragraphs. Noted that Qwen3.6 ships a native vision encoder,
+  so re-opening §7.1 means using/replacing that tower, not training
+  one from scratch.
+- `SKILLS.md` "Existing implementations" + "Vendoring policy" sections
+  tightened (split-vs-unify and submodule-vs-copy decisions left as
+  one-line options rather than verbose A/B writeups).
+- `PLAN.md` §6 roadmap rewritten from 7 generic phases (P0–P6) to
+  skill-first: P0–P2 done (scaffold / gap closure / this rewrite),
+  P3 = LLM serving + harness MVP, then one PR per skill ordered by
+  case-study demand. Skills 14 (provenance) and 8 (evaluate) flagged
+  for early landing because they're cross-cutting.
+- `PLAN.md` §8 (was §7) references trimmed: in-scope LLM refs only;
+  parked refs live in §7.1/§7.2.
+- `PLAN.md` §3 rule list grew from 12 → 13 (provenance manifest).
+
+### Changed (continued from PR #3)
+- `PLAN.md` bumped to v0.3 (PR #3 increment, superseded by v0.4 here).
+- `PLAN.md` §4: rewritten "Studio gaps" subsection from v0.1/v0.2's three
+  UNVERIFIED items to verified findings — webhook absence CLOSED, fine-tune
+  `model_id` field CONFIRMED but provenance still UNVERIFIED, rate limits
+  CLOSED-as-undocumented.
+- `PLAN.md` §5 example: uses `LabelsetSpec` + `create_label` flow and notes
+  that every Studio Prediction requires a `model_id`.
 
 ### Changed
 - `PLAN.md` bumped to v0.3.

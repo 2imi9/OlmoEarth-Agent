@@ -4,13 +4,19 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 ## Status
 
-**v0.2 spec.** No runnable code yet. See [`PLAN.md`](PLAN.md) for the tool catalog, harness data classes, operational rules, and the underlying stack.
+**v0.4 spec.** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4)) served via **vLLM ≥0.19.0** with function calling. Multimodal stack parked. 16-skill catalog spec'd in [`SKILLS.md`](SKILLS.md); skills ship one PR at a time. No runnable code yet.
+
+See [`PLAN.md`](PLAN.md) for the tool catalog, harness dataclasses, operational rules, and roadmap; [`SKILLS.md`](SKILLS.md) for the per-skill spec.
 
 ## What's in this repo
 
-- [`PLAN.md`](PLAN.md) — Tool catalog (CSV-shaped), harness dataclasses, operational rules, underlying stack, roadmap.
+- [`PLAN.md`](PLAN.md) — Tool catalog, harness dataclasses, operational rules, underlying stack, roadmap.
+- [`SKILLS.md`](SKILLS.md) — 16-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report).
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contributor workflow (DCO sign-off, branch naming, AI-assistance policy).
+- [`AGENTS.md`](AGENTS.md) — Onboarding context for coding agents working on this codebase.
+- [`CHANGELOG.md`](CHANGELOG.md) — Keep a Changelog v1.1.0.
+- `pyproject.toml`, `.pre-commit-config.yaml`, `.env.example` — Project scaffold.
 - `LICENSE` — Apache 2.0.
-- `.gitignore` — Python / EO / agent-state.
 
 ## Tool surface (summary)
 
@@ -35,11 +41,10 @@ Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
 
 | Layer | Reference |
 |---|---|
+| LLM | [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) on Blackwell via [vLLM ≥0.19.0](https://docs.vllm.ai/). Text + function calling. No fine-tuning in v0.4. |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) |
-| Skill packaging | [NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) on the open [agentskills.io](https://agentskills.io) spec |
-| Vision–language model | [Prismatic VLMs](https://arxiv.org/abs/2402.07865) + [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) |
-| Geospatial encoder | [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embeddings |
-| Self-improvement | [Stanford CS329A](https://cs329a.stanford.edu/) techniques (Reflexion, Self-Refine, repeated-sampling+verifier, STaR/SWiRL) |
+| Skills | 16 skills in [`SKILLS.md`](SKILLS.md), packaged per [agentskills.io](https://agentskills.io) ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) impl reference) |
+| Parked | Multimodal stack (Prismatic VLM + adapters + OlmoEarth embedding stream) and train-time self-improvement loops — see `PLAN.md` §7 |
 
 ## License
 
