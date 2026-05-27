@@ -2,7 +2,9 @@
 
 A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; runs them in a Python sandbox preloaded with the standard geospatial stack; and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1. Everything below it is supporting detail.
 
-**Status:** v0.3 spec, 2026-05-27. No runnable code yet.
+**Status:** v0.4 spec, 2026-05-27. No runnable code yet.
+**Scope:** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4)) with function calling. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work — they re-activate only if a skill empirically needs them.
+**Skill catalog:** [`SKILLS.md`](SKILLS.md) — 16 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
 **Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0 — fields and enums may change without notice.
 
@@ -30,6 +32,9 @@ The agent exposes the following functions. Code below the table renders the same
 | `olmoearth` | Function | `submit_prediction` | `kind: Literal["finetune","embed","reference"]`, `project: ProjectRef`, `dataset: DatasetRef`, `config: dict` | `PredictionRef` | Wraps `POST /predictions`. Three modes correspond to the three case-study methodologies. |
 | `olmoearth` | Function | `poll_prediction` | `ref: PredictionRef` | `PredictionStatus` | Wraps `GET /predictions/{id}`. Exponential backoff. |
 | `olmoearth` | Function | `fetch_results` | `ref: PredictionRef`, `kind: Literal["tiles","vectors","metrics"]` | `ResultBundle` | Wraps `GET /prediction-results/...` (XYZ raster tiles, MVT vector tiles, metrics JSON). |
+| `olmoearth` | Function | `pixel_value` | `ref: PredictionRef`, `aoi: AOIWrapper` | `list[PixelValueResult]` | Wraps `GET /prediction-results/{id}/pixel-value`. Pointwise model output per coord. Used by skills #5, #9, #10. |
+| `olmoearth` | Function | `features_search` | `ref: PredictionRef`, `class_name: str \| None = None`, `limit: int = 100` | `list[FeatureMatch]` | Wraps `POST /prediction-results/features/search`. Returns vector features filtered by class. Used by skill #5. |
+| `olmoearth` | Function | `fetch_embedding` | `aoi: AOIWrapper`, `model_size: Literal["nano","tiny","base","large"]`, `time_range: TimeRange` | `EmbeddingVector` | Pulls OlmoEarth embeddings (Nano/Tiny/Base/Large) for an AOI. Used by skills #4, #9. |
 | `olmoearth` | Function | `save_view` | `bundle: ResultBundle`, `name: str` | `FilePath` | Publishes layer back to the user's Studio project. |
 | `eo` | Function | `search_stac` | `collection: str`, `aoi: AOIWrapper`, `time_range: TimeRange`, `cloud_lt: float = 0.2` | `STACItems` | Planetary Computer / Earthdata STAC query. |
 | `eo` | Function | `sign_assets` | `items: STACItems` | `STACItems` | Planetary Computer asset signing. |
@@ -62,6 +67,9 @@ olmoearth,Function,upload_labels,labelset (LabelsetRef) | path (str),int,Imports
 olmoearth,Function,submit_prediction,kind ("finetune"|"embed"|"reference") | project (ProjectRef) | dataset (DatasetRef) | config (dict),PredictionRef,POST /predictions.
 olmoearth,Function,poll_prediction,ref (PredictionRef),PredictionStatus,GET /predictions/{id} with exponential backoff.
 olmoearth,Function,fetch_results,ref (PredictionRef) | kind ("tiles"|"vectors"|"metrics"),ResultBundle,GET /prediction-results/... .
+olmoearth,Function,pixel_value,ref (PredictionRef) | aoi (AOIWrapper),list[PixelValueResult],GET /prediction-results/{id}/pixel-value (skills 5/9/10).
+olmoearth,Function,features_search,ref (PredictionRef) | class_name (str | None) | limit (int = 100),list[FeatureMatch],POST /prediction-results/features/search (skill 5).
+olmoearth,Function,fetch_embedding,aoi (AOIWrapper) | model_size ("nano"|"tiny"|"base"|"large") | time_range (TimeRange),EmbeddingVector,Pulls OlmoEarth embeddings (skills 4/9).
 olmoearth,Function,save_view,bundle (ResultBundle) | name (str),FilePath,Publishes layer back to user's Studio project.
 eo,Function,search_stac,collection (str) | aoi (AOIWrapper) | time_range (TimeRange) | cloud_lt (float = 0.2),STACItems,Planetary Computer / Earthdata STAC query.
 eo,Function,sign_assets,items (STACItems),STACItems,Planetary Computer asset signing.
@@ -227,6 +235,45 @@ class ResultBundle:
     metrics: dict | None = None
 
 @dataclasses.dataclass
+class PixelValueResult:
+    """One row from /prediction-results/{id}/pixel-value."""
+    lon: float
+    lat: float
+    value: float | int | None
+    class_name: str | None = None
+
+@dataclasses.dataclass
+class FeatureMatch:
+    """One match from /prediction-results/features/search."""
+    feature_id: str
+    class_name: str
+    score: float
+    bbox: tuple[float, float, float, float] | None = None
+
+@dataclasses.dataclass
+class EmbeddingVector:
+    """OlmoEarth embedding for an AOI at one time slice."""
+    aoi_id: str
+    model_size: Literal["nano", "tiny", "base", "large"]
+    time: str           # ISO-8601
+    dim: int            # vector dimensionality
+    values: list[float] # length == dim
+
+@dataclasses.dataclass
+class ProvenanceManifest:
+    """Append-only manifest written by provenance_middleware (rule §3.13).
+    One entry per Studio API call. Replay script reconstructs the
+    PredictionRef chain from this."""
+    run_id: str
+    timestamp: str          # ISO-8601
+    api_call: str           # e.g. "POST /predictions"
+    request_hash: str       # sha256 of the request payload
+    response_summary: dict  # ids, status codes, hashes — no raw geometry
+    prediction_id: str | None = None
+    model_id: str | None = None
+    dataset_hashes: list[str] | None = None
+
+@dataclasses.dataclass
 class FilePath:
     error: Union[ToolExecutionError, None] = None
     path: str | None = None
@@ -250,6 +297,7 @@ Hard constraints the harness enforces — refusals where appropriate, defaults w
 10. **Schema-validate labels before upload.** `create_labelset` rejects schemas missing the `sample_category` / `es_label` / `oe_labels` keys. MIME type and column types validated on `upload_labels`.
 11. **Refuse silent overwrites.** `save_view` with a name that exists in the target project must require an explicit `overwrite=True`.
 12. **Trace redaction.** OpenTelemetry traces redact lat/lon, partner-controlled attributes, and full API keys before export.
+13. **Provenance manifest.** Every `olmoearth.*` API call writes a `ProvenanceManifest` entry via the `provenance_middleware` (skill #14 in [`SKILLS.md`](SKILLS.md)). Sessions that disable provenance refuse to call `save_view`. The replay script is the single source of truth for "what did this run do?"
 
 ---
 
@@ -259,13 +307,11 @@ The tool catalog above is the contract. Everything in this section is implementa
 
 | Layer | Reference |
 |---|---|
+| LLM | [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) — text-only, function calling. Served on Blackwell via [TensorRT-LLM ≥0.17](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/) or vLLM. No fine-tuning in v0.4 scope. |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) — LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
-| Skill packaging | [NVIDIA AI-Q Agent Skills](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementing the open [agentskills.io](https://agentskills.io) spec — `SKILL.md` progressive disclosure + signed `skill-card.md`. |
-| Vision–language model | [Prismatic VLMs](https://arxiv.org/abs/2402.07865) (Karamcheti et al., ICML 2024) + [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) on Blackwell with LoRA / projectors trained in BF16 via Unsloth. |
-| Geospatial encoder stream | [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embeddings as a parallel input alongside Prismatic vision features. |
-| Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub). |
-| Self-improvement | Reflexion / Self-Refine / repeated-sampling-plus-verifier for inference-time; STaR / SWiRL for train-time when traces accumulate. Grounded in [Stanford CS329A](https://cs329a.stanford.edu/). |
-| Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. |
+| Skills | 16 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). `SKILL.md` progressive disclosure + signed `skill-card.md`. |
+| Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub, GEE, OSM, USGS Water, NOAA — last four added by skill #13). |
+| Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. Provenance manifest (rule §3.13) is the audit substrate. |
 
 The Studio API itself:
 
@@ -346,21 +392,53 @@ The interpreter sandbox runs this script as a single `system:python` call. Opera
 
 ## 6. Roadmap
 
-| Phase | Duration | Deliverables | Exit criteria |
-|---|---|---|---|
-| **P0 — Scaffolding** | 2 weeks | Repo layout; `olmoearth` MCP server codegen'd from OpenAPI; Bearer-auth handshake; harness dataclasses (§2) as a `types.py` | One round-trip: `create_project` → `load_context` reflects new project |
-| **P1 — Tool surface MVP** | 3 weeks | All `olmoearth.*` and `utils.*` tools implemented + tested against the live Studio API | Klamath example (§5) runs end-to-end with human approval gates |
-| **P2 — Sandbox + harness** | 3 weeks | `system:python` interpreter with preloaded libs and persistent state; DeerFlow v2 lead-agent ported; middleware enforces rules §3 | All 12 rules in §3 verifiable from traces |
-| **P3 — Model stack** | 4 weeks | Prismatic vision tower + MLP projector + LoRA adapters on `unsloth/Qwen3.6-35B-A3B-NVFP4` via Unsloth on Blackwell | Inference path through TRT-LLM or vLLM |
-| **P4 — Geo encoder stream** | 3 weeks | `OlmoEarth-v1-Large` projector wired alongside Prismatic; expert-usage histograms logged | Held-out EO eval not degraded vs vision-only |
-| **P5 — Observability** | 2 weeks | OpenTelemetry with redaction; LangSmith dataset-from-traces; small EO question bench | Weekly trendline dashboard live |
-| **P6 — Self-improvement** | open | Reflexion + repeated-sampling-plus-verifier at inference; STaR / SWiRL once trace volume justifies | METR-horizon metric improves on the bench |
+Skills-first. Each P0–P3 phase is a single PR; each Skill-* row is one PR (per [`SKILLS.md`](SKILLS.md) numbering). Order beyond Skill-5 is driven by the case-study queue, not catalog order.
 
-P0–P2 is the buildable core. P3–P4 adds the multimodal model. P5 turns on the feedback loop. P6 is graduated improvement.
+| Phase | Status | Deliverables | Exit criteria |
+|---|---|---|---|
+| **P0 — Scaffolding** | done — [PR #2](https://github.com/2imi9/OlmoEarth-Agent/pull/2) | `pyproject.toml`, `.pre-commit-config.yaml`, `CHANGELOG.md`, `.env.example`, empty `src/olmoearth_agent/` package | Scaffold lands; lint/test/type-check pipeline runs |
+| **P1 — Studio API gap closure** | done — [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
+| **P2 — Skills/scope rewrite** | this PR | PLAN.md v0.4 + SKILLS.md (16-skill catalog) | Multimodal parked; skills are the unit of progress |
+| **P3 — LLM serving + harness MVP** | next | Qwen3.6-35B-A3B-NVFP4 served via TRT-LLM/vLLM with function calling enabled; DeerFlow v2 lead-agent ported; provenance middleware enforcing rule §3.13 | A trivial function call (e.g. `load_context`) round-trips through the LLM |
+| **Skill-5 — `olmoearth-predict`** | after P3 | Core run primitive: submit / poll / pixel-value / features / files | `SKILLS.md` §5 acceptance criteria met against live Studio API |
+| **Skill-1 — `olmoearth-studio-upload`** | TBD | MIME / 10K / multi-metric guards | A 12K-row Windows-origin GeoJSON imports clean |
+| **Skill-8 — `olmoearth-evaluate`** | TBD | Spatial-block CV + NNDM-LOO | Numbers reproduce Ploton 2020's documented inflation pattern on a held-out test |
+| **Skill-14 — `olmoearth-provenance`** | TBD (interleaved early) | Manifest middleware + replay script emitter | Replay script reconstructs a known-good prediction end-to-end |
+| **Skills 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 15, 16** | TBD | One PR per skill, ordered by case-study demand | Per-skill exit criteria in [`SKILLS.md`](SKILLS.md) |
+
+P0–P2 are the foundation. P3 + Skill-5 is the first vertical slice where the agent does anything real. Skills 14 + 8 land early because they're cross-cutting (provenance for audit; evaluation for honest metrics). Everything else follows demand.
 
 ---
 
-## 7. References
+## 7. Future work (parked)
+
+Two tracks were in scope through v0.3 and are now explicitly deferred. They re-activate only if a v0.4-scope skill empirically needs them.
+
+### 7.1 Multimodal stack
+
+The text-only LLM with function calling is sufficient when Studio handles all imagery and returns metrics / GeoJSON / manifest hashes through tool returns. The agent does not need to *see* pixels to do its job. If a future skill (e.g. a successor to skill #11 cloud-mask-audit) cannot be solved by calling existing tools and genuinely needs image-level reasoning the LLM can't fake, this track re-opens.
+
+Parked components:
+- [Prismatic VLMs](https://arxiv.org/abs/2402.07865) (Karamcheti et al., ICML 2024) — fused vision encoder (DINOv2 + SigLIP)
+- MLP / Q-Former / [MoVA](https://arxiv.org/abs/2404.13046) / [MoME](https://arxiv.org/abs/2407.12709) projector designs
+- [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embedding stream as parallel input
+- LoRA / projector training on Blackwell via [Unsloth + NVFP4](https://developer.nvidia.com/blog/train-an-llm-on-an-nvidia-blackwell-desktop-with-unsloth-and-scale-it/)
+- Adapter references: [LLaVA-1.5](https://arxiv.org/abs/2310.03744), [BLIP-2](https://arxiv.org/abs/2301.12597), [Honeybee](https://arxiv.org/abs/2312.06742), [MoE-LLaVA](https://arxiv.org/abs/2401.15947)
+
+### 7.2 Train-time self-improvement
+
+Inference-time techniques that don't require weight updates (Reflexion / Self-Refine / repeated-sampling-plus-verifier) may be folded into individual skills as they ship. Train-time techniques (STaR / SWiRL / GRPO / DAPO) are parked until trace volume justifies the investment.
+
+Parked references (from [Stanford CS329A](https://cs329a.stanford.edu/)):
+- [Reflexion](https://arxiv.org/abs/2303.11366), [Self-Refine](https://arxiv.org/abs/2303.17651)
+- [STaR](https://arxiv.org/abs/2203.14465), [SWiRL](https://arxiv.org/abs/2504.04736)
+- [Large Language Monkeys](https://arxiv.org/abs/2407.21787), [Archon](https://arxiv.org/abs/2409.15254)
+- [GRPO / DeepSeekMath](https://arxiv.org/abs/2402.03300), [DAPO](https://arxiv.org/abs/2503.14476)
+- Eval references: [METR long-task horizon](https://arxiv.org/abs/2503.14499), [KernelBench](https://arxiv.org/abs/2502.10517)
+
+---
+
+## 8. References
 
 **OlmoEarth Studio**
 https://docs.olmoearth.allenai.org/ · https://docs.olmoearth.allenai.org/authentication/ · https://olmoearth.allenai.org/api/v1/openapi.json · https://docs.olmoearth.allenai.org/api/ · https://allenai.org/blog/olmoearth · https://allenai.org/blog/olmoearth-v1-1 · https://huggingface.co/allenai/OlmoEarth-v1-Large · https://github.com/allenai/olmoearth_projects · https://github.com/allenai/olmoearth_pretrain
@@ -371,12 +449,13 @@ https://github.com/bytedance/deer-flow · https://deerflow.tech/ · https://gith
 **Skills — NVIDIA AI-Q + agentskills.io**
 https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html · https://docs.nvidia.com/aiq-blueprint/latest/customization/mcp-tools.html · https://docs.nvidia.com/aiq-blueprint/latest/deployment/observability.html · https://github.com/NVIDIA-AI-Blueprints/aiq · https://github.com/NVIDIA/skills · https://agentskills.io · https://developer.nvidia.com/blog/add-a-specialized-deep-research-skill-to-agent-harnesses/ · https://developer.nvidia.com/blog/nvidia-verified-agent-skills-provide-capability-governance-for-ai-agents/
 
-**Vision–language stack**
-https://arxiv.org/abs/2402.07865 · https://github.com/TRI-ML/prismatic-vlms · https://huggingface.co/Qwen/Qwen3.6-35B-A3B · https://github.com/QwenLM/Qwen3.6 · https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4 · https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/ · https://developer.nvidia.com/blog/train-an-llm-on-an-nvidia-blackwell-desktop-with-unsloth-and-scale-it/ · https://research.nvidia.com/labs/nemotron/files/NVFP4-QAD-Report.pdf · https://arxiv.org/abs/2310.03744 · https://arxiv.org/abs/2301.12597 · https://arxiv.org/abs/2312.06742 · https://arxiv.org/abs/2404.13046 · https://arxiv.org/abs/2407.12709 · https://arxiv.org/abs/2401.15947
+**LLM (in-scope for v0.4)**
+https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4 · https://huggingface.co/Qwen/Qwen3.6-35B-A3B · https://github.com/QwenLM/Qwen3.6 · https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/
 
-**Self-improvement — Stanford CS329A and papers**
-https://cs329a.stanford.edu/ · https://online.stanford.edu/courses/cs329a-self-improving-ai-agents · https://arxiv.org/abs/2303.11366 · https://arxiv.org/abs/2303.17651 · https://arxiv.org/abs/2203.14465 · https://arxiv.org/abs/2305.20050 · https://arxiv.org/abs/2407.21787 · https://arxiv.org/abs/2409.15254 · https://arxiv.org/abs/2310.04406 · https://arxiv.org/abs/2504.04736 · https://arxiv.org/abs/2210.03629 · https://arxiv.org/abs/2503.14499
+**Parked tracks** — see §7.1 (multimodal) and §7.2 (self-improvement) above for full reference lists.
+
+**Skill-layer citations** — see [`SKILLS.md`](SKILLS.md) (Ploton 2020, Meyer-Pebesma 2021, Skakun CMIX 2022, WorldCereal lessons, IAMAP, Samuel et al. reproducibility gap, Kedron-Holler 2022, NASA Similarity Search, AlphaEarth transfer literature).
 
 ---
 
-*End of v0.2. Next pass should resolve the §4 unverified Studio gaps and add a CONTRIBUTING.md following [earth2studio](https://github.com/NVIDIA/earth2studio)'s shape.*
+*End of v0.4. Multimodal and self-improvement tracks are parked; skills are the unit of progress. Next pass: open Skill-5 PR after P3 (LLM serving + harness MVP) lands.*
