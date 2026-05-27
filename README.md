@@ -1,36 +1,45 @@
-# OlmoEarth Studio Auto-Research Agent
+# OlmoEarth Agent
 
-An auto-research agent for the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform. It decomposes Earth-science research questions into Studio actions (define areas, import labels, configure datasets, train or embed, evaluate, publish results), executes them through Studio's HTTP API and adjacent geospatial tools, and improves itself from its own traces.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Same shape as Google's Google Earth Agent: a compact catalog of functions (Studio API, EO data fetch, geometry utilities) plus a sandboxed Python interpreter, with operational constraints built in.
 
 ## Status
 
-**v0.1 — architecture plan only.** No runnable code yet. See [`PLAN.md`](PLAN.md) for the full architecture, verified references, and roadmap.
+**v0.2 spec.** No runnable code yet. See [`PLAN.md`](PLAN.md) for the tool catalog, harness data classes, operational rules, and the underlying stack.
 
-## What's in this repo right now
+## What's in this repo
 
-- [`PLAN.md`](PLAN.md) — Verified-link architecture plan: seven-layer design, data-flow walkthrough, eight-phase roadmap, open questions.
+- [`PLAN.md`](PLAN.md) — Tool catalog (CSV-shaped), harness dataclasses, operational rules, underlying stack, roadmap.
 - `LICENSE` — Apache 2.0.
 - `.gitignore` — Python / EO / agent-state.
 
-## Architectural anchors
+## Tool surface (summary)
 
-| Layer | Reference |
-|---|---|
-| Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) — LangGraph lead-agent + subagents-as-tools + middleware chain + MCP-first tools |
-| Skill packaging | [NVIDIA AI-Q Agent Skills](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) on the open [agentskills.io](https://agentskills.io) spec |
-| Vision–language model | [Prismatic VLMs](https://arxiv.org/abs/2402.07865) + [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) |
-| Geospatial foundation | [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embeddings as parallel encoder stream |
-| Self-improvement | [Stanford CS329A](https://cs329a.stanford.edu/) — three-loop taxonomy (inference-time / train-time / open-ended) |
+The agent exposes:
 
-## OlmoEarth Studio API
+- `system:python` — sandboxed Python interpreter with `pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, `olmoearth_projects` preloaded. No `import` statements.
+- `system:search`, `system:fetch` — web search and documented-endpoint HTTP GET.
+- `olmoearth.*` — Studio API wrappers: `load_context`, `resolve_to_aoi`, `search_dataset_spec`, `get_data_in_locations`, `create_project`/`create_area`/`create_dataset`/`create_labelset`/`upload_labels`, `submit_prediction`/`poll_prediction`/`fetch_results`/`save_view`.
+- `eo.*` — STAC search, asset signing, AOI windowing.
+- `utils.*` — geometry helpers, equal-frequency binning, spatial cross-validation split.
+
+Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
+
+## Studio API
 
 - Docs: https://docs.olmoearth.allenai.org/
 - Auth: https://docs.olmoearth.allenai.org/authentication/ — Bearer token; max 10 keys per account
 - Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json
+- Resources: Areas, Projects, Datasets, Labelsets, Labels, Annotations, Tasks, Predictions, PredictionResults, Users
 
-## Roadmap
+## Underlying stack (reference only)
 
-P0 scaffolding → P1 harness MVP → P2 model stack → P3 geo stream → P4 inference-time self-improvement → P5 eval+observability → P6 train-time self-improvement → P7 open-ended. Detail in [`PLAN.md` §8](PLAN.md).
+| Layer | Reference |
+|---|---|
+| Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) |
+| Skill packaging | [NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) on the open [agentskills.io](https://agentskills.io) spec |
+| Vision–language model | [Prismatic VLMs](https://arxiv.org/abs/2402.07865) + [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) |
+| Geospatial encoder | [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embeddings |
+| Self-improvement | [Stanford CS329A](https://cs329a.stanford.edu/) techniques (Reflexion, Self-Refine, repeated-sampling+verifier, STaR/SWiRL) |
 
 ## License
 
