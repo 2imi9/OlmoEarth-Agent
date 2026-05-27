@@ -2,8 +2,9 @@
 
 A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; runs them in a Python sandbox preloaded with the standard geospatial stack; and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1. Everything below it is supporting detail.
 
-**Status:** v0.2 spec, 2026-05-27. No runnable code yet.
+**Status:** v0.3 spec, 2026-05-27. No runnable code yet.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
+**Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0 — fields and enums may change without notice.
 
 ---
 
@@ -23,7 +24,8 @@ The agent exposes the following functions. Code below the table renders the same
 | `olmoearth` | Function | `create_project` | `name: str`, `description: str` | `ProjectRef` | Wraps `POST /projects`. |
 | `olmoearth` | Function | `create_area` | `project: ProjectRef`, `aoi: AOIWrapper` | `AreaRef` | Wraps `POST /areas`. |
 | `olmoearth` | Function | `create_dataset` | `project: ProjectRef`, `area: AreaRef`, `bands: list[str]`, `time_range: TimeRange` | `DatasetRef` | Configures a Studio dataset. |
-| `olmoearth` | Function | `create_labelset` | `dataset: DatasetRef`, `schema: LabelSchema` | `LabelsetRef` | Creates a labelset; validates schema (`sample_category`, `es_label`, `oe_labels`) before submission. |
+| `olmoearth` | Function | `create_labelset` | `project: ProjectRef`, `spec: LabelsetSpec` | `LabelsetRef` | Wraps `POST /labelsets`. Creates labelset metadata (`name`, `description`, optional `template_id`); individual label classes are added with `create_label`. |
+| `olmoearth` | Function | `create_label` | `labelset: LabelsetRef`, `name: str`, `color: str` | `LabelDef` | Wraps `POST /labels`. Adds one class (e.g. `("alfalfa", "#33CC66")`) to a labelset. |
 | `olmoearth` | Function | `upload_labels` | `labelset: LabelsetRef`, `path: str` | `int` | Imports a normalized GeoJSON / CSV / Shapefile of labels; returns count. |
 | `olmoearth` | Function | `submit_prediction` | `kind: Literal["finetune","embed","reference"]`, `project: ProjectRef`, `dataset: DatasetRef`, `config: dict` | `PredictionRef` | Wraps `POST /predictions`. Three modes correspond to the three case-study methodologies. |
 | `olmoearth` | Function | `poll_prediction` | `ref: PredictionRef` | `PredictionStatus` | Wraps `GET /predictions/{id}`. Exponential backoff. |
@@ -54,7 +56,8 @@ olmoearth,Function,get_data_in_locations,spec (DataRetrievalSpec) | aoi (AOIWrap
 olmoearth,Function,create_project,name (str) | description (str),ProjectRef,POST /projects.
 olmoearth,Function,create_area,project (ProjectRef) | aoi (AOIWrapper),AreaRef,POST /areas.
 olmoearth,Function,create_dataset,project (ProjectRef) | area (AreaRef) | bands (list[str]) | time_range (TimeRange),DatasetRef,Configures a Studio dataset.
-olmoearth,Function,create_labelset,dataset (DatasetRef) | schema (LabelSchema),LabelsetRef,Creates a labelset; validates sample_category/es_label/oe_labels.
+olmoearth,Function,create_labelset,project (ProjectRef) | spec (LabelsetSpec),LabelsetRef,POST /labelsets — labelset metadata (name/description/template_id).
+olmoearth,Function,create_label,labelset (LabelsetRef) | name (str) | color (str),LabelDef,POST /labels — one class within a labelset.
 olmoearth,Function,upload_labels,labelset (LabelsetRef) | path (str),int,Imports normalized GeoJSON/CSV/Shapefile labels; returns count.
 olmoearth,Function,submit_prediction,kind ("finetune"|"embed"|"reference") | project (ProjectRef) | dataset (DatasetRef) | config (dict),PredictionRef,POST /predictions.
 olmoearth,Function,poll_prediction,ref (PredictionRef),PredictionStatus,GET /predictions/{id} with exponential backoff.
@@ -125,16 +128,36 @@ class DatasetRef:
     time_range: TimeRange
 
 @dataclasses.dataclass
-class LabelSchema:
-    """Studio expects sample_category / es_label / oe_labels keys."""
-    sample_category: str
-    es_label: str
-    oe_labels: list[str]
+class LabelsetSpec:
+    """Studio `LabelsetWrite` — metadata about a labelset.
+    Matches `components.schemas.LabelsetWrite` in openapi.json v0.1.0."""
+    name: str
+    description: str | None = None
+    template_id: str | None = None  # UUID of a Labelset template, if reusing
+
+@dataclasses.dataclass
+class LabelDef:
+    """Studio `LabelWrite` — one class within a labelset.
+    Matches `components.schemas.LabelWrite` in openapi.json v0.1.0."""
+    name: str
+    color: str           # hex, e.g. "#33CC66"
+    labelset_id: str     # UUID back-reference
 
 @dataclasses.dataclass
 class LabelsetRef:
     id: str
-    schema: LabelSchema
+    spec: LabelsetSpec
+    labels: list[LabelDef]
+
+@dataclasses.dataclass
+class DataPrepLabelSchema:
+    """Field names used by the OlmoEarth dataset-prep / rslearn layer
+    (NOT Studio API). Used during label normalization in the
+    olmoearth-data-prep skill BEFORE upload_labels hands data through
+    to Studio. See PLAN.md §4 for the layer distinction."""
+    sample_category: str   # "train" / "val" / "test"
+    es_label: str
+    oe_labels: list[str]
 
 @dataclasses.dataclass
 class DataRetrievalSpec:
@@ -172,15 +195,29 @@ class DataBundle:
 
 @dataclasses.dataclass
 class PredictionRef:
+    """Reference to a Studio Prediction.
+
+    `kind` is a CLIENT-SIDE dispatch key that selects the `config` shape
+    we send to `submit_prediction`. The Studio API itself does not
+    distinguish prediction kinds — every Prediction takes a `model_id`
+    UUID and the fine-tune-vs-inference distinction lives in that
+    UUID's lineage. See PLAN.md §4 for the model_id provenance gap.
+    """
     id: str
     kind: Literal["finetune", "embed", "reference"]
 
 @dataclasses.dataclass
 class PredictionStatus:
+    """Mirrors `components.schemas.PredictionStatus` in openapi.json v0.1.0.
+
+    The API returns one of five states; the harness exposes `progress`
+    as a normalized 0..1 float derived from the API's free-form
+    `Prediction.progress` object (which has no documented schema).
+    """
     ref: PredictionRef
-    state: Literal["queued", "running", "succeeded", "failed"]
-    progress: float | None = None
-    eta_seconds: int | None = None
+    state: Literal["pending", "running", "completed", "failed", "cancelled"]
+    progress: float | None = None     # normalized 0..1; see docstring
+    eta_seconds: int | None = None    # client estimate; not from API
 
 @dataclasses.dataclass
 class ResultBundle:
@@ -234,16 +271,34 @@ The Studio API itself:
 
 - Docs: https://docs.olmoearth.allenai.org/
 - Auth: https://docs.olmoearth.allenai.org/authentication/ — `Authorization: Bearer <key>`; max 10 keys/account
-- Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json
+- Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json (v0.1.0)
 - Resources: Areas, Projects, Datasets, Labelsets, Labels, Annotations, Tasks, Predictions, PredictionResults, Users
 - No `/models` or `/jobs` resources — async work is `Predictions` (request) + `PredictionResults` (outputs)
 - Sample code: https://github.com/allenai/olmoearth_projects
 - Foundation weights: https://huggingface.co/allenai/OlmoEarth-v1-Large
 
-**Studio gaps that affect tool design** (unchanged from v0.1):
-- Webhook / push-notification mechanism for job completion: **UNVERIFIED** — `poll_prediction` assumes polling.
-- How a fine-tuned model is referenced when creating a new `Prediction`: **UNVERIFIED** — needs OpenAPI schema dive.
-- Concrete rate limits, payload size caps: **UNVERIFIED** — `cost_guard` rule is precautionary.
+**Studio gap-closure findings** (resolved 2026-05-27 from an `openapi.json` v0.1.0 schema dive; supersedes the v0.1/v0.2 UNVERIFIED notes):
+
+- **Webhooks / push notifications: CLOSED — none exist.** No `/webhooks`, `/notifications`, `/events`, `/subscriptions` or `/callbacks` paths; no `Webhook` / `Notification` / `Callback` / `Subscription` / `Event` schemas; no top-level `webhooks` key; no `callbacks` field on any operation; no `webhook_url`/`notification_url`/`callback_url` property on `PredictionWrite`. **`GET /api/v1/predictions/{id}` polling is the only completion-detection path.** No documented polling interval or backoff guidance — the client picks its own. Operational rule §3.9 (async-by-ref) stands.
+- **Fine-tuned model reference: PARTIALLY CLOSED.** `PredictionWrite.model_id` is a required UUID (`{"type": "string", "format": "uuid", "description": "ID of the model to run"}`). Same field appears on `PredictionRead.model_id` and `PredictionSearchRequest.model_id`. **However:** there is no `/api/v1/models` path, no `Model` / `ModelRead` / `ModelWrite` schema, and the `model-management/` docs page is a content stub. **How a client obtains a `model_id` (especially for a fine-tuned model) is not in the public surface.** Likely paths: (a) the Studio UI hands out the UUID after the user runs a fine-tune flow, (b) a fine-tune is a side-effect of a `Prediction` whose `model_id` references a base model. **Still UNVERIFIED — needs partner conversation with Ai2.**
+- **Rate limits / quotas / payload caps: CLOSED — undocumented at the API surface.** No `x-rateLimit-*` extensions, no `429` responses, no `Retry-After` headers, no `quota_*` fields on `UserReadMe` / `Project*`. The only quota documented anywhere is "max 10 API keys per account" from the auth doc. Pagination caps exist but are not rate limits: `PredictionSearchRequest.limit ≤ 10000`, `DatasetSearchRequest.limit ≤ 1000`. `ApiErrorCode` enum is `["not_found_error", "permission_error", "server_error", "unauthorized_error", "validation_error", "not_implemented_error"]` — explicitly **no** `rate_limited_error`, reinforcing this. Operational rule §3.5 (cost guard) is precautionary; we keep it.
+
+**Other findings worth surfacing** (newly verified during the schema dive):
+
+- **API uses Firebase for identity.** `UserReadMe.firebase_user_id` is a real field. Public auth is bearer-token; the backend is Firebase. Affects how we'd ever extend to per-user OAuth.
+- **`PredictionResultAccessLevel` enum:** `["private", "organization", "public"]` — visibility scoping at the result level, not the prediction level.
+- **`PredictionUpdate` is rename-only.** Only mutable field is `name`. Cannot change `model_id`, `area_id`, or times after creation.
+- **`PredictionRead.progress`** is `{type: "object", additionalProperties: true}` — free-form. No documented shape. The harness normalizes this to a `0..1` float on `PredictionStatus.progress`; see §2 docstring.
+- **`PredictionWrite` required fields** are `{name, area_id, model_id, start_time, end_time, project_id}`. Note `area_id`, not `dataset_id` — area is the primary geographic anchor for a prediction. `dataset` in our §1 tool catalog is a sibling concept (the band/time-range config). Future PR will reconcile.
+- **`TaskStatus` enum** for annotation tasks is different from `PredictionStatus`: `["pending", "in_progress", "completed", "cancelled", "to_be_reviewed", "reviewed"]`. Don't conflate.
+- **Tile and pixel-value endpoints exist on prediction results:** `/prediction-results/{id}/tiles/{z}/{x}/{y}.{png|mvt}` and `/pixel-value`. Already reflected in §1 `fetch_results`.
+- **`*-management/` doc pages are content stubs.** `/dataset-management/`, `/job-management/`, `/model-management/`, `/prediction-management/` all return real pages but with one-line descriptions and a link to the API browser — no prose docs.
+
+**Remaining UNVERIFIED items:**
+- How to obtain a `model_id` for a fine-tuned model from the public API (above).
+- Whether the API will gain webhooks / a `/models` listing in a future minor version (spec is `0.1.0` and explicitly pre-1.0).
+- Server-side rate limits exist almost certainly; empirical probing is out of scope for this doc-only PR.
+- `PredictionResultRead.source` is a free-form string ("Source of the imagery") with no documented enum — value range unknown.
 
 ---
 
@@ -256,24 +311,28 @@ User: *"Map alfalfa fields in the Klamath basin from 2022–2024 Sentinel-2. I h
 ctx = olmoearth.load_context()
 basin = olmoearth.resolve_to_aoi(["Klamath HUC-8"])
 
-# 2. Prep labels (validate the 8 prep pitfalls before submit)
+# 2. Prep labels (data-prep layer; NOT the Studio API schema)
 labels_gdf = utils.to_geodataframe(eo.read_file("points.geojson"))
-# ... schema mapping, equal-frequency binning if needed ...
-schema = LabelSchema(sample_category="train", es_label="alfalfa", oe_labels=["alfalfa"])
+# ... data-prep schema mapping (DataPrepLabelSchema), equal-frequency binning if needed ...
 
-# 3. Studio project + dataset
+# 3. Studio project + dataset + labelset (Studio API schema)
 project   = olmoearth.create_project("Klamath alfalfa", "2022-2024")
 area      = olmoearth.create_area(project, basin)
 dataset   = olmoearth.create_dataset(project, area,
                 bands=["B2","B3","B4","B8","B11","B12"],
                 time_range=TimeRange("2022-01-01","2024-12-31"))
-labelset  = olmoearth.create_labelset(dataset, schema)
+labelset  = olmoearth.create_labelset(project,
+                LabelsetSpec(name="alfalfa", description="binary"))
+alfalfa   = olmoearth.create_label(labelset, name="alfalfa", color="#33CC66")
 n         = olmoearth.upload_labels(labelset, "points.geojson")
 
 # 4. Pick method (300 labels is below the FT threshold -> embed+LP)
+# Note: every Studio Prediction requires a model_id (UUID). The
+# OlmoEarth foundation model's UUID is resolved via load_context().
 pred = olmoearth.submit_prediction(
     kind="embed", project=project, dataset=dataset,
-    config={"head": "linear_probe", "spatial_cv_k": 5})
+    config={"model_id": ctx.foundation_model_id,
+            "head": "linear_probe", "spatial_cv_k": 5})
 
 # 5. Wait, then publish
 status = olmoearth.poll_prediction(pred)   # backs off automatically
