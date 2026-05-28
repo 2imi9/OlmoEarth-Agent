@@ -10,6 +10,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)** —
+  `compare_metrics` runs OlmoEarth vs AlphaEarth head-to-head on shared
+  ground truth (reusing skill #8's `classification_metrics`): a per-metric
+  table (accuracy / macro-F1 / mean-IoU) with deltas, a per-metric winner,
+  and an `overall_winner`. `difference_raster` gives the cell-by-cell gap
+  between two score layers (mean / mean-abs / max-abs difference + which
+  layer is higher where). Tool `olmoearth_baseline_compare` (metrics
+  always; difference raster when score layers are supplied). Substantiates
+  an "outperforms AlphaEarth on transfer regions" claim (Ma et al.
+  arXiv:2601.00857). **No live GEE connection / Earth Engine MCP** — the
+  AlphaEarth side is data the user exported from the now-public GEE
+  "Satellite Embedding" dataset, kept the repo's pure/no-deps design.
+  13 new tests.
 - **Skill #9 `olmoearth-similarity` (`src/olmoearth_agent/analysis/similarity.py`)** —
   `similarity_search` returns the top-K embedding vectors most similar to
   a query (exact brute-force kNN, cosine or Euclidean; FAISS-at-scale is

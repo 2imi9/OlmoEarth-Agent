@@ -7,6 +7,8 @@ Pure Python (no heavy deps), operating on data the agent already has:
 - skill #6 (``olmoearth-change-detect``): the change-detection
   trajectory diff that refuses the two-date case which hides gradual
   drift (``SKILLS.md`` #6).
+- skill #7 (``olmoearth-baseline-compare``): OlmoEarth-vs-AlphaEarth
+  per-metric comparison + difference raster (``SKILLS.md`` #7).
 - skill #9 (``olmoearth-similarity``): embedding top-K similarity search
   with a geographic-prior warning (``SKILLS.md`` #9).
 - skill #10 (``olmoearth-uncertainty``): the Meyer-Pebesma
@@ -15,6 +17,7 @@ Pure Python (no heavy deps), operating on data the agent already has:
   disagreement audit + bad-mask-vs-bad-model verdict (``SKILLS.md`` #11).
 """
 
+from olmoearth_agent.analysis.baseline import compare_metrics, difference_raster
 from olmoearth_agent.analysis.change_detect import (
     MIN_DATES,
     TooFewDatesError,
@@ -50,7 +53,9 @@ __all__ = [
     "MaskShapeError",
     "TooFewDatesError",
     "area_of_applicability",
+    "compare_metrics",
     "diff_layers",
+    "difference_raster",
     "ensemble_disagree",
     "enforce_min_3_dates",
     "geographic_prior_check",
