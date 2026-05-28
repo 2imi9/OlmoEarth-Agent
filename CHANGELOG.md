@@ -10,11 +10,43 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
-- Project scaffold: `pyproject.toml` (build backend, dev deps, Black / Ruff /
-  mypy / interrogate / pytest configuration), `.pre-commit-config.yaml`
-  (pinned hook versions modeled on earth2studio), `.env.example` template,
-  empty `src/olmoearth_agent/` package skeleton with `py.typed` marker, and
-  this `CHANGELOG.md` file.
+- **LLM serving client (`src/olmoearth_agent/llm/`)** — async OpenAI-
+  compatible wrapper around the vLLM-served Qwen3.6-35B-A3B-NVFP4
+  backbone. `OlmoEarthLLM.chat(messages, tools=..., mode=...)` returns
+  a parsed `ChatResponse` with content, extracted `<think>` trace,
+  tool calls, finish reason, and usage. Four sampling presets from
+  the model card; default `thinking_general` with
+  `chat_template_kwargs.preserve_thinking=True` for multi-turn agent
+  runs. Synchronous `Tracer` protocol exposes request/response hooks
+  for the provenance middleware (lands in PR #7).
+- `docs/serving.md` — vLLM serve command, hardware requirements,
+  **function-calling serve flags** (`--enable-auto-tool-choice
+  --tool-call-parser` — required or tool calls come back as text;
+  parser name flagged UNVERIFIED pending live confirmation), YaRN
+  long-context recipe, agent-mode defaults.
+- Client robustness: `_parse_completion` reads server-split
+  `reasoning_content` (when served with `--reasoning-parser qwen3`)
+  and otherwise extracts the inline `<think>` block — works either way.
+- `docs/serving.md` — "Local development on ≤24 GB VRAM" section: 4-bit
+  GGUF (`UD-IQ4_XS`) via llama.cpp `server-cuda` with `--jinja` for tool
+  calling. **Function-call path verified end-to-end 2026-05-28** on an
+  RTX 5090 Laptop (24 GB): NVFP4+vLLM stalls at memory profiling on
+  24 GB (residual KV headroom too small), but the 4-bit GGUF loads to
+  ~18.6 GB and the agent's `create_project(...)` tool call round-trips.
+  Production stack stays vLLM+NVFP4 on datacenter Blackwell; this is a
+  local-dev accommodation (same OpenAI protocol, client code unchanged).
+- `docker/vllm.compose.yml` — pinned `vllm/vllm-openai:v0.19.0` for
+  local dev (still requires Blackwell host).
+- `tests/llm/` — mock-endpoint smoke tests via `pytest-httpx`: simple
+  chat, `<think>` extraction, tool-call round-trip, preserve_thinking
+  forwarding, top_k routing through `extra_body`, tracer hooks. Plus
+  one live integration test (`@pytest.mark.integration`) that hits a
+  real `vllm serve` instance when `VLLM_ENDPOINT` is set.
+- `pyproject.toml` runtime dep: `openai>=1.50`. Dev deps:
+  `pytest-asyncio>=0.24`, `pytest-httpx>=0.30`. Pytest config now
+  pins `asyncio_mode = "strict"`.
+- `.env.example`: `VLLM_ENDPOINT`, `VLLM_MODEL` (defaults pointing at
+  local `vllm serve` on `http://localhost:8000/v1`).
 - `PLAN.md` §4: explicit Studio API spec-version pin (`openapi.json` v0.1.0,
   pre-1.0) and verified findings on Firebase auth, `PredictionResultAccessLevel`,
   `PredictionUpdate` rename-only, free-form `PredictionRead.progress`,
