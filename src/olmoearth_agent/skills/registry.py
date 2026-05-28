@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
+from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.studio import build_studio_tools
 
@@ -60,11 +61,11 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(4, "olmoearth-embeddings", "Configure", "upstream",
               "Embeddings-vs-fine-tune decision + runnable notebook.",
               ["olmoearth_fetch_embedding"]),
-    SkillSpec(5, "olmoearth-predict", "Run", "planned",
-              "Core run primitive: submit/poll/pixel-value/features/files.",
-              ["olmoearth_submit_prediction", "olmoearth_poll_prediction",
-               "olmoearth_fetch_results", "olmoearth_pixel_value",
-               "olmoearth_features_search"]),
+    SkillSpec(5, "olmoearth-predict", "Run", "implemented",
+              "Core run loop: search predictions (find model_id), submit, "
+              "poll. Result sub-tools (pixel-value/features/files) follow.",
+              ["olmoearth_search_predictions", "olmoearth_submit_prediction",
+               "olmoearth_get_prediction"]),
     SkillSpec(6, "olmoearth-change-detect", "Run", "planned",
               "Multi-date (>=3) trajectory diff; refuses naive 2-date.",
               ["olmoearth_change_detect"]),
@@ -115,5 +116,6 @@ def build_default_registry() -> ToolRegistry:
     """
     registry = ToolRegistry()
     registry.register_all(build_studio_tools())
+    registry.register_all(build_predict_tools())
     registry.register_all(build_provenance_tools())
     return registry

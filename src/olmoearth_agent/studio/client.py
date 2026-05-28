@@ -137,6 +137,54 @@ class StudioClient:
         env = await self.get(f"/predictions/{prediction_id}")
         return env.one or {}
 
+    async def search_predictions(
+        self,
+        *,
+        project_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search predictions (read-only). Optionally scope to a project.
+
+        Each record carries a ``model_id`` — this is how a client
+        discovers a reusable model id for a new prediction (resolves the
+        PLAN.md §4 ``model_id`` provenance gap for the reuse case).
+        """
+        body: dict[str, Any] = {"limit": limit, "offset": offset}
+        if project_id is not None:
+            body["project_id"] = project_id
+        return await self.post("/predictions/search", body)
+
+    async def submit_prediction(
+        self,
+        *,
+        name: str,
+        project_id: str,
+        area_id: str,
+        model_id: str,
+        start_time: str,
+        end_time: str,
+    ) -> dict[str, Any]:
+        """Create a prediction (``POST /predictions``). Returns the record.
+
+        All six fields are required by ``PredictionWrite`` (openapi
+        v0.1.0). Note ``area_id`` (not dataset) is the geographic anchor.
+        ``model_id`` is typically reused from a prior prediction found via
+        :meth:`search_predictions`.
+        """
+        env = await self.post(
+            "/predictions",
+            {
+                "name": name,
+                "project_id": project_id,
+                "area_id": area_id,
+                "model_id": model_id,
+                "start_time": start_time,
+                "end_time": end_time,
+            },
+        )
+        return env.one or {}
+
     async def load_context(self) -> StudioContext:
         """Assemble the user's active Studio context.
 
