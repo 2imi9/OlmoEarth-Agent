@@ -55,8 +55,39 @@ async def _submit_prediction(
     return {"id": prediction_id, "status": record.get("status")}
 
 
+def _summarize_result(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "result_id": record.get("id"),
+        "prediction_id": record.get("prediction_id"),
+        "tile_urls": record.get("tile_urls"),
+        "property_names": record.get("property_names"),
+        "file_format": record.get("file_format"),
+    }
+
+
+async def _fetch_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    env = await ctx.studio.search_prediction_results(
+        prediction_id=args["prediction_id"],
+        limit=int(args.get("scan_limit", 200)),
+    )
+    return {
+        "prediction_id": args["prediction_id"],
+        "result_count": len(env.records),
+        "results": [_summarize_result(r) for r in env.records],
+    }
+
+
+async def _get_prediction_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> dict[str, Any]:
+    record = await ctx.studio.get_prediction_result(args["result_id"])
+    summary = _summarize_result(record)
+    summary["result_metadata"] = record.get("result_metadata")
+    return summary
+
+
 def build_predict_tools() -> list[RegisteredTool]:
-    """Return the ``olmoearth-predict`` tool bundle (search + submit).
+    """Return the ``olmoearth-predict`` tool bundle (search + submit + results).
 
     Poll with the foundational ``olmoearth_get_prediction`` tool.
     """
@@ -114,5 +145,41 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_submit_prediction,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_fetch_results",
+                description=(
+                    "Fetch the output results for a prediction: tile URLs "
+                    "(XYZ/MVT map layers), property names, and file format. "
+                    "Scans recent prediction-results and filters to this "
+                    "prediction (the API has no server-side prediction_id "
+                    "filter). Increase scan_limit if results are older."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "prediction_id": {"type": "string"},
+                        "scan_limit": {"type": "integer", "default": 200},
+                    },
+                    "required": ["prediction_id"],
+                },
+            ),
+            handler=_fetch_results,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_get_prediction_result",
+                description=(
+                    "Fetch one prediction-result by its result id: tile "
+                    "URLs, property names, result metadata, and file format."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {"result_id": {"type": "string"}},
+                    "required": ["result_id"],
+                },
+            ),
+            handler=_get_prediction_result,
         ),
     ]
