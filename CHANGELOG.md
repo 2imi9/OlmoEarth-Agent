@@ -10,6 +10,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #8 `olmoearth-evaluate` (`src/olmoearth_agent/evaluation/`)** —
+  honest map-accuracy tools, pure Python (no heavy deps). `spatial_cv.py`:
+  haversine, `spatial_block_folds` (Roberts 2017), `random_folds`, and
+  **`cv_inflation_diagnostic`** — the headline: compares mean
+  test-to-train nearest-neighbour distance under random vs spatial-block
+  CV and reports the inflation ratio + risk band (operationalizes Ploton
+  2020 / Meyer-Pebesma 2021). `metrics.py`: per-class
+  precision/recall/F1/IoU + accuracy/macro-F1/mean-IoU. Tools
+  `olmoearth_cv_inflation_check` + `olmoearth_classification_metrics`.
+  Verified live 2026-05-28: agent flagged clustered data with a 353×
+  inflation ratio and explained why random CV would overstate accuracy.
+  13 new tests. NNDM-LOO (Milà 2022) is the remaining follow-up.
 - **Skills #1–#4 vendored** from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
   as a git submodule (`vendor/olmoearth-skills`, pinned `a96427e`). The
   three upstream `SKILL.md` packages (`olmoearth-data-prep` [unifies #1+#2],
