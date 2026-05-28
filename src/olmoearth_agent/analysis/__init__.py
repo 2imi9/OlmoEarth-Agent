@@ -7,6 +7,8 @@ Pure Python (no heavy deps), operating on data the agent already has:
 - skill #6 (``olmoearth-change-detect``): the change-detection
   trajectory diff that refuses the two-date case which hides gradual
   drift (``SKILLS.md`` #6).
+- skill #9 (``olmoearth-similarity``): embedding top-K similarity search
+  with a geographic-prior warning (``SKILLS.md`` #9).
 - skill #10 (``olmoearth-uncertainty``): the Meyer-Pebesma
   Area-of-Applicability out-of-distribution flag (``SKILLS.md`` #10).
 - skill #11 (``olmoearth-cloud-mask-audit``): the cloud-mask ensemble
@@ -26,6 +28,12 @@ from olmoearth_agent.analysis.cloud_mask import (
     ensemble_disagree,
     verdict_classifier,
 )
+from olmoearth_agent.analysis.similarity import (
+    DEFAULT_K,
+    DEFAULT_PRIOR_RADIUS_KM,
+    geographic_prior_check,
+    similarity_search,
+)
 from olmoearth_agent.analysis.uncertainty import (
     MIN_TRAIN,
     area_of_applicability,
@@ -33,6 +41,8 @@ from olmoearth_agent.analysis.uncertainty import (
 )
 
 __all__ = [
+    "DEFAULT_K",
+    "DEFAULT_PRIOR_RADIUS_KM",
     "DEFAULT_VERDICT_THRESHOLD",
     "MIN_DATES",
     "MIN_MASKS",
@@ -43,6 +53,8 @@ __all__ = [
     "diff_layers",
     "ensemble_disagree",
     "enforce_min_3_dates",
+    "geographic_prior_check",
     "ood_flag",
+    "similarity_search",
     "verdict_classifier",
 ]
