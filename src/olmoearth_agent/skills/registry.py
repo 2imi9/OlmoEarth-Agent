@@ -22,6 +22,7 @@ from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.predict import build_predict_tools
+from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
@@ -94,8 +95,9 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(11, "olmoearth-cloud-mask-audit", "Analyze", "planned",
               "CFMask/s2cloudless/Sen2Cor/MAJA ensemble disagreement.",
               ["olmoearth_cloud_mask_audit"]),
-    SkillSpec(12, "olmoearth-qgis-bridge", "Integrate", "planned",
-              "Tile URLs -> QGIS WMTS + COG with sidecar uncertainty.",
+    SkillSpec(12, "olmoearth-qgis-bridge", "Integrate", "implemented",
+              "Tile URLs -> QGIS XYZ URLs + OGC SLD ramp style + load "
+              "instructions. (COG export follows.)",
               ["olmoearth_qgis_bridge"]),
     # #13 reframed from "wire external MCPs" to "export our own Studio
     # data, grouped" (more useful, self-contained). See CHANGELOG.
@@ -133,6 +135,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_export_tools())
+    registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())
     registry.register_all(build_skill_tools())
     return registry
