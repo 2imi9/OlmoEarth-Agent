@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
+from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
@@ -76,7 +77,7 @@ SKILLS: list[SkillSpec] = [
               ["olmoearth_search_predictions", "olmoearth_submit_prediction",
                "olmoearth_get_prediction", "olmoearth_fetch_results",
                "olmoearth_get_prediction_result"]),
-    SkillSpec(6, "olmoearth-change-detect", "Run", "planned",
+    SkillSpec(6, "olmoearth-change-detect", "Run", "implemented",
               "Multi-date (>=3) trajectory diff; refuses naive 2-date.",
               ["olmoearth_change_detect"]),
     SkillSpec(7, "olmoearth-baseline-compare", "Run", "planned",
@@ -132,6 +133,7 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
+    registry.register_all(build_change_detect_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_export_tools())

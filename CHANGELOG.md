@@ -10,6 +10,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #6 `olmoearth-change-detect` (`src/olmoearth_agent/analysis/change_detect.py`)** —
+  `enforce_min_3_dates` + `diff_layers` turn a dated series of per-date
+  layer summaries (one `value` per prediction date — e.g. positive-class
+  fraction or mean score over the AOI, from a skill #5 result) into
+  trajectory metrics: per-step deltas, net change, the largest-change
+  interval, a **reversal count**, and a trend label
+  (increasing/decreasing/stable/oscillating). **Refuses fewer than 3
+  distinct dates** — a two-date diff reports net change but cannot tell a
+  steady trend from a reversal (a flood that peaked then receded reads as
+  "no change"), so the skill enforces a 3+-date trajectory (`SKILLS.md`
+  #6; Ma et al. arXiv:2601.00857). Trend/reversal logic runs on the raw
+  deltas, so output rounding can never flip a sign. Tool
+  `olmoearth_change_detect` composes skill #5 (`olmoearth-predict`); new
+  `analysis/` package (home for the coming Analyze skills). 16 new tests.
 - **Skill #12 `olmoearth-qgis-bridge` (`src/olmoearth_agent/reporting/qgis.py`)** —
   `resolve_xyz_url` (relative tile template → absolute QGIS XYZ URL,
   preserving `{z}/{x}/{y}`) + `build_raster_sld` (well-formed OGC SLD 1.0
