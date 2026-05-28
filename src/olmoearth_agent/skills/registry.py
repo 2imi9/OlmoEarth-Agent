@@ -26,6 +26,7 @@ from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
+from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
@@ -89,7 +90,7 @@ SKILLS: list[SkillSpec] = [
               "Random-vs-spatial CV inflation check + classification "
               "metrics. NNDM-LOO follows.",
               ["olmoearth_cv_inflation_check", "olmoearth_classification_metrics"]),
-    SkillSpec(9, "olmoearth-similarity", "Analyze", "planned",
+    SkillSpec(9, "olmoearth-similarity", "Analyze", "implemented",
               "FAISS over OlmoEarth Base embeddings; geographic-prior warning.",
               ["olmoearth_similarity_search"]),
     SkillSpec(10, "olmoearth-uncertainty", "Analyze", "implemented",
@@ -139,6 +140,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_cloud_mask_audit_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_uncertainty_tools())
+    registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())

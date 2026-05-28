@@ -54,6 +54,7 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_cv_inflation_check",
         "olmoearth_classification_metrics",
         "olmoearth_area_of_applicability",
+        "olmoearth_similarity_search",
         "olmoearth_case_narrative",
         "olmoearth_export_data",
         "olmoearth_qgis_bridge",

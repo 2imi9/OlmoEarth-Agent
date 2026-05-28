@@ -10,6 +10,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #9 `olmoearth-similarity` (`src/olmoearth_agent/analysis/similarity.py`)** —
+  `similarity_search` returns the top-K embedding vectors most similar to
+  a query (exact brute-force kNN, cosine or Euclidean; FAISS-at-scale is
+  the deferred follow-up). `geographic_prior_check` is the honesty guard:
+  it **warns when the top matches cluster geographically near the query**,
+  because then the "similarity" may reflect *location* (same region /
+  biome) rather than genuine feature resemblance — the classic
+  similarity-search failure mode (cf. NASA Earthdata Similarity Search;
+  OlmoEarth Base wins 15/24 kNN tasks, arXiv:2511.13655). Tool
+  `olmoearth_similarity_search` (optional `ids`, `metric`, and
+  `query_coord` + `coords` to enable the geographic-prior warning);
+  returns matches + a summary, no raw coordinates (rule §3.1). Pure
+  Python; reuses `haversine_km` from the evaluate skill. 21 new tests.
 - **Skill #10 `olmoearth-uncertainty` (`src/olmoearth_agent/analysis/uncertainty.py`)** —
   `area_of_applicability` implements the Meyer & Pebesma (2021, MEE
   12:1620) Area of Applicability: standardize (optionally
