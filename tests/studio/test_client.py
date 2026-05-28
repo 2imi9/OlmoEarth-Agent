@@ -94,3 +94,30 @@ def test_from_env_rejects_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OLMOEARTH_API_KEY", "replace-me")
     with pytest.raises(RuntimeError, match="OLMOEARTH_API_KEY"):
         StudioConfig.from_env()
+
+
+@pytest.mark.asyncio
+async def test_get_project(config: StudioConfig, httpx_mock: HTTPXMock) -> None:
+    httpx_mock.add_response(
+        url=f"{BASE}/projects/p1", json={"records": [{"id": "p1", "name": "X"}]}
+    )
+    async with StudioClient(config) as studio:
+        rec = await studio.get_project("p1")
+    assert rec["id"] == "p1"
+    assert rec["name"] == "X"
+
+
+@pytest.mark.asyncio
+async def test_delete_project_unwraps_nested_record(
+    config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    # DELETE returns 202 with the deleted record nested under "record".
+    httpx_mock.add_response(
+        url=f"{BASE}/projects/p1",
+        method="DELETE",
+        status_code=202,
+        json={"records": [{"record": {"id": "p1", "name": "X"}}]},
+    )
+    async with StudioClient(config) as studio:
+        rec = await studio.delete_project("p1")
+    assert rec["id"] == "p1"
