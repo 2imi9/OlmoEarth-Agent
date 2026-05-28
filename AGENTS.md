@@ -88,7 +88,7 @@ When choosing how to structure a change, defer to:
 - [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) for the harness shape — LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools.
 - [agentskills.io](https://agentskills.io) / [NVIDIA AI-Q Agent Skills](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) for `SKILL.md` packaging.
 - [OlmoEarth Studio OpenAPI](https://olmoearth.allenai.org/api/v1/openapi.json) as the source of truth for API endpoints (codegen, not hand-written wrappers).
-- [Prismatic VLMs](https://arxiv.org/abs/2402.07865) + [`unsloth/Qwen3.6-35B-A3B-NVFP4`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) for the vision-language model stack.
+- [`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) served via llama.cpp for the LLM. Canonical facts in [`docs/CANON.md`](docs/CANON.md); keep docs aligned with it. (Multimodal/Prismatic is parked — `PLAN.md` §7.)
 
 Anything that conflicts with `PLAN.md` is a bug in `PLAN.md` — open a PR that updates it rather than working around it.
 

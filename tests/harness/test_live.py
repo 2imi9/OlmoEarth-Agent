@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Live end-to-end test: real LLM + real Studio API through the harness.
 
-Skipped unless both ``VLLM_ENDPOINT`` (a running OpenAI-compatible LLM
+Skipped unless both ``LLM_ENDPOINT`` (a running OpenAI-compatible LLM
 server, e.g. the llama.cpp 4-bit GGUF per docs/serving.md) and
 ``OLMOEARTH_API_KEY`` are set. This is the slice that proves the whole
 spine: natural-language brief -> LLM tool call -> live Studio API ->
@@ -15,7 +15,7 @@ import os
 
 import pytest
 
-_HAVE_LLM = bool(os.environ.get("VLLM_ENDPOINT"))
+_HAVE_LLM = bool(os.environ.get("LLM_ENDPOINT"))
 _HAVE_KEY = bool(os.environ.get("OLMOEARTH_API_KEY"))
 
 
@@ -23,7 +23,7 @@ _HAVE_KEY = bool(os.environ.get("OLMOEARTH_API_KEY"))
 @pytest.mark.asyncio
 async def test_live_agent_counts_projects() -> None:
     if not (_HAVE_LLM and _HAVE_KEY):
-        pytest.skip("needs VLLM_ENDPOINT + OLMOEARTH_API_KEY")
+        pytest.skip("needs LLM_ENDPOINT + OLMOEARTH_API_KEY")
 
     from olmoearth_agent.harness import LeadAgent
     from olmoearth_agent.llm import OlmoEarthLLM

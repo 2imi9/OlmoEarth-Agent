@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Configuration for connecting to a running vLLM server.
+"""Configuration for connecting to a running OpenAI-compatible LLM server.
 
-The agent reads ``VLLM_ENDPOINT``, ``VLLM_MODEL``, and ``VLLM_API_KEY``
-from the environment (see ``.env.example``). The defaults assume a local
-``vllm serve`` instance per ``docs/serving.md``.
+The agent reads ``LLM_ENDPOINT``, ``LLM_MODEL``, and ``LLM_API_KEY`` from
+the environment (see ``.env.example``). Defaults assume the local
+llama.cpp server from ``docs/serving.md`` serving the 4-bit GGUF. See
+``docs/CANON.md`` (C1, C3, C5) for the canonical values.
 """
 
 from __future__ import annotations
@@ -12,10 +13,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-#: Default model ID — must match the ``--model`` argument passed to ``vllm serve``.
-DEFAULT_MODEL = "unsloth/Qwen3.6-35B-A3B-NVFP4"
+#: Default served model id — the 4-bit GGUF (see docs/CANON.md C1).
+DEFAULT_MODEL = "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
 
-#: Default OpenAI-compatible endpoint for a local ``vllm serve`` instance.
+#: Default OpenAI-compatible endpoint for the local llama.cpp server.
 DEFAULT_ENDPOINT = "http://localhost:8000/v1"
 
 #: Long-default request timeout. Agent runs with tool calls and 32K output
@@ -49,13 +50,13 @@ class ServingConfig:
         Returns
         -------
         ServingConfig
-            ``endpoint`` reads ``VLLM_ENDPOINT``, ``model`` reads
-            ``VLLM_MODEL``, ``api_key`` reads ``VLLM_API_KEY`` (defaults
-            to ``"EMPTY"`` since vLLM does not require auth by default;
-            the OpenAI SDK rejects empty strings).
+            ``endpoint`` reads ``LLM_ENDPOINT``, ``model`` reads
+            ``LLM_MODEL``, ``api_key`` reads ``LLM_API_KEY`` (defaults to
+            ``"EMPTY"`` since the local server needs no auth; the OpenAI
+            SDK rejects empty strings).
         """
         return cls(
-            endpoint=os.environ.get("VLLM_ENDPOINT", DEFAULT_ENDPOINT),
-            model=os.environ.get("VLLM_MODEL", DEFAULT_MODEL),
-            api_key=os.environ.get("VLLM_API_KEY", "EMPTY"),
+            endpoint=os.environ.get("LLM_ENDPOINT", DEFAULT_ENDPOINT),
+            model=os.environ.get("LLM_MODEL", DEFAULT_MODEL),
+            api_key=os.environ.get("LLM_API_KEY", "EMPTY"),
         )
