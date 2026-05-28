@@ -252,7 +252,17 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 
 ---
 
-### 13. `olmoearth-external-data`
+### 13. `olmoearth-data-export` (reframed from `olmoearth-external-data`)
+
+**REFRAMED 2026-05-28.** The original idea (wire third-party GEE / OSM /
+USGS / NOAA MCPs *into* an AOI) needs external MCPs the user must connect
+and isn't core. It was reframed to the more useful, self-contained
+**export our own Studio data, grouped** — implemented as
+`olmoearth_export_data` (projects + predictions → JSON grouped by project
+or status; `tools/export.py`). Verified live. The original
+external-MCP-ingest idea is parked (re-open if a case needs it).
+
+The original spec follows for reference:
 
 **In:** AOI + data category (population / OSM context / weather / watershed / etc.).
 **Out:** CRS-matched, date-aligned data bundle into the case.

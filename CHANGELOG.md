@@ -10,6 +10,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #13 reframed → `olmoearth-data-export`.** The original
+  "external-data" (wire third-party GEE/OSM/USGS/NOAA MCPs) needed
+  external MCPs and wasn't core; reframed to the self-contained "export
+  our own Studio data, grouped." `olmoearth_export_data` writes the
+  user's projects + predictions to JSON grouped by `project` (default)
+  or `status`, curated to ids/names/statuses/times (no raw geometry).
+  `src/olmoearth_agent/reporting/export.py` (pure helpers) +
+  `tools/export.py`. Verified live 2026-05-28: 5 project files (12
+  predictions linked) + 2 status files from the real account. 7 new
+  tests. (`exports/` gitignored.)
 - **CLI entrypoint — the agent is now runnable.** `olmoearth-agent
   "<brief>"` (and `python -m olmoearth_agent`) wire the LLM client,
   Studio client, default tool registry, and vendored-skill index into a
