@@ -10,6 +10,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skills #1–#4 vendored** from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
+  as a git submodule (`vendor/olmoearth-skills`, pinned `a96427e`). The
+  three upstream `SKILL.md` packages (`olmoearth-data-prep` [unifies #1+#2],
+  `olmoearth-studio-job-config` [#3], `olmoearth-embeddings` [#4]) are
+  consumed via a new `SkillLoader` (`skills/loader.py`) that gives the
+  harness agentskills.io-style progressive disclosure: `olmoearth_list_skills`
+  (name+description index) and `olmoearth_load_skill` (full `SKILL.md` body).
+  `LeadAgent` accepts a brief `skill_index` for its system prompt. Graceful
+  when the submodule is not initialized. Verified live 2026-05-28: the agent
+  loaded `olmoearth-data-prep` and reported its real steps. 9 new tests.
+  (Clone with `git submodule update --init` to populate the vendored skills.)
 - **Skill #5 `olmoearth-predict` (core run loop)** — `tools/predict.py`:
   `olmoearth_search_predictions` (discover reusable `model_id`s) and
   `olmoearth_submit_prediction`; poll via the foundational
