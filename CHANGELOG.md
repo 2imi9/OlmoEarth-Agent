@@ -10,6 +10,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **CLI entrypoint — the agent is now runnable.** `olmoearth-agent
+  "<brief>"` (and `python -m olmoearth_agent`) wire the LLM client,
+  Studio client, default tool registry, and vendored-skill index into a
+  `LeadAgent` and run a natural-language brief. `--show-trace` prints the
+  tool-call trace + provenance count to stderr. `src/olmoearth_agent/
+  cli.py` + `__main__.py`; `[project.scripts]` console entry. Verified
+  live 2026-05-28: `olmoearth-agent "how many projects do I have?"` →
+  load_context + search_projects → "You have 5 projects: …". 5 new tests.
 - **Project write path verified + `get_project` / `delete_project`.**
   `StudioClient` gains `get_project` (`GET /projects/{id}`) and
   `delete_project` (`DELETE /projects/{id}` → 202; unwraps the deleted

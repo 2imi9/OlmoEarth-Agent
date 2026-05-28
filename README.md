@@ -8,6 +8,26 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 See [`PLAN.md`](PLAN.md) for the tool catalog, harness dataclasses, operational rules, and roadmap; [`SKILLS.md`](SKILLS.md) for the per-skill spec.
 
+## Run it
+
+```bash
+uv sync --all-extras
+git submodule update --init          # vendored skills (#1–#4)
+
+# 1. Serve the LLM (4-bit GGUF via llama.cpp) — see docs/serving.md:
+docker compose -f docker/llama.compose.yml up -d
+
+# 2. Point the agent at the LLM + your Studio key:
+export LLM_ENDPOINT=http://localhost:8000/v1
+export OLMOEARTH_API_KEY=...          # Studio UI → profile → API Keys
+
+# 3. Run a brief:
+uv run olmoearth-agent "How many OlmoEarth Studio projects do I have?"
+uv run olmoearth-agent --show-trace "Which of my projects relate to water quality?"
+```
+
+`--show-trace` prints the tool-call trace + provenance count to stderr; the answer goes to stdout. Also runnable as `python -m olmoearth_agent "..."`.
+
 ## What's in this repo
 
 - [`PLAN.md`](PLAN.md) — Tool catalog, harness dataclasses, operational rules, underlying stack, roadmap.
