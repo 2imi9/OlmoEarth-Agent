@@ -9,7 +9,25 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Changed
+- **Dropped NVFP4; serving consolidated on the 4-bit GGUF via llama.cpp.**
+  NVFP4 (~20 GB) doesn't leave KV-cache headroom on a 24 GB card; the
+  GGUF `unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS` (~17.7 GB) is the
+  verified path. Swept every doc + code default: `README.md`, `PLAN.md`
+  (scope / §4 / §6 roadmap / §7.1 / §8), `AGENTS.md`, `docs/serving.md`
+  (rewritten around llama.cpp), `.env.example`, `llm/config.py` default
+  + module docstrings, test mocks. `docker/vllm.compose.yml` →
+  `docker/llama.compose.yml` (llama.cpp service).
+- **Renamed LLM env vars**: `VLLM_ENDPOINT` / `VLLM_MODEL` /
+  `VLLM_API_KEY` → `LLM_ENDPOINT` / `LLM_MODEL` / `LLM_API_KEY` (the
+  endpoint is backend-neutral, no longer vLLM-specific). Verified live.
+
 ### Added
+- **`docs/CANON.md`** — single source of truth for cross-document facts
+  (model, serving stack, quantization, env vars, Studio API, skill
+  count) plus a grep-based alignment protocol. Update a fact there
+  first, then fix every reference. Prevents the doc drift that motivated
+  this pass.
 - **Skill #5 predict — result output path**: `olmoearth_fetch_results`
   (tile URLs / property names / file format for a prediction) and
   `olmoearth_get_prediction_result` (by result id). `StudioClient` gains

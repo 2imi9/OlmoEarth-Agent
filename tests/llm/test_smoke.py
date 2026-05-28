@@ -3,8 +3,8 @@
 """Smoke tests for the LLM client.
 
 Unit tests run against a mock OpenAI-compatible endpoint (fast, no GPU
-required). The integration test at the bottom hits a live vLLM server
-and is skipped unless ``VLLM_ENDPOINT`` is set in the environment.
+required). The integration test at the bottom hits a live LLM server
+and is skipped unless ``LLM_ENDPOINT`` is set in the environment.
 """
 
 from __future__ import annotations
@@ -210,11 +210,12 @@ async def test_tracer_receives_request_and_response(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_live_function_call_round_trip() -> None:
-    """Run against a real vLLM server.
+    """Run against a real LLM server.
 
-    Set ``VLLM_ENDPOINT`` to a running ``vllm serve`` URL to exercise the
-    actual function-calling path on the Qwen3.6 backbone. Skipped
-    otherwise so unit-only runs stay fast.
+    Set ``LLM_ENDPOINT`` to a running OpenAI-compatible server (the
+    llama.cpp server from docs/serving.md) to exercise the actual
+    function-calling path on the Qwen3.6 backbone. Skipped otherwise so
+    unit-only runs stay fast.
 
     IMPORTANT: the server must be started with tool-calling enabled
     (``--enable-auto-tool-choice --tool-call-parser ...``) or it will
@@ -222,8 +223,8 @@ async def test_live_function_call_round_trip() -> None:
     ``finish_reason == "tool_calls"`` assertion. See ``docs/serving.md``
     "Function calling" for the full command.
     """
-    if not os.environ.get("VLLM_ENDPOINT"):
-        pytest.skip("Set VLLM_ENDPOINT to run live tests")
+    if not os.environ.get("LLM_ENDPOINT"):
+        pytest.skip("Set LLM_ENDPOINT to run live tests")
 
     client = OlmoEarthLLM()
     tools = [

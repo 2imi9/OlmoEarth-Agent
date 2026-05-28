@@ -1,0 +1,52 @@
+# Local development compose for the OlmoEarth Agent's LLM backend.
+# Serves the 4-bit GGUF via llama.cpp (OpenAI-compatible API).
+# Canonical values: docs/CANON.md (C1 model, C3 server, C5 env vars).
+# Requires an NVIDIA GPU + nvidia-container-toolkit (Blackwell, e.g.
+# RTX 50-series / B-series). The 4-bit GGUF (~17.7 GB) fits a 24 GB card.
+#
+# Usage:
+#   echo "HF_TOKEN=hf_..." >> .env   # only if the GGUF repo is gated
+#   docker compose -f docker/llama.compose.yml up
+#
+# The agent then reads LLM_ENDPOINT=http://localhost:8000/v1 and
+# LLM_MODEL=unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS from the environment.
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    ports:
+      - "8000:8000"
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # --jinja enables tool calling; --no-mmap avoids slow mmap over the
+    # Docker Desktop / WSL filesystem bridge; -c 8192 leaves room for a
+    # full SKILL.md plus the tool schemas.
+    command:
+      - -hf
+      - unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --jinja
+      - -ngl
+      - "999"
+      - -c
+      - "8192"
+      - --no-mmap
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  hf_cache:

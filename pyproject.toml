@@ -85,7 +85,7 @@ minversion = "8.0"
 testpaths = ["tests"]
 asyncio_mode = "strict"
 markers = [
-    "integration: tests that require a live external service (OlmoEarth Studio API key OLMOEARTH_API_KEY, or vLLM server VLLM_ENDPOINT)",
+    "integration: tests that require a live external service (OlmoEarth Studio API key OLMOEARTH_API_KEY, or LLM server LLM_ENDPOINT)",
 ]
 addopts = "-ra --strict-markers"
 

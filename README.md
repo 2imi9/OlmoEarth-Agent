@@ -4,7 +4,7 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 ## Status
 
-**v0.4 spec.** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4)) served via **vLLM ≥0.19.0** with function calling. Multimodal stack parked. 16-skill catalog spec'd in [`SKILLS.md`](SKILLS.md); skills ship one PR at a time. No runnable code yet.
+**v0.4.** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`) served via **llama.cpp** with function calling. Multimodal stack parked. 16-skill catalog in [`SKILLS.md`](SKILLS.md); skills ship one PR at a time. Harness + several skills are implemented and verified live — see [`CHANGELOG.md`](CHANGELOG.md). Canonical facts: [`docs/CANON.md`](docs/CANON.md).
 
 See [`PLAN.md`](PLAN.md) for the tool catalog, harness dataclasses, operational rules, and roadmap; [`SKILLS.md`](SKILLS.md) for the per-skill spec.
 
@@ -41,7 +41,7 @@ Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
 
 | Layer | Reference |
 |---|---|
-| LLM | [unsloth/Qwen3.6-35B-A3B-NVFP4](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4) on Blackwell via [vLLM ≥0.19.0](https://docs.vllm.ai/). Text + function calling. No fine-tuning in v0.4. |
+| LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) via [llama.cpp](https://github.com/ggml-org/llama.cpp). Text + function calling. See [`docs/serving.md`](docs/serving.md). |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) |
 | Skills | 16 skills in [`SKILLS.md`](SKILLS.md), packaged per [agentskills.io](https://agentskills.io) ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) impl reference) |
 | Parked | Multimodal stack (Prismatic VLM + adapters + OlmoEarth embedding stream) and train-time self-improvement loops — see `PLAN.md` §7 |

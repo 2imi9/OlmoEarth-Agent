@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Sampling presets pinned to the ``unsloth/Qwen3.6-35B-A3B-NVFP4`` model card.
+"""Sampling presets from the Qwen3.6-35B-A3B model card.
 
 The four modes correspond to the "Best Practices" section of
-https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4. The agent's default
+https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF. The agent's default
 is ``thinking_general`` paired with ``preserve_thinking=True`` so
 reasoning context carries across multi-turn function-call runs.
 """

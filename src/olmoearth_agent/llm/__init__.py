@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""LLM serving client for ``unsloth/Qwen3.6-35B-A3B-NVFP4`` via vLLM.
+"""LLM client for the 4-bit GGUF ``unsloth/Qwen3.6-35B-A3B-GGUF`` model.
 
-See ``docs/serving.md`` for the ``vllm serve`` command and the four
-sampling presets from the model card. The public surface is
-:class:`OlmoEarthLLM` and the small dataclass types in
-:mod:`olmoearth_agent.llm.types`.
+Talks to any OpenAI-compatible server; the documented stack is the
+llama.cpp server in ``docs/serving.md`` (see ``docs/CANON.md`` C1/C3).
+The public surface is :class:`OlmoEarthLLM` and the small dataclass
+types in :mod:`olmoearth_agent.llm.types`.
 """
 
 from olmoearth_agent.llm.client import OlmoEarthLLM, Tracer

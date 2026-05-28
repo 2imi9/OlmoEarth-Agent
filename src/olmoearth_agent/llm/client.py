@@ -138,7 +138,7 @@ def _tool_to_openai(tool: ToolSpec) -> dict[str, Any]:
 class OlmoEarthLLM:
     """Async client for the OlmoEarth Agent's vLLM-served LLM backbone.
 
-    Pinned to ``unsloth/Qwen3.6-35B-A3B-NVFP4`` defaults: ``thinking_general``
+    Pinned to ``unsloth/Qwen3.6-35B-A3B-GGUF`` defaults: ``thinking_general``
     sampling, ``preserve_thinking=True`` for multi-turn runs, and the
     32K-token output budget recommended by the model card.
 
@@ -147,7 +147,7 @@ class OlmoEarthLLM:
     >>> import asyncio
     >>> from olmoearth_agent.llm import OlmoEarthLLM, Message
     >>> async def main():
-    ...     client = OlmoEarthLLM()  # reads VLLM_ENDPOINT / VLLM_MODEL from env
+    ...     client = OlmoEarthLLM()  # reads LLM_ENDPOINT / LLM_MODEL from env
     ...     response = await client.chat([Message(role="user", content="hi")])
     ...     print(response.content)
     >>> asyncio.run(main())  # doctest: +SKIP

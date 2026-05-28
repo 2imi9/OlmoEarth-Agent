@@ -18,8 +18,8 @@ from pytest_httpx import HTTPXMock
 
 from olmoearth_agent.llm.config import ServingConfig
 
-MOCK_ENDPOINT = "http://mock-vllm:8000/v1"
-MOCK_MODEL = "unsloth/Qwen3.6-35B-A3B-NVFP4"
+MOCK_ENDPOINT = "http://mock-llm:8000/v1"
+MOCK_MODEL = "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
 
 
 @pytest.fixture
