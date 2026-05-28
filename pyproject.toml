@@ -22,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "openai>=1.50",  # OpenAI-compatible client used to talk to vLLM (see docs/serving.md)
+    "httpx>=0.27",   # async HTTP client for the OlmoEarth Studio API
 ]
 
 [project.optional-dependencies]
