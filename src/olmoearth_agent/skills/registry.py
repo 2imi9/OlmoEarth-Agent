@@ -27,6 +27,7 @@ from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
+from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
 
@@ -90,7 +91,7 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(9, "olmoearth-similarity", "Analyze", "planned",
               "FAISS over OlmoEarth Base embeddings; geographic-prior warning.",
               ["olmoearth_similarity_search"]),
-    SkillSpec(10, "olmoearth-uncertainty", "Analyze", "planned",
+    SkillSpec(10, "olmoearth-uncertainty", "Analyze", "implemented",
               "Confidence + Meyer-Pebesma Area-of-Applicability OOD flag.",
               ["olmoearth_area_of_applicability"]),
     SkillSpec(11, "olmoearth-cloud-mask-audit", "Analyze", "planned",
@@ -135,6 +136,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_predict_tools())
     registry.register_all(build_change_detect_tools())
     registry.register_all(build_evaluate_tools())
+    registry.register_all(build_uncertainty_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())

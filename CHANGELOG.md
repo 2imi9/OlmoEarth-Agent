@@ -10,6 +10,21 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #10 `olmoearth-uncertainty` (`src/olmoearth_agent/analysis/uncertainty.py`)** —
+  `area_of_applicability` implements the Meyer & Pebesma (2021, MEE
+  12:1620) Area of Applicability: standardize (optionally
+  importance-weight) the training features, compute each point's
+  dissimilarity index (nearest-training distance / mean pairwise training
+  distance), and flag points whose DI exceeds the training data's own
+  outlier-adjusted threshold (`Q75 + 1.5·IQR` of leave-one-out DIs, as in
+  the R `CAST` package) as **out-of-distribution**. `ood_flag` returns
+  per-point flags + OOD fraction + verdict (within-AOA / partially-OOD /
+  mostly-OOD). Tool `olmoearth_area_of_applicability`. The point:
+  **softmax confidence is not OOD detection** — a model can be
+  confidently wrong on data unlike its training set (AlphaEarth's
+  documented transfer failure is exactly what AOA flags). Algorithm-
+  agnostic, pure Python (no numpy); the repeated-sampling confidence map
+  is the documented follow-up. 18 new tests.
 - **Skill #6 `olmoearth-change-detect` (`src/olmoearth_agent/analysis/change_detect.py`)** —
   `enforce_min_3_dates` + `diff_layers` turn a dated series of per-date
   layer summaries (one `value` per prediction date — e.g. positive-class
