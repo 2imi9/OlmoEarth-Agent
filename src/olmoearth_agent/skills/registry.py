@@ -19,6 +19,7 @@ from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
+from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.skill_tools import build_skill_tools
@@ -101,8 +102,8 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(14, "olmoearth-provenance", "Report", "implemented",
               "Manifest wrapper over every tool call; emits replay script.",
               ["olmoearth_provenance_summary"]),
-    SkillSpec(15, "olmoearth-case-narrative", "Report", "planned",
-              "Stakeholder writeup with live tiles + freshness gate.",
+    SkillSpec(15, "olmoearth-case-narrative", "Report", "implemented",
+              "Stakeholder Markdown writeup with tile URLs + freshness gate.",
               ["olmoearth_case_narrative"]),
     SkillSpec(16, "roger-annotation-bridge", "Prep", "planned",
               "Roger Studio annotations -> Studio labelset (schema UNVERIFIED).",
@@ -126,6 +127,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
     registry.register_all(build_evaluate_tools())
+    registry.register_all(build_narrative_tools())
     registry.register_all(build_provenance_tools())
     registry.register_all(build_skill_tools())
     return registry

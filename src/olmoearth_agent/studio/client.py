@@ -126,11 +126,29 @@ class StudioClient:
     async def create_project(
         self, *, name: str, description: str
     ) -> dict[str, Any]:
-        """Create a project (``POST /projects``). Returns the new record."""
+        """Create a project (``POST /projects`` → 200). Returns the new record."""
         env = await self.post(
             "/projects", {"name": name, "description": description}
         )
         return env.one or {}
+
+    async def get_project(self, project_id: str) -> dict[str, Any]:
+        """Fetch one project (``GET /projects/{id}``). Raises on 404."""
+        env = await self.get(f"/projects/{project_id}")
+        return env.one or {}
+
+    async def delete_project(self, project_id: str) -> dict[str, Any]:
+        """Delete a project (``DELETE /projects/{id}`` → 202).
+
+        The delete envelope wraps the deleted record as
+        ``{"records": [{"record": {...}}]}`` (verified live 2026-05-28),
+        so we unwrap the inner ``record``.
+        """
+        resp = await self._client.request("DELETE", f"/projects/{project_id}")
+        resp.raise_for_status()
+        env = ApiEnvelope.from_response(resp.json())
+        record = env.one or {}
+        return record.get("record", record)
 
     async def get_prediction(self, prediction_id: str) -> dict[str, Any]:
         """Fetch one prediction record (``GET /predictions/{id}``)."""

@@ -9,6 +9,26 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Project write path verified + `get_project` / `delete_project`.**
+  `StudioClient` gains `get_project` (`GET /projects/{id}`) and
+  `delete_project` (`DELETE /projects/{id}` → 202; unwraps the deleted
+  record nested under `record`). **Verified live 2026-05-28**: a
+  throwaway project create → get → delete → 404 (cleaned up, no
+  residue). New **double-gated** live test
+  `tests/studio/test_write_live.py` (requires `OLMOEARTH_WRITE_TESTS=1`
+  *and* `OLMOEARTH_API_KEY`, so it never writes by accident). This
+  closes the last unverified core capability — the `POST /projects`
+  write path. 3 new tests (2 unit, 1 gated live).
+- **Skill #15 `olmoearth-case-narrative` (`src/olmoearth_agent/reporting/`)** —
+  `build_narrative` (pure) assembles a stakeholder Markdown report from
+  prediction results (tile URLs + properties) + the run's provenance,
+  with a **freshness gate** that withholds and strikes through tiles
+  older than a configurable window (so a disaster-response brief never
+  shows stale imagery). Tool `olmoearth_case_narrative` reads provenance
+  from `ThreadState`. Verified live 2026-05-28: agent produced a
+  "PA Karst Demo" report. 7 new tests.
+
 ### Changed
 - **Dropped NVFP4; serving consolidated on the 4-bit GGUF via llama.cpp.**
   NVFP4 (~20 GB) doesn't leave KV-cache headroom on a 24 GB card; the
