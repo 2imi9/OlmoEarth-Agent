@@ -43,6 +43,9 @@ Homepage = "https://github.com/2imi9/OlmoEarth-Agent"
 Repository = "https://github.com/2imi9/OlmoEarth-Agent"
 Issues = "https://github.com/2imi9/OlmoEarth-Agent/issues"
 
+[project.scripts]
+olmoearth-agent = "olmoearth_agent.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/olmoearth_agent"]
 
