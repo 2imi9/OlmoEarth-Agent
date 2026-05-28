@@ -25,7 +25,7 @@ _Last aligned: 2026-05-28._
 | C6 | Studio API | base `https://olmoearth.allenai.org/api/v1`; Bearer `OLMOEARTH_API_KEY`; response envelope `{records, meta, errors}` |
 | C7 | Local GPU constraint | RTX 5090 Laptop, 24 GB (Blackwell). This is why NVFP4 (~20 GB weights, no KV headroom) was dropped for GGUF. |
 | C8 | Sampling default | `thinking_general` preset + `chat_template_kwargs.preserve_thinking=True` for multi-turn agent runs (Qwen3.6 model card) |
-| C9 | Skill catalog | 16 skills in `SKILLS.md`; vendored #1–#4 via submodule `vendor/olmoearth-skills` |
+| C9 | Skill catalog | 15 skills in `SKILLS.md`; vendored #1–#4 via submodule `vendor/olmoearth-skills` (Roger #16 dropped 2026-05-28) |
 
 ## Banned as "the current approach"
 

@@ -9,6 +9,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Removed
+- **Dropped skill #16 `roger-annotation-bridge` (Roger Studio).** It was an
+  extra beyond the 15-skill source spec, its export schema was UNVERIFIED,
+  and the integration isn't wanted. The catalog is now **15 skills**;
+  scrubbed from `registry.py`, `SKILLS.md`, `docs/CANON.md` (C9 → 15),
+  `PLAN.md`, and `README.md`. `test_skill_registry` now asserts 15.
+
 ### Added
 - **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)** —
   `compare_metrics` runs OlmoEarth vs AlphaEarth head-to-head on shared

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest — the harness's view of all 16 skills.
+"""Skill catalog manifest — the harness's view of all 15 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -117,9 +117,6 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(15, "olmoearth-case-narrative", "Report", "implemented",
               "Stakeholder Markdown writeup with tile URLs + freshness gate.",
               ["olmoearth_case_narrative"]),
-    SkillSpec(16, "roger-annotation-bridge", "Prep", "planned",
-              "Roger Studio annotations -> Studio labelset (schema UNVERIFIED).",
-              ["roger_annotation_bridge"]),
 ]
 
 

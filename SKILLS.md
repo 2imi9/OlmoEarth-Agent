@@ -1,6 +1,6 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 16 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 15 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract — what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
@@ -16,7 +16,7 @@ Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi
 | [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3** — 14 verified presets + cross-field validator. |
 | [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4** — embeddings-vs-fine-tune decision + Nano/Tiny/Base/Large notebook. |
 
-Skills #5–#15 are forward-looking spec. Skill #16 targets [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio).
+Skills #5–#15 are forward-looking spec.
 
 **Open decision (defer to first end-to-end skill PR):** split catalog #1/#2 vs unify like upstream. Split → sharper progressive-disclosure trigger; unify → matches working impl.
 
@@ -43,9 +43,8 @@ Skills #5–#15 are forward-looking spec. Skill #16 targets [`2imi9/Roger-Studio
 | 13 | Integrate | [`olmoearth-external-data`](#13-olmoearth-external-data) | GEE / Planetary Computer / OSM / USGS / NOAA into a Studio AOI. |
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
-| 16 | Prep | [`roger-annotation-bridge`](#16-roger-annotation-bridge) | Roger Studio annotations → OlmoEarth Studio labelset. |
 
-Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Studio import pain points, EO foundation-model literature, and existing `olmoearth-data-prep` patterns. Skill 16 added on 2026-05-27.
+Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Studio import pain points, EO foundation-model literature, and existing `olmoearth-data-prep` patterns.
 
 ---
 
@@ -311,25 +310,6 @@ The original spec follows for reference:
 - Skill #14 (`olmoearth-provenance`) for manifest read.
 - `olmoearth.fetch_results` for tile URLs.
 - Skill-local: `freshness_gate`, `narrative_template`, `tile_embed`.
-
----
-
-### 16. `roger-annotation-bridge`
-
-**Upstream target:** [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio) — the annotation tool being bridged. Export schema needs to be confirmed against this repo before the skill ships.
-
-**In:** Roger Studio annotation export.
-**Out:** OlmoEarth Studio labelset + labels via `olmoearth-studio-upload`.
-
-**What.** Pulls Roger Studio annotations (the upstream annotation tool that feeds OlmoEarth Studio) into a Studio labelset. Handles field-name reconciliation (Roger's annotation schema → Studio's `LabelsetWrite` + `LabelWrite`), color carry-over, and de-duplication on round-trip.
-
-**Why.** Roger Studio is the team's annotation surface; Studio is the modeling surface. Today the handoff is a manual export + reimport. Automating it removes a class of copy-paste errors and preserves annotation provenance into the Studio labelset.
-
-**Tools composed.**
-- Skill #1 (`olmoearth-studio-upload`) for the final write.
-- Skill-local: `roger_export_parse`, `field_reconcile`, `annotation_dedupe`.
-
-**Status.** Sketch only. The Roger Studio export schema needs to be confirmed against [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio) before this skill ships — flagged UNVERIFIED.
 
 ---
 
