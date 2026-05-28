@@ -19,6 +19,7 @@ from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
+from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
@@ -94,7 +95,7 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(10, "olmoearth-uncertainty", "Analyze", "implemented",
               "Confidence + Meyer-Pebesma Area-of-Applicability OOD flag.",
               ["olmoearth_area_of_applicability"]),
-    SkillSpec(11, "olmoearth-cloud-mask-audit", "Analyze", "planned",
+    SkillSpec(11, "olmoearth-cloud-mask-audit", "Analyze", "implemented",
               "CFMask/s2cloudless/Sen2Cor/MAJA ensemble disagreement.",
               ["olmoearth_cloud_mask_audit"]),
     SkillSpec(12, "olmoearth-qgis-bridge", "Integrate", "implemented",
@@ -135,6 +136,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
     registry.register_all(build_change_detect_tools())
+    registry.register_all(build_cloud_mask_audit_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_uncertainty_tools())
     registry.register_all(build_narrative_tools())
