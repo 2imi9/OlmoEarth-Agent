@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
+from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.skill_tools import build_skill_tools
@@ -77,9 +78,10 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(7, "olmoearth-baseline-compare", "Run", "planned",
               "OlmoEarth vs AlphaEarth on transfer regions (needs GEE MCP).",
               ["olmoearth_baseline_compare"]),
-    SkillSpec(8, "olmoearth-evaluate", "Analyze", "planned",
-              "Spatial-block CV + NNDM-LOO over prediction-results.",
-              ["olmoearth_spatial_block_cv", "olmoearth_nndm_loo"]),
+    SkillSpec(8, "olmoearth-evaluate", "Analyze", "implemented",
+              "Random-vs-spatial CV inflation check + classification "
+              "metrics. NNDM-LOO follows.",
+              ["olmoearth_cv_inflation_check", "olmoearth_classification_metrics"]),
     SkillSpec(9, "olmoearth-similarity", "Analyze", "planned",
               "FAISS over OlmoEarth Base embeddings; geographic-prior warning.",
               ["olmoearth_similarity_search"]),
@@ -122,6 +124,7 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
+    registry.register_all(build_evaluate_tools())
     registry.register_all(build_provenance_tools())
     registry.register_all(build_skill_tools())
     return registry

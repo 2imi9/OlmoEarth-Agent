@@ -47,6 +47,8 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_get_prediction",
         "olmoearth_search_predictions",
         "olmoearth_submit_prediction",
+        "olmoearth_cv_inflation_check",
+        "olmoearth_classification_metrics",
         "olmoearth_provenance_summary",
         "olmoearth_list_skills",
         "olmoearth_load_skill",
