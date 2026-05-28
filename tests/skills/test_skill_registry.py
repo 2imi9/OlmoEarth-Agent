@@ -53,6 +53,7 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_classification_metrics",
         "olmoearth_case_narrative",
         "olmoearth_export_data",
+        "olmoearth_qgis_bridge",
         "olmoearth_provenance_summary",
         "olmoearth_list_skills",
         "olmoearth_load_skill",

@@ -10,6 +10,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #12 `olmoearth-qgis-bridge` (`src/olmoearth_agent/reporting/qgis.py`)** —
+  `resolve_xyz_url` (relative tile template → absolute QGIS XYZ URL,
+  preserving `{z}/{x}/{y}`) + `build_raster_sld` (well-formed OGC SLD 1.0
+  color-ramp, default 5-stop YlOrRd over a 0..1 score). Tool
+  `olmoearth_qgis_bridge` turns a result's `tile_urls` into XYZ URLs +
+  SLD + load instructions (Bearer-auth header note; key never embedded).
+  Verified on real PA Karst tiles (resolved URL + valid 5-stop SLD).
+  Loading in QGIS desktop is the user's confirmation step; COG export
+  follows. 5 new tests.
 - **Skill #13 reframed → `olmoearth-data-export`.** The original
   "external-data" (wire third-party GEE/OSM/USGS/NOAA MCPs) needed
   external MCPs and wasn't core; reframed to the self-contained "export
