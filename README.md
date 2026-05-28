@@ -4,9 +4,11 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 ## Status
 
-**v0.4.** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`) served via **llama.cpp** with function calling. Multimodal stack parked. 16-skill catalog in [`SKILLS.md`](SKILLS.md); skills ship one PR at a time. Harness + several skills are implemented and verified live — see [`CHANGELOG.md`](CHANGELOG.md). Canonical facts: [`docs/CANON.md`](docs/CANON.md).
+**v0.4.** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`) served via **llama.cpp** with function calling. Multimodal stack parked. **All 15 skills** in [`SKILLS.md`](SKILLS.md) are implemented; most verified live — see [`CHANGELOG.md`](CHANGELOG.md). Canonical facts: [`docs/CANON.md`](docs/CANON.md).
 
 See [`PLAN.md`](PLAN.md) for the tool catalog, harness dataclasses, operational rules, and roadmap; [`SKILLS.md`](SKILLS.md) for the per-skill spec.
+
+**See [`docs/SHOWCASE.md`](docs/SHOWCASE.md) for every skill producing a real result** — actual tool outputs, not mockups.
 
 ## Run it
 
@@ -31,7 +33,8 @@ uv run olmoearth-agent --show-trace "Which of my projects relate to water qualit
 ## What's in this repo
 
 - [`PLAN.md`](PLAN.md) — Tool catalog, harness dataclasses, operational rules, underlying stack, roadmap.
-- [`SKILLS.md`](SKILLS.md) — 16-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report).
+- [`SKILLS.md`](SKILLS.md) — 15-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report).
+- [`docs/SHOWCASE.md`](docs/SHOWCASE.md) — **every skill in action**, with real tool outputs (regenerate via `scripts/generate_showcase.py`).
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contributor workflow (DCO sign-off, branch naming, AI-assistance policy).
 - [`AGENTS.md`](AGENTS.md) — Onboarding context for coding agents working on this codebase.
 - [`CHANGELOG.md`](CHANGELOG.md) — Keep a Changelog v1.1.0.

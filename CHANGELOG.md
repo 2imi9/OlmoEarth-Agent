@@ -18,6 +18,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   CHANGELOG entries that mention #16 are left as-is.)
 
 ### Added
+- **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`** — a skills-in-action
+  page where every skill's real tool handler is invoked against an
+  illustrative input and its **actual output captured** (nothing fabricated);
+  covers the 9 computational skills live and documents #5/#13 (live Studio
+  API) + the vendored #1–#4. Linked from the README. Regenerate with
+  `uv run python scripts/generate_showcase.py > docs/SHOWCASE.md`.
 - **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)** —
   `compare_metrics` runs OlmoEarth vs AlphaEarth head-to-head on shared
   ground truth (reusing skill #8's `classification_metrics`): a per-metric
