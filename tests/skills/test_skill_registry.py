@@ -11,10 +11,10 @@ from olmoearth_agent.skills.registry import (
 )
 
 
-def test_catalog_covers_all_16_skills() -> None:
+def test_catalog_covers_all_15_skills() -> None:
     numbered = [s for s in SKILLS if s.number >= 1]
-    assert len(numbered) == 16
-    assert {s.number for s in numbered} == set(range(1, 17))
+    assert len(numbered) == 15
+    assert {s.number for s in numbered} == set(range(1, 16))
 
 
 def test_foundational_entry_is_implemented() -> None:

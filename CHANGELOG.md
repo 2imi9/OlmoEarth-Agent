@@ -9,6 +9,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Removed
+- **Skill #16 `roger-annotation-bridge` dropped** — the planned Roger
+  Studio → Studio labelset bridge is no longer part of the project, so the
+  catalog is now **15 skills** (was 16). Removed its `SkillSpec` from
+  `registry.py` and its section from `SKILLS.md`, and corrected the
+  skill-count in `PLAN.md` / `README.md` / `docs/CANON.md` (C9). (Historic
+  CHANGELOG entries that mention #16 are left as-is.)
+
 ### Added
 - **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)** —
   `compare_metrics` runs OlmoEarth vs AlphaEarth head-to-head on shared
