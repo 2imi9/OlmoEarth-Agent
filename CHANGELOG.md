@@ -27,6 +27,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - Client robustness: `_parse_completion` reads server-split
   `reasoning_content` (when served with `--reasoning-parser qwen3`)
   and otherwise extracts the inline `<think>` block — works either way.
+- `docs/serving.md` — "Local development on ≤24 GB VRAM" section: 4-bit
+  GGUF (`UD-IQ4_XS`) via llama.cpp `server-cuda` with `--jinja` for tool
+  calling. **Function-call path verified end-to-end 2026-05-28** on an
+  RTX 5090 Laptop (24 GB): NVFP4+vLLM stalls at memory profiling on
+  24 GB (residual KV headroom too small), but the 4-bit GGUF loads to
+  ~18.6 GB and the agent's `create_project(...)` tool call round-trips.
+  Production stack stays vLLM+NVFP4 on datacenter Blackwell; this is a
+  local-dev accommodation (same OpenAI protocol, client code unchanged).
 - `docker/vllm.compose.yml` — pinned `vllm/vllm-openai:v0.19.0` for
   local dev (still requires Blackwell host).
 - `tests/llm/` — mock-endpoint smoke tests via `pytest-httpx`: simple
