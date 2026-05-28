@@ -10,6 +10,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #5 predict — result output path**: `olmoearth_fetch_results`
+  (tile URLs / property names / file format for a prediction) and
+  `olmoearth_get_prediction_result` (by result id). `StudioClient` gains
+  `get_prediction_result` + `search_prediction_results`. The API's
+  `PredictionResultSearchRequest` has no `prediction_id` filter
+  (openapi v0.1.0), so `fetch_results` scans and filters client-side.
+  Verified live 2026-05-28 against PA Karst results (tile URLs like
+  `/api/v1/prediction-results/{id}/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`).
+  pixel-value / features-search remain the last predict follow-up. 3 new tests.
 - **Skill #8 `olmoearth-evaluate` (`src/olmoearth_agent/evaluation/`)** —
   honest map-accuracy tools, pure Python (no heavy deps). `spatial_cv.py`:
   haversine, `spatial_block_folds` (Roberts 2017), `random_folds`, and

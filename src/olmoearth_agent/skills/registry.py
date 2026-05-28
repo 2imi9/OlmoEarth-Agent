@@ -68,10 +68,11 @@ SKILLS: list[SkillSpec] = [
               "Embeddings-vs-fine-tune decision + runnable notebook.",
               ["olmoearth_load_skill"]),
     SkillSpec(5, "olmoearth-predict", "Run", "implemented",
-              "Core run loop: search predictions (find model_id), submit, "
-              "poll. Result sub-tools (pixel-value/features/files) follow.",
+              "Run loop: search predictions (find model_id), submit, poll, "
+              "fetch results (tile URLs). pixel-value/features follow.",
               ["olmoearth_search_predictions", "olmoearth_submit_prediction",
-               "olmoearth_get_prediction"]),
+               "olmoearth_get_prediction", "olmoearth_fetch_results",
+               "olmoearth_get_prediction_result"]),
     SkillSpec(6, "olmoearth-change-detect", "Run", "planned",
               "Multi-date (>=3) trajectory diff; refuses naive 2-date.",
               ["olmoearth_change_detect"]),

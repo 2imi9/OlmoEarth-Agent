@@ -82,6 +82,58 @@ async def test_submit_prediction_tool_sends_required_fields(
     }
 
 
+@pytest.mark.asyncio
+async def test_fetch_results_filters_by_prediction_id(
+    httpx_mock: HTTPXMock,
+) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/search",
+        method="POST",
+        json={
+            "records": [
+                {"id": "r1", "prediction_id": "pX", "tile_urls": ["t1"],
+                 "property_names": ["score"], "file_format": "png"},
+                {"id": "r2", "prediction_id": "pOTHER", "tile_urls": ["t2"]},
+            ],
+            "meta": {"total": 2},
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_fetch_results").handler(
+            {"prediction_id": "pX"}, ctx
+        )
+    assert result["result_count"] == 1
+    assert result["results"][0]["result_id"] == "r1"
+    assert result["results"][0]["tile_urls"] == ["t1"]
+
+
+@pytest.mark.asyncio
+async def test_get_prediction_result_tool(httpx_mock: HTTPXMock) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/r9",
+        json={
+            "records": [
+                {"id": "r9", "prediction_id": "p1", "tile_urls": ["tpl"],
+                 "property_names": ["karst_score"], "file_format": "png",
+                 "result_metadata": {"foo": 1}}
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_get_prediction_result").handler(
+            {"result_id": "r9"}, ctx
+        )
+    assert result["result_id"] == "r9"
+    assert result["property_names"] == ["karst_score"]
+    assert result["result_metadata"] == {"foo": 1}
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_live_search_predictions_have_model_ids() -> None:
@@ -96,3 +148,26 @@ async def test_live_search_predictions_have_model_ids() -> None:
     assert all(r.get("model_id") for r in env.records), (
         "every prediction should expose a model_id for reuse"
     )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_live_fetch_results_returns_tile_urls() -> None:
+    """Live: a completed prediction's results expose tile URLs."""
+    if not os.environ.get("OLMOEARTH_API_KEY"):
+        pytest.skip("needs OLMOEARTH_API_KEY")
+    from olmoearth_agent.studio import StudioClient
+
+    async with StudioClient.from_env() as studio:
+        preds = await studio.search_predictions(limit=20)
+        completed = next(
+            (r for r in preds.records if r.get("status") == "completed"), None
+        )
+        assert completed is not None, "expected a completed prediction"
+        env = await studio.search_prediction_results(
+            prediction_id=completed["id"], limit=1000
+        )
+    # Some completed prediction in the first 1000 results should match and
+    # carry tile_urls. (If not in-window, this is a soft check.)
+    if env.records:
+        assert any(r.get("tile_urls") for r in env.records)

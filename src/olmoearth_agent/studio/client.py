@@ -155,6 +155,39 @@ class StudioClient:
             body["project_id"] = project_id
         return await self.post("/predictions/search", body)
 
+    async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
+        """Fetch one prediction-result record (``GET /prediction-results/{id}``).
+
+        Returns ``tile_urls`` (XYZ/MVT templates), ``property_names``,
+        ``result_metadata``, ``file_format``, and ``download_token``.
+        """
+        env = await self.get(f"/prediction-results/{result_id}")
+        return env.one or {}
+
+    async def search_prediction_results(
+        self,
+        *,
+        prediction_id: str | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search prediction-results.
+
+        Note: the API's ``PredictionResultSearchRequest`` has no
+        ``prediction_id`` filter (openapi v0.1.0), so when
+        ``prediction_id`` is given we filter the returned page
+        client-side. Increase ``limit`` if a prediction's results are
+        older than the first page.
+        """
+        env = await self.post(
+            "/prediction-results/search", {"limit": limit, "offset": offset}
+        )
+        if prediction_id is not None:
+            env.records = [
+                r for r in env.records if r.get("prediction_id") == prediction_id
+            ]
+        return env
+
     async def submit_prediction(
         self,
         *,
