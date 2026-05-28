@@ -20,12 +20,16 @@ classifiers = [
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = []
+dependencies = [
+    "openai>=1.50",  # OpenAI-compatible client used to talk to vLLM (see docs/serving.md)
+]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
+    "pytest-httpx>=0.30",  # mock vLLM endpoint for tests/llm
     "ruff>=0.6",
     "black>=24.8",
     "mypy>=1.11",
@@ -78,8 +82,9 @@ exclude = ["tests", "build", "docs"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+asyncio_mode = "strict"
 markers = [
-    "integration: tests that require a live OlmoEarth Studio API key (env OLMOEARTH_API_KEY)",
+    "integration: tests that require a live external service (OlmoEarth Studio API key OLMOEARTH_API_KEY, or vLLM server VLLM_ENDPOINT)",
 ]
 addopts = "-ra --strict-markers"
 

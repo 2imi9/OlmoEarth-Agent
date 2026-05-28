@@ -1,0 +1,55 @@
+# Local development compose for the OlmoEarth Agent's LLM backend.
+# Requires an NVIDIA Blackwell GPU + nvidia-container-toolkit on the host.
+# Hopper GPUs will boot but lose the NVFP4 hardware acceleration that
+# motivated the model choice.
+#
+# Usage:
+#   echo "HF_TOKEN=hf_..." >> .env
+#   docker compose -f docker/vllm.compose.yml up
+#
+# The agent then reads VLLM_ENDPOINT=http://localhost:8000/v1 and
+# VLLM_MODEL=unsloth/Qwen3.6-35B-A3B-NVFP4 from the environment.
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.19.0
+    ports:
+      - "8000:8000"
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Tool-calling flags are required for the agent (see docs/serving.md
+    # "Function calling"). Confirm the --tool-call-parser name against your
+    # installed vLLM: `vllm serve --help | grep -A3 tool-call-parser`.
+    command:
+      - --model
+      - unsloth/Qwen3.6-35B-A3B-NVFP4
+      - --trust-remote-code
+      - --dtype
+      - bfloat16
+      - --max-model-len
+      - "4096"
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - hermes
+      - --reasoning-parser
+      - qwen3
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  hf_cache:
