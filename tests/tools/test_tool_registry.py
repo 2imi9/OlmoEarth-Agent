@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 OlmoEarth Agent contributors
+"""Unit tests for the tool registry and dispatch error handling."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from olmoearth_agent.llm.types import ToolCall, ToolSpec
+from olmoearth_agent.tools.registry import (
+    RegisteredTool,
+    ToolContext,
+    ToolRegistry,
+)
+
+_EMPTY_SCHEMA = {"type": "object", "properties": {}, "required": []}
+
+
+def _spec(name: str) -> ToolSpec:
+    return ToolSpec(name=name, description="t", parameters=_EMPTY_SCHEMA)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_unknown_tool_returns_error() -> None:
+    registry = ToolRegistry()
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="nope", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result["ok"] is False
+    assert "unknown tool" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_handler_exception_is_caught() -> None:
+    async def boom(_args: dict[str, Any], _ctx: ToolContext) -> None:
+        raise ValueError("bad input")
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("boom"), handler=boom))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="boom", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result["ok"] is False
+    assert "ValueError: bad input" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_success_wraps_result() -> None:
+    async def echo(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        return args
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("echo"), handler=echo))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="echo", arguments={"x": 1}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result == {"ok": True, "result": {"x": 1}}
+
+
+def test_register_overwrites_by_name() -> None:
+    registry = ToolRegistry()
+
+    async def h(_a: dict[str, Any], _c: ToolContext) -> None: ...
+
+    registry.register(RegisteredTool(spec=_spec("dup"), handler=h))
+    registry.register(RegisteredTool(spec=_spec("dup"), handler=h))
+    assert registry.names() == ["dup"]

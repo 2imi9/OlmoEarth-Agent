@@ -10,6 +10,32 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Harness core (`src/olmoearth_agent/{types,studio,tools,harness,skills}`)** —
+  the structure all 16 skills plug into:
+  - `types.py` — harness dataclasses + `ApiEnvelope[T]` (the live
+    `{records, meta, errors}` Studio response wrapper found 2026-05-28).
+  - `studio/client.py` — async `StudioClient` (httpx, Bearer auth,
+    envelope unwrap) with `users_me`, `search_projects`, `create_project`,
+    `get_prediction`, `load_context`. Endpoints verified against the live
+    API.
+  - `tools/registry.py` — `ToolRegistry` + `ToolContext`; dispatch never
+    raises (errors return to the model). `tools/studio.py` — the
+    foundational `olmoearth_*` tool bundle (load_context / search_projects
+    / create_project / get_prediction).
+  - `harness/agent.py` — `LeadAgent` ReAct loop (DeerFlow v2 lead-agent
+    shape): brief → LLM → tool dispatch → result, with a turn cap and the
+    operational rules in the system prompt. `harness/state.py` —
+    `ThreadState`.
+  - `skills/registry.py` — manifest slotting all 16 skills (number,
+    category, status, tools) + `build_default_registry()`.
+- **Verified live end-to-end 2026-05-28**: `LeadAgent` →
+  `OlmoEarthLLM` (Qwen3.6 4-bit GGUF via llama.cpp) → `StudioClient`
+  (live Studio API) → answer. The agent called `olmoearth_load_context`
+  and correctly filtered the user's real projects by topic.
+- `tests/{studio,tools,harness,skills}` — 16 unit tests (mock HTTP +
+  fake LLM) + 1 live integration test (`tests/harness/test_live.py`,
+  needs `VLLM_ENDPOINT` + `OLMOEARTH_API_KEY`).
+- `pyproject.toml` runtime dep: `httpx>=0.27`.
 - **LLM serving client (`src/olmoearth_agent/llm/`)** — async OpenAI-
   compatible wrapper around the vLLM-served Qwen3.6-35B-A3B-NVFP4
   backbone. `OlmoEarthLLM.chat(messages, tools=..., mode=...)` returns
