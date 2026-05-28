@@ -20,9 +20,10 @@ from typing import Literal
 from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import ToolRegistry
+from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 
-SkillStatus = Literal["foundational", "implemented", "upstream", "planned"]
+SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
 
 
 @dataclass(frozen=True)
@@ -49,18 +50,22 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_load_context", "olmoearth_search_projects",
          "olmoearth_create_project", "olmoearth_get_prediction"],
     ),
-    SkillSpec(1, "olmoearth-studio-upload", "Prep", "upstream",
-              "Labels -> Studio import (MIME/10K/multi-metric guards).",
-              ["olmoearth_upload_labels"]),
-    SkillSpec(2, "olmoearth-rslearn-config", "Prep", "upstream",
-              "Labels -> rslearn dataset.json + Lightning YAML; 7-criteria audit.",
-              ["olmoearth_write_rslearn_config"]),
-    SkillSpec(3, "olmoearth-studio-job-config", "Configure", "upstream",
+    # #1 + #2 are unified upstream as the `olmoearth-data-prep` SKILL.md
+    # package; vendored via git submodule + loaded by SkillLoader.
+    SkillSpec(1, "olmoearth-studio-upload", "Prep", "vendored",
+              "Labels -> Studio import (MIME/10K/multi-metric guards). "
+              "In upstream olmoearth-data-prep SKILL.md.",
+              ["olmoearth_load_skill"]),
+    SkillSpec(2, "olmoearth-rslearn-config", "Prep", "vendored",
+              "Labels -> rslearn dataset.json + Lightning YAML; 7-criteria "
+              "audit. In upstream olmoearth-data-prep SKILL.md.",
+              ["olmoearth_load_skill"]),
+    SkillSpec(3, "olmoearth-studio-job-config", "Configure", "vendored",
               "Task description -> Studio wizard answers; 14 presets + validator.",
-              ["olmoearth_studio_job_validate"]),
-    SkillSpec(4, "olmoearth-embeddings", "Configure", "upstream",
+              ["olmoearth_load_skill"]),
+    SkillSpec(4, "olmoearth-embeddings", "Configure", "vendored",
               "Embeddings-vs-fine-tune decision + runnable notebook.",
-              ["olmoearth_fetch_embedding"]),
+              ["olmoearth_load_skill"]),
     SkillSpec(5, "olmoearth-predict", "Run", "implemented",
               "Core run loop: search predictions (find model_id), submit, "
               "poll. Result sub-tools (pixel-value/features/files) follow.",
@@ -118,4 +123,5 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
     registry.register_all(build_provenance_tools())
+    registry.register_all(build_skill_tools())
     return registry

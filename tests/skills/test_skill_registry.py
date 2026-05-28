@@ -22,9 +22,9 @@ def test_foundational_entry_is_implemented() -> None:
     assert any(s.name == "studio-core" for s in implemented)
 
 
-def test_upstream_skills_are_the_four_existing() -> None:
-    upstream = {s.name for s in skills_by_status("upstream")}
-    assert upstream == {
+def test_vendored_skills_are_the_four_existing() -> None:
+    vendored = {s.name for s in skills_by_status("vendored")}
+    assert vendored == {
         "olmoearth-studio-upload",
         "olmoearth-rslearn-config",
         "olmoearth-studio-job-config",
@@ -45,7 +45,11 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_search_projects",
         "olmoearth_create_project",
         "olmoearth_get_prediction",
+        "olmoearth_search_predictions",
+        "olmoearth_submit_prediction",
         "olmoearth_provenance_summary",
+        "olmoearth_list_skills",
+        "olmoearth_load_skill",
     ):
         assert tool in names
     # every registered tool has a JSON-schema spec

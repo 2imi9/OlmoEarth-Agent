@@ -69,12 +69,20 @@ class LeadAgent:
         *,
         state: ThreadState | None = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        skill_index: str = "",
     ) -> None:
         self.llm = llm
         self.registry = registry
         self.studio = studio
         self.state = state or ThreadState()
         self.system_prompt = system_prompt
+        if skill_index:
+            # Progressive disclosure: list the vendored SKILL.md skills so the
+            # model knows to call olmoearth_load_skill when a task matches.
+            self.system_prompt += (
+                "\n\nAvailable instruction skills (call olmoearth_load_skill "
+                "with the name to get full steps):\n" + skill_index
+            )
 
     async def run(self, brief: str, *, max_turns: int = 8) -> AgentResult:
         """Run the agent loop until it answers or hits ``max_turns``.
