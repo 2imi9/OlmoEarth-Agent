@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
+from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
@@ -83,8 +84,9 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(6, "olmoearth-change-detect", "Run", "implemented",
               "Multi-date (>=3) trajectory diff; refuses naive 2-date.",
               ["olmoearth_change_detect"]),
-    SkillSpec(7, "olmoearth-baseline-compare", "Run", "planned",
-              "OlmoEarth vs AlphaEarth on transfer regions (needs GEE MCP).",
+    SkillSpec(7, "olmoearth-baseline-compare", "Run", "implemented",
+              "OlmoEarth vs AlphaEarth on transfer regions (bring-your-own "
+              "exported GEE Satellite Embedding data; no live GEE connection).",
               ["olmoearth_baseline_compare"]),
     SkillSpec(8, "olmoearth-evaluate", "Analyze", "implemented",
               "Random-vs-spatial CV inflation check + classification "
@@ -136,6 +138,7 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
+    registry.register_all(build_baseline_compare_tools())
     registry.register_all(build_change_detect_tools())
     registry.register_all(build_cloud_mask_audit_tools())
     registry.register_all(build_evaluate_tools())
