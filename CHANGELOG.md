@@ -10,6 +10,21 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #11 `olmoearth-cloud-mask-audit` (`src/olmoearth_agent/analysis/cloud_mask.py`)** —
+  `ensemble_disagree` summarizes where several aligned cloud masks
+  (CFMask / s2cloudless / Sen2Cor / MAJA, or any others) agree vs
+  disagree: agreement/disagreement rates, per-algorithm cloud fraction
+  (which algorithm runs aggressive vs conservative), pairwise
+  disagreement, and a vote histogram — it surfaces **disagreement, not a
+  single ground-truth mask**, because algorithms diverge on thin /
+  semi-transparent cloud (Skakun et al. CMIX, RSE 274:112990, 2022).
+  `verdict_classifier` takes a model-error mask and returns a
+  **bad-mask-vs-bad-model verdict** (cloud-mask-limited / model-limited /
+  inconclusive). Tool `olmoearth_cloud_mask_audit` returns summary stats
+  only — no per-pixel geometry (rule §3.1). Algorithm-agnostic, pure
+  Python; the STAC + s2cloudless `fetch_cloud_masks` step (needs an AOI
+  bbox + date, plus heavier deps) is the gated live-smoke follow-up.
+  18 new tests.
 - **Skill #6 `olmoearth-change-detect` (`src/olmoearth_agent/analysis/change_detect.py`)** —
   `enforce_min_3_dates` + `diff_layers` turn a dated series of per-date
   layer summaries (one `value` per prediction date — e.g. positive-class
