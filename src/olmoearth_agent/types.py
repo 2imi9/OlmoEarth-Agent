@@ -150,3 +150,22 @@ class StudioContext:
     user_name: str | None = None
     organization: str | None = None
     projects: list[ProjectRef] = field(default_factory=list)
+
+
+@dataclass
+class ProvenanceManifest:
+    """One provenance entry per tool call (operational rule §3.13).
+
+    ``response_summary`` holds only ids / status / counts — never raw
+    geometry (rule §3.1). See
+    :class:`olmoearth_agent.provenance.log.ProvenanceLog`.
+    """
+
+    run_id: str
+    timestamp: str
+    api_call: str
+    request_hash: str
+    response_summary: dict[str, Any]
+    prediction_id: str | None = None
+    model_id: str | None = None
+    dataset_hashes: list[str] | None = None

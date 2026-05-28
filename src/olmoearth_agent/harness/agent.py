@@ -120,6 +120,9 @@ class LeadAgent:
             )
             for call in response.tool_calls:
                 result = await self.registry.dispatch(call, ctx)
+                self.state.provenance.record_tool_call(
+                    call.name, call.arguments, result
+                )
                 calls.append((call.name, bool(result.get("ok"))))
                 messages.append(
                     Message(
