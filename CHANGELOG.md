@@ -10,6 +10,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #5 `olmoearth-predict` (core run loop)** — `tools/predict.py`:
+  `olmoearth_search_predictions` (discover reusable `model_id`s) and
+  `olmoearth_submit_prediction`; poll via the foundational
+  `olmoearth_get_prediction`. `StudioClient` gains `search_predictions`
+  and `submit_prediction` (the six `PredictionWrite` required fields:
+  name, project_id, area_id, model_id, start_time, end_time).
+  **Resolves the PLAN.md §4 `model_id` gap for the reuse case**:
+  `predictions/search` returns each prediction's `model_id`, so a client
+  discovers a reusable id by searching. Read paths verified live
+  2026-05-28 (12 real predictions, all with model_ids); an agent run
+  found PA Karst model_ids and recovered from a failed tool call mid-run.
+  `submit` implemented + unit-tested (not live-created, to avoid side
+  effects). Result sub-tools (pixel-value/features/files) are a follow-up
+  within this skill. 3 new tests.
 - **Skill #14 `olmoearth-provenance` (`src/olmoearth_agent/provenance/`)** —
   implements operational rule §3.13. `ProvenanceLog` lives on
   `ThreadState`; the lead agent records one `ProvenanceManifest` entry
