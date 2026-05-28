@@ -10,6 +10,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #14 `olmoearth-provenance` (`src/olmoearth_agent/provenance/`)** —
+  implements operational rule §3.13. `ProvenanceLog` lives on
+  `ThreadState`; the lead agent records one `ProvenanceManifest` entry
+  per dispatched tool call (tool name, sha256 of args, id-only result
+  summary — never raw geometry). `to_json()` + `replay_script()` emit
+  an auditable manifest and a replay skeleton. Tool bundle
+  `olmoearth_provenance_summary` lets the agent report what it did.
+  Added `ProvenanceManifest` to `types.py` (was spec-only in PLAN §2).
+  Verified live 2026-05-28: agent run recorded `load_context` +
+  `provenance_summary` with hashes and result summaries. 7 new tests.
 - **Harness core (`src/olmoearth_agent/{types,studio,tools,harness,skills}`)** —
   the structure all 16 skills plug into:
   - `types.py` — harness dataclasses + `ApiEnvelope[T]` (the live

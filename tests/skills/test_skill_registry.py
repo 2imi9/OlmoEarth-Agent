@@ -32,7 +32,12 @@ def test_upstream_skills_are_the_four_existing() -> None:
     }
 
 
-def test_default_registry_exposes_foundational_tools() -> None:
+def test_provenance_skill_is_implemented() -> None:
+    implemented = {s.name for s in skills_by_status("implemented")}
+    assert "olmoearth-provenance" in implemented
+
+
+def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
     registry = build_default_registry()
     names = registry.names()
     for tool in (
@@ -40,6 +45,7 @@ def test_default_registry_exposes_foundational_tools() -> None:
         "olmoearth_search_projects",
         "olmoearth_create_project",
         "olmoearth_get_prediction",
+        "olmoearth_provenance_summary",
     ):
         assert tool in names
     # every registered tool has a JSON-schema spec

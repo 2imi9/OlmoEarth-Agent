@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.studio import build_studio_tools
 
@@ -88,9 +89,9 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(13, "olmoearth-external-data", "Integrate", "planned",
               "GEE/PC/OSM/USGS/NOAA into an AOI (needs user-connected MCPs).",
               ["olmoearth_external_data"]),
-    SkillSpec(14, "olmoearth-provenance", "Report", "planned",
-              "Manifest wrapper over every API call; emits replay script.",
-              ["olmoearth_provenance_manifest"]),
+    SkillSpec(14, "olmoearth-provenance", "Report", "implemented",
+              "Manifest wrapper over every tool call; emits replay script.",
+              ["olmoearth_provenance_summary"]),
     SkillSpec(15, "olmoearth-case-narrative", "Report", "planned",
               "Stakeholder writeup with live tiles + freshness gate.",
               ["olmoearth_case_narrative"]),
@@ -114,4 +115,5 @@ def build_default_registry() -> ToolRegistry:
     """
     registry = ToolRegistry()
     registry.register_all(build_studio_tools())
+    registry.register_all(build_provenance_tools())
     return registry

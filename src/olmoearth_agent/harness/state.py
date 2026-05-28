@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from olmoearth_agent.provenance.log import ProvenanceLog
 from olmoearth_agent.types import StudioContext
 
 
@@ -24,3 +25,5 @@ class ThreadState:
     todos: list[str] = field(default_factory=list)
     prediction_ids: list[str] = field(default_factory=list)
     turn_count: int = 0
+    #: Append-only provenance log (rule §3.13); one entry per tool call.
+    provenance: ProvenanceLog = field(default_factory=ProvenanceLog)

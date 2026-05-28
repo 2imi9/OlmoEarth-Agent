@@ -85,6 +85,26 @@ async def test_agent_answers_without_tools() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_records_provenance() -> None:
+    responses = [
+        ChatResponse(
+            content=None,
+            tool_calls=[ToolCall(id="c1", name="echo", arguments={"x": 1})],
+            finish_reason="tool_calls",
+        ),
+        ChatResponse(content="done", tool_calls=[], finish_reason="stop"),
+    ]
+    agent = LeadAgent(
+        _FakeLLM(responses),  # type: ignore[arg-type]
+        _registry_with_echo(),
+        studio=None,  # type: ignore[arg-type]
+    )
+    await agent.run("go")
+    assert len(agent.state.provenance.entries) == 1
+    assert agent.state.provenance.entries[0].api_call == "echo"
+
+
+@pytest.mark.asyncio
 async def test_agent_hits_max_turns() -> None:
     # Always returns a tool call -> never terminates on its own.
     loop_response = ChatResponse(
