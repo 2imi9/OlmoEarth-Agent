@@ -114,6 +114,7 @@ wandb/
 mlruns/
 outputs/
 artifacts/
+exports/
 
 # --- Geospatial / EO outputs ---
 *.tif

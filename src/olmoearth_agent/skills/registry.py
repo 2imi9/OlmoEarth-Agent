@@ -19,6 +19,7 @@ from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
+from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import ToolRegistry
@@ -96,9 +97,12 @@ SKILLS: list[SkillSpec] = [
     SkillSpec(12, "olmoearth-qgis-bridge", "Integrate", "planned",
               "Tile URLs -> QGIS WMTS + COG with sidecar uncertainty.",
               ["olmoearth_qgis_bridge"]),
-    SkillSpec(13, "olmoearth-external-data", "Integrate", "planned",
-              "GEE/PC/OSM/USGS/NOAA into an AOI (needs user-connected MCPs).",
-              ["olmoearth_external_data"]),
+    # #13 reframed from "wire external MCPs" to "export our own Studio
+    # data, grouped" (more useful, self-contained). See CHANGELOG.
+    SkillSpec(13, "olmoearth-data-export", "Integrate", "implemented",
+              "Export Studio projects + predictions grouped (by project or "
+              "status) to JSON files.",
+              ["olmoearth_export_data"]),
     SkillSpec(14, "olmoearth-provenance", "Report", "implemented",
               "Manifest wrapper over every tool call; emits replay script.",
               ["olmoearth_provenance_summary"]),
@@ -128,6 +132,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_predict_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_narrative_tools())
+    registry.register_all(build_export_tools())
     registry.register_all(build_provenance_tools())
     registry.register_all(build_skill_tools())
     return registry
