@@ -63,7 +63,7 @@ Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
 |---|---|
 | LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) via [llama.cpp](https://github.com/ggml-org/llama.cpp). Text + function calling. See [`docs/serving.md`](docs/serving.md). |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) |
-| Skills | 16 skills in [`SKILLS.md`](SKILLS.md), packaged per [agentskills.io](https://agentskills.io) ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) impl reference) |
+| Skills | 15 skills in [`SKILLS.md`](SKILLS.md), packaged per [agentskills.io](https://agentskills.io) ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) impl reference) |
 | Parked | Multimodal stack (Prismatic VLM + adapters + OlmoEarth embedding stream) and train-time self-improvement loops — see `PLAN.md` §7 |
 
 ## License

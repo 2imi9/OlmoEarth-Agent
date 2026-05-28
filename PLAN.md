@@ -4,7 +4,7 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 **Status:** v0.4 spec, 2026-05-27. No runnable code yet.
 **Scope:** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`, via llama.cpp) with function calling. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work — they re-activate only if a skill empirically needs them.
-**Skill catalog:** [`SKILLS.md`](SKILLS.md) — 16 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
+**Skill catalog:** [`SKILLS.md`](SKILLS.md) — 15 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
 **Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0 — fields and enums may change without notice.
 
@@ -309,7 +309,7 @@ The tool catalog above is the contract. Everything in this section is implementa
 |---|---|
 | LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) 4-bit `UD-IQ4_XS` — text-only with function calling (model has a native vision encoder; we don't use it in v0.4). Served via **llama.cpp** (`ghcr.io/ggml-org/llama.cpp:server-cuda -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS --jinja -ngl 999 -c 8192 --no-mmap`); see [`docs/serving.md`](docs/serving.md) and [`docs/CANON.md`](docs/CANON.md). Agent sessions set `chat_template_kwargs.preserve_thinking=True`. NVFP4 dropped (doesn't fit 24 GB; CANON C4/C7). |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) — LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
-| Skills | 16 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1–#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) — the agent vendors them rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
+| Skills | 15 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1–#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) — the agent vendors them rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
 | Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub, GEE, OSM, USGS Water, NOAA — last four added by skill #13). |
 | Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. Provenance manifest (rule §3.13) is the audit substrate. |
 
@@ -404,9 +404,9 @@ Skills-first. Each P0–P3 phase is a single PR; each Skill-* row is one PR (per
 | **Skill-8 — `olmoearth-evaluate`** | done — PR #10 | Spatial-block CV inflation diagnostic + metrics (NNDM-LOO follows) | Reproduces Ploton-2020 inflation on clustered data |
 | **Skill-14 — `olmoearth-provenance`** | done — PR #7 | Manifest per tool call + replay skeleton | Recorded live during agent runs |
 | **Skills #1–#4** | vendored — PR #9 | submodule `vendor/olmoearth-skills` + SkillLoader | Agent loads a SKILL.md via progressive disclosure |
-| **Skills #6, #7, #9, #11, #12, #13, #15, #16** | planned | One PR per skill, ordered by case-study demand | Per-skill exit criteria in [`SKILLS.md`](SKILLS.md) |
+| **Skills #6, #7, #9, #10, #11, #12, #13, #15** | done — PRs #16–#21 | One PR per skill | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
 
-P0–P3 are done — the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. The remaining skills follow demand; several need external services (CANON / SKILLS.md).
+P0–P3 are done — the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 15 skills are now shipped** (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is live-smoke verification on real data.
 
 ---
 
