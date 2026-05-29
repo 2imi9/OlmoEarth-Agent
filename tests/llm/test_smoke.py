@@ -121,6 +121,72 @@ async def test_tool_call_round_trip(
     assert call.arguments == {"timezone": "UTC"}
 
 
+@pytest.mark.asyncio
+async def test_text_tool_call_hermes_xml_recovered(
+    serving_config: ServingConfig,
+    mock_chat_response: Callable[..., None],
+) -> None:
+    """A tool call emitted as ``<function=..><parameter=..>`` text is recovered.
+
+    The llama.cpp server falls back to this when launched without a
+    matching ``--tool-call-parser`` (docs/serving.md). The client must
+    recover the call so the agent loop does not mistake it for an answer.
+    """
+    content = (
+        "<tool_call> <function=olmoearth_similarity_search>\n"
+        "<parameter=query>\n[0.9, 0.1, 0.0]\n</parameter>\n"
+        "<parameter=k>\n3\n</parameter>\n"
+        '<parameter=ids>\n["site_A", "site_B"]\n</parameter>\n'
+        "</function>\n</tool_call>"
+    )
+    mock_chat_response(content=content, finish_reason="stop")
+    client = OlmoEarthLLM(serving_config)
+    response = await client.chat([Message(role="user", content="find similar")])
+    assert response.finish_reason == "tool_calls"
+    assert len(response.tool_calls) == 1
+    call = response.tool_calls[0]
+    assert call.name == "olmoearth_similarity_search"
+    assert call.arguments == {
+        "query": [0.9, 0.1, 0.0],
+        "k": 3,
+        "ids": ["site_A", "site_B"],
+    }
+    assert response.content is None
+
+
+@pytest.mark.asyncio
+async def test_text_tool_call_hermes_json_recovered(
+    serving_config: ServingConfig,
+    mock_chat_response: Callable[..., None],
+) -> None:
+    """A ``<tool_call>{json}</tool_call>`` text emission is recovered too."""
+    content = (
+        '<tool_call>{"name": "get_current_time", '
+        '"arguments": {"timezone": "UTC"}}</tool_call>'
+    )
+    mock_chat_response(content=content, finish_reason="stop")
+    client = OlmoEarthLLM(serving_config)
+    response = await client.chat([Message(role="user", content="time?")])
+    assert response.finish_reason == "tool_calls"
+    assert len(response.tool_calls) == 1
+    assert response.tool_calls[0].name == "get_current_time"
+    assert response.tool_calls[0].arguments == {"timezone": "UTC"}
+
+
+@pytest.mark.asyncio
+async def test_plain_content_not_parsed_as_tool_call(
+    serving_config: ServingConfig,
+    mock_chat_response: Callable[..., None],
+) -> None:
+    """Ordinary content with no tool-call markup is left untouched."""
+    mock_chat_response(content="The trend is increasing.", finish_reason="stop")
+    client = OlmoEarthLLM(serving_config)
+    response = await client.chat([Message(role="user", content="trend?")])
+    assert response.tool_calls == []
+    assert response.content == "The trend is increasing."
+    assert response.finish_reason == "stop"
+
+
 # Note: the OpenAI SDK merges ``extra_body`` into the top level of the
 # serialized HTTP request (that is its documented purpose) — so the
 # captured request body has ``top_k`` and ``chat_template_kwargs`` at the

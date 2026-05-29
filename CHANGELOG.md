@@ -17,13 +17,41 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   skill-count in `PLAN.md` / `README.md` / `docs/CANON.md` (C9). (Historic
   CHANGELOG entries that mention #16 are left as-is.)
 
+### Fixed
+- **Text-emitted tool calls are now recovered (`llm/client.py`)** — when the
+  llama.cpp server returns a tool call as plain text (Hermes-XML
+  `<function=..><parameter=..>` or `<tool_call>{json}</tool_call>`) instead of
+  via the structured `tool_calls` field — which it does without a matching
+  `--tool-call-parser`, and intermittently even with one — the client now
+  parses it back into a `ToolCall` and sets `finish_reason="tool_calls"`.
+  Previously the agent loop mistook the markup for a final answer and silently
+  skipped the call. Only triggers when the structured channel is empty, so a
+  well-behaved server is untouched. 3 new tests.
+- **Underspecified label-array tool schemas (`tools/baseline_compare.py`,
+  `tools/evaluate.py`)** — `y_true` / `y_pred` / `*_pred` used
+  `{"type": "array", "items": {}}` (items = any type). The grammar
+  llama.cpp derives from that lets the model emit the integer arrays as `[]`
+  or `[{"value": 1}, …]`, corrupting the call. Typed the items as
+  `["integer", "string"]` (class codes or names) so grammar-constrained
+  decoding produces clean arrays on the first try.
+- **Circular import in `tools/skill_tools.py`** — the module-level
+  `from olmoearth_agent.skills.loader import SkillLoader` formed a cycle
+  (`skills.loader` → `skills/__init__` → `skills.registry` → `tools.skill_tools`)
+  that raised `ImportError` whenever `tools.skill_tools` was imported before
+  `skills.registry`. Moved the import inside `build_skill_tools` (lazy) so
+  import order no longer matters.
+
 ### Added
 - **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`** — a skills-in-action
-  page where every skill's real tool handler is invoked against an
-  illustrative input and its **actual output captured** (nothing fabricated);
-  covers the 9 computational skills live and documents #5/#13 (live Studio
-  API) + the vendored #1–#4. Linked from the README. Regenerate with
-  `uv run python scripts/generate_showcase.py > docs/SHOWCASE.md`.
+  page where **all 15 skills, in catalog order, are driven by the live LLM**:
+  each transcript is a captured run of the agent loop against the served
+  Qwen3.6 backbone (brief → reasoning → function call → real result →
+  answer), nothing fabricated. #5 (read-only) and #13 run against the live
+  Studio API; #1–#4 load the vendored `SKILL.md` bodies via
+  `olmoearth_load_skill`; #6–#15 are real computation. Falls back to a short
+  note for #5/#13 when `OLMOEARTH_API_KEY` is absent. Linked from the README.
+  Regenerate with `set -a; . ./.env; set +a;
+  uv run python scripts/generate_showcase.py > docs/SHOWCASE.md`.
 - **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)** —
   `compare_metrics` runs OlmoEarth vs AlphaEarth head-to-head on shared
   ground truth (reusing skill #8's `classification_metrics`): a per-metric

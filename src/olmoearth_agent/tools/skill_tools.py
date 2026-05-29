@@ -9,20 +9,25 @@ pulls one skill's full instructions into context when a task matches.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.skills.loader import SkillLoader
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
+if TYPE_CHECKING:
+    from olmoearth_agent.skills.loader import SkillLoader
 
-def build_skill_tools(loader: SkillLoader | None = None) -> list[RegisteredTool]:
+
+def build_skill_tools(loader: "SkillLoader | None" = None) -> list[RegisteredTool]:
     """Return the skill-loading tool bundle (binds a :class:`SkillLoader`)."""
+    # Imported lazily: a module-level import creates a cycle
+    # (skills.loader -> skills/__init__ -> skills.registry -> this module)
+    # that breaks whenever tools.skill_tools is imported before skills.registry.
+    from olmoearth_agent.skills.loader import SkillLoader
+
     skill_loader = loader or SkillLoader()
 
-    async def _list_skills(
-        _args: dict[str, Any], _ctx: ToolContext
-    ) -> dict[str, Any]:
+    async def _list_skills(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         return {
             "skills": [
                 {"name": s.name, "description": s.description}
