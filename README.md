@@ -38,6 +38,7 @@ uv run olmoearth-agent --show-trace "Which of my projects relate to water qualit
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contributor workflow (DCO sign-off, branch naming, AI-assistance policy).
 - [`AGENTS.md`](AGENTS.md) — Onboarding context for coding agents working on this codebase.
 - [`CHANGELOG.md`](CHANGELOG.md) — Keep a Changelog v1.1.0.
+- [`evals/skillopt/`](evals/skillopt/) — [SkillOpt](https://github.com/microsoft/SkillOpt) harness that benchmarks + improves the vendored skills against the local Qwen3.6 (oracle-scored, deterministic); see its `README.md` for results and reproduction.
 - `pyproject.toml`, `.pre-commit-config.yaml`, `.env.example` — Project scaffold.
 - `LICENSE` — Apache 2.0.
 
