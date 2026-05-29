@@ -1,0 +1,76 @@
+diff --git a/scripts/train.py b/scripts/train.py
+index 4d9473f..44c2913 100644
+--- a/scripts/train.py
++++ b/scripts/train.py
+@@ -48,6 +48,21 @@ def _register_builtins() -> None:
+         _ENV_REGISTRY["searchqa"] = SearchQAAdapter
+     except ImportError:
+         pass
++    try:
++        from skillopt.envs.olmoearth_jobconfig.adapter import OlmoEarthJobConfigAdapter
++        _ENV_REGISTRY["olmoearth_jobconfig"] = OlmoEarthJobConfigAdapter
++    except ImportError:
++        pass
++    try:
++        from skillopt.envs.olmoearth_embeddings.adapter import OlmoEarthEmbeddingsAdapter
++        _ENV_REGISTRY["olmoearth_embeddings"] = OlmoEarthEmbeddingsAdapter
++    except ImportError:
++        pass
++    try:
++        from skillopt.envs.olmoearth_dataprep.adapter import OlmoEarthDataprepAdapter
++        _ENV_REGISTRY["olmoearth_dataprep"] = OlmoEarthDataprepAdapter
++    except ImportError:
++        pass
+     try:
+         from skillopt.envs.livemathematicianbench.adapter import LiveMathematicianBenchAdapter
+         _ENV_REGISTRY["livemathematicianbench"] = LiveMathematicianBenchAdapter
+diff --git a/skillopt/model/azure_openai.py b/skillopt/model/azure_openai.py
+index 247e7dd..c2f92f6 100644
+--- a/skillopt/model/azure_openai.py
++++ b/skillopt/model/azure_openai.py
+@@ -108,6 +108,25 @@ REASONING_EFFORT: str | None = None
+ 
+ _AZ_CLI_TOKEN_CACHE: dict[str, dict[str, Any]] = {}
+ 
++
++def _compat_extra_body() -> dict[str, Any] | None:
++    """Optional ``extra_body`` for OpenAI-compatible (e.g. local llama.cpp) servers.
++
++    Set ``SKILLOPT_OPENAI_COMPAT_EXTRA_BODY`` to a JSON object to forward extra
++    generation params the stock OpenAI schema doesn't model — e.g.
++    ``{"chat_template_kwargs": {"enable_thinking": false}}`` to turn off a Qwen
++    model's reasoning trace so a small token budget isn't consumed by thinking.
++    No-op (and thus harmless for real Azure/OpenAI) unless the env var is set.
++    """
++    raw = os.environ.get("SKILLOPT_OPENAI_COMPAT_EXTRA_BODY", "").strip()
++    if not raw:
++        return None
++    try:
++        parsed = json.loads(raw)
++    except json.JSONDecodeError:
++        return None
++    return parsed if isinstance(parsed, dict) and parsed else None
++
+ # Deployments that require Responses API
+ _RESPONSES_API_MODELS = {
+     "gpt-5.3-codex", "gpt-5.1-codex", "gpt-5.2-codex",
+@@ -411,6 +430,9 @@ def _chat_impl(
+                     kwargs["reasoning_effort"] = actual_effort
+                 if timeout is not None:
+                     kwargs["timeout"] = timeout
++                _extra = _compat_extra_body()
++                if _extra:
++                    kwargs["extra_body"] = _extra
+                 resp = client.chat.completions.create(**kwargs)
+                 text = resp.choices[0].message.content or ""
+                 if resp.usage:
+@@ -500,6 +522,9 @@ def _chat_messages_impl(
+                     kwargs["reasoning_effort"] = actual_effort
+                 if timeout is not None:
+                     kwargs["timeout"] = timeout
++                _extra = _compat_extra_body()
++                if _extra:
++                    kwargs["extra_body"] = _extra
+                 resp = client.chat.completions.create(**kwargs)
+                 message = resp.choices[0].message
+                 text = message.content or ""

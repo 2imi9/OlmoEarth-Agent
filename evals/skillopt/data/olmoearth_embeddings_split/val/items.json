@@ -1,0 +1,146 @@
+[
+  {
+    "id": "small_03",
+    "task_description": "I have 80 labeled samples spread over 9 land-cover classes, on a single V100.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 80,
+      "num_classes": 9,
+      "compute": "v100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "base",
+      "classifier": "kNN (cosine, k=min(20, len(train)))"
+    }
+  },
+  {
+    "id": "mid_01",
+    "task_description": "Land-cover mapping with about 800 labeled samples, 5 classes, on a V100.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 800,
+      "num_classes": 5,
+      "compute": "v100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "bigweak_03",
+    "task_description": "Crop mapping with 5000 labeled fields, Colab free.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 5000,
+      "num_classes": null,
+      "compute": "colab",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "small_01",
+    "task_description": "Crop-type mapping but I only have 50 labeled field polygons across 4 classes, running on a T4.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 50,
+      "num_classes": 4,
+      "compute": "t4",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "kNN (cosine, k=min(20, len(train)))"
+    }
+  },
+  {
+    "id": "bigstrong_02",
+    "task_description": "Big dataset, 25k labels, 4 classes, H100 cluster.",
+    "task_type": "embeddings_then_fine_tune",
+    "inputs": {
+      "num_samples": 25000,
+      "num_classes": 4,
+      "compute": "h100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings_then_fine_tune",
+      "model": "tiny",
+      "classifier": "linear_probe (validation baseline)"
+    }
+  },
+  {
+    "id": "sim_01",
+    "task_description": "I want to find areas that look like this reference wetland across the whole basin — just nearest-neighbor search, no training.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": null,
+      "goal": "similarity"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "none (cosine kNN ranking)"
+    }
+  },
+  {
+    "id": "default_01",
+    "task_description": "Help me pick an approach for a land-cover model.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": null,
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "prodstrong_03",
+    "task_description": "Deploy a canopy-height regressor to production; only 1500 labels; multi-GPU node.",
+    "task_type": "fine_tune",
+    "inputs": {
+      "num_samples": 1500,
+      "num_classes": null,
+      "compute": "multi-gpu",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "fine_tune",
+      "model": "base",
+      "classifier": null
+    }
+  },
+  {
+    "id": "prodweak_03",
+    "task_description": "Deploy a 2-class burn-scar detector; only a V100 available.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": 2,
+      "compute": "v100",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  }
+]

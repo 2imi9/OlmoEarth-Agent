@@ -1,0 +1,65 @@
+_base_: ../_base_/default.yaml
+
+# OlmoEarth Studio job-config skill optimization, run entirely on the local
+# llama.cpp-served Qwen3.6 (both optimizer and target). Tuned small for an
+# 8192-context, 4-slot local server.
+
+model:
+  backend: qwen_chat
+  optimizer: "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
+  target: "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
+  optimizer_backend: openai_chat        # routed to local Qwen via openai-compatible
+  target_backend: qwen_chat
+  reasoning_effort: ""                   # thinking off — keeps outputs in budget
+  azure_openai_endpoint: "http://localhost:8000/v1"
+  azure_openai_auth_mode: openai_compatible
+  # The base config pins the optimizer/target-specific azure auth to azure_cli,
+  # which overrides the shared setting per-role — so override them too, else the
+  # optimizer (analyst) client tries Azure CLI auth and every edit call fails.
+  optimizer_azure_openai_endpoint: "http://localhost:8000/v1"
+  optimizer_azure_openai_auth_mode: openai_compatible
+  target_azure_openai_endpoint: "http://localhost:8000/v1"
+  target_azure_openai_auth_mode: openai_compatible
+  qwen_chat_base_url: "http://localhost:8000/v1"
+  qwen_chat_temperature: 0.3
+  qwen_chat_max_tokens: 2048
+  qwen_chat_enable_thinking: false
+  qwen_chat_timeout_seconds: 300
+
+train:
+  num_epochs: 2
+  train_size: 0
+  batch_size: 7
+  accumulation: 1
+  seed: 42
+
+gradient:
+  minibatch_size: 2          # tiny groups — fit the 8192-token analyst prompt
+  merge_batch_size: 4
+  analyst_workers: 2
+  failure_only: false
+
+optimizer:
+  learning_rate: 3           # edit_budget (max edits per step)
+  min_learning_rate: 2
+  lr_scheduler: constant
+  lr_control_mode: fixed
+  skill_update_mode: patch
+  use_slow_update: false     # fewer optimizer calls for the first local run
+  use_meta_skill: false
+
+evaluation:
+  use_gate: true             # mandatory in this branch
+  sel_env_num: 0             # 0 = all val items
+  test_env_num: 0            # 0 = all test items
+  eval_test: true
+
+env:
+  name: olmoearth_jobconfig
+  skill_init: skillopt/envs/olmoearth_jobconfig/skills/initial.md
+  split_mode: split_dir
+  split_dir: data/olmoearth_jobconfig_split
+  exec_timeout: 240
+  workers: 3                 # match the server's 4 parallel slots, leave headroom
+  max_completion_tokens: 2048
+  limit: 0

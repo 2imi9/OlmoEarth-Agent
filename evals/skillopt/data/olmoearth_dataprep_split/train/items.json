@@ -1,0 +1,92 @@
+[
+  {
+    "id": "split_01",
+    "task_description": "I did a random 80/20 train/val split and my reported accuracy looks suspiciously high.",
+    "task_type": "pitfall_6",
+    "expected": {
+      "pitfall_id": 6,
+      "action": "spatial_split"
+    }
+  },
+  {
+    "id": "mime_03",
+    "task_description": "What extension should I save my GeoJSON as so the browser doesn't MIME-reject it?",
+    "task_type": "pitfall_4",
+    "expected": {
+      "pitfall_id": 4,
+      "action": "emit_json"
+    }
+  },
+  {
+    "id": "metric_03",
+    "task_description": "Uploading multiple metrics at once gives them a single shared color ramp.",
+    "task_type": "pitfall_3",
+    "expected": {
+      "pitfall_id": 3,
+      "action": "per_metric_file"
+    }
+  },
+  {
+    "id": "size_01",
+    "task_description": "My 14,000-record upload to Studio times out after an hour.",
+    "task_type": "pitfall_7",
+    "expected": {
+      "pitfall_id": 7,
+      "action": "shard"
+    }
+  },
+  {
+    "id": "split_03",
+    "task_description": "How do I split labels so accuracy isn't inflated by spatial autocorrelation?",
+    "task_type": "pitfall_6",
+    "expected": {
+      "pitfall_id": 6,
+      "action": "spatial_split"
+    }
+  },
+  {
+    "id": "aoi_03",
+    "task_description": "Should I use a square around each station point, or fetch the actual basin polygon?",
+    "task_type": "pitfall_2",
+    "expected": {
+      "pitfall_id": 2,
+      "action": "real_aoi"
+    }
+  },
+  {
+    "id": "aoi_02",
+    "task_description": "I'm using bbox AOIs around each lake; the embeddings seem polluted by surrounding farmland.",
+    "task_type": "pitfall_2",
+    "expected": {
+      "pitfall_id": 2,
+      "action": "real_aoi"
+    }
+  },
+  {
+    "id": "mime_01",
+    "task_description": "On Windows, my `.geojson` upload is rejected as application/octet-stream.",
+    "task_type": "pitfall_4",
+    "expected": {
+      "pitfall_id": 4,
+      "action": "emit_json"
+    }
+  },
+  {
+    "id": "bin_03",
+    "task_description": "How should I bin a continuous variable into classes so the classes aren't lopsided?",
+    "task_type": "pitfall_5",
+    "expected": {
+      "pitfall_id": 5,
+      "action": "equal_frequency"
+    }
+  },
+  {
+    "id": "size_03",
+    "task_description": "I'm hitting Studio's 1-hour upload limit with too many records — what do I do?",
+    "task_type": "pitfall_7",
+    "expected": {
+      "pitfall_id": 7,
+      "action": "shard"
+    }
+  }
+]

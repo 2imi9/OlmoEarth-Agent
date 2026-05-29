@@ -1,0 +1,65 @@
+[
+  {
+    "id": "mime_02",
+    "task_description": "Studio won't accept my file — the browser sends it as octet-stream instead of JSON.",
+    "task_type": "pitfall_4",
+    "expected": {
+      "pitfall_id": 4,
+      "action": "emit_json"
+    }
+  },
+  {
+    "id": "split_02",
+    "task_description": "With a random split my validation points sit right next to training points.",
+    "task_type": "pitfall_6",
+    "expected": {
+      "pitfall_id": 6,
+      "action": "spatial_split"
+    }
+  },
+  {
+    "id": "schema_02",
+    "task_description": "I exported annotations from Studio and the features have `es_label` and `es_start_time`; olmoearth_run can't load them.",
+    "task_type": "pitfall_1",
+    "expected": {
+      "pitfall_id": 1,
+      "action": "fix_schema"
+    }
+  },
+  {
+    "id": "bin_02",
+    "task_description": "My regression-as-classification bins are wildly imbalanced after quantile binning.",
+    "task_type": "pitfall_5",
+    "expected": {
+      "pitfall_id": 5,
+      "action": "equal_frequency"
+    }
+  },
+  {
+    "id": "neg_01",
+    "task_description": "My classifier flags positives everywhere — I only have target-class labels and no background.",
+    "task_type": "pitfall_8",
+    "expected": {
+      "pitfall_id": 8,
+      "action": "negative_class"
+    }
+  },
+  {
+    "id": "bin_01",
+    "task_description": "I binned my continuous target into quartiles and got a 96 / 2.5 / 1.3 / 0.1 % class split.",
+    "task_type": "pitfall_5",
+    "expected": {
+      "pitfall_id": 5,
+      "action": "equal_frequency"
+    }
+  },
+  {
+    "id": "schema_03",
+    "task_description": "My labels carry a top-level `category` field but label loading silently fails.",
+    "task_type": "pitfall_1",
+    "expected": {
+      "pitfall_id": 1,
+      "action": "fix_schema"
+    }
+  }
+]
