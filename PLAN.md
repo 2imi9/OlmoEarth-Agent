@@ -398,7 +398,7 @@ Skills-first. Each P0–P3 phase is a single PR; each Skill-* row is one PR (per
 |---|---|---|---|
 | **P0 — Scaffolding** | done — [PR #2](https://github.com/2imi9/OlmoEarth-Agent/pull/2) | `pyproject.toml`, `.pre-commit-config.yaml`, `CHANGELOG.md`, `.env.example`, empty `src/olmoearth_agent/` package | Scaffold lands; lint/test/type-check pipeline runs |
 | **P1 — Studio API gap closure** | done — [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
-| **P2 — Skills/scope rewrite** | this PR | PLAN.md v0.4 + SKILLS.md (16-skill catalog) | Multimodal parked; skills are the unit of progress |
+| **P2 — Skills/scope rewrite** | done | PLAN.md v0.4 + SKILLS.md (15-skill catalog) | Multimodal parked; skills are the unit of progress |
 | **P3 — LLM serving + harness MVP** | done — PRs #5/#6 | 4-bit GGUF served via llama.cpp (`docs/serving.md`) with function calling + `preserve_thinking=True`; DeerFlow-style lead-agent + tool registry + provenance middleware (rule §3.13) | A function call round-trips through the LLM — verified live |
 | **Skill-5 — `olmoearth-predict`** | done — PRs #8/#11 | search / submit / poll / fetch-results | Verified live against the Studio API |
 | **Skill-8 — `olmoearth-evaluate`** | done — PR #10 | Spatial-block CV inflation diagnostic + metrics (NNDM-LOO follows) | Reproduces Ploton-2020 inflation on clustered data |
