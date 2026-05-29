@@ -42,9 +42,10 @@ uv run olmoearth-agent --show-trace "Which of my projects relate to water qualit
 - `pyproject.toml`, `.pre-commit-config.yaml`, `.env.example` — Project scaffold.
 - `LICENSE` — Apache 2.0.
 
-## Tool surface (summary)
+## Reference
 
-The agent exposes:
+<details>
+<summary><strong>Tool surface</strong> — the function catalog the agent exposes</summary>
 
 - `system:python` — sandboxed Python interpreter with `pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, `olmoearth_projects` preloaded. No `import` statements.
 - `system:search`, `system:fetch` — web search and documented-endpoint HTTP GET.
@@ -53,15 +54,19 @@ The agent exposes:
 - `utils.*` — geometry helpers, equal-frequency binning, spatial cross-validation split.
 
 Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
+</details>
 
-## Studio API
+<details>
+<summary><strong>Studio API</strong> — endpoints, auth, resources</summary>
 
 - Docs: https://docs.olmoearth.allenai.org/
 - Auth: https://docs.olmoearth.allenai.org/authentication/ — Bearer token; max 10 keys per account
 - Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json
 - Resources: Areas, Projects, Datasets, Labelsets, Labels, Annotations, Tasks, Predictions, PredictionResults, Users
+</details>
 
-## Underlying stack (reference only)
+<details>
+<summary><strong>Underlying stack</strong> — LLM, harness, skills (canonical facts in <code>docs/CANON.md</code>)</summary>
 
 | Layer | Reference |
 |---|---|
@@ -69,6 +74,7 @@ Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) |
 | Skills | 15 skills in [`SKILLS.md`](SKILLS.md), packaged per [agentskills.io](https://agentskills.io) ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) impl reference) |
 | Parked | Multimodal stack (Prismatic VLM + adapters + OlmoEarth embedding stream) and train-time self-improvement loops — see `PLAN.md` §7 |
+</details>
 
 ## License
 

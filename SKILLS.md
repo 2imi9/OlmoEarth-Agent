@@ -16,9 +16,7 @@ Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi
 | [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3** — 14 verified presets + cross-field validator. |
 | [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4** — embeddings-vs-fine-tune decision + Nano/Tiny/Base/Large notebook. |
 
-Skills #5–#15 are implemented in this repo (see `CHANGELOG.md`).
-
-**Open decision (defer to first end-to-end skill PR):** split catalog #1/#2 vs unify like upstream. Split → sharper progressive-disclosure trigger; unify → matches working impl.
+Skills #5–#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 are unified upstream as `olmoearth-data-prep` (matching the working implementation) but kept as two numbered entries here.
 
 **Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever…", "Trigger even when…") because the description is the LLM's routing surface. Match it.
 
@@ -40,7 +38,7 @@ Skills #5–#15 are implemented in this repo (see `CHANGELOG.md`).
 | 10 | Analyze | [`olmoearth-uncertainty`](#10-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
 | 11 | Analyze | [`olmoearth-cloud-mask-audit`](#11-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
 | 12 | Integrate | [`olmoearth-qgis-bridge`](#12-olmoearth-qgis-bridge) | Tile URLs → QGIS WMTS + COG with sidecar uncertainty raster. |
-| 13 | Integrate | [`olmoearth-external-data`](#13-olmoearth-external-data) | GEE / Planetary Computer / OSM / USGS / NOAA into a Studio AOI. |
+| 13 | Integrate | [`olmoearth-data-export`](#13-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 
@@ -251,7 +249,7 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 
 ---
 
-### 13. `olmoearth-data-export` (reframed from `olmoearth-external-data`)
+### 13. `olmoearth-data-export`
 
 **REFRAMED 2026-05-28.** The original idea (wire third-party GEE / OSM /
 USGS / NOAA MCPs *into* an AOI) needs external MCPs the user must connect
