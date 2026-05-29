@@ -32,7 +32,7 @@ uv run mkdocs serve
 
 ---
 
-## Code layout (planned — repo is still in v0.x spec stage)
+## Code layout
 
 ```
 .

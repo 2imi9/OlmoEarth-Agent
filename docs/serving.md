@@ -43,7 +43,7 @@ path; without `LLM_ENDPOINT` set, those tests skip.
 | `--jinja` | **Required for tool calling** — activates the GGUF chat template so the model emits parseable `tool_calls`. Without it, tool calls come back as text and the integration tests fail at `finish_reason == "tool_calls"`. |
 | `--no-mmap` | Loads the file fully instead of mmap'ing — avoids the slow mmap-over-virtiofs path that stalls large loads on Docker Desktop / WSL. |
 | `-ngl 999` | Offload all layers to the GPU. |
-| `-c 8192` | Context window. 8192 leaves room for a full `SKILL.md` plus the tool schemas; raise if you need longer histories. |
+| `-c 8192` | **Total** context, which llama.cpp splits across parallel slots (it defaults to ~4 → ~2048 tokens each). Fine for short chats, but a full `SKILL.md` loaded mid-conversation overflows a 2048-token slot. For skill-heavy or long-context runs, use one big slot: `--parallel 1 -c 16384`. |
 
 ## Hardware
 
