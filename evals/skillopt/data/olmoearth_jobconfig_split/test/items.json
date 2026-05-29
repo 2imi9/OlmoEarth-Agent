@@ -1,0 +1,305 @@
+[
+  {
+    "id": "land_cover_02",
+    "task_description": "Continental-scale land-cover classification from Sentinel-2 with around 40,000 labeled samples.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "land_cover",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "soil_moisture_01",
+    "task_description": "Estimate surface soil moisture as a continuous percentage per pixel for an agricultural region, using the months leading up to each observation.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "soil_moisture",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 3,
+        "after_months": 0,
+        "before_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "oil_slick_01",
+    "task_description": "Detect oil slicks on the sea surface from a single radar-primary scene.",
+    "task_type": "point_detection",
+    "preset_key": "oil_slick",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment",
+        "observation_window_hours": 12
+      },
+      "imagery_sources": [
+        "sentinel1",
+        "sentinel2"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "ecosystem_type_02",
+    "task_description": "One ecosystem label per 320 m tile; only about 1,200 labeled tiles available.",
+    "task_type": "window_classification",
+    "preset_key": "ecosystem_type",
+    "expected": {
+      "output_type": "window_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "burn_scar_02",
+    "task_description": "Per-pixel burn-scar segmentation for a single fire event.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "burn_scar",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 1,
+        "after_months": 1,
+        "before_offset_days": 0,
+        "after_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "crop_type_01",
+    "task_description": "Map which crop is growing in each field across the Nile Delta for the 2024 growing season using Sentinel-2 time series.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "crop_type",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          3,
+          4
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "flood_03",
+    "task_description": "Flood mapping with a very large multi-event archive of about 45,000 labeled scenes.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "flood",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 1,
+        "after_months": 2,
+        "before_offset_days": 7,
+        "after_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 640
+    }
+  },
+  {
+    "id": "soil_moisture_03",
+    "task_description": "Soil-moisture regression where we only have ~800 in-situ probe samples to train on.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "soil_moisture",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 3,
+        "after_months": 0,
+        "before_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "mangrove_01",
+    "task_description": "Delineate mangrove versus non-mangrove extent along the coast of Indonesia from optical imagery.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "mangrove",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "solar_array_detection_01",
+    "task_description": "Find and localize solar farms across a state from imagery over the year.",
+    "task_type": "point_detection",
+    "preset_key": "solar_array_detection",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "vessel_detection_03",
+    "task_description": "Vessel detection where labeled examples are scarce — about 1,100 annotated ships.",
+    "task_type": "point_detection",
+    "preset_key": "vessel_detection",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "single_moment",
+        "observation_window_hours": 12
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "crop_type_04",
+    "task_description": "Crop-type segmentation over an irrigation district with a large archive — about 50,000 labeled fields, 4 crop classes.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "crop_type",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          3,
+          4
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "drought_01",
+    "task_description": "Produce a per-pixel drought index using the preceding six months as context.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "drought",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 6,
+        "after_months": 0,
+        "before_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "tree_height_01",
+    "task_description": "Predict canopy height in metres per pixel over a temperate forest.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "tree_height",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          6
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  }
+]

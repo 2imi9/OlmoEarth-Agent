@@ -1,0 +1,308 @@
+[
+  {
+    "id": "tree_height_02",
+    "task_description": "Estimate tree height across a managed plantation; we have roughly 35,000 lidar-derived samples.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "tree_height",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          6
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "land_cover_03",
+    "task_description": "Six-class land cover for a province; very large training set, roughly 60,000 labeled pixels-blocks.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "land_cover",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "embeddings_01",
+    "task_description": "Generate general-purpose feature vectors over an AOI for downstream clustering and similarity search.",
+    "task_type": "embeddings",
+    "preset_key": "embeddings",
+    "expected": {
+      "output_type": "embeddings",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "crop_type_03",
+    "task_description": "Per-pixel crop-type mapping for a smallholder region; eight crop classes, roughly 900 labeled parcels.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "crop_type",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          3,
+          4
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "soil_moisture_02",
+    "task_description": "Per-pixel soil-moisture regression for a drought-prone basin; radar plus optical.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "soil_moisture",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 3,
+        "after_months": 0,
+        "before_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "solar_array_detection_02",
+    "task_description": "Detect utility and rooftop solar arrays — stationary objects — across a region.",
+    "task_type": "point_detection",
+    "preset_key": "solar_array_detection",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "crop_type_02",
+    "task_description": "We have about 1,500 labeled field polygons and want per-field crop classification across six crop types in Punjab.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "crop_type",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          3,
+          4
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "burn_scar_01",
+    "task_description": "Map burned area after a wildfire using before-and-after Sentinel-2.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "burn_scar",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 1,
+        "after_months": 1,
+        "before_offset_days": 0,
+        "after_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "flood_01",
+    "task_description": "Map flood extent after a hurricane using before-and-after imagery; radar is essential under storm clouds.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "flood",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 1,
+        "after_months": 2,
+        "before_offset_days": 7,
+        "after_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 640
+    }
+  },
+  {
+    "id": "biomass_02",
+    "task_description": "Regional mean biomass estimation with about 30,000 plot samples.",
+    "task_type": "window_regression",
+    "preset_key": "biomass",
+    "expected": {
+      "output_type": "window_regression",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          6
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 640
+    }
+  },
+  {
+    "id": "drought_02",
+    "task_description": "Continuous drought-severity regression for a rangeland from optical vegetation signals.",
+    "task_type": "per_pixel_regression",
+    "preset_key": "drought",
+    "expected": {
+      "output_type": "per_pixel_regression",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 6,
+        "after_months": 0,
+        "before_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "mangrove_02",
+    "task_description": "Produce an annual mangrove cover mask for a tidal estuary — a binary per-pixel classification.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "mangrove",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "vessel_detection_01",
+    "task_description": "Detect ships at sea in a scene, combining radar and optical for night and day.",
+    "task_type": "point_detection",
+    "preset_key": "vessel_detection",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment",
+        "observation_window_hours": 12
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "ecosystem_type_01",
+    "task_description": "Classify the dominant ecosystem type for each tile across a national park.",
+    "task_type": "window_classification",
+    "preset_key": "ecosystem_type",
+    "expected": {
+      "output_type": "window_classification",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "neg_02",
+    "task_description": "I trained on presence-only points and get tons of false positives.",
+    "task_type": "pitfall_8",
+    "expected": {
+      "pitfall_id": 8,
+      "action": "negative_class"
+    }
+  },
+  {
+    "id": "aoi_01",
+    "task_description": "For my watershed water-quality study I drew rectangular bounding boxes around each gauge station.",
+    "task_type": "pitfall_2",
+    "expected": {
+      "pitfall_id": 2,
+      "action": "real_aoi"
+    }
+  },
+  {
+    "id": "neg_03",
+    "task_description": "Do I need a non-target / background class to prevent false positives?",
+    "task_type": "pitfall_8",
+    "expected": {
+      "pitfall_id": 8,
+      "action": "negative_class"
+    }
+  },
+  {
+    "id": "metric_01",
+    "task_description": "I uploaded one file containing three different metrics and Studio locked the value range across all of them.",
+    "task_type": "pitfall_3",
+    "expected": {
+      "pitfall_id": 3,
+      "action": "per_metric_file"
+    }
+  },
+  {
+    "id": "metric_02",
+    "task_description": "My import bundles turbidity, chlorophyll, and temperature in one labelset and the legend/scale is wrong.",
+    "task_type": "pitfall_3",
+    "expected": {
+      "pitfall_id": 3,
+      "action": "per_metric_file"
+    }
+  },
+  {
+    "id": "schema_01",
+    "task_description": "Studio rejected my upload — my GeoJSON features use a `label` property for the class and a `tag` field for the category.",
+    "task_type": "pitfall_1",
+    "expected": {
+      "pitfall_id": 1,
+      "action": "fix_schema"
+    }
+  },
+  {
+    "id": "schema_04",
+    "task_description": "Which property does olmoearth_run actually read for the class label, and what do I rename my fields to?",
+    "task_type": "pitfall_1",
+    "expected": {
+      "pitfall_id": 1,
+      "action": "fix_schema"
+    }
+  },
+  {
+    "id": "size_02",
+    "task_description": "I have 30k label features and the import never finishes.",
+    "task_type": "pitfall_7",
+    "expected": {
+      "pitfall_id": 7,
+      "action": "shard"
+    }
+  }
+]

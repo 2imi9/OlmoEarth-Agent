@@ -1,0 +1,226 @@
+[
+  {
+    "id": "small_04",
+    "task_description": "Only 60 annotated points for a 7-class wetland typology, basically no GPU.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 60,
+      "num_classes": 7,
+      "compute": "cpu",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "base",
+      "classifier": "kNN (cosine, k=min(20, len(train)))"
+    }
+  },
+  {
+    "id": "prodstrong_02",
+    "task_description": "Ship a 12-class land-cover product at SLA; 50k labels; H100 cluster available.",
+    "task_type": "fine_tune",
+    "inputs": {
+      "num_samples": 50000,
+      "num_classes": 12,
+      "compute": "h100",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "fine_tune",
+      "model": "base",
+      "classifier": null
+    }
+  },
+  {
+    "id": "nolab_03",
+    "task_description": "Thousands of unlabeled chips and no annotations — group them before we start labeling.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 5000,
+      "num_classes": null,
+      "compute": null,
+      "goal": "no_labels"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "k-means or HDBSCAN"
+    }
+  },
+  {
+    "id": "mid_02",
+    "task_description": "Mangrove extent, roughly 1200 labels, binary, T4.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 1200,
+      "num_classes": 2,
+      "compute": "t4",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "computeonly_01",
+    "task_description": "I'm on a T4 — what's the right approach for an EO classifier?",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "t4",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "mid_04",
+    "task_description": "Around 500 labeled plots for a 3-class problem; modest compute.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 500,
+      "num_classes": 3,
+      "compute": "colab",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "bigweak_02",
+    "task_description": "30k labels, 3 classes, on a CPU-only box.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 30000,
+      "num_classes": 3,
+      "compute": "cpu",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "prodweak_01",
+    "task_description": "We need to ship a mangrove model next week but only have a T4 — production goal.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "t4",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "bigstrong_03",
+    "task_description": "Tree-height regression, 10k samples, multi-GPU.",
+    "task_type": "embeddings_then_fine_tune",
+    "inputs": {
+      "num_samples": 10000,
+      "num_classes": null,
+      "compute": "multi-gpu",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings_then_fine_tune",
+      "model": "tiny",
+      "classifier": "linear_probe (validation baseline)"
+    }
+  },
+  {
+    "id": "bigstrong_01",
+    "task_description": "12-class crop map, 40k samples, A100 — want a fast baseline before committing.",
+    "task_type": "embeddings_then_fine_tune",
+    "inputs": {
+      "num_samples": 40000,
+      "num_classes": 12,
+      "compute": "a100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings_then_fine_tune",
+      "model": "base",
+      "classifier": "linear_probe (validation baseline)"
+    }
+  },
+  {
+    "id": "prodstrong_04",
+    "task_description": "Production crop classifier, 8 classes, 100k samples, A100.",
+    "task_type": "fine_tune",
+    "inputs": {
+      "num_samples": 100000,
+      "num_classes": 8,
+      "compute": "a100",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "fine_tune",
+      "model": "base",
+      "classifier": null
+    }
+  },
+  {
+    "id": "small_05",
+    "task_description": "45 labeled samples, 3 classes, and an A100 sitting idle.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 45,
+      "num_classes": 3,
+      "compute": "a100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "kNN (cosine, k=min(20, len(train)))"
+    }
+  },
+  {
+    "id": "prodstrong_01",
+    "task_description": "Production deployment of a 3-class flood model, about 30k samples, we have A100s.",
+    "task_type": "fine_tune",
+    "inputs": {
+      "num_samples": 30000,
+      "num_classes": 3,
+      "compute": "a100",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "fine_tune",
+      "model": "tiny",
+      "classifier": null
+    }
+  },
+  {
+    "id": "bigstrong_04",
+    "task_description": "60k samples, 20 classes, multi-GPU; want quick validation first.",
+    "task_type": "embeddings_then_fine_tune",
+    "inputs": {
+      "num_samples": 60000,
+      "num_classes": 20,
+      "compute": "multi-gpu",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings_then_fine_tune",
+      "model": "base",
+      "classifier": "linear_probe (validation baseline)"
+    }
+  }
+]

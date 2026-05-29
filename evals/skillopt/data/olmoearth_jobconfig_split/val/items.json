@@ -1,0 +1,200 @@
+[
+  {
+    "id": "flood_02",
+    "task_description": "Per-pixel flooded / not-flooded classification for a single storm event with surrounding context.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "flood",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 1,
+        "after_months": 2,
+        "before_offset_days": 7,
+        "after_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 640
+    }
+  },
+  {
+    "id": "vessel_detection_02",
+    "task_description": "Locate individual vessels as points in a busy harbor approach.",
+    "task_type": "point_detection",
+    "preset_key": "vessel_detection",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment",
+        "observation_window_hours": 12
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "mangrove_03",
+    "task_description": "Mangrove vs non-mangrove segmentation in a data-scarce delta; only ~600 labeled patches so far.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "mangrove",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "ecosystem_type_03",
+    "task_description": "Per-tile ecosystem classification with seven ecosystem classes across a basin.",
+    "task_type": "window_classification",
+    "preset_key": "ecosystem_type",
+    "expected": {
+      "output_type": "window_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "oil_slick_02",
+    "task_description": "Localize oil spills as discrete objects, using Sentinel-1 as the main sensor.",
+    "task_type": "point_detection",
+    "preset_key": "oil_slick",
+    "expected": {
+      "output_type": "point_detection",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "single_moment",
+        "observation_window_hours": 12
+      },
+      "imagery_sources": [
+        "sentinel1",
+        "sentinel2"
+      ],
+      "patch_size_m": 1280
+    }
+  },
+  {
+    "id": "land_cover_01",
+    "task_description": "Produce an annual land-cover map (urban, water, forest, cropland, bare soil, grassland) for a large watershed.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "land_cover",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "biomass_01",
+    "task_description": "Estimate average above-ground biomass per 640 m region for a forest-carbon project.",
+    "task_type": "window_regression",
+    "preset_key": "biomass",
+    "expected": {
+      "output_type": "window_regression",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          6
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2",
+        "sentinel1"
+      ],
+      "patch_size_m": 640
+    }
+  },
+  {
+    "id": "burn_scar_03",
+    "task_description": "Burn-scar mapping in a fire-prone region with a small label set — roughly 700 annotated scenes.",
+    "task_type": "per_pixel_classification",
+    "preset_key": "burn_scar",
+    "expected": {
+      "output_type": "per_pixel_classification",
+      "foundation_model": "base",
+      "time_frame": {
+        "mode": "single_moment_with_context",
+        "before_months": 1,
+        "after_months": 1,
+        "before_offset_days": 0,
+        "after_offset_days": 0
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  },
+  {
+    "id": "embeddings_02",
+    "task_description": "Extract unsupervised OlmoEarth embeddings for a region so we can cluster land types later — no labels yet.",
+    "task_type": "embeddings",
+    "preset_key": "embeddings",
+    "expected": {
+      "output_type": "embeddings",
+      "foundation_model": "tiny",
+      "time_frame": {
+        "mode": "period",
+        "period_months": 12,
+        "start_months": [
+          1
+        ]
+      },
+      "imagery_sources": [
+        "sentinel2"
+      ],
+      "patch_size_m": 320
+    }
+  }
+]

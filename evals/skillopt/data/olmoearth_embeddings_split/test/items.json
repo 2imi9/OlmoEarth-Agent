@@ -1,0 +1,194 @@
+[
+  {
+    "id": "sim_03",
+    "task_description": "Find more sites like these three known illegal dumps; we have A100s but only need ranking.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "a100",
+      "goal": "similarity"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "none (cosine kNN ranking)"
+    }
+  },
+  {
+    "id": "computeonly_02",
+    "task_description": "Only have Colab free tier for this satellite project.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "colab",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "bigweak_01",
+    "task_description": "Land cover, 8000 samples, 6 classes, but only a T4.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 8000,
+      "num_classes": 6,
+      "compute": "t4",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "mid_03",
+    "task_description": "Ecosystem typology, 1500 samples, 8 classes, V100.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 1500,
+      "num_classes": 8,
+      "compute": "v100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "base",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "nolab_01",
+    "task_description": "I have no labels yet — cluster the AOI into natural groups, then hand-label the clusters.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": null,
+      "goal": "no_labels"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "k-means or HDBSCAN"
+    }
+  },
+  {
+    "id": "mid_05",
+    "task_description": "Exactly 100 labeled samples, 4 classes, V100.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 100,
+      "num_classes": 4,
+      "compute": "v100",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "nolab_02",
+    "task_description": "Unlabeled imagery over a delta; discover structure via clustering before any annotation.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "v100",
+      "goal": "no_labels"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "k-means or HDBSCAN"
+    }
+  },
+  {
+    "id": "default_02",
+    "task_description": "What should I do for my Sentinel-2 classification task?",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": null,
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "prodstrong_05",
+    "task_description": "Production, exactly 2000 samples, 4 classes, on A100.",
+    "task_type": "fine_tune",
+    "inputs": {
+      "num_samples": 2000,
+      "num_classes": 4,
+      "compute": "a100",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "fine_tune",
+      "model": "tiny",
+      "classifier": null
+    }
+  },
+  {
+    "id": "prodweak_02",
+    "task_description": "Production-bound soil-moisture model, but compute is just a Colab free tier.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "colab",
+      "goal": "production"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "linear_probe"
+    }
+  },
+  {
+    "id": "sim_02",
+    "task_description": "Build a similarity search over Sentinel-2 tiles to retrieve scenes resembling a query patch.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": null,
+      "num_classes": null,
+      "compute": "t4",
+      "goal": "similarity"
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "none (cosine kNN ranking)"
+    }
+  },
+  {
+    "id": "small_02",
+    "task_description": "Tiny pilot: 30 labeled landslide scars, binary, on Colab free tier.",
+    "task_type": "embeddings",
+    "inputs": {
+      "num_samples": 30,
+      "num_classes": 2,
+      "compute": "colab",
+      "goal": null
+    },
+    "expected": {
+      "decision": "embeddings",
+      "model": "tiny",
+      "classifier": "kNN (cosine, k=min(20, len(train)))"
+    }
+  }
+]
