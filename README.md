@@ -8,7 +8,7 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 See [`PLAN.md`](PLAN.md) for the tool catalog, harness dataclasses, operational rules, and roadmap; [`SKILLS.md`](SKILLS.md) for the per-skill spec.
 
-**See [`docs/SHOWCASE.md`](docs/SHOWCASE.md) for every skill producing a real result** — actual tool outputs, not mockups.
+**See [`docs/SHOWCASE.md`](docs/SHOWCASE.md) for every skill in action** — each one, in catalog order, driven by the live Qwen3.6 backbone: real reasoning, real function calls, real results (Studio API for #5/#13, vendored `SKILL.md` for #1–#4, real computation for #6–#15). Not mockups.
 
 ## Run it
 
@@ -34,7 +34,7 @@ uv run olmoearth-agent --show-trace "Which of my projects relate to water qualit
 
 - [`PLAN.md`](PLAN.md) — Tool catalog, harness dataclasses, operational rules, underlying stack, roadmap.
 - [`SKILLS.md`](SKILLS.md) — 15-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report).
-- [`docs/SHOWCASE.md`](docs/SHOWCASE.md) — **every skill in action**, with real tool outputs (regenerate via `scripts/generate_showcase.py`).
+- [`docs/SHOWCASE.md`](docs/SHOWCASE.md) — **every skill in action**, each captured from a live Qwen3.6 agent run (brief → reasoning → tool call → result → answer); regenerate via `scripts/generate_showcase.py`.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contributor workflow (DCO sign-off, branch naming, AI-assistance policy).
 - [`AGENTS.md`](AGENTS.md) — Onboarding context for coding agents working on this codebase.
 - [`CHANGELOG.md`](CHANGELOG.md) — Keep a Changelog v1.1.0.

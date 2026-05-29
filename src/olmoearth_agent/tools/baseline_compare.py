@@ -17,7 +17,11 @@ from olmoearth_agent.analysis.baseline import compare_metrics, difference_raster
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
-_LABELS = {"type": "array", "items": {}}
+_LABELS = {
+    "type": "array",
+    "items": {"type": ["integer", "string"]},
+    "description": "Class labels — integer codes or string names, one per pixel.",
+}
 _SCORES = {"type": "array", "items": {"type": "number"}}
 
 

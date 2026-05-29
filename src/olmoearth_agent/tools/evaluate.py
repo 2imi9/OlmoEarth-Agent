@@ -27,6 +27,12 @@ _POINTS_SCHEMA = {
     "description": "List of [lon, lat] coordinate pairs in degrees.",
 }
 
+_LABEL_LIST = {
+    "type": "array",
+    "items": {"type": ["integer", "string"]},
+    "description": "Class labels — integer codes or string names, one per pixel.",
+}
+
 
 async def _cv_inflation_check(
     args: dict[str, Any], _ctx: ToolContext
@@ -82,8 +88,8 @@ def build_evaluate_tools() -> list[RegisteredTool]:
                 parameters={
                     "type": "object",
                     "properties": {
-                        "y_true": {"type": "array", "items": {}},
-                        "y_pred": {"type": "array", "items": {}},
+                        "y_true": _LABEL_LIST,
+                        "y_pred": _LABEL_LIST,
                     },
                     "required": ["y_true", "y_pred"],
                 },

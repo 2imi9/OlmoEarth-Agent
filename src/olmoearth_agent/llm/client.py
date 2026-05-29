@@ -36,16 +36,34 @@ from olmoearth_agent.llm.types import (
 # parameters; everything else (top_k, chat_template_kwargs, custom vLLM
 # extras) has to ride in ``extra_body`` which vLLM forwards to the
 # generation backend.
-_OPENAI_TOP_LEVEL_SAMPLING = frozenset({
-    "temperature",
-    "top_p",
-    "presence_penalty",
-    "frequency_penalty",
-})
+_OPENAI_TOP_LEVEL_SAMPLING = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty",
+    }
+)
 
 # Match a leading ``<think>...</think>`` block; the model emits this when
 # thinking mode is enabled (the default for agent runs).
 _THINK_RE = re.compile(r"<think>(.*?)</think>\s*", re.DOTALL)
+
+# Fallback parsers for when the server emits a tool call as *text* in the
+# message content instead of via the structured ``tool_calls`` field. The
+# llama.cpp server does this whenever it is launched without a matching
+# ``--tool-call-parser`` (see docs/serving.md), and even with one it can
+# fall back intermittently. We recover the call so the agent loop does not
+# silently treat an intended tool call as a final answer.
+#
+#   Hermes-XML form:  <function=NAME><parameter=KEY>VALUE</parameter>...</function>
+#   Hermes-JSON form: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+_TEXT_FUNC_RE = re.compile(r"<function=([\w.\-]+)\s*>(.*?)</function>", re.DOTALL)
+_TEXT_PARAM_RE = re.compile(r"<parameter=([\w.\-]+)\s*>(.*?)</parameter>", re.DOTALL)
+_TEXT_TOOLCALL_JSON_RE = re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL
+)
+_TOOLCALL_TAG_RE = re.compile(r"</?tool_call>")
 
 
 class Tracer(Protocol):
@@ -95,8 +113,58 @@ def _extract_thinking(content: str | None) -> tuple[str | None, str | None]:
     if match is None:
         return None, content
     thinking = match.group(1).strip()
-    remainder = content[match.end():].lstrip()
+    remainder = content[match.end() :].lstrip()
     return thinking, remainder or None
+
+
+def _coerce_arg(raw: str) -> Any:
+    """Parse a text tool-call argument as JSON, falling back to the string."""
+    text = raw.strip()
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return text
+
+
+def _extract_text_tool_calls(content: str) -> tuple[list[ToolCall], str | None]:
+    """Recover tool calls the server emitted as text in ``content``.
+
+    Returns the recovered calls and the leftover prose (``None`` if the
+    whole message was tool-call markup). Returns ``([], content)`` when no
+    tool-call markup is present, so the caller can no-op safely.
+    """
+    calls: list[ToolCall] = []
+    func_matches = list(_TEXT_FUNC_RE.finditer(content))
+    if func_matches:
+        for i, match in enumerate(func_matches):
+            arguments = {
+                key: _coerce_arg(value)
+                for key, value in _TEXT_PARAM_RE.findall(match.group(2))
+            }
+            calls.append(
+                ToolCall(id=f"call_{i}", name=match.group(1), arguments=arguments)
+            )
+        cleaned = _TEXT_FUNC_RE.sub("", content)
+    else:
+        for i, match in enumerate(_TEXT_TOOLCALL_JSON_RE.finditer(content)):
+            try:
+                obj = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                continue
+            name = obj.get("name")
+            if name:
+                calls.append(
+                    ToolCall(
+                        id=f"call_{i}",
+                        name=name,
+                        arguments=obj.get("arguments") or {},
+                    )
+                )
+        cleaned = _TEXT_TOOLCALL_JSON_RE.sub("", content) if calls else content
+    if not calls:
+        return [], content
+    cleaned = _TOOLCALL_TAG_RE.sub("", cleaned).strip()
+    return calls, (cleaned or None)
 
 
 def _message_to_openai(message: Message) -> dict[str, Any]:
@@ -214,9 +282,7 @@ class OlmoEarthLLM:
         self._tracer.on_request(payload)
         completion = await self._client.chat.completions.create(**payload)
         response = self._parse_completion(completion)
-        self._tracer.on_response(
-            {"completion_id": completion.id, "response": response}
-        )
+        self._tracer.on_response({"completion_id": completion.id, "response": response})
         return response
 
     def _build_payload(
@@ -302,6 +368,15 @@ class OlmoEarthLLM:
             in {"stop", "tool_calls", "length", "content_filter"}
             else None
         )
+        # Recover a tool call the server emitted as text rather than via the
+        # structured field (see _extract_text_tool_calls). Only when the
+        # structured channel is empty, so a well-behaved server is untouched.
+        if not tool_calls and content:
+            recovered, cleaned = _extract_text_tool_calls(content)
+            if recovered:
+                tool_calls = recovered
+                content = cleaned
+                finish_reason = "tool_calls"
         return ChatResponse(
             content=content,
             tool_calls=tool_calls,
