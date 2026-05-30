@@ -177,11 +177,38 @@ a:hover { color: var(--text); }
 .btn-ghost .ic { font-size: 16px; }
 .btn-ghost:hover { border-color: var(--mint); color: #fff; }
 
+.user-area { position: relative; }
 .user-chip {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: none; font: inherit; color: inherit; cursor: pointer;
   padding: 8px; border-radius: var(--radius-sm); border: 1px solid transparent;
 }
 .user-chip:hover { border-color: var(--line); background: var(--bg-2); }
+
+/* Settings popover anchored above the user chip (Asta-style, kept concise). */
+.user-menu {
+  position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 30;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px;
+  display: flex; flex-direction: column;
+}
+.user-menu[hidden] { display: none; }
+.um-section { display: flex; flex-direction: column; gap: 1px; padding: 4px 0; }
+.um-section + .um-section { border-top: 1px solid var(--line-soft); margin-top: 2px; }
+.um-head { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); padding: 3px 10px 4px; }
+.um-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; text-align: left; background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font: inherit; font-size: 13px; padding: 7px 10px; border-radius: var(--radius-sm);
+}
+.um-item:hover { background: var(--bg-2); color: var(--text); }
+.um-ext { color: var(--text-faint); font-size: 12px; }
+.um-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 10px; font-size: 13px; color: var(--text-dim); }
+.um-select {
+  background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  font: inherit; font-size: 12.5px; padding: 3px 7px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.um-select:focus { outline: none; border-color: var(--pink); }
 .avatar {
   width: 28px; height: 28px; border-radius: 8px; flex: none;
   display: grid; place-items: center; font-size: 13px; font-weight: 700;
@@ -233,10 +260,7 @@ a:hover { color: var(--text); }
 .hero { position: relative; padding: 12vh 24px 64px; }
 .hero-bg {
   position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-  background:
-    radial-gradient(800px 380px at 50% -8%, rgba(15,203,140,.10), transparent 70%),
-    radial-gradient(620px 320px at 84% 8%, rgba(240,82,156,.10), transparent 70%),
-    radial-gradient(700px 420px at 12% 30%, rgba(16,82,87,.55), transparent 70%);
+  background: var(--bg);  /* pure solid canvas — no gradient/metallic sheen */
 }
 .hero-inner { position: relative; max-width: var(--maxw); margin: 0 auto; }
 .hero-brand { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 22px; }

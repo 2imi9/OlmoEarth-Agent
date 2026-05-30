@@ -69,10 +69,33 @@
         <p class="key-future">Email sign-in is coming later.</p>
       </div>
 
-      <div class="user-chip" id="userChip">
-        <span class="status-dot" id="statusDot"></span>
-        <span class="user-name" id="userStatus">Not connected</span>
-        <svg viewBox="0 0 24 24" class="ic dots"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+      <div class="user-area">
+        <div class="user-menu" id="userMenu" role="menu" hidden>
+          <div class="um-section">
+            <div class="um-head">Agent settings</div>
+            <label class="um-row" for="maxTurns">
+              <span>Max steps / run</span>
+              <select class="um-select" id="maxTurns" aria-label="Max steps per run">
+                <option value="4">4</option>
+                <option value="6">6</option>
+                <option value="8">8</option>
+                <option value="10">10</option>
+                <option value="12">12</option>
+              </select>
+            </label>
+            <button class="um-item" id="clearChats" type="button">Clear chat history</button>
+          </div>
+          <div class="um-section">
+            <a class="um-item" href="https://allenai.org/responsible-use" target="_blank" rel="noopener">Responsible Use <span class="um-ext">↗</span></a>
+            <a class="um-item" href="https://allenai.org/terms" target="_blank" rel="noopener">Terms of Use <span class="um-ext">↗</span></a>
+            <a class="um-item" href="https://allenai.org/privacy-policy" target="_blank" rel="noopener">Privacy Policy <span class="um-ext">↗</span></a>
+          </div>
+        </div>
+        <button class="user-chip" id="userChip" type="button" aria-haspopup="true" aria-expanded="false">
+          <span class="status-dot" id="statusDot"></span>
+          <span class="user-name" id="userStatus">Not connected</span>
+          <svg viewBox="0 0 24 24" class="ic dots"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+        </button>
       </div>
     </aside>
 

@@ -363,7 +363,7 @@ async function runLive(body, brief, history, onEvent) {
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Olmoearth-Key': studioKey() },
-      body: JSON.stringify({ brief, history: history || [] }),
+      body: JSON.stringify({ brief, history: history || [], max_turns: agentMaxTurns() }),
     });
     if (!res.ok || !res.body) throw new Error('bridge returned HTTP ' + res.status);
     const reader = res.body.getReader();
@@ -585,6 +585,35 @@ function wireMenu() {
 function wireNewChat() {
   const btn = document.getElementById('newChatBtn');
   if (btn) btn.addEventListener('click', () => newChat());
+}
+
+/* General agent settings + legal links (popover above the user chip). */
+function agentMaxTurns() {
+  try { const v = parseInt(localStorage.getItem('oe_max_turns'), 10); return v >= 1 && v <= 12 ? v : 8; } catch (e) { return 8; }
+}
+function wireUserMenu() {
+  const chip = document.getElementById('userChip');
+  const menu = document.getElementById('userMenu');
+  if (!chip || !menu) return;
+  const close = () => { menu.hidden = true; chip.setAttribute('aria-expanded', 'false'); };
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    chip.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  menu.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { if (!menu.hidden) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  const sel = document.getElementById('maxTurns');
+  if (sel) {
+    sel.value = String(agentMaxTurns());
+    sel.addEventListener('change', () => { try { localStorage.setItem('oe_max_turns', sel.value); } catch (e) {} });
+  }
+  const clear = document.getElementById('clearChats');
+  if (clear) clear.addEventListener('click', () => {
+    try { localStorage.removeItem('oe_chats'); } catch (e) {}
+    close(); newChat();
+  });
 }
 
 // Collapsible sidebar sections (open/closed state persisted).
@@ -853,6 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireExamples();
   wirePrompt();
   wireMenu();
+  wireUserMenu();
   wireCollapsibles();
   wireKey();        // initial render (demo assumptions) + renderProjects
   renderChatList();
