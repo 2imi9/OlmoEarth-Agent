@@ -9,6 +9,12 @@ It's a **static mock** — no build step, no framework, no tracking. The prompt,
 tabs, example briefs, and the "what a run looks like" transcript are illustrative;
 wiring it to the live agent is the next step (see below).
 
+![OlmoEarth Agent — live demo](demo/olmoearth-agent-demo.gif)
+
+*A brief in, the agent loop streamed out — reasoning, the `olmoearth_change_detect`
+call, the result, and a plain-English answer ([MP4](demo/olmoearth-agent-demo.mp4)).
+The run is a scripted mock (see [`app.js`](app.js) `runDemo`) until it's wired to `LeadAgent`.*
+
 ![desktop](screenshots/desktop.png)
 
 ## View it
@@ -41,6 +47,14 @@ unmistakably OlmoEarth. See [`DESIGN_NOTES.md`](DESIGN_NOTES.md).
 
 Responsive: the sidebar collapses to a hamburger and the card grid reflows to a
 single column below 880 px.
+
+## Account (bring your own key)
+
+There's no login to build — a user with a Studio assignment **already has an
+OlmoEarth Studio API key** (Studio → profile → API Keys). They paste it into the
+sidebar ("Connect OlmoEarth Studio"); it's kept **client-side** (localStorage)
+and used to call *their own* Studio account. Email-based sign-in is planned for
+later and will be handled outside this UI — out of scope for now.
 
 ## Status & next step
 
