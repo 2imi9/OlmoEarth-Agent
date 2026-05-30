@@ -105,10 +105,50 @@ function wireMenu() {
   if (btn && sidebar) btn.addEventListener('click', () => sidebar.classList.toggle('open'));
 }
 
+/* Bring-your-own-key: a user with a Studio assignment already has an OlmoEarth
+   Studio API key, so they paste their own. Stored client-side only (localStorage).
+   Real email-based login is future work — handled elsewhere, not here. */
+function wireKey() {
+  const LS = 'oe_studio_key';
+  const connect = document.getElementById('keyConnect');
+  const connected = document.getElementById('keyConnected');
+  const form = document.getElementById('keyForm');
+  const input = document.getElementById('keyInput');
+  const mask = document.getElementById('keyMask');
+  const dot = document.getElementById('statusDot');
+  const status = document.getElementById('userStatus');
+  const maskKey = (k) => (k.length <= 6 ? k : k.slice(0, 6) + '••••' + k.slice(-2));
+  const get = () => { try { return localStorage.getItem(LS) || ''; } catch (e) { return ''; } };
+  const set = (v) => { try { v ? localStorage.setItem(LS, v) : localStorage.removeItem(LS); } catch (e) {} };
+  function render() {
+    const k = get(); const on = !!k;
+    if (connect) connect.hidden = on;
+    if (connected) connected.hidden = !on;
+    if (on && mask) mask.textContent = maskKey(k);
+    if (dot) dot.classList.toggle('is-on', on);
+    if (status) status.textContent = on ? 'Studio connected' : 'Not connected';
+  }
+  if (form) form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = (input.value || '').trim();
+    if (!v) return;
+    set(v); input.value = ''; render();
+  });
+  const dis = document.getElementById('keyDisconnect');
+  if (dis) dis.addEventListener('click', () => { set(''); render(); });
+  const top = document.getElementById('topKeyBtn');
+  if (top) top.addEventListener('click', () => {
+    document.getElementById('sidebar') && document.getElementById('sidebar').classList.add('open');
+    if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  });
+  render();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   renderCards();
   wireTabs();
   wireExamples();
   wirePrompt();
   wireMenu();
+  wireKey();
 });
