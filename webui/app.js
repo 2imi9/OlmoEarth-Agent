@@ -123,7 +123,7 @@ const SCENARIOS = {
     tool: 'olmoearth_load_context',
     args: '{}',
     result: [['name', 'demo-user'], ['project_count', '5'], ['ok', 'true']],
-    answer: "You have 5 OlmoEarth Studio projects. Want me to list them, or filter to a topic (e.g. water quality)?",
+    answer: "You have **5** OlmoEarth Studio projects. Here's how they relate to **water quality**:\n\n| Project | Relevance |\n|---|---|\n| **Chesapeake — water quality** | ✓ Strong — nutrient loading |\n| **Potomac — change detection** | ✓ Strong — sewage spill event |\n| **PA Karst** | ~ Moderate — karst aquifer vulnerability |\n| **Mangrove — Indonesia** | ✗ Low — coastal extent |\n| **Solar arrays — California** | ✗ None — energy infrastructure |\n\nWant the per-project predictions, or a stakeholder brief?",
   },
 };
 

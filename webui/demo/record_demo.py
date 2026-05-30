@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import functools
 import http.server
+import os
 import socketserver
 import subprocess
 import threading
@@ -28,7 +29,8 @@ DEMO = WEBUI / "demo"
 REC = DEMO / "_rec"
 PORT = 8123
 W, H = 1180, 760
-GIF_SECONDS = 10  # the GIF is a short clip; the full walkthrough stays in the MP4
+GIF_SECONDS = 13  # the GIF is a short clip; the full walkthrough stays in the MP4
+GIF_START = 0.8  # skip the brief page-load so the loop never starts on a blank frame
 # Opaque (flicker-free) GIF frames are large, so the GIF runs at a lower fps/width
 # than the MP4 to keep the file README-friendly.
 GIF_FPS = 7
@@ -52,7 +54,13 @@ def _record() -> Path:
 
     REC.mkdir(exist_ok=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        # Route the browser through the local proxy if one is set (so Google Fonts
+        # loads), but bypass it for the localhost webui server.
+        launch_kwargs: dict = {}
+        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
+        if proxy:
+            launch_kwargs["proxy"] = {"server": proxy, "bypass": "127.0.0.1,localhost"}
+        browser = p.chromium.launch(**launch_kwargs)
         ctx = browser.new_context(
             viewport={"width": W, "height": H},
             record_video_dir=str(REC),
@@ -63,62 +71,59 @@ def _record() -> Path:
         page.wait_for_selector("#promptForm", timeout=15000)
         time.sleep(1.2)
 
-        # Connect a (demo) key via the top-bar popover.
-        page.click("#topKeyBtn")
-        time.sleep(0.7)
-        page.fill("#keyInput", "sk_pro_demo_key_2026")
-        time.sleep(0.4)
-        page.click("#keyForm button[type=submit]")
-        time.sleep(0.9)
-        page.keyboard.press("Escape")
-        time.sleep(0.6)
-
-        # Drill into the project tree.
-        row = page.query_selector("#projList .tree-row")
-        if row:
-            row.click()
-            time.sleep(1.0)
-            sub = page.query_selector(
-                "#projList .tree-node.open .tree-children .tree-row"
-            )
-            if sub:
-                sub.click()
-                time.sleep(1.0)
-
-        # Send a brief and watch the chat stream.
+        # 1) Send a brief FIRST — the agent's output (a Markdown table) is the star,
+        #    and we hold on it so the GIF clearly captures the answer.
         page.fill(
             "#promptInput",
             "How many OlmoEarth projects do I have, and which relate to water quality?",
         )
-        time.sleep(0.4)
+        time.sleep(0.5)
         page.click(".composer .send")
-        page.wait_for_selector("#chatThread .answer", timeout=15000)
-        time.sleep(1.4)
+        page.wait_for_selector("#chatThread .answer .md-table", timeout=15000)
+        time.sleep(3.4)  # hold on the rendered table answer
 
-        # Follow-up (multi-turn).
+        # 2) Follow-up (multi-turn), then expand its Reasoning & tools.
         page.fill(
             "#promptInput",
             "Did karst-positive area trend up across the 4 quarterly snapshots?",
         )
-        time.sleep(0.4)
+        time.sleep(0.5)
         page.click(".composer .send")
         page.wait_for_function(
             "document.querySelectorAll('#chatThread .answer').length >= 2",
             timeout=15000,
         )
-        time.sleep(1.2)
-
-        # Expand the per-turn "Reasoning & tools" disclosure.
+        time.sleep(1.6)
         heads = page.query_selector_all("#chatThread .steps-head")
         if heads:
             heads[-1].click()
-            time.sleep(1.5)
+            time.sleep(2.0)
 
-        # Open the settings menu.
-        page.click("#userChip")
-        time.sleep(1.5)
-        page.keyboard.press("Escape")
+        # 3) Connect a (demo) key, then drill the Studio project tree.
+        page.click("#topKeyBtn")
         time.sleep(0.6)
+        page.fill("#keyInput", "sk_pro_demo_key_2026")
+        time.sleep(0.3)
+        page.click("#keyForm button[type=submit]")
+        time.sleep(0.7)
+        page.keyboard.press("Escape")
+        time.sleep(0.5)
+        row = page.query_selector("#projList .tree-row")
+        if row:
+            row.click()
+            time.sleep(0.9)
+            sub = page.query_selector(
+                "#projList .tree-node.open .tree-children .tree-row"
+            )
+            if sub:
+                sub.click()
+                time.sleep(0.9)
+
+        # 4) Open the settings menu (papers + agent settings).
+        page.click("#userChip")
+        time.sleep(1.8)
+        page.keyboard.press("Escape")
+        time.sleep(0.5)
 
         ctx.close()  # finalizes the video file
         browser.close()
@@ -141,6 +146,8 @@ def _convert(webm: Path) -> tuple[Path, Path]:
         [
             ff,
             "-y",
+            "-ss",
+            str(GIF_START),
             "-i",
             str(webm),
             "-movflags",
@@ -159,6 +166,8 @@ def _convert(webm: Path) -> tuple[Path, Path]:
         [
             ff,
             "-y",
+            "-ss",
+            str(GIF_START),
             "-t",
             gif_t,
             "-i",
@@ -175,6 +184,8 @@ def _convert(webm: Path) -> tuple[Path, Path]:
         [
             ff,
             "-y",
+            "-ss",
+            str(GIF_START),
             "-t",
             gif_t,
             "-i",

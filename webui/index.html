@@ -10,8 +10,10 @@
   <meta name="description" content="A planetary-intelligence agent that drives OlmoEarth Studio from natural-language briefs." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <!-- Manrope loaded non-render-blocking: the page paints instantly (and works offline) instead of sitting blank/white until the web font arrives. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" /></noscript>
 </head>
 <body>
   <div class="app">
@@ -62,6 +64,13 @@
               </select>
             </label>
             <button class="um-item" id="clearChats" type="button">Clear chat history</button>
+          </div>
+          <div class="um-section">
+            <div class="um-head">OlmoEarth papers</div>
+            <a class="um-item" href="https://arxiv.org/pdf/2511.13655" target="_blank" rel="noopener">OlmoEarth report (arXiv) <span class="um-ext">↗</span></a>
+            <a class="um-item" href="https://allenai.org/papers/olmoearth_v1_1" target="_blank" rel="noopener">OlmoEarth v1.1 <span class="um-ext">↗</span></a>
+            <a class="um-item" href="https://openreview.net/pdf?id=IAyXlDwCYP" target="_blank" rel="noopener">Embeddings → fine-tuning <span class="um-ext">↗</span></a>
+            <a class="um-item" href="assets/olmoearth-model.png" target="_blank" rel="noopener">What is OlmoEarth? — diagram <span class="um-ext">↗</span></a>
           </div>
           <div class="um-section">
             <a class="um-item" href="https://allenai.org/responsible-use" target="_blank" rel="noopener">Responsible Use <span class="um-ext">↗</span></a>
