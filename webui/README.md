@@ -16,13 +16,12 @@ client-side (localStorage), same as the key.
 
 ![OlmoEarth Agent — demo](demo/olmoearth-agent-demo.gif)
 
-> ⚠️ **This GIF is from the older single-run UI and is being re-recorded.** The
-> current UI is a multi-turn **chat** with saved history, a collapsible Studio
-> **project tree**, Markdown-rendered answers, and a per-turn "Reasoning & tools"
-> disclosure. ([MP4](demo/olmoearth-agent-demo.mp4))
-
-*Demo runs are scripted (see [`app.js`](app.js) `runDemo`); served by the bridge,
-the same UI streams the real `LeadAgent` over SSE.*
+*A short walkthrough — connect a key, drill the **project tree**, send a brief, watch
+the **chat** stream a Markdown answer, ask a follow-up, expand "Reasoning & tools".
+The full ~25 s version is the [MP4](demo/olmoearth-agent-demo.mp4); regenerate both
+with [`demo/record_demo.py`](demo/record_demo.py). Demo runs are scripted (see
+[`app.js`](app.js) `runDemo`); served by the bridge, the same UI streams the real
+`LeadAgent` over SSE.*
 
 ![desktop](screenshots/desktop.png)
 

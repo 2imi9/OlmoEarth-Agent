@@ -21,7 +21,7 @@
 
 <div align="center"><em>A brief in, the agent loop streamed out — reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
 
-<div align="center"><sub>⚠️ GIF from the older single-run UI (being re-recorded). The current UI is a multi-turn <strong>chat</strong> with saved history, a collapsible Studio <strong>project tree</strong>, and Markdown answers — streamed live via the bridge (<code>olmoearth-agent-serve</code>).</sub></div>
+<div align="center"><sub>A multi-turn <strong>chat</strong> with saved history, a collapsible Studio <strong>project tree</strong>, and Markdown answers (full walkthrough: <a href="webui/demo/olmoearth-agent-demo.mp4">MP4</a>). Served by the bridge (<code>olmoearth-agent-serve</code>) it streams the real agent.</sub></div>
 
 ---
 
