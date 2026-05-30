@@ -30,6 +30,7 @@ from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
+from olmoearth_agent.tools.system import build_system_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
@@ -232,4 +233,6 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())
     registry.register_all(build_skill_tools())
+    # Opt-in code execution (OLMOEARTH_RUN_PYTHON); an empty bundle otherwise.
+    registry.register_all(build_system_tools())
     return registry
