@@ -1,81 +1,112 @@
+<div align="center">
+
+<img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="420">
+
 # OlmoEarth Agent
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Same shape as Google's Google Earth Agent: a compact catalog of functions (Studio API, EO data fetch, geometry utilities) plus a sandboxed Python interpreter, with operational constraints built in.
+**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs — a local-LLM analog to Google's Earth Agent.**
 
-## Status
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-1f6feb.svg)](LICENSE)
+[![Skills](https://img.shields.io/badge/skills-15-F0529C.svg)](SKILLS.md)
+[![LLM](https://img.shields.io/badge/LLM-Qwen3.6--35B--A3B%20%C2%B7%20local-0FCB8C.svg)](docs/serving.md)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
-**v0.4.** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`) served via **llama.cpp** with function calling. Multimodal stack parked. **All 15 skills** in [`SKILLS.md`](SKILLS.md) are implemented; most verified live — see [`CHANGELOG.md`](CHANGELOG.md). Canonical facts: [`docs/CANON.md`](docs/CANON.md).
+</div>
 
-See [`PLAN.md`](PLAN.md) for the tool catalog, harness dataclasses, operational rules, and roadmap; [`SKILLS.md`](SKILLS.md) for the per-skill spec.
+![OlmoEarth Agent — live demo](webui/demo/olmoearth-agent-demo.gif)
 
-**See [`docs/SHOWCASE.md`](docs/SHOWCASE.md) for every skill in action** — each one, in catalog order, driven by the live Qwen3.6 backbone: real reasoning, real function calls, real results (Studio API for #5/#13, vendored `SKILL.md` for #1–#4, real computation for #6–#15). Not mockups.
+<div align="center"><em>A brief in, the agent loop streamed out — reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
 
-## Run it
+---
+
+OlmoEarth Agent turns a natural-language brief into real geospatial work on **OlmoEarth Studio**. It's a compact analog to Google's Earth Agent: a small catalog of functions (Studio HTTP API, EO data fetch, geometry utilities) running over a sandboxed Python interpreter, with operational constraints built in. The agent reasons about the ask, calls the right tools, submits and polls predictions, and reports **honest results** — every API call is wrapped in a provenance manifest, spatial cross-validation is mandatory on auto-correlated AOIs, and raw coordinates never leak into chat. It runs entirely on a **local Qwen3.6-35B-A3B** model served via llama.cpp — no hosted LLM required.
+
+## Contents
+
+- [Quick start](#quick-start)
+- [What it does](#what-it-does)
+- [Web UI](#web-ui)
+- [Stack](#stack)
+- [Docs & links](#docs--links)
+- [License](#license)
+
+## Quick start
+
+> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (to serve the LLM), [uv](https://docs.astral.sh/uv/), and an `OLMOEARTH_API_KEY` (Studio UI → profile → **API Keys**).
 
 ```bash
-uv sync --all-extras
-git submodule update --init          # vendored skills (#1–#4)
-
-# 1. Serve the LLM (4-bit GGUF via llama.cpp) — see docs/serving.md:
-docker compose -f docker/llama.compose.yml up -d
-
-# 2. Point the agent at the LLM + your Studio key:
-export LLM_ENDPOINT=http://localhost:8000/v1
-export OLMOEARTH_API_KEY=...          # Studio UI → profile → API Keys
-
-# 3. Run a brief:
-uv run olmoearth-agent "How many OlmoEarth Studio projects do I have?"
-uv run olmoearth-agent --show-trace "Which of my projects relate to water quality?"
+make setup                                              # uv sync + vendored skills (#1–#4)
+make serve                                              # 4-bit Qwen3.6 GGUF via llama.cpp (docker)
+make agent Q="How many OlmoEarth Studio projects do I have?"
+make web                                                # styled web UI on http://localhost:8080
 ```
 
-`--show-trace` prints the tool-call trace + provenance count to stderr; the answer goes to stdout. Also runnable as `python -m olmoearth_agent "..."`.
+Set your key first (`export OLMOEARTH_API_KEY=...`); `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. Run `make help` for the full target list, and `make down` to stop the LLM when you're done.
 
-## What's in this repo
+**No `make`** (e.g. Windows + Git Bash)? Run [`./scripts/quickstart.sh`](scripts/quickstart.sh) — it does setup + serve, then prints the exact `uv run olmoearth-agent "…"` and web-UI commands to copy. See [`docs/serving.md`](docs/serving.md) for the raw `docker compose` + `uv run` invocations.
 
-- [`PLAN.md`](PLAN.md) — Tool catalog, harness dataclasses, operational rules, underlying stack, roadmap.
-- [`SKILLS.md`](SKILLS.md) — 15-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report).
-- [`docs/SHOWCASE.md`](docs/SHOWCASE.md) — **every skill in action**, each captured from a live Qwen3.6 agent run (brief → reasoning → tool call → result → answer); regenerate via `scripts/generate_showcase.py`.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contributor workflow (DCO sign-off, branch naming, AI-assistance policy).
-- [`AGENTS.md`](AGENTS.md) — Onboarding context for coding agents working on this codebase.
-- [`CHANGELOG.md`](CHANGELOG.md) — Keep a Changelog v1.1.0.
-- [`evals/skillopt/`](evals/skillopt/) — [SkillOpt](https://github.com/microsoft/SkillOpt) harness that benchmarks + improves the vendored skills against the local Qwen3.6 (oracle-scored, deterministic); see its `README.md` for results and reproduction.
-- `pyproject.toml`, `.pre-commit-config.yaml`, `.env.example` — Project scaffold.
-- `LICENSE` — Apache 2.0.
+<div align="right"><a href="#contents">↑ back to top</a></div>
 
-## Reference
+## What it does
 
-<details>
-<summary><strong>Tool surface</strong> — the function catalog the agent exposes</summary>
+The loop is straightforward: the LLM reads the brief, plans, and emits a tool call; the harness runs it in a **sandboxed geospatial Python interpreter** (`pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, … preloaded, no `import` statements), feeds the result back, and iterates until it can answer. State persists across turns, and the operational rules — default trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call — are enforced by the harness, not left to the model.
 
-- `system:python` — sandboxed Python interpreter with `pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, `olmoearth_projects` preloaded. No `import` statements.
-- `system:search`, `system:fetch` — web search and documented-endpoint HTTP GET.
-- `olmoearth.*` — Studio API wrappers: `load_context`, `resolve_to_aoi`, `search_dataset_spec`, `get_data_in_locations`, `create_project`/`create_area`/`create_dataset`/`create_labelset`/`upload_labels`, `submit_prediction`/`poll_prediction`/`fetch_results`/`save_view`.
-- `eo.*` — STAC search, asset signing, AOI windowing.
-- `utils.*` — geometry helpers, equal-frequency binning, spatial cross-validation split.
+The capability set ships as **15 skills**, grouped by where they sit in an EO workflow:
 
-Full catalog with arguments and return types in [`PLAN.md` §1](PLAN.md).
-</details>
+| # | Skill | What it does | Stage |
+|---|---|---|---|
+| 1 | `olmoearth-studio-upload` | Labels (GeoJSON/CSV/Shapefile) → Studio-importable file with MIME / 10K / multi-metric guards | **Prep** |
+| 2 | `olmoearth-rslearn-config` | Labels → `rslearn` `dataset.json` + Lightning YAML with a 7-criteria audit | **Prep** |
+| 3 | `olmoearth-studio-job-config` | Task description → Studio wizard answers, 14 presets + cross-field validator | **Configure** |
+| 4 | `olmoearth-embeddings` | Task profile → embeddings-vs-fine-tune decision + a runnable notebook | **Configure** |
+| 5 | `olmoearth-predict` | Core run primitive: submit / poll / pixel-value / features / files | **Run** |
+| 6 | `olmoearth-change-detect` | Two-or-more-date trajectory diff (refuses naïve 2-date diffs) | **Run** |
+| 7 | `olmoearth-baseline-compare` | Studio vs. AlphaEarth, side-by-side on transfer regions | **Run** |
+| 8 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
+| 9 | `olmoearth-similarity` | FAISS over fine-tuned OlmoEarth Base embeddings | **Analyze** |
+| 10 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer–Pebesma Area of Applicability | **Analyze** |
+| 11 | `olmoearth-cloud-mask-audit` | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
+| 12 | `olmoearth-qgis-bridge` | Tile URLs → QGIS WMTS + COG with a sidecar uncertainty raster | **Integrate** |
+| 13 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
+| 14 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
+| 15 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
 
-<details>
-<summary><strong>Studio API</strong> — endpoints, auth, resources</summary>
+See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for **every skill in action, with real outputs** — each one, in catalog order, driven by the live Qwen3.6 backbone (real reasoning, real function calls, real results — not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
 
-- Docs: https://docs.olmoearth.allenai.org/
-- Auth: https://docs.olmoearth.allenai.org/authentication/ — Bearer token; max 10 keys per account
-- Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json
-- Resources: Areas, Projects, Datasets, Labelsets, Labels, Annotations, Tasks, Predictions, PredictionResults, Users
-</details>
+<div align="right"><a href="#contents">↑ back to top</a></div>
 
-<details>
-<summary><strong>Underlying stack</strong> — LLM, harness, skills (canonical facts in <code>docs/CANON.md</code>)</summary>
+## Web UI
 
-| Layer | Reference |
+```bash
+make web   # → http://localhost:8080
+```
+
+A styled front-end shell (dark-teal canvas, OlmoEarth-pink `#F0529C` accent, inspired by Ai2 **Asta**) with a live-run animation that streams the agent loop — reasoning, the tool call, the result, the answer. It's **bring-your-own-key**: paste a Studio API key into the sidebar and it stays client-side (localStorage), calling your own account. See [`webui/`](webui/) for the source and design notes.
+
+<div align="right"><a href="#contents">↑ back to top</a></div>
+
+## Stack
+
+| Layer | What |
 |---|---|
-| LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) via [llama.cpp](https://github.com/ggml-org/llama.cpp). Text + function calling. See [`docs/serving.md`](docs/serving.md). |
-| Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) |
-| Skills | 15 skills in [`SKILLS.md`](SKILLS.md), packaged per [agentskills.io](https://agentskills.io) ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) impl reference) |
-| Parked | Multimodal stack (Prismatic VLM + adapters + OlmoEarth embedding stream) and train-time self-improvement loops — see `PLAN.md` §7 |
-</details>
+| **LLM** | [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served **locally** as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB) |
+| **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling — see [`docs/serving.md`](docs/serving.md) |
+| **Harness** | Sandboxed Python interpreter + a compact function catalog (`system.*`, `olmoearth.*`, `eo.*`, `utils.*`) with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
+| **Skills** | 15-skill catalog; vendored #1–#4 via submodule `vendor/olmoearth-skills` |
+| **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
+
+<div align="right"><a href="#contents">↑ back to top</a></div>
+
+## Docs & links
+
+- [**PLAN.md**](PLAN.md) — the function catalog, harness dataclasses, and the operational rules
+- [**SKILLS.md**](SKILLS.md) — the full 15-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**docs/SHOWCASE.md**](docs/SHOWCASE.md) — every skill run live, with real outputs
+- [**docs/CANON.md**](docs/CANON.md) — the canonical facts the repo holds itself to
+- [**CONTRIBUTING.md**](CONTRIBUTING.md) · [**CHANGELOG.md**](CHANGELOG.md) · [**AGENTS.md**](AGENTS.md)
 
 ## License
 
-Apache 2.0 — see [`LICENSE`](LICENSE).
+[Apache License 2.0](LICENSE).
+
+<div align="center"><sub>Built on OlmoEarth Studio by Ai2. Web UI styling inspired by Ai2 Asta — this is a research-demo project, not an official product page.</sub></div>
