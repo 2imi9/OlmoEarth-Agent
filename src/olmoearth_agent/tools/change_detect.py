@@ -10,6 +10,7 @@ here. Refuses fewer than three dates — a two-date diff hides drift.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from olmoearth_agent.analysis.change_detect import diff_layers
@@ -17,8 +18,24 @@ from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 
+def _is_iso(value: Any) -> bool:
+    try:
+        datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
 async def _change_detect(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-    series = [(str(p["date"]), float(p["value"])) for p in args["series"]]
+    points = args["series"]
+    # Dates are optional. If any point lacks a parseable ISO date — a brief that
+    # gave bare ordered values, or a garbled model-emitted date — label the
+    # points by input order (t1..tN). The trajectory math only needs order, not
+    # calendar dates, so this avoids erroring and burning a retry turn.
+    if all(_is_iso(p.get("date")) for p in points):
+        series = [(str(p["date"]), float(p["value"])) for p in points]
+    else:
+        series = [(f"t{i + 1}", float(p["value"])) for i, p in enumerate(points)]
     result = diff_layers(series, tol=float(args.get("tol", 0.0)))
     metric = args.get("metric")
     if metric:
@@ -57,11 +74,16 @@ def build_change_detect_tools() -> list[RegisteredTool]:
                                 "properties": {
                                     "date": {
                                         "type": "string",
-                                        "description": "ISO-8601 date or datetime.",
+                                        "description": (
+                                            "OPTIONAL ISO-8601 date/datetime. "
+                                            "Omit it if you only have ordered "
+                                            "values — points are then taken in "
+                                            "the order given. Do not invent dates."
+                                        ),
                                     },
                                     "value": {"type": "number"},
                                 },
-                                "required": ["date", "value"],
+                                "required": ["value"],
                             },
                         },
                         "metric": {

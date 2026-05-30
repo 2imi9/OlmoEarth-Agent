@@ -42,6 +42,14 @@ def _parse_date(value: str) -> datetime:
         raise ValueError(f"unparseable ISO-8601 date: {value!r}") from exc
 
 
+def _try_parse(value: str) -> datetime | None:
+    """Parse an ISO date, or ``None`` if it isn't one (ordinal labels)."""
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
 def enforce_min_3_dates(dates: Sequence[str]) -> None:
     """Refuse a trajectory with fewer than three distinct dates.
 
@@ -117,7 +125,12 @@ def diff_layers(
             "a distinct time."
         )
 
-    ordered = sorted(series, key=lambda dv: _parse_date(dv[0]))
+    # Real ISO dates → sort chronologically. Ordinal labels (e.g. "t1", when the
+    # caller passed bare values) → keep the input order as the trajectory order.
+    if all(_try_parse(d) is not None for d, _ in series):
+        ordered = sorted(series, key=lambda dv: _parse_date(dv[0]))
+    else:
+        ordered = list(series)
     dates = [d for d, _ in ordered]
     values = [float(v) for _, v in ordered]
 

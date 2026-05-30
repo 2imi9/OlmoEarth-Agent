@@ -47,9 +47,14 @@ def test_diff_layers_rejects_duplicate_dates() -> None:
         )
 
 
-def test_diff_layers_rejects_unparseable_date() -> None:
-    with pytest.raises(ValueError, match="ISO-8601"):
-        diff_layers([("nope", 0.1), ("2024-02-01", 0.2), ("2024-03-01", 0.3)])
+def test_diff_layers_falls_back_to_order_for_non_iso_labels() -> None:
+    # Ordinal labels (caller passed bare ordered values, no calendar dates) →
+    # input order is the trajectory order; no error, since the trajectory math
+    # only needs order. Real ISO dates still sort (see test_diff_layers_sorts).
+    out = diff_layers([("t1", 0.1), ("t2", 0.2), ("t3", 0.35)])
+    assert out["trend"] == "increasing"
+    assert out["values"] == [0.1, 0.2, 0.35]
+    assert out["dates"] == ["t1", "t2", "t3"]
 
 
 def test_monotonic_increase() -> None:
