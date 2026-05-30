@@ -3,12 +3,12 @@
 """The ``olmoearth_run_python`` sandbox tool (PLAN.md §1 ``system.python``).
 
 Lets the agent run a short Python snippet for LIGHT orchestration/inspection
-between API calls — open an rslearn ``Dataset``, tag a train/val split, compute
+between API calls: open an rslearn ``Dataset``, tag a train/val split, compute
 a quick stat, drive a FAISS/embeddings step (skills #4/#9 assume this tool).
 
 This is ARBITRARY CODE EXECUTION, so it is **opt-in**: the bundle is empty
 unless ``OLMOEARTH_RUN_PYTHON`` is truthy. Even then it is a deliberately small
-first cut — an isolated subprocess of the project interpreter, with a
+first cut: an isolated subprocess of the project interpreter, with a
 wall-clock timeout and an output cap, in a throwaway working directory. It is
 NOT the PLAN.md in-process no-import sandbox: state does not persist across
 calls and there is no import ban, and the heavy geospatial/rslearn/GDAL stack
@@ -94,7 +94,7 @@ async def _run_python(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
 
 
 def build_system_tools() -> list[RegisteredTool]:
-    """Return the ``olmoearth_run_python`` bundle — empty unless opted in.
+    """Return the ``olmoearth_run_python`` bundle, empty unless opted in.
 
     Set ``OLMOEARTH_RUN_PYTHON=1`` to enable. Off by default because the tool
     runs unrestricted Python in a subprocess.
@@ -108,14 +108,14 @@ def build_system_tools() -> list[RegisteredTool]:
                 description=(
                     "Run a short Python snippet; returns its stdout, stderr, "
                     "and exit code. Use for LIGHT orchestration/inspection "
-                    "between API calls — open an rslearn Dataset, tag a "
+                    "between API calls: open an rslearn Dataset, tag a "
                     "train/val split, compute a quick statistic, drive a "
                     "FAISS/embeddings step. Runs in an isolated subprocess "
                     "with a wall-clock timeout and an output cap, in a "
                     "throwaway working directory; STATE DOES NOT PERSIST "
                     "across calls. The heavy geospatial/rslearn/GDAL stack may "
                     "not be installed, and long jobs (rslearn ingest / "
-                    "materialize / model fit) WILL time out — surface those "
+                    "materialize / model fit) WILL time out. Surface those "
                     "for the user to run instead. print() what you want back."
                 ),
                 parameters={

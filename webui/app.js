@@ -1,4 +1,4 @@
-/* OlmoEarth Agent web UI — chat + history, the 15-skill grid, and a Studio
+/* OlmoEarth Agent web UI: chat + history, the 15-skill grid, and a Studio
    project tree. Static demo by default; upgrades to the live agent when served
    by olmoearth_agent.serve (see "Live bridge" below). No build step. */
 
@@ -32,11 +32,11 @@ const SKILLS = [
   { n: 3,  slug: 'studio-job-config', cat: 'Configure', icon: 'wand',        desc: 'Task description → Studio job-wizard answers; 14 presets + a cross-field validator.' },
   { n: 4,  slug: 'embeddings',        cat: 'Configure', icon: 'branch',      desc: 'Embeddings-vs-fine-tune decision, plus a runnable extraction notebook.' },
   { n: 5,  slug: 'predict',           cat: 'Run',       icon: 'satellite',   desc: 'The core run loop: find a model, submit, poll, and fetch result tiles.', pink: true },
-  { n: 6,  slug: 'change-detect',     cat: 'Run',       icon: 'trend',       desc: 'A multi-date (≥3) trajectory diff — it refuses a naive 2-date diff.', pink: true },
+  { n: 6,  slug: 'change-detect',     cat: 'Run',       icon: 'trend',       desc: 'A multi-date (≥3) trajectory diff; it refuses a naive 2-date diff.', pink: true },
   { n: 7,  slug: 'baseline-compare',  cat: 'Run',       icon: 'compare',     desc: 'OlmoEarth vs AlphaEarth, head-to-head on transfer regions.', pink: true },
   { n: 8,  slug: 'evaluate',          cat: 'Analyze',   icon: 'barcheck',    desc: 'A random-vs-spatial CV inflation check, plus per-class metrics.' },
   { n: 9,  slug: 'similarity',        cat: 'Analyze',   icon: 'search',      desc: 'Top-K embedding search with a geographic-prior warning.' },
-  { n: 10, slug: 'uncertainty',       cat: 'Analyze',   icon: 'shield',      desc: 'A Meyer–Pebesma Area-of-Applicability out-of-distribution flag.' },
+  { n: 10, slug: 'uncertainty',       cat: 'Analyze',   icon: 'shield',      desc: 'A Meyer-Pebesma Area-of-Applicability out-of-distribution flag.' },
   { n: 11, slug: 'cloud-mask-audit',  cat: 'Analyze',   icon: 'cloud',       desc: 'CFMask / s2cloudless / Sen2Cor / MAJA disagreement: bad mask vs bad model.' },
   { n: 12, slug: 'qgis-bridge',       cat: 'Integrate', icon: 'layers',      desc: 'Tile URLs → a QGIS XYZ layer + an OGC SLD style, ready to load.' },
   { n: 13, slug: 'data-export',       cat: 'Integrate', icon: 'database',    desc: 'Export Studio projects + predictions to JSON, grouped by project or status.' },
@@ -112,18 +112,18 @@ function typeText(el, text, speed) {
    live SSE stream, so one renderer (handleRunEvent) drives both. */
 const SCENARIOS = {
   change: {
-    reasoning: "Four dates — that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.",
+    reasoning: "Four dates, that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.",
     tool: 'olmoearth_change_detect',
     args: '{\n  "series": [\n    {"date": "2024-03-01", "value": 0.12},\n    {"date": "2024-06-01", "value": 0.18},\n    {"date": "2024-09-01", "value": 0.15},\n    {"date": "2024-12-01", "value": 0.27}\n  ],\n  "metric": "karst_positive_fraction"\n}',
     result: [['trend', 'oscillating'], ['net_change', '+0.15'], ['reversals', '2'], ['max_step', 'Sep→Dec +0.12']],
-    answer: "Net positive area rose +0.15 over the year, but it didn't trend cleanly upward — there were 2 reversals, and the Sep→Dec quarter (+0.12) drove most of the gain. I'd call this oscillating with an upward bias, not a steady increase. Want the per-quarter chart or a stakeholder brief?",
+    answer: "Net positive area rose +0.15 over the year, but it didn't trend cleanly upward. There were 2 reversals, and the Sep→Dec quarter (+0.12) drove most of the gain. I'd call this oscillating with an upward bias, not a steady increase. Want the per-quarter chart or a stakeholder brief?",
   },
   projects: {
-    reasoning: "I'll load the account context first (per the run rules — never invent ids), then count the projects it returns.",
+    reasoning: "I'll load the account context first (per the run rules, never invent ids), then count the projects it returns.",
     tool: 'olmoearth_load_context',
     args: '{}',
     result: [['name', 'demo-user'], ['project_count', '5'], ['ok', 'true']],
-    answer: "You have **5** OlmoEarth Studio projects. Here's how they relate to **water quality**:\n\n| Project | Relevance |\n|---|---|\n| **Chesapeake — water quality** | ✓ Strong — nutrient loading |\n| **Potomac — change detection** | ✓ Strong — sewage spill event |\n| **PA Karst** | ~ Moderate — karst aquifer vulnerability |\n| **Mangrove — Indonesia** | ✗ Low — coastal extent |\n| **Solar arrays — California** | ✗ None — energy infrastructure |\n\nWant the per-project predictions, or a stakeholder brief?",
+    answer: "You have **5** OlmoEarth Studio projects. Here's how they relate to **water quality**:\n\n| Project | Relevance |\n|---|---|\n| **Chesapeake - water quality** | ✓ Strong: nutrient loading |\n| **Potomac - change detection** | ✓ Strong: sewage spill event |\n| **PA Karst** | ~ Moderate: karst aquifer vulnerability |\n| **Mangrove - Indonesia** | ✗ Low: coastal extent |\n| **Solar arrays - California** | ✗ None: energy infrastructure |\n\nWant the per-project predictions, or a stakeholder brief?",
   },
 };
 
@@ -237,7 +237,7 @@ function renderMarkdown(src) {
   return out.join('') || '<p class="md-p"></p>';
 }
 
-// Per-turn "Reasoning & tools" disclosure — thinking + tool calls live in a
+// Per-turn "Reasoning & tools" disclosure: thinking + tool calls live in a
 // collapsible block, collapsed by default (a finished turn shows just the
 // answer). Live runs auto-expand it while streaming, then collapse on `final`.
 function ensureSteps(body) {
@@ -511,7 +511,7 @@ function renderChatList() {
   if (!list) return;
   const chats = loadChats().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   if (!chats.length) {
-    list.innerHTML = '<div class="side-note">No saved chats yet — send a brief below to start one.</div>';
+    list.innerHTML = '<div class="side-note">No saved chats yet. Send a brief below to start one.</div>';
     return;
   }
   list.innerHTML = chats.map((c) => `
@@ -661,8 +661,8 @@ function wireKey() {
       const body = document.getElementById('keyConnBody');
       if (label) label.textContent = BRIDGE.live ? 'Studio connected' : 'Connected · demo';
       if (body) body.innerHTML = BRIDGE.live
-        ? 'Connected as <code>' + maskKey(k) + '</code> — briefs run the <strong>real agent</strong> against your Studio account through the local bridge.'
-        : 'Key saved as <code>' + maskKey(k) + "</code>, but this preview <strong>doesn't call Studio yet</strong> — the data shown is sample, not your account.";
+        ? 'Connected as <code>' + maskKey(k) + '</code>. Briefs run the <strong>real agent</strong> against your Studio account through the local bridge.'
+        : 'Key saved as <code>' + maskKey(k) + "</code>, but this preview <strong>doesn't call Studio yet</strong>. The data shown is sample, not your account.";
     }
     renderProjects();  // projects only load once a key is connected
   }
@@ -710,10 +710,10 @@ const NODE_ICONS = {
 };
 const PROJECTS = [
   { id: 'karst',    name: 'PA Karst',                    meta: '12', icon: 'map'   },
-  { id: 'ches',     name: 'Chesapeake — water quality',  meta: '5',  icon: 'drop'  },
-  { id: 'potomac',  name: 'Potomac — change detection',  meta: '8',  icon: 'trend' },
-  { id: 'mangrove', name: 'Mangrove extent — Indonesia', meta: '3',  icon: 'leaf'  },
-  { id: 'solar',    name: 'Solar arrays — California',   meta: '2',  icon: 'sun'   },
+  { id: 'ches',     name: 'Chesapeake - water quality',  meta: '5',  icon: 'drop'  },
+  { id: 'potomac',  name: 'Potomac - change detection',  meta: '8',  icon: 'trend' },
+  { id: 'mangrove', name: 'Mangrove extent - Indonesia', meta: '3',  icon: 'leaf'  },
+  { id: 'solar',    name: 'Solar arrays - California',   meta: '2',  icon: 'sun'   },
 ];
 
 function projConnected() {
@@ -738,7 +738,7 @@ function updateProjTag() {
   if (!projConnected()) { tag.hidden = true; return; }
   tag.hidden = false;
   tag.textContent = BRIDGE.live ? 'live' : 'sample';
-  tag.title = BRIDGE.live ? 'Your live Studio account' : 'Demo data — not your live Studio account';
+  tag.title = BRIDGE.live ? 'Your live Studio account' : 'Demo data: not your live Studio account';
 }
 
 function treeGlyph(node) {
@@ -784,7 +784,7 @@ async function toggleNode(el, node, childBox) {
     children.forEach((c) => childBox.appendChild(makeTreeNode(c)));
   } catch (e) {
     childBox.dataset.loaded = '';  // allow retry on next expand
-    childBox.innerHTML = '<div class="proj-empty">Couldn’t load — ' + escapeHtml(String((e && e.message) || e)) + '</div>';
+    childBox.innerHTML = '<div class="proj-empty">Couldn’t load - ' + escapeHtml(String((e && e.message) || e)) + '</div>';
   }
 }
 
@@ -868,7 +868,7 @@ async function renderProjects() {
     }
     renderTree(list, projects);
   } catch (e) {
-    list.innerHTML = '<div class="proj-empty">Couldn’t load projects — ' + escapeHtml(String((e && e.message) || e)) + '. <span class="proj-empty-sub">Check your key, or that the bridge can reach Studio.</span></div>';
+    list.innerHTML = '<div class="proj-empty">Couldn’t load projects - ' + escapeHtml(String((e && e.message) || e)) + '. <span class="proj-empty-sub">Check your key, or that the bridge can reach Studio.</span></div>';
   }
 }
 

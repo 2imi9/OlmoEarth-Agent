@@ -1,11 +1,11 @@
-# OlmoEarth Agent — web UI
+# OlmoEarth Agent web UI
 
 A front-end shell for the OlmoEarth Agent, styled after [Ai2 **Asta**](https://asta.allen.ai/)
 (dark-teal canvas, cream text, Manrope, a centered prompt hero, a left sidebar)
 and rebranded with **OlmoEarth** elements (the pink Ai2/OlmoEarth logo, the
 EO/Studio content, the 15-skill catalog).
 
-By default it's a **static mock** — no build step, no framework, no tracking —
+By default it's a **static mock** (no build step, no framework, no tracking),
 so the chat, the projects tree, and the "what a run looks like" transcript are
 illustrative sample data. Serve it with the **bridge** (`olmoearth-agent-serve`,
 see [Live mode](#live-mode-the-bridge)) and it upgrades in place to the **live
@@ -14,9 +14,9 @@ a drill-down tree** (project → model/embeddings → predictions → results), 
 briefs streamed through `LeadAgent` over Server-Sent Events. Chat history is kept
 client-side (localStorage), same as the key.
 
-![OlmoEarth Agent — demo](demo/olmoearth-agent-demo.gif)
+![OlmoEarth Agent - demo](demo/olmoearth-agent-demo.gif)
 
-*A short walkthrough — connect a key, drill the **project tree**, send a brief, watch
+*A short walkthrough: connect a key, drill the **project tree**, send a brief, watch
 the **chat** stream a Markdown answer, ask a follow-up, expand "Reasoning & tools".
 The full ~25 s version is the [MP4](demo/olmoearth-agent-demo.mp4); regenerate both
 with [`demo/record_demo.py`](demo/record_demo.py). Demo runs are scripted (see
@@ -28,7 +28,7 @@ with [`demo/record_demo.py`](demo/record_demo.py). Demo runs are scripted (see
 ## View it
 
 ```bash
-# from the repo root (port 8080 — the LLM owns 8000)
+# from the repo root (port 8080, the LLM owns 8000)
 python -m http.server 8080 --directory webui
 # then open http://localhost:8080
 ```
@@ -39,8 +39,8 @@ Or just open `webui/index.html` in a browser.
 
 | File | What |
 |---|---|
-| `index.html` | markup — sidebar (chats + project tree), chat thread, pinned composer, key popover |
-| `styles.css` | the design system (tokens at `:root`) — no preprocessor |
+| `index.html` | markup: sidebar (chats + project tree), chat thread, pinned composer, key popover |
+| `styles.css` | the design system (tokens at `:root`), no preprocessor |
 | `app.js`     | chat store + saved history, demo/live run streaming, project tree, Markdown rendering, settings menu |
 | `assets/OlmoEarth-logo.png` | the OlmoEarth wordmark (the sidebar crops it to just the symbol) |
 | `screenshots/` | reference renders (desktop, transcript, mobile) |
@@ -50,7 +50,7 @@ Or just open `webui/index.html` in a browser.
 Palette and type were taken from Asta's *computed* styles (not guessed):
 dark teal **`#032629`**, cream **`#faf2e9`**, **Manrope**, and Asta's emerald
 **`#0FCB8C`** kept as a secondary accent. The **primary accent is OlmoEarth
-pink `#F0529C`** (the brand) — so it reads as Asta's calm, minimal aesthetic but
+pink `#F0529C`** (the brand), so it reads as Asta's calm, minimal aesthetic but
 unmistakably OlmoEarth. See [`DESIGN_NOTES.md`](DESIGN_NOTES.md).
 
 Responsive: the sidebar collapses to a hamburger and the card grid reflows to a
@@ -58,10 +58,10 @@ single column below 880 px.
 
 ## Account (bring your own key)
 
-There's no login to build — a user with a Studio assignment **already has an
+There's no login to build: a user with a Studio assignment **already has an
 OlmoEarth Studio API key** (Studio → profile → API Keys). They paste it via the
 **"Add API key"** button (top bar → popover); it's kept **client-side**
-(localStorage). In the **static mock** nothing is sent anywhere — the UI just
+(localStorage). In the **static mock** nothing is sent anywhere, the UI just
 unlocks the sample projects and the chip reads *"Connected · demo"*. Under the
 **bridge** the same key is forwarded per request (header `X-Olmoearth-Key`) so
 calls hit *their own* Studio account and the chip reads *"Connected · live"*.
@@ -91,8 +91,8 @@ Endpoints:
 | `POST /api/run` | streams `LeadAgent.run_stream` as SSE (accepts prior `history` for multi-turn) |
 
 The browser sends your Studio key in the `X-Olmoearth-Key` header; the bridge
-forwards it per request and never stores it. Opened as a plain file — or served
-by anything that isn't the bridge — `/api/health` 404s and the page stays in
+forwards it per request and never stores it. Opened as a plain file, or served
+by anything that isn't the bridge, `/api/health` 404s and the page stays in
 demo mode. A full live run needs the LLM served (`scripts/serve-llm.sh`) and a
 valid Studio key.
 

@@ -3,7 +3,7 @@
 """Group + serialize Studio data for easy export (skill #13, reframed).
 
 Originally "external-data" (wire third-party MCPs); reframed to the more
-useful + self-contained "export our own Studio data, grouped" — projects
+useful + self-contained "export our own Studio data, grouped": projects
 and predictions written to JSON files grouped by project or status. Pure
 helpers here; the fetching/writing tool is in ``tools/export.py``.
 """

@@ -30,7 +30,7 @@ def test_resolve_absolute_url_passthrough() -> None:
 
 def test_build_raster_sld_is_valid_xml() -> None:
     sld = build_raster_sld("karst_score", vmin=0.0, vmax=1.0)
-    root = ET.fromstring(sld)  # noqa: S314 — parses our own generated SLD
+    root = ET.fromstring(sld)  # noqa: S314 - parses our own generated SLD
     assert root.tag == f"{{{_SLD_NS}}}StyledLayerDescriptor"
     # default YlOrRd ramp has 5 stops
     entries = root.findall(f".//{{{_SLD_NS}}}ColorMapEntry")
@@ -43,7 +43,7 @@ def test_build_raster_sld_is_valid_xml() -> None:
 
 def test_build_raster_sld_custom_range() -> None:
     sld = build_raster_sld("layer", vmin=10.0, vmax=20.0)
-    root = ET.fromstring(sld)  # noqa: S314 — parses our own generated SLD
+    root = ET.fromstring(sld)  # noqa: S314 - parses our own generated SLD
     entries = root.findall(f".//{{{_SLD_NS}}}ColorMapEntry")
     quantities = [float(e.get("quantity")) for e in entries]
     assert quantities[0] == 10.0

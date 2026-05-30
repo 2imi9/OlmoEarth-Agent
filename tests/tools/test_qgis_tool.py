@@ -30,5 +30,5 @@ async def test_qgis_bridge_tool() -> None:
     assert result["xyz_urls"][0].startswith("https://olmoearth.allenai.org/")
     assert "{z}/{x}/{y}" in result["xyz_urls"][0]
     # SLD is valid XML
-    ET.fromstring(result["sld"])  # noqa: S314 — parses our own generated SLD
+    ET.fromstring(result["sld"])  # noqa: S314 - parses our own generated SLD
     assert any("Authorization: Bearer" in line for line in result["instructions"])

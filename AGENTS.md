@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Onboarding context for coding agents (Claude Code, Cursor, Codex, Aider, …) working on this repository. Follows the [agents.md](https://agents.md/) convention — a sibling to `README.md` that holds agent-specific guidance.
+Onboarding context for coding agents (Claude Code, Cursor, Codex, Aider, …) working on this repository. Follows the [agents.md](https://agents.md/) convention: a sibling to `README.md` that holds agent-specific guidance.
 
 The agent's runtime contract lives in [`PLAN.md`](PLAN.md). This file is about how to *contribute to* the codebase, not how the agent itself behaves at runtime.
 
@@ -8,7 +8,7 @@ The agent's runtime contract lives in [`PLAN.md`](PLAN.md). This file is about h
 
 ## What this project is
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Tool catalog + harness dataclasses + operational rules — same shape as Google's Google Earth Agent. Not a "research framework", not "auto-research" anything.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Tool catalog + harness dataclasses + operational rules, same shape as Google's Google Earth Agent. Not a "research framework", not "auto-research" anything.
 
 ---
 
@@ -85,12 +85,12 @@ uv run mkdocs serve
 
 When choosing how to structure a change, defer to:
 
-- [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) for the harness shape — LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools.
+- [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) for the harness shape: LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools.
 - [agentskills.io](https://agentskills.io) / [NVIDIA AI-Q Agent Skills](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) for `SKILL.md` packaging.
 - [OlmoEarth Studio OpenAPI](https://olmoearth.allenai.org/api/v1/openapi.json) as the source of truth for API endpoints (codegen, not hand-written wrappers).
-- [`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) served via llama.cpp for the LLM. Canonical facts in [`docs/CANON.md`](docs/CANON.md); keep docs aligned with it. (Multimodal/Prismatic is parked — `PLAN.md` §7.)
+- [`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) served via llama.cpp for the LLM. Canonical facts in [`docs/CANON.md`](docs/CANON.md); keep docs aligned with it. (Multimodal/Prismatic is parked, `PLAN.md` §7.)
 
-Anything that conflicts with `PLAN.md` is a bug in `PLAN.md` — open a PR that updates it rather than working around it.
+Anything that conflicts with `PLAN.md` is a bug in `PLAN.md`: open a PR that updates it rather than working around it.
 
 ---
 
@@ -98,7 +98,7 @@ Anything that conflicts with `PLAN.md` is a bug in `PLAN.md` — open a PR that 
 
 1. **Geospatial output safety.** `PLAN.md` §3.1 forbids raw lat/lon, WKT, or full GeoJSON in chat responses. If a tool returns geometries, write them to a file and reference the path.
 2. **Studio long-running jobs are async.** `submit_prediction` returns a `PredictionRef`; never block on training. Downstream tools must accept the ref and poll.
-3. **Sandbox bans `import`.** The `system:python` interpreter has libraries preloaded — do not generate code with `import` statements; rely on the preloaded names.
+3. **Sandbox bans `import`.** The `system:python` interpreter has libraries preloaded: do not generate code with `import` statements; rely on the preloaded names.
 4. **Studio API key cap is 10 per account.** Never programmatically rotate keys; tests use a single key from env.
 5. **Studio has no `/models` or `/jobs` resource.** All async work is `Predictions` (request) + `PredictionResults` (output incl. XYZ tiles and MVT vectors). Do not invent endpoints that aren't in [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json).
 

@@ -5,7 +5,7 @@
 Each transcript is captured by handing a natural-language brief to the
 real Qwen3.6 backbone (served via llama.cpp) and running the agent loop:
 the model reasons, calls the skill's tool(s), receives the real result,
-and writes a final answer. Nothing is fabricated — the reasoning, the
+and writes a final answer. Nothing is fabricated: the reasoning, the
 tool arguments, and the answers are the model's own output, and the tool
 results are real (live Studio API for #5/#13, the vendored SKILL.md files
 for #1-#4, real computation for #6-#15). Run:
@@ -18,7 +18,7 @@ Requires the LLM server up (see docs/serving.md); point LLM_ENDPOINT at
 it (default http://localhost:8000/v1). Skills #5 (predict, read-only) and
 #13 (data-export) hit the live Studio API and need OLMOEARTH_API_KEY; if
 it is absent they degrade to a short documented note. Because the agent
-samples at temperature 1.0, each run captures a fresh trace — the wording
+samples at temperature 1.0, each run captures a fresh trace; the wording
 varies, the behaviour does not.
 """
 
@@ -55,7 +55,7 @@ SHOWCASE_SYSTEM = (
     "appropriate tool(s) with arguments taken from the brief or from prior "
     "tool results, then stop calling tools and reply with a short plain-text "
     "answer that interprets the result for the researcher. Never invent data "
-    "or ids — use ids returned by earlier tool calls."
+    "or ids: use ids returned by earlier tool calls."
 )
 
 #: Default per-turn output budget. Above a full <think> block + a tool
@@ -185,7 +185,7 @@ def _result_block(result: dict[str, Any]) -> str:
         body = payload["instructions"]
         fence = _fence_for(body)
         return (
-            f"**Function result** — the full `{payload['name']}` SKILL.md, "
+            f"**Function result**, the full `{payload['name']}` SKILL.md, "
             f"loaded into the model's context:\n\n"
             f"{fence}markdown\n{body}\n{fence}\n"
         )
@@ -201,7 +201,7 @@ def render(
 ) -> str:
     """Render one captured run as a Markdown showcase block."""
     parts = [
-        f"### #{num} `{name}` — {what}\n",
+        f"### #{num} `{name}` - {what}\n",
         f"*Category: {category}* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, "
         f"llama.cpp)*\n",
         f"**Brief.**\n\n> {transcript.brief}\n",
@@ -214,7 +214,7 @@ def render(
         for call in turn.calls:
             step += 1
             parts.append(
-                f"**Function call** — `{call['name']}`:\n\n"
+                f"**Function call** - `{call['name']}`:\n\n"
                 f"```json\n{_json(call['args'])}\n```\n"
             )
             parts.append(_result_block(call["result"]))
@@ -224,7 +224,7 @@ def render(
 
 
 def _note(num: int | str, name: str, category: str, what: str, note: str) -> str:
-    return f"### #{num} `{name}` — {what}\n\n*Category: {category}*\n\n{note}\n"
+    return f"### #{num} `{name}` - {what}\n\n*Category: {category}*\n\n{note}\n"
 
 
 def _seed_provenance(state: ThreadState) -> None:
@@ -529,7 +529,7 @@ async def main() -> None:
                     "Integrate",
                     "export Studio projects + predictions, grouped, to JSON",
                     "Calls the live Studio API; set `OLMOEARTH_API_KEY` to capture "
-                    "a live run here (curated metadata only — ids / names / "
+                    "a live run here (curated metadata only: ids / names / "
                     "statuses / times, no raw geometry).",
                 )
             )
@@ -546,7 +546,7 @@ async def main() -> None:
                 await capture(
                     llm,
                     build_provenance_tools(),
-                    "I've finished a short run — loading context, searching "
+                    "I've finished a short run: loading context, searching "
                     "predictions, and running change detection. Produce an "
                     "auditable record of what this run did, with a replay skeleton.",
                     state=prov_state,
@@ -567,7 +567,7 @@ async def main() -> None:
                 await capture(
                     llm,
                     build_narrative_tools(),
-                    "Write a stakeholder brief titled 'PA Karst — Stakeholder "
+                    "Write a stakeholder brief titled 'PA Karst - Stakeholder "
                     "Brief' from two prediction results, with a 24-hour freshness "
                     "window. Result 1: result_id='res_current', "
                     "tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/"
@@ -589,7 +589,7 @@ async def main() -> None:
 
     live_line = (
         "Skills #5 and #13 are captured against the **live Studio API** "
-        "(#5 read-only — the write half is never exercised); #1-#4 load the "
+        "(#5 read-only: the write half is never exercised); #1-#4 load the "
         "real vendored `SKILL.md` bodies through `olmoearth_load_skill`."
         if studio is not None
         else "Skills #5 and #13 need `OLMOEARTH_API_KEY` (absent here), so they "
@@ -597,8 +597,8 @@ async def main() -> None:
     )
 
     header = (
-        "<!-- Generated by scripts/generate_showcase.py — do not edit by hand. -->\n"
-        "# OlmoEarth Agent — Skills in Action\n\n"
+        "<!-- Generated by scripts/generate_showcase.py: do not edit by hand. -->\n"
+        "# OlmoEarth Agent - Skills in Action\n\n"
         "The OlmoEarth Agent ships **15 skills** that drive the OlmoEarth Studio "
         "platform from natural-language briefs. This page shows each skill, in "
         "order, being **driven by the real LLM**: a brief goes in, the Qwen3.6 "
@@ -608,7 +608,7 @@ async def main() -> None:
         "agent loop against the live **Qwen3.6-35B-A3B** model (4-bit "
         "`UD-IQ4_XS` GGUF, served via llama.cpp). The reasoning, the function "
         "arguments, and the answer are all the model's own output, and the "
-        "function results are real — the live Studio API (#5, #13), the vendored "
+        "function results are real: the live Studio API (#5, #13), the vendored "
         "`SKILL.md` files (#1-#4), and real computation (#6-#15). Nothing is "
         "fabricated. Because the agent samples at temperature 1.0, each run "
         "captures a fresh trace; the wording varies, the behaviour does not. "

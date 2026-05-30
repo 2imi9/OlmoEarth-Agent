@@ -63,7 +63,7 @@ def build_similarity_tools() -> list[RegisteredTool]:
                     "with parallel ids). If you also pass query_coord + "
                     "coords (parallel [lon, lat] for the corpus), it adds a "
                     "GEOGRAPHIC-PRIOR WARNING when the matches cluster near "
-                    "the query — i.e. the similarity may reflect location "
+                    "the query: i.e. the similarity may reflect location "
                     "(same region/biome), not feature resemblance. "
                     "Read-only; returns matches + a summary (no raw coords)."
                 ),

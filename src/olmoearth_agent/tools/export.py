@@ -3,7 +3,7 @@
 """The data-export tool bundle (skill #13, reframed).
 
 Exports the user's Studio projects + predictions, grouped by project or
-by status, as JSON files. Curated to ids / names / statuses / times —
+by status, as JSON files. Curated to ids / names / statuses / times:
 no raw geometry (operational rule §3.1), so it's safe to share.
 """
 
@@ -91,7 +91,7 @@ def build_export_tools() -> list[RegisteredTool]:
                 description=(
                     "Export the user's Studio projects + predictions to JSON "
                     "files, grouped by 'project' (default) or 'status'. "
-                    "Curated metadata only (ids, names, statuses, times — no "
+                    "Curated metadata only (ids, names, statuses, times: no "
                     "raw geometry). Returns the written file paths and counts."
                 ),
                 parameters={

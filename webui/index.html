@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- OlmoEarth Agent — web UI shell. Asta-style (asta.allen.ai) layout, OlmoEarth brand.
+<!-- OlmoEarth Agent: web UI shell. Asta-style (asta.allen.ai) layout, OlmoEarth brand.
      Static demo by default; upgrades to the live agent when served by
      olmoearth_agent.serve (chat history + project tree become live). -->
 <html lang="en">
@@ -43,7 +43,7 @@
           <button class="side-head" type="button" data-collapse="projects" aria-expanded="true">
             <svg viewBox="0 0 24 24" class="caret"><path d="M9 6l6 6-6 6"/></svg>
             <span>Projects</span>
-            <span class="proj-tag" id="projTag" title="Demo data — not your live Studio account">sample</span>
+            <span class="proj-tag" id="projTag" title="Demo data, not your live Studio account">sample</span>
           </button>
           <div class="side-body proj-tree" id="projList" aria-label="Your projects"><!-- injected by app.js --></div>
         </section>
@@ -70,7 +70,7 @@
             <a class="um-item" href="https://arxiv.org/pdf/2511.13655" target="_blank" rel="noopener">OlmoEarth report (arXiv) <span class="um-ext">↗</span></a>
             <a class="um-item" href="https://allenai.org/papers/olmoearth_v1_1" target="_blank" rel="noopener">OlmoEarth v1.1 <span class="um-ext">↗</span></a>
             <a class="um-item" href="https://openreview.net/pdf?id=IAyXlDwCYP" target="_blank" rel="noopener">Embeddings → fine-tuning <span class="um-ext">↗</span></a>
-            <a class="um-item" href="assets/olmoearth-model.png" target="_blank" rel="noopener">What is OlmoEarth? — diagram <span class="um-ext">↗</span></a>
+            <a class="um-item" href="assets/olmoearth-model.png" target="_blank" rel="noopener">What is OlmoEarth? (diagram) <span class="um-ext">↗</span></a>
           </div>
           <div class="um-section">
             <a class="um-item" href="https://allenai.org/responsible-use" target="_blank" rel="noopener">Responsible Use <span class="um-ext">↗</span></a>
@@ -107,7 +107,7 @@
                   <svg viewBox="0 0 24 24" class="ic"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M17 4l2 2M14 7l2 2"/></svg>
                   <span>Connect OlmoEarth Studio</span>
                 </div>
-                <p class="key-body">Paste your Studio API key to run real predictions and fetch results — it stays in your browser.</p>
+                <p class="key-body">Paste your Studio API key to run real predictions and fetch results. It stays in your browser.</p>
                 <form class="key-form" id="keyForm" autocomplete="off">
                   <input type="password" id="keyInput" placeholder="oe_live_…" spellcheck="false" aria-label="OlmoEarth Studio API key" />
                   <button class="btn-ghost" type="submit">Connect key</button>
@@ -116,7 +116,7 @@
               </div>
               <div class="key-state" id="keyConnected" hidden>
                 <div class="key-head"><span class="status-dot is-on"></span><span id="keyStatusLabel">Connected · demo</span></div>
-                <p class="key-body" id="keyConnBody">Key saved as <code>oe_live_••••</code>, but this preview <strong>doesn't call Studio yet</strong> — the data shown is sample, not your account.</p>
+                <p class="key-body" id="keyConnBody">Key saved as <code>oe_live_••••</code>, but this preview <strong>doesn't call Studio yet</strong>: the data shown is sample, not your account.</p>
                 <button class="btn-ghost" id="keyDisconnect" type="button">Disconnect</button>
               </div>
               <p class="key-future">Email sign-in is coming later.</p>
@@ -165,7 +165,7 @@
                 <button class="ex">How many OlmoEarth projects do I have?</button>
                 <button class="ex">Which of my projects relate to water quality?</button>
                 <button class="ex">Did karst-positive area trend up across these 4 quarterly snapshots?</button>
-                <button class="ex">I have 200 labels and a T4 — embeddings or fine-tune?</button>
+                <button class="ex">I have 200 labels and a T4: embeddings or fine-tune?</button>
                 <button class="ex">Audit my labels for the 8 data-prep pitfalls.</button>
                 <button class="ex">Compare OlmoEarth vs AlphaEarth on a transfer region.</button>
               </div>
@@ -176,7 +176,7 @@
           <section class="capabilities" id="capabilities">
             <div class="section-head">
               <h2>Fifteen skills, six stages</h2>
-              <p>From label prep to a stakeholder brief — each skill is a packaged tool the agent composes. <a href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md" target="_blank" rel="noopener">Full catalog →</a></p>
+              <p>From label prep to a stakeholder brief. Each skill is a packaged tool the agent composes. <a href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md" target="_blank" rel="noopener">Full catalog →</a></p>
             </div>
             <div class="cap-grid" id="capGrid"><!-- cards injected by app.js --></div>
           </section>
@@ -185,7 +185,7 @@
           <section class="run-example" id="run-example">
             <div class="section-head">
               <h2>What a run looks like</h2>
-              <p>A brief in, a transcript out — the model's reasoning, the function call, the real result, and a plain-English answer. Every step is recorded for provenance.</p>
+              <p>A brief in, a transcript out: the model's reasoning, the function call, the real result, and a plain-English answer. Every step is recorded for provenance.</p>
             </div>
 
             <div class="transcript">
@@ -198,7 +198,7 @@
                 <span class="role">OlmoEarth Agent</span>
                 <div class="think">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M12 3a6 6 0 00-4 10.5c.7.6 1 1 1 2h6c0-1 .3-1.4 1-2A6 6 0 0012 3z"/><path d="M9 18h6"/></svg>
-                  Four dates — that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.
+                  Four dates, that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.
                 </div>
 
                 <div class="toolcall">
@@ -221,7 +221,7 @@
                 </div>
 
                 <div class="answer">
-                  Net positive area rose <strong>+0.15</strong> over the year, but it didn't trend cleanly upward — there
+                  Net positive area rose <strong>+0.15</strong> over the year, but it didn't trend cleanly upward: there
                   were <strong>2 reversals</strong> and the Sep→Dec quarter (<strong>+0.12</strong>) drove most of the gain.
                   I'd call this <em>oscillating with an upward bias</em>, not a steady increase. Want the per-quarter chart or a stakeholder brief?
                 </div>

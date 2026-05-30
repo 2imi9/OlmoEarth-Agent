@@ -188,7 +188,7 @@ async def test_plain_content_not_parsed_as_tool_call(
 
 
 # Note: the OpenAI SDK merges ``extra_body`` into the top level of the
-# serialized HTTP request (that is its documented purpose) — so the
+# serialized HTTP request (that is its documented purpose), so the
 # captured request body has ``top_k`` and ``chat_template_kwargs`` at the
 # top level, NOT nested under an ``extra_body`` key. vLLM reads them from
 # there. The assertions below check the on-the-wire shape accordingly.
@@ -310,7 +310,7 @@ async def test_live_function_call_round_trip() -> None:
                 role="user",
                 content=(
                     "What time is it right now? Call the get_current_time "
-                    "tool — do not guess."
+                    "tool: do not guess."
                 ),
             )
         ],

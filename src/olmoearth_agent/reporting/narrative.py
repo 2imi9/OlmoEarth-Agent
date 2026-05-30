@@ -4,7 +4,7 @@
 
 Assembles a Markdown report from prediction results + the run's
 provenance, and **refuses to render stale tiles** past a configurable
-window — so a disaster-response brief never shows imagery that has since
+window, so a disaster-response brief never shows imagery that has since
 gone out of date. Pure functions; no I/O.
 """
 
@@ -106,11 +106,11 @@ def build_narrative(
         check = fresh_by_id[rid]
         if check.get("fresh") is False:
             lines.append(
-                f"- ~~{rid}~~ — stale ({check['age_hours']}h old), not rendered"
+                f"- ~~{rid}~~ - stale ({check['age_hours']}h old), not rendered"
             )
             continue
         props = ", ".join(result.get("property_names") or []) or "(none)"
-        lines.append(f"- **{rid}** — properties: {props}")
+        lines.append(f"- **{rid}** - properties: {props}")
         lines.extend(f"  - tile: `{url}`" for url in result.get("tile_urls") or [])
     lines.append("")
 

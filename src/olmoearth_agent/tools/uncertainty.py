@@ -45,7 +45,7 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
                     "vectors (predictors or embeddings); returns each new "
                     "point's dissimilarity index, whether it is inside the "
                     "AOA, the OOD fraction, and a verdict. Use this for OOD "
-                    "detection: softmax confidence is NOT OOD detection — a "
+                    "detection: softmax confidence is NOT OOD detection: a "
                     "model can be confidently wrong on data unlike its "
                     "training set. Optional per-feature importance weights. "
                     "Read-only; summary stats only."

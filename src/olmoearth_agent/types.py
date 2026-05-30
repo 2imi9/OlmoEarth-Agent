@@ -156,7 +156,7 @@ class StudioContext:
 class ProvenanceManifest:
     """One provenance entry per tool call (operational rule §3.13).
 
-    ``response_summary`` holds only ids / status / counts — never raw
+    ``response_summary`` holds only ids / status / counts: never raw
     geometry (rule §3.1). See
     :class:`olmoearth_agent.provenance.log.ProvenanceLog`.
     """

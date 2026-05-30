@@ -5,7 +5,7 @@
 set -euo pipefail
 
 echo "############################################"
-echo "# OlmoEarth Agent — quickstart"
+echo "# OlmoEarth Agent: quickstart"
 echo "############################################"
 
 echo ""

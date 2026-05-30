@@ -57,7 +57,7 @@ def build_cloud_mask_audit_tools() -> list[RegisteredTool]:
                     "Sen2Cor, MAJA, or any others) for the same scene. "
                     "Returns where the algorithms agree vs disagree "
                     "(agreement/disagreement rates, per-algorithm cloud "
-                    "fraction, pairwise disagreement, vote histogram) — it "
+                    "fraction, pairwise disagreement, vote histogram). It "
                     "surfaces disagreement, NOT a single ground-truth mask, "
                     "because algorithms diverge on thin/semi-transparent "
                     "cloud (Skakun CMIX 2022). If you also pass model_error "

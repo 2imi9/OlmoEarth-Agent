@@ -2,9 +2,9 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Command-line entrypoint: run the OlmoEarth Agent on one brief.
 
-Wires the verified pieces together — LLM client (env ``LLM_*``), Studio
+Wires the verified pieces together: LLM client (env ``LLM_*``), Studio
 client (env ``OLMOEARTH_API_KEY``), the default tool registry, the
-vendored-skill index — into a :class:`~olmoearth_agent.harness.LeadAgent`
+vendored-skill index, into a :class:`~olmoearth_agent.harness.LeadAgent`
 and runs a natural-language brief.
 
     olmoearth-agent "How many OlmoEarth projects do I have?"
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     if result.final_content is None:
-        print("(no answer — hit the turn cap)", file=sys.stderr)
+        print("(no answer, hit the turn cap)", file=sys.stderr)
         return 1
     print(result.final_content)
     return 0
