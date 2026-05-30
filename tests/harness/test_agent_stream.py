@@ -122,3 +122,32 @@ async def test_stream_hits_max_turns() -> None:
     assert events[-1] == {"type": "max_turns", "turns": 2}
     assert types.count("tool_call") == 2
     assert types.count("tool_result") == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_seeds_history_before_brief() -> None:
+    captured: dict[str, Any] = {}
+
+    class _CapturingLLM:
+        async def chat(
+            self, messages: list[Message], *, tools: Any = None, **_kw: Any
+        ) -> ChatResponse:
+            captured["messages"] = list(messages)
+            return ChatResponse(content="ok", tool_calls=[], finish_reason="stop")
+
+    history = [
+        Message(role="user", content="How many projects do I have?"),
+        Message(role="assistant", content="You have 5."),
+    ]
+    agent = LeadAgent(
+        _CapturingLLM(),  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+    )
+    await _collect(agent, "Which relate to water quality?", history=history)
+
+    seen = [(m.role, m.content) for m in captured["messages"]]
+    assert seen[0][0] == "system"
+    assert seen[1] == ("user", "How many projects do I have?")
+    assert seen[2] == ("assistant", "You have 5.")
+    assert seen[3] == ("user", "Which relate to water quality?")

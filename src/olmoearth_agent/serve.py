@@ -42,12 +42,16 @@ from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.harness import LeadAgent, ThreadState
 from olmoearth_agent.llm import OlmoEarthLLM
+from olmoearth_agent.llm.types import Message
 from olmoearth_agent.skills import SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
 
 #: Hard cap on agent round-trips a single browser request may trigger.
 _MAX_TURNS_CEILING = 12
+
+#: How many prior conversation turns to forward to the agent (bounds prompt size).
+_MAX_HISTORY_TURNS = 12
 
 
 def _webui_dir() -> Path:
@@ -81,6 +85,27 @@ def _studio_key(request: Request) -> str:
 def _sse(event: dict[str, Any]) -> str:
     """Format one event dict as a Server-Sent Events ``data:`` frame."""
     return f"data: {json.dumps(event)}\n\n"
+
+
+def _history_from_body(body: dict[str, Any]) -> list[Message]:
+    """Parse ``body['history']`` into seed ``Message``s for multi-turn runs.
+
+    Accepts a list of ``{"role": "user"|"assistant", "content": str}``; ignores
+    anything else and keeps only the last :data:`_MAX_HISTORY_TURNS` to bound
+    the prompt.
+    """
+    raw = body.get("history")
+    if not isinstance(raw, list):
+        return []
+    out: list[Message] = []
+    for item in raw[-_MAX_HISTORY_TURNS:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role in ("user", "assistant") and isinstance(content, str) and content:
+            out.append(Message(role=role, content=content))
+    return out
 
 
 @asynccontextmanager
@@ -157,6 +182,7 @@ async def api_run(request: Request) -> StreamingResponse:
     if not brief:
         raise HTTPException(status_code=400, detail="missing 'brief'")
     max_turns = max(1, min(_MAX_TURNS_CEILING, int(body.get("max_turns", 8))))
+    history = _history_from_body(body)
 
     llm: OlmoEarthLLM = app.state.llm
     registry = app.state.registry
@@ -174,7 +200,9 @@ async def api_run(request: Request) -> StreamingResponse:
                 skill_index=skill_index,
             )
             try:
-                async for event in agent.run_stream(brief, max_turns=max_turns):
+                async for event in agent.run_stream(
+                    brief, max_turns=max_turns, history=history
+                ):
                     yield _sse(event)
             except Exception as exc:  # don't drop the stream — report it
                 yield _sse({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
@@ -189,6 +217,68 @@ async def api_run(request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no",  # disable proxy buffering for SSE
         },
     )
+
+
+@app.get("/api/projects/{project_id}/predictions")
+async def api_project_predictions(project_id: str, request: Request) -> dict[str, Any]:
+    """Predictions for a project — the tree's model + prediction levels.
+
+    The front-end groups these by ``model_id`` to synthesize the
+    "Model/Embeddings" level (Studio has no ``/models`` endpoint).
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            env = await studio.search_predictions(project_id=project_id, limit=200)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Studio call failed: {type(exc).__name__}"
+        ) from exc
+    predictions = [
+        {
+            "id": r.get("id", ""),
+            "name": r.get("name") or "(unnamed)",
+            "status": r.get("status") or "",
+            "model_id": r.get("model_id") or "",
+        }
+        for r in env.records
+    ]
+    return {"ok": True, "predictions": predictions}
+
+
+@app.get("/api/predictions/{prediction_id}/results")
+async def api_prediction_results(
+    prediction_id: str, request: Request
+) -> dict[str, Any]:
+    """Prediction-results for a prediction — the tree's leaf level."""
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            env = await studio.search_prediction_results(
+                prediction_id=prediction_id, limit=200
+            )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Studio call failed: {type(exc).__name__}"
+        ) from exc
+    results = [
+        {
+            "id": r.get("id", ""),
+            "property_names": r.get("property_names") or [],
+            "file_format": r.get("file_format") or "",
+            "tiles": len(r.get("tile_urls") or []),
+        }
+        for r in env.records
+    ]
+    return {"ok": True, "results": results}
 
 
 # Serve the static front-end at the root. Mounted last so the explicit

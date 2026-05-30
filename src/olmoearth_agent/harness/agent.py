@@ -33,8 +33,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "- Do not create a project whose name already exists; reuse it.\n"
     "- Never print raw latitude/longitude or full GeoJSON in your replies; "
     "reference a saved path or an id instead.\n"
-    "- When the task is complete, stop calling tools and reply with a short "
-    "plain-text summary of what you did and the ids involved."
+    "- When the task is complete, stop calling tools and reply with a concise "
+    "answer in GitHub-flavored Markdown (use tables, **bold**, and lists where "
+    "they help) summarizing what you did and the ids involved.\n"
+    "- Do NOT use emoji or decorative pictographs (no star / coloured-circle / "
+    "question-mark emoji). Use plain markers only — ✓, ✗, ~ — or words "
+    "(strong / moderate / weak / unclear)."
 )
 
 
@@ -87,7 +91,11 @@ class LeadAgent:
             )
 
     async def run_stream(
-        self, brief: str, *, max_turns: int = 8
+        self,
+        brief: str,
+        *,
+        max_turns: int = 8,
+        history: list[Message] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Run the agent loop, yielding one event per step as it happens.
 
@@ -107,11 +115,15 @@ class LeadAgent:
             The user's natural-language request.
         max_turns
             Hard cap on LLM round-trips, to bound cost and stop loops.
+        history
+            Prior conversation turns (user/assistant messages) to seed before
+            the new ``brief``, so multi-turn follow-ups have context. Inserted
+            between the system prompt and the new user message.
         """
-        messages: list[Message] = [
-            Message(role="system", content=self.system_prompt),
-            Message(role="user", content=brief),
-        ]
+        messages: list[Message] = [Message(role="system", content=self.system_prompt)]
+        if history:
+            messages.extend(history)
+        messages.append(Message(role="user", content=brief))
         ctx = ToolContext(studio=self.studio, state=self.state)
 
         for turn in range(1, max_turns + 1):
@@ -163,7 +175,13 @@ class LeadAgent:
 
         yield {"type": "max_turns", "turns": max_turns}
 
-    async def run(self, brief: str, *, max_turns: int = 8) -> AgentResult:
+    async def run(
+        self,
+        brief: str,
+        *,
+        max_turns: int = 8,
+        history: list[Message] | None = None,
+    ) -> AgentResult:
         """Run the agent loop until it answers or hits ``max_turns``.
 
         Thin collector over :meth:`run_stream`: drains the streamed events
@@ -175,6 +193,9 @@ class LeadAgent:
             The user's natural-language request.
         max_turns
             Hard cap on LLM round-trips, to bound cost and stop loops.
+        history
+            Prior conversation turns to seed before ``brief`` (see
+            :meth:`run_stream`).
 
         Returns
         -------
@@ -187,7 +208,7 @@ class LeadAgent:
         calls: list[tuple[str, bool]] = []
         hit_max_turns = False
 
-        async for event in self.run_stream(brief, max_turns=max_turns):
+        async for event in self.run_stream(brief, max_turns=max_turns, history=history):
             kind = event["type"]
             if kind == "tool_result":
                 calls.append((event["name"], event["ok"]))

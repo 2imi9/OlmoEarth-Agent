@@ -6,17 +6,19 @@ and rebranded with **OlmoEarth** elements (the pink Ai2/OlmoEarth logo, the
 EO/Studio content, the 15-skill catalog).
 
 By default it's a **static mock** — no build step, no framework, no tracking —
-so the prompt, the projects list, and the "what a run looks like" transcript are
+so the chat, the projects tree, and the "what a run looks like" transcript are
 illustrative sample data. Serve it with the **bridge** (`olmoearth-agent-serve`,
 see [Live mode](#live-mode-the-bridge)) and it upgrades in place to the **live
-agent**: your real Studio projects, and briefs streamed through `LeadAgent` over
-Server-Sent Events.
+agent**: a multi-turn **chat with saved history**, your **real Studio projects as
+a drill-down tree** (project → model/embeddings → predictions → results), and
+briefs streamed through `LeadAgent` over Server-Sent Events. Chat history is kept
+client-side (localStorage), same as the key.
 
 ![OlmoEarth Agent — live demo](demo/olmoearth-agent-demo.gif)
 
 *A brief in, the agent loop streamed out — reasoning, the `olmoearth_change_detect`
 call, the result, and a plain-English answer ([MP4](demo/olmoearth-agent-demo.mp4)).
-The run is a scripted mock (see [`app.js`](app.js) `runDemo`) until it's wired to `LeadAgent`.*
+Demo runs are scripted (see [`app.js`](app.js) `runDemo`); served by the bridge, the same UI streams the real `LeadAgent`.*
 
 ![desktop](screenshots/desktop.png)
 
