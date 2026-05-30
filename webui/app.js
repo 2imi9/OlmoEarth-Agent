@@ -86,6 +86,102 @@ function autosize(el) {
   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
 
+/* ── Live run (demo) ─────────────────────────────────────────────────────
+   The agent isn't wired to a backend yet, so a submitted brief plays a canned,
+   streamed agent loop (thinking → tool call → result → answer). The content is
+   real — it mirrors the olmoearth_change_detect / load_context showcase. */
+const SCENARIOS = {
+  change: {
+    reasoning: "Four dates — that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.",
+    tool: 'olmoearth_change_detect',
+    args: '{\n  "series": [\n    {"date": "2024-03-01", "value": 0.12},\n    {"date": "2024-06-01", "value": 0.18},\n    {"date": "2024-09-01", "value": 0.15},\n    {"date": "2024-12-01", "value": 0.27}\n  ],\n  "metric": "karst_positive_fraction"\n}',
+    result: [['trend', 'oscillating'], ['net_change', '+0.15'], ['reversals', '2'], ['max step', 'Sep→Dec +0.12']],
+    answer: "Net positive area rose <strong>+0.15</strong> over the year, but it didn't trend cleanly upward — there were <strong>2 reversals</strong>, and the Sep→Dec quarter (<strong>+0.12</strong>) drove most of the gain. I'd call this <em>oscillating with an upward bias</em>, not a steady increase. Want the per-quarter chart or a stakeholder brief?",
+  },
+  projects: {
+    reasoning: "I'll load the account context first (per the run rules — never invent ids), then count the projects it returns.",
+    tool: 'olmoearth_load_context',
+    args: '{}',
+    result: [['name', 'demo-user'], ['project_count', '5'], ['ok', 'true']],
+    answer: "You have <strong>5</strong> OlmoEarth Studio projects. Want me to list them, or filter to a topic (e.g. water quality)?",
+  },
+};
+
+function pickScenario(brief) {
+  return /project|how many|account|water quality/i.test(brief || '') ? SCENARIOS.projects : SCENARIOS.change;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function typeText(el, text, speed) {
+  el.textContent = '';
+  el.classList.add('caret');
+  let i = 0;
+  const tick = () => {
+    if (i <= text.length) { el.textContent = text.slice(0, i); i += 1; setTimeout(tick, speed || 14); }
+    else el.classList.remove('caret');
+  };
+  tick();
+}
+
+function runDemo(brief) {
+  const rv = document.getElementById('runview');
+  if (!rv) return;
+  const sc = pickScenario(brief);
+  const ex = document.getElementById('examples');
+  if (ex) ex.hidden = true;
+  rv.hidden = false;
+  rv.innerHTML =
+    '<div class="transcript live">' +
+      '<div class="msg user run-step"><span class="role">Brief</span>' +
+        '<div class="bubble">' + escapeHtml(brief) + '</div></div>' +
+      '<div class="msg agent"><span class="role">OlmoEarth Agent</span><div id="runBody"></div></div>' +
+    '</div>';
+  const body = rv.querySelector('#runBody');
+  rv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  setTimeout(() => {
+    body.innerHTML = '<div class="think run-step" id="thinkRow"><span class="typing"><span></span><span></span><span></span></span><span id="thinkText" class="muted">Thinking…</span></div>';
+  }, 450);
+
+  setTimeout(() => {
+    const row = document.getElementById('thinkRow');
+    const t = document.getElementById('thinkText');
+    if (row) { const dots = row.querySelector('.typing'); if (dots) dots.remove(); }
+    if (t) { t.classList.remove('muted'); typeText(t, sc.reasoning); }
+  }, 1700);
+
+  setTimeout(() => {
+    body.insertAdjacentHTML('beforeend',
+      '<div class="toolcall run-step" id="tcCard">' +
+        '<div class="tc-head"><span class="tc-dot running"></span><span id="tcState">calling</span> <code>' + sc.tool + '</code></div>' +
+        '<pre class="tc-args">' + escapeHtml(sc.args) + '</pre>' +
+        '<div class="tc-result" id="tcResult" hidden></div>' +
+      '</div>');
+    const c = document.getElementById('tcCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 3100);
+
+  setTimeout(() => {
+    const dot = document.querySelector('#tcCard .tc-dot');
+    const state = document.getElementById('tcState');
+    const res = document.getElementById('tcResult');
+    if (dot) dot.classList.remove('running');
+    if (state) state.textContent = 'called';
+    if (res) {
+      res.hidden = false;
+      res.classList.add('run-step');
+      res.innerHTML = sc.result.map((kv) => '<span class="kv"><b>' + kv[0] + '</b> ' + kv[1] + '</span>').join('');
+    }
+  }, 4500);
+
+  setTimeout(() => {
+    body.insertAdjacentHTML('beforeend', '<div class="answer run-step" id="ansCard">' + sc.answer + '</div>');
+    const a = document.getElementById('ansCard'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 5500);
+}
+
 function wirePrompt() {
   const form = document.getElementById('promptForm');
   const input = document.getElementById('promptInput');
@@ -93,8 +189,8 @@ function wirePrompt() {
   if (form) {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const run = document.getElementById('run-example');
-      if (run) run.scrollIntoView({ behavior: 'smooth' });
+      const brief = (input && input.value.trim()) || 'Did karst-positive area trend up across these 4 quarterly snapshots, or just wobble?';
+      runDemo(brief);
     });
   }
 }

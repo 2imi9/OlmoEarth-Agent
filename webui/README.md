@@ -9,6 +9,12 @@ It's a **static mock** — no build step, no framework, no tracking. The prompt,
 tabs, example briefs, and the "what a run looks like" transcript are illustrative;
 wiring it to the live agent is the next step (see below).
 
+![OlmoEarth Agent — live demo](demo/olmoearth-agent-demo.gif)
+
+*A brief in, the agent loop streamed out — reasoning, the `olmoearth_change_detect`
+call, the result, and a plain-English answer ([MP4](demo/olmoearth-agent-demo.mp4)).
+The run is a scripted mock (see [`app.js`](app.js) `runDemo`) until it's wired to `LeadAgent`.*
+
 ![desktop](screenshots/desktop.png)
 
 ## View it
