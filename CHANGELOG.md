@@ -27,6 +27,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `Title (kind)` style for the Papers & resources links (the
   `Embeddings -> fine-tuning` arrow is gone), `Max steps per run` instead of
   `Max steps / run`, and a header on every section.
+- **Landing example briefs follow the selected mode** (`webui/index.html`,
+  `webui/app.js`): the "Run a prediction" / "Analyze results" / "Prep &
+  configure" tabs now swap the suggested example briefs (not just the input
+  placeholder), and selecting a tab reveals them.
 
 ### Removed
 - **Skill #16 `roger-annotation-bridge` dropped**: the planned Roger
