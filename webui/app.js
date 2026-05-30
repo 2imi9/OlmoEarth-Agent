@@ -654,6 +654,8 @@ function wireKey() {
     if (connected) connected.hidden = !on;
     if (dot) dot.classList.toggle('is-on', on);
     if (status) status.textContent = on ? (BRIDGE.live ? 'Connected · live' : 'Connected · demo') : 'Not connected';
+    const topBtn = document.getElementById('topKeyBtn');
+    if (topBtn) topBtn.textContent = on ? 'Studio key' : 'Add API key';
     if (on) {
       const label = document.getElementById('keyStatusLabel');
       const body = document.getElementById('keyConnBody');
@@ -674,10 +676,19 @@ function wireKey() {
   const dis = document.getElementById('keyDisconnect');
   if (dis) dis.addEventListener('click', () => { set(''); render(); });
   const top = document.getElementById('topKeyBtn');
-  if (top) top.addEventListener('click', () => {
-    document.getElementById('sidebar') && document.getElementById('sidebar').classList.add('open');
-    if (input) { input.focus(); input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-  });
+  const pop = document.getElementById('keyPop');
+  if (top && pop) {
+    const closePop = () => { pop.hidden = true; top.setAttribute('aria-expanded', 'false'); };
+    top.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pop.hidden = !pop.hidden;
+      top.setAttribute('aria-expanded', String(!pop.hidden));
+      if (!pop.hidden && input && connect && !connect.hidden) input.focus();
+    });
+    pop.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => { if (!pop.hidden) closePop(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
+  }
   render();
 }
 

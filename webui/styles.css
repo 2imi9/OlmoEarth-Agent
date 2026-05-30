@@ -56,12 +56,9 @@ a:hover { color: var(--text); }
   padding: 18px 14px;
   gap: 14px;
 }
-.brand { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
-.brand-logo { height: 22px; width: auto; display: block; }
-.brand-tag {
-  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--bg); background: var(--pink); padding: 2px 7px; border-radius: var(--radius-pill);
-}
+.brand { display: flex; align-items: center; padding: 4px 6px; }
+/* Crop the wordmark PNG to just the OlmoEarth pinwheel symbol (leftmost ~13%). */
+.brand-mark { width: 28px; height: 28px; display: block; object-fit: cover; object-position: left center; }
 .btn-new {
   display: flex; align-items: center; gap: 8px; width: 100%;
   background: var(--pink); color: #2a0a1a; border: none;
@@ -145,10 +142,14 @@ a:hover { color: var(--text); }
 .proj-empty { padding: 8px 10px; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
 .proj-empty-sub { display: block; margin-top: 3px; color: var(--text-faint); font-size: 11.5px; }
 
-.key-card {
-  background: var(--bg-2); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 14px;
+/* Key UI is now a popover from the topbar "Add API key" button (not a sidebar card). */
+.key-wrap { position: relative; }
+.key-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: 300px;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px;
 }
+.key-pop[hidden] { display: none; }
 .key-head { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13.5px; }
 .key-head .ic { font-size: 17px; color: var(--pink); }
 .key-body { margin: 9px 0 11px; font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }

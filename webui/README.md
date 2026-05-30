@@ -14,11 +14,15 @@ a drill-down tree** (project → model/embeddings → predictions → results), 
 briefs streamed through `LeadAgent` over Server-Sent Events. Chat history is kept
 client-side (localStorage), same as the key.
 
-![OlmoEarth Agent — live demo](demo/olmoearth-agent-demo.gif)
+![OlmoEarth Agent — demo](demo/olmoearth-agent-demo.gif)
 
-*A brief in, the agent loop streamed out — reasoning, the `olmoearth_change_detect`
-call, the result, and a plain-English answer ([MP4](demo/olmoearth-agent-demo.mp4)).
-Demo runs are scripted (see [`app.js`](app.js) `runDemo`); served by the bridge, the same UI streams the real `LeadAgent`.*
+> ⚠️ **This GIF is from the older single-run UI and is being re-recorded.** The
+> current UI is a multi-turn **chat** with saved history, a collapsible Studio
+> **project tree**, Markdown-rendered answers, and a per-turn "Reasoning & tools"
+> disclosure. ([MP4](demo/olmoearth-agent-demo.mp4))
+
+*Demo runs are scripted (see [`app.js`](app.js) `runDemo`); served by the bridge,
+the same UI streams the real `LeadAgent` over SSE.*
 
 ![desktop](screenshots/desktop.png)
 
@@ -36,10 +40,10 @@ Or just open `webui/index.html` in a browser.
 
 | File | What |
 |---|---|
-| `index.html` | markup — sidebar, prompt hero, capability grid, example transcript, footer |
+| `index.html` | markup — sidebar (chats + project tree), chat thread, pinned composer, key popover |
 | `styles.css` | the design system (tokens at `:root`) — no preprocessor |
-| `app.js`     | renders the 15 skill cards + tab / example / mobile-menu interactions |
-| `assets/OlmoEarth-logo.png` | the official OlmoEarth wordmark |
+| `app.js`     | chat store + saved history, demo/live run streaming, project tree, Markdown rendering, settings menu |
+| `assets/OlmoEarth-logo.png` | the OlmoEarth wordmark (the sidebar crops it to just the symbol) |
 | `screenshots/` | reference renders (desktop, transcript, mobile) |
 
 ## Design
@@ -56,13 +60,13 @@ single column below 880 px.
 ## Account (bring your own key)
 
 There's no login to build — a user with a Studio assignment **already has an
-OlmoEarth Studio API key** (Studio → profile → API Keys). They paste it into the
-sidebar ("Connect OlmoEarth Studio"); it's kept **client-side** (localStorage).
-In the **static mock** nothing is sent anywhere — the UI just unlocks the sample
-projects and says *"Connected · demo"*. Under the **bridge** the same key is
-forwarded per request (header `X-Olmoearth-Key`) so calls hit *their own* Studio
-account, and the card switches to *"Studio connected"*. Email-based sign-in is
-planned for later and out of scope here.
+OlmoEarth Studio API key** (Studio → profile → API Keys). They paste it via the
+**"Add API key"** button (top bar → popover); it's kept **client-side**
+(localStorage). In the **static mock** nothing is sent anywhere — the UI just
+unlocks the sample projects and the chip reads *"Connected · demo"*. Under the
+**bridge** the same key is forwarded per request (header `X-Olmoearth-Key`) so
+calls hit *their own* Studio account and the chip reads *"Connected · live"*.
+Email-based sign-in is planned for later and out of scope here.
 
 ## Live mode (the bridge)
 
@@ -83,7 +87,9 @@ Endpoints:
 |---|---|
 | `GET /api/health` | the front-end probes this to flip from demo → live |
 | `GET /api/projects` | your real Studio projects (`load_context`) |
-| `POST /api/run` | streams `LeadAgent.run_stream` as Server-Sent Events |
+| `GET /api/projects/{id}/predictions` | a project's predictions (the tree groups them by model) |
+| `GET /api/predictions/{id}/results` | a prediction's result tiles/properties |
+| `POST /api/run` | streams `LeadAgent.run_stream` as SSE (accepts prior `history` for multi-turn) |
 
 The browser sends your Studio key in the `X-Olmoearth-Key` header; the bridge
 forwards it per request and never stores it. Opened as a plain file — or served
