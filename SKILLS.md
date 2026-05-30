@@ -2,7 +2,7 @@
 
 Detailed spec for the 15 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
-`PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract — what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
+`PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
 **Status:** v0.4 spec, 2026-05-27. Implementation rolls out one PR per skill; tracking in `CHANGELOG.md`.
 
@@ -12,11 +12,11 @@ Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi
 
 | Upstream | Catalog mapping |
 |---|---|
-| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified** — 8 prep pitfalls + 7-criteria audit; recognizes all three schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
-| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3** — 14 verified presets + cross-field validator. |
-| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4** — embeddings-vs-fine-tune decision + Nano/Tiny/Base/Large notebook. |
+| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified**: 8 prep pitfalls + 7-criteria audit; recognizes all three schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
+| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3**: 14 verified presets + cross-field validator. |
+| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4**: embeddings-vs-fine-tune decision + Nano/Tiny/Base/Large notebook. |
 
-Skills #5–#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 are unified upstream as `olmoearth-data-prep` (matching the working implementation) but kept as two numbered entries here.
+Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 are unified upstream as `olmoearth-data-prep` (matching the working implementation) but kept as two numbered entries here.
 
 **Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever…", "Trigger even when…") because the description is the LLM's routing surface. Match it.
 
@@ -42,7 +42,7 @@ Skills #5–#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 
-Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Studio import pain points, EO foundation-model literature, and existing `olmoearth-data-prep` patterns.
+Source for skills 1-15: working spec doc co-authored by Ziming, drawing on Studio import pain points, EO foundation-model literature, and existing `olmoearth-data-prep` patterns.
 
 ---
 
@@ -222,7 +222,7 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 **In:** STAC items for an AOI + time range.
 **Out:** per-tile cloud-mask disagreement raster + bad-mask-vs-bad-model verdict.
 
-**What.** Ensemble of CFMask, s2cloudless, Sen2Cor, MAJA — flags whether a bad prediction is caused by a bad cloud mask or a bad model. Surfaces ensemble disagreement, not a single ground-truth mask.
+**What.** Ensemble of CFMask, s2cloudless, Sen2Cor, MAJA: flags whether a bad prediction is caused by a bad cloud mask or a bad model. Surfaces ensemble disagreement, not a single ground-truth mask.
 
 **Why.** [Skakun et al. CMIX (RSE 274:112990, 2022)](https://doi.org/10.1016/j.rse.2022.112990) compared 10 cloud algorithms across 5 reference datasets and found large disagreement on thin and semi-transparent clouds. HLS v1.3 documentation flags Sentinel-2 cloud-mask quality as an open issue. Cloud-mask accuracy is also known to drop in snow / ice conditions (Yan et al. RSE 2025). Without an audit, practitioners cannot tell whether their model is wrong or just looking at cloud.
 
@@ -254,7 +254,7 @@ Source for skills 1–15: working spec doc co-authored by Ziming, drawing on Stu
 **REFRAMED 2026-05-28.** The original idea (wire third-party GEE / OSM /
 USGS / NOAA MCPs *into* an AOI) needs external MCPs the user must connect
 and isn't core. It was reframed to the more useful, self-contained
-**export our own Studio data, grouped** — implemented as
+**export our own Studio data, grouped**, implemented as
 `olmoearth_export_data` (projects + predictions → JSON grouped by project
 or status; `tools/export.py`). Verified live. The original
 external-MCP-ingest idea is parked (re-open if a case needs it).
@@ -328,6 +328,6 @@ See [`CONTRIBUTING.md` §3](CONTRIBUTING.md#3-branch-and-pr-workflow) for branch
 
 ## Vendoring policy
 
-[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) is canonical for skills #1–#4; agent vendors at a pinned commit. Decide in the first skill PR:
-- **A. Git submodule** — track an upstream SHA; cleanest provenance, harder for casual contributors.
-- **B. Copy + provenance in `skill-card.md`** — simpler, drift risk if the bump is forgotten.
+[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) is canonical for skills #1-#4; agent vendors at a pinned commit. Decide in the first skill PR:
+- **A. Git submodule**: track an upstream SHA; cleanest provenance, harder for casual contributors.
+- **B. Copy + provenance in `skill-card.md`**: simpler, drift risk if the bump is forgotten.

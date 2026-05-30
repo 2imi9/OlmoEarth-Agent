@@ -37,7 +37,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "answer in GitHub-flavored Markdown (use tables, **bold**, and lists where "
     "they help) summarizing what you did and the ids involved.\n"
     "- Do NOT use emoji or decorative pictographs (no star / coloured-circle / "
-    "question-mark emoji). Use plain markers only — ✓, ✗, ~ — or words "
+    "question-mark emoji). Use plain markers only, ✓, ✗, ~, or words "
     "(strong / moderate / weak / unclear)."
 )
 
@@ -103,11 +103,11 @@ class LeadAgent:
         assemble an :class:`AgentResult`. Each yielded event is a small,
         JSON-serializable dict tagged with a ``type``:
 
-        - ``thinking``    — the model's reasoning for a turn (``text``).
-        - ``tool_call``   — a dispatched call (``name``, ``arguments``, ``id``).
-        - ``tool_result`` — its outcome (``name``, ``ok``, ``result``, ``id``).
-        - ``final``       — the plain-text answer (``content``).
-        - ``max_turns``   — the cap was hit with no answer (``turns``).
+        - ``thinking``    : the model's reasoning for a turn (``text``).
+        - ``tool_call``   : a dispatched call (``name``, ``arguments``, ``id``).
+        - ``tool_result`` : its outcome (``name``, ``ok``, ``result``, ``id``).
+        - ``final``       : the plain-text answer (``content``).
+        - ``max_turns``   : the cap was hit with no answer (``turns``).
 
         Parameters
         ----------

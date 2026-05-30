@@ -1,8 +1,8 @@
-# OlmoEarth Agent — preset quickstart targets.
+# OlmoEarth Agent: preset quickstart targets.
 # Run on Git Bash / WSL / Linux / macOS. GNU make; recipes use real TABs.
-# Canonical values live in docs/CANON.md — keep these consistent with it.
+# Canonical values live in docs/CANON.md. Keep these consistent with it.
 
-# Default sample brief for `make agent` — override with: make agent Q="..."
+# Default sample brief for `make agent`, override with: make agent Q="..."
 Q ?= How many OlmoEarth Studio projects do I have?
 
 # Compose file for the local LLM backend (4-bit GGUF via llama.cpp).
@@ -14,7 +14,7 @@ WEB_PORT := 8080
 .PHONY: help setup serve down agent web up
 
 help: ## List the available targets.
-	@echo "OlmoEarth Agent — make targets:"
+	@echo "OlmoEarth Agent make targets:"
 	@echo "  make setup   - init submodules (vendored skills #1-#4) + uv sync --all-extras"
 	@echo "  make serve   - start the llama.cpp LLM and wait for it to be healthy"
 	@echo "  make down    - stop the LLM"
@@ -37,7 +37,7 @@ down: ## Stop the LLM.
 agent: ## Run a single brief through the agent (override with Q="...").
 	uv run olmoearth-agent "$(Q)"
 
-web: ## Serve the static web UI (port 8080 — the LLM owns 8000).
+web: ## Serve the static web UI (port 8080, the LLM owns 8000).
 	@echo "Serving the OlmoEarth Agent web UI at http://localhost:$(WEB_PORT)"
 	python -m http.server $(WEB_PORT) --directory webui
 

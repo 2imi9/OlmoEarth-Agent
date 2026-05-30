@@ -15,7 +15,7 @@ distribution (the outlier-adjusted ``Q75 + 1.5·IQR``, as in the R
 ``CAST`` package).
 
 The reason this skill exists: softmax confidence is **not** OOD
-detection — a model can be confidently wrong on data unlike anything it
+detection: a model can be confidently wrong on data unlike anything it
 was trained on (AlphaEarth's documented transfer failure under domain
 shift is exactly what AOA flags). :func:`area_of_applicability` is the
 OOD half; the repeated-sampling *confidence map* (epistemic uncertainty

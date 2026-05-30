@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Tests for ``LeadAgent.run_stream`` — the streaming event source."""
+"""Tests for ``LeadAgent.run_stream``: the streaming event source."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ Drives the static webui in a headless browser and records a short walkthrough:
 connect a key, drill into the project tree, send a brief, watch the chat stream,
 ask a follow-up, expand "Reasoning & tools", open settings. No LLM needed.
 
-These deps are NOT part of the package — install once:
+These deps are NOT part of the package, install once:
 
     uv pip install playwright imageio imageio-ffmpeg
     uv run --no-sync playwright install chromium
@@ -71,7 +71,7 @@ def _record() -> Path:
         page.wait_for_selector("#promptForm", timeout=15000)
         time.sleep(1.2)
 
-        # 1) Send a brief FIRST — the agent's output (a Markdown table) is the star,
+        # 1) Send a brief FIRST: the agent's output (a Markdown table) is the star,
         #    and we hold on it so the GIF clearly captures the answer.
         page.fill(
             "#promptInput",
@@ -160,7 +160,7 @@ def _convert(webm: Path) -> tuple[Path, Path]:
         ],
         check=True,
     )
-    # GIF — a SHORT clip (first GIF_SECONDS), smaller for the README.
+    # GIF: a SHORT clip (first GIF_SECONDS), smaller for the README.
     gif_t = str(GIF_SECONDS)
     subprocess.run(  # noqa: S603 - trusted ffmpeg binary + literal args
         [

@@ -40,8 +40,8 @@ path; without `LLM_ENDPOINT` set, those tests skip.
 
 | Flag | Why |
 |---|---|
-| `--jinja` | **Required for tool calling** — activates the GGUF chat template so the model emits parseable `tool_calls`. Without it, tool calls come back as text and the integration tests fail at `finish_reason == "tool_calls"`. |
-| `--no-mmap` | Loads the file fully instead of mmap'ing — avoids the slow mmap-over-virtiofs path that stalls large loads on Docker Desktop / WSL. |
+| `--jinja` | **Required for tool calling**: activates the GGUF chat template so the model emits parseable `tool_calls`. Without it, tool calls come back as text and the integration tests fail at `finish_reason == "tool_calls"`. |
+| `--no-mmap` | Loads the file fully instead of mmap'ing, avoiding the slow mmap-over-virtiofs path that stalls large loads on Docker Desktop / WSL. |
 | `-ngl 999` | Offload all layers to the GPU. |
 | `-c 8192` | **Total** context, which llama.cpp splits across parallel slots (it defaults to ~4 → ~2048 tokens each). Fine for short chats, but a full `SKILL.md` loaded mid-conversation overflows a 2048-token slot. For skill-heavy or long-context runs, use one big slot: `--parallel 1 -c 16384`. |
 
@@ -61,11 +61,11 @@ path; without `LLM_ENDPOINT` set, those tests skip.
 The agent client (`src/olmoearth_agent/llm/client.py`) opens every chat
 with:
 
-- **`chat_template_kwargs.preserve_thinking=True`** — keeps thinking
+- **`chat_template_kwargs.preserve_thinking=True`**: keeps thinking
   context across turns (Qwen3.6 model card: improves multi-turn decision
   consistency, optimizes KV cache). Passed via the OpenAI SDK's
   `extra_body`, which the server reads from the top level of the request.
-- **`thinking_general` sampling preset** — `T=1.0, top_p=0.95, top_k=20,
+- **`thinking_general` sampling preset**: `T=1.0, top_p=0.95, top_k=20,
   presence_penalty=1.5`.
 
 Switch presets per call with `OlmoEarthLLM.chat(..., mode="instruct_general")`.

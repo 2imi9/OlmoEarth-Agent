@@ -3,10 +3,10 @@
 A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; runs them in a Python sandbox preloaded with the standard geospatial stack; and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1. Everything below it is supporting detail.
 
 **Status:** v0.4 spec, 2026-05-27. No runnable code yet.
-**Scope:** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`, via llama.cpp) with function calling. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work — they re-activate only if a skill empirically needs them.
-**Skill catalog:** [`SKILLS.md`](SKILLS.md) — 15 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
+**Scope:** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`, via llama.cpp) with function calling. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them.
+**Skill catalog:** [`SKILLS.md`](SKILLS.md): 15 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
-**Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0 — fields and enums may change without notice.
+**Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0: fields and enums may change without notice.
 
 ---
 
@@ -61,8 +61,8 @@ olmoearth,Function,get_data_in_locations,spec (DataRetrievalSpec) | aoi (AOIWrap
 olmoearth,Function,create_project,name (str) | description (str),ProjectRef,POST /projects.
 olmoearth,Function,create_area,project (ProjectRef) | aoi (AOIWrapper),AreaRef,POST /areas.
 olmoearth,Function,create_dataset,project (ProjectRef) | area (AreaRef) | bands (list[str]) | time_range (TimeRange),DatasetRef,Configures a Studio dataset.
-olmoearth,Function,create_labelset,project (ProjectRef) | spec (LabelsetSpec),LabelsetRef,POST /labelsets — labelset metadata (name/description/template_id).
-olmoearth,Function,create_label,labelset (LabelsetRef) | name (str) | color (str),LabelDef,POST /labels — one class within a labelset.
+olmoearth,Function,create_labelset,project (ProjectRef) | spec (LabelsetSpec),LabelsetRef,POST /labelsets: labelset metadata (name/description/template_id).
+olmoearth,Function,create_label,labelset (LabelsetRef) | name (str) | color (str),LabelDef,POST /labels: one class within a labelset.
 olmoearth,Function,upload_labels,labelset (LabelsetRef) | path (str),int,Imports normalized GeoJSON/CSV/Shapefile labels; returns count.
 olmoearth,Function,submit_prediction,kind ("finetune"|"embed"|"reference") | project (ProjectRef) | dataset (DatasetRef) | config (dict),PredictionRef,POST /predictions.
 olmoearth,Function,poll_prediction,ref (PredictionRef),PredictionStatus,GET /predictions/{id} with exponential backoff.
@@ -137,7 +137,7 @@ class DatasetRef:
 
 @dataclasses.dataclass
 class LabelsetSpec:
-    """Studio `LabelsetWrite` — metadata about a labelset.
+    """Studio `LabelsetWrite`: metadata about a labelset.
     Matches `components.schemas.LabelsetWrite` in openapi.json v0.1.0."""
     name: str
     description: str | None = None
@@ -145,7 +145,7 @@ class LabelsetSpec:
 
 @dataclasses.dataclass
 class LabelDef:
-    """Studio `LabelWrite` — one class within a labelset.
+    """Studio `LabelWrite`: one class within a labelset.
     Matches `components.schemas.LabelWrite` in openapi.json v0.1.0."""
     name: str
     color: str           # hex, e.g. "#33CC66"
@@ -207,7 +207,7 @@ class PredictionRef:
 
     `kind` is a CLIENT-SIDE dispatch key that selects the `config` shape
     we send to `submit_prediction`. The Studio API itself does not
-    distinguish prediction kinds — every Prediction takes a `model_id`
+    distinguish prediction kinds; every Prediction takes a `model_id`
     UUID and the fine-tune-vs-inference distinction lives in that
     UUID's lineage. See PLAN.md §4 for the model_id provenance gap.
     """
@@ -268,7 +268,7 @@ class ProvenanceManifest:
     timestamp: str          # ISO-8601
     api_call: str           # e.g. "POST /predictions"
     request_hash: str       # sha256 of the request payload
-    response_summary: dict  # ids, status codes, hashes — no raw geometry
+    response_summary: dict  # ids, status codes, hashes, no raw geometry
     prediction_id: str | None = None
     model_id: str | None = None
     dataset_hashes: list[str] | None = None
@@ -283,14 +283,14 @@ class FilePath:
 
 ## 3. Operational rules
 
-Hard constraints the harness enforces — refusals where appropriate, defaults where not.
+Hard constraints the harness enforces: refusals where appropriate, defaults where not.
 
 1. **No raw coordinates in chat.** Never output lat/lon, WKT, or full GeoJSON in conversational responses. Save to a `FilePath` and reference the path. (Lat/lon and partner data are sensitive; traces must redact them.)
 2. **Default temporal window.** When the user does not specify a time range, default to the trailing 12 months from today; surface the choice in the response.
 3. **Default buffer.** When the user asks for "nearby" without a distance, use 1000 m via `utils.add_buffer`.
 4. **Sandbox isolation.** `system:python` does not allow `import` statements; rely on the preloaded libraries. Persistent state across turns is allowed.
 5. **Cost guard.** Refuse `submit_prediction(kind="finetune")` if the estimated cost exceeds the session budget. Surface the estimate and ask before proceeding.
-6. **Spatial cross-validation.** When AOIs are spatially auto-correlated, refuse random train/val splits — use `utils.spatial_train_val_split`.
+6. **Spatial cross-validation.** When AOIs are spatially auto-correlated, refuse random train/val splits: use `utils.spatial_train_val_split`.
 7. **Class-balance hygiene.** When label classes are skewed > 10:1, default to `utils.equal_frequency_bins` before submitting fine-tunes. Document in the run trace.
 8. **Studio quota awareness.** OlmoEarth Studio caps API keys per account at 10. Cache `load_context` to one call per 5 minutes; do not regenerate keys programmatically.
 9. **Async job pattern.** `submit_prediction` returns immediately with a `PredictionRef`. Downstream tools accept the ref and poll. Never block on synchronous training.
@@ -303,54 +303,54 @@ Hard constraints the harness enforces — refusals where appropriate, defaults w
 
 ## 4. Underlying stack
 
-The tool catalog above is the contract. Everything in this section is implementation guidance for the runtime that hosts the tools — included for reference, not as part of the agent's public surface.
+The tool catalog above is the contract. Everything in this section is implementation guidance for the runtime that hosts the tools, included for reference, not as part of the agent's public surface.
 
 | Layer | Reference |
 |---|---|
-| LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) 4-bit `UD-IQ4_XS` — text-only with function calling (model has a native vision encoder; we don't use it in v0.4). Served via **llama.cpp** (`ghcr.io/ggml-org/llama.cpp:server-cuda -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS --jinja -ngl 999 -c 8192 --no-mmap`); see [`docs/serving.md`](docs/serving.md) and [`docs/CANON.md`](docs/CANON.md). Agent sessions set `chat_template_kwargs.preserve_thinking=True`. NVFP4 dropped (doesn't fit 24 GB; CANON C4/C7). |
-| Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow) — LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
-| Skills | 15 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1–#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) — the agent vendors them rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
-| Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub, GEE, OSM, USGS Water, NOAA — last four added by skill #13). |
+| LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) 4-bit `UD-IQ4_XS`: text-only with function calling (model has a native vision encoder; we don't use it in v0.4). Served via **llama.cpp** (`ghcr.io/ggml-org/llama.cpp:server-cuda -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS --jinja -ngl 999 -c 8192 --no-mmap`); see [`docs/serving.md`](docs/serving.md) and [`docs/CANON.md`](docs/CANON.md). Agent sessions set `chat_template_kwargs.preserve_thinking=True`. NVFP4 dropped (doesn't fit 24 GB; CANON C4/C7). |
+| Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow): LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
+| Skills | 15 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1-#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills), which the agent vendors rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
+| Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub, GEE, OSM, USGS Water, NOAA, last four added by skill #13). |
 | Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. Provenance manifest (rule §3.13) is the audit substrate. |
 
 The Studio API itself:
 
 - Docs: https://docs.olmoearth.allenai.org/
-- Auth: https://docs.olmoearth.allenai.org/authentication/ — `Authorization: Bearer <key>`; max 10 keys/account
+- Auth: https://docs.olmoearth.allenai.org/authentication/, `Authorization: Bearer <key>`; max 10 keys/account
 - Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json (v0.1.0)
 - Resources: Areas, Projects, Datasets, Labelsets, Labels, Annotations, Tasks, Predictions, PredictionResults, Users
-- No `/models` or `/jobs` resources — async work is `Predictions` (request) + `PredictionResults` (outputs)
+- No `/models` or `/jobs` resources: async work is `Predictions` (request) + `PredictionResults` (outputs)
 - Sample code: https://github.com/allenai/olmoearth_projects
 - Foundation weights: https://huggingface.co/allenai/OlmoEarth-v1-Large
 
 **Studio gap-closure findings** (resolved 2026-05-27 from an `openapi.json` v0.1.0 schema dive; supersedes the v0.1/v0.2 UNVERIFIED notes):
 
-- **Webhooks / push notifications: CLOSED — none exist.** No `/webhooks`, `/notifications`, `/events`, `/subscriptions` or `/callbacks` paths; no `Webhook` / `Notification` / `Callback` / `Subscription` / `Event` schemas; no top-level `webhooks` key; no `callbacks` field on any operation; no `webhook_url`/`notification_url`/`callback_url` property on `PredictionWrite`. **`GET /api/v1/predictions/{id}` polling is the only completion-detection path.** No documented polling interval or backoff guidance — the client picks its own. Operational rule §3.9 (async-by-ref) stands.
-- **Fine-tuned model reference: PARTIALLY CLOSED.** `PredictionWrite.model_id` is a required UUID (`{"type": "string", "format": "uuid", "description": "ID of the model to run"}`). Same field appears on `PredictionRead.model_id` and `PredictionSearchRequest.model_id`. **However:** there is no `/api/v1/models` path, no `Model` / `ModelRead` / `ModelWrite` schema, and the `model-management/` docs page is a content stub. **How a client obtains a `model_id` (especially for a fine-tuned model) is not in the public surface.** Likely paths: (a) the Studio UI hands out the UUID after the user runs a fine-tune flow, (b) a fine-tune is a side-effect of a `Prediction` whose `model_id` references a base model. **Still UNVERIFIED — needs partner conversation with Ai2.**
-- **Rate limits / quotas / payload caps: CLOSED — undocumented at the API surface.** No `x-rateLimit-*` extensions, no `429` responses, no `Retry-After` headers, no `quota_*` fields on `UserReadMe` / `Project*`. The only quota documented anywhere is "max 10 API keys per account" from the auth doc. Pagination caps exist but are not rate limits: `PredictionSearchRequest.limit ≤ 10000`, `DatasetSearchRequest.limit ≤ 1000`. `ApiErrorCode` enum is `["not_found_error", "permission_error", "server_error", "unauthorized_error", "validation_error", "not_implemented_error"]` — explicitly **no** `rate_limited_error`, reinforcing this. Operational rule §3.5 (cost guard) is precautionary; we keep it.
+- **Webhooks / push notifications: CLOSED, none exist.** No `/webhooks`, `/notifications`, `/events`, `/subscriptions` or `/callbacks` paths; no `Webhook` / `Notification` / `Callback` / `Subscription` / `Event` schemas; no top-level `webhooks` key; no `callbacks` field on any operation; no `webhook_url`/`notification_url`/`callback_url` property on `PredictionWrite`. **`GET /api/v1/predictions/{id}` polling is the only completion-detection path.** No documented polling interval or backoff guidance; the client picks its own. Operational rule §3.9 (async-by-ref) stands.
+- **Fine-tuned model reference: PARTIALLY CLOSED.** `PredictionWrite.model_id` is a required UUID (`{"type": "string", "format": "uuid", "description": "ID of the model to run"}`). Same field appears on `PredictionRead.model_id` and `PredictionSearchRequest.model_id`. **However:** there is no `/api/v1/models` path, no `Model` / `ModelRead` / `ModelWrite` schema, and the `model-management/` docs page is a content stub. **How a client obtains a `model_id` (especially for a fine-tuned model) is not in the public surface.** Likely paths: (a) the Studio UI hands out the UUID after the user runs a fine-tune flow, (b) a fine-tune is a side-effect of a `Prediction` whose `model_id` references a base model. **Still UNVERIFIED: needs partner conversation with Ai2.**
+- **Rate limits / quotas / payload caps: CLOSED, undocumented at the API surface.** No `x-rateLimit-*` extensions, no `429` responses, no `Retry-After` headers, no `quota_*` fields on `UserReadMe` / `Project*`. The only quota documented anywhere is "max 10 API keys per account" from the auth doc. Pagination caps exist but are not rate limits: `PredictionSearchRequest.limit ≤ 10000`, `DatasetSearchRequest.limit ≤ 1000`. `ApiErrorCode` enum is `["not_found_error", "permission_error", "server_error", "unauthorized_error", "validation_error", "not_implemented_error"]`, explicitly **no** `rate_limited_error`, reinforcing this. Operational rule §3.5 (cost guard) is precautionary; we keep it.
 
 **Other findings worth surfacing** (newly verified during the schema dive):
 
 - **API uses Firebase for identity.** `UserReadMe.firebase_user_id` is a real field. Public auth is bearer-token; the backend is Firebase. Affects how we'd ever extend to per-user OAuth.
-- **`PredictionResultAccessLevel` enum:** `["private", "organization", "public"]` — visibility scoping at the result level, not the prediction level.
+- **`PredictionResultAccessLevel` enum:** `["private", "organization", "public"]`, visibility scoping at the result level, not the prediction level.
 - **`PredictionUpdate` is rename-only.** Only mutable field is `name`. Cannot change `model_id`, `area_id`, or times after creation.
-- **`PredictionRead.progress`** is `{type: "object", additionalProperties: true}` — free-form. No documented shape. The harness normalizes this to a `0..1` float on `PredictionStatus.progress`; see §2 docstring.
-- **`PredictionWrite` required fields** are `{name, area_id, model_id, start_time, end_time, project_id}`. Note `area_id`, not `dataset_id` — area is the primary geographic anchor for a prediction. `dataset` in our §1 tool catalog is a sibling concept (the band/time-range config). Future PR will reconcile.
+- **`PredictionRead.progress`** is `{type: "object", additionalProperties: true}`: free-form. No documented shape. The harness normalizes this to a `0..1` float on `PredictionStatus.progress`; see §2 docstring.
+- **`PredictionWrite` required fields** are `{name, area_id, model_id, start_time, end_time, project_id}`. Note `area_id`, not `dataset_id`: area is the primary geographic anchor for a prediction. `dataset` in our §1 tool catalog is a sibling concept (the band/time-range config). Future PR will reconcile.
 - **`TaskStatus` enum** for annotation tasks is different from `PredictionStatus`: `["pending", "in_progress", "completed", "cancelled", "to_be_reviewed", "reviewed"]`. Don't conflate.
 - **Tile and pixel-value endpoints exist on prediction results:** `/prediction-results/{id}/tiles/{z}/{x}/{y}.{png|mvt}` and `/pixel-value`. Already reflected in §1 `fetch_results`.
-- **`*-management/` doc pages are content stubs.** `/dataset-management/`, `/job-management/`, `/model-management/`, `/prediction-management/` all return real pages but with one-line descriptions and a link to the API browser — no prose docs.
+- **`*-management/` doc pages are content stubs.** `/dataset-management/`, `/job-management/`, `/model-management/`, `/prediction-management/` all return real pages but with one-line descriptions and a link to the API browser, no prose docs.
 
 **Remaining UNVERIFIED items:**
 - How to obtain a `model_id` for a fine-tuned model from the public API (above).
 - Whether the API will gain webhooks / a `/models` listing in a future minor version (spec is `0.1.0` and explicitly pre-1.0).
 - Server-side rate limits exist almost certainly; empirical probing is out of scope for this doc-only PR.
-- `PredictionResultRead.source` is a free-form string ("Source of the imagery") with no documented enum — value range unknown.
+- `PredictionResultRead.source` is a free-form string ("Source of the imagery") with no documented enum; value range unknown.
 
 ---
 
 ## 5. End-to-end example
 
-User: *"Map alfalfa fields in the Klamath basin from 2022–2024 Sentinel-2. I have ~300 ground-truth points in `points.geojson`."*
+User: *"Map alfalfa fields in the Klamath basin from 2022-2024 Sentinel-2. I have ~300 ground-truth points in `points.geojson`."*
 
 ```python
 # 1. Resolve the AOI
@@ -392,21 +392,21 @@ The interpreter sandbox runs this script as a single `system:python` call. Opera
 
 ## 6. Roadmap
 
-Skills-first. Each P0–P3 phase is a single PR; each Skill-* row is one PR (per [`SKILLS.md`](SKILLS.md) numbering). Order beyond Skill-5 is driven by the case-study queue, not catalog order.
+Skills-first. Each P0-P3 phase is a single PR; each Skill-* row is one PR (per [`SKILLS.md`](SKILLS.md) numbering). Order beyond Skill-5 is driven by the case-study queue, not catalog order.
 
 | Phase | Status | Deliverables | Exit criteria |
 |---|---|---|---|
-| **P0 — Scaffolding** | done — [PR #2](https://github.com/2imi9/OlmoEarth-Agent/pull/2) | `pyproject.toml`, `.pre-commit-config.yaml`, `CHANGELOG.md`, `.env.example`, empty `src/olmoearth_agent/` package | Scaffold lands; lint/test/type-check pipeline runs |
-| **P1 — Studio API gap closure** | done — [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
-| **P2 — Skills/scope rewrite** | done | PLAN.md v0.4 + SKILLS.md (15-skill catalog) | Multimodal parked; skills are the unit of progress |
-| **P3 — LLM serving + harness MVP** | done — PRs #5/#6 | 4-bit GGUF served via llama.cpp (`docs/serving.md`) with function calling + `preserve_thinking=True`; DeerFlow-style lead-agent + tool registry + provenance middleware (rule §3.13) | A function call round-trips through the LLM — verified live |
-| **Skill-5 — `olmoearth-predict`** | done — PRs #8/#11 | search / submit / poll / fetch-results | Verified live against the Studio API |
-| **Skill-8 — `olmoearth-evaluate`** | done — PR #10 | Spatial-block CV inflation diagnostic + metrics (NNDM-LOO follows) | Reproduces Ploton-2020 inflation on clustered data |
-| **Skill-14 — `olmoearth-provenance`** | done — PR #7 | Manifest per tool call + replay skeleton | Recorded live during agent runs |
-| **Skills #1–#4** | vendored — PR #9 | submodule `vendor/olmoearth-skills` + SkillLoader | Agent loads a SKILL.md via progressive disclosure |
-| **Skills #6, #7, #9, #10, #11, #12, #13, #15** | done — PRs #16–#21 | One PR per skill | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
+| **P0 - Scaffolding** | done - [PR #2](https://github.com/2imi9/OlmoEarth-Agent/pull/2) | `pyproject.toml`, `.pre-commit-config.yaml`, `CHANGELOG.md`, `.env.example`, empty `src/olmoearth_agent/` package | Scaffold lands; lint/test/type-check pipeline runs |
+| **P1 - Studio API gap closure** | done - [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
+| **P2 - Skills/scope rewrite** | done | PLAN.md v0.4 + SKILLS.md (15-skill catalog) | Multimodal parked; skills are the unit of progress |
+| **P3 - LLM serving + harness MVP** | done - PRs #5/#6 | 4-bit GGUF served via llama.cpp (`docs/serving.md`) with function calling + `preserve_thinking=True`; DeerFlow-style lead-agent + tool registry + provenance middleware (rule §3.13) | A function call round-trips through the LLM, verified live |
+| **Skill-5 - `olmoearth-predict`** | done - PRs #8/#11 | search / submit / poll / fetch-results | Verified live against the Studio API |
+| **Skill-8 - `olmoearth-evaluate`** | done - PR #10 | Spatial-block CV inflation diagnostic + metrics (NNDM-LOO follows) | Reproduces Ploton-2020 inflation on clustered data |
+| **Skill-14 - `olmoearth-provenance`** | done - PR #7 | Manifest per tool call + replay skeleton | Recorded live during agent runs |
+| **Skills #1-#4** | vendored - PR #9 | submodule `vendor/olmoearth-skills` + SkillLoader | Agent loads a SKILL.md via progressive disclosure |
+| **Skills #6, #7, #9, #10, #11, #12, #13, #15** | done - PRs #16-#21 | One PR per skill | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
 
-P0–P3 are done — the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 15 skills are now shipped** (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is live-smoke verification on real data.
+P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 15 skills are now shipped** (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is live-smoke verification on real data.
 
 ---
 
@@ -414,7 +414,7 @@ P0–P3 are done — the agent talks to the live Studio API, drives the LLM, rec
 
 Two tracks were in scope through v0.3 and are now deferred. Re-activate only if a v0.4-scope skill empirically needs them.
 
-**7.1 Multimodal stack.** Text-only + function calling is sufficient when Studio returns metrics / GeoJSON / manifest hashes through tool returns. Parked: [Prismatic VLMs](https://arxiv.org/abs/2402.07865), [LLaVA-1.5](https://arxiv.org/abs/2310.03744)/[BLIP-2](https://arxiv.org/abs/2301.12597)/[Honeybee](https://arxiv.org/abs/2312.06742)/[MoVA](https://arxiv.org/abs/2404.13046)/[MoE-LLaVA](https://arxiv.org/abs/2401.15947) projector designs, [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embedding stream, [Unsloth fine-tuning](https://github.com/unslothai/unsloth). Note: the Qwen3.6 checkpoint *does* ship a native vision encoder — re-opening this track means using or replacing that tower, not training one from scratch.
+**7.1 Multimodal stack.** Text-only + function calling is sufficient when Studio returns metrics / GeoJSON / manifest hashes through tool returns. Parked: [Prismatic VLMs](https://arxiv.org/abs/2402.07865), [LLaVA-1.5](https://arxiv.org/abs/2310.03744)/[BLIP-2](https://arxiv.org/abs/2301.12597)/[Honeybee](https://arxiv.org/abs/2312.06742)/[MoVA](https://arxiv.org/abs/2404.13046)/[MoE-LLaVA](https://arxiv.org/abs/2401.15947) projector designs, [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embedding stream, [Unsloth fine-tuning](https://github.com/unslothai/unsloth). Note: the Qwen3.6 checkpoint *does* ship a native vision encoder: re-opening this track means using or replacing that tower, not training one from scratch.
 
 **7.2 Train-time self-improvement.** Inference-time techniques without weight updates ([Reflexion](https://arxiv.org/abs/2303.11366), [Self-Refine](https://arxiv.org/abs/2303.17651), repeated-sampling+verifier per [Monkeys](https://arxiv.org/abs/2407.21787)/[Archon](https://arxiv.org/abs/2409.15254)) may be folded into individual skills as they ship. Train-time ([STaR](https://arxiv.org/abs/2203.14465), [SWiRL](https://arxiv.org/abs/2504.04736), [GRPO](https://arxiv.org/abs/2402.03300), [DAPO](https://arxiv.org/abs/2503.14476)) parked until trace volume justifies. Eval framing: [METR horizon](https://arxiv.org/abs/2503.14499), [KernelBench](https://arxiv.org/abs/2502.10517). Source course: [Stanford CS329A](https://cs329a.stanford.edu/).
 
@@ -425,18 +425,18 @@ Two tracks were in scope through v0.3 and are now deferred. Re-activate only if 
 **OlmoEarth Studio**
 https://docs.olmoearth.allenai.org/ · https://docs.olmoearth.allenai.org/authentication/ · https://olmoearth.allenai.org/api/v1/openapi.json · https://docs.olmoearth.allenai.org/api/ · https://allenai.org/blog/olmoearth · https://allenai.org/blog/olmoearth-v1-1 · https://huggingface.co/allenai/OlmoEarth-v1-Large · https://github.com/allenai/olmoearth_projects · https://github.com/allenai/olmoearth_pretrain
 
-**Harness — DeerFlow v2**
+**Harness: DeerFlow v2**
 https://github.com/bytedance/deer-flow · https://deerflow.tech/ · https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md · https://github.com/bytedance/deer-flow/blob/main/backend/packages/harness/deerflow/agents/factory.py · https://github.com/bytedance/deer-flow/blob/main/backend/packages/harness/deerflow/agents/lead_agent/agent.py · https://github.com/bytedance/deer-flow/blob/main/backend/packages/harness/deerflow/subagents/executor.py · https://github.com/bytedance/deer-flow/blob/main/backend/packages/harness/deerflow/mcp/tools.py · https://github.com/bytedance/deer-flow/blob/main/backend/packages/harness/deerflow/agents/thread_state.py
 
-**Skills — NVIDIA AI-Q + agentskills.io**
+**Skills: NVIDIA AI-Q + agentskills.io**
 https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html · https://docs.nvidia.com/aiq-blueprint/latest/customization/mcp-tools.html · https://docs.nvidia.com/aiq-blueprint/latest/deployment/observability.html · https://github.com/NVIDIA-AI-Blueprints/aiq · https://github.com/NVIDIA/skills · https://agentskills.io · https://developer.nvidia.com/blog/add-a-specialized-deep-research-skill-to-agent-harnesses/ · https://developer.nvidia.com/blog/nvidia-verified-agent-skills-provide-capability-governance-for-ai-agents/
 
 **LLM + serving (in-scope for v0.4)**
 https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF · https://huggingface.co/Qwen/Qwen3.6-35B-A3B · https://github.com/QwenLM/Qwen3.6 · https://github.com/ggml-org/llama.cpp · [`docs/serving.md`](docs/serving.md) · [`docs/CANON.md`](docs/CANON.md)
 
-**Parked tracks** — see §7.1 (multimodal) and §7.2 (self-improvement) above for full reference lists.
+**Parked tracks:** see §7.1 (multimodal) and §7.2 (self-improvement) above for full reference lists.
 
-**Skill-layer citations** — see [`SKILLS.md`](SKILLS.md) (Ploton 2020, Meyer-Pebesma 2021, Skakun CMIX 2022, WorldCereal lessons, IAMAP, Samuel et al. reproducibility gap, Kedron-Holler 2022, NASA Similarity Search, AlphaEarth transfer literature).
+**Skill-layer citations:** see [`SKILLS.md`](SKILLS.md) (Ploton 2020, Meyer-Pebesma 2021, Skakun CMIX 2022, WorldCereal lessons, IAMAP, Samuel et al. reproducibility gap, Kedron-Holler 2022, NASA Similarity Search, AlphaEarth transfer literature).
 
 ---
 

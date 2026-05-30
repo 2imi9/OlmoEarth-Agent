@@ -4,14 +4,14 @@
 
 Pure Python. Coordinates are ``(lon, lat)`` in degrees; distances are
 great-circle kilometres (haversine). Brute-force nearest-neighbour is
-O(n^2) — fine for the hundreds-to-thousands of label points typical of
+O(n^2): fine for the hundreds-to-thousands of label points typical of
 an OlmoEarth case study.
 
 References:
-- Roberts et al. 2017 (Ecography) — spatial block CV.
-- Ploton et al. 2020 (Nat. Commun. 11:4540) — random CV inflates accuracy
+- Roberts et al. 2017 (Ecography): spatial block CV.
+- Ploton et al. 2020 (Nat. Commun. 11:4540): random CV inflates accuracy
   on spatially autocorrelated data.
-- Meyer & Pebesma 2021 (MEE 12:1620) — formalization + area of applicability.
+- Meyer & Pebesma 2021 (MEE 12:1620): formalization + area of applicability.
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ def cv_inflation_diagnostic(
 
     Compares the mean test-point-to-nearest-train-point distance under
     random folds vs spatial-block folds. A large ratio means random CV
-    is testing on points that sit right next to training points — its
+    is testing on points that sit right next to training points, its
     accuracy will be inflated (Ploton 2020). Report spatial-block CV
     metrics instead.
 

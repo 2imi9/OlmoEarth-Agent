@@ -70,7 +70,7 @@ def enforce_min_3_dates(dates: Sequence[str]) -> None:
         raise TooFewDatesError(
             f"change detection needs >= {MIN_DATES} distinct dates; got "
             f"{distinct}. A two-date diff hides gradual drift and cannot "
-            "tell a steady trend from a reversal — add at least one "
+            "tell a steady trend from a reversal: add at least one "
             "intermediate date."
         )
 
@@ -95,7 +95,7 @@ def diff_layers(
         ``(date, value)`` pairs, one per prediction date. ``date`` is
         ISO-8601; ``value`` is a per-date summary of the prediction layer
         (e.g. positive-class fraction or mean score). Order does not
-        matter — the series is sorted by date before differencing.
+        matter: the series is sorted by date before differencing.
     tol
         Absolute tolerance below which a step is treated as no change
         (default ``0.0``). Used only for the trend/reversal

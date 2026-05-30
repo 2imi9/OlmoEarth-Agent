@@ -5,7 +5,7 @@
 A multi-date trajectory diff over per-date layer summaries. Composes
 skill #5 (``olmoearth-predict``): the agent fetches a prediction result
 per date, reduces each to one ``value``, and passes the dated series
-here. Refuses fewer than three dates — a two-date diff hides drift.
+here. Refuses fewer than three dates: a two-date diff hides drift.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ def _is_iso(value: Any) -> bool:
 
 async def _change_detect(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     points = args["series"]
-    # Dates are optional. If any point lacks a parseable ISO date — a brief that
-    # gave bare ordered values, or a garbled model-emitted date — label the
+    # Dates are optional. If any point lacks a parseable ISO date (a brief that
+    # gave bare ordered values, or a garbled model-emitted date), label the
     # points by input order (t1..tN). The trajectory math only needs order, not
     # calendar dates, so this avoids erroring and burning a retry turn.
     if all(_is_iso(p.get("date")) for p in points):
@@ -77,7 +77,7 @@ def build_change_detect_tools() -> list[RegisteredTool]:
                                         "description": (
                                             "OPTIONAL ISO-8601 date/datetime. "
                                             "Omit it if you only have ordered "
-                                            "values — points are then taken in "
+                                            "values: points are then taken in "
                                             "the order given. Do not invent dates."
                                         ),
                                     },

@@ -22,7 +22,7 @@ uv sync
 uv run pre-commit install
 ```
 
-`pre-commit` is **required**. Contributions that have not run pre-commit will not be reviewed — this rule is borrowed verbatim from earth2studio ([Developer Overview](https://nvidia.github.io/earth2studio/userguide/developer/overview.html)) because it works.
+`pre-commit` is **required**. Contributions that have not run pre-commit will not be reviewed. This rule is borrowed verbatim from earth2studio ([Developer Overview](https://nvidia.github.io/earth2studio/userguide/developer/overview.html)) because it works.
 
 ---
 
@@ -50,7 +50,7 @@ gh pr create --base main --title "..." --body "..."
 
 ## 4. Commit conventions
 
-- **DCO sign-off is required.** Use `git commit -s -m "..."` so each commit ends with `Signed-off-by: Your Name <your.email@example.com>`. By signing off you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/) — that you wrote the contribution or have the right to submit it under the project's Apache-2.0 license.
+- **DCO sign-off is required.** Use `git commit -s -m "..."` so each commit ends with `Signed-off-by: Your Name <your.email@example.com>`. By signing off you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/): that you wrote the contribution or have the right to submit it under the project's Apache-2.0 license.
 - **No AI co-author trailers in commits.** Do NOT add `Co-Authored-By: Claude`, `Co-Authored-By: Codex`, etc. AI involvement, if substantial, belongs in the PR description (see §8), not the commit trailer.
 - **Commit message format:** free-form, but readable. A short imperative subject line under 72 characters, blank line, then optional body.
   ```
@@ -72,19 +72,19 @@ Configured in `pyproject.toml`:
 
 - **Formatter:** [Black](https://black.readthedocs.io/) (default settings, 88-char line length).
 - **Linter / import sorter:** [Ruff](https://docs.astral.sh/ruff/) with `["E", "F", "S", "I", "PERF"]` selected; `E501` (line length) deferred to Black.
-- **Type checker:** [mypy](https://mypy-lang.org/) — `disallow_untyped_defs = true`; type hints required on all public functions.
-- **Docstrings:** [NumPy style](https://numpydoc.readthedocs.io/en/latest/format.html) — enforced by [interrogate](https://interrogate.readthedocs.io/) at `fail-under = 90`.
+- **Type checker:** [mypy](https://mypy-lang.org/): `disallow_untyped_defs = true`; type hints required on all public functions.
+- **Docstrings:** [NumPy style](https://numpydoc.readthedocs.io/en/latest/format.html): enforced by [interrogate](https://interrogate.readthedocs.io/) at `fail-under = 90`.
 - **Syntax level:** Python 3.11+, PEP 604 `|` over `Union` / `Optional`, enforced by pyupgrade.
 - **License headers:** every source file carries the Apache-2.0 header + SPDX identifier.
 
-These exact tools mirror [earth2studio's `.pre-commit-config.yaml`](https://raw.githubusercontent.com/NVIDIA/earth2studio/main/.pre-commit-config.yaml) — pinned versions in our own `.pre-commit-config.yaml` (added in a future PR).
+These exact tools mirror [earth2studio's `.pre-commit-config.yaml`](https://raw.githubusercontent.com/NVIDIA/earth2studio/main/.pre-commit-config.yaml), pinned versions in our own `.pre-commit-config.yaml` (added in a future PR).
 
 ---
 
 ## 6. Tests
 
 - **Framework:** [pytest](https://docs.pytest.org/).
-- **Coverage gate:** 90% — same as [earth2studio's testing guide](https://nvidia.github.io/earth2studio/userguide/developer/testing.html). CI fails below this.
+- **Coverage gate:** 90%, same as [earth2studio's testing guide](https://nvidia.github.io/earth2studio/userguide/developer/testing.html). CI fails below this.
 - **Integration vs unit:** integration tests that hit the live OlmoEarth Studio API are tagged `@pytest.mark.integration` and require `OLMOEARTH_API_KEY` in the environment; unit tests must not.
 - **Operational-rule tests:** every rule in `PLAN.md` §3 has a corresponding test in `tests/test_operational_rules.py`. Adding a new rule? Add the test in the same PR.
 
@@ -115,7 +115,7 @@ Repeated disregard for these rules is grounds for closing the PR. Adapted from [
 ## 9. Review process
 
 - One maintainer approval is required to merge.
-- Reviewers may post advisory feedback from an automated review bot (e.g. Greptile). Addressing every comment is not required — use judgment.
+- Reviewers may post advisory feedback from an automated review bot (e.g. Greptile). Addressing every comment is not required: use judgment.
 - Once approved and CI is green, squash-merge with the PR title as the merge commit subject.
 
 ---
@@ -127,6 +127,6 @@ Repeated disregard for these rules is grounds for closing the PR. Adapted from [
 - [Keep a Changelog v1.1.0](https://keepachangelog.com/en/1.1.0/)
 - [Developer Certificate of Origin 1.1](https://developercertificate.org/)
 - [GitHub: creating commits with multiple authors](https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/creating-a-commit-with-multiple-authors)
-- [agents.md spec](https://agents.md/) — see this repo's [`AGENTS.md`](AGENTS.md) for agent-onboarding context
+- [agents.md spec](https://agents.md/), see this repo's [`AGENTS.md`](AGENTS.md) for agent-onboarding context
 - [OpenInfra Foundation AI policy](https://openinfra.org/legal/ai-policy/)
 - [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/)

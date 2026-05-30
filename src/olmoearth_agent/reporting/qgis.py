@@ -3,7 +3,7 @@
 """QGIS bridge helpers (skill #12).
 
 Turn a prediction result's tile templates into QGIS-ready XYZ URLs and an
-OGC SLD style. Pure functions — no QGIS dependency. The generated SLD is
+OGC SLD style. Pure functions, no QGIS dependency. The generated SLD is
 standard OGC SLD 1.0 (loadable by QGIS, GeoServer, etc.); the URL
 resolution preserves the ``{z}/{x}/{y}`` template QGIS expects.
 
@@ -17,7 +17,7 @@ from xml.sax.saxutils import quoteattr
 
 DEFAULT_BASE_URL = "https://olmoearth.allenai.org"
 
-# YlOrRd 5-stop ramp (ColorBrewer) — sensible default for a 0..1 score raster.
+# YlOrRd 5-stop ramp (ColorBrewer): sensible default for a 0..1 score raster.
 _YLORRD = ("#ffffb2", "#fecc5c", "#fd8d3c", "#f03b20", "#bd0026")
 
 

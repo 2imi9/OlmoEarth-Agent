@@ -12,7 +12,7 @@ The point (Ma et al. arXiv:2601.00857): AlphaEarth-based models are
 documented to underperform under cross-region *transfer*, so a fine-tuned
 OlmoEarth "substantially outperformed" claim only lands with a real
 side-by-side run in a region where AlphaEarth actually fails. Both
-functions are source-agnostic — the AlphaEarth side comes from data the
+functions are source-agnostic: the AlphaEarth side comes from data the
 user exported from the public Google Earth Engine "Satellite Embedding"
 dataset (no live GEE connection needed; there is no official Earth Engine
 MCP and an external-API dependency is deliberately avoided).

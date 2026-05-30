@@ -1,4 +1,4 @@
-/* OlmoEarth Agent web UI — Asta-style dark-teal canvas + OlmoEarth pink accent.
+/* OlmoEarth Agent web UI: Asta-style dark-teal canvas + OlmoEarth pink accent.
    Palette sampled from asta.allen.ai (#032629 bg, #0FCB8C mint) and the
    OlmoEarth/Ai2 brand (#F0529C pink). System-font stack; no build step. */
 
@@ -13,10 +13,10 @@
   --text:      #faf2e9;  /* Asta cream (not pure white) */
   --text-dim:  rgba(250,242,233,.62);
   --text-faint:rgba(250,242,233,.40);
-  --pink:      #f0529c;  /* OlmoEarth / Ai2 brand — primary accent */
+  --pink:      #f0529c;  /* OlmoEarth / Ai2 brand: primary accent */
   --pink-hi:   #f877b3;
   --pink-press:#d63f88;
-  --mint:      #0fcb8c;  /* Asta green — secondary accent */
+  --mint:      #0fcb8c;  /* Asta green: secondary accent */
   --mint-link: #37cd8f;
   --mint-soft: #9fead1;
   --radius:    10px;
@@ -69,7 +69,7 @@ a:hover { color: var(--text); }
 .btn-new .ic { font-size: 18px; stroke-width: 2.2; }
 .btn-new:hover { background: var(--pink-hi); }
 
-/* Sidebar sections — collapsible Chats history + Projects tree */
+/* Sidebar sections: collapsible Chats history + Projects tree */
 .side-scroll {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
   display: flex; flex-direction: column; gap: 6px; padding-right: 2px;
@@ -262,7 +262,7 @@ a:hover { color: var(--text); }
 .hero { position: relative; padding: 12vh 24px 64px; }
 .hero-bg {
   position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-  background: var(--bg);  /* pure solid canvas — no gradient/metallic sheen */
+  background: var(--bg);  /* pure solid canvas, no gradient/metallic sheen */
 }
 .hero-inner { position: relative; max-width: var(--maxw); margin: 0 auto; }
 .hero-brand { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 22px; }
@@ -404,7 +404,7 @@ a:hover { color: var(--text); }
 .md-table td { color: var(--text-dim); }
 .md-table strong { color: var(--text); }
 
-/* Per-turn "Reasoning & tools" disclosure — collapsed by default. */
+/* Per-turn "Reasoning & tools" disclosure, collapsed by default. */
 .steps { border: 1px solid var(--line-soft); border-radius: 10px; background: var(--bg); margin-bottom: 12px; }
 .steps-head {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;

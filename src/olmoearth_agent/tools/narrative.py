@@ -34,7 +34,7 @@ def build_narrative_tools() -> list[RegisteredTool]:
                     "Write a stakeholder Markdown report from prediction "
                     "results (tile URLs + properties) and the run's "
                     "provenance. Tiles older than the freshness window are "
-                    "NOT rendered (struck through) — important for "
+                    "NOT rendered (struck through): important for "
                     "disaster-response briefs. Call at the end of a task to "
                     "produce the deliverable."
                 ),

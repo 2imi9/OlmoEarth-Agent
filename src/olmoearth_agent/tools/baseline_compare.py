@@ -4,7 +4,7 @@
 
 Side-by-side OlmoEarth-vs-AlphaEarth comparison on shared labels / AOI:
 a per-metric table (always) plus an optional cell-by-cell difference
-raster. Operates on predictions/scores the caller already has — the
+raster. Operates on predictions/scores the caller already has. The
 AlphaEarth side is data the user exported from the public Google Earth
 Engine "Satellite Embedding" dataset (no live GEE connection / MCP).
 """
@@ -20,7 +20,7 @@ from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 _LABELS = {
     "type": "array",
     "items": {"type": ["integer", "string"]},
-    "description": "Class labels — integer codes or string names, one per pixel.",
+    "description": "Class labels: integer codes or string names, one per pixel.",
 }
 _SCORES = {"type": "array", "items": {"type": "number"}}
 

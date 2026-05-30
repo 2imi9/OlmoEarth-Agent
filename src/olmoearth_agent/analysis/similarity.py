@@ -4,13 +4,13 @@
 
 Pure Python, no heavy deps. :func:`similarity_search` is an exact
 brute-force top-K nearest-neighbour search over embedding vectors
-(cosine or Euclidean) — FAISS indexing is the scale-up follow-up; exact
+(cosine or Euclidean). FAISS indexing is the scale-up follow-up; exact
 kNN is correct and dependency-free at the sizes the agent passes in.
 
 :func:`geographic_prior_check` is the honesty guard: it warns when the
 top matches cluster geographically near the query, because then the
 "similarity" may just be reflecting *location* (same region / biome)
-rather than genuine feature resemblance — the classic similarity-search
+rather than genuine feature resemblance: the classic similarity-search
 failure mode. It returns a summary only (no raw coordinates), per
 operational rule §3.1.
 """
@@ -165,7 +165,7 @@ def geographic_prior_check(
     if warning:
         message = (
             f"{within}/{len(distances)} top matches fall within {radius_km:g} km "
-            "of the query — the similarity may reflect geographic proximity "
+            "of the query: the similarity may reflect geographic proximity "
             "(same region/biome), not feature resemblance."
         )
     else:

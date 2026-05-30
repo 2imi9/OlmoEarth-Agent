@@ -34,7 +34,7 @@ def _hash_args(arguments: dict[str, Any]) -> str:
 
 
 def _summarize_result(result: dict[str, Any]) -> dict[str, Any]:
-    """Reduce a tool result to ids / status / counts — never raw geometry."""
+    """Reduce a tool result to ids / status / counts: never raw geometry."""
     payload = result.get("result", result)
     if not isinstance(payload, dict):
         return {"ok": result.get("ok")}
@@ -96,13 +96,13 @@ class ProvenanceLog:
         """Emit a runnable Python script that re-issues the recorded calls.
 
         The script re-dispatches each recorded tool call (by name + the
-        original arguments are NOT stored verbatim — only their hash — so
+        original arguments are NOT stored verbatim (only their hash) so
         the script is a skeleton that documents the sequence and leaves
         argument reconstruction to the operator). This is enough to audit
         *what* the run did and in what order.
         """
         lines = [
-            "# Auto-generated replay skeleton — OlmoEarth Agent provenance",
+            "# Auto-generated replay skeleton: OlmoEarth Agent provenance",
             f"# run_id: {self.run_id}",
             f"# {len(self.entries)} tool call(s)",
             "#",

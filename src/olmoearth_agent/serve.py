@@ -16,7 +16,7 @@ Endpoints
 The caller's Studio API key rides in the ``X-Olmoearth-Key`` header (or
 ``Authorization: Bearer``); it is forwarded to Studio per request and
 never stored or logged. The LLM backbone is the env-configured
-(``LLM_*``) endpoint from ``docs/serving.md`` — bring it up with
+(``LLM_*``) endpoint from ``docs/serving.md``; bring it up with
 ``scripts/serve-llm.sh`` first.
 
 Run it::
@@ -204,7 +204,7 @@ async def api_run(request: Request) -> StreamingResponse:
                     brief, max_turns=max_turns, history=history
                 ):
                     yield _sse(event)
-            except Exception as exc:  # don't drop the stream — report it
+            except Exception as exc:  # don't drop the stream, report it
                 yield _sse({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
             yield _sse({"type": "done"})
 
@@ -221,7 +221,7 @@ async def api_run(request: Request) -> StreamingResponse:
 
 @app.get("/api/projects/{project_id}/predictions")
 async def api_project_predictions(project_id: str, request: Request) -> dict[str, Any]:
-    """Predictions for a project — the tree's model + prediction levels.
+    """Predictions for a project: the tree's model + prediction levels.
 
     The front-end groups these by ``model_id`` to synthesize the
     "Model/Embeddings" level (Studio has no ``/models`` endpoint).
@@ -254,7 +254,7 @@ async def api_project_predictions(project_id: str, request: Request) -> dict[str
 async def api_prediction_results(
     prediction_id: str, request: Request
 ) -> dict[str, Any]:
-    """Prediction-results for a prediction — the tree's leaf level."""
+    """Prediction-results for a prediction: the tree's leaf level."""
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")

@@ -9,8 +9,23 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Changed
+- **ASCII-only typography across docs and code**: replaced every em dash, en
+  dash, and horizontal bar (`U+2014` / `U+2013` / `U+2015`) with natural ASCII
+  punctuation (commas, colons, periods, parentheses, or ` - `) across all
+  in-scope Markdown docs, `src/` strings and docstrings, `webui/`, `scripts/`,
+  and the `Makefile` (52 files). Number ranges and compound names became
+  hyphens (`1-4`, `Meyer-Pebesma`); arrows (`->`) and code were left alone.
+  Line counts are unchanged and 196 tests + ruff + mypy stay green. The
+  vendored `olmoearth-skills` submodule and `evals/` fixtures are intentionally
+  untouched.
+- **README `AGENT` wordmark recolored to white** (`webui/assets/agent-tag.png`):
+  the lettering goes from dark teal to white on the same OlmoEarth-pink pill,
+  so it reads correctly on both light and dark GitHub themes. The pill shape,
+  rounded corners, and transparent background are unchanged.
+
 ### Removed
-- **Skill #16 `roger-annotation-bridge` dropped** — the planned Roger
+- **Skill #16 `roger-annotation-bridge` dropped**: the planned Roger
   Studio → Studio labelset bridge is no longer part of the project, so the
   catalog is now **15 skills** (was 16). Removed its `SkillSpec` from
   `registry.py` and its section from `SKILLS.md`, and corrected the
@@ -18,23 +33,23 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   CHANGELOG entries that mention #16 are left as-is.)
 
 ### Fixed
-- **Text-emitted tool calls are now recovered (`llm/client.py`)** — when the
+- **Text-emitted tool calls are now recovered (`llm/client.py`)**: when the
   llama.cpp server returns a tool call as plain text (Hermes-XML
   `<function=..><parameter=..>` or `<tool_call>{json}</tool_call>`) instead of
-  via the structured `tool_calls` field — which it does without a matching
-  `--tool-call-parser`, and intermittently even with one — the client now
+  via the structured `tool_calls` field (which it does without a matching
+  `--tool-call-parser`, and intermittently even with one) the client now
   parses it back into a `ToolCall` and sets `finish_reason="tool_calls"`.
   Previously the agent loop mistook the markup for a final answer and silently
   skipped the call. Only triggers when the structured channel is empty, so a
   well-behaved server is untouched. 3 new tests.
 - **Underspecified label-array tool schemas (`tools/baseline_compare.py`,
-  `tools/evaluate.py`)** — `y_true` / `y_pred` / `*_pred` used
+  `tools/evaluate.py`)**: `y_true` / `y_pred` / `*_pred` used
   `{"type": "array", "items": {}}` (items = any type). The grammar
   llama.cpp derives from that lets the model emit the integer arrays as `[]`
   or `[{"value": 1}, …]`, corrupting the call. Typed the items as
   `["integer", "string"]` (class codes or names) so grammar-constrained
   decoding produces clean arrays on the first try.
-- **Circular import in `tools/skill_tools.py`** — the module-level
+- **Circular import in `tools/skill_tools.py`**: the module-level
   `from olmoearth_agent.skills.loader import SkillLoader` formed a cycle
   (`skills.loader` → `skills/__init__` → `skills.registry` → `tools.skill_tools`)
   that raised `ImportError` whenever `tools.skill_tools` was imported before
@@ -42,17 +57,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   import order no longer matters.
 
 ### Added
-- **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`** — a skills-in-action
+- **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`**: a skills-in-action
   page where **all 15 skills, in catalog order, are driven by the live LLM**:
   each transcript is a captured run of the agent loop against the served
   Qwen3.6 backbone (brief → reasoning → function call → real result →
   answer), nothing fabricated. #5 (read-only) and #13 run against the live
-  Studio API; #1–#4 load the vendored `SKILL.md` bodies via
-  `olmoearth_load_skill`; #6–#15 are real computation. Falls back to a short
+  Studio API; #1-#4 load the vendored `SKILL.md` bodies via
+  `olmoearth_load_skill`; #6-#15 are real computation. Falls back to a short
   note for #5/#13 when `OLMOEARTH_API_KEY` is absent. Linked from the README.
   Regenerate with `set -a; . ./.env; set +a;
   uv run python scripts/generate_showcase.py > docs/SHOWCASE.md`.
-- **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)** —
+- **Skill #7 `olmoearth-baseline-compare` (`src/olmoearth_agent/analysis/baseline.py`)**:
   `compare_metrics` runs OlmoEarth vs AlphaEarth head-to-head on shared
   ground truth (reusing skill #8's `classification_metrics`): a per-metric
   table (accuracy / macro-F1 / mean-IoU) with deltas, a per-metric winner,
@@ -61,24 +76,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   layer is higher where). Tool `olmoearth_baseline_compare` (metrics
   always; difference raster when score layers are supplied). Substantiates
   an "outperforms AlphaEarth on transfer regions" claim (Ma et al.
-  arXiv:2601.00857). **No live GEE connection / Earth Engine MCP** — the
+  arXiv:2601.00857). **No live GEE connection / Earth Engine MCP**: the
   AlphaEarth side is data the user exported from the now-public GEE
   "Satellite Embedding" dataset, kept the repo's pure/no-deps design.
   13 new tests.
-- **Skill #9 `olmoearth-similarity` (`src/olmoearth_agent/analysis/similarity.py`)** —
+- **Skill #9 `olmoearth-similarity` (`src/olmoearth_agent/analysis/similarity.py`)**:
   `similarity_search` returns the top-K embedding vectors most similar to
   a query (exact brute-force kNN, cosine or Euclidean; FAISS-at-scale is
   the deferred follow-up). `geographic_prior_check` is the honesty guard:
   it **warns when the top matches cluster geographically near the query**,
   because then the "similarity" may reflect *location* (same region /
-  biome) rather than genuine feature resemblance — the classic
+  biome) rather than genuine feature resemblance: the classic
   similarity-search failure mode (cf. NASA Earthdata Similarity Search;
   OlmoEarth Base wins 15/24 kNN tasks, arXiv:2511.13655). Tool
   `olmoearth_similarity_search` (optional `ids`, `metric`, and
   `query_coord` + `coords` to enable the geographic-prior warning);
   returns matches + a summary, no raw coordinates (rule §3.1). Pure
   Python; reuses `haversine_km` from the evaluate skill. 21 new tests.
-- **Skill #10 `olmoearth-uncertainty` (`src/olmoearth_agent/analysis/uncertainty.py`)** —
+- **Skill #10 `olmoearth-uncertainty` (`src/olmoearth_agent/analysis/uncertainty.py`)**:
   `area_of_applicability` implements the Meyer & Pebesma (2021, MEE
   12:1620) Area of Applicability: standardize (optionally
   importance-weight) the training features, compute each point's
@@ -88,41 +103,41 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the R `CAST` package) as **out-of-distribution**. `ood_flag` returns
   per-point flags + OOD fraction + verdict (within-AOA / partially-OOD /
   mostly-OOD). Tool `olmoearth_area_of_applicability`. The point:
-  **softmax confidence is not OOD detection** — a model can be
+  **softmax confidence is not OOD detection**: a model can be
   confidently wrong on data unlike its training set (AlphaEarth's
   documented transfer failure is exactly what AOA flags). Algorithm-
   agnostic, pure Python (no numpy); the repeated-sampling confidence map
   is the documented follow-up. 18 new tests.
-- **Skill #11 `olmoearth-cloud-mask-audit` (`src/olmoearth_agent/analysis/cloud_mask.py`)** —
+- **Skill #11 `olmoearth-cloud-mask-audit` (`src/olmoearth_agent/analysis/cloud_mask.py`)**:
   `ensemble_disagree` summarizes where several aligned cloud masks
   (CFMask / s2cloudless / Sen2Cor / MAJA, or any others) agree vs
   disagree: agreement/disagreement rates, per-algorithm cloud fraction
   (which algorithm runs aggressive vs conservative), pairwise
-  disagreement, and a vote histogram — it surfaces **disagreement, not a
+  disagreement, and a vote histogram: it surfaces **disagreement, not a
   single ground-truth mask**, because algorithms diverge on thin /
   semi-transparent cloud (Skakun et al. CMIX, RSE 274:112990, 2022).
   `verdict_classifier` takes a model-error mask and returns a
   **bad-mask-vs-bad-model verdict** (cloud-mask-limited / model-limited /
   inconclusive). Tool `olmoearth_cloud_mask_audit` returns summary stats
-  only — no per-pixel geometry (rule §3.1). Algorithm-agnostic, pure
+  only, no per-pixel geometry (rule §3.1). Algorithm-agnostic, pure
   Python; the STAC + s2cloudless `fetch_cloud_masks` step (needs an AOI
   bbox + date, plus heavier deps) is the gated live-smoke follow-up.
   18 new tests.
-- **Skill #6 `olmoearth-change-detect` (`src/olmoearth_agent/analysis/change_detect.py`)** —
+- **Skill #6 `olmoearth-change-detect` (`src/olmoearth_agent/analysis/change_detect.py`)**:
   `enforce_min_3_dates` + `diff_layers` turn a dated series of per-date
-  layer summaries (one `value` per prediction date — e.g. positive-class
+  layer summaries (one `value` per prediction date, e.g. positive-class
   fraction or mean score over the AOI, from a skill #5 result) into
   trajectory metrics: per-step deltas, net change, the largest-change
   interval, a **reversal count**, and a trend label
   (increasing/decreasing/stable/oscillating). **Refuses fewer than 3
-  distinct dates** — a two-date diff reports net change but cannot tell a
+  distinct dates**: a two-date diff reports net change but cannot tell a
   steady trend from a reversal (a flood that peaked then receded reads as
   "no change"), so the skill enforces a 3+-date trajectory (`SKILLS.md`
   #6; Ma et al. arXiv:2601.00857). Trend/reversal logic runs on the raw
   deltas, so output rounding can never flip a sign. Tool
   `olmoearth_change_detect` composes skill #5 (`olmoearth-predict`); new
   `analysis/` package (home for the coming Analyze skills). 16 new tests.
-- **Skill #12 `olmoearth-qgis-bridge` (`src/olmoearth_agent/reporting/qgis.py`)** —
+- **Skill #12 `olmoearth-qgis-bridge` (`src/olmoearth_agent/reporting/qgis.py`)**:
   `resolve_xyz_url` (relative tile template → absolute QGIS XYZ URL,
   preserving `{z}/{x}/{y}`) + `build_raster_sld` (well-formed OGC SLD 1.0
   color-ramp, default 5-stop YlOrRd over a 0..1 score). Tool
@@ -141,7 +156,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `tools/export.py`. Verified live 2026-05-28: 5 project files (12
   predictions linked) + 2 status files from the real account. 7 new
   tests. (`exports/` gitignored.)
-- **CLI entrypoint — the agent is now runnable.** `olmoearth-agent
+- **CLI entrypoint: the agent is now runnable.** `olmoearth-agent
   "<brief>"` (and `python -m olmoearth_agent`) wire the LLM client,
   Studio client, default tool registry, and vendored-skill index into a
   `LeadAgent` and run a natural-language brief. `--show-trace` prints the
@@ -157,9 +172,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   residue). New **double-gated** live test
   `tests/studio/test_write_live.py` (requires `OLMOEARTH_WRITE_TESTS=1`
   *and* `OLMOEARTH_API_KEY`, so it never writes by accident). This
-  closes the last unverified core capability — the `POST /projects`
+  closes the last unverified core capability: the `POST /projects`
   write path. 3 new tests (2 unit, 1 gated live).
-- **Skill #15 `olmoearth-case-narrative` (`src/olmoearth_agent/reporting/`)** —
+- **Skill #15 `olmoearth-case-narrative` (`src/olmoearth_agent/reporting/`)**:
   `build_narrative` (pure) assembles a stakeholder Markdown report from
   prediction results (tile URLs + properties) + the run's provenance,
   with a **freshness gate** that withholds and strikes through tiles
@@ -182,12 +197,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   endpoint is backend-neutral, no longer vLLM-specific). Verified live.
 
 ### Added
-- **`docs/CANON.md`** — single source of truth for cross-document facts
+- **`docs/CANON.md`**: single source of truth for cross-document facts
   (model, serving stack, quantization, env vars, Studio API, skill
   count) plus a grep-based alignment protocol. Update a fact there
   first, then fix every reference. Prevents the doc drift that motivated
   this pass.
-- **Skill #5 predict — result output path**: `olmoearth_fetch_results`
+- **Skill #5 predict, result output path**: `olmoearth_fetch_results`
   (tile URLs / property names / file format for a prediction) and
   `olmoearth_get_prediction_result` (by result id). `StudioClient` gains
   `get_prediction_result` + `search_prediction_results`. The API's
@@ -196,10 +211,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   Verified live 2026-05-28 against PA Karst results (tile URLs like
   `/api/v1/prediction-results/{id}/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`).
   pixel-value / features-search remain the last predict follow-up. 3 new tests.
-- **Skill #8 `olmoearth-evaluate` (`src/olmoearth_agent/evaluation/`)** —
+- **Skill #8 `olmoearth-evaluate` (`src/olmoearth_agent/evaluation/`)**:
   honest map-accuracy tools, pure Python (no heavy deps). `spatial_cv.py`:
   haversine, `spatial_block_folds` (Roberts 2017), `random_folds`, and
-  **`cv_inflation_diagnostic`** — the headline: compares mean
+  **`cv_inflation_diagnostic`**, the headline: compares mean
   test-to-train nearest-neighbour distance under random vs spatial-block
   CV and reports the inflation ratio + risk band (operationalizes Ploton
   2020 / Meyer-Pebesma 2021). `metrics.py`: per-class
@@ -208,7 +223,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   Verified live 2026-05-28: agent flagged clustered data with a 353×
   inflation ratio and explained why random CV would overstate accuracy.
   13 new tests. NNDM-LOO (Milà 2022) is the remaining follow-up.
-- **Skills #1–#4 vendored** from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
+- **Skills #1-#4 vendored** from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
   as a git submodule (`vendor/olmoearth-skills`, pinned `a96427e`). The
   three upstream `SKILL.md` packages (`olmoearth-data-prep` [unifies #1+#2],
   `olmoearth-studio-job-config` [#3], `olmoearth-embeddings` [#4]) are
@@ -219,7 +234,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   when the submodule is not initialized. Verified live 2026-05-28: the agent
   loaded `olmoearth-data-prep` and reported its real steps. 9 new tests.
   (Clone with `git submodule update --init` to populate the vendored skills.)
-- **Skill #5 `olmoearth-predict` (core run loop)** — `tools/predict.py`:
+- **Skill #5 `olmoearth-predict` (core run loop)**: `tools/predict.py`:
   `olmoearth_search_predictions` (discover reusable `model_id`s) and
   `olmoearth_submit_prediction`; poll via the foundational
   `olmoearth_get_prediction`. `StudioClient` gains `search_predictions`
@@ -233,43 +248,43 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `submit` implemented + unit-tested (not live-created, to avoid side
   effects). Result sub-tools (pixel-value/features/files) are a follow-up
   within this skill. 3 new tests.
-- **Skill #14 `olmoearth-provenance` (`src/olmoearth_agent/provenance/`)** —
+- **Skill #14 `olmoearth-provenance` (`src/olmoearth_agent/provenance/`)**:
   implements operational rule §3.13. `ProvenanceLog` lives on
   `ThreadState`; the lead agent records one `ProvenanceManifest` entry
   per dispatched tool call (tool name, sha256 of args, id-only result
-  summary — never raw geometry). `to_json()` + `replay_script()` emit
+  summary, never raw geometry). `to_json()` + `replay_script()` emit
   an auditable manifest and a replay skeleton. Tool bundle
   `olmoearth_provenance_summary` lets the agent report what it did.
   Added `ProvenanceManifest` to `types.py` (was spec-only in PLAN §2).
   Verified live 2026-05-28: agent run recorded `load_context` +
   `provenance_summary` with hashes and result summaries. 7 new tests.
-- **Harness core (`src/olmoearth_agent/{types,studio,tools,harness,skills}`)** —
+- **Harness core (`src/olmoearth_agent/{types,studio,tools,harness,skills}`)**,
   the structure all 16 skills plug into:
-  - `types.py` — harness dataclasses + `ApiEnvelope[T]` (the live
+  - `types.py`: harness dataclasses + `ApiEnvelope[T]` (the live
     `{records, meta, errors}` Studio response wrapper found 2026-05-28).
-  - `studio/client.py` — async `StudioClient` (httpx, Bearer auth,
+  - `studio/client.py`: async `StudioClient` (httpx, Bearer auth,
     envelope unwrap) with `users_me`, `search_projects`, `create_project`,
     `get_prediction`, `load_context`. Endpoints verified against the live
     API.
-  - `tools/registry.py` — `ToolRegistry` + `ToolContext`; dispatch never
-    raises (errors return to the model). `tools/studio.py` — the
+  - `tools/registry.py`: `ToolRegistry` + `ToolContext`; dispatch never
+    raises (errors return to the model). `tools/studio.py`: the
     foundational `olmoearth_*` tool bundle (load_context / search_projects
     / create_project / get_prediction).
-  - `harness/agent.py` — `LeadAgent` ReAct loop (DeerFlow v2 lead-agent
+  - `harness/agent.py`: `LeadAgent` ReAct loop (DeerFlow v2 lead-agent
     shape): brief → LLM → tool dispatch → result, with a turn cap and the
-    operational rules in the system prompt. `harness/state.py` —
+    operational rules in the system prompt. `harness/state.py`:
     `ThreadState`.
-  - `skills/registry.py` — manifest slotting all 16 skills (number,
+  - `skills/registry.py`: manifest slotting all 16 skills (number,
     category, status, tools) + `build_default_registry()`.
 - **Verified live end-to-end 2026-05-28**: `LeadAgent` →
   `OlmoEarthLLM` (Qwen3.6 4-bit GGUF via llama.cpp) → `StudioClient`
   (live Studio API) → answer. The agent called `olmoearth_load_context`
   and correctly filtered the user's real projects by topic.
-- `tests/{studio,tools,harness,skills}` — 16 unit tests (mock HTTP +
+- `tests/{studio,tools,harness,skills}`: 16 unit tests (mock HTTP +
   fake LLM) + 1 live integration test (`tests/harness/test_live.py`,
   needs `VLLM_ENDPOINT` + `OLMOEARTH_API_KEY`).
 - `pyproject.toml` runtime dep: `httpx>=0.27`.
-- **LLM serving client (`src/olmoearth_agent/llm/`)** — async OpenAI-
+- **LLM serving client (`src/olmoearth_agent/llm/`)**: async OpenAI-
   compatible wrapper around the vLLM-served Qwen3.6-35B-A3B-NVFP4
   backbone. `OlmoEarthLLM.chat(messages, tools=..., mode=...)` returns
   a parsed `ChatResponse` with content, extracted `<think>` trace,
@@ -278,15 +293,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `chat_template_kwargs.preserve_thinking=True` for multi-turn agent
   runs. Synchronous `Tracer` protocol exposes request/response hooks
   for the provenance middleware (lands in PR #7).
-- `docs/serving.md` — vLLM serve command, hardware requirements,
+- `docs/serving.md`: vLLM serve command, hardware requirements,
   **function-calling serve flags** (`--enable-auto-tool-choice
-  --tool-call-parser` — required or tool calls come back as text;
+  --tool-call-parser`, required or tool calls come back as text;
   parser name flagged UNVERIFIED pending live confirmation), YaRN
   long-context recipe, agent-mode defaults.
 - Client robustness: `_parse_completion` reads server-split
   `reasoning_content` (when served with `--reasoning-parser qwen3`)
-  and otherwise extracts the inline `<think>` block — works either way.
-- `docs/serving.md` — "Local development on ≤24 GB VRAM" section: 4-bit
+  and otherwise extracts the inline `<think>` block, works either way.
+- `docs/serving.md`: "Local development on ≤24 GB VRAM" section: 4-bit
   GGUF (`UD-IQ4_XS`) via llama.cpp `server-cuda` with `--jinja` for tool
   calling. **Function-call path verified end-to-end 2026-05-28** on an
   RTX 5090 Laptop (24 GB): NVFP4+vLLM stalls at memory profiling on
@@ -294,9 +309,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   ~18.6 GB and the agent's `create_project(...)` tool call round-trips.
   Production stack stays vLLM+NVFP4 on datacenter Blackwell; this is a
   local-dev accommodation (same OpenAI protocol, client code unchanged).
-- `docker/vllm.compose.yml` — pinned `vllm/vllm-openai:v0.19.0` for
+- `docker/vllm.compose.yml`: pinned `vllm/vllm-openai:v0.19.0` for
   local dev (still requires Blackwell host).
-- `tests/llm/` — mock-endpoint smoke tests via `pytest-httpx`: simple
+- `tests/llm/`: mock-endpoint smoke tests via `pytest-httpx`: simple
   chat, `<think>` extraction, tool-call round-trip, preserve_thinking
   forwarding, top_k routing through `extra_body`, tracer hooks. Plus
   one live integration test (`@pytest.mark.integration`) that hits a
@@ -315,28 +330,28 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - `PLAN.md` §2: new `LabelsetSpec`, `LabelDef`, `DataPrepLabelSchema` dataclasses
   (clean separation between Studio-API schemas and the OlmoEarth dataset-prep
   layer's field names).
-- **`SKILLS.md`** — detailed 16-skill catalog (Prep / Configure / Run /
+- **`SKILLS.md`**: detailed 16-skill catalog (Prep / Configure / Run /
   Analyze / Integrate / Report). Each skill has what / why / tools-composed
   with academic citations (Ploton 2020 spatial CV, Meyer-Pebesma 2021 AOA,
   Skakun CMIX 2022 cloud masks, WorldCereal 2025 lessons, IAMAP, NASA
   Similarity Search, etc.). Skill #16 (`roger-annotation-bridge`) added
   alongside the 15 from Ziming's source spec.
 - `SKILLS.md`: "Existing implementations (upstream source)" section
-  pinning skills #1–#4 to [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
-  — upstream unifies skills #1 + #2 as `olmoearth-data-prep`
+  pinning skills #1-#4 to [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills),
+  upstream unifies skills #1 + #2 as `olmoearth-data-prep`
   (split-vs-unify decision deferred to first end-to-end skill PR).
   Skill #16 target pinned to [`2imi9/Roger-Studio`](https://github.com/2imi9/Roger-Studio).
-- `SKILLS.md`: "Vendoring policy" section — submodule vs copy-with-
+- `SKILLS.md`: "Vendoring policy" section, submodule vs copy-with-
   provenance choice deferred to first vendoring PR.
 - `PLAN.md` §4 Skills row: references upstream
   [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)
-  as canonical home for skills #1–#4.
-- `PLAN.md` §1: three new global tools — `olmoearth.pixel_value`,
+  as canonical home for skills #1-#4.
+- `PLAN.md` §1: three new global tools: `olmoearth.pixel_value`,
   `olmoearth.features_search`, `olmoearth.fetch_embedding` (used by skills
   #4, #5, #9, #10).
-- `PLAN.md` §2: four new dataclasses — `PixelValueResult`, `FeatureMatch`,
+- `PLAN.md` §2: four new dataclasses: `PixelValueResult`, `FeatureMatch`,
   `EmbeddingVector`, `ProvenanceManifest`.
-- `PLAN.md` §3: new operational rule **13 — Provenance manifest** (every
+- `PLAN.md` §3: new operational rule **13: Provenance manifest** (every
   `olmoearth.*` API call writes a `ProvenanceManifest` entry via
   `provenance_middleware` from skill #14).
 - `PLAN.md` §7: new "Future work (parked)" section documenting the
@@ -350,7 +365,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   fine-tuning) moved to §7.1 Future work; train-time self-improvement
   moved to §7.2.
 - `PLAN.md` §4 "Underlying stack" table collapsed from 7 rows to 5:
-  dropped "Vision–language model" + "Geospatial encoder stream" +
+  dropped "Vision-language model" + "Geospatial encoder stream" +
   "Self-improvement"; added explicit "LLM" row pinning Qwen3.6-35B-A3B-NVFP4
   served via **vLLM ≥0.19.0** (upstream-recommended path for this NVFP4
   checkpoint; full `vllm serve` command in §4). Agent sessions use
@@ -362,8 +377,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - `SKILLS.md` "Existing implementations" + "Vendoring policy" sections
   tightened (split-vs-unify and submodule-vs-copy decisions left as
   one-line options rather than verbose A/B writeups).
-- `PLAN.md` §6 roadmap rewritten from 7 generic phases (P0–P6) to
-  skill-first: P0–P2 done (scaffold / gap closure / this rewrite),
+- `PLAN.md` §6 roadmap rewritten from 7 generic phases (P0-P6) to
+  skill-first: P0-P2 done (scaffold / gap closure / this rewrite),
   P3 = LLM serving + harness MVP, then one PR per skill ordered by
   case-study demand. Skills 14 (provenance) and 8 (evaluate) flagged
   for early landing because they're cross-cutting.
@@ -374,7 +389,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ### Changed (continued from PR #3)
 - `PLAN.md` bumped to v0.3 (PR #3 increment, superseded by v0.4 here).
 - `PLAN.md` §4: rewritten "Studio gaps" subsection from v0.1/v0.2's three
-  UNVERIFIED items to verified findings — webhook absence CLOSED, fine-tune
+  UNVERIFIED items to verified findings: webhook absence CLOSED, fine-tune
   `model_id` field CONFIRMED but provenance still UNVERIFIED, rate limits
   CLOSED-as-undocumented.
 - `PLAN.md` §5 example: uses `LabelsetSpec` + `create_label` flow and notes
@@ -383,7 +398,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ### Changed
 - `PLAN.md` bumped to v0.3.
 - `PLAN.md` §4: rewritten "Studio gaps" subsection from v0.1/v0.2's three
-  UNVERIFIED items to verified findings — webhook absence CLOSED, fine-tune
+  UNVERIFIED items to verified findings: webhook absence CLOSED, fine-tune
   `model_id` field CONFIRMED but provenance still UNVERIFIED, rate limits
   CLOSED-as-undocumented.
 - `PLAN.md` §5 example: uses `LabelsetSpec` + `create_label` flow and notes
@@ -393,7 +408,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - `PLAN.md` §2 `PredictionStatus.state` enum corrected against the live
   `components.schemas.PredictionStatus`: `queued`→`pending`, `succeeded`→
   `completed`, added `cancelled` as a fifth terminal state.
-- `PLAN.md` §2 `LabelSchema` retired — the v0.2 shape (`sample_category`,
+- `PLAN.md` §2 `LabelSchema` retired: the v0.2 shape (`sample_category`,
   `es_label`, `oe_labels`) is the OlmoEarth dataset-prep / rslearn layer's
   schema, NOT the Studio API. Renamed to `DataPrepLabelSchema` and
   documented as a different layer; `LabelsetSpec` + `LabelDef` replace it
@@ -421,7 +436,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ### Added
 - Initial `PLAN.md` and `README.md` defining the tool catalog, harness data
-  classes, operational rules, and underlying-stack references — modeled on
+  classes, operational rules, and underlying-stack references, modeled on
   Google's Google Earth Agent shape (catalog + dataclasses + numbered rules).
 - Apache-2.0 LICENSE.
 - `.gitignore` covering Python build artifacts, virtual environments, test

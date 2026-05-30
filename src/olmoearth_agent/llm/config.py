@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-#: Default served model id — the 4-bit GGUF (see docs/CANON.md C1).
+#: Default served model id: the 4-bit GGUF (see docs/CANON.md C1).
 DEFAULT_MODEL = "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
 
 #: Default OpenAI-compatible endpoint for the local llama.cpp server.

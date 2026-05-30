@@ -3,7 +3,7 @@
 *.sh text eol=lf
 Makefile text eol=lf
 
-# Binary assets — never normalize line endings.
+# Binary assets: never normalize line endings.
 *.png binary
 *.gif binary
 *.mp4 binary

@@ -4,7 +4,7 @@
 
 Honest map-accuracy tools: the random-vs-spatial CV inflation check and
 classification metrics. NNDM-LOO (Milà et al. 2022) is the remaining
-piece of this skill — a documented follow-up.
+piece of this skill: a documented follow-up.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ _POINTS_SCHEMA = {
 _LABEL_LIST = {
     "type": "array",
     "items": {"type": ["integer", "string"]},
-    "description": "Class labels — integer codes or string names, one per pixel.",
+    "description": "Class labels: integer codes or string names, one per pixel.",
 }
 
 

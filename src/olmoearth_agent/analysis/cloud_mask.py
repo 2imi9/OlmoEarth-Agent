@@ -3,8 +3,8 @@
 """Cloud-mask ensemble audit (skill #11, ``olmoearth-cloud-mask-audit``).
 
 Pure Python, no raster deps. Given several aligned cloud masks for the
-same scene — one per algorithm (CFMask, s2cloudless, Sen2Cor, MAJA, or
-any others) — :func:`ensemble_disagree` surfaces where the algorithms
+same scene, one per algorithm (CFMask, s2cloudless, Sen2Cor, MAJA, or
+any others), :func:`ensemble_disagree` surfaces where the algorithms
 *disagree* rather than asserting a single ground-truth mask, and
 :func:`verdict_classifier` attributes a model's errors to the mask or to
 the model itself.
@@ -13,7 +13,7 @@ The point (Skakun et al. CMIX, RSE 274:112990, 2022) is that cloud
 algorithms diverge most on thin and semi-transparent cloud, so a single
 mask is misleading; the ensemble disagreement is the honest signal. When
 a prediction looks wrong, the verdict answers "bad cloud mask, or bad
-model?" — if the errors sit where the algorithms disagree (or all call
+model?". If the errors sit where the algorithms disagree (or all call
 cloud) it is mask-limited; if they sit on agreed-clear pixels the model
 itself is the likely cause.
 
@@ -42,15 +42,15 @@ _PLACES = 6
 _VERDICT_EXPLANATION = {
     "cloud-mask-limited": (
         "Most model errors fall where the cloud algorithms disagree or all "
-        "flag cloud — the errors are plausibly mask/cloud artefacts, not the "
+        "flag cloud: the errors are plausibly mask/cloud artefacts, not the "
         "model."
     ),
     "model-limited": (
         "Most model errors fall where every cloud algorithm agrees the pixel "
-        "is clear — no cloud excuse, so the model itself is the likely cause."
+        "is clear: no cloud excuse, so the model itself is the likely cause."
     ),
     "inconclusive": (
-        "Model errors split between agreed-clear and cloud-affected pixels — "
+        "Model errors split between agreed-clear and cloud-affected pixels: "
         "the audit cannot attribute them to mask vs model at this threshold."
     ),
 }

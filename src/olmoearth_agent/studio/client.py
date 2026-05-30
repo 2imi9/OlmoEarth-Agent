@@ -158,7 +158,7 @@ class StudioClient:
     ) -> ApiEnvelope[dict[str, Any]]:
         """Search predictions (read-only). Optionally scope to a project.
 
-        Each record carries a ``model_id`` — this is how a client
+        Each record carries a ``model_id``: this is how a client
         discovers a reusable model id for a new prediction (resolves the
         PLAN.md §4 ``model_id`` provenance gap for the reuse case).
         """

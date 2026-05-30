@@ -5,7 +5,7 @@
 The client is intentionally small: build a payload, dispatch via the
 ``openai`` SDK, parse the completion. Everything agent-specific
 (provenance manifest writes, retry policy, multi-turn loop management)
-lives in higher layers — see ``PLAN.md`` §6 P3 for the roadmap.
+lives in higher layers: see ``PLAN.md`` §6 P3 for the roadmap.
 """
 
 from __future__ import annotations
