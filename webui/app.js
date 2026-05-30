@@ -75,7 +75,12 @@ function wireExamples() {
   const box = document.getElementById('examples');
   const input = document.getElementById('promptInput');
   if (toggle && box) {
-    toggle.addEventListener('click', () => { box.hidden = !box.hidden; });
+    toggle.addEventListener('click', () => {
+      box.hidden = !box.hidden;
+      toggle.setAttribute('aria-expanded', String(!box.hidden));
+      const lbl = toggle.querySelector('.pill-lbl');
+      if (lbl) lbl.textContent = box.hidden ? 'Show example briefs' : 'Hide example briefs';
+    });
   }
   document.querySelectorAll('.ex').forEach((ex) => {
     ex.addEventListener('click', () => {

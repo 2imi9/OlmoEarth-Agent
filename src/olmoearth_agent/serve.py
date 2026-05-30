@@ -82,6 +82,20 @@ def _studio_key(request: Request) -> str:
     return key
 
 
+def _studio_detail(exc: Exception) -> str:
+    """A useful 502 detail: the upstream HTTP status when there is one.
+
+    httpx raises ``HTTPStatusError`` carrying a ``.response``; surfacing its
+    status code (instead of only the exception class) turns an opaque 502
+    into something debuggable.
+    """
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is not None:
+        return f"Studio API returned HTTP {status}"
+    return f"Studio call failed: {type(exc).__name__}"
+
+
 def _sse(event: dict[str, Any]) -> str:
     """Format one event dict as a Server-Sent Events ``data:`` frame."""
     return f"data: {json.dumps(event)}\n\n"
@@ -151,9 +165,7 @@ async def api_projects(request: Request) -> dict[str, Any]:
         ) as studio:
             ctx = await studio.load_context()
     except Exception as exc:  # surfaced to the caller, not swallowed
-        raise HTTPException(
-            status_code=502, detail=f"Studio call failed: {type(exc).__name__}"
-        ) from exc
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     return {
         "ok": True,
         "user_name": ctx.user_name,
@@ -235,9 +247,7 @@ async def api_project_predictions(project_id: str, request: Request) -> dict[str
         ) as studio:
             env = await studio.search_predictions(project_id=project_id, limit=200)
     except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Studio call failed: {type(exc).__name__}"
-        ) from exc
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     predictions = [
         {
             "id": r.get("id", ""),
@@ -266,9 +276,7 @@ async def api_prediction_results(
                 prediction_id=prediction_id, limit=200
             )
     except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Studio call failed: {type(exc).__name__}"
-        ) from exc
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     results = [
         {
             "id": r.get("id", ""),

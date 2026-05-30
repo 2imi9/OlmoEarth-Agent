@@ -54,7 +54,7 @@
           <div class="um-section">
             <div class="um-head">Agent settings</div>
             <label class="um-row" for="maxTurns">
-              <span>Max steps / run</span>
+              <span>Max steps per run</span>
               <select class="um-select" id="maxTurns" aria-label="Max steps per run">
                 <option value="4">4</option>
                 <option value="6">6</option>
@@ -66,13 +66,14 @@
             <button class="um-item" id="clearChats" type="button">Clear chat history</button>
           </div>
           <div class="um-section">
-            <div class="um-head">OlmoEarth papers</div>
+            <div class="um-head">Papers &amp; resources</div>
             <a class="um-item" href="https://arxiv.org/pdf/2511.13655" target="_blank" rel="noopener">OlmoEarth report (arXiv) <span class="um-ext">↗</span></a>
-            <a class="um-item" href="https://allenai.org/papers/olmoearth_v1_1" target="_blank" rel="noopener">OlmoEarth v1.1 <span class="um-ext">↗</span></a>
-            <a class="um-item" href="https://openreview.net/pdf?id=IAyXlDwCYP" target="_blank" rel="noopener">Embeddings → fine-tuning <span class="um-ext">↗</span></a>
-            <a class="um-item" href="assets/olmoearth-model.png" target="_blank" rel="noopener">What is OlmoEarth? (diagram) <span class="um-ext">↗</span></a>
+            <a class="um-item" href="https://allenai.org/papers/olmoearth_v1_1" target="_blank" rel="noopener">OlmoEarth v1.1 (paper) <span class="um-ext">↗</span></a>
+            <a class="um-item" href="https://openreview.net/pdf?id=IAyXlDwCYP" target="_blank" rel="noopener">Embeddings to fine-tuning (tutorial) <span class="um-ext">↗</span></a>
+            <a class="um-item" href="assets/olmoearth-model.png" target="_blank" rel="noopener">OlmoEarth architecture (diagram) <span class="um-ext">↗</span></a>
           </div>
           <div class="um-section">
+            <div class="um-head">Policies</div>
             <a class="um-item" href="https://allenai.org/responsible-use" target="_blank" rel="noopener">Responsible Use <span class="um-ext">↗</span></a>
             <a class="um-item" href="https://allenai.org/terms" target="_blank" rel="noopener">Terms of Use <span class="um-ext">↗</span></a>
             <a class="um-item" href="https://allenai.org/privacy-policy" target="_blank" rel="noopener">Privacy Policy <span class="um-ext">↗</span></a>
@@ -151,9 +152,9 @@
               </div>
 
               <div class="pills">
-                <button class="pill" id="exampleToggle" type="button">
+                <button class="pill" id="exampleToggle" type="button" aria-expanded="false">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.7.6 1 1 1 2h6c0-1 .3-1.4 1-2A6 6 0 0012 3z"/></svg>
-                  Show example briefs
+                  <span class="pill-lbl">Show example briefs</span>
                 </button>
                 <button class="pill" type="button" onclick="document.getElementById('capabilities').scrollIntoView({behavior:'smooth'})">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16v14H4zM4 9h16M9 9v10"/></svg>

@@ -317,6 +317,7 @@ a:hover { color: var(--text); }
 .pill:hover { border-color: var(--mint); color: #fff; }
 
 .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.examples[hidden] { display: none; }  /* class display would otherwise beat the [hidden] attr */
 .ex {
   background: var(--bg-2); border: 1px solid var(--line-soft); color: var(--text-dim);
   font: inherit; font-size: 13px; padding: 8px 13px; border-radius: var(--radius-pill);
