@@ -11,7 +11,9 @@ a plain-text answer or the turn budget is exhausted.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any
 
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
@@ -31,8 +33,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "- Do not create a project whose name already exists; reuse it.\n"
     "- Never print raw latitude/longitude or full GeoJSON in your replies; "
     "reference a saved path or an id instead.\n"
-    "- When the task is complete, stop calling tools and reply with a short "
-    "plain-text summary of what you did and the ids involved."
+    "- When the task is complete, stop calling tools and reply with a concise "
+    "answer in GitHub-flavored Markdown (use tables, **bold**, and lists where "
+    "they help) summarizing what you did and the ids involved.\n"
+    "- Do NOT use emoji or decorative pictographs (no star / coloured-circle / "
+    "question-mark emoji). Use plain markers only — ✓, ✗, ~ — or words "
+    "(strong / moderate / weak / unclear)."
 )
 
 
@@ -84,8 +90,24 @@ class LeadAgent:
                 "with the name to get full steps):\n" + skill_index
             )
 
-    async def run(self, brief: str, *, max_turns: int = 8) -> AgentResult:
-        """Run the agent loop until it answers or hits ``max_turns``.
+    async def run_stream(
+        self,
+        brief: str,
+        *,
+        max_turns: int = 8,
+        history: list[Message] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Run the agent loop, yielding one event per step as it happens.
+
+        This is the streaming source of truth; :meth:`run` consumes it to
+        assemble an :class:`AgentResult`. Each yielded event is a small,
+        JSON-serializable dict tagged with a ``type``:
+
+        - ``thinking``    — the model's reasoning for a turn (``text``).
+        - ``tool_call``   — a dispatched call (``name``, ``arguments``, ``id``).
+        - ``tool_result`` — its outcome (``name``, ``ok``, ``result``, ``id``).
+        - ``final``       — the plain-text answer (``content``).
+        - ``max_turns``   — the cap was hit with no answer (``turns``).
 
         Parameters
         ----------
@@ -93,31 +115,27 @@ class LeadAgent:
             The user's natural-language request.
         max_turns
             Hard cap on LLM round-trips, to bound cost and stop loops.
-
-        Returns
-        -------
-        AgentResult
-            Final text (``None`` if the cap was hit), turn count, and the
-            ``(tool_name, ok)`` trace of every dispatched call.
+        history
+            Prior conversation turns (user/assistant messages) to seed before
+            the new ``brief``, so multi-turn follow-ups have context. Inserted
+            between the system prompt and the new user message.
         """
-        messages: list[Message] = [
-            Message(role="system", content=self.system_prompt),
-            Message(role="user", content=brief),
-        ]
+        messages: list[Message] = [Message(role="system", content=self.system_prompt)]
+        if history:
+            messages.extend(history)
+        messages.append(Message(role="user", content=brief))
         ctx = ToolContext(studio=self.studio, state=self.state)
-        calls: list[tuple[str, bool]] = []
 
         for turn in range(1, max_turns + 1):
             self.state.turn_count = turn
             response = await self.llm.chat(messages, tools=self.registry.specs())
 
+            if response.thinking:
+                yield {"type": "thinking", "turn": turn, "text": response.thinking}
+
             if not response.tool_calls:
-                return AgentResult(
-                    final_content=response.content,
-                    turns=turn,
-                    tool_calls=calls,
-                    state=self.state,
-                )
+                yield {"type": "final", "turn": turn, "content": response.content}
+                return
 
             messages.append(
                 Message(
@@ -127,11 +145,25 @@ class LeadAgent:
                 )
             )
             for call in response.tool_calls:
+                yield {
+                    "type": "tool_call",
+                    "turn": turn,
+                    "id": call.id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                }
                 result = await self.registry.dispatch(call, ctx)
                 self.state.provenance.record_tool_call(
                     call.name, call.arguments, result
                 )
-                calls.append((call.name, bool(result.get("ok"))))
+                yield {
+                    "type": "tool_result",
+                    "turn": turn,
+                    "id": call.id,
+                    "name": call.name,
+                    "ok": bool(result.get("ok")),
+                    "result": result,
+                }
                 messages.append(
                     Message(
                         role="tool",
@@ -141,10 +173,56 @@ class LeadAgent:
                     )
                 )
 
+        yield {"type": "max_turns", "turns": max_turns}
+
+    async def run(
+        self,
+        brief: str,
+        *,
+        max_turns: int = 8,
+        history: list[Message] | None = None,
+    ) -> AgentResult:
+        """Run the agent loop until it answers or hits ``max_turns``.
+
+        Thin collector over :meth:`run_stream`: drains the streamed events
+        and assembles an :class:`AgentResult`.
+
+        Parameters
+        ----------
+        brief
+            The user's natural-language request.
+        max_turns
+            Hard cap on LLM round-trips, to bound cost and stop loops.
+        history
+            Prior conversation turns to seed before ``brief`` (see
+            :meth:`run_stream`).
+
+        Returns
+        -------
+        AgentResult
+            Final text (``None`` if the cap was hit), turn count, and the
+            ``(tool_name, ok)`` trace of every dispatched call.
+        """
+        final_content: str | None = None
+        turns = 0
+        calls: list[tuple[str, bool]] = []
+        hit_max_turns = False
+
+        async for event in self.run_stream(brief, max_turns=max_turns, history=history):
+            kind = event["type"]
+            if kind == "tool_result":
+                calls.append((event["name"], event["ok"]))
+            elif kind == "final":
+                final_content = event["content"]
+                turns = event["turn"]
+            elif kind == "max_turns":
+                hit_max_turns = True
+                turns = event["turns"]
+
         return AgentResult(
-            final_content=None,
-            turns=max_turns,
+            final_content=final_content,
+            turns=turns,
             tool_calls=calls,
-            hit_max_turns=True,
+            hit_max_turns=hit_max_turns,
             state=self.state,
         )
