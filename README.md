@@ -17,7 +17,7 @@
 
 </div>
 
-<div align="center"><em>A brief in, the agent loop streamed out: reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
+<div align="center"><em>Connect a Studio key, send a brief, and the agent loop streams out: reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
 
 <div align="center"><sub>A multi-turn <strong>chat</strong> with saved history, a collapsible Studio <strong>project tree</strong>, and Markdown answers (full walkthrough: <a href="webui/demo/olmoearth-agent-demo.mp4">MP4</a>). Served by the bridge (<code>olmoearth-agent-serve</code>), it streams the real agent.</sub></div>
 
@@ -53,7 +53,10 @@ Set your key first (`export OLMOEARTH_API_KEY=...`); `LLM_ENDPOINT` defaults to 
 
 The loop is straightforward: the LLM reads the brief, plans, and emits a tool call; the harness runs it in a **sandboxed geospatial Python interpreter** (`pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, … preloaded, no `import` statements), feeds the result back, and iterates until it can answer. State persists across turns, and the operational rules (default trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call) are enforced by the harness, not left to the model.
 
-The capability set ships as **15 skills**, grouped by where they sit in an EO workflow:
+The capability set ships as **15 skills**, grouped by where they sit in an EO workflow.
+
+<details>
+<summary><strong>The 15 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
@@ -73,6 +76,8 @@ The capability set ships as **15 skills**, grouped by where they sit in an EO wo
 | 14 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
 | 15 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
 
+</details>
+
 See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for **every skill in action, with real outputs**: each one, in catalog order, driven by the live Qwen3.6 backbone (real reasoning, real function calls, real results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
 
 <div align="right"><a href="#contents">↑ back to top</a></div>
@@ -90,6 +95,9 @@ A styled front-end (dark-teal canvas, OlmoEarth-pink `#F0529C`, inspired by Ai2 
 
 ## Stack
 
+<details>
+<summary><strong>The stack</strong>, layer by layer</summary>
+
 | Layer | What |
 |---|---|
 | **LLM** | [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served **locally** as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB) |
@@ -97,6 +105,8 @@ A styled front-end (dark-teal canvas, OlmoEarth-pink `#F0529C`, inspired by Ai2 
 | **Harness** | Sandboxed Python interpreter + a compact function catalog (`system.*`, `olmoearth.*`, `eo.*`, `utils.*`) with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
 | **Skills** | 15-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
+
+</details>
 
 <div align="right"><a href="#contents">↑ back to top</a></div>
 
