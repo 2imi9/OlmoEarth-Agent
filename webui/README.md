@@ -42,6 +42,14 @@ unmistakably OlmoEarth. See [`DESIGN_NOTES.md`](DESIGN_NOTES.md).
 Responsive: the sidebar collapses to a hamburger and the card grid reflows to a
 single column below 880 px.
 
+## Account (bring your own key)
+
+There's no login to build — a user with a Studio assignment **already has an
+OlmoEarth Studio API key** (Studio → profile → API Keys). They paste it into the
+sidebar ("Connect OlmoEarth Studio"); it's kept **client-side** (localStorage)
+and used to call *their own* Studio account. Email-based sign-in is planned for
+later and will be handled outside this UI — out of scope for now.
+
 ## Status & next step
 
 This is the **visual shell**. To make it live, point the prompt form at the

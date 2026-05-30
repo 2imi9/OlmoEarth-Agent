@@ -37,18 +37,30 @@
 
       <div class="side-spacer"></div>
 
-      <div class="signin-card">
-        <div class="signin-title">Sign in to save your work</div>
-        <p class="signin-body">Logging in lets you revisit runs, results, and provenance later.</p>
-        <button class="btn-ghost" type="button">
-          <svg viewBox="0 0 24 24" class="ic"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
-          Sign in
-        </button>
+      <div class="key-card">
+        <div class="key-state" id="keyConnect">
+          <div class="key-head">
+            <svg viewBox="0 0 24 24" class="ic"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M17 4l2 2M14 7l2 2"/></svg>
+            <span>Connect OlmoEarth Studio</span>
+          </div>
+          <p class="key-body">Paste your Studio API key to run real predictions and fetch results — it stays in your browser.</p>
+          <form class="key-form" id="keyForm" autocomplete="off">
+            <input type="password" id="keyInput" placeholder="oe_live_…" spellcheck="false" aria-label="OlmoEarth Studio API key" />
+            <button class="btn-ghost" type="submit">Connect key</button>
+          </form>
+          <a class="key-link" href="https://docs.olmoearth.allenai.org/authentication/" target="_blank" rel="noopener">Where do I find my key? ↗</a>
+        </div>
+        <div class="key-state" id="keyConnected" hidden>
+          <div class="key-head"><span class="status-dot is-on"></span><span>Studio connected</span></div>
+          <p class="key-body">Using <code id="keyMask">oe_live_••••</code>. Runs call your own Studio account.</p>
+          <button class="btn-ghost" id="keyDisconnect" type="button">Disconnect</button>
+        </div>
+        <p class="key-future">Email sign-in is coming later.</p>
       </div>
 
-      <div class="user-chip">
-        <span class="avatar">U</span>
-        <span class="user-name">User</span>
+      <div class="user-chip" id="userChip">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="user-name" id="userStatus">Not connected</span>
         <svg viewBox="0 0 24 24" class="ic dots"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
       </div>
     </aside>
@@ -65,7 +77,7 @@
             <svg viewBox="0 0 24 24" class="ic"><path d="M12 2a10 10 0 00-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .8.1-.7.4-1.1.6-1.4-2.2-.300-4.6-1.1-4.6-4.9 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.3 9.3 0 015 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.8-2.4 4.6-4.6 4.9.4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0012 2z"/></svg>
             GitHub
           </a>
-          <button class="btn-pill-accent" type="button">Sign in</button>
+          <button class="btn-pill-accent" id="topKeyBtn" type="button">Add API key</button>
         </div>
       </header>
 
