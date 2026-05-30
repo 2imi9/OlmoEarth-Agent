@@ -13,6 +13,8 @@
 
 </div>
 
+<div align="center">
+
 ![OlmoEarth Agent — live demo](webui/demo/olmoearth-agent-demo.gif)
 
 <div align="center"><em>A brief in, the agent loop streamed out — reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
