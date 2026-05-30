@@ -26,6 +26,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+serve = [
+    "fastapi>=0.110",  # the webui->agent bridge (src/olmoearth_agent/serve.py)
+    "uvicorn>=0.29",   # ASGI server for the bridge; plain build is enough for SSE
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
@@ -45,6 +49,7 @@ Issues = "https://github.com/2imi9/OlmoEarth-Agent/issues"
 
 [project.scripts]
 olmoearth-agent = "olmoearth_agent.cli:main"
+olmoearth-agent-serve = "olmoearth_agent.serve:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/olmoearth_agent"]
@@ -75,6 +80,12 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 files = ["src/olmoearth_agent"]
+
+# The `serve` extra (FastAPI/uvicorn) is optional; don't fail type-checking
+# for contributors who haven't installed it.
+[[tool.mypy.overrides]]
+module = ["fastapi.*", "uvicorn.*", "starlette.*"]
+ignore_missing_imports = true
 
 [tool.interrogate]
 fail-under = 90

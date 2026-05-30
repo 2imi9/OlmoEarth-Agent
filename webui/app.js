@@ -1,5 +1,12 @@
 /* OlmoEarth Agent web UI — interactions + the 15-skill capability grid.
-   Static mock; no dependencies. */
+   Runs as a static mock by default; upgrades to the live agent when served
+   by olmoearth_agent.serve (see the "Live bridge" section below). */
+
+/* Live-mode flag, flipped on once /api/health answers. While false the page
+   behaves exactly as the static demo. `renderKeyState` is wired by wireKey
+   so detectBridge() can re-render the key card once the mode is known. */
+const BRIDGE = { live: false, checked: false };
+let renderKeyState = () => {};
 
 const ICONS = {
   upload:      '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/>',
@@ -132,14 +139,7 @@ function runDemo(brief) {
   const sc = pickScenario(brief);
   const ex = document.getElementById('examples');
   if (ex) ex.hidden = true;
-  rv.hidden = false;
-  rv.innerHTML =
-    '<div class="transcript live">' +
-      '<div class="msg user run-step"><span class="role">Brief</span>' +
-        '<div class="bubble">' + escapeHtml(brief) + '</div></div>' +
-      '<div class="msg agent"><span class="role">OlmoEarth Agent</span><div id="runBody"></div></div>' +
-    '</div>';
-  const body = rv.querySelector('#runBody');
+  const body = runShell(rv, brief);
   rv.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   setTimeout(() => {
@@ -190,7 +190,8 @@ function wirePrompt() {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const brief = (input && input.value.trim()) || 'Did karst-positive area trend up across these 4 quarterly snapshots, or just wobble?';
-      runDemo(brief);
+      if (BRIDGE.live && projConnected()) runLive(brief);
+      else runDemo(brief);
     });
   }
 }
@@ -210,7 +211,6 @@ function wireKey() {
   const connected = document.getElementById('keyConnected');
   const form = document.getElementById('keyForm');
   const input = document.getElementById('keyInput');
-  const mask = document.getElementById('keyMask');
   const dot = document.getElementById('statusDot');
   const status = document.getElementById('userStatus');
   const maskKey = (k) => (k.length <= 6 ? k : k.slice(0, 6) + '••••' + k.slice(-2));
@@ -220,11 +220,19 @@ function wireKey() {
     const k = get(); const on = !!k;
     if (connect) connect.hidden = on;
     if (connected) connected.hidden = !on;
-    if (on && mask) mask.textContent = maskKey(k);
     if (dot) dot.classList.toggle('is-on', on);
-    if (status) status.textContent = on ? 'Connected · demo' : 'Not connected';
+    if (status) status.textContent = on ? (BRIDGE.live ? 'Connected · live' : 'Connected · demo') : 'Not connected';
+    if (on) {
+      const label = document.getElementById('keyStatusLabel');
+      const body = document.getElementById('keyConnBody');
+      if (label) label.textContent = BRIDGE.live ? 'Studio connected' : 'Connected · demo';
+      if (body) body.innerHTML = BRIDGE.live
+        ? 'Connected as <code>' + maskKey(k) + '</code> — briefs run the <strong>real agent</strong> against your Studio account through the local bridge.'
+        : 'Key saved as <code>' + maskKey(k) + "</code>, but this preview <strong>doesn't call Studio yet</strong> — the data shown is sample, not your account.";
+    }
     renderProjects();  // projects only load once a key is connected
   }
+  renderKeyState = render;
   if (form) form.addEventListener('submit', (e) => {
     e.preventDefault();
     const v = (input.value || '').trim();
@@ -262,18 +270,12 @@ function projConnected() {
   try { return !!localStorage.getItem('oe_studio_key'); } catch (e) { return false; }
 }
 
-function renderProjects() {
-  const list = document.getElementById('projList');
-  if (!list) return;
-  if (!projConnected()) {
-    list.innerHTML = '<div class="proj-empty">Connect your Studio key below to load your projects. <span class="proj-empty-sub">Nothing is fetched until you do.</span></div>';
-    return;
-  }
-  list.innerHTML = PROJECTS.map((p, i) => `
-    <button class="proj-item${i === 0 ? ' is-active' : ''}" data-id="${p.id}" title="${p.name}">
+function renderProjectList(list, projects) {
+  list.innerHTML = projects.map((p, i) => `
+    <button class="proj-item${i === 0 ? ' is-active' : ''}" data-id="${escapeHtml(p.id)}" title="${escapeHtml(p.name)}">
       <svg viewBox="0 0 24 24" class="ic">${PROJ_ICONS[p.icon] || PROJ_ICONS.map}</svg>
-      <span class="proj-name">${p.name}</span>
-      <span class="proj-meta" title="${p.meta} predictions">${p.meta}</span>
+      <span class="proj-name">${escapeHtml(p.name)}</span>
+      ${p.meta ? `<span class="proj-meta" title="${escapeHtml(p.meta)} predictions">${escapeHtml(p.meta)}</span>` : ''}
     </button>`).join('');
   list.querySelectorAll('.proj-item').forEach((el) => {
     el.addEventListener('click', () => {
@@ -285,6 +287,36 @@ function renderProjects() {
       if (sb) sb.classList.remove('open');
     });
   });
+}
+
+async function renderProjects() {
+  const list = document.getElementById('projList');
+  if (!list) return;
+  if (!projConnected()) {
+    list.innerHTML = '<div class="proj-empty">Connect your Studio key below to load your projects. <span class="proj-empty-sub">Nothing is fetched until you do.</span></div>';
+    return;
+  }
+  if (!BRIDGE.live) {
+    renderProjectList(list, PROJECTS);  // sample data (demo mode)
+    return;
+  }
+  // Live: fetch the caller's real Studio projects through the bridge.
+  list.innerHTML = '<div class="proj-empty">Loading your projects…</div>';
+  try {
+    const res = await fetch('/api/projects', { headers: { 'X-Olmoearth-Key': studioKey() } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const projects = (data.projects || []).map((p) => ({
+      id: p.id || '', name: p.name || '(unnamed)', icon: pickProjIcon(p.name), meta: '',
+    }));
+    if (!projects.length) {
+      list.innerHTML = '<div class="proj-empty">No projects in your Studio account yet. <span class="proj-empty-sub">Create one in Studio, then refresh.</span></div>';
+      return;
+    }
+    renderProjectList(list, projects);
+  } catch (e) {
+    list.innerHTML = '<div class="proj-empty">Couldn’t load projects — ' + escapeHtml(String((e && e.message) || e)) + '. <span class="proj-empty-sub">Check your key, or that the bridge can reach Studio.</span></div>';
+  }
 }
 
 function wireNewProject() {
@@ -305,13 +337,167 @@ function wireNewProject() {
   });
 }
 
+/* ── Live bridge (optional) ───────────────────────────────────────────────
+   When this page is served by olmoearth_agent.serve (FastAPI), /api/health
+   answers and we switch from the canned demo to the real agent: real Studio
+   projects, and briefs streamed through LeadAgent.run_stream over SSE. Opened
+   as a static file (no bridge), detectBridge() leaves BRIDGE.live false and
+   everything here stays dormant — the demo runs unchanged. */
+
+async function detectBridge() {
+  try {
+    const res = await fetch('/api/health', { method: 'GET' });
+    if (res.ok) {
+      const data = await res.json();
+      BRIDGE.live = !!(data && data.ok) && data.mode === 'live';
+    }
+  } catch (e) { BRIDGE.live = false; }
+  BRIDGE.checked = true;
+}
+
+function studioKey() {
+  try { return localStorage.getItem('oe_studio_key') || ''; } catch (e) { return ''; }
+}
+
+function pickProjIcon(name) {
+  const n = (name || '').toLowerCase();
+  if (/water|river|lake|chesa|quality|hydro|wetland/.test(n)) return 'drop';
+  if (/change|trend|detect|delta|monitor/.test(n)) return 'trend';
+  if (/forest|mangrove|veg|crop|tree|land|alfalfa/.test(n)) return 'leaf';
+  if (/solar|energy|sun|panel/.test(n)) return 'sun';
+  return 'map';
+}
+
+// Shared transcript scaffold for a run; returns the #runBody element.
+function runShell(rv, brief) {
+  rv.hidden = false;
+  rv.innerHTML =
+    '<div class="transcript live">' +
+      '<div class="msg user run-step"><span class="role">Brief</span>' +
+        '<div class="bubble">' + escapeHtml(brief) + '</div></div>' +
+      '<div class="msg agent"><span class="role">OlmoEarth Agent</span><div id="runBody"></div></div>' +
+    '</div>';
+  return rv.querySelector('#runBody');
+}
+
+// Render one tool result envelope ({ok, result|error}) as kv chips + JSON.
+function liveResultHtml(ev) {
+  const r = ev.result || {};
+  if (!ev.ok) {
+    return '<span class="kv"><b>error</b> ' + escapeHtml(String(r.error || 'failed')) + '</span>';
+  }
+  const inner = r.result;
+  const chips = ['<span class="kv"><b>ok</b> true</span>'];
+  if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+    for (const k of Object.keys(inner)) {
+      const v = inner[k];
+      if (v === null || typeof v !== 'object') {
+        chips.push('<span class="kv"><b>' + escapeHtml(k) + '</b> ' + escapeHtml(String(v)) + '</span>');
+      }
+      if (chips.length >= 7) break;
+    }
+  }
+  let json;
+  try { json = JSON.stringify(inner === undefined ? r : inner, null, 2); } catch (e) { json = String(inner); }
+  if (json && json.length > 700) json = json.slice(0, 700) + '\n…';
+  return chips.join('') + '<pre class="tc-args tc-result-json">' + escapeHtml(json) + '</pre>';
+}
+
+// Apply one streamed event to the transcript body.
+function handleRunEvent(body, ev) {
+  if (ev.type === 'thinking') {
+    const row = document.createElement('div');
+    row.className = 'think run-step';
+    const span = document.createElement('span');
+    row.appendChild(span);
+    body.appendChild(row);
+    typeText(span, ev.text || '');
+    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (ev.type === 'tool_call') {
+    let args; try { args = JSON.stringify(ev.arguments || {}, null, 2); } catch (e) { args = '{}'; }
+    body.insertAdjacentHTML('beforeend',
+      '<div class="toolcall run-step">' +
+        '<div class="tc-head"><span class="tc-dot running"></span><span class="tc-state">calling</span> <code>' + escapeHtml(ev.name || '') + '</code></div>' +
+        '<pre class="tc-args">' + escapeHtml(args) + '</pre>' +
+        '<div class="tc-result" hidden></div>' +
+      '</div>');
+    const cards = body.querySelectorAll('.toolcall');
+    const card = cards[cards.length - 1];
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (ev.type === 'tool_result') {
+    // run_stream emits call→result in order, so fill the last unfilled card.
+    const cards = body.querySelectorAll('.toolcall');
+    let card = null;
+    for (let i = cards.length - 1; i >= 0; i--) {
+      const r = cards[i].querySelector('.tc-result');
+      if (r && r.hidden) { card = cards[i]; break; }
+    }
+    if (!card && cards.length) card = cards[cards.length - 1];
+    if (card) {
+      const dot = card.querySelector('.tc-dot'); if (dot) dot.classList.remove('running');
+      const st = card.querySelector('.tc-state'); if (st) st.textContent = ev.ok ? 'called' : 'failed';
+      const res = card.querySelector('.tc-result');
+      if (res) { res.hidden = false; res.classList.add('run-step'); res.innerHTML = liveResultHtml(ev); }
+    }
+  } else if (ev.type === 'final') {
+    body.insertAdjacentHTML('beforeend', '<div class="answer run-step">' + escapeHtml(ev.content || '(no answer)') + '</div>');
+    const ans = body.querySelectorAll('.answer');
+    const a = ans[ans.length - 1]; if (a) a.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (ev.type === 'max_turns') {
+    body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+  } else if (ev.type === 'error') {
+    body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');
+  }
+}
+
+// Stream a real agent run over SSE and render it as it arrives.
+async function runLive(brief) {
+  const rv = document.getElementById('runview');
+  if (!rv) return;
+  const ex = document.getElementById('examples'); if (ex) ex.hidden = true;
+  const body = runShell(rv, brief);
+  rv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  body.innerHTML = '<div class="think run-step" id="runStatus"><span class="typing"><span></span><span></span><span></span></span><span class="muted">Running the agent…</span></div>';
+  try {
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Olmoearth-Key': studioKey() },
+      body: JSON.stringify({ brief }),
+    });
+    if (!res.ok || !res.body) throw new Error('bridge returned HTTP ' + res.status);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let cleared = false;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
+        if (!dataLine) continue;
+        let ev; try { ev = JSON.parse(dataLine.slice(5).trim()); } catch (e) { continue; }
+        if (ev.type === 'done') continue;
+        if (!cleared) { const s = document.getElementById('runStatus'); if (s) s.remove(); cleared = true; }
+        handleRunEvent(body, ev);
+      }
+    }
+  } catch (e) {
+    const s = document.getElementById('runStatus'); if (s) s.remove();
+    handleRunEvent(body, { type: 'error', message: String((e && e.message) || e) });
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   renderCards();
-  renderProjects();
   wireNewProject();
   wireTabs();
   wireExamples();
   wirePrompt();
   wireMenu();
-  wireKey();
+  wireKey();  // initial render assumes demo mode
+  // Upgrade to live mode if the bridge is serving this page, then re-render.
+  detectBridge().then(renderKeyState);
 });

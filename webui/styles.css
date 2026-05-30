@@ -291,8 +291,12 @@ a:hover { color: var(--text); }
 .tc-result { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line-soft); }
 .kv { font-size: 12.5px; color: var(--text-dim); background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-pill); padding: 4px 11px; }
 .kv b { color: var(--text); font-weight: 600; margin-right: 5px; }
-.answer { background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--pink); border-radius: 12px; padding: 13px 15px; font-size: 15px; line-height: 1.6; }
+.answer { background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--pink); border-radius: 12px; padding: 13px 15px; font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
 .answer strong { color: #fff; }
+
+/* Live mode (bridge): tool-result JSON + run-level error/notice banner. */
+.tc-result-json { flex: 1 1 100%; margin: 4px 0 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px; }
+.run-error { background: rgba(240,82,156,.07); border: 1px solid var(--line); border-left: 3px solid var(--pink); border-radius: 12px; padding: 11px 15px; font-size: 13.5px; color: var(--text); }
 
 /* ───────────── Live run (demo) ───────────── */
 .runview { margin-top: 20px; }

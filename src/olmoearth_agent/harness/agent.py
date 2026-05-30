@@ -11,13 +11,15 @@ a plain-text answer or the turn budget is exhausted.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any
 
+from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.studio.client import StudioClient
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
-from olmoearth_agent.harness.state import ThreadState
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are the OlmoEarth Studio agent. You help Earth-observation "
@@ -84,8 +86,88 @@ class LeadAgent:
                 "with the name to get full steps):\n" + skill_index
             )
 
+    async def run_stream(
+        self, brief: str, *, max_turns: int = 8
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Run the agent loop, yielding one event per step as it happens.
+
+        This is the streaming source of truth; :meth:`run` consumes it to
+        assemble an :class:`AgentResult`. Each yielded event is a small,
+        JSON-serializable dict tagged with a ``type``:
+
+        - ``thinking``    — the model's reasoning for a turn (``text``).
+        - ``tool_call``   — a dispatched call (``name``, ``arguments``, ``id``).
+        - ``tool_result`` — its outcome (``name``, ``ok``, ``result``, ``id``).
+        - ``final``       — the plain-text answer (``content``).
+        - ``max_turns``   — the cap was hit with no answer (``turns``).
+
+        Parameters
+        ----------
+        brief
+            The user's natural-language request.
+        max_turns
+            Hard cap on LLM round-trips, to bound cost and stop loops.
+        """
+        messages: list[Message] = [
+            Message(role="system", content=self.system_prompt),
+            Message(role="user", content=brief),
+        ]
+        ctx = ToolContext(studio=self.studio, state=self.state)
+
+        for turn in range(1, max_turns + 1):
+            self.state.turn_count = turn
+            response = await self.llm.chat(messages, tools=self.registry.specs())
+
+            if response.thinking:
+                yield {"type": "thinking", "turn": turn, "text": response.thinking}
+
+            if not response.tool_calls:
+                yield {"type": "final", "turn": turn, "content": response.content}
+                return
+
+            messages.append(
+                Message(
+                    role="assistant",
+                    content=response.content,
+                    tool_calls=response.tool_calls,
+                )
+            )
+            for call in response.tool_calls:
+                yield {
+                    "type": "tool_call",
+                    "turn": turn,
+                    "id": call.id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                }
+                result = await self.registry.dispatch(call, ctx)
+                self.state.provenance.record_tool_call(
+                    call.name, call.arguments, result
+                )
+                yield {
+                    "type": "tool_result",
+                    "turn": turn,
+                    "id": call.id,
+                    "name": call.name,
+                    "ok": bool(result.get("ok")),
+                    "result": result,
+                }
+                messages.append(
+                    Message(
+                        role="tool",
+                        tool_call_id=call.id,
+                        name=call.name,
+                        content=json.dumps(result),
+                    )
+                )
+
+        yield {"type": "max_turns", "turns": max_turns}
+
     async def run(self, brief: str, *, max_turns: int = 8) -> AgentResult:
         """Run the agent loop until it answers or hits ``max_turns``.
+
+        Thin collector over :meth:`run_stream`: drains the streamed events
+        and assembles an :class:`AgentResult`.
 
         Parameters
         ----------
@@ -100,51 +182,26 @@ class LeadAgent:
             Final text (``None`` if the cap was hit), turn count, and the
             ``(tool_name, ok)`` trace of every dispatched call.
         """
-        messages: list[Message] = [
-            Message(role="system", content=self.system_prompt),
-            Message(role="user", content=brief),
-        ]
-        ctx = ToolContext(studio=self.studio, state=self.state)
+        final_content: str | None = None
+        turns = 0
         calls: list[tuple[str, bool]] = []
+        hit_max_turns = False
 
-        for turn in range(1, max_turns + 1):
-            self.state.turn_count = turn
-            response = await self.llm.chat(messages, tools=self.registry.specs())
-
-            if not response.tool_calls:
-                return AgentResult(
-                    final_content=response.content,
-                    turns=turn,
-                    tool_calls=calls,
-                    state=self.state,
-                )
-
-            messages.append(
-                Message(
-                    role="assistant",
-                    content=response.content,
-                    tool_calls=response.tool_calls,
-                )
-            )
-            for call in response.tool_calls:
-                result = await self.registry.dispatch(call, ctx)
-                self.state.provenance.record_tool_call(
-                    call.name, call.arguments, result
-                )
-                calls.append((call.name, bool(result.get("ok"))))
-                messages.append(
-                    Message(
-                        role="tool",
-                        tool_call_id=call.id,
-                        name=call.name,
-                        content=json.dumps(result),
-                    )
-                )
+        async for event in self.run_stream(brief, max_turns=max_turns):
+            kind = event["type"]
+            if kind == "tool_result":
+                calls.append((event["name"], event["ok"]))
+            elif kind == "final":
+                final_content = event["content"]
+                turns = event["turn"]
+            elif kind == "max_turns":
+                hit_max_turns = True
+                turns = event["turns"]
 
         return AgentResult(
-            final_content=None,
-            turns=max_turns,
+            final_content=final_content,
+            turns=turns,
             tool_calls=calls,
-            hit_max_turns=True,
+            hit_max_turns=hit_max_turns,
             state=self.state,
         )
