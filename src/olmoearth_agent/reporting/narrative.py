@@ -88,7 +88,7 @@ def build_narrative(
         entry = {"result_id": result.get("result_id"), **check}
         freshness.append(entry)
         if check.get("fresh") is False:
-            stale_ids.append(result.get("result_id"))
+            stale_ids.append(str(result.get("result_id")))
 
     lines = [f"# {title}", ""]
     if stale_ids:
@@ -111,8 +111,7 @@ def build_narrative(
             continue
         props = ", ".join(result.get("property_names") or []) or "(none)"
         lines.append(f"- **{rid}** — properties: {props}")
-        for url in result.get("tile_urls") or []:
-            lines.append(f"  - tile: `{url}`")
+        lines.extend(f"  - tile: `{url}`" for url in result.get("tile_urls") or [])
     lines.append("")
 
     entries = getattr(provenance, "entries", provenance) or []

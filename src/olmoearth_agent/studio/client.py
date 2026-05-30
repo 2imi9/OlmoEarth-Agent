@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -119,17 +119,11 @@ class StudioClient:
         self, *, limit: int = 50, offset: int = 0
     ) -> ApiEnvelope[dict[str, Any]]:
         """Search projects (read-only). Returns the full envelope."""
-        return await self.post(
-            "/projects/search", {"limit": limit, "offset": offset}
-        )
+        return await self.post("/projects/search", {"limit": limit, "offset": offset})
 
-    async def create_project(
-        self, *, name: str, description: str
-    ) -> dict[str, Any]:
+    async def create_project(self, *, name: str, description: str) -> dict[str, Any]:
         """Create a project (``POST /projects`` → 200). Returns the new record."""
-        env = await self.post(
-            "/projects", {"name": name, "description": description}
-        )
+        env = await self.post("/projects", {"name": name, "description": description})
         return env.one or {}
 
     async def get_project(self, project_id: str) -> dict[str, Any]:
@@ -148,7 +142,7 @@ class StudioClient:
         resp.raise_for_status()
         env = ApiEnvelope.from_response(resp.json())
         record = env.one or {}
-        return record.get("record", record)
+        return cast(dict[str, Any], record.get("record", record))
 
     async def get_prediction(self, prediction_id: str) -> dict[str, Any]:
         """Fetch one prediction record (``GET /predictions/{id}``)."""

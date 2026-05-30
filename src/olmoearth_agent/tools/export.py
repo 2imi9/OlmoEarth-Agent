@@ -18,8 +18,14 @@ from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 _PROJECT_FIELDS = ("id", "name", "description", "creation_time")
 _PREDICTION_FIELDS = (
-    "id", "name", "status", "model_id", "project_id",
-    "start_time", "end_time", "creation_time",
+    "id",
+    "name",
+    "status",
+    "model_id",
+    "project_id",
+    "start_time",
+    "end_time",
+    "creation_time",
 )
 
 
@@ -46,15 +52,21 @@ async def _export_data(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
     if group_by == "status":
         for status, items in group_items(predictions, "status").items():
             path = os.path.join(out_dir, f"status_{slugify(status)}.json")
-            _write(path, {"status": status, "prediction_count": len(items),
-                          "predictions": items})
+            _write(
+                path,
+                {
+                    "status": status,
+                    "prediction_count": len(items),
+                    "predictions": items,
+                },
+            )
             files.append(path)
     else:  # default: by project
         by_project = group_items(predictions, "project_id")
         for project in projects:
             payload = {
                 "project": project,
-                "predictions": by_project.get(project.get("id"), []),
+                "predictions": by_project.get(str(project.get("id")), []),
             }
             path = os.path.join(out_dir, f"project_{slugify(project.get('name'))}.json")
             _write(path, payload)

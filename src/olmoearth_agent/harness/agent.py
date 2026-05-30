@@ -13,11 +13,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.studio.client import StudioClient
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
-from olmoearth_agent.harness.state import ThreadState
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are the OlmoEarth Studio agent. You help Earth-observation "
