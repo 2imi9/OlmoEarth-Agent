@@ -222,7 +222,8 @@ function wireKey() {
     if (connected) connected.hidden = !on;
     if (on && mask) mask.textContent = maskKey(k);
     if (dot) dot.classList.toggle('is-on', on);
-    if (status) status.textContent = on ? 'Studio connected' : 'Not connected';
+    if (status) status.textContent = on ? 'Connected · demo' : 'Not connected';
+    renderProjects();  // projects only load once a key is connected
   }
   if (form) form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -240,8 +241,74 @@ function wireKey() {
   render();
 }
 
+/* ── Projects sidebar (New project + your projects, à la Vercel chatbot) ──
+   Sample data for the mock; wired to olmoearth_search_projects when live. */
+const PROJ_ICONS = {
+  map:  '<path d="M9 3L3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/>',
+  drop: '<path d="M12 3s6 6.5 6 11a6 6 0 01-12 0c0-4.5 6-11 6-11z"/>',
+  trend:'<path d="M4 17l5-5 3 3 7-8"/><path d="M15 7h5v5"/>',
+  leaf: '<path d="M5 19c0-7 5-12 14-12 0 9-5 14-12 12z"/><path d="M9 15c2-3 4-4 7-5"/>',
+  sun:  '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+};
+const PROJECTS = [
+  { id: 'karst',    name: 'PA Karst',                    meta: '12', icon: 'map'   },
+  { id: 'ches',     name: 'Chesapeake — water quality',  meta: '5',  icon: 'drop'  },
+  { id: 'potomac',  name: 'Potomac — change detection',  meta: '8',  icon: 'trend' },
+  { id: 'mangrove', name: 'Mangrove extent — Indonesia', meta: '3',  icon: 'leaf'  },
+  { id: 'solar',    name: 'Solar arrays — California',   meta: '2',  icon: 'sun'   },
+];
+
+function projConnected() {
+  try { return !!localStorage.getItem('oe_studio_key'); } catch (e) { return false; }
+}
+
+function renderProjects() {
+  const list = document.getElementById('projList');
+  if (!list) return;
+  if (!projConnected()) {
+    list.innerHTML = '<div class="proj-empty">Connect your Studio key below to load your projects. <span class="proj-empty-sub">Nothing is fetched until you do.</span></div>';
+    return;
+  }
+  list.innerHTML = PROJECTS.map((p, i) => `
+    <button class="proj-item${i === 0 ? ' is-active' : ''}" data-id="${p.id}" title="${p.name}">
+      <svg viewBox="0 0 24 24" class="ic">${PROJ_ICONS[p.icon] || PROJ_ICONS.map}</svg>
+      <span class="proj-name">${p.name}</span>
+      <span class="proj-meta" title="${p.meta} predictions">${p.meta}</span>
+    </button>`).join('');
+  list.querySelectorAll('.proj-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      list.querySelectorAll('.proj-item').forEach((x) => x.classList.remove('is-active'));
+      el.classList.add('is-active');
+      const input = document.getElementById('promptInput');
+      if (input) input.focus();
+      const sb = document.getElementById('sidebar');
+      if (sb) sb.classList.remove('open');
+    });
+  });
+}
+
+function wireNewProject() {
+  const btn = document.getElementById('newProjectBtn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const rv = document.getElementById('runview');
+    if (rv) { rv.hidden = true; rv.innerHTML = ''; }
+    const ex = document.getElementById('examples');
+    if (ex) ex.hidden = true;
+    document.querySelectorAll('#projList .proj-item').forEach((x) => x.classList.remove('is-active'));
+    const input = document.getElementById('promptInput');
+    if (input) { input.value = ''; autosize(input); input.focus(); }
+    const scroll = document.querySelector('.scroll');
+    if (scroll) scroll.scrollTo({ top: 0, behavior: 'smooth' });
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.classList.remove('open');
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   renderCards();
+  renderProjects();
+  wireNewProject();
   wireTabs();
   wireExamples();
   wirePrompt();

@@ -72,20 +72,33 @@ a:hover { color: var(--text); }
 .btn-new .ic { font-size: 18px; stroke-width: 2.2; }
 .btn-new:hover { background: var(--pink-hi); }
 
-.nav { display: flex; flex-direction: column; gap: 2px; }
-.nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: var(--radius-sm);
-  color: var(--text-dim); font-size: 14px; font-weight: 500;
-  transition: background .12s ease, color .12s ease;
+/* Projects (Vercel-chatbot-style: New project + a list of your projects) */
+.proj-section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: 2px; }
+.proj-head {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); padding: 8px 10px 6px;
 }
-.nav-item .ic { font-size: 18px; color: var(--text-faint); }
-.nav-item:hover { background: var(--bg-2); color: var(--text); }
-.nav-item:hover .ic { color: var(--mint); }
-.nav-item.is-active { background: var(--bg-2); color: #fff; }
-.nav-item.is-active .ic { color: var(--pink); }
-
-.side-spacer { flex: 1 1 auto; }
+.proj-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; padding-right: 2px; }
+.proj-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid transparent;
+  background: none; color: var(--text-dim); font: inherit; font-size: 13.5px; font-weight: 500;
+  cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.proj-item .ic { font-size: 16px; color: var(--text-faint); flex: none; }
+.proj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-meta { font-size: 11px; color: var(--text-faint); flex: none; }
+.proj-item:hover { background: var(--bg-2); color: var(--text); }
+.proj-item:hover .ic { color: var(--mint); }
+.proj-item.is-active { background: var(--bg-2); color: var(--text); border-color: var(--line); }
+.proj-item.is-active .ic { color: var(--pink); }
+.proj-tag {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-faint); background: var(--bg-2); border: 1px solid var(--line-soft);
+  padding: 1px 6px; border-radius: var(--radius-pill); margin-left: 6px; vertical-align: middle;
+}
+.proj-empty { padding: 10px; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+.proj-empty-sub { display: block; margin-top: 3px; color: var(--text-faint); font-size: 11.5px; }
 
 .key-card {
   background: var(--bg-2); border: 1px solid var(--line);

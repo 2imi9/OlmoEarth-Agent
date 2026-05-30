@@ -21,21 +21,15 @@
         <span class="brand-tag">Agent</span>
       </a>
 
-      <button class="btn-new" type="button">
+      <button class="btn-new" id="newProjectBtn" type="button">
         <svg viewBox="0 0 24 24" class="ic"><path d="M12 5v14M5 12h14"/></svg>
-        New run
+        New project
       </button>
 
-      <nav class="nav" aria-label="Primary">
-        <a class="nav-item is-active" href="#top"><svg viewBox="0 0 24 24" class="ic"><path d="M3 12l2-2 7-7 7 7 2 2"/><path d="M5 10v10h14V10"/></svg>Home</a>
-        <a class="nav-item" href="#capabilities"><svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9"/><path d="M12 3a14 14 0 000 18M3 12h18"/></svg>Run a prediction</a>
-        <a class="nav-item" href="#capabilities"><svg viewBox="0 0 24 24" class="ic"><path d="M4 19V5M4 19h16M8 16V9M13 16V6M18 16v-4"/></svg>Analyze results</a>
-        <a class="nav-item" href="#capabilities"><svg viewBox="0 0 24 24" class="ic"><path d="M4 6h16M4 12h10M4 18h7"/></svg>Prep &amp; configure</a>
-        <a class="nav-item" href="#capabilities"><svg viewBox="0 0 24 24" class="ic"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>Browse skills</a>
-        <a class="nav-item" href="#run-example"><svg viewBox="0 0 24 24" class="ic"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>Provenance</a>
-      </nav>
-
-      <div class="side-spacer"></div>
+      <div class="proj-section">
+        <div class="proj-head">Projects <span class="proj-tag" title="Demo data — not your live Studio account">sample</span></div>
+        <div class="proj-list" id="projList" aria-label="Your projects"><!-- injected by app.js --></div>
+      </div>
 
       <div class="key-card">
         <div class="key-state" id="keyConnect">
@@ -51,8 +45,8 @@
           <a class="key-link" href="https://docs.olmoearth.allenai.org/authentication/" target="_blank" rel="noopener">Where do I find my key? ↗</a>
         </div>
         <div class="key-state" id="keyConnected" hidden>
-          <div class="key-head"><span class="status-dot is-on"></span><span>Studio connected</span></div>
-          <p class="key-body">Using <code id="keyMask">oe_live_••••</code>. Runs call your own Studio account.</p>
+          <div class="key-head"><span class="status-dot is-on"></span><span>Connected · demo</span></div>
+          <p class="key-body">Key saved as <code id="keyMask">oe_live_••••</code>, but this preview <strong>doesn't call Studio yet</strong> — the data shown is sample, not your account.</p>
           <button class="btn-ghost" id="keyDisconnect" type="button">Disconnect</button>
         </div>
         <p class="key-future">Email sign-in is coming later.</p>
