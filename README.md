@@ -21,6 +21,8 @@
 
 <div align="center"><em>A brief in, the agent loop streamed out — reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
 
+<div align="center"><sub>⚠️ GIF from the older single-run UI (being re-recorded). The current UI is a multi-turn <strong>chat</strong> with saved history, a collapsible Studio <strong>project tree</strong>, and Markdown answers — streamed live via the bridge (<code>olmoearth-agent-serve</code>).</sub></div>
+
 ---
 
 OlmoEarth Agent turns a natural-language brief into real geospatial work on **OlmoEarth Studio**. It's a compact analog to Google's Earth Agent: a small catalog of functions (Studio HTTP API, EO data fetch, geometry utilities) running over a sandboxed Python interpreter, with operational constraints built in. The agent reasons about the ask, calls the right tools, submits and polls predictions, and reports **honest results** — every API call is wrapped in a provenance manifest, spatial cross-validation is mandatory on auto-correlated AOIs, and raw coordinates never leak into chat. It runs entirely on a **local Qwen3.6-35B-A3B** model served via llama.cpp — no hosted LLM required.
@@ -82,10 +84,11 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for **every skill in action, with
 ## Web UI
 
 ```bash
-make web   # → http://localhost:8080
+make web                      # static demo  → http://localhost:8080
+uv run olmoearth-agent-serve  # LIVE bridge  → http://127.0.0.1:8088
 ```
 
-A styled front-end shell (dark-teal canvas, OlmoEarth-pink `#F0529C` accent, inspired by Ai2 **Asta**) with a live-run animation that streams the agent loop — reasoning, the tool call, the result, the answer. It's **bring-your-own-key**: paste a Studio API key into the sidebar and it stays client-side (localStorage), calling your own account. See [`webui/`](webui/) for the source and design notes.
+A styled front-end (dark-teal canvas, OlmoEarth-pink `#F0529C`, inspired by Ai2 **Asta**): a multi-turn **chat with saved history** (localStorage), a collapsible **Studio project tree** (project → model → predictions → results), **Markdown-rendered answers**, and a per-turn "Reasoning & tools" disclosure. Served statically it's a scripted demo; served by the **bridge** (`olmoearth-agent-serve`) it streams the real `LeadAgent` over SSE. **Bring-your-own-key** — paste a Studio API key (top bar → "Add API key"), kept client-side. See [`webui/`](webui/) for source + design notes.
 
 <div align="right"><a href="#contents">↑ back to top</a></div>
 

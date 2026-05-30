@@ -42,7 +42,10 @@ matched the reference and there were no console errors. The app uses an inner
 scroll container (`.scroll`), so full-page captures need to scroll that element,
 not the window.
 
-## Not done yet
+## Status
 
-- Live data — the prompt/transcript are static; wire to `LeadAgent`.
-- Light theme, keyboard-nav audit, and real auth are out of scope for the shell.
+- ~~Live data~~ — **done**: the [FastAPI bridge](../src/olmoearth_agent/serve.py)
+  (`olmoearth-agent-serve`) streams real `LeadAgent` runs over SSE, with a
+  multi-turn chat + saved history and a Studio project tree.
+- Still out of scope for the shell: light theme, full keyboard-nav audit, real auth.
+- The demo GIF/MP4 in `demo/` is from the old single-run UI and is being re-recorded.
