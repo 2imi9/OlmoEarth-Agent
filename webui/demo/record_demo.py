@@ -29,7 +29,7 @@ DEMO = WEBUI / "demo"
 REC = DEMO / "_rec"
 PORT = 8123
 W, H = 1180, 760
-GIF_SECONDS = 13  # the GIF is a short clip; the full walkthrough stays in the MP4
+GIF_SECONDS = 14  # the GIF is a short clip; the full walkthrough stays in the MP4
 GIF_START = 0.8  # skip the brief page-load so the loop never starts on a blank frame
 # Opaque (flicker-free) GIF frames are large, so the GIF runs at a lower fps/width
 # than the MP4 to keep the file README-friendly.
@@ -69,9 +69,32 @@ def _record() -> Path:
         page = ctx.new_page()
         page.goto(f"http://127.0.0.1:{PORT}/index.html")
         page.wait_for_selector("#promptForm", timeout=15000)
-        time.sleep(1.2)
+        time.sleep(0.8)
 
-        # 1) Send a brief FIRST: the agent's output (a Markdown table) is the star,
+        # 1) Connect a (demo) Studio key FIRST: this is the real first step, before
+        #    any question. The project tree populates once the key is connected.
+        page.click("#topKeyBtn")
+        time.sleep(0.7)
+        page.fill("#keyInput", "sk_pro_demo_key_2026")
+        time.sleep(0.5)
+        page.click("#keyForm button[type=submit]")
+        time.sleep(1.0)
+        page.keyboard.press("Escape")
+        time.sleep(0.6)
+
+        # 2) Drill the Studio project tree to show the now-connected state.
+        row = page.query_selector("#projList .tree-row")
+        if row:
+            row.click()
+            time.sleep(0.9)
+            sub = page.query_selector(
+                "#projList .tree-node.open .tree-children .tree-row"
+            )
+            if sub:
+                sub.click()
+                time.sleep(0.8)
+
+        # 3) NOW send a brief: the agent's output (a Markdown table) is the star,
         #    and we hold on it so the GIF clearly captures the answer.
         page.fill(
             "#promptInput",
@@ -80,9 +103,9 @@ def _record() -> Path:
         time.sleep(0.5)
         page.click(".composer .send")
         page.wait_for_selector("#chatThread .answer .md-table", timeout=15000)
-        time.sleep(3.4)  # hold on the rendered table answer
+        time.sleep(3.0)  # hold on the rendered table answer
 
-        # 2) Follow-up (multi-turn), then expand its Reasoning & tools.
+        # 4) Follow-up (multi-turn), then expand its Reasoning & tools.
         page.fill(
             "#promptInput",
             "Did karst-positive area trend up across the 4 quarterly snapshots?",
@@ -99,27 +122,7 @@ def _record() -> Path:
             heads[-1].click()
             time.sleep(2.0)
 
-        # 3) Connect a (demo) key, then drill the Studio project tree.
-        page.click("#topKeyBtn")
-        time.sleep(0.6)
-        page.fill("#keyInput", "sk_pro_demo_key_2026")
-        time.sleep(0.3)
-        page.click("#keyForm button[type=submit]")
-        time.sleep(0.7)
-        page.keyboard.press("Escape")
-        time.sleep(0.5)
-        row = page.query_selector("#projList .tree-row")
-        if row:
-            row.click()
-            time.sleep(0.9)
-            sub = page.query_selector(
-                "#projList .tree-node.open .tree-children .tree-row"
-            )
-            if sub:
-                sub.click()
-                time.sleep(0.9)
-
-        # 4) Open the settings menu (papers + agent settings).
+        # 5) Open the settings menu (papers + agent settings).
         page.click("#userChip")
         time.sleep(1.8)
         page.keyboard.press("Escape")

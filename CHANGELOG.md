@@ -10,6 +10,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Changed
+- **README made concise with collapsible sections**: the 15-skill catalog and
+  the Stack table are now `<details>` blocks, so the page reads short at a
+  glance and expands on demand.
+- **Demo GIF now leads with connecting a Studio key** before the first question
+  (`webui/demo/record_demo.py` reordered to key -> tree -> brief -> answer),
+  matching the real flow; the GIF and MP4 were re-recorded.
 - **ASCII-only typography across docs and code**: replaced every em dash, en
   dash, and horizontal bar (`U+2014` / `U+2013` / `U+2015`) with natural ASCII
   punctuation (commas, colons, periods, parentheses, or ` - `) across all
