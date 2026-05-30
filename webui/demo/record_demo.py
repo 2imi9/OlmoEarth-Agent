@@ -28,7 +28,11 @@ DEMO = WEBUI / "demo"
 REC = DEMO / "_rec"
 PORT = 8123
 W, H = 1180, 760
-GIF_SECONDS = 14  # the GIF is a short clip; the full walkthrough stays in the MP4
+GIF_SECONDS = 10  # the GIF is a short clip; the full walkthrough stays in the MP4
+# Opaque (flicker-free) GIF frames are large, so the GIF runs at a lower fps/width
+# than the MP4 to keep the file README-friendly.
+GIF_FPS = 7
+GIF_W = 620
 
 
 def _serve() -> socketserver.TCPServer:
@@ -160,7 +164,9 @@ def _convert(webm: Path) -> tuple[Path, Path]:
             "-i",
             str(webm),
             "-vf",
-            "fps=11,scale=820:-1:flags=lanczos,palettegen",
+            # reserve_transparent=0 → no transparent palette entry, so frames
+            # are fully opaque (prevents the white flash between frames / on loop).
+            f"fps={GIF_FPS},scale={GIF_W}:-1:flags=lanczos,palettegen=reserve_transparent=0",
             str(palette),
         ],
         check=True,
@@ -176,7 +182,11 @@ def _convert(webm: Path) -> tuple[Path, Path]:
             "-i",
             str(palette),
             "-lavfi",
-            "fps=11,scale=820:-1:flags=lanczos[x];[x][1:v]paletteuse",
+            f"fps={GIF_FPS},scale={GIF_W}:-1:flags=lanczos[x];[x][1:v]paletteuse",
+            # -transdiff off → write full frames (no transparent diff), so no
+            # white show-through during the chat animation or at the loop point.
+            "-gifflags",
+            "-transdiff",
             str(gif),
         ],
         check=True,
