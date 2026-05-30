@@ -68,14 +68,12 @@ def spatial_block_folds(
     return fold_of
 
 
-def random_folds(
-    points: list[Point], n_folds: int = 5, seed: int = 3407
-) -> list[int]:
+def random_folds(points: list[Point], n_folds: int = 5, seed: int = 3407) -> list[int]:
     """Assign each point to a random (non-spatial) CV fold (seeded)."""
     if n_folds < 2:
         raise ValueError("n_folds must be >= 2")
     order = list(range(len(points)))
-    _random.Random(seed).shuffle(order)
+    _random.Random(seed).shuffle(order)  # noqa: S311 - deterministic split
     fold_of = [0] * len(points)
     for rank, i in enumerate(order):
         fold_of[i] = rank % n_folds
@@ -141,8 +139,7 @@ def cv_inflation_diagnostic(
         risk = "low"
 
     recommendation = (
-        "Report spatial-block CV metrics; random CV will overstate "
-        "accuracy here."
+        "Report spatial-block CV metrics; random CV will overstate " "accuracy here."
         if risk in ("high", "moderate")
         else "Random and spatial CV are comparable; either is defensible."
     )
