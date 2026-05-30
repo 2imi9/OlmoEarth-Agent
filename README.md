@@ -27,7 +27,7 @@ OlmoEarth Agent turns a natural-language brief into real geospatial work on **Ol
 
 ## Contents
 
-- [Quick start](#quick-start) - [What it does](#what-it-does) - [Web UI](#web-ui) - [Stack](#stack) - [Docs & links](#docs--links) - [License](#license)
+ [Quick start](#quick-start) | [What it does](#what-it-does) | [Web UI](#web-ui) | [Stack](#stack) | [Docs & links](#docs--links) | [License](#license)
 
 ## Quick start
 
