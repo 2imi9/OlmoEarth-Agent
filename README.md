@@ -26,8 +26,11 @@
 OlmoEarth Agent turns a natural-language brief into real geospatial work on **OlmoEarth Studio**. It's a compact analog to Google's Earth Agent: a small catalog of functions (Studio HTTP API, EO data fetch, geometry utilities) running over a sandboxed Python interpreter, with operational constraints built in. The agent reasons about the ask, calls the right tools, submits and polls predictions, and reports **honest results** — every API call is wrapped in a provenance manifest, spatial cross-validation is mandatory on auto-correlated AOIs, and raw coordinates never leak into chat. It runs entirely on a **local Qwen3.6-35B-A3B** model served via llama.cpp — no hosted LLM required.
 
 ## Contents
-
+<div align="center">
+ 
  [Quick start](#quick-start) | [What it does](#what-it-does) | [Web UI](#web-ui) | [Stack](#stack) | [Docs & links](#docs--links) | [License](#license)
+
+</div>
 
 ## Quick start
 
