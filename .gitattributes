@@ -1,0 +1,9 @@
+# Keep shell scripts and the Makefile LF-only so shebangs and recipe TABs
+# survive checkout on Windows (Git Bash chokes on a CRLF after `#!`).
+*.sh text eol=lf
+Makefile text eol=lf
+
+# Binary assets — never normalize line endings.
+*.png binary
+*.gif binary
+*.mp4 binary

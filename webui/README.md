@@ -20,9 +20,9 @@ The run is a scripted mock (see [`app.js`](app.js) `runDemo`) until it's wired t
 ## View it
 
 ```bash
-# from the repo root
-python -m http.server 8000 --directory webui
-# then open http://localhost:8000
+# from the repo root (port 8080 — the LLM owns 8000)
+python -m http.server 8080 --directory webui
+# then open http://localhost:8080
 ```
 
 Or just open `webui/index.html` in a browser.
