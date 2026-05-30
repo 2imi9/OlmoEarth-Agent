@@ -1,8 +1,6 @@
 <div align="center">
 
-<img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="420">
-
-# OlmoEarth Agent
+<img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="360">&nbsp;&nbsp;<img src="webui/assets/agent-tag.png" alt="Agent" height="42">
 
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs — a local-LLM analog to Google's Earth Agent.**
 

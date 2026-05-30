@@ -192,6 +192,7 @@ a:hover { color: var(--text); }
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px;
   display: flex; flex-direction: column;
+  max-height: min(72vh, 540px); overflow-y: auto;
 }
 .user-menu[hidden] { display: none; }
 .um-section { display: flex; flex-direction: column; gap: 1px; padding: 4px 0; }
