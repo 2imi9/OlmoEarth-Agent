@@ -7,6 +7,7 @@
    detectBridge() can re-render the key card once the mode is known. */
 const BRIDGE = { live: false, checked: false };
 let renderKeyState = () => {};
+let sending = false;  // a run is in flight; gates concurrent sends
 
 const ICONS = {
   upload:      '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/>',
@@ -581,6 +582,11 @@ function renderChatList() {
 }
 
 // The composer's send path: append the turn, run it, persist + update history.
+function setSendingUI(on) {
+  const btn = document.querySelector('.send');
+  if (btn) btn.disabled = on;
+}
+
 function handleSend(brief, attachments) {
   const atts = attachments || [];
   ensureActiveChat();
@@ -598,8 +604,9 @@ function handleSend(brief, attachments) {
 
   const agentBrief = buildAgentBrief(brief, atts);  // file text appended for the agent
   const onEvent = (ev) => aTurn.events.push(ev);
-  const done = () => { chat.updatedAt = Date.now(); persistChat(chat); renderChatList(); };
-  if (BRIDGE.live && projConnected()) runLive(body, agentBrief, history, onEvent).then(done);
+  const done = () => { sending = false; setSendingUI(false); chat.updatedAt = Date.now(); persistChat(chat); renderChatList(); };
+  sending = true; setSendingUI(true);
+  if (BRIDGE.live && projConnected()) runLive(body, agentBrief, history, onEvent).then(done, done);
   else { runDemo(body, agentBrief, onEvent); setTimeout(done, 5200); }
 }
 
@@ -743,6 +750,7 @@ function wirePrompt() {
       const brief = (input && input.value.trim()) || '';
       const atts = pendingAttachments.slice();
       if (!brief && !atts.length) return;
+      if (sending) return;  // a run is already in flight; wait for it to finish
       if (input) { input.value = ''; autosize(input); }
       pendingAttachments = [];
       renderAttachmentChips();
@@ -839,7 +847,13 @@ function wireLlmSubtab() {
     panel.hidden = backend === 'local';
     if (note) note.textContent = DEFAULT_NOTE;
     if (backend === 'local') return;
-    if (keyEl) keyEl.value = lsGet('oe_llm_key_' + backend, '');
+    const savedKey = lsGet('oe_llm_key_' + backend, '');
+    if (keyEl) keyEl.value = savedKey;
+    if (note && backend === 'claude' && BRIDGE.claudeAvailable === false) {
+      note.textContent = 'Claude needs the anthropic extra on the server (uv sync --extra claude).';
+    } else if (note && !savedKey) {
+      note.textContent = 'No API key yet - runs use the local model until you add one.';
+    }
     let cached = [];
     try { cached = JSON.parse(lsGet('oe_llm_models_' + backend, '[]')); } catch (e) {}
     fillModels(Array.isArray(cached) ? cached : []);
@@ -847,19 +861,26 @@ function wireLlmSubtab() {
 
   async function detectModels() {
     if (backend === 'local' || !keyEl) return;
+    const b = backend;  // capture: the user may switch tabs before the fetch resolves
     const key = keyEl.value.trim();
     if (!key) { if (note) note.textContent = 'Enter an API key first.'; return; }
     if (note) note.textContent = 'Detecting models...';
     try {
-      const res = await fetch('/api/llm/models', { headers: { 'X-LLM-Backend': backend, 'X-LLM-Key': key } });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const res = await fetch('/api/llm/models', { headers: { 'X-LLM-Backend': b, 'X-LLM-Key': key } });
+      if (!res.ok) {
+        let detail = 'HTTP ' + res.status;
+        try { detail = (await res.json()).detail || detail; } catch (e2) {}
+        throw new Error(detail);
+      }
       const ids = (await res.json()).models || [];
-      try { lsSet('oe_llm_models_' + backend, JSON.stringify(ids)); } catch (e) {}
+      try { lsSet('oe_llm_models_' + b, JSON.stringify(ids)); } catch (e2) {}
+      if (b !== backend) return;  // user switched provider mid-flight; leave the active panel alone
       fillModels(ids);
       if (note) note.textContent = ids.length
         ? (ids.length + ' models detected. ' + DEFAULT_NOTE)
         : 'No models returned; the provider default will be used.';
     } catch (e) {
+      if (b !== backend) return;
       if (note) note.textContent = 'Could not detect models (' + ((e && e.message) || e) + ').';
     }
   }
@@ -1081,7 +1102,8 @@ async function toggleNode(el, node, childBox) {
     if (!children.length) { childBox.innerHTML = '<div class="proj-empty">' + emptyLabel(node) + '</div>'; return; }
     children.forEach((c) => childBox.appendChild(makeTreeNode(c)));
   } catch (e) {
-    childBox.dataset.loaded = '';  // allow retry on next expand
+    childBox.dataset.loaded = '';  // allow retry
+    el.classList.remove('open');   // collapse the caret so the next click re-expands and retries in one click
     childBox.innerHTML = '<div class="proj-empty">Couldn’t load - ' + escapeHtml(String((e && e.message) || e)) + '</div>';
   }
 }
