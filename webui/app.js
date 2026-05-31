@@ -118,6 +118,7 @@ function wireExamples() {
   const input = document.getElementById('promptInput');
   const active = document.querySelector('.tab.is-active');
   renderExamples(active && active.dataset.mode ? active.dataset.mode : 'run');
+  setExamplesShown(true);  // examples are visible by default; the toggle hides them
   if (toggle && box) {
     toggle.addEventListener('click', () => setExamplesShown(box.hidden));
     // Chips are re-rendered per mode, so delegate the click to the container.
