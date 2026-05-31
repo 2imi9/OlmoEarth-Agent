@@ -11,7 +11,7 @@ changes, update it *here first*, then run the alignment protocol below to
 fix every other reference. Treat any document that contradicts this file
 as the bug.
 
-_Last aligned: 2026-05-28._
+_Last aligned: 2026-05-31._
 
 ## Canonical facts
 
@@ -26,6 +26,7 @@ _Last aligned: 2026-05-28._
 | C7 | Local GPU constraint | RTX 5090 Laptop, 24 GB (Blackwell). This is why NVFP4 (~20 GB weights, no KV headroom) was dropped for GGUF. |
 | C8 | Sampling default | `thinking_general` preset + `chat_template_kwargs.preserve_thinking=True` for multi-turn agent runs (Qwen3.6 model card) |
 | C9 | Skill catalog | 15 skills in `SKILLS.md`; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
+| C10 | **Hosted LLM backends (optional)** | Local Qwen3.6 (C1) is the **default**; the bridge also accepts bring-your-own-key **Claude** (native Anthropic SDK), **ChatGPT**, and **Gemini** (OpenAI-compatible), selected per request (`X-LLM-Backend` / `X-LLM-Key` / `X-LLM-Model`; `GET /api/llm/models` autodetects). Keys are forwarded per request, never stored server-side. |
 
 ## Banned as "the current approach"
 

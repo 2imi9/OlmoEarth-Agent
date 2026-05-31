@@ -5,6 +5,8 @@ supported stack is **llama.cpp serving the 4-bit GGUF**
 `unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS`. Canonical values live in
 [`docs/CANON.md`](CANON.md) (C1 model, C3 server, C4 quant, C5 env vars).
 
+> **Prefer a hosted model?** You don't need to serve anything - pick **Claude / ChatGPT / Gemini** in the web UI's model-backend picker and paste your key (CANON C10). This guide covers the local default.
+
 > Why GGUF and not NVFP4? The NVFP4 weights (~20 GB) don't leave KV-cache
 > headroom on a 24 GB card (verified: it stalls at memory profiling). The
 > 4-bit GGUF (~17.7 GB) fits with room to spare and was verified

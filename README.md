@@ -2,11 +2,11 @@
 
 <img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="360">&nbsp;&nbsp;<img src="webui/assets/agent-tag.png" alt="Agent" height="42">
 
-**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs, on a local LLM.**
+**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own Claude / ChatGPT / Gemini.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-1f6feb.svg)](LICENSE)
 [![Skills](https://img.shields.io/badge/skills-15-F0529C.svg)](SKILLS.md)
-[![LLM](https://img.shields.io/badge/LLM-Qwen3.6--35B--A3B%20%C2%B7%20local-0FCB8C.svg)](docs/serving.md)
+[![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](docs/serving.md)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
 </div>
@@ -83,7 +83,7 @@ A styled front-end: a multi-turn chat with saved history (localStorage), a colla
 
 | Layer | What |
 |---|---|
-| **LLM** | [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served **locally** as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB) |
+| **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **Claude / ChatGPT / Gemini** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
 | **Harness** | Sandboxed Python interpreter + a compact function catalog (`system.*`, `olmoearth.*`, `eo.*`, `utils.*`) with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
 | **Skills** | 15-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
