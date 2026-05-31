@@ -221,6 +221,10 @@ class AnthropicLLM:
             client_kwargs["auth_token"] = auth_token
         self._client = AsyncAnthropic(**client_kwargs)
 
+    async def aclose(self) -> None:
+        """Close the underlying Anthropic client and release its connection pool."""
+        await self._client.close()
+
     async def chat(
         self,
         messages: Iterable[Message],

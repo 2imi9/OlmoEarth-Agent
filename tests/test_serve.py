@@ -22,11 +22,15 @@ class _FakeLLM:
 
     def __init__(self, responses: Iterable[ChatResponse]) -> None:
         self._responses = list(responses)
+        self.closed = False
 
     async def chat(
         self, messages: list[Message], *, tools: Any = None, **_kw: Any
     ) -> ChatResponse:
         return self._responses.pop(0)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 def test_health_reports_live() -> None:
@@ -178,13 +182,15 @@ def test_run_uses_openai_backend_when_selected(monkeypatch: pytest.MonkeyPatch) 
     captured: dict[str, Any] = {}
 
     def _fake_openai(config: Any = None, *, openai_compat: bool = False) -> _FakeLLM:
+        fake = _FakeLLM(
+            [ChatResponse(content="hi from gpt", tool_calls=[], finish_reason="stop")]
+        )
         if config is not None:  # the per-request build (not lifespan startup)
             captured["endpoint"] = config.endpoint
             captured["model"] = config.model
             captured["openai_compat"] = openai_compat
-        return _FakeLLM(
-            [ChatResponse(content="hi from gpt", tool_calls=[], finish_reason="stop")]
-        )
+            captured["llm"] = fake
+        return fake
 
     with TestClient(serve.app) as client:
         monkeypatch.setattr(serve, "OlmoEarthLLM", _fake_openai)
@@ -203,6 +209,74 @@ def test_run_uses_openai_backend_when_selected(monkeypatch: pytest.MonkeyPatch) 
     assert captured["endpoint"].startswith("https://api.openai.com")
     assert captured["model"] == "gpt-4o"
     assert captured["openai_compat"] is True
+    assert captured["llm"].closed is True  # per-request hosted client is released
+
+
+def test_run_rejects_non_object_body() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/run", json=["not", "an", "object"], headers={"X-Olmoearth-Key": "k"}
+        )
+    assert resp.status_code == 400
+
+
+def test_run_rejects_non_integer_max_turns() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hi", "max_turns": "lots"},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 400
+
+
+def test_run_rejects_unknown_backend() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hi"},
+            headers={
+                "X-Olmoearth-Key": "k",
+                "X-LLM-Backend": "bogus",
+                "X-LLM-Key": "x",
+            },
+        )
+    assert resp.status_code == 400
+    assert "unknown LLM backend" in resp.json()["detail"]
+
+
+def test_llm_models_rejects_local_backend() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get(
+            "/api/llm/models", headers={"X-LLM-Backend": "local", "X-LLM-Key": "k"}
+        )
+    assert resp.status_code == 400
+
+
+def test_llm_models_runtime_error_is_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _boom(backend: str, api_key: str) -> list[str]:
+        raise RuntimeError("install the anthropic extra")
+
+    with TestClient(serve.app) as client:
+        monkeypatch.setattr(serve, "_list_models", _boom)
+        resp = client.get(
+            "/api/llm/models", headers={"X-LLM-Backend": "claude", "X-LLM-Key": "k"}
+        )
+    assert resp.status_code == 503
+    assert "anthropic" in resp.json()["detail"]
+
+
+def test_llm_models_provider_error_is_502(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _boom(backend: str, api_key: str) -> list[str]:
+        raise ValueError("upstream blew up")
+
+    with TestClient(serve.app) as client:
+        monkeypatch.setattr(serve, "_list_models", _boom)
+        resp = client.get(
+            "/api/llm/models", headers={"X-LLM-Backend": "openai", "X-LLM-Key": "k"}
+        )
+    assert resp.status_code == 502
+    assert "ValueError" in resp.json()["detail"]
 
 
 def test_llm_models_requires_key() -> None:
