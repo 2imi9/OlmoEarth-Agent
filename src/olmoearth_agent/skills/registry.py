@@ -23,6 +23,7 @@ from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
+from olmoearth_agent.tools.litsearch import build_litsearch_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
@@ -204,6 +205,15 @@ SKILLS: list[SkillSpec] = [
         "Stakeholder Markdown writeup with tile URLs + freshness gate.",
         ["olmoearth_case_narrative"],
     ),
+    SkillSpec(
+        16,
+        "olmoearth-litsearch",
+        "Report",
+        "implemented",
+        "arXiv + OpenAlex literature search + DOI/arXiv-id resolution to "
+        "ground citations (key-free; deduped across sources).",
+        ["olmoearth_litsearch", "olmoearth_litsearch_resolve"],
+    ),
 ]
 
 
@@ -229,6 +239,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_uncertainty_tools())
     registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
+    registry.register_all(build_litsearch_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())

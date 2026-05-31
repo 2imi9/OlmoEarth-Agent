@@ -9,6 +9,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Skill #16 `olmoearth-litsearch`**: arXiv + OpenAlex literature search and
+  DOI / arXiv-id resolution, so the agent can ground EO/geospatial citations in
+  real papers instead of world-knowledge or hallucinated links. In-process tool
+  bundle (`olmoearth_litsearch`, `olmoearth_litsearch_resolve`), key-free
+  (OpenAlex polite-pool `mailto` via `OLMOEARTH_OPENALEX_MAILTO`), deduped across
+  sources; informed by a read of Google DeepMind's Science Skills (#62).
+
 ### Changed
 - **Relicensed from Apache-2.0 to the OlmoEarth Artifact License** (Ai2), matching
   `allenai/olmoearth_pretrain`: free use with restrictions (no military/defense/

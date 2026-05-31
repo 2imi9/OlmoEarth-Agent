@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 15 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 16 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** v1.0, 2026-05-31. All 15 skills implemented; see `CHANGELOG.md`.
+**Status:** 16 skills implemented (v1.0 shipped #1–#15 on 2026-05-31; #16 `olmoearth-litsearch` added post-1.0). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -41,6 +41,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 13 | Integrate | [`olmoearth-data-export`](#13-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
+| 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
 
 ### Example briefs
 
@@ -63,6 +64,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 | 13 | `olmoearth-data-export` | "Export all my Studio projects and their predictions to JSON, grouped by status." |
 | 14 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
 | 15 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
+| 16 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
 
 ---
 
@@ -328,6 +330,21 @@ The original spec follows for reference:
 - Skill #14 (`olmoearth-provenance`) for manifest read.
 - `olmoearth.fetch_results` for tile URLs.
 - Skill-local: `freshness_gate`, `narrative_template`, `tile_embed`.
+
+---
+
+### 16. `olmoearth-litsearch`
+
+**In:** a free-text query, or a single DOI / arXiv id.
+**Out:** curated paper records (id, title, authors, year, venue, doi, arxiv_id, url, cited_by_count; abstract optional), deduped across sources.
+
+**What.** Searches arXiv (Atom API) and OpenAlex (`/works`), and resolves a DOI or arXiv id to one record. Key-free — OpenAlex is queried via the documented polite-pool `mailto` (set `OLMOEARTH_OPENALEX_MAILTO` to opt in). Round-robin blends the two sources, then dedups on DOI → arXiv id → normalized title. Returns bibliographic metadata only — never full text / PDF bytes and never geometry — so it is provenance-safe.
+
+**Why.** The catalog already *cites* a body of EO literature (spatial CV, cloud masking, OlmoEarth / AlphaEarth embeddings, WorldCereal), but before this skill the agent could only lean on world-knowledge or hallucinate links — the exact failure mode Google DeepMind's Science Skills report documents and that its own arXiv/OpenAlex skills fix. This grounds the case-narrative / research workflow in real, citable sources. **No fabrication:** never invents DOIs / ids / titles, reports empty results as empty, and returns a real `url` to cite for every record.
+
+**Tools composed.**
+- `olmoearth_litsearch` (unified arXiv + OpenAlex search) + `olmoearth_litsearch_resolve` (DOI / arXiv-id → one record).
+- Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}.
 
 ---
 
