@@ -75,15 +75,6 @@ The capability set ships as **15 skills**, grouped by EO-workflow stage.
 
 See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with real outputs — each driven by the live Qwen3.6 backbone (real reasoning, function calls, and results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
 
-## Web UI
-
-```bash
-make web                      # static demo  → http://localhost:8080
-uv run olmoearth-agent-serve  # live bridge  → http://127.0.0.1:8088
-```
-
-A styled front-end: a multi-turn chat with saved history (localStorage), a collapsible Studio project tree (project → model → predictions → results), Markdown-rendered answers, and a per-turn "Reasoning & tools" disclosure. Served statically it's a scripted demo; served by the bridge (`olmoearth-agent-serve`) it streams the real `LeadAgent` over SSE. Bring-your-own-key: paste a Studio API key (top bar → "Add API key"), kept client-side. See [`webui/`](webui/) for source and design notes.
-
 ## Stack
 
 <details>
