@@ -17,20 +17,11 @@
 
 </div>
 
-<div align="center"><em>Connect a Studio key, send a brief, and the agent loop streams out: reasoning, a tool call, the result, and a plain-English answer. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a></em></div>
-
-<div align="center"><sub>A multi-turn <strong>chat</strong> with saved history, a collapsible Studio <strong>project tree</strong>, and Markdown answers (full walkthrough: <a href="webui/demo/olmoearth-agent-demo.mp4">MP4</a>). Served by the bridge (<code>olmoearth-agent-serve</code>), it streams the real agent.</sub></div>
+<div align="center"><sub>Connect a Studio key, send a brief, and the agent loop streams its reasoning, tool calls, results, and a plain-English answer — in a multi-turn chat with saved history, a collapsible Studio project tree, and Markdown answers. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a> &nbsp;·&nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
 
 ---
 
-OlmoEarth Agent turns a natural-language brief into real geospatial work on **OlmoEarth Studio**. A small catalog of functions (Studio HTTP API, EO data fetch, geometry utilities) runs over a sandboxed Python interpreter, with operational constraints built in. The agent reasons about the ask, calls the right tools, submits and polls predictions, and reports **honest results**: every API call is wrapped in a provenance manifest, spatial cross-validation is mandatory on auto-correlated AOIs, and raw coordinates never leak into chat. It runs entirely on a **local Qwen3.6-35B-A3B** model served via llama.cpp, with no hosted LLM required.
-
-## Contents
-<div align="center">
- 
- [Quick start](#quick-start) | [What it does](#what-it-does) | [Web UI](#web-ui) | [Stack](#stack) | [Docs & links](#docs--links) | [License](#license)
-
-</div>
+OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls tools over a sandboxed Python interpreter, submits and polls predictions, and reports honest results: a provenance manifest per call, mandatory spatial cross-validation on auto-correlated AOIs, and no raw coordinates in chat. It runs entirely on a local **Qwen3.6-35B-A3B** model served with llama.cpp — no hosted LLM required.
 
 ## Quick start
 
@@ -43,17 +34,13 @@ make agent Q="How many OlmoEarth Studio projects do I have?"
 make web                                                # styled web UI on http://localhost:8080
 ```
 
-Set your key first (`export OLMOEARTH_API_KEY=...`); `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. Run `make help` for the full target list, and `make down` to stop the LLM when you're done.
-
-**No `make`** (e.g. Windows + Git Bash)? Run [`./scripts/quickstart.sh`](scripts/quickstart.sh): it does setup + serve, then prints the exact `uv run olmoearth-agent "…"` and web-UI commands to copy. See [`docs/serving.md`](docs/serving.md) for the raw `docker compose` + `uv run` invocations.
-
-<div align="right"><a href="#contents">↑ back to top</a></div>
+Set your key first (`export OLMOEARTH_API_KEY=...`); `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. `make help` lists every target; `make down` stops the LLM. No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands; see [`docs/serving.md`](docs/serving.md) for the raw `docker compose` invocations.
 
 ## What it does
 
-The loop is straightforward: the LLM reads the brief, plans, and emits a tool call; the harness runs it in a **sandboxed geospatial Python interpreter** (`pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, … preloaded, no `import` statements), feeds the result back, and iterates until it can answer. State persists across turns, and the operational rules (default trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call) are enforced by the harness, not left to the model.
+The LLM reads the brief, plans, and emits a tool call; the harness runs it in a sandboxed geospatial Python interpreter (`geopandas`, `xarray`, `shapely`, `pystac_client`, `rslearn`, … preloaded, no `import` statements), feeds the result back, and iterates until it can answer. State persists across turns. The operational rules — trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call — are enforced by the harness, not the model.
 
-The capability set ships as **15 skills**, grouped by where they sit in an EO workflow.
+The capability set ships as **15 skills**, grouped by EO-workflow stage.
 
 <details>
 <summary><strong>The 15 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
@@ -78,20 +65,16 @@ The capability set ships as **15 skills**, grouped by where they sit in an EO wo
 
 </details>
 
-See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for **every skill in action, with real outputs**: each one, in catalog order, driven by the live Qwen3.6 backbone (real reasoning, function calls, and results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
-
-<div align="right"><a href="#contents">↑ back to top</a></div>
+See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with real outputs — each driven by the live Qwen3.6 backbone (real reasoning, function calls, and results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
 
 ## Web UI
 
 ```bash
 make web                      # static demo  → http://localhost:8080
-uv run olmoearth-agent-serve  # LIVE bridge  → http://127.0.0.1:8088
+uv run olmoearth-agent-serve  # live bridge  → http://127.0.0.1:8088
 ```
 
-A styled front-end (dark-teal canvas, OlmoEarth-pink `#F0529C`, inspired by Ai2 **Asta**): a multi-turn **chat with saved history** (localStorage), a collapsible **Studio project tree** (project → model → predictions → results), **Markdown-rendered answers**, and a per-turn "Reasoning & tools" disclosure. Served statically it's a scripted demo; served by the **bridge** (`olmoearth-agent-serve`) it streams the real `LeadAgent` over SSE. **Bring-your-own-key**: paste a Studio API key (top bar → "Add API key"), kept client-side. See [`webui/`](webui/) for source + design notes.
-
-<div align="right"><a href="#contents">↑ back to top</a></div>
+A styled front-end: a multi-turn chat with saved history (localStorage), a collapsible Studio project tree (project → model → predictions → results), Markdown-rendered answers, and a per-turn "Reasoning & tools" disclosure. Served statically it's a scripted demo; served by the bridge (`olmoearth-agent-serve`) it streams the real `LeadAgent` over SSE. Bring-your-own-key: paste a Studio API key (top bar → "Add API key"), kept client-side. See [`webui/`](webui/) for source and design notes.
 
 ## Stack
 
@@ -108,11 +91,9 @@ A styled front-end (dark-teal canvas, OlmoEarth-pink `#F0529C`, inspired by Ai2 
 
 </details>
 
-<div align="right"><a href="#contents">↑ back to top</a></div>
-
 ## Docs & links
 
-- [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and the operational rules
+- [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
 - [**SKILLS.md**](SKILLS.md): the full 15-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
 - [**docs/SHOWCASE.md**](docs/SHOWCASE.md): every skill run live, with real outputs
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
