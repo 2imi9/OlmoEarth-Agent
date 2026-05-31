@@ -760,23 +760,30 @@ function wireMenu() {
 function wireNewChat() {
   const btn = document.getElementById('newChatBtn');
   if (btn) btn.addEventListener('click', () => newChat());
+  const clear = document.getElementById('clearChats');  // now lives under New chat
+  if (clear) clear.addEventListener('click', () => {
+    try { localStorage.removeItem('oe_chats'); } catch (e) {}
+    newChat();
+  });
 }
 
 /* General agent settings + legal links (popover above the user chip). */
 function agentMaxTurns() {
   try { const v = parseInt(localStorage.getItem('oe_max_turns'), 10); return v >= 1 && v <= 12 ? v : 8; } catch (e) { return 8; }
 }
-/* LLM backend selection (default local). When the user picks Claude and
-   supplies an Anthropic key, the bridge builds a per-request Claude client;
-   the key rides in a header and is never stored server-side, like the Studio
-   key. Returns {} for the local backend so the default path is untouched. */
+/* LLM backend selection (default local). For a hosted backend (claude |
+   openai | gemini) the bridge builds a per-request client from the key, which
+   rides in a header and is never stored server-side (like the Studio key).
+   Key/model are stored per provider. Returns {} for local so the default
+   path is untouched. */
 function llmHeaders() {
   try {
-    if (localStorage.getItem('oe_llm_backend') !== 'claude') return {};
-    const key = (localStorage.getItem('oe_llm_key') || '').trim();
+    const backend = localStorage.getItem('oe_llm_backend') || 'local';
+    if (backend === 'local') return {};
+    const key = (localStorage.getItem('oe_llm_key_' + backend) || '').trim();
     if (!key) return {};
-    const h = { 'X-LLM-Backend': 'claude', 'X-LLM-Key': key };
-    const model = (localStorage.getItem('oe_llm_model') || '').trim();
+    const h = { 'X-LLM-Backend': backend, 'X-LLM-Key': key };
+    const model = (localStorage.getItem('oe_llm_model_' + backend) || '').trim();
     if (model) h['X-LLM-Model'] = model;
     return h;
   } catch (e) { return {}; }
@@ -799,35 +806,79 @@ function wireUserMenu() {
     sel.value = String(agentMaxTurns());
     sel.addEventListener('change', () => { try { localStorage.setItem('oe_max_turns', sel.value); } catch (e) {} });
   }
+  wireLlmSubtab();
+}
+
+/* Provider subtab: Local | Claude | Gemini | ChatGPT. Picking a hosted
+   provider reveals a key field + an auto-detected model dropdown. Key and
+   model are remembered per provider; the active provider is oe_llm_backend.
+   "Detect" lists the provider's current models through the bridge. */
+function wireLlmSubtab() {
+  const tabs = document.getElementById('llmTabs');
+  const panel = document.getElementById('llmPanel');
+  const keyEl = document.getElementById('llmKey');
+  const modelEl = document.getElementById('llmModel');
+  const detectBtn = document.getElementById('llmDetect');
+  const note = document.getElementById('llmNote');
+  if (!tabs || !panel) return;
   const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
-  const backend = document.getElementById('llmBackend');
-  const claudeFields = document.getElementById('llmClaudeFields');
-  const llmKey = document.getElementById('llmKey');
-  const llmModel = document.getElementById('llmModel');
-  const syncClaude = () => { if (claudeFields && backend) claudeFields.hidden = backend.value !== 'claude'; };
-  if (backend) {
-    backend.value = lsGet('oe_llm_backend', 'local');
-    if (BRIDGE.claudeAvailable === false) {
-      const opt = backend.querySelector('option[value="claude"]');
-      if (opt) opt.textContent = 'Claude API (install server extra)';
+  const DEFAULT_NOTE = 'Key is sent only to the provider, per run. Never stored on the server.';
+  let backend = lsGet('oe_llm_backend', 'local');
+
+  function fillModels(ids) {
+    if (!modelEl) return;
+    const saved = lsGet('oe_llm_model_' + backend, '');
+    modelEl.innerHTML = '<option value="">' + (ids.length ? 'Select a model' : 'Auto-detect models...') + '</option>'
+      + ids.map((id) => '<option value="' + escapeHtml(id) + '">' + escapeHtml(id) + '</option>').join('');
+    if (saved) modelEl.value = saved;
+  }
+
+  function syncProvider() {
+    tabs.querySelectorAll('.llm-tab').forEach((t) => t.classList.toggle('is-active', t.dataset.backend === backend));
+    panel.hidden = backend === 'local';
+    if (note) note.textContent = DEFAULT_NOTE;
+    if (backend === 'local') return;
+    if (keyEl) keyEl.value = lsGet('oe_llm_key_' + backend, '');
+    let cached = [];
+    try { cached = JSON.parse(lsGet('oe_llm_models_' + backend, '[]')); } catch (e) {}
+    fillModels(Array.isArray(cached) ? cached : []);
+  }
+
+  async function detectModels() {
+    if (backend === 'local' || !keyEl) return;
+    const key = keyEl.value.trim();
+    if (!key) { if (note) note.textContent = 'Enter an API key first.'; return; }
+    if (note) note.textContent = 'Detecting models...';
+    try {
+      const res = await fetch('/api/llm/models', { headers: { 'X-LLM-Backend': backend, 'X-LLM-Key': key } });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const ids = (await res.json()).models || [];
+      try { lsSet('oe_llm_models_' + backend, JSON.stringify(ids)); } catch (e) {}
+      fillModels(ids);
+      if (note) note.textContent = ids.length
+        ? (ids.length + ' models detected. ' + DEFAULT_NOTE)
+        : 'No models returned; the provider default will be used.';
+    } catch (e) {
+      if (note) note.textContent = 'Could not detect models (' + ((e && e.message) || e) + ').';
     }
-    backend.addEventListener('change', () => { lsSet('oe_llm_backend', backend.value); syncClaude(); });
   }
-  if (llmKey) {
-    llmKey.value = lsGet('oe_llm_key', '');
-    llmKey.addEventListener('change', () => lsSet('oe_llm_key', llmKey.value.trim()));
-  }
-  if (llmModel) {
-    llmModel.value = lsGet('oe_llm_model', '');
-    llmModel.addEventListener('change', () => lsSet('oe_llm_model', llmModel.value.trim()));
-  }
-  syncClaude();
-  const clear = document.getElementById('clearChats');
-  if (clear) clear.addEventListener('click', () => {
-    try { localStorage.removeItem('oe_chats'); } catch (e) {}
-    close(); newChat();
+
+  tabs.querySelectorAll('.llm-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      backend = tab.dataset.backend || 'local';
+      lsSet('oe_llm_backend', backend);
+      syncProvider();
+      if (backend !== 'local' && keyEl && keyEl.value.trim()) detectModels();
+    });
   });
+  if (keyEl) keyEl.addEventListener('change', () => {
+    lsSet('oe_llm_key_' + backend, keyEl.value.trim());
+    if (keyEl.value.trim()) detectModels();
+  });
+  if (modelEl) modelEl.addEventListener('change', () => lsSet('oe_llm_model_' + backend, modelEl.value));
+  if (detectBtn) detectBtn.addEventListener('click', () => detectModels());
+  syncProvider();
 }
 
 // Collapsible sidebar sections (open/closed state persisted).

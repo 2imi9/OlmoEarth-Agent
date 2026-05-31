@@ -27,6 +27,7 @@
         <svg viewBox="0 0 24 24" class="ic"><path d="M12 5v14M5 12h14"/></svg>
         New chat
       </button>
+      <button class="btn-clear" id="clearChats" type="button">Clear chat history</button>
 
       <div class="side-scroll">
         <!-- Chats history (Claude-style) -->
@@ -63,19 +64,21 @@
                 <option value="12">12</option>
               </select>
             </label>
-            <label class="um-row" for="llmBackend">
-              <span>Model backend</span>
-              <select class="um-select" id="llmBackend" aria-label="Model backend">
-                <option value="local">Local (OlmoEarth)</option>
-                <option value="claude">Claude API</option>
-              </select>
-            </label>
-            <div class="um-claude" id="llmClaudeFields" hidden>
-              <input class="um-input" id="llmKey" type="password" placeholder="Anthropic API key (sk-ant-...)" aria-label="Anthropic API key" autocomplete="off" spellcheck="false" />
-              <input class="um-input" id="llmModel" type="text" placeholder="claude-sonnet-4-6" aria-label="Claude model id" autocomplete="off" spellcheck="false" />
-              <div class="um-note">Key is sent only to Anthropic, per run. Never stored on the server.</div>
+            <div class="um-row"><span>Model backend</span></div>
+            <div class="llm-tabs" id="llmTabs" role="tablist" aria-label="Model backend">
+              <button class="llm-tab is-active" type="button" role="tab" data-backend="local">Local</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="claude">Claude</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="gemini">Gemini</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="openai">ChatGPT</button>
             </div>
-            <button class="um-item" id="clearChats" type="button">Clear chat history</button>
+            <div class="llm-panel" id="llmPanel" hidden>
+              <input class="um-input" id="llmKey" type="password" placeholder="API key" aria-label="Provider API key" autocomplete="off" spellcheck="false" />
+              <div class="llm-model-row">
+                <select class="um-select llm-model" id="llmModel" aria-label="Model"><option value="">Auto-detect models...</option></select>
+                <button class="llm-detect" id="llmDetect" type="button" title="Detect this provider's available models">Detect</button>
+              </div>
+              <div class="um-note" id="llmNote">Key is sent only to the provider, per run. Never stored on the server.</div>
+            </div>
           </div>
           <div class="um-section">
             <div class="um-head">Papers &amp; resources</div>
