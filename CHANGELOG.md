@@ -88,6 +88,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   import order no longer matters.
 
 ### Added
+- **Chat file upload** (`webui/index.html`, `webui/app.js`, `webui/styles.css`):
+  attach files in the composer (button or drag-drop). Text files (GeoJSON,
+  JSON, CSV, code, txt, md) and PDFs (text extracted client-side via lazy
+  pdf.js) are appended to the brief as context; images are accepted but
+  labelled "not readable" since the local model is text-only. Per-file and
+  total size caps keep the prompt bounded. Frontend-only: the bridge and agent
+  are unchanged.
 - **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`**: a skills-in-action
   page where **all 15 skills, in catalog order, are driven by the live LLM**:
   each transcript is a captured run of the agent loop against the served
