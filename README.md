@@ -2,7 +2,7 @@
 
 <img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="360">&nbsp;&nbsp;<img src="webui/assets/agent-tag.png" alt="Agent" height="42">
 
-**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs: a local-LLM analog to Google's Earth Agent.**
+**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs, on a local LLM.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-1f6feb.svg)](LICENSE)
 [![Skills](https://img.shields.io/badge/skills-15-F0529C.svg)](SKILLS.md)
@@ -23,7 +23,7 @@
 
 ---
 
-OlmoEarth Agent turns a natural-language brief into real geospatial work on **OlmoEarth Studio**. It's a compact analog to Google's Earth Agent: a small catalog of functions (Studio HTTP API, EO data fetch, geometry utilities) running over a sandboxed Python interpreter, with operational constraints built in. The agent reasons about the ask, calls the right tools, submits and polls predictions, and reports **honest results**: every API call is wrapped in a provenance manifest, spatial cross-validation is mandatory on auto-correlated AOIs, and raw coordinates never leak into chat. It runs entirely on a **local Qwen3.6-35B-A3B** model served via llama.cpp, with no hosted LLM required.
+OlmoEarth Agent turns a natural-language brief into real geospatial work on **OlmoEarth Studio**. A small catalog of functions (Studio HTTP API, EO data fetch, geometry utilities) runs over a sandboxed Python interpreter, with operational constraints built in. The agent reasons about the ask, calls the right tools, submits and polls predictions, and reports **honest results**: every API call is wrapped in a provenance manifest, spatial cross-validation is mandatory on auto-correlated AOIs, and raw coordinates never leak into chat. It runs entirely on a **local Qwen3.6-35B-A3B** model served via llama.cpp, with no hosted LLM required.
 
 ## Contents
 <div align="center">
@@ -66,7 +66,7 @@ The capability set ships as **15 skills**, grouped by where they sit in an EO wo
 | 4 | `olmoearth-embeddings` | Task profile → embeddings-vs-fine-tune decision + a runnable notebook | **Configure** |
 | 5 | `olmoearth-predict` | Core run primitive: submit / poll / pixel-value / features / files | **Run** |
 | 6 | `olmoearth-change-detect` | Two-or-more-date trajectory diff (refuses naïve 2-date diffs) | **Run** |
-| 7 | `olmoearth-baseline-compare` | Studio vs. AlphaEarth, side-by-side on transfer regions | **Run** |
+| 7 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
 | 8 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
 | 9 | `olmoearth-similarity` | FAISS over fine-tuned OlmoEarth Base embeddings | **Analyze** |
 | 10 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer-Pebesma Area of Applicability | **Analyze** |
@@ -78,7 +78,7 @@ The capability set ships as **15 skills**, grouped by where they sit in an EO wo
 
 </details>
 
-See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for **every skill in action, with real outputs**: each one, in catalog order, driven by the live Qwen3.6 backbone (real reasoning, real function calls, real results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
+See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for **every skill in action, with real outputs**: each one, in catalog order, driven by the live Qwen3.6 backbone (real reasoning, function calls, and results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
 
 <div align="right"><a href="#contents">↑ back to top</a></div>
 
