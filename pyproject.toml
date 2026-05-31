@@ -8,13 +8,12 @@ version = "1.0.0"
 description = "A tool that drives the OlmoEarth Studio platform from natural-language briefs."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = { file = "LICENSE" }
 authors = [{ name = "OlmoEarth Agent contributors" }]
 keywords = ["olmoearth", "earth-observation", "agent", "geospatial", "vlm"]
 classifiers = [
     "Development Status :: 1 - Planning",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",

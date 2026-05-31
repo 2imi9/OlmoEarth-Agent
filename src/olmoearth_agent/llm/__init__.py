@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """LLM client for the 4-bit GGUF ``unsloth/Qwen3.6-35B-A3B-GGUF`` model.
 
