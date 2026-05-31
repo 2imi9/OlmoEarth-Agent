@@ -17,7 +17,7 @@
 
 </div>
 
-<div align="center"><sub>Connect a Studio key, send a brief, and the agent loop streams its reasoning, tool calls, results, and a plain-English answer — in a multi-turn chat with saved history, a collapsible Studio project tree, and Markdown answers. &nbsp;·&nbsp; <a href="webui/">Open the web UI →</a> &nbsp;·&nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
+<div align="center"><sub>Connect a Studio key, send a brief, and the agent loop streams its reasoning, tool calls, results, and a plain-English answer — in a multi-turn chat with saved history, a collapsible Studio project tree, and Markdown answers. &nbsp;·&nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
 
 ---
 
