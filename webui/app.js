@@ -118,6 +118,7 @@ function wireExamples() {
   const input = document.getElementById('promptInput');
   const active = document.querySelector('.tab.is-active');
   renderExamples(active && active.dataset.mode ? active.dataset.mode : 'run');
+  setExamplesShown(true);  // examples are visible by default; the toggle hides them
   if (toggle && box) {
     toggle.addEventListener('click', () => setExamplesShown(box.hidden));
     // Chips are re-rendered per mode, so delegate the click to the container.
@@ -488,13 +489,17 @@ function showThread() {
 function setTopTitle(title) { const el = document.getElementById('topbarTitle'); if (el) el.textContent = title || ''; }
 
 // Create the DOM for one turn (user bubble + empty agent body); return the body.
-function appendTurnDom(userText) {
+function appendTurnDom(userText, attachments) {
   const thread = document.getElementById('chatThread');
   const card = document.createElement('div');
   card.className = 'transcript live';
+  const files = (attachments && attachments.length)
+    ? '<div class="msg-files">' + attachments.map((a) =>
+        `<span class="att-chip${a.kind === 'image' ? ' is-image' : ''}"><span class="nm">${escapeHtml(a.name)}</span></span>`).join('') + '</div>'
+    : '';
   card.innerHTML =
     '<div class="msg user run-step"><span class="role">You</span>' +
-      '<div class="bubble">' + escapeHtml(userText) + '</div></div>' +
+      '<div class="bubble">' + escapeHtml(userText) + files + '</div></div>' +
     '<div class="msg agent"><span class="role">OlmoEarth Agent</span><div class="agent-body"></div></div>';
   thread.appendChild(card);
   card.querySelector('.msg.user').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -515,7 +520,7 @@ function renderThread() {
   for (let i = 0; i < activeChat.turns.length; i++) {
     const t = activeChat.turns[i];
     if (t.role !== 'user') continue;
-    const body = appendTurnDom(t.text);
+    const body = appendTurnDom(t.text, t.files);
     const a = activeChat.turns[i + 1];
     if (a && a.role === 'assistant') { replayEvents(body, a.events); i++; }
   }
@@ -576,24 +581,127 @@ function renderChatList() {
 }
 
 // The composer's send path: append the turn, run it, persist + update history.
-function handleSend(brief) {
+function handleSend(brief, attachments) {
+  const atts = attachments || [];
   ensureActiveChat();
   const chat = activeChat;
   const history = historyForAgent(chat.turns);  // prior turns only
-  chat.turns.push({ role: 'user', text: brief });
+  chat.turns.push({ role: 'user', text: brief, files: atts.map((a) => ({ name: a.name, kind: a.kind })) });
   const aTurn = { role: 'assistant', events: [] };
   chat.turns.push(aTurn);
   if (!chat.title) chat.title = brief.slice(0, 60);
   chat.updatedAt = Date.now();
 
   showThread();
-  const body = appendTurnDom(brief);
+  const body = appendTurnDom(brief, atts);
   persistChat(chat); renderChatList(); setTopTitle(chat.title);
 
+  const agentBrief = buildAgentBrief(brief, atts);  // file text appended for the agent
   const onEvent = (ev) => aTurn.events.push(ev);
   const done = () => { chat.updatedAt = Date.now(); persistChat(chat); renderChatList(); };
-  if (BRIDGE.live && projConnected()) runLive(body, brief, history, onEvent).then(done);
-  else { runDemo(body, brief, onEvent); setTimeout(done, 5200); }
+  if (BRIDGE.live && projConnected()) runLive(body, agentBrief, history, onEvent).then(done);
+  else { runDemo(body, agentBrief, onEvent); setTimeout(done, 5200); }
+}
+
+/* ── File attachments ────────────────────────────────────────────────────
+   Attach text files (GeoJSON, code, CSV, ...) and PDFs; their extracted text
+   is appended to the brief so the agent reads them. The local model is
+   text-only, so images are accepted but flagged as not readable. */
+const _TEXT_EXT = /\.(geojson|json|csv|tsv|txt|md|markdown|ya?ml|toml|xml|html?|css|py|js|ts|tsx|jsx|sh|r|sql|ipynb|log|cfg|ini)$/i;
+const _MAX_FILE_CHARS = 60000;
+const _MAX_TOTAL_CHARS = 120000;
+let pendingAttachments = [];  // {name, kind: 'text'|'pdf'|'image', text, error?}
+
+function _readText(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = () => reject(r.error || new Error('read failed'));
+    r.readAsText(file);
+  });
+}
+
+let _pdfjs = null;
+async function _readPdf(file) {
+  if (!_pdfjs) {  // lazy-load pdf.js from CDN only when a PDF is attached
+    const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168';
+    _pdfjs = await import(`${base}/pdf.min.mjs`);
+    _pdfjs.GlobalWorkerOptions.workerSrc = `${base}/pdf.worker.min.mjs`;
+  }
+  const doc = await _pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pages = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    pages.push(tc.items.map((i) => i.str).join(' '));
+    if (pages.join('\n').length > _MAX_FILE_CHARS) break;
+  }
+  return pages.join('\n').slice(0, _MAX_FILE_CHARS);
+}
+
+function _classifyFile(file) {
+  if ((file.type || '').startsWith('image/')) return 'image';
+  if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') return 'pdf';
+  return 'text';  // text files + unknown: read as text
+}
+
+async function addFiles(fileList) {
+  for (const file of Array.from(fileList || [])) {
+    const att = { name: file.name, kind: _classifyFile(file), text: '' };
+    try {
+      if (att.kind === 'pdf') att.text = await _readPdf(file);
+      else if (att.kind === 'text') att.text = (await _readText(file)).slice(0, _MAX_FILE_CHARS);
+    } catch (e) {
+      att.error = att.kind === 'pdf' ? 'could not extract PDF text' : 'could not read file';
+    }
+    pendingAttachments.push(att);
+  }
+  renderAttachmentChips();
+}
+
+function renderAttachmentChips() {
+  const box = document.getElementById('attachments');
+  if (!box) return;
+  box.innerHTML = pendingAttachments.map((a, i) => {
+    const tag = a.kind === 'image' ? ' (image, not read)' : a.error ? ` (${a.error})` : a.kind === 'pdf' ? ' (pdf)' : '';
+    return `<span class="att-chip${a.kind === 'image' ? ' is-image' : ''}">` +
+      `<span class="nm">${escapeHtml(a.name)}${tag}</span>` +
+      `<span class="x" data-rm="${i}" title="Remove" role="button">x</span></span>`;
+  }).join('');
+  box.querySelectorAll('.x[data-rm]').forEach((x) => {
+    x.addEventListener('click', () => { pendingAttachments.splice(Number(x.dataset.rm), 1); renderAttachmentChips(); });
+  });
+}
+
+function buildAgentBrief(brief, atts) {
+  if (!atts || !atts.length) return brief;
+  let budget = _MAX_TOTAL_CHARS;
+  const blocks = atts.map((a) => {
+    if (a.kind === 'image') return `--- ${a.name} (image) ---\n[image attachment; the text-only model cannot read images]`;
+    if (a.error || !a.text) return `--- ${a.name} ---\n[${a.error || 'no text extracted'}]`;
+    const body = a.text.slice(0, Math.max(0, budget));
+    budget -= body.length;
+    return `--- ${a.name} (${a.kind}) ---\n${body}${body.length < a.text.length ? '\n[truncated]' : ''}`;
+  });
+  return `${brief}\n\nAttached files:\n${blocks.join('\n\n')}`;
+}
+
+function wireAttach() {
+  const btn = document.getElementById('attachBtn');
+  const input = document.getElementById('fileInput');
+  const composer = document.getElementById('composer');
+  if (btn && input) {
+    btn.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
+  }
+  if (composer) {
+    composer.addEventListener('dragover', (e) => { e.preventDefault(); composer.classList.add('drop'); });
+    composer.addEventListener('dragleave', () => composer.classList.remove('drop'));
+    composer.addEventListener('drop', (e) => {
+      e.preventDefault();
+      composer.classList.remove('drop');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    });
+  }
 }
 
 function wirePrompt() {
@@ -613,9 +721,12 @@ function wirePrompt() {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const brief = (input && input.value.trim()) || '';
-      if (!brief) return;
+      const atts = pendingAttachments.slice();
+      if (!brief && !atts.length) return;
       if (input) { input.value = ''; autosize(input); }
-      handleSend(brief);
+      pendingAttachments = [];
+      renderAttachmentChips();
+      handleSend(brief || '(see attached files)', atts);
     });
   }
 }
@@ -935,6 +1046,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireNewChat();
   wireTabs();
   wireExamples();
+  wireAttach();
   wirePrompt();
   wireMenu();
   wireUserMenu();

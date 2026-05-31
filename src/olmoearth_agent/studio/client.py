@@ -11,6 +11,7 @@ openapi v0.1.0 spec.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any, cast
@@ -20,6 +21,11 @@ import httpx
 from olmoearth_agent.types import ApiEnvelope, ProjectRef, StudioContext
 
 DEFAULT_BASE_URL = "https://olmoearth.allenai.org/api/v1"
+
+#: Upstream statuses worth retrying (transient gateway / rate-limit).
+_RETRY_STATUSES = frozenset({429, 502, 503, 504})
+#: Total attempts for a retryable (idempotent) request.
+_MAX_ATTEMPTS = 3
 
 
 @dataclass
@@ -94,18 +100,48 @@ class StudioClient:
 
     # --- low-level ---
 
+    async def _send(
+        self, method: str, path: str, *, retry: bool = False, **kwargs: Any
+    ) -> httpx.Response:
+        """Issue a request and raise on non-2xx.
+
+        When ``retry`` is set, transient failures (gateway 5xx, 429, and
+        transport errors like timeouts) are retried with a short backoff.
+        Use it only for idempotent reads, never for creates: a retried POST
+        could duplicate a write.
+        """
+        attempts = _MAX_ATTEMPTS if retry else 1
+        for attempt in range(attempts):
+            try:
+                resp = await self._client.request(method, path, **kwargs)
+                resp.raise_for_status()
+                return resp
+            except httpx.HTTPStatusError as exc:
+                if not (
+                    exc.response.status_code in _RETRY_STATUSES
+                    and attempt < attempts - 1
+                ):
+                    raise
+            except httpx.TransportError:
+                if attempt >= attempts - 1:
+                    raise
+            await asyncio.sleep(0.4 * (attempt + 1))
+        raise RuntimeError("unreachable retry state")  # pragma: no cover
+
     async def get(self, path: str) -> ApiEnvelope[dict[str, Any]]:
-        """GET ``path`` and unwrap the envelope."""
-        resp = await self._client.get(path)
-        resp.raise_for_status()
+        """GET ``path`` and unwrap the envelope (retries transient errors)."""
+        resp = await self._send("GET", path, retry=True)
         return ApiEnvelope.from_response(resp.json())
 
     async def post(
-        self, path: str, body: dict[str, Any]
+        self, path: str, body: dict[str, Any], *, retry: bool = False
     ) -> ApiEnvelope[dict[str, Any]]:
-        """POST ``body`` to ``path`` and unwrap the envelope."""
-        resp = await self._client.post(path, json=body)
-        resp.raise_for_status()
+        """POST ``body`` to ``path`` and unwrap the envelope.
+
+        ``retry`` retries transient failures; set it only for idempotent
+        search endpoints, never for creates (avoids duplicate writes).
+        """
+        resp = await self._send("POST", path, retry=retry, json=body)
         return ApiEnvelope.from_response(resp.json())
 
     # --- typed helpers ---
@@ -119,7 +155,9 @@ class StudioClient:
         self, *, limit: int = 50, offset: int = 0
     ) -> ApiEnvelope[dict[str, Any]]:
         """Search projects (read-only). Returns the full envelope."""
-        return await self.post("/projects/search", {"limit": limit, "offset": offset})
+        return await self.post(
+            "/projects/search", {"limit": limit, "offset": offset}, retry=True
+        )
 
     async def create_project(self, *, name: str, description: str) -> dict[str, Any]:
         """Create a project (``POST /projects`` → 200). Returns the new record."""
@@ -167,7 +205,9 @@ class StudioClient:
         ``project_id`` is given we filter the returned page client-side.
         Increase ``limit`` if a project's predictions run past the first page.
         """
-        env = await self.post("/predictions/search", {"limit": limit, "offset": offset})
+        env = await self.post(
+            "/predictions/search", {"limit": limit, "offset": offset}, retry=True
+        )
         if project_id is not None:
             env.records = [
                 r for r in env.records if r.get("project_id") == project_id
@@ -199,7 +239,7 @@ class StudioClient:
         older than the first page.
         """
         env = await self.post(
-            "/prediction-results/search", {"limit": limit, "offset": offset}
+            "/prediction-results/search", {"limit": limit, "offset": offset}, retry=True
         )
         if prediction_id is not None:
             env.records = [

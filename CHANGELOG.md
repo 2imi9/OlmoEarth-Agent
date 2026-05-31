@@ -37,6 +37,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `webui/app.js`): the "Run a prediction" / "Analyze results" / "Prep &
   configure" tabs now swap the suggested example briefs (not just the input
   placeholder), and selecting a tab reveals them.
+- **Example briefs show by default** (`webui/app.js`): the landing reveals the
+  suggested briefs on load instead of hiding them behind the toggle.
 
 ### Removed
 - **Skill #16 `roger-annotation-bridge` dropped**: the planned Roger
@@ -53,6 +55,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   filters client-side, like the sibling `search_prediction_results`. The bridge
   also surfaces the real upstream status in the 502 detail instead of a generic
   "Studio call failed".
+- **Studio reads retry transient failures** (`studio/client.py`): `load_context`
+  (the projects panel) makes two Studio calls, so one transient 502/503/504 or
+  timeout failed the whole connect (the panel showed "Couldn't load - HTTP 502"
+  while the key was valid). Idempotent reads (GET and the search POSTs) now
+  retry up to 3 times with backoff; creates are never retried.
 - **"Show example briefs" button now works** (`webui/styles.css`,
   `webui/app.js`, `webui/index.html`): a `.examples { display: flex }` rule beat
   the `[hidden]` attribute, so the chips were always visible and the toggle did
@@ -81,6 +88,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   import order no longer matters.
 
 ### Added
+- **Chat file upload** (`webui/index.html`, `webui/app.js`, `webui/styles.css`):
+  attach files in the composer (button or drag-drop). Text files (GeoJSON,
+  JSON, CSV, code, txt, md) and PDFs (text extracted client-side via lazy
+  pdf.js) are appended to the brief as context; images are accepted but
+  labelled "not readable" since the local model is text-only. Per-file and
+  total size caps keep the prompt bounded. Frontend-only: the bridge and agent
+  are unchanged.
 - **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`**: a skills-in-action
   page where **all 15 skills, in catalog order, are driven by the live LLM**:
   each transcript is a captured run of the agent loop against the served

@@ -241,7 +241,12 @@
 
       <!-- Pinned composer -->
       <div class="composer" id="composer">
+        <div class="attachments" id="attachments" aria-label="Attached files"></div>
         <form class="prompt" id="promptForm" autocomplete="off">
+          <button class="attach" id="attachBtn" type="button" aria-label="Attach files" title="Attach GeoJSON, code, CSV, PDF, or images">
+            <svg viewBox="0 0 24 24" class="ic"><path d="M21 11l-8.5 8.5a5 5 0 01-7-7L13 4a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3L14 6"/></svg>
+          </button>
+          <input type="file" id="fileInput" multiple hidden accept=".geojson,.json,.csv,.tsv,.txt,.md,.markdown,.py,.js,.ts,.tsx,.jsx,.yaml,.yml,.toml,.xml,.html,.css,.sh,.r,.sql,.ipynb,.log,.pdf,image/*" />
           <textarea id="promptInput" rows="1" placeholder="Describe what you want to map, monitor, or detect…"></textarea>
           <button class="send" type="submit" aria-label="Send">
             <svg viewBox="0 0 24 24" class="ic"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg>
