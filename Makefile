@@ -11,7 +11,10 @@ COMPOSE := docker/llama.compose.yml
 # Web UI dev-server port. The LLM owns 8000, so the UI gets 8080.
 WEB_PORT := 8080
 
-.PHONY: help setup serve down agent web up
+# Live-agent bridge (FastAPI) port: the same UI wired to your real Studio account.
+BRIDGE_PORT := 8088
+
+.PHONY: help setup serve down agent web bridge up
 
 help: ## List the available targets.
 	@echo "OlmoEarth Agent make targets:"
@@ -19,7 +22,8 @@ help: ## List the available targets.
 	@echo "  make serve   - start the llama.cpp LLM and wait for it to be healthy"
 	@echo "  make down    - stop the LLM"
 	@echo "  make agent   - run a brief: make agent Q=\"<your brief>\""
-	@echo "  make web     - serve the web UI on http://localhost:$(WEB_PORT)"
+	@echo "  make web     - serve the static DEMO web UI on http://localhost:$(WEB_PORT) (no backend)"
+	@echo "  make bridge  - serve the LIVE web UI on http://localhost:$(BRIDGE_PORT) (your Studio account)"
 	@echo "  make up      - setup + serve (one-shot bring-up)"
 	@echo ""
 	@echo "Default brief (make agent): $(Q)"
@@ -37,13 +41,19 @@ down: ## Stop the LLM.
 agent: ## Run a single brief through the agent (override with Q="...").
 	uv run olmoearth-agent "$(Q)"
 
-web: ## Serve the static web UI (port 8080, the LLM owns 8000).
-	@echo "Serving the OlmoEarth Agent web UI at http://localhost:$(WEB_PORT)"
+web: ## Serve the static DEMO web UI (no backend; port 8080, the LLM owns 8000).
+	@echo "Serving the static DEMO web UI at http://localhost:$(WEB_PORT) (sample data - run 'make bridge' for the live agent)"
 	python -m http.server $(WEB_PORT) --directory webui
+
+bridge: ## Serve the LIVE web UI wired to your Studio account (port 8088; needs 'make serve').
+	@echo "Serving the LIVE web UI at http://localhost:$(BRIDGE_PORT) - open it, paste your Studio key, send a brief"
+	uv run olmoearth-agent-serve --port $(BRIDGE_PORT)
 
 up: setup serve ## One-shot bring-up: setup, then serve, then print next steps.
 	@echo ""
 	@echo "LLM is up and healthy. Next steps:"
-	@echo "  1. export OLMOEARTH_API_KEY=...   # Studio UI -> profile -> API Keys"
-	@echo "  2. make agent Q=\"How many OlmoEarth Studio projects do I have?\""
-	@echo "  3. make web                       # optional: the demo web UI"
+	@echo "  - make bridge                     # live web UI on http://localhost:$(BRIDGE_PORT) (paste your key)"
+	@echo "  - or run a brief from the terminal:"
+	@echo "      export OLMOEARTH_API_KEY=...   # Studio UI -> profile -> API Keys"
+	@echo "      make agent                     # sample brief; override with Q=\"...\""
+	@echo "  - make web                         # backend-free demo UI on http://localhost:$(WEB_PORT)"
