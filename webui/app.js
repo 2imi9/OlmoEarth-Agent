@@ -672,6 +672,22 @@ function renderAttachmentChips() {
   });
 }
 
+function addResultAttachment(r) {
+  const text = [
+    'OlmoEarth Studio prediction result.',
+    'result_id: ' + (r.id || ''),
+    'properties: ' + (r.properties || '(none)'),
+    'format: ' + (r.format || 'unknown'),
+    'tile_url (XYZ template): ' + (r.tile_url || '(none)'),
+  ].join('\n');
+  pendingAttachments.push({
+    name: 'result ' + shortId(r.id || '') + (r.format ? ' (' + r.format + ')' : ''),
+    kind: 'result',
+    text,
+  });
+  renderAttachmentChips();
+}
+
 function buildAgentBrief(brief, atts) {
   if (!atts || !atts.length) return brief;
   let budget = _MAX_TOTAL_CHARS;
@@ -699,7 +715,11 @@ function wireAttach() {
     composer.addEventListener('drop', (e) => {
       e.preventDefault();
       composer.classList.remove('drop');
-      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const resultJson = dt.getData('application/x-oe-result');
+      if (resultJson) { try { addResultAttachment(JSON.parse(resultJson)); } catch (err) {} return; }
+      if (dt.files && dt.files.length) addFiles(dt.files);
     });
   }
 }
@@ -920,6 +940,15 @@ function makeTreeNode(node) {
       const input = document.getElementById('promptInput');
       if (input) input.focus();
     });
+    if (node.kind === 'result' && node.result) {
+      row.draggable = true;
+      row.title = 'Drag into the chat to attach this result';
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-oe-result', JSON.stringify(node.result));
+        e.dataTransfer.setData('text/plain', node.result.tile_url || node.name);
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+    }
   } else {
     row.addEventListener('click', () => toggleNode(el, node, childBox));
   }
@@ -955,7 +984,11 @@ function predNode(p) {
 }
 function resultNode(r) {
   const props = (r.property_names || []).join(', ');
-  return { kind: 'result', id: r.id, name: props || ('result ' + shortId(r.id)), meta: r.file_format || '', leaf: true };
+  return {
+    kind: 'result', id: r.id, name: props || ('result ' + shortId(r.id)),
+    meta: r.file_format || '', leaf: true,
+    result: { id: r.id, properties: props, format: r.file_format || '', tile_url: r.tile_url || '' },
+  };
 }
 
 async function loadChildren(node) {
