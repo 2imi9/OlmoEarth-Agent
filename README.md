@@ -103,4 +103,4 @@ A styled front-end: a multi-turn chat with saved history (localStorage), a colla
 
 [OlmoEarth Artifact License](LICENSE) (Ai2) - free use with restrictions: no military/defense/surveillance or extractive uses; cite Ai2 and propagate the terms downstream. Matches [`allenai/olmoearth_pretrain`](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE).
 
-<div align="center"><sub>Built on OlmoEarth Studio by Ai2. Web UI styling inspired by Ai2 Asta. This is a research-demo project, not an official product page.</sub></div>
+<div align="center"><sub>Built on OlmoEarth Studio by Ai2. A research demo, not an official product.</sub></div>

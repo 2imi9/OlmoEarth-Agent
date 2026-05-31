@@ -8,7 +8,7 @@ The agent's runtime contract lives in [`PLAN.md`](PLAN.md). This file is about h
 
 ## What this project is
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Tool catalog + harness dataclasses + operational rules. Not a "research framework", not "auto-research" anything.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Tool catalog + harness dataclasses + operational rules.
 
 ---
 

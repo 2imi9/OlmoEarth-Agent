@@ -42,8 +42,6 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 
-Source for skills 1-15: working spec doc co-authored by Ziming, drawing on Studio import pain points, EO foundation-model literature, and existing `olmoearth-data-prep` patterns.
-
 ### Example briefs
 
 A realistic prompt that routes to each skill - what a user would actually type:

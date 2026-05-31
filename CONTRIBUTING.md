@@ -1,9 +1,5 @@
 # Contributing to OlmoEarth Agent
 
-Thanks for the interest. This guide is modeled on [NVIDIA earth2studio's contributor workflow](https://nvidia.github.io/earth2studio/userguide/developer/index.html) and adapted for an agent-first codebase.
-
-The agent's contract (the tool catalog, harness dataclasses, and operational rules) lives in [`PLAN.md`](PLAN.md). When in doubt about behavior, that file is the source of truth.
-
 ---
 
 ## 1. Code of conduct
@@ -76,8 +72,6 @@ Configured in `pyproject.toml`:
 - **Docstrings:** [NumPy style](https://numpydoc.readthedocs.io/en/latest/format.html): enforced by [interrogate](https://interrogate.readthedocs.io/) at `fail-under = 90`.
 - **Syntax level:** Python 3.11+, PEP 604 `|` over `Union` / `Optional`, enforced by pyupgrade.
 - **License headers:** every source file carries the OlmoEarth Artifact License SPDX identifier (`LicenseRef-OlmoEarth-Artifact-License`).
-
-These exact tools mirror [earth2studio's `.pre-commit-config.yaml`](https://raw.githubusercontent.com/NVIDIA/earth2studio/main/.pre-commit-config.yaml), pinned versions in our own `.pre-commit-config.yaml` (added in a future PR).
 
 ---
 
