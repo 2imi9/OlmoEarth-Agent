@@ -122,6 +122,52 @@ def _history_from_body(body: dict[str, Any]) -> list[Message]:
     return out
 
 
+def _model_summary(rec: dict[str, Any]) -> dict[str, Any]:
+    """Distill a Studio model record into the fields the project tree shows.
+
+    ``model_type`` (e.g. ``"fine_tuned"`` vs ``"embeddings"``) drives the
+    node's type badge and icon; ``foundation`` is a friendly encoder
+    descriptor (e.g. ``"OlmoEarth Nano v1"``) from the wizard answers,
+    surfaced on hover.
+    """
+    wiz = rec.get("wizard_answers") or {}
+    variant = str(wiz.get("encoder_variant") or "").strip()
+    version = str(wiz.get("foundation_model_version") or "").strip()
+    foundation = ""
+    if variant:
+        foundation = f"OlmoEarth {variant.title()}"
+        if version:
+            foundation = f"{foundation} {version}"
+    return {
+        "id": rec.get("id", ""),
+        "name": rec.get("name") or "",
+        "model_type": rec.get("model_type") or "",
+        "foundation": foundation,
+    }
+
+
+async def _resolve_models(
+    studio: StudioClient, predictions: list[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Best-effort ``model_id`` -> summary map for the tree's model level.
+
+    Resolves the distinct model ids referenced by ``predictions`` against
+    ``/models/search``. Enrichment only: any failure (or a model past the
+    search page) just leaves that node to fall back to its id, so the tree
+    still renders. The 200 cap mirrors the predictions page; an account with
+    more models than that may show a few unlabeled nodes.
+    """
+    model_ids = {str(r["model_id"]) for r in predictions if r.get("model_id")}
+    if not model_ids:
+        return {}
+    try:
+        env = await studio.search_models(limit=200)
+    except Exception:  # enrichment must never break the tree
+        return {}
+    by_id = {m.get("id"): m for m in env.records}
+    return {mid: _model_summary(by_id[mid]) for mid in model_ids if mid in by_id}
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build the shared, request-independent agent pieces once at startup.
@@ -235,8 +281,11 @@ async def api_run(request: Request) -> StreamingResponse:
 async def api_project_predictions(project_id: str, request: Request) -> dict[str, Any]:
     """Predictions for a project: the tree's model + prediction levels.
 
-    The front-end groups these by ``model_id`` to synthesize the
-    "Model/Embeddings" level (Studio has no ``/models`` endpoint).
+    The front-end groups predictions by ``model_id`` into a synthetic
+    "Model" level; we resolve each ``model_id`` to its Studio model record
+    so that level can show the model's real name and whether it is a
+    fine-tuned model or an embeddings run. (``/models`` is undocumented in
+    openapi v0.1.0 but live; see :meth:`StudioClient.search_models`.)
     """
     key = _studio_key(request)
     if not key:
@@ -246,6 +295,7 @@ async def api_project_predictions(project_id: str, request: Request) -> dict[str
             StudioConfig(api_key=key, base_url=_studio_base())
         ) as studio:
             env = await studio.search_predictions(project_id=project_id, limit=200)
+            models = await _resolve_models(studio, env.records)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     predictions = [
@@ -257,7 +307,7 @@ async def api_project_predictions(project_id: str, request: Request) -> dict[str
         }
         for r in env.records
     ]
-    return {"ok": True, "predictions": predictions}
+    return {"ok": True, "predictions": predictions, "models": models}
 
 
 @app.get("/api/predictions/{prediction_id}/results")
