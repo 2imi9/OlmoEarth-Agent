@@ -10,6 +10,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Changed
+- **README: dropped the Google "Earth Agent" / AlphaEarth comparisons** and
+  tightened wording (`README.md`): the tagline and intro no longer position the
+  tool against another product, and skill #7 reads "vs. a baseline foundation
+  model".
 - **README made concise with collapsible sections**: the 15-skill catalog and
   the Stack table are now `<details>` blocks, so the page reads short at a
   glance and expands on demand.
