@@ -99,6 +99,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   labelled "not readable" since the local model is text-only. Per-file and
   total size caps keep the prompt bounded. Frontend-only: the bridge and agent
   are unchanged.
+- **Drag a Studio result into chat** (`webui/app.js`, `serve.py`): prediction-
+  result nodes in the project tree are draggable; dropping one on the composer
+  attaches the result as context (id, properties, format, tile URL). The bridge
+  now forwards the result tile URL.
 - **`docs/SHOWCASE.md` + `scripts/generate_showcase.py`**: a skills-in-action
   page where **all 15 skills, in catalog order, are driven by the live LLM**:
   each transcript is a captured run of the agent loop against the served

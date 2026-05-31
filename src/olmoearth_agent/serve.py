@@ -283,6 +283,7 @@ async def api_prediction_results(
             "property_names": r.get("property_names") or [],
             "file_format": r.get("file_format") or "",
             "tiles": len(r.get("tile_urls") or []),
+            "tile_url": (r.get("tile_urls") or [""])[0],
         }
         for r in env.records
     ]
