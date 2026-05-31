@@ -63,6 +63,18 @@
                 <option value="12">12</option>
               </select>
             </label>
+            <label class="um-row" for="llmBackend">
+              <span>Model backend</span>
+              <select class="um-select" id="llmBackend" aria-label="Model backend">
+                <option value="local">Local (OlmoEarth)</option>
+                <option value="claude">Claude API</option>
+              </select>
+            </label>
+            <div class="um-claude" id="llmClaudeFields" hidden>
+              <input class="um-input" id="llmKey" type="password" placeholder="Anthropic API key (sk-ant-...)" aria-label="Anthropic API key" autocomplete="off" spellcheck="false" />
+              <input class="um-input" id="llmModel" type="text" placeholder="claude-sonnet-4-6" aria-label="Claude model id" autocomplete="off" spellcheck="false" />
+              <div class="um-note">Key is sent only to Anthropic, per run. Never stored on the server.</div>
+            </div>
             <button class="um-item" id="clearChats" type="button">Clear chat history</button>
           </div>
           <div class="um-section">

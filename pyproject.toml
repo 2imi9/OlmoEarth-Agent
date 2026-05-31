@@ -30,6 +30,9 @@ serve = [
     "fastapi>=0.110",  # the webui->agent bridge (src/olmoearth_agent/serve.py)
     "uvicorn>=0.29",   # ASGI server for the bridge; plain build is enough for SSE
 ]
+claude = [
+    "anthropic>=0.40",  # native Claude backend (olmoearth_agent.llm.anthropic_client)
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",

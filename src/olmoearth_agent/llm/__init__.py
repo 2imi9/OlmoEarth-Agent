@@ -8,6 +8,7 @@ The public surface is :class:`OlmoEarthLLM` and the small dataclass
 types in :mod:`olmoearth_agent.llm.types`.
 """
 
+from olmoearth_agent.llm.anthropic_client import AnthropicLLM
 from olmoearth_agent.llm.client import OlmoEarthLLM, Tracer
 from olmoearth_agent.llm.config import ServingConfig
 from olmoearth_agent.llm.presets import (
@@ -23,6 +24,7 @@ from olmoearth_agent.llm.types import (
 )
 
 __all__ = [
+    "AnthropicLLM",
     "ChatResponse",
     "DEFAULT_AGENT_MODE",
     "Message",

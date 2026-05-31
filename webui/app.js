@@ -407,7 +407,7 @@ async function runLive(body, brief, history, onEvent) {
   try {
     const res = await fetch('/api/run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Olmoearth-Key': studioKey() },
+      headers: { 'Content-Type': 'application/json', 'X-Olmoearth-Key': studioKey(), ...llmHeaders() },
       body: JSON.stringify({ brief, history: history || [], max_turns: agentMaxTurns() }),
     });
     if (!res.ok || !res.body) throw new Error('bridge returned HTTP ' + res.status);
@@ -766,6 +766,21 @@ function wireNewChat() {
 function agentMaxTurns() {
   try { const v = parseInt(localStorage.getItem('oe_max_turns'), 10); return v >= 1 && v <= 12 ? v : 8; } catch (e) { return 8; }
 }
+/* LLM backend selection (default local). When the user picks Claude and
+   supplies an Anthropic key, the bridge builds a per-request Claude client;
+   the key rides in a header and is never stored server-side, like the Studio
+   key. Returns {} for the local backend so the default path is untouched. */
+function llmHeaders() {
+  try {
+    if (localStorage.getItem('oe_llm_backend') !== 'claude') return {};
+    const key = (localStorage.getItem('oe_llm_key') || '').trim();
+    if (!key) return {};
+    const h = { 'X-LLM-Backend': 'claude', 'X-LLM-Key': key };
+    const model = (localStorage.getItem('oe_llm_model') || '').trim();
+    if (model) h['X-LLM-Model'] = model;
+    return h;
+  } catch (e) { return {}; }
+}
 function wireUserMenu() {
   const chip = document.getElementById('userChip');
   const menu = document.getElementById('userMenu');
@@ -784,6 +799,30 @@ function wireUserMenu() {
     sel.value = String(agentMaxTurns());
     sel.addEventListener('change', () => { try { localStorage.setItem('oe_max_turns', sel.value); } catch (e) {} });
   }
+  const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  const backend = document.getElementById('llmBackend');
+  const claudeFields = document.getElementById('llmClaudeFields');
+  const llmKey = document.getElementById('llmKey');
+  const llmModel = document.getElementById('llmModel');
+  const syncClaude = () => { if (claudeFields && backend) claudeFields.hidden = backend.value !== 'claude'; };
+  if (backend) {
+    backend.value = lsGet('oe_llm_backend', 'local');
+    if (BRIDGE.claudeAvailable === false) {
+      const opt = backend.querySelector('option[value="claude"]');
+      if (opt) opt.textContent = 'Claude API (install server extra)';
+    }
+    backend.addEventListener('change', () => { lsSet('oe_llm_backend', backend.value); syncClaude(); });
+  }
+  if (llmKey) {
+    llmKey.value = lsGet('oe_llm_key', '');
+    llmKey.addEventListener('change', () => lsSet('oe_llm_key', llmKey.value.trim()));
+  }
+  if (llmModel) {
+    llmModel.value = lsGet('oe_llm_model', '');
+    llmModel.addEventListener('change', () => lsSet('oe_llm_model', llmModel.value.trim()));
+  }
+  syncClaude();
   const clear = document.getElementById('clearChats');
   if (clear) clear.addEventListener('click', () => {
     try { localStorage.removeItem('oe_chats'); } catch (e) {}
@@ -1104,6 +1143,7 @@ async function detectBridge() {
     if (res.ok) {
       const data = await res.json();
       BRIDGE.live = !!(data && data.ok) && data.mode === 'live';
+      BRIDGE.claudeAvailable = !!(data && data.claude_available);
     }
   } catch (e) { BRIDGE.live = false; }
   BRIDGE.checked = true;

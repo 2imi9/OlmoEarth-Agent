@@ -29,6 +29,7 @@ Requires the ``serve`` extra (``uv sync --extra serve``).
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from collections.abc import AsyncIterator
@@ -41,7 +42,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.harness import LeadAgent, ThreadState
-from olmoearth_agent.llm import OlmoEarthLLM
+from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.skills import SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
@@ -186,6 +187,37 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="OlmoEarth Agent bridge", lifespan=_lifespan)
 
 
+def _claude_available() -> bool:
+    """Whether the optional ``anthropic`` SDK is importable (the claude extra)."""
+    return importlib.util.find_spec("anthropic") is not None
+
+
+def _llm_for_request(request: Request) -> Any:
+    """Choose the LLM backend for this request.
+
+    Default is the shared local model (``app.state.llm``). When the caller
+    selects Claude (``X-LLM-Backend: claude``), build a per-request
+    :class:`AnthropicLLM` from a bring-your-own Anthropic key (``X-LLM-Key``,
+    optional ``X-LLM-Model``). The key is forwarded to Anthropic per request
+    and never stored or logged, mirroring the Studio key. Subscription/OAuth
+    auth is intentionally not wired here.
+    """
+    backend = request.headers.get("x-llm-backend", "local").strip().lower()
+    if backend not in ("claude", "anthropic"):
+        return app.state.llm
+    api_key = request.headers.get("x-llm-key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="missing Claude API key")
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    model = request.headers.get("x-llm-model", "").strip()
+    if model:
+        kwargs["model"] = model
+    try:
+        return AnthropicLLM(**kwargs)
+    except RuntimeError as exc:  # anthropic not installed, or no credentials
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @app.get("/api/health")
 async def api_health() -> dict[str, Any]:
     """Liveness probe; the front-end uses it to switch from demo to live."""
@@ -196,6 +228,7 @@ async def api_health() -> dict[str, Any]:
         "llm_endpoint": llm.config.endpoint,
         "llm_model": llm.config.model,
         "studio_base": _studio_base(),
+        "claude_available": _claude_available(),
     }
 
 
@@ -242,7 +275,7 @@ async def api_run(request: Request) -> StreamingResponse:
     max_turns = max(1, min(_MAX_TURNS_CEILING, int(body.get("max_turns", 8))))
     history = _history_from_body(body)
 
-    llm: OlmoEarthLLM = app.state.llm
+    llm = _llm_for_request(request)
     registry = app.state.registry
     skill_index: str = app.state.skill_index
 
