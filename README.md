@@ -21,14 +21,14 @@
 
 ---
 
-OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls tools over a sandboxed Python interpreter, submits and polls predictions, and reports honest results: a provenance manifest per call, mandatory spatial cross-validation on auto-correlated AOIs, and no raw coordinates in chat. It runs entirely on a local **Qwen3.6-35B-A3B** model served with llama.cpp — no hosted LLM required.
+OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls tools over a sandboxed Python interpreter, submits and polls predictions, and reports honest results: a provenance manifest per call, mandatory spatial cross-validation on auto-correlated AOIs, and no raw coordinates in chat. It runs on a local **Qwen3.6-35B-A3B** model served with llama.cpp by default (no hosted LLM required), and can optionally use your own **Claude, ChatGPT, or Gemini** key via the web UI's model-backend picker.
 
 ## Quick start
 
 > **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (to serve the LLM), [uv](https://docs.astral.sh/uv/), and an `OLMOEARTH_API_KEY` (Studio UI → profile → **API Keys**).
 
 ```bash
-make setup                                              # uv sync + vendored skills (#1-#4)
+make setup                                              # git submodule init + uv sync --all-extras
 make serve                                              # 4-bit Qwen3.6 GGUF via llama.cpp (docker)
 make agent Q="How many OlmoEarth Studio projects do I have?"
 make web                                                # styled web UI on http://localhost:8080
