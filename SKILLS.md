@@ -4,7 +4,7 @@ Detailed spec for the 15 skills the agent ships with. Each skill is an [agentski
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** v0.4 spec, 2026-05-27. Implementation rolls out one PR per skill; tracking in `CHANGELOG.md`.
+**Status:** v1.0, 2026-05-31. All 15 skills implemented; see `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -43,6 +43,28 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 
 Source for skills 1-15: working spec doc co-authored by Ziming, drawing on Studio import pain points, EO foundation-model literature, and existing `olmoearth-data-prep` patterns.
+
+### Example briefs
+
+A realistic prompt that routes to each skill - what a user would actually type:
+
+| # | Skill | Example brief |
+|---|---|---|
+| 1 | `olmoearth-studio-upload` | "I have 3,000 field plots as a GeoJSON - get them into Studio without the Windows MIME error." |
+| 2 | `olmoearth-rslearn-config` | "Turn my labeled crop polygons + HUC-12 watershed AOIs into an rslearn dataset.json + Lightning YAML." |
+| 3 | `olmoearth-studio-job-config` | "I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard." |
+| 4 | `olmoearth-embeddings` | "I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook." |
+| 5 | `olmoearth-predict` | "Run a flood-extent prediction over this AOI for last month and return the result tiles." |
+| 6 | `olmoearth-change-detect` | "Did forest cover decline across these four quarterly snapshots, or is it just noise?" |
+| 7 | `olmoearth-baseline-compare` | "Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles." |
+| 8 | `olmoearth-evaluate` | "My model reports 92% accuracy - re-check it with spatial cross-validation, not random splits." |
+| 9 | `olmoearth-similarity` | "Find the 20 patches most similar to this illegal-mining site across the basin." |
+| 10 | `olmoearth-uncertainty` | "Flag which parts of my prediction AOI fall outside the model's training distribution." |
+| 11 | `olmoearth-cloud-mask-audit` | "My prediction looks wrong over this scene - bad cloud mask or bad model?" |
+| 12 | `olmoearth-qgis-bridge` | "Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop." |
+| 13 | `olmoearth-data-export` | "Export all my Studio projects and their predictions to JSON, grouped by status." |
+| 14 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
+| 15 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
 
 ---
 
