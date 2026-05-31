@@ -38,7 +38,7 @@ Set your key first (`export OLMOEARTH_API_KEY=...`); `LLM_ENDPOINT` defaults to 
 
 ## What it does
 
-The LLM reads the brief, plans, and emits a tool call; the harness runs it in a sandboxed geospatial Python interpreter (`geopandas`, `xarray`, `shapely`, `pystac_client`, `rslearn`, … preloaded, no `import` statements), feeds the result back, and iterates until it can answer. State persists across turns. The operational rules — trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call — are enforced by the harness, not the model.
+The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules — trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call — are enforced by the harness, not the model.
 
 The capability set ships as **15 skills**, grouped by EO-workflow stage.
 
@@ -85,7 +85,7 @@ A styled front-end: a multi-turn chat with saved history (localStorage), a colla
 |---|---|
 | **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **Claude / ChatGPT / Gemini** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
-| **Harness** | Sandboxed Python interpreter + a compact function catalog (`system.*`, `olmoearth.*`, `eo.*`, `utils.*`) with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
+| **Harness** | A compact catalog of function-call tools + an **opt-in** `system:python` subprocess for light glue, with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
 | **Skills** | 15-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
 

@@ -133,7 +133,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **Tools composed.**
 - `olmoearth.fetch_embedding` (`PLAN.md` §1, new in v0.4).
-- `system.python` for the notebook execution.
+- `system.python` (opt-in subprocess) for light checks only — the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack the sandbox does not guarantee).
 - Skill-local: `decision_matrix`, `knn_head`, `linear_probe_head`.
 
 ---
@@ -217,7 +217,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **Tools composed.**
 - `olmoearth.fetch_embedding` (`PLAN.md` §1, new in v0.4).
-- `system.python` for FAISS (FAISS preloaded in sandbox).
+- FAISS runs inside the `olmoearth_similarity_search` tool handler — not the `system:python` sandbox (FAISS is not preloaded there).
 - Skill-local: `faiss_index_build`, `geographic_prior_check`.
 
 ---

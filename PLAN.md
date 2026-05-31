@@ -1,6 +1,6 @@
 # OlmoEarth Agent
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; runs them in a Python sandbox preloaded with the standard geospatial stack; and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; dispatches them as function-call tools, with an opt-in `system:python` subprocess for light glue code (not a preloaded in-process interpreter); and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
 
 **Status:** v1.0, 2026-05-31. All 15 skills shipped; runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md).
 **Scope:** Text-only LLM with function calling. Local default: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`, via llama.cpp); the bridge also accepts a hosted Claude / ChatGPT / Gemini backend (bring-your-own-key) selected at runtime. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them.
@@ -16,7 +16,7 @@ The agent exposes the following functions. Code below the table renders the same
 
 | Module | Type | Name | Args / Inputs | Returns | Description |
 |---|---|---|---|---|---|
-| `system` | Tool | `python` | `code: str` | `ExecutionResult` | Run Python in a sandboxed interpreter. Preloaded: `pandas`, `geopandas`, `xarray`, `rioxarray`, `shapely`, `pystac_client`, `planetary_computer`, `rslearn`, `olmoearth_projects`. State persists across turns. **No `import` statements.** |
+| `system` | Tool | `python` | `code: str` | `ExecutionResult` | Run Python for light glue between calls. **Opt-in** (`OLMOEARTH_RUN_PYTHON=1`; off by default): an isolated subprocess (`python -I`) with a wall-clock timeout + output cap, in a throwaway dir. **State does not persist across calls; use normal `import`s; the heavy geospatial/rslearn/GDAL stack is not guaranteed installed.** Surface long `rslearn` jobs to the user. *(A preloaded, import-free, state-persistent in-process interpreter is the original design target — see `src/olmoearth_agent/tools/system.py`.)* |
 | `system` | Tool | `search` | `queries: list[str]` | `SearchResponse` | Web search for external references (docs, papers, code examples). |
 | `system` | Tool | `fetch` | `url: str`, `headers: dict = None` | `FetchResponse` | HTTP GET on documented endpoints (OlmoEarth Studio, Planetary Computer, NLDI, Earthdata). |
 | `olmoearth` | Function | `load_context` | None | `StudioContext` | Returns the user's active Studio project, areas, datasets, recent predictions. |
@@ -51,7 +51,7 @@ Same catalog as CSV:
 
 ```csv
 Module,Type,Name,Arguments,Return Type,Description
-system,Tool,python,code (str),ExecutionResult,Run Python in a sandboxed interpreter; preloaded pandas/geopandas/xarray/rioxarray/shapely/pystac_client/planetary_computer/rslearn/olmoearth_projects; state persists across turns; no import statements.
+system,Tool,python,code (str),ExecutionResult,Opt-in (OLMOEARTH_RUN_PYTHON=1) light-Python glue; isolated subprocess (python -I) with timeout + output cap; state does NOT persist across calls; normal imports allowed; heavy geospatial stack not guaranteed installed.
 system,Tool,search,queries (list[str]),SearchResponse,Web search for external references.
 system,Tool,fetch,url (str) | headers (dict),FetchResponse,HTTP GET on documented endpoints.
 olmoearth,Function,load_context,(none),StudioContext,Returns the user's active Studio project/areas/datasets/recent predictions.
@@ -288,7 +288,7 @@ Hard constraints the harness enforces: refusals where appropriate, defaults wher
 1. **No raw coordinates in chat.** Never output lat/lon, WKT, or full GeoJSON in conversational responses. Save to a `FilePath` and reference the path. (Lat/lon and partner data are sensitive; traces must redact them.)
 2. **Default temporal window.** When the user does not specify a time range, default to the trailing 12 months from today; surface the choice in the response.
 3. **Default buffer.** When the user asks for "nearby" without a distance, use 1000 m via `utils.add_buffer`.
-4. **Sandbox isolation.** `system:python` does not allow `import` statements; rely on the preloaded libraries. Persistent state across turns is allowed.
+4. **Sandbox isolation.** `system:python` (`olmoearth_run_python`) is **opt-in** (`OLMOEARTH_RUN_PYTHON=1`) and runs in an isolated subprocess: use normal `import`s, **state does not persist across calls**, and the geospatial stack is not guaranteed installed. Use it for light glue/inspection; surface long `rslearn ingest/materialize/fit` jobs to the user.
 5. **Cost guard.** Refuse `submit_prediction(kind="finetune")` if the estimated cost exceeds the session budget. Surface the estimate and ask before proceeding.
 6. **Spatial cross-validation.** When AOIs are spatially auto-correlated, refuse random train/val splits: use `utils.spatial_train_val_split`.
 7. **Class-balance hygiene.** When label classes are skewed > 10:1, default to `utils.equal_frequency_bins` before submitting fine-tunes. Document in the run trace.
@@ -386,7 +386,7 @@ bundle = olmoearth.fetch_results(pred, kind="tiles")
 view   = olmoearth.save_view(bundle, "alfalfa_2022_2024")
 ```
 
-The interpreter sandbox runs this script as a single `system:python` call. Operational rules 5, 6, 7 apply: cost-guard runs before step 4, spatial-CV is the explicit `spatial_cv_k=5`, class-balance is checked in label prep. Rule 1 means the agent's chat response references `view.path`, not the raw geometries.
+The §1 calls above are illustrative pseudocode (the design catalog), dispatched as separate function-call tools rather than run inside one `system:python` sandbox. Operational rules 5, 6, 7 apply: cost-guard runs before step 4, spatial-CV is the explicit `spatial_cv_k=5`, class-balance is checked in label prep. Rule 1 means the agent's chat response references `view.path`, not the raw geometries.
 
 ---
 
