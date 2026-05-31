@@ -124,6 +124,108 @@ def test_run_forwards_history() -> None:
     assert roles[-1] == ("user", "follow up")  # new brief is last
 
 
+def test_health_reports_claude_available() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert isinstance(resp.json()["claude_available"], bool)
+
+
+def test_run_claude_backend_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hi"},
+            headers={"X-Olmoearth-Key": "k", "X-LLM-Backend": "claude"},
+        )
+    assert resp.status_code == 400
+    assert "API key" in resp.json()["detail"]
+
+
+def test_run_uses_claude_backend_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_anthropic(**kwargs: Any) -> _FakeLLM:
+        captured.update(kwargs)
+        return _FakeLLM(
+            [
+                ChatResponse(
+                    content="hi from claude", tool_calls=[], finish_reason="stop"
+                )
+            ]
+        )
+
+    monkeypatch.setattr(serve, "AnthropicLLM", _fake_anthropic)
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hello"},
+            headers={
+                "X-Olmoearth-Key": "k",
+                "X-LLM-Backend": "claude",
+                "X-LLM-Key": "sk-ant-test",
+                "X-LLM-Model": "claude-sonnet-4-6",
+            },
+        )
+    assert resp.status_code == 200
+    assert "hi from claude" in resp.text
+    # the bring-your-own Anthropic key + model reached the backend constructor
+    assert captured["api_key"] == "sk-ant-test"
+    assert captured["model"] == "claude-sonnet-4-6"
+
+
+def test_run_uses_openai_backend_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_openai(config: Any = None, *, openai_compat: bool = False) -> _FakeLLM:
+        if config is not None:  # the per-request build (not lifespan startup)
+            captured["endpoint"] = config.endpoint
+            captured["model"] = config.model
+            captured["openai_compat"] = openai_compat
+        return _FakeLLM(
+            [ChatResponse(content="hi from gpt", tool_calls=[], finish_reason="stop")]
+        )
+
+    with TestClient(serve.app) as client:
+        monkeypatch.setattr(serve, "OlmoEarthLLM", _fake_openai)
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hello"},
+            headers={
+                "X-Olmoearth-Key": "k",
+                "X-LLM-Backend": "openai",
+                "X-LLM-Key": "sk-openai",
+                "X-LLM-Model": "gpt-4o",
+            },
+        )
+    assert resp.status_code == 200
+    assert "hi from gpt" in resp.text
+    assert captured["endpoint"].startswith("https://api.openai.com")
+    assert captured["model"] == "gpt-4o"
+    assert captured["openai_compat"] is True
+
+
+def test_llm_models_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/llm/models", headers={"X-LLM-Backend": "openai"})
+    assert resp.status_code == 400
+
+
+def test_llm_models_lists_for_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_list(backend: str, api_key: str) -> list[str]:
+        assert backend == "gemini"
+        return ["gemini-2.0-flash", "gemini-2.5-pro"]
+
+    with TestClient(serve.app) as client:
+        monkeypatch.setattr(serve, "_list_models", _fake_list)
+        resp = client.get(
+            "/api/llm/models",
+            headers={"X-LLM-Backend": "gemini", "X-LLM-Key": "k"},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["models"] == ["gemini-2.0-flash", "gemini-2.5-pro"]
+
+
 class _FakeEnv:
     def __init__(self, records: list[dict[str, Any]]) -> None:
         self.records = records

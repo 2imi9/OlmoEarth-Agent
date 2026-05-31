@@ -226,9 +226,15 @@ class OlmoEarthLLM:
         config: ServingConfig | None = None,
         *,
         tracer: Tracer | None = None,
+        openai_compat: bool = False,
     ) -> None:
         self.config = config or ServingConfig.from_env()
         self._tracer: Tracer = tracer or _NullTracer()
+        # When True, send only standard OpenAI params: drop the Qwen/vLLM
+        # extras (top_k via extra_body, chat_template_kwargs.preserve_thinking)
+        # that hosted providers like OpenAI and Gemini reject. Used by the
+        # bridge for the ChatGPT/Gemini backends.
+        self._openai_compat = openai_compat
         self._client = AsyncOpenAI(
             base_url=self.config.endpoint,
             api_key=self.config.api_key,
@@ -305,9 +311,9 @@ class OlmoEarthLLM:
         for key, value in sampling.items():
             if key in _OPENAI_TOP_LEVEL_SAMPLING:
                 payload[key] = value
-            else:
+            elif not self._openai_compat:
                 extra_body[key] = value
-        if preserve_thinking:
+        if preserve_thinking and not self._openai_compat:
             extra_body["chat_template_kwargs"] = {"preserve_thinking": True}
         if extra_body:
             payload["extra_body"] = extra_body

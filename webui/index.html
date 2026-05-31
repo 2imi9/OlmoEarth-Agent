@@ -27,6 +27,7 @@
         <svg viewBox="0 0 24 24" class="ic"><path d="M12 5v14M5 12h14"/></svg>
         New chat
       </button>
+      <button class="btn-clear" id="clearChats" type="button">Clear chat history</button>
 
       <div class="side-scroll">
         <!-- Chats history (Claude-style) -->
@@ -63,7 +64,21 @@
                 <option value="12">12</option>
               </select>
             </label>
-            <button class="um-item" id="clearChats" type="button">Clear chat history</button>
+            <div class="um-row"><span>Model backend</span></div>
+            <div class="llm-tabs" id="llmTabs" role="tablist" aria-label="Model backend">
+              <button class="llm-tab is-active" type="button" role="tab" data-backend="local">Local</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="claude">Claude</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="gemini">Gemini</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="openai">ChatGPT</button>
+            </div>
+            <div class="llm-panel" id="llmPanel" hidden>
+              <input class="um-input" id="llmKey" type="password" placeholder="API key" aria-label="Provider API key" autocomplete="off" spellcheck="false" />
+              <div class="llm-model-row">
+                <select class="um-select llm-model" id="llmModel" aria-label="Model"><option value="">Auto-detect models...</option></select>
+                <button class="llm-detect" id="llmDetect" type="button" title="Detect this provider's available models">Detect</button>
+              </div>
+              <div class="um-note" id="llmNote">Key is sent only to the provider, per run. Never stored on the server.</div>
+            </div>
           </div>
           <div class="um-section">
             <div class="um-head">Papers &amp; resources</div>
