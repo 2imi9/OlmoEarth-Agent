@@ -9,6 +9,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Changed
+- **Relicensed from Apache-2.0 to the OlmoEarth Artifact License** (Ai2), matching
+  `allenai/olmoearth_pretrain`: free use with restrictions (no military/defense/
+  surveillance or extractive uses; cite Ai2 and propagate the terms downstream).
+  Updated `LICENSE`, every source SPDX header (`LicenseRef-OlmoEarth-Artifact-License`),
+  `pyproject.toml`, the README badge, `AGENTS.md`, and `CONTRIBUTING.md`.
+
 ## [1.0.0] - 2026-05-31
 
 First tagged release: the agent runs all 15 skills live against OlmoEarth

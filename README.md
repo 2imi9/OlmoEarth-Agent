@@ -4,9 +4,9 @@
 
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own Claude / ChatGPT / Gemini.**
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-1f6feb.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
 [![Skills](https://img.shields.io/badge/skills-15-F0529C.svg)](SKILLS.md)
-[![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](docs/serving.md)
+[![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
 </div>
@@ -101,6 +101,6 @@ A styled front-end: a multi-turn chat with saved history (localStorage), a colla
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[OlmoEarth Artifact License](LICENSE) (Ai2) - free use with restrictions: no military/defense/surveillance or extractive uses; cite Ai2 and propagate the terms downstream. Matches [`allenai/olmoearth_pretrain`](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE).
 
 <div align="center"><sub>Built on OlmoEarth Studio by Ai2. Web UI styling inspired by Ai2 Asta. This is a research-demo project, not an official product page.</sub></div>

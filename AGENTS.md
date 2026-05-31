@@ -37,7 +37,7 @@ uv run pytest -m integration        # needs OLMOEARTH_API_KEY
 ├── README.md            # Public-facing summary
 ├── CONTRIBUTING.md      # Contributor workflow
 ├── AGENTS.md            # This file
-├── LICENSE              # Apache-2.0
+├── LICENSE              # OlmoEarth Artifact License (Ai2)
 ├── pyproject.toml       # project + tool config (black/ruff/mypy/pytest)
 ├── src/olmoearth_agent/
 │   ├── types.py         # Harness dataclasses (PLAN.md §2)
@@ -75,7 +75,7 @@ uv run pytest -m integration        # needs OLMOEARTH_API_KEY
 - mypy with `disallow_untyped_defs = true`. Type hints required on public functions.
 - NumPy-style docstrings; interrogate `fail-under = 90`.
 - Python 3.11+; PEP 604 `|` over `Union`/`Optional`.
-- Apache-2.0 header + SPDX identifier on every source file.
+- OlmoEarth Artifact License + SPDX identifier (`LicenseRef-OlmoEarth-Artifact-License`) on every source file.
 
 ---
 

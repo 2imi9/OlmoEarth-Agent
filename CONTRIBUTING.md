@@ -50,7 +50,7 @@ gh pr create --base main --title "..." --body "..."
 
 ## 4. Commit conventions
 
-- **DCO sign-off is required.** Use `git commit -s -m "..."` so each commit ends with `Signed-off-by: Your Name <your.email@example.com>`. By signing off you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/): that you wrote the contribution or have the right to submit it under the project's Apache-2.0 license.
+- **DCO sign-off is required.** Use `git commit -s -m "..."` so each commit ends with `Signed-off-by: Your Name <your.email@example.com>`. By signing off you certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/): that you wrote the contribution or have the right to submit it under the project's OlmoEarth Artifact License.
 - **No AI co-author trailers in commits.** Do NOT add `Co-Authored-By: Claude`, `Co-Authored-By: Codex`, etc. AI involvement, if substantial, belongs in the PR description (see §8), not the commit trailer.
 - **Commit message format:** free-form, but readable. A short imperative subject line under 72 characters, blank line, then optional body.
   ```
@@ -75,7 +75,7 @@ Configured in `pyproject.toml`:
 - **Type checker:** [mypy](https://mypy-lang.org/): `disallow_untyped_defs = true`; type hints required on all public functions.
 - **Docstrings:** [NumPy style](https://numpydoc.readthedocs.io/en/latest/format.html): enforced by [interrogate](https://interrogate.readthedocs.io/) at `fail-under = 90`.
 - **Syntax level:** Python 3.11+, PEP 604 `|` over `Union` / `Optional`, enforced by pyupgrade.
-- **License headers:** every source file carries the Apache-2.0 header + SPDX identifier.
+- **License headers:** every source file carries the OlmoEarth Artifact License SPDX identifier (`LicenseRef-OlmoEarth-Artifact-License`).
 
 These exact tools mirror [earth2studio's `.pre-commit-config.yaml`](https://raw.githubusercontent.com/NVIDIA/earth2studio/main/.pre-commit-config.yaml), pinned versions in our own `.pre-commit-config.yaml` (added in a future PR).
 
