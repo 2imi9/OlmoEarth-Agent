@@ -42,7 +42,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.harness import LeadAgent, ThreadState
-from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM
+from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.skills import SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
@@ -192,30 +192,106 @@ def _claude_available() -> bool:
     return importlib.util.find_spec("anthropic") is not None
 
 
-def _llm_for_request(request: Request) -> Any:
-    """Choose the LLM backend for this request.
+#: Hosted OpenAI-compatible providers: base URL + a sensible default model
+#: (overridden by the model the user picks from autodetect). Claude is handled
+#: separately via the native Anthropic client.
+_OPENAI_PROVIDERS: dict[str, dict[str, str]] = {
+    "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
+    "gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "model": "gemini-2.0-flash",
+    },
+}
 
-    Default is the shared local model (``app.state.llm``). When the caller
-    selects Claude (``X-LLM-Backend: claude``), build a per-request
-    :class:`AnthropicLLM` from a bring-your-own Anthropic key (``X-LLM-Key``,
-    optional ``X-LLM-Model``). The key is forwarded to Anthropic per request
-    and never stored or logged, mirroring the Studio key. Subscription/OAuth
-    auth is intentionally not wired here.
+
+def _llm_detail(exc: Exception) -> str:
+    """A debuggable detail for an upstream LLM-provider failure."""
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is not None:
+        return f"LLM provider returned HTTP {status}"
+    return f"LLM provider call failed: {type(exc).__name__}"
+
+
+def _llm_for_request(request: Request) -> Any:
+    """Choose the LLM backend for this request (default: the local model).
+
+    Hosted backends are selected via ``X-LLM-Backend`` (``claude`` |
+    ``openai`` | ``gemini``) with a bring-your-own ``X-LLM-Key`` and an
+    optional ``X-LLM-Model``. The key is forwarded per request and never
+    stored or logged, mirroring the Studio key. ChatGPT/Gemini share the
+    OpenAI-compatible client (``openai_compat=True`` drops the Qwen extras);
+    Claude uses the native Anthropic client. Subscription/OAuth auth is not
+    wired here.
     """
     backend = request.headers.get("x-llm-backend", "local").strip().lower()
-    if backend not in ("claude", "anthropic"):
+    if backend in ("", "local"):
         return app.state.llm
     api_key = request.headers.get("x-llm-key", "").strip()
     if not api_key:
-        raise HTTPException(status_code=400, detail="missing Claude API key")
-    kwargs: dict[str, Any] = {"api_key": api_key}
+        raise HTTPException(status_code=400, detail="missing API key for backend")
     model = request.headers.get("x-llm-model", "").strip()
-    if model:
-        kwargs["model"] = model
+    if backend in ("claude", "anthropic"):
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if model:
+            kwargs["model"] = model
+        try:
+            return AnthropicLLM(**kwargs)
+        except RuntimeError as exc:  # anthropic not installed, or no credentials
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    provider = _OPENAI_PROVIDERS.get(backend)
+    if provider is None:
+        raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
+    return OlmoEarthLLM(
+        ServingConfig(
+            endpoint=provider["base_url"],
+            api_key=api_key,
+            model=model or provider["model"],
+        ),
+        openai_compat=True,
+    )
+
+
+def _filter_models(backend: str, ids: list[str]) -> list[str]:
+    """Sort + lightly filter listed model ids to the likely chat models."""
+    needles = {"openai": ("gpt", "o1", "o3", "chatgpt"), "gemini": ("gemini",)}.get(
+        backend
+    )
+    if needles:
+        chat = [i for i in ids if any(n in i.lower() for n in needles)]
+        ids = chat or ids  # fall back to everything if the filter is too tight
+    return sorted(set(ids))
+
+
+async def _list_models(backend: str, api_key: str) -> list[str]:
+    """List a provider's current model ids for the web UI autodetect.
+
+    Claude uses the Anthropic SDK; ChatGPT/Gemini use the OpenAI SDK against
+    the provider's model-listing endpoint. Network errors propagate to the
+    caller (surfaced as a 502).
+    """
+    if backend in ("claude", "anthropic"):
+        from anthropic import AsyncAnthropic
+
+        client = AsyncAnthropic(api_key=api_key)
+        try:
+            page = await client.models.list(limit=100)
+            ids = [m.id for m in page.data]
+        finally:
+            await client.close()
+        return _filter_models(backend, ids)
+    provider = _OPENAI_PROVIDERS.get(backend)
+    if provider is None:
+        raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
+    from openai import AsyncOpenAI
+
+    openai_client = AsyncOpenAI(base_url=provider["base_url"], api_key=api_key)
     try:
-        return AnthropicLLM(**kwargs)
-    except RuntimeError as exc:  # anthropic not installed, or no credentials
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        resp = await openai_client.models.list()
+        ids = [m.id for m in resp.data]
+    finally:
+        await openai_client.close()
+    return _filter_models(backend, ids)
 
 
 @app.get("/api/health")
@@ -230,6 +306,28 @@ async def api_health() -> dict[str, Any]:
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
     }
+
+
+@app.get("/api/llm/models")
+async def api_llm_models(request: Request) -> dict[str, Any]:
+    """List the selected provider's model ids (web UI model autodetect).
+
+    Reads ``X-LLM-Backend`` + ``X-LLM-Key``; the key is used for this one
+    lookup and never stored. Returns ``{"ok": True, "models": [...]}``.
+    """
+    api_key = request.headers.get("x-llm-key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="missing API key")
+    backend = request.headers.get("x-llm-backend", "").strip().lower()
+    try:
+        models = await _list_models(backend, api_key)
+    except HTTPException:
+        raise
+    except RuntimeError as exc:  # anthropic extra not installed
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_llm_detail(exc)) from exc
+    return {"ok": True, "models": models}
 
 
 @app.get("/api/projects")
