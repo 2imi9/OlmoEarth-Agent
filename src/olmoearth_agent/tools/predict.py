@@ -16,16 +16,18 @@ from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 
-async def _search_predictions(
-    args: dict[str, Any], ctx: ToolContext
-) -> dict[str, Any]:
+async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    project_id = args.get("project_id")
     env = await ctx.studio.search_predictions(
-        project_id=args.get("project_id"),
+        project_id=project_id,
         limit=int(args.get("limit", 50)),
         offset=int(args.get("offset", 0)),
     )
+    # With a project_id filter the match list is built client-side, so
+    # env.total (the unfiltered server total) would mislead; report the
+    # actual returned count instead.
     return {
-        "total": env.total,
+        "total": len(env.records) if project_id else env.total,
         "predictions": [
             {
                 "id": r.get("id"),
@@ -38,9 +40,7 @@ async def _search_predictions(
     }
 
 
-async def _submit_prediction(
-    args: dict[str, Any], ctx: ToolContext
-) -> dict[str, Any]:
+async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     record = await ctx.studio.submit_prediction(
         name=args["name"],
         project_id=args["project_id"],

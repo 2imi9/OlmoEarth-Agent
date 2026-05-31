@@ -8,7 +8,7 @@ The agent's runtime contract lives in [`PLAN.md`](PLAN.md). This file is about h
 
 ## What this project is
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Tool catalog + harness dataclasses + operational rules, same shape as Google's Google Earth Agent. Not a "research framework", not "auto-research" anything.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. Tool catalog + harness dataclasses + operational rules. Not a "research framework", not "auto-research" anything.
 
 ---
 
@@ -25,9 +25,6 @@ uv run pre-commit run --all-files
 # Tests
 uv run pytest                       # unit only
 uv run pytest -m integration        # needs OLMOEARTH_API_KEY
-
-# Doc build (when docs/ exists)
-uv run mkdocs serve
 ```
 
 ---
@@ -41,20 +38,21 @@ uv run mkdocs serve
 ├── CONTRIBUTING.md      # Contributor workflow
 ├── AGENTS.md            # This file
 ├── LICENSE              # Apache-2.0
-├── pyproject.toml       # (future) project + tool config
+├── pyproject.toml       # project + tool config (black/ruff/mypy/pytest)
 ├── src/olmoearth_agent/
 │   ├── types.py         # Harness dataclasses (PLAN.md §2)
+│   ├── cli.py           # `olmoearth-agent` CLI entrypoint
+│   ├── serve.py         # `olmoearth-agent-serve` web bridge (serves webui/)
+│   ├── llm/             # LLM clients: local Qwen + Claude/ChatGPT/Gemini
+│   ├── studio/          # OlmoEarth Studio API client
 │   ├── tools/           # Tool implementations (PLAN.md §1)
-│   │   ├── system.py    # python / search / fetch
-│   │   ├── olmoearth.py # Studio API wrappers
-│   │   ├── eo.py        # STAC + tiling
-│   │   └── utils.py     # geometry helpers
-│   ├── harness/         # Lead agent + middleware (DeerFlow v2 pattern)
-│   ├── skills/          # SKILL.md packages (agentskills.io spec)
-│   └── mcp/             # MCP server: OlmoEarth Studio + adjacent
-└── tests/
-    ├── test_operational_rules.py  # One test per PLAN.md §3 rule
-    └── ...
+│   ├── harness/         # Lead agent + middleware
+│   ├── skills/          # SKILL.md catalog + loader
+│   ├── analysis/        # change-detect, similarity, uncertainty, cloud-mask
+│   ├── evaluation/      # spatial CV + classification metrics
+│   ├── reporting/       # case narrative + QGIS export
+│   └── provenance/      # tool-call manifest + replay
+└── tests/               # unit + integration (mirrors the package layout)
 ```
 
 ---

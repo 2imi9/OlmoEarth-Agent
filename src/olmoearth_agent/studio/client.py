@@ -26,6 +26,9 @@ DEFAULT_BASE_URL = "https://olmoearth.allenai.org/api/v1"
 _RETRY_STATUSES = frozenset({429, 502, 503, 504})
 #: Total attempts for a retryable (idempotent) request.
 _MAX_ATTEMPTS = 3
+#: Bounded client-side scan for endpoints with no server-side filter
+#: (predictions by project, results by prediction): at most this many pages.
+_MAX_FILTER_PAGES = 10
 
 
 @dataclass
@@ -128,10 +131,23 @@ class StudioClient:
             await asyncio.sleep(0.4 * (attempt + 1))
         raise RuntimeError("unreachable retry state")  # pragma: no cover
 
+    @staticmethod
+    def _unwrap(payload: Any) -> ApiEnvelope[dict[str, Any]]:
+        """Build the envelope, surfacing a populated ``errors`` array.
+
+        An HTTP 200 can still carry business errors in ``errors`` with empty
+        ``records``; raising here stops the ``env.one or {}`` helpers from
+        silently collapsing that to ``{}`` (which would read as success).
+        """
+        env = ApiEnvelope.from_response(payload)
+        if env.errors and not env.records:
+            raise RuntimeError(f"Studio API error: {env.errors}")
+        return env
+
     async def get(self, path: str) -> ApiEnvelope[dict[str, Any]]:
         """GET ``path`` and unwrap the envelope (retries transient errors)."""
         resp = await self._send("GET", path, retry=True)
-        return ApiEnvelope.from_response(resp.json())
+        return self._unwrap(resp.json())
 
     async def post(
         self, path: str, body: dict[str, Any], *, retry: bool = False
@@ -142,7 +158,7 @@ class StudioClient:
         search endpoints, never for creates (avoids duplicate writes).
         """
         resp = await self._send("POST", path, retry=retry, json=body)
-        return ApiEnvelope.from_response(resp.json())
+        return self._unwrap(resp.json())
 
     # --- typed helpers ---
 
@@ -202,14 +218,25 @@ class StudioClient:
 
         Note: ``PredictionSearchRequest`` rejects a ``project_id`` field
         (openapi v0.1.0; sending one returns HTTP 422), so when
-        ``project_id`` is given we filter the returned page client-side.
-        Increase ``limit`` if a project's predictions run past the first page.
+        ``project_id`` is given we filter client-side, scanning up to
+        ``_MAX_FILTER_PAGES`` pages of ``limit`` to gather matches that fall
+        past the first page.
         """
         env = await self.post(
             "/predictions/search", {"limit": limit, "offset": offset}, retry=True
         )
-        if project_id is not None:
-            env.records = [r for r in env.records if r.get("project_id") == project_id]
+        if project_id is None:
+            return env
+        matches = [r for r in env.records if r.get("project_id") == project_id]
+        page_len, pages = len(env.records), 1
+        while page_len == limit and pages < _MAX_FILTER_PAGES:
+            offset += limit
+            page = await self.post(
+                "/predictions/search", {"limit": limit, "offset": offset}, retry=True
+            )
+            page_len, pages = len(page.records), pages + 1
+            matches.extend(r for r in page.records if r.get("project_id") == project_id)
+        env.records = matches
         return env
 
     async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
@@ -231,18 +258,29 @@ class StudioClient:
         """Search prediction-results.
 
         Note: the API's ``PredictionResultSearchRequest`` has no
-        ``prediction_id`` filter (openapi v0.1.0), so when
-        ``prediction_id`` is given we filter the returned page
-        client-side. Increase ``limit`` if a prediction's results are
-        older than the first page.
+        ``prediction_id`` filter (openapi v0.1.0), so when ``prediction_id``
+        is given we filter client-side, scanning up to ``_MAX_FILTER_PAGES``
+        pages of ``limit`` to gather results past the first page.
         """
         env = await self.post(
             "/prediction-results/search", {"limit": limit, "offset": offset}, retry=True
         )
-        if prediction_id is not None:
-            env.records = [
-                r for r in env.records if r.get("prediction_id") == prediction_id
-            ]
+        if prediction_id is None:
+            return env
+        matches = [r for r in env.records if r.get("prediction_id") == prediction_id]
+        page_len, pages = len(env.records), 1
+        while page_len == limit and pages < _MAX_FILTER_PAGES:
+            offset += limit
+            page = await self.post(
+                "/prediction-results/search",
+                {"limit": limit, "offset": offset},
+                retry=True,
+            )
+            page_len, pages = len(page.records), pages + 1
+            matches.extend(
+                r for r in page.records if r.get("prediction_id") == prediction_id
+            )
+        env.records = matches
         return env
 
     async def submit_prediction(

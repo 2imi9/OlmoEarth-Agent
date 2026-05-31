@@ -271,7 +271,13 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     caller (surfaced as a 502).
     """
     if backend in ("claude", "anthropic"):
-        from anthropic import AsyncAnthropic
+        try:
+            from anthropic import AsyncAnthropic
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "The 'anthropic' package is required for the Claude backend. "
+                "Install it with: uv sync --extra claude"
+            ) from exc
 
         client = AsyncAnthropic(api_key=api_key)
         try:
@@ -319,11 +325,16 @@ async def api_llm_models(request: Request) -> dict[str, Any]:
     if not api_key:
         raise HTTPException(status_code=400, detail="missing API key")
     backend = request.headers.get("x-llm-backend", "").strip().lower()
+    if backend in ("", "local"):
+        raise HTTPException(
+            status_code=400,
+            detail="select a hosted backend (claude, openai, or gemini) to list models",
+        )
     try:
         models = await _list_models(backend, api_key)
     except HTTPException:
         raise
-    except RuntimeError as exc:  # anthropic extra not installed
+    except (ImportError, RuntimeError) as exc:  # e.g. the anthropic extra is missing
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_llm_detail(exc)) from exc
@@ -367,10 +378,15 @@ async def api_run(request: Request) -> StreamingResponse:
         body = await request.json()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object")
     brief = str(body.get("brief", "")).strip()
     if not brief:
         raise HTTPException(status_code=400, detail="missing 'brief'")
-    max_turns = max(1, min(_MAX_TURNS_CEILING, int(body.get("max_turns", 8))))
+    try:
+        max_turns = max(1, min(_MAX_TURNS_CEILING, int(body.get("max_turns", 8))))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="invalid 'max_turns'") from exc
     history = _history_from_body(body)
 
     llm = _llm_for_request(request)
@@ -378,24 +394,32 @@ async def api_run(request: Request) -> StreamingResponse:
     skill_index: str = app.state.skill_index
 
     async def event_stream() -> AsyncIterator[str]:
-        async with StudioClient(
-            StudioConfig(api_key=key, base_url=_studio_base())
-        ) as studio:
-            agent = LeadAgent(
-                llm,
-                registry,
-                studio,
-                state=ThreadState(),
-                skill_index=skill_index,
-            )
-            try:
-                async for event in agent.run_stream(
-                    brief, max_turns=max_turns, history=history
-                ):
-                    yield _sse(event)
-            except Exception as exc:  # don't drop the stream, report it
-                yield _sse({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
-            yield _sse({"type": "done"})
+        try:
+            async with StudioClient(
+                StudioConfig(api_key=key, base_url=_studio_base())
+            ) as studio:
+                agent = LeadAgent(
+                    llm,
+                    registry,
+                    studio,
+                    state=ThreadState(),
+                    skill_index=skill_index,
+                )
+                try:
+                    async for event in agent.run_stream(
+                        brief, max_turns=max_turns, history=history
+                    ):
+                        yield _sse(event)
+                except Exception as exc:  # don't drop the stream, report it
+                    yield _sse(
+                        {"type": "error", "message": f"{type(exc).__name__}: {exc}"}
+                    )
+                yield _sse({"type": "done"})
+        finally:
+            # Release the per-request hosted client (Claude/OpenAI/Gemini); the
+            # shared local model is reused across requests and must stay open.
+            if llm is not app.state.llm:
+                await llm.aclose()
 
     return StreamingResponse(
         event_stream(),

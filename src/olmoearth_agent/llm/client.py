@@ -241,6 +241,10 @@ class OlmoEarthLLM:
             timeout=self.config.timeout_seconds,
         )
 
+    async def aclose(self) -> None:
+        """Close the underlying OpenAI client and release its connection pool."""
+        await self._client.close()
+
     async def chat(
         self,
         messages: Iterable[Message],

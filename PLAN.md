@@ -2,7 +2,7 @@
 
 A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; runs them in a Python sandbox preloaded with the standard geospatial stack; and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1. Everything below it is supporting detail.
 
-**Status:** v0.4 spec, 2026-05-27. No runnable code yet.
+**Status:** v1.0, 2026-05-31. All 15 skills shipped; runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md).
 **Scope:** Text-only LLM ([unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF), 4-bit `UD-IQ4_XS`, via llama.cpp) with function calling. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them.
 **Skill catalog:** [`SKILLS.md`](SKILLS.md): 15 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.

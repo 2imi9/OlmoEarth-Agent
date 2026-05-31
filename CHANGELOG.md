@@ -9,6 +9,29 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-31
+
+First tagged release: the agent runs all 15 skills live against OlmoEarth
+Studio and a local or hosted LLM.
+
+### Added
+- **Multi-provider LLM backends**, selectable from the web UI: local Qwen3.6
+  (default) plus bring-your-own-key **Claude** (native Anthropic SDK),
+  **ChatGPT**, and **Gemini** (OpenAI-compatible). `GET /api/llm/models`
+  autodetects each provider's current models; keys are forwarded per request
+  and never stored server-side (#52).
+- **Model-vs-embeddings labelling in the project tree**: each synthetic model
+  node shows the model's real name and a type badge (Embeddings / Fine-tuned),
+  resolved via the live (openapi-undocumented) `/models` endpoint (#51).
+- **Per-skill example briefs** in `SKILLS.md` (a realistic prompt per skill).
+
+### Fixed
+- V1.0 readiness review: release the per-request hosted LLM client after each
+  run (connection-pool leak); `/api/run` + `/api/llm/models` return clean
+  4xx/5xx for bad input; web-UI subtab stale-closure, silent no-key->local,
+  concurrent-send, and tree-retry edges; Studio client surfaces `errors`
+  envelopes and paginates client-side filters.
+
 ### Changed
 - **README: dropped the Google "Earth Agent" / AlphaEarth comparisons** and
   tightened wording (`README.md`): the tagline and intro no longer position the
