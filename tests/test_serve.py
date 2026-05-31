@@ -175,6 +175,27 @@ class _FakeStudio:
             ]
         )
 
+    async def search_models(self, *, limit: int = 200, offset: int = 0) -> _FakeEnv:
+        return _FakeEnv(
+            [
+                {
+                    "id": "m-aaa",
+                    "name": "Karst fine-tune",
+                    "model_type": "fine_tuned",
+                    "wizard_answers": {
+                        "encoder_variant": "nano",
+                        "foundation_model_version": "v1",
+                    },
+                },
+                {
+                    "id": "m-bbb",
+                    "name": "Karst embeddings",
+                    "model_type": "embeddings",
+                    "wizard_answers": {"encoder_variant": "base"},
+                },
+            ]
+        )
+
 
 def test_project_predictions(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
@@ -188,6 +209,33 @@ def test_project_predictions(monkeypatch: pytest.MonkeyPatch) -> None:
     assert [p["id"] for p in data["predictions"]] == ["p1", "p2", "p3"]
     assert data["predictions"][0]["model_id"] == "m-aaa"
     assert data["predictions"][1]["status"] == "running"
+    # The model_id level is enriched with the model's real name + type.
+    models = data["models"]
+    assert models["m-aaa"]["name"] == "Karst fine-tune"
+    assert models["m-aaa"]["model_type"] == "fine_tuned"
+    assert models["m-aaa"]["foundation"] == "OlmoEarth Nano v1"
+    assert models["m-bbb"]["model_type"] == "embeddings"
+    assert models["m-bbb"]["foundation"] == "OlmoEarth Base"  # no version -> name only
+
+
+def test_project_predictions_model_enrichment_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing /models lookup must not break the tree: predictions still load."""
+
+    class _NoModelsStudio(_FakeStudio):
+        async def search_models(self, *, limit: int = 200, offset: int = 0) -> _FakeEnv:
+            raise RuntimeError("models endpoint down")
+
+    monkeypatch.setattr(serve, "StudioClient", _NoModelsStudio)
+    with TestClient(serve.app) as client:
+        resp = client.get(
+            "/api/projects/proj1/predictions", headers={"X-Olmoearth-Key": "k"}
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert [p["id"] for p in data["predictions"]] == ["p1", "p2", "p3"]
+    assert data["models"] == {}  # enrichment degraded gracefully
 
 
 def test_prediction_results(monkeypatch: pytest.MonkeyPatch) -> None:

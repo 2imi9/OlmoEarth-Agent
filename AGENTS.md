@@ -100,7 +100,7 @@ Anything that conflicts with `PLAN.md` is a bug in `PLAN.md`: open a PR that upd
 2. **Studio long-running jobs are async.** `submit_prediction` returns a `PredictionRef`; never block on training. Downstream tools must accept the ref and poll.
 3. **Sandbox bans `import`.** The `system:python` interpreter has libraries preloaded: do not generate code with `import` statements; rely on the preloaded names.
 4. **Studio API key cap is 10 per account.** Never programmatically rotate keys; tests use a single key from env.
-5. **Studio has no `/models` or `/jobs` resource.** All async work is `Predictions` (request) + `PredictionResults` (output incl. XYZ tiles and MVT vectors). Do not invent endpoints that aren't in [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json).
+5. **`/models` is live but undocumented; there is no `/jobs` resource.** All async work is `Predictions` (request) + `PredictionResults` (output incl. XYZ tiles and MVT vectors). `/models` is absent from [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json) (v0.1.0) yet the live API answers `POST /models/search` and `GET /models/{id}` (verified 2026-05-30; used to label a prediction's model as fine-tuned vs an embeddings run). Don't invent *other* endpoints - confirm against the spec or a live probe first.
 
 ---
 

@@ -880,15 +880,33 @@ const PROJ_ICONS = {
 };
 const NODE_ICONS = {
   model:      '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/>',
+  embeddings: '<circle cx="6" cy="7" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="18" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/><circle cx="15" cy="14" r="1.5"/><circle cx="19" cy="17" r="1.5"/><circle cx="6" cy="19" r="1.5"/><circle cx="12" cy="20" r="1.5"/>',
   prediction: '<path d="M4 17l5-5 3 3 7-8"/><path d="M15 7h5v5"/>',
   result:     '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
 };
+
+/* Studio model_type -> a friendly badge label and a coarse kind for the
+   icon/badge colour. The tree's headline distinction is a fine-tuned model
+   vs an embeddings run; unknown types fall back to a title-cased label. */
+const MODEL_TYPE_LABELS = {
+  fine_tuned: 'Fine-tuned',
+  embeddings: 'Embeddings',
+  embedding: 'Embeddings',
+  pretrained: 'Foundation',
+  foundation: 'Foundation',
+  foundation_model: 'Foundation',
+};
+function modelTypeLabel(t) {
+  if (!t) return '';
+  return MODEL_TYPE_LABELS[t] || String(t).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function modelTypeKind(t) { return /embed/i.test(t || '') ? 'embeddings' : 'model'; }
 const PROJECTS = [
   { id: 'karst',    name: 'PA Karst',                    meta: '12', icon: 'map'   },
   { id: 'ches',     name: 'Chesapeake - water quality',  meta: '5',  icon: 'drop'  },
   { id: 'potomac',  name: 'Potomac - change detection',  meta: '8',  icon: 'trend' },
   { id: 'mangrove', name: 'Mangrove extent - Indonesia', meta: '3',  icon: 'leaf'  },
-  { id: 'solar',    name: 'Solar arrays - California',   meta: '2',  icon: 'sun'   },
+  { id: 'solar',    name: 'Solar arrays - California',   meta: '2',  icon: 'sun', model: 'embeddings' },
 ];
 
 function projConnected() {
@@ -917,6 +935,7 @@ function updateProjTag() {
 }
 
 function treeGlyph(node) {
+  if (node.kind === 'model' && modelTypeKind(node.modelType) === 'embeddings') return NODE_ICONS.embeddings;
   return (node.icon && PROJ_ICONS[node.icon]) || NODE_ICONS[node.kind] || PROJ_ICONS.map;
 }
 
@@ -924,13 +943,18 @@ function makeTreeNode(node) {
   const el = document.createElement('div');
   el.className = 'tree-node' + (node.leaf ? ' leaf' : '');
   const status = node.status ? '<span class="pred-status ' + escapeHtml(node.status) + '">' + escapeHtml(node.status) + '</span>' : '';
+  const badge = node.badge
+    ? '<span class="model-type ' + escapeHtml(modelTypeKind(node.modelType)) + '"'
+      + (node.foundation ? ' title="' + escapeHtml(node.foundation) + '"' : '')
+      + '>' + escapeHtml(node.badge) + '</span>'
+    : '';
   const meta = (node.meta != null && node.meta !== '') ? '<span class="tw-meta">' + escapeHtml(String(node.meta)) + '</span>' : '';
   el.innerHTML =
     '<button class="tree-row" type="button">' +
       '<svg viewBox="0 0 24 24" class="tw-caret"><path d="M9 6l6 6-6 6"/></svg>' +
       '<svg viewBox="0 0 24 24" class="ic tw-icon">' + treeGlyph(node) + '</svg>' +
       '<span class="tw-label" title="' + escapeHtml(node.name) + '">' + escapeHtml(node.name) + '</span>' +
-      status + meta +
+      badge + status + meta +
     '</button>' +
     '<div class="tree-children" hidden></div>';
   const row = el.querySelector('.tree-row');
@@ -972,12 +996,20 @@ async function toggleNode(el, node, childBox) {
   }
 }
 
-function groupByModel(preds) {
+function groupByModel(preds, models) {
+  models = models || {};
   const groups = {};
   preds.forEach((p) => { const m = p.model_id || 'unknown'; (groups[m] = groups[m] || []).push(p); });
-  return Object.keys(groups).map((mid) => ({
-    kind: 'model', id: mid, name: 'Model ' + shortId(mid), meta: groups[mid].length, predictions: groups[mid],
-  }));
+  return Object.keys(groups).map((mid) => {
+    const info = models[mid] || {};
+    const type = info.model_type || '';
+    return {
+      kind: 'model', id: mid,
+      name: info.name || ('Model ' + shortId(mid)),
+      modelType: type, badge: modelTypeLabel(type), foundation: info.foundation || '',
+      meta: groups[mid].length, predictions: groups[mid],
+    };
+  });
 }
 function predNode(p) {
   return { kind: 'prediction', id: p.id, name: p.name || '(unnamed)', status: (p.status || '').toLowerCase() };
@@ -997,7 +1029,8 @@ async function loadChildren(node) {
   if (node.kind === 'project') {
     const res = await fetch('/api/projects/' + encodeURIComponent(node.id) + '/predictions', hdr);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    return groupByModel((await res.json()).predictions || []);
+    const data = await res.json();
+    return groupByModel(data.predictions || [], data.models || {});
   }
   if (node.kind === 'model') return node.predictions.map(predNode);
   if (node.kind === 'prediction') {
@@ -1019,7 +1052,9 @@ function demoProjects() {
   return PROJECTS.map((p) => ({
     kind: 'project', id: p.id, name: p.name, icon: p.icon, meta: p.meta,
     children: [
-      { kind: 'model', id: 'm-' + p.id, name: 'Model ' + p.id.slice(0, 4), meta: 1, children: [
+      { kind: 'model', id: 'm-' + p.id, name: p.name + ' model',
+        modelType: p.model || 'fine_tuned', badge: modelTypeLabel(p.model || 'fine_tuned'),
+        foundation: 'OlmoEarth Nano v1', meta: 1, children: [
         { kind: 'prediction', id: 'pred-' + p.id, name: p.name + ' run', status: 'completed', children: [
           { kind: 'result', id: 'res-' + p.id, name: 'sample_score', meta: 'png', leaf: true },
         ] },

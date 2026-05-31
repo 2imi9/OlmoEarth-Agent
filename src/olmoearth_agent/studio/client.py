@@ -209,9 +209,7 @@ class StudioClient:
             "/predictions/search", {"limit": limit, "offset": offset}, retry=True
         )
         if project_id is not None:
-            env.records = [
-                r for r in env.records if r.get("project_id") == project_id
-            ]
+            env.records = [r for r in env.records if r.get("project_id") == project_id]
         return env
 
     async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
@@ -275,6 +273,35 @@ class StudioClient:
                 "end_time": end_time,
             },
         )
+        return env.one or {}
+
+    # --- models ---
+
+    async def search_models(
+        self, *, limit: int = 50, offset: int = 0
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search models (read-only). Returns the full envelope.
+
+        Each record carries ``model_type`` (e.g. ``"fine_tuned"`` vs an
+        embeddings run), a human ``name``, and ``wizard_answers`` (encoder
+        variant, imagery sources, spatial/temporal context). This is how a
+        client tells a fine-tuned model apart from an embeddings one.
+
+        Note: ``/models`` is absent from openapi v0.1.0, but the live API
+        serves ``POST /models/search`` and ``GET /models/{id}`` (``GET
+        /models`` with no id is 404). Verified live 2026-05-30.
+        """
+        return await self.post(
+            "/models/search", {"limit": limit, "offset": offset}, retry=True
+        )
+
+    async def get_model(self, model_id: str) -> dict[str, Any]:
+        """Fetch one model record (``GET /models/{id}``).
+
+        Returns ``model_type``, ``name``, ``status``, and ``wizard_answers``.
+        Undocumented in openapi v0.1.0; verified live 2026-05-30.
+        """
+        env = await self.get(f"/models/{model_id}")
         return env.one or {}
 
     async def load_context(self) -> StudioContext:

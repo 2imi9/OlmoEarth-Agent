@@ -319,7 +319,7 @@ The Studio API itself:
 - Auth: https://docs.olmoearth.allenai.org/authentication/, `Authorization: Bearer <key>`; max 10 keys/account
 - Live OpenAPI spec: https://olmoearth.allenai.org/api/v1/openapi.json (v0.1.0)
 - Resources: Areas, Projects, Datasets, Labelsets, Labels, Annotations, Tasks, Predictions, PredictionResults, Users
-- No `/models` or `/jobs` resources: async work is `Predictions` (request) + `PredictionResults` (outputs)
+- No `/jobs` resource; `/models` is live but undocumented (`POST /models/search`, `GET /models/{id}`; absent from openapi v0.1.0, verified live 2026-05-30 - carries `model_type` fine_tuned vs embeddings). Async work is `Predictions` (request) + `PredictionResults` (outputs)
 - Sample code: https://github.com/allenai/olmoearth_projects
 - Foundation weights: https://huggingface.co/allenai/OlmoEarth-v1-Large
 
