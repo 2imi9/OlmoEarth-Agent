@@ -161,11 +161,18 @@ class StudioClient:
         Each record carries a ``model_id``: this is how a client
         discovers a reusable model id for a new prediction (resolves the
         PLAN.md §4 ``model_id`` provenance gap for the reuse case).
+
+        Note: ``PredictionSearchRequest`` rejects a ``project_id`` field
+        (openapi v0.1.0; sending one returns HTTP 422), so when
+        ``project_id`` is given we filter the returned page client-side.
+        Increase ``limit`` if a project's predictions run past the first page.
         """
-        body: dict[str, Any] = {"limit": limit, "offset": offset}
+        env = await self.post("/predictions/search", {"limit": limit, "offset": offset})
         if project_id is not None:
-            body["project_id"] = project_id
-        return await self.post("/predictions/search", body)
+            env.records = [
+                r for r in env.records if r.get("project_id") == project_id
+            ]
+        return env
 
     async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
         """Fetch one prediction-result record (``GET /prediction-results/{id}``).

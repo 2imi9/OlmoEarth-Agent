@@ -29,6 +29,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the lettering goes from dark teal to white on the same OlmoEarth-pink pill,
   so it reads correctly on both light and dark GitHub themes. The pill shape,
   rounded corners, and transparent background are unchanged.
+- **Agent-settings menu labels formalized** (`webui/index.html`): a consistent
+  `Title (kind)` style for the Papers & resources links (the
+  `Embeddings -> fine-tuning` arrow is gone), `Max steps per run` instead of
+  `Max steps / run`, and a header on every section.
+- **Landing example briefs follow the selected mode** (`webui/index.html`,
+  `webui/app.js`): the "Run a prediction" / "Analyze results" / "Prep &
+  configure" tabs now swap the suggested example briefs (not just the input
+  placeholder), and selecting a tab reveals them.
 
 ### Removed
 - **Skill #16 `roger-annotation-bridge` dropped**: the planned Roger
@@ -39,6 +47,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   CHANGELOG entries that mention #16 are left as-is.)
 
 ### Fixed
+- **Web UI project tree no longer 502s on expand** (`studio/client.py`,
+  `serve.py`): `search_predictions` sent a `project_id` field that Studio's
+  `/predictions/search` rejects with HTTP 422; it now drops that field and
+  filters client-side, like the sibling `search_prediction_results`. The bridge
+  also surfaces the real upstream status in the 502 detail instead of a generic
+  "Studio call failed".
+- **"Show example briefs" button now works** (`webui/styles.css`,
+  `webui/app.js`, `webui/index.html`): a `.examples { display: flex }` rule beat
+  the `[hidden]` attribute, so the chips were always visible and the toggle did
+  nothing. Added `.examples[hidden] { display: none }` and a Show/Hide label.
 - **Text-emitted tool calls are now recovered (`llm/client.py`)**: when the
   llama.cpp server returns a tool call as plain text (Hermes-XML
   `<function=..><parameter=..>` or `<tool_call>{json}</tool_call>`) instead of
