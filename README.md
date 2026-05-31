@@ -2,7 +2,7 @@
 
 <img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="360">&nbsp;&nbsp;<img src="webui/assets/agent-tag.png" alt="Agent" height="42">
 
-**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own Claude / ChatGPT / Gemini.**
+**Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
 [![Skills](https://img.shields.io/badge/skills-15-F0529C.svg)](SKILLS.md)
@@ -21,20 +21,28 @@
 
 ---
 
-OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls tools over a sandboxed Python interpreter, submits and polls predictions, and reports honest results: a provenance manifest per call, mandatory spatial cross-validation on auto-correlated AOIs, and no raw coordinates in chat. It runs on a local **Qwen3.6-35B-A3B** model served with llama.cpp by default (no hosted LLM required), and can optionally use your own **Claude, ChatGPT, or Gemini** key via the web UI's model-backend picker.
+OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls tools over a sandboxed Python interpreter, submits and polls predictions, and reports honest results: a provenance manifest per call, mandatory spatial cross-validation on auto-correlated AOIs, and no raw coordinates in chat. It runs on a local **Qwen3.6-35B-A3B** model served with llama.cpp by default (no hosted LLM required), and can optionally use your own **cloud API** key via the web UI's model-backend picker.
 
 ## Quick start
 
-> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (to serve the LLM), [uv](https://docs.astral.sh/uv/), and an `OLMOEARTH_API_KEY` (Studio UI → profile → **API Keys**).
+> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (to serve the LLM), [uv](https://docs.astral.sh/uv/), and an OlmoEarth Studio API key (Studio UI → profile → **API Keys**).
 
 ```bash
-make setup                                              # git submodule init + uv sync --all-extras
-make serve                                              # 4-bit Qwen3.6 GGUF via llama.cpp (docker)
-make agent Q="How many OlmoEarth Studio projects do I have?"
-make web                                                # styled web UI on http://localhost:8080
+make setup      # init vendored skills + uv sync --all-extras
+make serve      # start the local 4-bit Qwen3.6 LLM (llama.cpp/docker); first run pulls ~17.7 GB
+make bridge     # live web UI on http://localhost:8088
 ```
 
-Set your key first (`export OLMOEARTH_API_KEY=...`); `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. `make help` lists every target; `make down` stops the LLM. No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands; see [`docs/serving.md`](docs/serving.md) for the raw `docker compose` invocations.
+Then open **http://localhost:8088**, paste your Studio key (kept client-side, sent per request), and send a brief.
+
+**Prefer the terminal?** Run a one-shot brief instead of the web UI:
+
+```bash
+export OLMOEARTH_API_KEY=...   # Studio UI → profile → API Keys
+make agent                     # runs a sample brief; ask your own with Q="..."
+```
+
+`make help` lists every target; `make down` stops the LLM; `make web` serves a backend-free **demo** UI on `:8080`. `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands; see [`docs/serving.md`](docs/serving.md) for the raw `docker compose` invocations.
 
 ## What it does
 
@@ -83,7 +91,7 @@ A styled front-end: a multi-turn chat with saved history (localStorage), a colla
 
 | Layer | What |
 |---|---|
-| **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **Claude / ChatGPT / Gemini** key, selected in the web UI (model autodetect; key never stored) |
+| **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
 | **Harness** | Sandboxed Python interpreter + a compact function catalog (`system.*`, `olmoearth.*`, `eo.*`, `utils.*`) with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
 | **Skills** | 15-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
