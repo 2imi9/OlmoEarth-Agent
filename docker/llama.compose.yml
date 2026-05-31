@@ -8,6 +8,12 @@
 #   echo "HF_TOKEN=hf_..." >> .env   # only if the GGUF repo is gated
 #   docker compose -f docker/llama.compose.yml up
 #
+# The host Hugging Face cache (~/.cache/huggingface) is bind-mounted, so the
+# ~17.7 GB GGUF downloads once and is reused. `make serve` (scripts/serve-llm.sh)
+# sets HF_CACHE_DIR for you, incl. the Windows C:/Users/... form. From a raw
+# `docker compose up` in PowerShell/cmd (no $HOME), pass it explicitly:
+#   HF_CACHE_DIR=C:/Users/<you>/.cache/huggingface docker compose -f docker/llama.compose.yml up
+#
 # The agent then reads LLM_ENDPOINT=http://localhost:8000/v1 and
 # LLM_MODEL=unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS from the environment.
 services:
@@ -17,8 +23,23 @@ services:
       - "8000:8000"
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
+      # First-run download only. A host proxy must be reached as
+      # host.docker.internal (inside the container 127.0.0.1 is the container
+      # itself). Empty by default => direct connection, so a warm cache is
+      # unaffected. e.g. HF_PROXY=http://host.docker.internal:7897
+      - HTTP_PROXY=${HF_PROXY:-}
+      - HTTPS_PROXY=${HF_PROXY:-}
+      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1}
+    # Reach a host proxy via host.docker.internal (host-gateway makes the alias
+    # resolve on bare Linux too; harmless on Docker Desktop / when HF_PROXY is empty).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - hf_cache:/root/.cache/huggingface
+      # Bind-mount the HOST Hugging Face cache so the ~17.7 GB GGUF downloads
+      # once and is reused on every fresh `make serve` (no re-pull). Compose
+      # expands ${HOME} (not ~); the default is the POSIX cache path. On Windows,
+      # scripts/serve-llm.sh exports HF_CACHE_DIR=C:/Users/<you>/.cache/huggingface.
+      - ${HF_CACHE_DIR:-${HOME}/.cache/huggingface}:/root/.cache/huggingface
     deploy:
       resources:
         reservations:
@@ -47,6 +68,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-
-volumes:
-  hf_cache:
