@@ -19,12 +19,17 @@ BRIDGE_PORT := 8088
 help: ## List the available targets.
 	@echo "OlmoEarth Agent make targets:"
 	@echo "  make setup   - init submodules (vendored skills #1-#4) + uv sync --all-extras"
+	@echo "  make up      - LOCAL one-command bring-up: setup + serve the LLM + live UI"
 	@echo "  make serve   - start the llama.cpp LLM and wait for it to be healthy"
 	@echo "  make down    - stop the LLM"
 	@echo "  make agent   - run a brief: make agent Q=\"<your brief>\""
 	@echo "  make web     - serve the static DEMO web UI on http://localhost:$(WEB_PORT) (no backend)"
 	@echo "  make bridge  - serve the LIVE web UI on http://localhost:$(BRIDGE_PORT) (your Studio account)"
-	@echo "  make up      - setup + serve (one-shot bring-up)"
+	@echo ""
+	@echo "Two ways to run the live UI:"
+	@echo "  - Local model (offline): make up        # auto-starts the LLM, then the UI"
+	@echo "  - Cloud API (no download): make setup && make bridge"
+	@echo "      then pick a provider (Claude/ChatGPT/Gemini) in the UI and paste a key"
 	@echo ""
 	@echo "Default brief (make agent): $(Q)"
 
@@ -45,15 +50,16 @@ web: ## Serve the static DEMO web UI (no backend; port 8080, the LLM owns 8000).
 	@echo "Serving the static DEMO web UI at http://localhost:$(WEB_PORT) (sample data - run 'make bridge' for the live agent)"
 	python -m http.server $(WEB_PORT) --directory webui
 
-bridge: ## Serve the LIVE web UI wired to your Studio account (port 8088; needs 'make serve').
+bridge: ## Serve the LIVE web UI (port 8088). Local LLM optional: pick a cloud provider in the UI to skip 'make serve'.
 	@echo "Serving the LIVE web UI at http://localhost:$(BRIDGE_PORT) - open it, paste your Studio key, send a brief"
+	@echo "  - Local model? Bring it up first: 'make serve' (or 'make up' to do both in one command)."
+	@echo "  - No local model / no 17.7 GB download? Open the UI, go to Settings -> LLM backend,"
+	@echo "    pick a cloud provider (Claude / ChatGPT / Gemini) and paste a key. The UI nudges you if the local model is down."
 	uv run olmoearth-agent-serve --port $(BRIDGE_PORT)
 
-up: setup serve ## One-shot bring-up: setup, then serve, then print next steps.
+up: setup serve ## LOCAL one-command bring-up: setup, start the LLM, then serve the live UI.
 	@echo ""
-	@echo "LLM is up and healthy. Next steps:"
-	@echo "  - make bridge                     # live web UI on http://localhost:$(BRIDGE_PORT) (paste your key)"
-	@echo "  - or run a brief from the terminal:"
-	@echo "      export OLMOEARTH_API_KEY=...   # Studio UI -> profile -> API Keys"
-	@echo "      make agent                     # sample brief; override with Q=\"...\""
-	@echo "  - make web                         # backend-free demo UI on http://localhost:$(WEB_PORT)"
+	@echo "==> LLM is up and healthy. Starting the live web UI on http://localhost:$(BRIDGE_PORT) ..."
+	@echo "    (Ctrl-C stops the UI; the LLM keeps running - 'make down' to stop it.)"
+	@echo "    Prefer a cloud API instead? Stop here and run 'make bridge' (no local model needed)."
+	$(MAKE) bridge

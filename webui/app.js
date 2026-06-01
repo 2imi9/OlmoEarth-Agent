@@ -5,7 +5,7 @@
 /* Live-mode flag, flipped on once /api/health answers. While false the page
    behaves as the static demo. `renderKeyState` is wired by wireKey so
    detectBridge() can re-render the key card once the mode is known. */
-const BRIDGE = { live: false, checked: false };
+const BRIDGE = { live: false, checked: false, llmLocalUp: true, claudeAvailable: true };
 let renderKeyState = () => {};
 let sending = false;  // a run is in flight; gates concurrent sends
 
@@ -890,6 +890,7 @@ function wireLlmSubtab() {
       backend = tab.dataset.backend || 'local';
       lsSet('oe_llm_backend', backend);
       syncProvider();
+      updateLlmNudge();  // hide once a cloud provider is chosen; show again on 'local'
       if (backend !== 'local' && keyEl && keyEl.value.trim()) detectModels();
     });
   });
@@ -900,6 +901,35 @@ function wireLlmSubtab() {
   if (modelEl) modelEl.addEventListener('change', () => lsSet('oe_llm_model_' + backend, modelEl.value));
   if (detectBtn) detectBtn.addEventListener('click', () => detectModels());
   syncProvider();
+}
+
+/* Cloud-path nudge. When the bridge is live, the default 'local' backend is
+   selected, and /api/health reported the local model unreachable, show a
+   one-line banner pointing to a cloud provider (or `make serve`). Dismissed
+   for the session only, so it returns on reload while the condition holds. */
+let llmNudgeDismissed = false;
+function activeLlmBackend() {
+  try { return localStorage.getItem('oe_llm_backend') || 'local'; } catch (e) { return 'local'; }
+}
+function updateLlmNudge() {
+  const el = document.getElementById('llmNudge');
+  if (!el) return;
+  const show = BRIDGE.live && !llmNudgeDismissed
+    && activeLlmBackend() === 'local' && BRIDGE.llmLocalUp === false;
+  el.hidden = !show;
+}
+function wireLlmNudge() {
+  const dismiss = document.getElementById('llmNudgeDismiss');
+  const pick = document.getElementById('llmNudgePick');
+  if (dismiss) dismiss.addEventListener('click', () => { llmNudgeDismissed = true; updateLlmNudge(); });
+  if (pick) pick.addEventListener('click', (e) => {
+    e.stopPropagation();  // don't let the document handler close the menu we open
+    const chip = document.getElementById('userChip');
+    const menu = document.getElementById('userMenu');
+    if (menu && chip) { menu.hidden = false; chip.setAttribute('aria-expanded', 'true'); }
+    const claudeTab = document.querySelector('.llm-tab[data-backend="claude"]');
+    if (claudeTab) claudeTab.focus();
+  });
 }
 
 // Collapsible sidebar sections (open/closed state persisted).
@@ -1217,6 +1247,8 @@ async function detectBridge() {
       const data = await res.json();
       BRIDGE.live = !!(data && data.ok) && data.mode === 'live';
       BRIDGE.claudeAvailable = !!(data && data.claude_available);
+      // Only nudge when the bridge explicitly reports the local model down.
+      BRIDGE.llmLocalUp = !(data && data.llm_local_up === false);
     }
   } catch (e) { BRIDGE.live = false; }
   BRIDGE.checked = true;
@@ -1231,10 +1263,11 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePrompt();
   wireMenu();
   wireUserMenu();
+  wireLlmNudge();
   wireCollapsibles();
   wireKey();        // initial render (demo assumptions) + renderProjects
   renderChatList();
   newChat();        // start on a fresh empty chat (landing visible)
   // Upgrade to live mode if the bridge is serving this page, then re-render.
-  detectBridge().then(() => { renderKeyState(); });
+  detectBridge().then(() => { renderKeyState(); updateLlmNudge(); });
 });

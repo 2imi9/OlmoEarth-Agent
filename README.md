@@ -25,24 +25,36 @@ OlmoEarth Agent turns a natural-language brief into real geospatial work on [Olm
 
 ## Quick start
 
-> **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (to serve the LLM), [uv](https://docs.astral.sh/uv/), and an OlmoEarth Studio API key (Studio UI → profile → **API Keys**).
+> **Prerequisites:** [uv](https://docs.astral.sh/uv/) and an OlmoEarth Studio API key (Studio UI → profile → **API Keys**). The **local model** path also needs [Docker](https://docs.docker.com/get-docker/); the **cloud-API** path needs neither Docker nor a download.
+
+Pick the backbone for the agent's reasoning - both drive the same live UI:
+
+**A. Cloud API** (Claude / ChatGPT / Gemini) - no Docker, no 17.7 GB download:
 
 ```bash
 make setup      # init vendored skills + uv sync --all-extras
-make serve      # start the local 4-bit Qwen3.6 LLM (llama.cpp/docker); first run pulls ~17.7 GB
-make bridge     # live web UI on http://localhost:8088
+make bridge     # live web UI on http://localhost:8088 (no local model needed)
 ```
 
-Then open **http://localhost:8088**, paste your Studio key (kept client-side, sent per request), and send a brief.
+Open **http://localhost:8088**, paste your Studio key, then go to **Settings → LLM backend**, pick a provider, and paste that provider's API key. Both keys stay client-side and are sent per request, never stored server-side. Send a brief.
 
-**Prefer the terminal?** Run a one-shot brief instead of the web UI:
+**B. Local model** (fully offline, free) - one command auto-starts the LLM and the UI:
+
+```bash
+make setup      # init vendored skills + uv sync --all-extras
+make up         # start the 4-bit Qwen3.6 LLM (first run pulls ~17.7 GB), then the live UI
+```
+
+Open **http://localhost:8088**, paste your Studio key, and send a brief. (`make up` is just `make serve` then `make bridge`; run them separately if you prefer.)
+
+**Prefer the terminal?** Run a one-shot brief against the local model instead of the web UI:
 
 ```bash
 export OLMOEARTH_API_KEY=...   # Studio UI → profile → API Keys
-make agent                     # runs a sample brief; ask your own with Q="..."
+make serve && make agent       # make agent runs a sample brief; ask your own with Q="..."
 ```
 
-`make help` lists every target; `make down` stops the LLM; `make web` serves a backend-free **demo** UI on `:8080`. `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands; see [`docs/serving.md`](docs/serving.md) for the raw `docker compose` invocations.
+`make help` lists every target; `make down` stops the LLM; `make web` serves a backend-free **demo** UI on `:8080`. `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands; see [`docs/serving.md`](docs/serving.md) for the cloud-API setup and the raw `docker compose` invocations.
 
 ## What it does
 
