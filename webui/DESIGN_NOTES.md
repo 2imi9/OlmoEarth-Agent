@@ -30,7 +30,7 @@ PRISM deck use it), so the swap feels native rather than grafted.
 - Tagline structure mirrors Asta's ("A *<role>* that *<does X>*. It uses *<scale>*…").
 - Segmented tabs: Asta's *Find papers / Generate a report / Analyze data* →
   **Run a prediction / Analyze results / Prep & configure** (the skill stages).
-- Example queries are **real** agent briefs; the capability grid is the **15
+- Example queries are **real** agent briefs; the capability grid is the **17
   skills** from `SKILLS.md`; the transcript is the **real** `olmoearth_change_detect`
   showcase example.
 
