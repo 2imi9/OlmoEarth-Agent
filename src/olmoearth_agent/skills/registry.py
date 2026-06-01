@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 15 skills.
+"""Skill catalog manifest, the harness's view of all 17 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
