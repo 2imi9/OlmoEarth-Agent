@@ -296,6 +296,28 @@ a:hover { color: var(--text); }
 .composer .prompt { max-width: var(--maxw); margin: 0 auto; }
 .composer-hint { max-width: var(--maxw); margin: 7px auto 0; font-size: 11.5px; color: var(--text-faint); text-align: center; }
 
+/* Cloud-path nudge: shown when the local model is down and 'local' is selected. */
+.llm-nudge {
+  display: flex; align-items: center; gap: 10px;
+  max-width: var(--maxw); margin: 0 auto 10px;
+  background: rgba(240,180,80,.10); border: 1px solid rgba(240,180,80,.32);
+  color: var(--text-dim); font-size: 12.5px; line-height: 1.4;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+}
+.llm-nudge[hidden] { display: none; }  /* beat the display:flex above (cf. .examples bug) */
+.llm-nudge-text { flex: 1; }
+.llm-nudge code { font-family: var(--mono); font-size: 11.5px; color: var(--mint-soft); }
+.llm-nudge-link {
+  background: none; border: none; padding: 0; font: inherit;
+  color: var(--mint-link); text-decoration: underline; cursor: pointer;
+}
+.llm-nudge-link:hover { color: var(--mint); }
+.llm-nudge-x {
+  flex: none; background: none; border: none; cursor: pointer;
+  color: var(--text-faint); font-size: 18px; line-height: 1; padding: 0 2px;
+}
+.llm-nudge-x:hover { color: var(--text); }
+
 /* ───────────── Hero ───────────── */
 .hero { position: relative; padding: 12vh 24px 64px; }
 .hero-bg {

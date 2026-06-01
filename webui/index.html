@@ -256,6 +256,10 @@
 
       <!-- Pinned composer -->
       <div class="composer" id="composer">
+        <div class="llm-nudge" id="llmNudge" hidden role="status">
+          <span class="llm-nudge-text">Local model isn't running. <button type="button" class="llm-nudge-link" id="llmNudgePick">Use a cloud API</button> (Claude / ChatGPT / Gemini), or start it with <code>make serve</code>.</span>
+          <button type="button" class="llm-nudge-x" id="llmNudgeDismiss" aria-label="Dismiss this notice">&times;</button>
+        </div>
         <div class="attachments" id="attachments" aria-label="Attached files"></div>
         <form class="prompt" id="promptForm" autocomplete="off">
           <button class="attach" id="attachBtn" type="button" aria-label="Attach files" title="Attach GeoJSON, code, CSV, PDF, or images">

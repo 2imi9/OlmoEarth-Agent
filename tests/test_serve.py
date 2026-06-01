@@ -135,6 +135,34 @@ def test_health_reports_claude_available() -> None:
     assert isinstance(resp.json()["claude_available"], bool)
 
 
+def test_health_reports_local_llm_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _up(_endpoint: str) -> bool:
+        return True
+
+    monkeypatch.setattr(serve, "_local_llm_up", _up)
+    with TestClient(serve.app) as client:
+        body = client.get("/api/health").json()
+    assert body["llm_local_up"] is True
+
+
+def test_health_reports_local_llm_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _down(_endpoint: str) -> bool:
+        return False
+
+    monkeypatch.setattr(serve, "_local_llm_up", _down)
+    with TestClient(serve.app) as client:
+        body = client.get("/api/health").json()
+    assert body["llm_local_up"] is False
+
+
+def test_local_llm_probe_false_when_unreachable() -> None:
+    # A closed localhost port: the probe must swallow the error and report down,
+    # never raise (so /api/health stays fast and green without a local model).
+    import asyncio
+
+    assert asyncio.run(serve._local_llm_up("http://127.0.0.1:1/v1")) is False
+
+
 def test_run_claude_backend_requires_key() -> None:
     with TestClient(serve.app) as client:
         resp = client.post(

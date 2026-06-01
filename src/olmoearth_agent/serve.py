@@ -37,6 +37,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -300,15 +301,39 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     return _filter_models(backend, ids)
 
 
+async def _local_llm_up(endpoint: str) -> bool:
+    """Best-effort check that the configured local LLM endpoint answers.
+
+    Used only so the web UI can nudge the user when the default (local)
+    backend is selected but no model server is running (start it, or pick a
+    cloud provider). A localhost model probe must never traverse a proxy, so
+    ``trust_env=False``. Any failure -> ``False``; bounded by a short timeout
+    and never raises.
+    """
+    url = endpoint.rstrip("/") + "/models"
+    try:
+        async with httpx.AsyncClient(timeout=2.0, trust_env=False) as client:
+            resp = await client.get(url)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
 @app.get("/api/health")
 async def api_health() -> dict[str, Any]:
-    """Liveness probe; the front-end uses it to switch from demo to live."""
+    """Liveness probe; the front-end uses it to switch from demo to live.
+
+    ``llm_local_up`` is a best-effort reachability check of the configured
+    local LLM endpoint, so the UI can tell a cloud-only user (no ``make
+    serve``) to pick a provider instead of failing on the local default.
+    """
     llm: OlmoEarthLLM = app.state.llm
     return {
         "ok": True,
         "mode": "live",
         "llm_endpoint": llm.config.endpoint,
         "llm_model": llm.config.model,
+        "llm_local_up": await _local_llm_up(llm.config.endpoint),
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
     }

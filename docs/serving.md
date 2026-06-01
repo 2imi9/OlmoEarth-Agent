@@ -5,7 +5,7 @@ supported stack is **llama.cpp serving the 4-bit GGUF**
 `unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS`. Canonical values live in
 [`docs/CANON.md`](CANON.md) (C1 model, C3 server, C4 quant, C5 env vars).
 
-> **Prefer a hosted model?** You don't need to serve anything - pick **Claude / ChatGPT / Gemini** in the web UI's model-backend picker and paste your key (CANON C10). This guide covers the local default.
+> **Prefer a hosted model?** You don't need to serve anything or download 17.7 GB - see [Cloud API (skip the local model)](#cloud-api-skip-the-local-model) below (CANON C10). The rest of this guide covers the local default.
 
 > Why GGUF and not NVFP4? The NVFP4 weights (~20 GB) don't leave KV-cache
 > headroom on a 24 GB card (verified: it stalls at memory profiling). The
@@ -13,7 +13,38 @@ supported stack is **llama.cpp serving the 4-bit GGUF**
 > end-to-end. NVFP4 + a larger-context server may return as a datacenter
 > option later, but it is not the path today (CANON C4/C7).
 
+## Cloud API (skip the local model)
+
+The agent's reasoning backbone can be a hosted **Claude**, **ChatGPT**, or
+**Gemini** model instead of the local Qwen3.6. This path needs **no Docker and
+no download** - just the web UI bridge:
+
+```bash
+make setup      # init vendored skills + uv sync --all-extras
+make bridge     # live UI on http://localhost:8088 (no `make serve`)
+```
+
+Then, in the UI: paste your Studio key, open **Settings -> LLM backend**, pick a
+provider, and paste that provider's API key. The bridge forwards the key to the
+provider **per request** (via the `X-LLM-Backend` / `X-LLM-Key` headers) and
+never stores or logs it, exactly like the Studio key. `GET /api/llm/models`
+autodetects the provider's current model ids for the dropdown.
+
+- **Claude** uses the native Anthropic SDK - install the extra once:
+  `uv sync --extra claude`.
+- **ChatGPT** and **Gemini** use the OpenAI-compatible client (Gemini via its
+  `.../v1beta/openai/` base URL); no extra needed.
+
+`make bridge` starts the UI even when no local model is running, so the cloud
+path stands on its own. If you are on the default **local** backend and the
+local model is not up, the UI shows a one-line nudge to either start it
+(`make serve`) or switch to a cloud provider - it does not fail silently.
+
 ## Quick start (Docker)
+
+`make up` does the whole local bring-up in one command (setup, then start the
+server below and block until healthy, then serve the live UI). `make serve`
+runs just the server step. The raw invocations:
 
 ```bash
 docker compose -f docker/llama.compose.yml up
