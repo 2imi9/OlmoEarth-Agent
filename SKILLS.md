@@ -373,6 +373,8 @@ The original spec follows for reference:
 
 Implementation order tracks `PLAN.md` §6. First skill to ship is **#5 `olmoearth-predict`** (the foundation that #6, #7, #9, #10 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
+Candidate skills beyond the current 17 (prioritized, with a build-first pick) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md).
+
 ## Adding a skill
 
 A new skill is one PR with:
