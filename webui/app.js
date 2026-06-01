@@ -1,4 +1,4 @@
-/* OlmoEarth Agent web UI: chat + history, the 15-skill grid, and a Studio
+/* OlmoEarth Agent web UI: chat + history, the 17-skill grid, and a Studio
    project tree. Static demo by default; upgrades to the live agent when served
    by olmoearth_agent.serve (see "Live bridge" below). No build step. */
 
@@ -43,6 +43,8 @@ const SKILLS = [
   { n: 13, slug: 'data-export',       cat: 'Integrate', icon: 'database',    desc: 'Export Studio projects + predictions to JSON, grouped by project or status.' },
   { n: 14, slug: 'provenance',        cat: 'Report',    icon: 'fingerprint', desc: 'A manifest over every tool call, plus a one-command replay script.' },
   { n: 15, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.' },
+  { n: 16, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.' },
+  { n: 17, slug: 'automate',          cat: 'Configure', icon: 'wand',        desc: 'One call: auto-decides embeddings vs fine-tune and proposes a config; optional HF introspection.' },
 ];
 
 function renderCards() {
