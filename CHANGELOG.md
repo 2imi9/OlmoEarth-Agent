@@ -16,6 +16,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   bundle (`olmoearth_litsearch`, `olmoearth_litsearch_resolve`), key-free
   (OpenAlex polite-pool `mailto` via `OLMOEARTH_OPENALEX_MAILTO`), deduped across
   sources; informed by a read of Google DeepMind's Science Skills (#62).
+- **Skill #17 `olmoearth-automate`**: auto-decides embeddings vs fine-tuning for
+  an EO task and proposes a config (model size, classifier head, embeddings
+  notebook command, fine-tune schedule, Studio job-config hand-off). In-process
+  tool `olmoearth_automate`; reuses the vendored `olmoearth-embeddings` decision
+  table and can introspect a Hugging Face dataset (rows + classes) via the public
+  datasets-server (#58).
 
 ### Changed
 - **Relicensed from Apache-2.0 to the OlmoEarth Artifact License** (Ai2), matching
