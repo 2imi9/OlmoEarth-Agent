@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 16 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 17 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 16 skills implemented (v1.0 shipped #1–#15 on 2026-05-31; #16 `olmoearth-litsearch` added post-1.0). See `CHANGELOG.md`.
+**Status:** 17 skills implemented (v1.0 shipped #1–#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -42,6 +42,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 | 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
+| 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | Auto-decide embeddings vs fine-tune + propose a config; optional HF-dataset introspection. |
 
 ### Example briefs
 
@@ -65,6 +66,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 | 14 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
 | 15 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
 | 16 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
+| 17 | `olmoearth-automate` | "I have 200 labels and a T4 — should I fine-tune or use embeddings? Set it up." |
 
 ---
 
@@ -345,6 +347,21 @@ The original spec follows for reference:
 **Tools composed.**
 - `olmoearth_litsearch` (unified arXiv + OpenAlex search) + `olmoearth_litsearch_resolve` (DOI / arXiv-id → one record).
 - Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}.
+
+---
+
+### 17. `olmoearth-automate`
+
+**In:** a free-form `task` (e.g. "land cover, 9 classes, 200 samples, T4 GPU"), explicit `num_samples` / `num_classes` / `compute` / `goal`, and/or a Hugging Face `hf_dataset` id.
+**Out:** a decision (`embeddings` / `embeddings_then_fine_tune` / `fine_tune`), rationale, and a proposed config (model size, classifier head, an embeddings-notebook command, a fine-tune schedule, and a hand-off to `olmoearth-studio-job-config`).
+
+**What.** Applies the embeddings-vs-fine-tune precedence rules — a faithful port of the vendored `olmoearth-embeddings` `recommend.decide` (kept in sync) — then proposes an actionable config. Given a Hugging Face dataset id, it reads the row count + ClassLabel classes from the public datasets-server to fill the inputs. Inputs are task metadata only (no geometry), so results are provenance-safe.
+
+**Why.** Picking embeddings vs fine-tune, the model size, and the classifier head is the most common configuration decision in EO foundation-model use, and the precedence (sample-size / compute / goal) is easy to get wrong by hand. This automates the call and proposes a runnable plan, routing Studio-side specifics to `olmoearth-studio-job-config`. **No fabrication:** reports `ask_for` when key inputs are missing rather than guessing, and never invents dataset stats.
+
+**Tools composed.**
+- `olmoearth_automate` (decision + config; optional HF-dataset introspection).
+- Logic in `analysis/automate.py` (decision port + `propose_config` + `fetch_hf_dataset_profile`); reuses the vendored `olmoearth-embeddings` decision table.
 
 ---
 

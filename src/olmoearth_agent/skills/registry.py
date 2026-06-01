@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from olmoearth_agent.provenance.tools import build_provenance_tools
+from olmoearth_agent.tools.automate import build_automate_tools
 from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
@@ -214,6 +215,15 @@ SKILLS: list[SkillSpec] = [
         "ground citations (key-free; deduped across sources).",
         ["olmoearth_litsearch", "olmoearth_litsearch_resolve"],
     ),
+    SkillSpec(
+        17,
+        "olmoearth-automate",
+        "Configure",
+        "implemented",
+        "Auto-decide embeddings vs fine-tune + propose a config (model size, "
+        "classifier, notebook/fine-tune plan); optional HF-dataset introspection.",
+        ["olmoearth_automate"],
+    ),
 ]
 
 
@@ -240,6 +250,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_litsearch_tools())
+    registry.register_all(build_automate_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())
