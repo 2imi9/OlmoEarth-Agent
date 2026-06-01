@@ -58,7 +58,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 1 | `olmoearth-studio-upload` | Labels (GeoJSON/CSV/Shapefile) → Studio-importable file with MIME / 10K / multi-metric guards | **Prep** |
 | 2 | `olmoearth-rslearn-config` | Labels → `rslearn` `dataset.json` + Lightning YAML with a 7-criteria audit | **Prep** |
 | 3 | `olmoearth-studio-job-config` | Task description → Studio wizard answers, 14 presets + cross-field validator | **Configure** |
-| 4 | `olmoearth-embeddings` | Task profile → embeddings-vs-fine-tune decision + a runnable notebook | **Configure** |
+| 4 | `olmoearth-embeddings` | Embeddings-vs-fine-tune **guidance** + a runnable-notebook generator (you run the notebook) | **Configure** |
 | 5 | `olmoearth-predict` | Core run primitive: submit / poll / pixel-value / features / files | **Run** |
 | 6 | `olmoearth-change-detect` | Two-or-more-date trajectory diff (refuses naïve 2-date diffs) | **Run** |
 | 7 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
@@ -71,7 +71,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 14 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
 | 15 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
 | 16 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations | **Report** |
-| 17 | `olmoearth-automate` | Auto-decide embeddings vs fine-tune + propose a config; optional HuggingFace-dataset introspection | **Configure** |
+| 17 | `olmoearth-automate` | **One call** that auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HuggingFace-dataset introspection | **Configure** |
 
 </details>
 
