@@ -26,6 +26,19 @@ docker run -d --name oe-llama --gpus all -p 8000:8000 \
   --jinja -ngl 999 -c 8192 --no-mmap
 ```
 
+> The compose bind-mounts your host `~/.cache/huggingface` (the same cache the
+> one-off `docker run` above uses), so the ~17.7 GB GGUF downloads **once** and
+> is reused on every later `make serve` — no re-download. `make serve` (via
+> [`scripts/serve-llm.sh`](../scripts/serve-llm.sh)) resolves and exports
+> `HF_CACHE_DIR` for you, including the `C:/Users/<you>/.cache/huggingface` form
+> Docker Desktop needs on Windows. If you instead run `docker compose ... up` by
+> hand from PowerShell/cmd (where `$HOME` is unset), pass it explicitly:
+> `HF_CACHE_DIR=C:/Users/<you>/.cache/huggingface docker compose -f docker/llama.compose.yml up`.
+> Set `HF_PROXY=http://host.docker.internal:7897` only for a genuine first-run
+> download behind a host proxy (`127.0.0.1` won't work from inside the container).
+> Upgrading from the old named-volume setup leaves an orphan — reclaim it with
+> `docker volume rm docker_hf_cache`.
+
 The server listens on `http://localhost:8000/v1` (OpenAI Chat
 Completions). Point the agent at it:
 
