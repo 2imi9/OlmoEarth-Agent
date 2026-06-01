@@ -9,6 +9,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-31
+
+Post-1.0 checkpoint: two new skills (catalog 15 -> 17), the `make serve` cache
+fix, and the sandbox / GDM / quick-start documentation pass.
+
 ### Added
 - **Skill #16 `olmoearth-litsearch`**: arXiv + OpenAlex literature search and
   DOI / arXiv-id resolution, so the agent can ground EO/geospatial citations in
@@ -22,13 +27,36 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   tool `olmoearth_automate`; reuses the vendored `olmoearth-embeddings` decision
   table and can introspect a Hugging Face dataset (rows + classes) via the public
   datasets-server (#58).
+- **`docs/science-skills-assessment.md`**: a multi-agent assessment of Google
+  DeepMind's `science-skills` against this repo's skill/harness architecture. It
+  re-confirms the bundle is off-domain (genomics / proteomics / chemistry) and
+  that arXiv / OpenAlex literature search is the one transferable capability (now
+  skill #16), and captures the report's 3-tier-test + LLM-autorater methodology
+  as a target for the SkillOpt harness (#69).
 
 ### Changed
-- **Relicensed from Apache-2.0 to the OlmoEarth Artifact License** (Ai2), matching
-  `allenai/olmoearth_pretrain`: free use with restrictions (no military/defense/
-  surveillance or extractive uses; cite Ai2 and propagate the terms downstream).
-  Updated `LICENSE`, every source SPDX header (`LicenseRef-OlmoEarth-Artifact-License`),
-  `pyproject.toml`, the README badge, `AGENTS.md`, and `CONTRIBUTING.md`.
+- **Quick start reworked around the live web UI** (`README.md`): the walkthrough
+  leads with `make bridge` and the browser flow, and the LLM is positioned as a
+  "local or cloud API" choice ("provider" wording became "cloud API") (#66).
+- **README skill count corrected to 17** as `olmoearth-litsearch` (#16) and
+  `olmoearth-automate` (#17) landed (badge, table, and prose) (#71).
+- **`olmoearth-embeddings` (#4) and `olmoearth-automate` (#17) disambiguated**
+  in `README.md` and `SKILLS.md` so the two Configure skills no longer read
+  identically: #4 is the embeddings-vs-fine-tune *guidance* plus a runnable-
+  notebook generator (you run the notebook); #17 is the *one-call* auto-decide
+  + proposed-config tool (with optional Hugging Face dataset introspection) that
+  reuses #4's decision logic (#73).
+- **Corrected the `system:python` sandbox spec across docs** (`PLAN.md`,
+  `AGENTS.md`, `SKILLS.md`): it is the opt-in subprocess (`OLMOEARTH_RUN_PYTHON=1`,
+  `python -I`, no persisted state, geospatial stack not guaranteed), not a
+  preloaded persistent interpreter (which is now a labelled design target) (#68).
+
+### Fixed
+- **`make serve` reuses the cached model** (`docker/llama.compose.yml`,
+  `scripts/serve-llm.sh`): the compose now bind-mounts the host Hugging Face
+  cache (`cygpath -m`-normalized on Windows) and offers opt-in `HF_PROXY` via
+  `host.docker.internal`, so a second `make serve` loads the already-downloaded
+  GGUF instead of re-pulling ~17.7 GB (#67).
 
 ## [1.0.0] - 2026-05-31
 
@@ -54,6 +82,11 @@ Studio and a local or hosted LLM.
   envelopes and paginates client-side filters.
 
 ### Changed
+- **Relicensed from Apache-2.0 to the OlmoEarth Artifact License** (Ai2), matching
+  `allenai/olmoearth_pretrain`: free use with restrictions (no military/defense/
+  surveillance or extractive uses; cite Ai2 and propagate the terms downstream).
+  Updated `LICENSE`, every source SPDX header (`LicenseRef-OlmoEarth-Artifact-License`),
+  `pyproject.toml`, the README badge, `AGENTS.md`, and `CONTRIBUTING.md` (#64).
 - **README: dropped the Google "Earth Agent" / AlphaEarth comparisons** and
   tightened wording (`README.md`): the tagline and intro no longer position the
   tool against another product, and skill #7 reads "vs. a baseline foundation

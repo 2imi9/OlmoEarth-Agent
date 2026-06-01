@@ -14,7 +14,7 @@ Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi
 |---|---|
 | [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified**: 8 prep pitfalls + 7-criteria audit; recognizes all three schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
 | [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3**: 14 verified presets + cross-field validator. |
-| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4**: embeddings-vs-fine-tune decision + Nano/Tiny/Base/Large notebook. |
+| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4**: embeddings-vs-fine-tune **guidance** + a Nano/Tiny/Base/Large notebook generator. (Skill #17 `olmoearth-automate` is the one-call automated version that reuses this decision table.) |
 
 Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 are unified upstream as `olmoearth-data-prep` (matching the working implementation) but kept as two numbered entries here.
 
@@ -29,7 +29,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 1 | Prep | [`olmoearth-studio-upload`](#1-olmoearth-studio-upload) | Labels (GeoJSON / CSV / Shapefile) → Studio-importable file with MIME / 10K / multi-metric guards. |
 | 2 | Prep | [`olmoearth-rslearn-config`](#2-olmoearth-rslearn-config) | Labels → `rslearn` `dataset.json` + Lightning YAML with 7-criteria audit. |
 | 3 | Configure | [`olmoearth-studio-job-config`](#3-olmoearth-studio-job-config) | Task description → Studio wizard answers with 14 presets + cross-field validator. |
-| 4 | Configure | [`olmoearth-embeddings`](#4-olmoearth-embeddings) | Task profile → embeddings-vs-fine-tune decision + runnable notebook. |
+| 4 | Configure | [`olmoearth-embeddings`](#4-olmoearth-embeddings) | Embeddings-vs-fine-tune **guidance** + a generated runnable notebook (you run it). |
 | 5 | Run | [`olmoearth-predict`](#5-olmoearth-predict) | The core run primitive: submit / poll / pixel-value / features / files. |
 | 6 | Run | [`olmoearth-change-detect`](#6-olmoearth-change-detect) | Two-or-more-date trajectory diff (refuses two-date naïve diff). |
 | 7 | Run | [`olmoearth-baseline-compare`](#7-olmoearth-baseline-compare) | Studio vs. AlphaEarth side-by-side on transfer regions. |
@@ -42,7 +42,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 | 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
-| 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | Auto-decide embeddings vs fine-tune + propose a config; optional HF-dataset introspection. |
+| 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | **One call**: auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HF-dataset introspection. |
 
 ### Example briefs
 
@@ -130,6 +130,8 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **In:** task profile (label volume, class balance, target VRAM, target latency).
 **Out:** embeddings-vs-fine-tune decision + runnable `.ipynb`.
+
+**Versus #17.** This skill is the human-in-the-loop *guidance + notebook generator*: it explains the decision and emits a notebook the **user** runs. [`olmoearth-automate`](#17-olmoearth-automate) (#17) is the *one-call* automation that decides programmatically and proposes a config, reusing this skill's decision table.
 
 **What.** Decision grounded in the fine-tuned OlmoEarth benchmark table. Parameterized notebook extracts OlmoEarth Nano / Tiny / Base / Large embeddings and trains kNN + linear-probe heads.
 
@@ -354,6 +356,8 @@ The original spec follows for reference:
 
 **In:** a free-form `task` (e.g. "land cover, 9 classes, 200 samples, T4 GPU"), explicit `num_samples` / `num_classes` / `compute` / `goal`, and/or a Hugging Face `hf_dataset` id.
 **Out:** a decision (`embeddings` / `embeddings_then_fine_tune` / `fine_tune`), rationale, and a proposed config (model size, classifier head, an embeddings-notebook command, a fine-tune schedule, and a hand-off to `olmoearth-studio-job-config`).
+
+**Versus #4.** [`olmoearth-embeddings`](#4-olmoearth-embeddings) (#4) is the *guidance + notebook generator* (the user runs the notebook). This skill is the *one-call* version: it decides programmatically and emits a ready config, can fill its inputs from a Hugging Face dataset, and reuses #4's decision table rather than duplicating it.
 
 **What.** Applies the embeddings-vs-fine-tune precedence rules — a faithful port of the vendored `olmoearth-embeddings` `recommend.decide` (kept in sync) — then proposes an actionable config. Given a Hugging Face dataset id, it reads the row count + ClassLabel classes from the public datasets-server to fill the inputs. Inputs are task metadata only (no geometry), so results are provenance-safe.
 
