@@ -8,7 +8,8 @@ the model reasons, calls the skill's tool(s), receives the real result,
 and writes a final answer. Nothing is fabricated: the reasoning, the
 tool arguments, and the answers are the model's own output, and the tool
 results are real (live Studio API for #5/#13, the vendored SKILL.md files
-for #1-#4, real computation for #6-#15). Run:
+for #1-#4, a live arXiv/OpenAlex search for #16, real computation for
+#6-#15 and #17). Run:
 
     # source your .env first so OLMOEARTH_API_KEY is set for #5/#13
     set -a; . ./.env; set +a
