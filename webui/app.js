@@ -69,6 +69,27 @@ const SKILL_SPECS = {
   17: `One call that auto-decides embeddings vs fine-tune (porting #4's decision table) and proposes a config - model size, classifier head, embeddings-notebook command, fine-tune schedule, and a Studio job-config hand-off - and can read a Hugging Face dataset's rows + classes to fill its inputs. Reports what is missing rather than guessing.`,
 };
 
+// Tools each skill composes, shown on the full-spec detail page. From PLAN.md section 1 + SKILLS.md.
+const SKILL_TOOLS = {
+  1: `olmoearth.upload_labels · validate_studio_mime · shard_at_10k · split_multi_metric`,
+  2: `eo.window_tile · olmoearth.resolve_to_aoi · write_rslearn_config · audit_7_criteria · rename_es_label`,
+  3: `Studio job-wizard presets (14) + a cross-field validator`,
+  4: `olmoearth.fetch_embedding · decision_matrix · knn_head · linear_probe_head · system.python (light checks)`,
+  5: `olmoearth_search_predictions · olmoearth_submit_prediction · olmoearth_get_prediction · olmoearth_fetch_results · olmoearth_pixel_value · olmoearth_features_search`,
+  6: `olmoearth_change_detect (composes #5 olmoearth-predict) · enforce_min_3_dates · diff_layers`,
+  7: `olmoearth_baseline_compare · compare_metrics (reuses #8 classification_metrics) · difference_raster`,
+  8: `olmoearth_cv_inflation_check · olmoearth_classification_metrics · spatial_block_folds · haversine`,
+  9: `olmoearth_similarity_search · similarity_search (brute-force kNN) · geographic_prior_check`,
+  10: `olmoearth_area_of_applicability · dissimilarity index (Meyer-Pebesma) · ood_flag`,
+  11: `olmoearth_cloud_mask_audit · ensemble_disagree · verdict_classifier`,
+  12: `olmoearth_qgis_bridge · resolve_xyz_url · build_raster_sld`,
+  13: `olmoearth_export_data (reads projects + predictions, curated)`,
+  14: `olmoearth_provenance_summary · ProvenanceLog on ThreadState · replay_script`,
+  15: `olmoearth_case_narrative · build_narrative (reads provenance + results)`,
+  16: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
+  17: `olmoearth_automate · analysis.automate decide() + propose_config + fetch_hf_dataset_profile (reuses #4's table)`,
+};
+
 function renderCards() {
   const grid = document.getElementById('capGrid');
   if (!grid) return;
@@ -113,9 +134,10 @@ function openSkillModal(s) {
         <button class="card-use" type="button" data-use>Use this brief
           <svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
-        <a class="modal-link" href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md#${s.n}-olmoearth-${s.slug}" target="_blank" rel="noopener">Full spec →</a>
+        <button class="modal-link" type="button" data-detail>Full spec →</button>
       </div>
     </div>`;
+  modal.dataset.n = s.n;
   modal.hidden = false;
   const closeBtn = modal.querySelector('.modal-close');
   if (closeBtn) closeBtn.focus();
@@ -129,10 +151,71 @@ function closeSkillModal() {
   if (_skillModalReturn) { _skillModalReturn.focus(); _skillModalReturn = null; }
 }
 
+/* "Full spec" opens an in-app detail page (not a GitHub jump): the full spec,
+   the tools the skill composes, and the example brief. */
+function openSkillDetail(s) {
+  const d = document.getElementById('skillDetail');
+  if (!d) return;
+  d.innerHTML = `
+    <div class="detail-bar">
+      <button class="detail-back" type="button" data-detail-close>
+        <svg viewBox="0 0 24 24" class="ic"><path d="M19 12H5M11 18l-6-6 6-6"/></svg> Back to skills
+      </button>
+    </div>
+    <div class="detail-body">
+      <div class="detail-head${s.pink ? ' is-pink' : ''}">
+        <span class="card-ic"><svg viewBox="0 0 24 24" class="ic">${ICONS[s.icon] || ''}</svg></span>
+        <div class="detail-head-txt">
+          <div class="card-cat">${s.cat}</div>
+          <h2 class="detail-name">olmoearth-${s.slug}</h2>
+        </div>
+        <span class="detail-num">#${s.n}</span>
+      </div>
+      <section class="detail-sec">
+        <h3 class="detail-h">What it does &amp; why</h3>
+        <p class="detail-p">${SKILL_SPECS[s.n] || s.desc}</p>
+      </section>
+      <section class="detail-sec">
+        <h3 class="detail-h">Tools it composes</h3>
+        <p class="detail-tools">${SKILL_TOOLS[s.n] || '-'}</p>
+      </section>
+      <section class="detail-sec">
+        <h3 class="detail-h">Example brief</h3>
+        <p class="card-ex">${escapeHtml(s.ex)}</p>
+        <button class="card-use" type="button" data-use>Use this brief
+          <svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </section>
+      <a class="detail-link" href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md#${s.n}-olmoearth-${s.slug}" target="_blank" rel="noopener">Full academic spec on GitHub →</a>
+    </div>`;
+  d.hidden = false;
+  const back = d.querySelector('.detail-back');
+  if (back) back.focus();
+}
+
+function closeSkillDetail() {
+  const d = document.getElementById('skillDetail');
+  if (!d || d.hidden) return;
+  d.hidden = true;
+  d.innerHTML = '';
+  if (_skillModalReturn) { _skillModalReturn.focus(); _skillModalReturn = null; }
+}
+
 function wireCards() {
   const grid = document.getElementById('capGrid');
   const modal = document.getElementById('skillModal');
+  const detail = document.getElementById('skillDetail');
   if (!grid || !modal) return;
+  const fillBrief = (root) => {
+    const ex = root.querySelector('.card-ex');
+    const input = document.getElementById('promptInput');
+    if (ex && input) { input.value = ex.textContent.trim(); autosize(input); }
+    if (input) {
+      input.focus();
+      input.classList.add('flash');
+      setTimeout(() => input.classList.remove('flash'), 700);
+    }
+  };
   const openFor = (card) => {
     const s = SKILLS.find((x) => x.n === parseInt(card.dataset.n, 10));
     if (!s) return;
@@ -148,21 +231,28 @@ function wireCards() {
     if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openFor(card); }
   });
   modal.addEventListener('click', (e) => {
-    if (e.target.closest('[data-use]')) {
-      const ex = modal.querySelector('.card-ex');
-      const input = document.getElementById('promptInput');
-      if (ex && input) { input.value = ex.textContent.trim(); autosize(input); }
+    if (e.target.closest('[data-detail]')) {
+      const s = SKILLS.find((x) => x.n === parseInt(modal.dataset.n, 10));
+      const card = _skillModalReturn;
       closeSkillModal();
-      if (input) {
-        input.focus();
-        input.classList.add('flash');
-        setTimeout(() => input.classList.remove('flash'), 700);
-      }
+      _skillModalReturn = card;  // keep the focus-return target through the detail page
+      if (s) openSkillDetail(s);
       return;
     }
+    if (e.target.closest('[data-use]')) { fillBrief(modal); closeSkillModal(); return; }
     if (e.target.closest('[data-close]')) closeSkillModal();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSkillModal(); });
+  if (detail) {
+    detail.addEventListener('click', (e) => {
+      if (e.target.closest('[data-use]')) { fillBrief(detail); closeSkillDetail(); return; }
+      if (e.target.closest('[data-detail-close]')) closeSkillDetail();
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (detail && !detail.hidden) closeSkillDetail();
+    else closeSkillModal();
+  });
 }
 
 /* Example briefs are mode-specific: each landing tab suggests briefs that fit
