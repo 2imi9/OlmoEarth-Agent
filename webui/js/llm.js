@@ -14,6 +14,7 @@ export function wireLlmSubtab() {
   const modelEl = document.getElementById('llmModel');
   const detectBtn = document.getElementById('llmDetect');
   const note = document.getElementById('llmNote');
+  const localNote = document.getElementById('llmLocalNote');
   if (!tabs || !panel) return;
   const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -31,6 +32,7 @@ export function wireLlmSubtab() {
   function syncProvider() {
     tabs.querySelectorAll('.llm-tab').forEach((t) => t.classList.toggle('is-active', t.dataset.backend === backend));
     panel.hidden = backend === 'local';
+    if (localNote) localNote.hidden = backend !== 'local';  // Local: no provider key, just the Studio key
     if (note) note.textContent = DEFAULT_NOTE;
     if (backend === 'local') return;
     const savedKey = lsGet('oe_llm_key_' + backend, '');
