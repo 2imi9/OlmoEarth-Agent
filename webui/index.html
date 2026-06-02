@@ -36,7 +36,7 @@
             <svg viewBox="0 0 24 24" class="caret"><path d="M9 6l6 6-6 6"/></svg>
             <span>Chats</span>
           </button>
-          <div class="side-body" id="chatList" aria-label="Saved chats"><!-- injected by app.js --></div>
+          <div class="side-body" id="chatList" aria-label="Saved chats"><!-- injected by js/chat.js --></div>
         </section>
 
         <!-- Studio projects (collapsible, drill-down tree) -->
@@ -46,7 +46,7 @@
             <span>Projects</span>
             <span class="proj-tag" id="projTag" title="Demo data, not your live Studio account">sample</span>
           </button>
-          <div class="side-body proj-tree" id="projList" aria-label="Your projects"><!-- injected by app.js --></div>
+          <div class="side-body proj-tree" id="projList" aria-label="Your projects"><!-- injected by js/projects.js --></div>
         </section>
       </div>
 
@@ -177,7 +177,7 @@
                 </button>
               </div>
 
-              <div class="examples" id="examples" hidden><!-- chips injected by app.js, per active mode --></div>
+              <div class="examples" id="examples" hidden><!-- chips injected by js/landing.js, per active mode --></div>
             </div>
           </section>
 
@@ -187,7 +187,7 @@
               <h2>Seventeen skills, six stages</h2>
               <p>From label prep to a stakeholder brief. Each skill is a packaged tool the agent composes. <a href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md" target="_blank" rel="noopener">Full catalog →</a></p>
             </div>
-            <div class="cap-grid" id="capGrid"><!-- cards injected by app.js --></div>
+            <div class="cap-grid" id="capGrid"><!-- cards injected by js/skills.js --></div>
           </section>
 
           <!-- Example run (static illustration) -->
@@ -250,7 +250,7 @@
           </footer>
         </div>
 
-        <!-- Active chat: turns injected by app.js -->
+        <!-- Active chat: turns injected by js/chat.js -->
         <div class="chat-thread" id="chatThread" hidden></div>
       </div>
 
@@ -275,9 +275,9 @@
       </div>
     </main>
   </div>
-  <!-- Skill introduction modal + full-spec detail page (populated by app.js) -->
+  <!-- Skill introduction modal + full-spec detail page (populated by js/skills.js) -->
   <div class="modal" id="skillModal" hidden></div>
   <div class="detail" id="skillDetail" hidden></div>
-  <script src="app.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
