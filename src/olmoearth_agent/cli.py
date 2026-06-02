@@ -74,6 +74,7 @@ async def run_brief(
             studio,
             state=ThreadState(),
             skill_index=skill_index,
+            local=True,  # the CLI runs the local model; keep answers within budget
         )
         return await agent.run(brief, max_turns=max_turns)
     finally:

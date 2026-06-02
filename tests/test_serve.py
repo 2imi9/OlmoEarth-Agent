@@ -128,6 +128,35 @@ def test_run_forwards_history() -> None:
     assert roles[-1] == ("user", "follow up")  # new brief is last
 
 
+def test_run_local_flag_tracks_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class _CapAgent:
+        def __init__(self, *_a: Any, **kw: Any) -> None:
+            captured["local"] = kw.get("local")
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            yield {"type": "final", "turn": 1, "content": "ok"}
+
+    monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
+    with TestClient(serve.app) as client:
+        # Default (local) backend -> the shared local model -> brevity clause on.
+        client.post("/api/run", json={"brief": "hi"}, headers={"X-Olmoearth-Key": "k"})
+        assert captured["local"] is True
+        captured.clear()
+        # A hosted backend -> a per-request client -> no brevity clause.
+        client.post(
+            "/api/run",
+            json={"brief": "hi"},
+            headers={
+                "X-Olmoearth-Key": "k",
+                "X-LLM-Backend": "openai",
+                "X-LLM-Key": "sk-x",
+            },
+        )
+    assert captured["local"] is False
+
+
 def test_health_reports_claude_available() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/health")

@@ -429,6 +429,10 @@ async def api_run(request: Request) -> StreamingResponse:
                     studio,
                     state=ThreadState(),
                     skill_index=skill_index,
+                    # The shared app.state.llm is the local model; a per-request
+                    # hosted client (Claude/OpenAI/Gemini) is not. Only the local
+                    # model gets the brevity/budget clause.
+                    local=llm is app.state.llm,
                 )
                 try:
                     async for event in agent.run_stream(
