@@ -28,30 +28,53 @@ const ICONS = {
 };
 
 const SKILLS = [
-  { n: 1,  slug: 'studio-upload',     cat: 'Prep',      icon: 'upload',      desc: 'Labels → a Studio-importable file with MIME, 10K-record, and multi-metric guards.' },
-  { n: 2,  slug: 'rslearn-config',    cat: 'Prep',      icon: 'sliders',     desc: 'Labels → an rslearn dataset.json + Lightning YAML, with a 7-criteria audit.' },
-  { n: 3,  slug: 'studio-job-config', cat: 'Configure', icon: 'wand',        desc: 'Task description → Studio job-wizard answers; 14 presets + a cross-field validator.' },
-  { n: 4,  slug: 'embeddings',        cat: 'Configure', icon: 'branch',      desc: 'Embeddings-vs-fine-tune decision, plus a runnable extraction notebook.' },
-  { n: 5,  slug: 'predict',           cat: 'Run',       icon: 'satellite',   desc: 'The core run loop: find a model, submit, poll, and fetch result tiles.', pink: true },
-  { n: 6,  slug: 'change-detect',     cat: 'Run',       icon: 'trend',       desc: 'A multi-date (≥3) trajectory diff; it refuses a naive 2-date diff.', pink: true },
-  { n: 7,  slug: 'baseline-compare',  cat: 'Run',       icon: 'compare',     desc: 'OlmoEarth vs AlphaEarth, head-to-head on transfer regions.', pink: true },
-  { n: 8,  slug: 'evaluate',          cat: 'Analyze',   icon: 'barcheck',    desc: 'A random-vs-spatial CV inflation check, plus per-class metrics.' },
-  { n: 9,  slug: 'similarity',        cat: 'Analyze',   icon: 'search',      desc: 'Top-K embedding search with a geographic-prior warning.' },
-  { n: 10, slug: 'uncertainty',       cat: 'Analyze',   icon: 'shield',      desc: 'A Meyer-Pebesma Area-of-Applicability out-of-distribution flag.' },
-  { n: 11, slug: 'cloud-mask-audit',  cat: 'Analyze',   icon: 'cloud',       desc: 'CFMask / s2cloudless / Sen2Cor / MAJA disagreement: bad mask vs bad model.' },
-  { n: 12, slug: 'qgis-bridge',       cat: 'Integrate', icon: 'layers',      desc: 'Tile URLs → a QGIS XYZ layer + an OGC SLD style, ready to load.' },
-  { n: 13, slug: 'data-export',       cat: 'Integrate', icon: 'database',    desc: 'Export Studio projects + predictions to JSON, grouped by project or status.' },
-  { n: 14, slug: 'provenance',        cat: 'Report',    icon: 'fingerprint', desc: 'A manifest over every tool call, plus a one-command replay script.' },
-  { n: 15, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.' },
-  { n: 16, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.' },
-  { n: 17, slug: 'automate',          cat: 'Configure', icon: 'wand',        desc: 'One call: auto-decides embeddings vs fine-tune and proposes a config; optional HF introspection.' },
+  { n: 1,  slug: 'studio-upload',     cat: 'Prep',      icon: 'upload',      desc: 'Labels → a Studio-importable file with MIME, 10K-record, and multi-metric guards.', ex: 'I have 3,000 field plots as a GeoJSON - get them into Studio without the Windows MIME error.' },
+  { n: 2,  slug: 'rslearn-config',    cat: 'Prep',      icon: 'sliders',     desc: 'Labels → an rslearn dataset.json + Lightning YAML, with a 7-criteria audit.', ex: 'Turn my labeled crop polygons + HUC-12 watershed AOIs into an rslearn dataset.json + Lightning YAML.' },
+  { n: 3,  slug: 'studio-job-config', cat: 'Configure', icon: 'wand',        desc: 'Task description → Studio job-wizard answers; 14 presets + a cross-field validator.', ex: 'I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard.' },
+  { n: 4,  slug: 'embeddings',        cat: 'Configure', icon: 'branch',      desc: 'Embeddings-vs-fine-tune decision, plus a runnable extraction notebook.', ex: 'I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook.' },
+  { n: 5,  slug: 'predict',           cat: 'Run',       icon: 'satellite',   desc: 'The core run loop: find a model, submit, poll, and fetch result tiles.', pink: true, ex: 'Run a flood-extent prediction over this AOI for last month and return the result tiles.' },
+  { n: 6,  slug: 'change-detect',     cat: 'Run',       icon: 'trend',       desc: 'A multi-date (≥3) trajectory diff; it refuses a naive 2-date diff.', pink: true, ex: 'Did forest cover decline across these four quarterly snapshots, or is it just noise?' },
+  { n: 7,  slug: 'baseline-compare',  cat: 'Run',       icon: 'compare',     desc: 'OlmoEarth vs AlphaEarth, head-to-head on transfer regions.', pink: true, ex: 'Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles.' },
+  { n: 8,  slug: 'evaluate',          cat: 'Analyze',   icon: 'barcheck',    desc: 'A random-vs-spatial CV inflation check, plus per-class metrics.', ex: 'My model reports 92% accuracy - re-check it with spatial cross-validation, not random splits.' },
+  { n: 9,  slug: 'similarity',        cat: 'Analyze',   icon: 'search',      desc: 'Top-K embedding search with a geographic-prior warning.', ex: 'Find the 20 patches most similar to this illegal-mining site across the basin.' },
+  { n: 10, slug: 'uncertainty',       cat: 'Analyze',   icon: 'shield',      desc: 'A Meyer-Pebesma Area-of-Applicability out-of-distribution flag.', ex: 'Flag which parts of my prediction AOI fall outside the training distribution.' },
+  { n: 11, slug: 'cloud-mask-audit',  cat: 'Analyze',   icon: 'cloud',       desc: 'CFMask / s2cloudless / Sen2Cor / MAJA disagreement: bad mask vs bad model.', ex: 'My prediction looks wrong over this scene - bad cloud mask or bad model?' },
+  { n: 12, slug: 'qgis-bridge',       cat: 'Integrate', icon: 'layers',      desc: 'Tile URLs → a QGIS XYZ layer + an OGC SLD style, ready to load.', ex: 'Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop.' },
+  { n: 13, slug: 'data-export',       cat: 'Integrate', icon: 'database',    desc: 'Export Studio projects + predictions to JSON, grouped by project or status.', ex: 'Export all my Studio projects and their predictions to JSON, grouped by status.' },
+  { n: 14, slug: 'provenance',        cat: 'Report',    icon: 'fingerprint', desc: 'A manifest over every tool call, plus a one-command replay script.', ex: 'Produce a replay script + manifest so an auditor can reproduce this prediction.' },
+  { n: 15, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.', ex: 'Write a stakeholder brief for this karst-vulnerability result with the live map tiles.' },
+  { n: 16, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.', ex: 'Find and cite the paper behind the Area-of-Applicability method I used.' },
+  { n: 17, slug: 'automate',          cat: 'Configure', icon: 'wand',        desc: 'One call: auto-decides embeddings vs fine-tune and proposes a config; optional HF introspection.', ex: 'I have 200 labels and a T4 - should I fine-tune or use embeddings? Set it up.' },
 ];
+
+// Fuller "what it does + why" per skill, shown in the pop-out. The card shows
+// the one-line desc above; this is the spec summary. Full academic spec: SKILLS.md.
+const SKILL_SPECS = {
+  1: `Enforces the sample_category schema, shards at 10K records, works around the Windows .geojson MIME rejection, and splits multi-metric files. Onboarding friction is the most repeated dropoff for case providers, and Studio uploads fail silently without these guards.`,
+  2: `Writes an rslearn dataset.json (single-layer 3-bandset or per-month production layout) plus a Lightning YAML, handles the es_label rename trap and watershed AOIs (NLDI / HUC-12), and runs a 7-criteria audit before a multi-hour training run fails silently.`,
+  3: `Maps a task description to Studio wizard answers - output type, model size, time-frame mode, S2-vs-+S1 sources, patch size - from 14 verified presets, with a cross-field validator that catches traps (detection + 320m patch, embeddings + single-moment) before you submit.`,
+  4: `The embeddings-vs-fine-tune decision grounded in the OlmoEarth accuracy / time / VRAM table, plus a parameterized notebook that extracts Nano/Tiny/Base/Large embeddings and trains kNN + linear-probe heads. This is the guidance version - you run the notebook. For one-call automation, see #17.`,
+  5: `The core run primitive: discover a reusable model_id, submit a prediction, poll with backoff, then fetch results - XYZ raster tiles, MVT vectors, pixel values, or features by class. Async-by-reference, and cost-guarded on fine-tunes.`,
+  6: `Turns a dated series of per-date layer summaries into trajectory metrics: step deltas, net change, the largest-change interval, a reversal count, and a trend label. Refuses fewer than 3 dates, because a 2-date diff cannot tell a steady trend from a flood that peaked then receded.`,
+  7: `Runs OlmoEarth vs a baseline foundation model head-to-head on shared ground truth: a per-metric table (accuracy / macro-F1 / mean-IoU) with deltas and an overall winner, plus a cell-by-cell difference raster, to substantiate a transfer-region claim honestly.`,
+  8: `Compares test-to-train nearest-neighbour distance under random vs spatial-block CV and reports the accuracy-inflation ratio and risk band (Ploton 2020 / Meyer-Pebesma 2021), plus per-class precision / recall / F1 / IoU. The guard against random splits overstating accuracy on clustered data.`,
+  9: `Returns the top-K embedding vectors most similar to a query (cosine or Euclidean kNN), with a geographic-prior warning when the matches cluster near the query - because then "similarity" may reflect location (same biome) rather than genuine feature resemblance.`,
+  10: `Implements the Meyer-Pebesma Area of Applicability: each point's dissimilarity index vs the training set, flagging out-of-distribution points beyond the training data's own outlier threshold. The point: softmax confidence is not OOD detection - a model can be confidently wrong off-distribution.`,
+  11: `Summarizes where several aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA) agree vs disagree, then returns a bad-mask-vs-bad-model verdict for a model-error region. Surfaces disagreement rather than one ground-truth mask, because algorithms diverge on thin, semi-transparent cloud.`,
+  12: `Resolves a prediction's relative tile template into an absolute QGIS XYZ URL and builds a well-formed OGC SLD color-ramp style, with Bearer-auth load instructions. Closes the hot-cloud-to-cold-desktop loop for the QGIS audience without embedding your key.`,
+  13: `Exports your Studio projects and their predictions to JSON, grouped by project or status and curated to ids / names / statuses / times (no raw geometry). The self-contained alternative to wiring third-party data MCPs.`,
+  14: `Records one manifest entry per tool call - tool name, sha256 of args, an id-only result summary, never raw geometry - and emits an auditable manifest plus a runnable replay skeleton. Serves EUDR / REDD+ MRV audit needs and the EO reproducibility gap.`,
+  15: `Assembles a stakeholder Markdown report from prediction results and the run's provenance, with a freshness gate that withholds and strikes through tiles older than a configurable window - so a disaster-response brief never shows stale imagery.`,
+  16: `Unified arXiv + OpenAlex search and DOI / arXiv-id resolution, deduped across sources and key-free (OpenAlex polite pool). Grounds EO citations in real papers instead of world-knowledge or hallucinated links, under a no-fabrication, cite-the-real-URL contract.`,
+  17: `One call that auto-decides embeddings vs fine-tune (porting #4's decision table) and proposes a config - model size, classifier head, embeddings-notebook command, fine-tune schedule, and a Studio job-config hand-off - and can read a Hugging Face dataset's rows + classes to fill its inputs. Reports what is missing rather than guessing.`,
+};
 
 function renderCards() {
   const grid = document.getElementById('capGrid');
   if (!grid) return;
+  // Each card is a button: click (or Enter/Space) pops out an intro modal.
   grid.innerHTML = SKILLS.map((s) => `
-    <article class="card${s.pink ? ' is-pink' : ''}">
+    <article class="card${s.pink ? ' is-pink' : ''}" role="button" tabindex="0" aria-haspopup="dialog" data-n="${s.n}">
       <div class="card-top">
         <span class="card-ic"><svg viewBox="0 0 24 24" class="ic">${ICONS[s.icon] || ''}</svg></span>
         <span class="card-num">#${s.n}</span>
@@ -59,7 +82,87 @@ function renderCards() {
       <div class="card-cat">${s.cat}</div>
       <div class="card-name">olmoearth-${s.slug}</div>
       <p class="card-desc">${s.desc}</p>
+      <div class="card-hint">
+        <span>Example brief</span>
+        <svg viewBox="0 0 24 24" class="ic card-chev"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
     </article>`).join('');
+}
+
+/* Clickable skill cards pop out an introduction modal (the grid stays uniform
+   and in order). "Use this brief" drops the example into the composer. */
+let _skillModalReturn = null;
+
+function openSkillModal(s) {
+  const modal = document.getElementById('skillModal');
+  if (!modal) return;
+  modal.innerHTML = `
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card${s.pink ? ' is-pink' : ''}" role="dialog" aria-modal="true" aria-labelledby="skillModalName">
+      <button class="modal-close" type="button" aria-label="Close" data-close>&times;</button>
+      <div class="modal-top">
+        <span class="card-ic"><svg viewBox="0 0 24 24" class="ic">${ICONS[s.icon] || ''}</svg></span>
+        <span class="modal-num">#${s.n}</span>
+      </div>
+      <div class="card-cat">${s.cat}</div>
+      <h3 class="modal-name" id="skillModalName">olmoearth-${s.slug}</h3>
+      <p class="modal-desc">${SKILL_SPECS[s.n] || s.desc}</p>
+      <div class="modal-ex-label">Example brief</div>
+      <p class="card-ex">${escapeHtml(s.ex)}</p>
+      <div class="modal-actions">
+        <button class="card-use" type="button" data-use>Use this brief
+          <svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+        <a class="modal-link" href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md#${s.n}-olmoearth-${s.slug}" target="_blank" rel="noopener">Full spec →</a>
+      </div>
+    </div>`;
+  modal.hidden = false;
+  const closeBtn = modal.querySelector('.modal-close');
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeSkillModal() {
+  const modal = document.getElementById('skillModal');
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  modal.innerHTML = '';
+  if (_skillModalReturn) { _skillModalReturn.focus(); _skillModalReturn = null; }
+}
+
+function wireCards() {
+  const grid = document.getElementById('capGrid');
+  const modal = document.getElementById('skillModal');
+  if (!grid || !modal) return;
+  const openFor = (card) => {
+    const s = SKILLS.find((x) => x.n === parseInt(card.dataset.n, 10));
+    if (!s) return;
+    _skillModalReturn = card;
+    openSkillModal(s);
+  };
+  grid.addEventListener('click', (e) => {
+    const card = e.target.closest('.card');
+    if (card) openFor(card);
+  });
+  grid.addEventListener('keydown', (e) => {
+    const card = e.target.closest('.card');
+    if (card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openFor(card); }
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target.closest('[data-use]')) {
+      const ex = modal.querySelector('.card-ex');
+      const input = document.getElementById('promptInput');
+      if (ex && input) { input.value = ex.textContent.trim(); autosize(input); }
+      closeSkillModal();
+      if (input) {
+        input.focus();
+        input.classList.add('flash');
+        setTimeout(() => input.classList.remove('flash'), 700);
+      }
+      return;
+    }
+    if (e.target.closest('[data-close]')) closeSkillModal();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSkillModal(); });
 }
 
 /* Example briefs are mode-specific: each landing tab suggests briefs that fit
@@ -1258,6 +1361,7 @@ async function detectBridge() {
 
 document.addEventListener('DOMContentLoaded', () => {
   renderCards();
+  wireCards();
   wireNewChat();
   wireTabs();
   wireExamples();
