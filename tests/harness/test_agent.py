@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from olmoearth_agent.harness.agent import LeadAgent
+from olmoearth_agent.harness.agent import LOCAL_BUDGET_CLAUSE, LeadAgent
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
 
@@ -82,6 +82,19 @@ async def test_agent_answers_without_tools() -> None:
     assert result.final_content == "hello"
     assert result.turns == 1
     assert result.tool_calls == []
+
+
+def test_local_flag_appends_budget_clause() -> None:
+    reg = _registry_with_echo()
+    local_agent = LeadAgent(
+        _FakeLLM([]), reg, studio=None, local=True  # type: ignore[arg-type]
+    )
+    cloud_agent = LeadAgent(
+        _FakeLLM([]), reg, studio=None, local=False  # type: ignore[arg-type]
+    )
+    assert LOCAL_BUDGET_CLAUSE in local_agent.system_prompt
+    assert "limited output budget" in local_agent.system_prompt
+    assert LOCAL_BUDGET_CLAUSE not in cloud_agent.system_prompt
 
 
 @pytest.mark.asyncio

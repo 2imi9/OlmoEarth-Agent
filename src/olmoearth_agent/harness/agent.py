@@ -41,6 +41,20 @@ DEFAULT_SYSTEM_PROMPT = (
     "(strong / moderate / weak / unclear)."
 )
 
+# Appended to the system prompt when the run is on the local model (small,
+# limited output budget, and less reliable at following length/style rules than
+# a hosted model). Cloud backends omit it - they can afford longer answers and
+# obey "be concise". Restates the no-emoji rule last, where recency helps a
+# weak model honor it.
+LOCAL_BUDGET_CLAUSE = (
+    "\n\nIMPORTANT - you are running on a small local model with a limited "
+    "output budget, so a long answer gets cut off mid-sentence. Keep every "
+    "reply short: a 2-3 sentence summary plus at most a 3-5 row table or a few "
+    "bullets. Report only the top few items and offer to expand if the user "
+    "wants more; never dump exhaustive lists or large tables. Plain text only - "
+    "no emoji or decorative pictographs (use the plain markers above)."
+)
+
 
 @dataclass
 class AgentResult:
@@ -76,6 +90,7 @@ class LeadAgent:
         state: ThreadState | None = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         skill_index: str = "",
+        local: bool = False,
     ) -> None:
         self.llm = llm
         self.registry = registry
@@ -89,6 +104,10 @@ class LeadAgent:
                 "\n\nAvailable instruction skills (call olmoearth_load_skill "
                 "with the name to get full steps):\n" + skill_index
             )
+        if local:
+            # The local model needs an explicit output-budget + brevity reminder
+            # (a hosted model does not), or long answers truncate mid-sentence.
+            self.system_prompt += LOCAL_BUDGET_CLAUSE
 
     async def run_stream(
         self,
