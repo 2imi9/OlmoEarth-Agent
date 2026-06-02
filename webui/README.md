@@ -20,8 +20,8 @@ client-side (localStorage), same as the key.
 the **chat** stream a Markdown answer, ask a follow-up, expand "Reasoning & tools".
 The full ~25 s version is the [MP4](demo/olmoearth-agent-demo.mp4); regenerate both
 with [`demo/record_demo.py`](demo/record_demo.py). Demo runs are scripted (see
-[`app.js`](app.js) `runDemo`); served by the bridge, the same UI streams the real
-`LeadAgent` over SSE.*
+[`js/run.js`](js/run.js) `runDemo`); served by the bridge, the same UI streams the
+real `LeadAgent` over SSE.*
 
 ![desktop](screenshots/desktop.png)
 
@@ -41,7 +41,7 @@ Or just open `webui/index.html` in a browser.
 |---|---|
 | `index.html` | markup: sidebar (chats + project tree), chat thread, pinned composer, key popover |
 | `styles.css` | the design system (tokens at `:root`), no preprocessor |
-| `app.js`     | chat store + saved history, demo/live run streaming, project tree, Markdown rendering, settings menu |
+| `js/`        | the front-end as native **ES modules** (no build step), split by concern: `main.js` (entry + app-shell wiring), `api.js` (every bridge call + request credentials), `store.js` + `util.js`, and feature modules `skills.js`, `chat.js`, `run.js`, `markdown.js`, `projects.js`, `attach.js`, `llm.js`, `landing.js`. Loaded via `<script type="module" src="js/main.js">`. |
 | `assets/OlmoEarth-logo.png` | the OlmoEarth wordmark (the sidebar crops it to just the symbol) |
 | `screenshots/` | reference renders (desktop, transcript, mobile) |
 
