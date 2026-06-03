@@ -1,4 +1,4 @@
-/* The 17-skill capability grid + the pop-out introduction modal + the in-app
+/* The 18-skill capability grid + the pop-out introduction modal + the in-app
    full-spec detail page. Self-contained: clicking a card opens the modal;
    "Full spec" opens the detail page; "Use this brief" drops the example into
    the composer. */
@@ -21,6 +21,7 @@ const ICONS = {
   database:    '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   fingerprint: '<path d="M5 11a7 7 0 0114 0M8 12a4 4 0 018 0v2M12 13v5M8 15v3M16 15v2"/>',
   docspark:    '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
+  scatter:     '<circle cx="6" cy="7" r="1.4"/><circle cx="17" cy="6" r="1.4"/><circle cx="9" cy="16" r="1.4"/><circle cx="18" cy="15" r="1.4"/><circle cx="12" cy="11" r="2.4"/><path d="M3 20h18"/>',
 };
 
 const SKILLS = [
@@ -41,6 +42,7 @@ const SKILLS = [
   { n: 15, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.', ex: 'Write a stakeholder brief for this karst-vulnerability result with the live map tiles.' },
   { n: 16, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.', ex: 'Find and cite the paper behind the Area-of-Applicability method I used.' },
   { n: 17, slug: 'automate',          cat: 'Configure', icon: 'wand',        desc: 'One call: auto-decides embeddings vs fine-tune and proposes a config; optional HF introspection.', ex: 'I have 200 labels and a T4 - should I fine-tune or use embeddings? Set it up.' },
+  { n: 18, slug: 'negative-sampler',  cat: 'Prep',      icon: 'scatter',     desc: 'Presence-only labels into a trainable set: buffered, thinned (optionally embedding-dissimilar) background class.', ex: 'My karst-site labels are presence-only and the audit fails for a missing negative class - generate background samples.' },
 ];
 
 // Fuller "what it does + why" per skill, shown in the pop-out. The card shows
@@ -63,6 +65,7 @@ const SKILL_SPECS = {
   15: `Assembles a stakeholder Markdown report from prediction results and the run's provenance, with a freshness gate that withholds and strikes through tiles older than a configurable window - so a disaster-response brief never shows stale imagery.`,
   16: `Unified arXiv + OpenAlex search and DOI / arXiv-id resolution, deduped across sources and key-free (OpenAlex polite pool). Grounds EO citations in real papers instead of world-knowledge or hallucinated links, under a no-fabrication, cite-the-real-URL contract.`,
   17: `One call that auto-decides embeddings vs fine-tune (porting #4's decision table) and proposes a config - model size, classifier head, embeddings-notebook command, fine-tune schedule, and a Studio job-config hand-off - and can read a Hugging Face dataset's rows + classes to fill its inputs. Reports what is missing rather than guessing.`,
+  18: `Generates the missing negative/background class for a presence-only label set so it becomes trainable. Drops candidate points within a buffer of any positive, keeps the accepted negatives spatially thinned, and - when the inputs carry embeddings - ranks candidates by environmental dissimilarity to the positives (the inverse of #9). Writes a combined GeoJSON that round-trips straight back through the data-prep audit, converting its hard FAIL on a missing negative class into a PASS. Deterministic, no GDAL; surfaces a placement shortfall as a warning rather than under-filling silently.`,
 };
 
 // Tools each skill composes, shown on the full-spec detail page. From PLAN.md section 1 + SKILLS.md.
@@ -84,6 +87,7 @@ const SKILL_TOOLS = {
   15: `olmoearth_case_narrative · build_narrative (reads provenance + results)`,
   16: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
   17: `olmoearth_automate · analysis.automate decide() + propose_config + fetch_hf_dataset_profile (reuses #4's table)`,
+  18: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
 };
 
 export function renderCards() {

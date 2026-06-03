@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 17 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 18 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 17 skills implemented (v1.0 shipped #1–#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0). See `CHANGELOG.md`.
+**Status:** 18 skills implemented (v1.0 shipped #1–#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0; #18 `olmoearth-negative-sampler` added post-1.1). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -43,6 +43,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 | 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
 | 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | **One call**: auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HF-dataset introspection. |
+| 18 | Prep | [`olmoearth-negative-sampler`](#18-olmoearth-negative-sampler) | Presence-only labels → trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
 
 ### Example briefs
 
@@ -67,6 +68,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 | 15 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
 | 16 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
 | 17 | `olmoearth-automate` | "I have 200 labels and a T4 — should I fine-tune or use embeddings? Set it up." |
+| 18 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class — generate background samples." |
 
 ---
 
@@ -369,11 +371,26 @@ The original spec follows for reference:
 
 ---
 
+### 18. `olmoearth-negative-sampler`
+
+**In:** a presence-only labels GeoJSON path (`positives_path`); optional `candidates_path`, `negative_label`, `n_negatives`, `exclusion_km`, `min_separation_km`.
+**Out:** a combined GeoJSON (positives + generated negatives) written to `out_path`, plus a counts/ranking summary (no raw coordinates in chat).
+
+**What.** Generates the missing negative/background class for a presence-only label set as **buffered, spatially-thinned pseudo-absences** (Barbet-Massin et al. 2012): candidate background points within `exclusion_km` of any positive are dropped, accepted negatives are kept `min_separation_km` apart, and — when the inputs carry per-feature `properties.embedding` vectors — candidates are ranked by environmental *dissimilarity* to the positive centroid (the inverse of skill #9's similarity search). Defaults to a balanced 1:1 set and writes the negatives under the same schema field the positives use (`sample_category` / `es_label` / `oe_labels.category`). Deterministic; no GDAL.
+
+**Why.** A presence-only set is not trainable — a classifier with no counter-examples predicts the positive class everywhere (the "false positives everywhere" failure, pitfall #8 in `olmoearth-data-prep`). That skill's `audit.py` *detects* the gap (it hard-FAILs `check_negative_class`) but its `--negative-class auto` was deferred, so the agent could previously only report the dataset as unusable and stop. This skill converts that dead-end into a finished artifact: the combined file round-trips straight back through the data-prep audit and clears the negative-class check. **Honest by construction:** the negative label must be one the audit recognizes, and a placement shortfall (buffer / thinning / extent too tight) is surfaced as a warning rather than silently under-filled.
+
+**Tools composed.**
+- `olmoearth_negative_sampler` (file → file; counts + path returned).
+- Logic in `analysis/negative_sampler.py` (buffer + farthest-point/embedding-dissimilarity selection, reusing `evaluation.spatial_cv.haversine_km`); composes the data-prep audit's negative-class contract.
+
+---
+
 ## Roadmap reference
 
 Implementation order tracks `PLAN.md` §6. First skill to ship is **#5 `olmoearth-predict`** (the foundation that #6, #7, #9, #10 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 17 (prioritized, with a build-first pick) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md).
+Candidate skills beyond the current 18 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #18.
 
 ## Adding a skill
 

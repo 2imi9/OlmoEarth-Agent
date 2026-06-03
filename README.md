@@ -5,7 +5,7 @@
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
-[![Skills](https://img.shields.io/badge/skills-17-F0529C.svg)](SKILLS.md)
+[![Skills](https://img.shields.io/badge/skills-18-F0529C.svg)](SKILLS.md)
 [![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
@@ -62,10 +62,10 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules — trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call — are enforced by the harness, not the model.
 
-The capability set ships as **17 skills**, grouped by EO-workflow stage.
+The capability set ships as **18 skills**, grouped by EO-workflow stage.
 
 <details>
-<summary><strong>The 17 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
+<summary><strong>The 18 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
@@ -86,6 +86,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 15 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
 | 16 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations | **Report** |
 | 17 | `olmoearth-automate` | **One call** that auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HuggingFace-dataset introspection | **Configure** |
+| 18 | `olmoearth-negative-sampler` | Presence-only labels → trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
 
 </details>
 
@@ -101,7 +102,7 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 | **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
 | **Harness** | A compact catalog of function-call tools + an **opt-in** `system:python` subprocess for light glue, with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
-| **Skills** | 17-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
+| **Skills** | 18-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
 
 </details>
@@ -109,7 +110,7 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 ## Docs & links
 
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
-- [**SKILLS.md**](SKILLS.md): the full 17-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**SKILLS.md**](SKILLS.md): the full 18-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
 - [**docs/SHOWCASE.md**](docs/SHOWCASE.md): every skill run live, with real outputs
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) · [**CHANGELOG.md**](CHANGELOG.md) · [**AGENTS.md**](AGENTS.md)

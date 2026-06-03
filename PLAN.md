@@ -2,9 +2,9 @@
 
 A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; dispatches them as function-call tools, with an opt-in `system:python` subprocess for light glue code (not a preloaded in-process interpreter); and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
 
-**Status:** v1.1.0, 2026-05-31. All 17 skills shipped (v1.0 shipped #1-#15; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0); runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md).
+**Status:** v1.1.0, 2026-05-31. All 18 skills implemented (v1.0 shipped #1-#15; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` in v1.1.0; #18 `olmoearth-negative-sampler` added post-1.1); runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md).
 **Scope:** Text-only LLM with function calling. Local default: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`, via llama.cpp); the bridge also accepts a hosted Claude / ChatGPT / Gemini backend (bring-your-own-key) selected at runtime. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them.
-**Skill catalog:** [`SKILLS.md`](SKILLS.md): 17 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
+**Skill catalog:** [`SKILLS.md`](SKILLS.md): 18 skills (Prep / Configure / Run / Analyze / Integrate / Report). The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
 **Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0: fields and enums may change without notice.
 
@@ -309,7 +309,7 @@ The tool catalog above is the contract. Everything in this section is implementa
 |---|---|
 | LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) 4-bit `UD-IQ4_XS`: text-only with function calling (model has a native vision encoder; we don't use it in v0.4). Served via **llama.cpp** (`ghcr.io/ggml-org/llama.cpp:server-cuda -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS --jinja -ngl 999 -c 8192 --no-mmap`); see [`docs/serving.md`](docs/serving.md) and [`docs/CANON.md`](docs/CANON.md). Agent sessions set `chat_template_kwargs.preserve_thinking=True`. NVFP4 dropped (doesn't fit 24 GB; CANON C4/C7). |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow): LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
-| Skills | 17 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1-#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills), which the agent vendors rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
+| Skills | 18 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). Upstream canonical home for skills #1-#4: [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills), which the agent vendors rather than re-implementing. Trigger-heavy `SKILL.md` frontmatter + signed `skill-card.md`. |
 | Tooling protocol | MCP for outbound system access (Studio, Planetary Computer, NLDI, Earthdata, HF Hub, GEE, OSM, USGS Water, NOAA, last four added by skill #13). |
 | Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. Provenance manifest (rule §3.13) is the audit substrate. |
 
@@ -398,7 +398,7 @@ Skills-first. Each P0-P3 phase is a single PR; each Skill-* row is one PR (per [
 |---|---|---|---|
 | **P0 - Scaffolding** | done - [PR #2](https://github.com/2imi9/OlmoEarth-Agent/pull/2) | `pyproject.toml`, `.pre-commit-config.yaml`, `CHANGELOG.md`, `.env.example`, empty `src/olmoearth_agent/` package | Scaffold lands; lint/test/type-check pipeline runs |
 | **P1 - Studio API gap closure** | done - [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
-| **P2 - Skills/scope rewrite** | done | PLAN.md v0.4 + SKILLS.md (17-skill catalog) | Multimodal parked; skills are the unit of progress |
+| **P2 - Skills/scope rewrite** | done | PLAN.md v0.4 + SKILLS.md (18-skill catalog) | Multimodal parked; skills are the unit of progress |
 | **P3 - LLM serving + harness MVP** | done - PRs #5/#6 | 4-bit GGUF served via llama.cpp (`docs/serving.md`) with function calling + `preserve_thinking=True`; DeerFlow-style lead-agent + tool registry + provenance middleware (rule §3.13) | A function call round-trips through the LLM, verified live |
 | **Skill-5 - `olmoearth-predict`** | done - PRs #8/#11 | search / submit / poll / fetch-results | Verified live against the Studio API |
 | **Skill-8 - `olmoearth-evaluate`** | done - PR #10 | Spatial-block CV inflation diagnostic + metrics (NNDM-LOO follows) | Reproduces Ploton-2020 inflation on clustered data |
@@ -406,7 +406,7 @@ Skills-first. Each P0-P3 phase is a single PR; each Skill-* row is one PR (per [
 | **Skills #1-#4** | vendored - PR #9 | submodule `vendor/olmoearth-skills` + SkillLoader | Agent loads a SKILL.md via progressive disclosure |
 | **Skills #6, #7, #9, #10, #11, #12, #13, #15** | done - PRs #16-#21 | One PR per skill | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
 
-P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 17 skills are now shipped** (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is live-smoke verification on real data.
+P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 18 skills are now shipped** (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is live-smoke verification on real data.
 
 ---
 

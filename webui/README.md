@@ -3,7 +3,7 @@
 A front-end shell for the OlmoEarth Agent, styled after [Ai2 **Asta**](https://asta.allen.ai/)
 (dark-teal canvas, cream text, Manrope, a centered prompt hero, a left sidebar)
 and rebranded with **OlmoEarth** elements (the pink Ai2/OlmoEarth logo, the
-EO/Studio content, the 17-skill catalog).
+EO/Studio content, the 18-skill catalog).
 
 By default it's a **static mock** (no build step, no framework, no tracking),
 so the chat, the projects tree, and the "what a run looks like" transcript are
