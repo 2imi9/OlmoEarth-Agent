@@ -9,6 +9,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Grounded verify-and-retry infrastructure** (inference-time self-check, per
+  `docs/self-improvement-proposal.md`): an optional `verify` predicate on
+  `RegisteredTool`, a `reflections` list on `ThreadState`, and a capped
+  verify-and-retry gate in `LeadAgent.run_stream` (`max_verify_retries`,
+  default 1). A **no-op for every existing tool** (all `verify=None`), so no
+  behaviour changes; a unit test drives a synthetic verifier through the gate.
+  Ships with a deterministic `automate` verifier (`verify_automate_result`) and
+  a reproducible ablation (`evals/skillopt/scripts/ablate_verify_automate.py`).
+  The verifier is **left un-wired**: its held-out test-split oracle lift is 0
+  (the mechanism is real on harder briefs -- train +4 -- but the test split
+  does not exercise it), so per the ship-only-if-it-lifts rule the gated
+  behaviour is not enabled (see `docs/self-improvement-proposal.md` §3.1) (#76).
+
 ## [1.1.0] - 2026-05-31
 
 Post-1.0 checkpoint: two new skills (catalog 15 -> 17), the `make serve` cache

@@ -25,5 +25,9 @@ class ThreadState:
     todos: list[str] = field(default_factory=list)
     prediction_ids: list[str] = field(default_factory=list)
     turn_count: int = 0
+    #: One-line natural-language reflections from the grounded verify-and-retry
+    #: gate (Reflexion-style): each is a verifier's reason for rejecting a tool
+    #: result, fed back to the model before a single retry. Append-only.
+    reflections: list[str] = field(default_factory=list)
     #: Append-only provenance log (rule §3.13); one entry per tool call.
     provenance: ProvenanceLog = field(default_factory=ProvenanceLog)

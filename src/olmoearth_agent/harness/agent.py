@@ -67,6 +67,16 @@ class AgentResult:
     state: ThreadState | None = None
 
 
+def _reflection_note(failures: list[tuple[str, str]]) -> str:
+    """Build the one-line reflection fed back after grounded verify failures."""
+    detail = "; ".join(f"{name}: {reason}" for name, reason in failures)
+    return (
+        f"Automatic verification flagged the last tool result(s) -- {detail}. "
+        "Re-read the brief for any inputs you may have omitted, then call the "
+        "tool again with corrected arguments."
+    )
+
+
 class LeadAgent:
     """Drives a natural-language brief to completion via tool calls.
 
@@ -115,6 +125,7 @@ class LeadAgent:
         *,
         max_turns: int = 8,
         history: list[Message] | None = None,
+        max_verify_retries: int = 1,
     ) -> AsyncIterator[dict[str, Any]]:
         """Run the agent loop, yielding one event per step as it happens.
 
@@ -125,6 +136,8 @@ class LeadAgent:
         - ``thinking``    : the model's reasoning for a turn (``text``).
         - ``tool_call``   : a dispatched call (``name``, ``arguments``, ``id``).
         - ``tool_result`` : its outcome (``name``, ``ok``, ``result``, ``id``).
+        - ``verify``      : a grounded verifier rejected a result (``name``,
+          ``reason``); a one-line reflection is fed back for one retry.
         - ``final``       : the plain-text answer (``content``).
         - ``max_turns``   : the cap was hit with no answer (``turns``).
 
@@ -138,12 +151,20 @@ class LeadAgent:
             Prior conversation turns (user/assistant messages) to seed before
             the new ``brief``, so multi-turn follow-ups have context. Inserted
             between the system prompt and the new user message.
+        max_verify_retries
+            Per-run budget for grounded verify-and-retry. When a registered
+            tool has a ``verify`` predicate and it rejects the tool's result, a
+            one-line reflection is appended and the model gets another turn to
+            correct itself, up to this many times per run (default 1). A no-op
+            for tools without a ``verify`` (every tool today), so it never
+            changes existing behaviour.
         """
         messages: list[Message] = [Message(role="system", content=self.system_prompt)]
         if history:
             messages.extend(history)
         messages.append(Message(role="user", content=brief))
         ctx = ToolContext(studio=self.studio, state=self.state)
+        verify_retries_remaining = max_verify_retries
 
         for turn in range(1, max_turns + 1):
             self.state.turn_count = turn
@@ -163,6 +184,7 @@ class LeadAgent:
                     tool_calls=response.tool_calls,
                 )
             )
+            verify_failures: list[tuple[str, str]] = []
             for call in response.tool_calls:
                 yield {
                     "type": "tool_call",
@@ -191,8 +213,52 @@ class LeadAgent:
                         content=json.dumps(result),
                     )
                 )
+                # Grounded verify-and-retry: run the tool's verifier on its
+                # result. Collect failures here and inject one reflection after
+                # the whole batch, so the assistant's tool_calls stay paired
+                # with their tool messages (OpenAI requires every id be
+                # answered before any other role appears).
+                reason = self._verify_result(call.name, result)
+                if reason is not None:
+                    verify_failures.append((call.name, reason))
+                    yield {
+                        "type": "verify",
+                        "turn": turn,
+                        "id": call.id,
+                        "name": call.name,
+                        "ok": False,
+                        "reason": reason,
+                    }
+
+            if verify_failures and verify_retries_remaining > 0:
+                verify_retries_remaining -= 1
+                reflection = _reflection_note(verify_failures)
+                self.state.reflections.append(reflection)
+                messages.append(Message(role="user", content=reflection))
 
         yield {"type": "max_turns", "turns": max_turns}
+
+    def _verify_result(self, name: str, result: dict[str, Any]) -> str | None:
+        """Run a tool's verifier on its result; return a failure reason or None.
+
+        Only fires for a successful (``ok: True``) result of a tool that
+        registered a ``verify`` predicate. Verifier exceptions fail *open* (a
+        buggy verifier must not break the agent loop), matching dispatch's
+        never-raise contract.
+        """
+        if not result.get("ok"):
+            return None
+        tool = self.registry.get(name)
+        if tool is None or tool.verify is None:
+            return None
+        payload = result.get("result")
+        if not isinstance(payload, dict):
+            return None  # verifiers operate on a dict result payload
+        try:
+            ok, reason = tool.verify(payload)
+        except Exception:  # noqa: BLE001 - a broken verifier must not crash the run
+            return None
+        return None if ok else (reason or "verification failed")
 
     async def run(
         self,
@@ -200,6 +266,7 @@ class LeadAgent:
         *,
         max_turns: int = 8,
         history: list[Message] | None = None,
+        max_verify_retries: int = 1,
     ) -> AgentResult:
         """Run the agent loop until it answers or hits ``max_turns``.
 
@@ -227,7 +294,12 @@ class LeadAgent:
         calls: list[tuple[str, bool]] = []
         hit_max_turns = False
 
-        async for event in self.run_stream(brief, max_turns=max_turns, history=history):
+        async for event in self.run_stream(
+            brief,
+            max_turns=max_turns,
+            history=history,
+            max_verify_retries=max_verify_retries,
+        ):
             kind = event["type"]
             if kind == "tool_result":
                 calls.append((event["name"], event["ok"]))

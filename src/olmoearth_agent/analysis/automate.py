@@ -385,3 +385,47 @@ async def automate(
         "ask_for": rec.get("ask_for", []),
         "warnings": warnings,
     }
+
+
+def verify_automate_result(result: dict[str, Any]) -> tuple[bool, str]:
+    """Grounded verifier for an :func:`automate` result (no LLM).
+
+    Checks the result against the *canonical* :func:`decide` table -- the same
+    oracle the tool uses -- rather than the model's own judgement, per the
+    honest-results rule (``docs/self-improvement-proposal.md`` 1.1). Two checks:
+
+    1. **Consistency** -- the returned ``decision`` and ``config.model_size``
+       match :func:`decide` recomputed from the echoed ``inputs``. This catches
+       a tool/oracle divergence (a semantically wrong but non-throwing payload
+       that ``dispatch`` would still wrap as ``ok: True``).
+    2. **Completeness** -- the recommendation did not fall back for want of
+       inputs (``ask_for`` non-empty). When it did, the reflection cues the
+       model to re-extract any values the brief actually states before retrying.
+
+    Returns ``(ok, reason)``; ``reason`` is empty on success.
+    """
+    inputs = result.get("inputs") or {}
+    expected = decide(
+        inputs.get("num_samples"),
+        inputs.get("num_classes"),
+        inputs.get("compute"),
+        inputs.get("goal"),
+    )
+    got_decision = str(result.get("decision") or "")
+    got_model = str((result.get("config") or {}).get("model_size") or "")
+    if got_decision != expected["decision"] or got_model != expected["model"]:
+        return (
+            False,
+            f"decision/model ({got_decision}/{got_model}) is inconsistent with the "
+            f"decision table for inputs {inputs} "
+            f"(expected {expected['decision']}/{expected['model']})",
+        )
+    ask_for = result.get("ask_for") or []
+    if ask_for:
+        return (
+            False,
+            "the recommendation fell back for missing inputs "
+            f"({', '.join(str(a) for a in ask_for)}); if the brief states any of "
+            "these, pass them explicitly so the decision is grounded",
+        )
+    return (True, "")

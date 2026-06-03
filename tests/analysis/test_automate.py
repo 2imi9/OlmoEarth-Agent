@@ -17,6 +17,7 @@ from olmoearth_agent.analysis.automate import (
     parse_hf_size,
     parse_task_string,
     propose_config,
+    verify_automate_result,
 )
 
 _SIZE = {"size": {"dataset": {"num_rows": 1500}}}
@@ -136,3 +137,56 @@ async def test_automate_default_asks_for_inputs() -> None:
     out = await automate()
     assert out["decision"] == "embeddings"
     assert out["ask_for"]  # missing everything -> non-empty
+
+
+@pytest.mark.asyncio
+async def test_verify_passes_on_fully_specified_result() -> None:
+    out = await automate(
+        num_samples=2000, num_classes=4, compute="a100", goal="production"
+    )
+    ok, reason = verify_automate_result(out)
+    assert ok is True
+    assert reason == ""
+
+
+@pytest.mark.asyncio
+async def test_verify_flags_underspecified_fallback() -> None:
+    out = await automate()  # no inputs -> ask_for non-empty
+    ok, reason = verify_automate_result(out)
+    assert ok is False
+    assert "missing inputs" in reason
+
+
+def test_verify_flags_decision_inconsistent_with_table() -> None:
+    # A hand-mutated result whose decision contradicts decide() for its inputs.
+    out = {
+        "inputs": {
+            "num_samples": 30,
+            "num_classes": 2,
+            "compute": "colab",
+            "goal": None,
+        },
+        "decision": "fine_tune",  # decide() says embeddings for 30 samples
+        "config": {"model_size": "tiny"},
+        "ask_for": [],
+    }
+    ok, reason = verify_automate_result(out)
+    assert ok is False
+    assert "inconsistent" in reason
+
+
+def test_verify_flags_model_size_mismatch() -> None:
+    out = {
+        "inputs": {
+            "num_samples": 1500,
+            "num_classes": 8,
+            "compute": "v100",
+            "goal": None,
+        },
+        "decision": "embeddings",
+        "config": {"model_size": "tiny"},  # decide() says base (num_classes > 5)
+        "ask_for": [],
+    }
+    ok, reason = verify_automate_result(out)
+    assert ok is False
+    assert "inconsistent" in reason

@@ -33,13 +33,30 @@ class ToolContext:
 #: JSON-serializable result.
 Handler = Callable[[dict[str, Any], ToolContext], Awaitable[Any]]
 
+#: A grounded verifier: given a handler's (non-throwing) result payload, return
+#: ``(ok, reason)``. ``ok=False`` means the result is semantically wrong despite
+#: ``dispatch`` having wrapped it as ``{"ok": True}``; ``reason`` is a one-line
+#: natural-language note the agent loop feeds back as a reflection before one
+#: retry. Verifiers MUST be pure + deterministic and read a *real external
+#: signal* (an oracle, a schema, the result's own fields) -- never the model
+#: judging itself (see ``docs/self-improvement-proposal.md`` 1.1).
+Verifier = Callable[[dict[str, Any]], tuple[bool, str]]
+
 
 @dataclass
 class RegisteredTool:
-    """A JSON-Schema spec paired with its async handler."""
+    """A JSON-Schema spec paired with its async handler.
+
+    ``verify`` is optional: when set, the lead agent runs it on the handler's
+    result and, on failure, appends a one-line reflection and re-prompts the
+    model once (a grounded verify-and-retry gate). Default ``None`` -> the tool
+    behaves exactly as before, so adding the field is a no-op for every existing
+    tool.
+    """
 
     spec: ToolSpec
     handler: Handler
+    verify: Verifier | None = None
 
 
 class ToolRegistry:
@@ -60,6 +77,14 @@ class ToolRegistry:
         """Add (or replace) a bundle of tools."""
         for tool in tools:
             self.register(tool)
+
+    def get(self, name: str) -> RegisteredTool | None:
+        """The registered tool with ``name`` (or ``None``).
+
+        Lets the agent loop reach a tool's :attr:`RegisteredTool.verify`
+        predicate after :meth:`dispatch` has run.
+        """
+        return self._tools.get(name)
 
     def names(self) -> list[str]:
         """Registered tool names, in insertion order."""

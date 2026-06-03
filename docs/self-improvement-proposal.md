@@ -233,6 +233,47 @@ A single small PR scoped to one tool with an objective post-condition --
 adversarial/LLM critic is considered. Auditability is free: a verify-fail + retry
 shows up as two manifest entries sharing a request hash.
 
+### 3.1 Outcome (measured)
+
+The beachhead was built and the gate measured, with an honest split between the
+*infrastructure* (always safe) and the *behaviour* (gated on a lift):
+
+- **Infrastructure landed.** An optional `verify` predicate on `RegisteredTool`,
+  a `reflections` list on `ThreadState`, and a capped verify-and-retry gate in
+  `LeadAgent.run_stream` (`max_verify_retries`, default 1). It is a **no-op for
+  every existing tool** (all have `verify=None`), and a unit test drives a
+  synthetic failing-then-passing verifier through the loop to prove the
+  reflection-and-retry path works (`tests/harness/test_verify_gate.py`).
+- **`automate` verifier built** (`verify_automate_result`): recomputes `decide()`
+  from the echoed inputs (a consistency invariant) and flags an under-specified
+  fallback (`ask_for` non-empty). Pure, deterministic, unit-tested.
+- **The gate does NOT clear the ship bar on the held-out test split.** A
+  deterministic ablation (`evals/skillopt/scripts/ablate_verify_automate.py`),
+  using the real verifier + `automate()` against the `olmoearth_embeddings`
+  split, measures the gate's upper-bound lift (baseline = brief-only parse;
+  verify+retry = re-supply the brief's full inputs on a verify-fail):
+
+  | split | n | baseline | verify+retry | gate fired | lift |
+  |---|---|---|---|---|---|
+  | **test** | 12 | 12/12 | 12/12 | 2 | **+0** |
+  | val | 9 | 7/9 | 7/9 | 1 | +0 |
+  | train | 14 | 8/14 | 12/14 | 6 | **+4** |
+
+  On the **test** split the parser already yields oracle-correct decisions (the
+  `embeddings`/`tiny` answer is robust to the inputs it drops), so the gate
+  cannot lift it. On **val** the two misses are *confident-but-wrong* (no
+  `ask_for`), so the verifier never fires on them — a real limit: this verifier
+  catches under-extraction-into-fallback, not silent miscalls. The mechanism is
+  nonetheless real (**train +4**), where briefs state inputs the parser drops.
+
+- **Decision (honest, per the gate):** the infra ships dormant; the `automate`
+  verifier is **not wired on by default** because the held-out lift is 0. It
+  remains importable for opt-in, and the gate is ready for the first verifier
+  that *does* clear a held-out bar (a job-config cross-field validator, or a
+  negative-sampler placement-shortfall retry, are better candidates than a tool
+  that already calls its own oracle). The temperature-0 *agent-loop* ablation is
+  superseded by this deterministic upper-bound, which is tighter and needs no LLM.
+
 ## 4. Why train-time RL stays parked
 
 Per [`PLAN.md`](../PLAN.md) section 7.2, train-time RL (STaR / SWiRL / GRPO /
