@@ -90,6 +90,29 @@ const SKILL_TOOLS = {
   18: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
 };
 
+// What each skill takes in and gives back, for the full-spec detail page.
+// Concise In -> Out, mirroring the "In:/Out:" lines in SKILLS.md.
+const SKILL_IO = {
+  1:  { in: 'Labels as GeoJSON / CSV / Shapefile.', out: 'A Studio-importable file (sample_category schema; MIME / 10K-record / multi-metric guards applied).' },
+  2:  { in: 'Labels + area definitions (bbox or watershed AOIs).', out: 'An rslearn dataset.json + a Lightning YAML, passed through a 7-criteria audit.' },
+  3:  { in: 'A free-text task description.', out: 'Studio job-wizard answers (output type, model size, time frame, sources, patch size) + a cross-field validation.' },
+  4:  { in: 'Sample count, class count, compute tier, goal.', out: 'An embeddings-vs-fine-tune recommendation + a runnable extraction notebook (you run it).' },
+  5:  { in: 'A model_id, an AOI, and a time range.', out: 'A submitted prediction, then result tiles / pixel values / features by class (async by reference).' },
+  6:  { in: 'Three or more dated per-layer summaries.', out: 'Trajectory metrics (step deltas, net change, largest interval, trend) - refuses fewer than 3 dates.' },
+  7:  { in: 'OlmoEarth + a baseline model on shared ground truth.', out: 'A per-metric table (accuracy / macro-F1 / mean-IoU) with deltas, a winner, and a difference raster.' },
+  8:  { in: 'Labeled points (and optionally predictions).', out: 'A random-vs-spatial CV inflation ratio + risk band, plus per-class precision / recall / F1 / IoU.' },
+  9:  { in: 'A query embedding + a corpus (optionally parallel coords).', out: 'Top-K nearest matches + a geographic-prior warning when matches cluster near the query.' },
+  10: { in: 'Training-set + query embeddings.', out: 'A Meyer-Pebesma Area-of-Applicability flag marking out-of-distribution points.' },
+  11: { in: 'Aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA).', out: 'A disagreement summary + a bad-mask-vs-bad-model verdict for a suspect region.' },
+  12: { in: "A prediction's relative tile template.", out: 'An absolute QGIS XYZ URL + an OGC SLD colour-ramp style + Bearer-auth load steps.' },
+  13: { in: 'Your Studio projects + predictions.', out: 'Curated JSON files (ids / names / statuses / times; no geometry) grouped by project or status.' },
+  14: { in: "The run's tool-call log on ThreadState.", out: 'An append-only manifest (tool, sha256 of args, id-only summary) + a runnable replay script.' },
+  15: { in: 'Prediction results + the run provenance.', out: 'A stakeholder Markdown brief with live tiles and a freshness gate that strikes through stale imagery.' },
+  16: { in: 'A free-text query, or a single DOI / arXiv id.', out: 'Curated paper records (title, authors, year, venue, url, citations), deduped across arXiv + OpenAlex.' },
+  17: { in: 'A task (or HF dataset id) + counts / compute / goal.', out: 'An embeddings-vs-fine-tune decision + a proposed config (model size, head, notebook / fine-tune plan).' },
+  18: { in: 'A presence-only labels GeoJSON path (one positive class).', out: 'A combined GeoJSON with a buffered, spatially-thinned negative class that passes the data-prep audit.' },
+};
+
 export function renderCards() {
   const grid = document.getElementById('capGrid');
   if (!grid) return;
@@ -134,7 +157,9 @@ function openSkillModal(s) {
         <button class="card-use" type="button" data-use>Use this brief
           <svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
-        <button class="modal-link" type="button" data-detail>Full spec →</button>
+        <button class="card-use is-secondary" type="button" data-detail>Full spec
+          <svg viewBox="0 0 24 24" class="ic"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>
+        </button>
       </div>
     </div>`;
   modal.dataset.n = s.n;
@@ -174,6 +199,21 @@ function openSkillDetail(s) {
       <section class="detail-sec">
         <h3 class="detail-h">What it does &amp; why</h3>
         <p class="detail-p">${SKILL_SPECS[s.n] || s.desc}</p>
+      </section>
+      ${
+        SKILL_IO[s.n]
+          ? `<section class="detail-sec">
+        <h3 class="detail-h">Inputs and outputs</h3>
+        <div class="detail-io">
+          <div class="detail-io-row"><span class="detail-io-k">In</span><span class="detail-io-v">${SKILL_IO[s.n].in}</span></div>
+          <div class="detail-io-row"><span class="detail-io-k">Out</span><span class="detail-io-v">${SKILL_IO[s.n].out}</span></div>
+        </div>
+      </section>`
+          : ''
+      }
+      <section class="detail-sec">
+        <h3 class="detail-h">Stage</h3>
+        <p class="detail-p detail-stage">${s.cat} &middot; skill #${s.n} of 18 in the OlmoEarth workflow (Prep &rarr; Configure &rarr; Run &rarr; Analyze &rarr; Integrate &rarr; Report).</p>
       </section>
       <section class="detail-sec">
         <h3 class="detail-h">Tools it composes</h3>
