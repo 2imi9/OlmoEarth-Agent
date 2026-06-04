@@ -21,6 +21,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `analysis/negative_sampler.py` (no GDAL), inverting skill #9's similarity
   ranking for the environmentally-dissimilar pseudo-absence selection (#75).
 
+### Changed
+- **Skill #18 `olmoearth-negative-sampler` -- accuracy refinement**: addresses
+  the pseudo-absence accuracy concern (#92) with (1) an optional embedding-based
+  **contamination guard** (`contamination_threshold`) that drops candidates
+  resembling any positive too closely -- likely *unmapped positives* -- before
+  ranking (guarding environmental contamination on top of the spatial buffer),
+  and (2) a **quality report** on every result (nearest-positive-distance +
+  similarity-to-positive stats + an honest caveat) so the negatives' credibility
+  is inspectable and the thresholds tunable, rather than trusted blindly.
+
 ### Fixed
 - **Skill #9 `olmoearth-similarity` catalog wording** corrected to match the
   implementation: it described "FAISS" but the tool runs an **exact brute-force

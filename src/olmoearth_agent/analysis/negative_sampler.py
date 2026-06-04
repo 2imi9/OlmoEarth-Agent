@@ -24,6 +24,20 @@ doi:10.1111/j.2041-210X.2011.00172.x):
    negatives are drawn from genuinely different conditions. Without embeddings,
    selection falls back to deterministic farthest-point spatial dispersion.
 
+Pseudo-absences are a *heuristic*, never verified absences; the dominant failure
+mode is **contamination** -- a generated background point landing on an unmapped
+positive. Two features keep that honest:
+
+- An optional **contamination guard** (``contamination_threshold``): when
+  embeddings are supplied, candidates whose cosine similarity to *any* positive
+  meets or exceeds the threshold are dropped as likely hidden positives, before
+  ranking. The buffer guards against *spatial* contamination; this guards against
+  *environmental* contamination.
+- A **quality report** on every result: the chosen negatives' nearest-positive
+  distance (min / mean) and, with embeddings, their max similarity-to-positive
+  distribution (lower = more credible), so the user can judge -- and tune -- the
+  result instead of trusting it blindly.
+
 Coordinates are ``(lon, lat)`` in degrees; distances are great-circle km
 (haversine, shared with :mod:`olmoearth_agent.evaluation.spatial_cv`). The
 algorithm is fully deterministic -- same inputs, same negatives -- so a
@@ -53,6 +67,13 @@ DEFAULT_MARGIN_DEG = 0.05
 #: Default candidate oversampling factor for the auto-generated grid: aim for
 #: ``oversample * n_negatives`` candidates so buffering + thinning have room.
 DEFAULT_OVERSAMPLE = 8
+
+#: Honest caveat attached to every result's quality report.
+PSEUDO_ABSENCE_NOTE = (
+    "Pseudo-absences are a heuristic, not verified absences: spot-check that none "
+    "coincide with an unmapped positive. Lower similarity_to_positive means more "
+    "credible negatives."
+)
 
 _MIN_GRID_SIDE = 2
 _MAX_GRID_POINTS = 40_000  # guard against a runaway grid on a huge AOI
@@ -166,6 +187,13 @@ def _min_distance_to(point: Point, others: Sequence[Point]) -> float:
     return best
 
 
+def _max_similarity_to(
+    embedding: Sequence[float], positives: Sequence[Sequence[float]]
+) -> float:
+    """Largest cosine similarity from ``embedding`` to any positive embedding."""
+    return max(_cosine_similarity(embedding, pe) for pe in positives)
+
+
 def _select_by_dissimilarity(
     survivors: list[int],
     pool: Sequence[Point],
@@ -232,6 +260,7 @@ def sample_negatives(
     margin_deg: float = DEFAULT_MARGIN_DEG,
     grid_step_deg: float | None = None,
     oversample: int = DEFAULT_OVERSAMPLE,
+    contamination_threshold: float | None = None,
 ) -> dict[str, Any]:
     """Generate buffered, thinned pseudo-absences for a presence-only label set.
 
@@ -264,21 +293,29 @@ def sample_negatives(
         Optional explicit grid spacing (degrees); else auto-sized.
     oversample
         Candidate-grid oversampling factor relative to ``n_negatives``.
+    contamination_threshold
+        Optional cosine value in ``[-1, 1]``. When embeddings are supplied, any
+        candidate whose max similarity to a positive is ``>=`` this value is
+        dropped as a likely *unmapped positive* (environmental contamination)
+        before ranking. ``None`` (default) disables the guard; the quality
+        report still reports the similarity distribution so a threshold can be
+        chosen. No effect without embeddings.
 
     Returns
     -------
     dict
         ``negatives`` (the selected ``[lon, lat]`` list) plus a JSON-able
-        summary: counts, the ranking mode actually used, the buffer / thinning
-        radii, the study bbox (for a grid), the positive:negative balance, and
-        any ``warnings``.
+        summary: counts (including ``n_contamination_excluded``), the ranking
+        mode actually used, the buffer / thinning radii, the study bbox (for a
+        grid), the positive:negative balance, a ``quality`` report (buffer-km +
+        similarity-to-positive stats + an honest caveat), and any ``warnings``.
 
     Raises
     ------
     ValueError
         On empty/malformed positives, negative radii, ``n_negatives < 1``,
-        ``oversample < 1``, or embedding inputs that do not align with their
-        coordinates.
+        ``oversample < 1``, a ``contamination_threshold`` out of ``[-1, 1]``, or
+        embedding inputs that do not align with their coordinates.
     """
     if not positives:
         raise ValueError("positives must be non-empty.")
@@ -290,6 +327,10 @@ def sample_negatives(
         raise ValueError("exclusion_km must be >= 0.")
     if oversample < 1:
         raise ValueError("oversample must be >= 1.")
+    if contamination_threshold is not None and not (
+        -1.0 <= float(contamination_threshold) <= 1.0
+    ):
+        raise ValueError("contamination_threshold must be a cosine value in [-1, 1].")
     n_target_neg = len(pos) if n_negatives is None else int(n_negatives)
     if n_target_neg < 1:
         raise ValueError("n_negatives must be >= 1.")
@@ -357,29 +398,68 @@ def sample_negatives(
         )
 
     # ---- Rank + select ----------------------------------------------------
+    n_contam = 0
+    sims_accepted: list[float] | None = None
     if cand_emb is not None and positive_embeddings is not None:
         dim = len(cand_emb[survivors[0]])
         if any(len(e) != dim for e in positive_embeddings):
             raise ValueError(
                 "positive_embeddings dimensionality must match candidate_embeddings."
             )
-        centroid = [
-            sum(float(e[d]) for e in positive_embeddings) / len(positive_embeddings)
-            for d in range(dim)
-        ]
+        pos_embs = [[float(x) for x in e] for e in positive_embeddings]
+        # Max similarity of each surviving candidate to ANY positive.
+        max_sim = {i: _max_similarity_to(cand_emb[i], pos_embs) for i in survivors}
+
+        # Contamination guard: drop candidates that resemble a positive too
+        # closely (likely unmapped positives) before ranking.
+        if contamination_threshold is not None:
+            thr = float(contamination_threshold)
+            kept = [i for i in survivors if max_sim[i] < thr]
+            n_contam = len(survivors) - len(kept)
+            survivors = kept
+            if not survivors:
+                warnings.append(
+                    f"all {n_contam} buffered candidates met the contamination "
+                    f"threshold ({thr:g}); they resemble known positives too "
+                    "closely. Lower the threshold or supply more diverse candidates."
+                )
+                return _summary(
+                    pos,
+                    [],
+                    pool,
+                    n_target_neg,
+                    n_excluded,
+                    0,
+                    "embedding_dissimilarity",
+                    exclusion_km,
+                    sep_km,
+                    source,
+                    used_bbox,
+                    warnings,
+                    n_contamination_excluded=n_contam,
+                )
+
+        centroid = [sum(e[d] for e in pos_embs) / len(pos_embs) for d in range(dim)]
         accepted = _select_by_dissimilarity(
             survivors, pool, centroid, cand_emb, n_target_neg, sep_km
         )
         ranking = "embedding_dissimilarity"
+        sims_accepted = [max_sim[i] for i in accepted]
     else:
+        if contamination_threshold is not None:
+            warnings.append(
+                "contamination_threshold was set but no embeddings were supplied, "
+                "so the (embedding-based) contamination guard had no effect."
+            )
         accepted = _select_by_dispersion(survivors, pool, pos, n_target_neg, sep_km)
         ranking = "spatial_dispersion"
 
     if len(accepted) < n_target_neg:
         warnings.append(
             f"placed {len(accepted)} of {n_target_neg} requested negatives "
-            "(buffer/thinning/extent too tight); loosen exclusion_km or "
-            "min_separation_km, widen the AOI, or provide more candidates."
+            "(buffer/thinning/contamination/extent too tight); loosen exclusion_km "
+            "or min_separation_km, raise contamination_threshold, widen the AOI, or "
+            "provide more candidates."
         )
     return _summary(
         pos,
@@ -394,7 +474,30 @@ def sample_negatives(
         source,
         used_bbox,
         warnings,
+        n_contamination_excluded=n_contam,
+        sims_accepted=sims_accepted,
     )
+
+
+def _quality_report(
+    accepted_points: list[Point],
+    positives: Sequence[Point],
+    sims: list[float] | None,
+) -> dict[str, Any]:
+    """Inspectable credibility stats for the chosen negatives (+ honest caveat)."""
+    report: dict[str, Any] = {"note": PSEUDO_ABSENCE_NOTE}
+    if not accepted_points:
+        return report
+    buffer_dists = [_min_distance_to(p, positives) for p in accepted_points]
+    report["min_buffer_km"] = round(min(buffer_dists), 3)
+    report["mean_buffer_km"] = round(sum(buffer_dists) / len(buffer_dists), 3)
+    if sims:
+        report["similarity_to_positive"] = {
+            "min": round(min(sims), _PLACES),
+            "mean": round(sum(sims) / len(sims), _PLACES),
+            "max": round(max(sims), _PLACES),
+        }
+    return report
 
 
 def _summary(
@@ -410,11 +513,15 @@ def _summary(
     source: str,
     used_bbox: BBox | None,
     warnings: list[str],
+    *,
+    n_contamination_excluded: int = 0,
+    sims_accepted: list[float] | None = None,
 ) -> dict[str, Any]:
     """Assemble the JSON-able result envelope."""
     negatives = [
         [round(pool[i][0], _PLACES), round(pool[i][1], _PLACES)] for i in accepted
     ]
+    accepted_points = [pool[i] for i in accepted]
     balance = round(len(positives) / len(accepted), 3) if accepted else None
     return {
         "n_positives": len(positives),
@@ -424,11 +531,13 @@ def _summary(
         "candidate_source": source,
         "n_candidates": len(pool),
         "n_excluded_by_buffer": n_excluded,
+        "n_contamination_excluded": n_contamination_excluded,
         "n_survivors": n_survivors,
         "ranking": ranking,
         "exclusion_km": exclusion_km,
         "min_separation_km": min_separation_km,
         "bbox": list(used_bbox) if used_bbox is not None else None,
         "positive_to_negative_ratio": balance,
+        "quality": _quality_report(accepted_points, positives, sims_accepted),
         "warnings": warnings,
     }
