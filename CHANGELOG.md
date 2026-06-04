@@ -21,6 +21,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `analysis/negative_sampler.py` (no GDAL), inverting skill #9's similarity
   ranking for the environmentally-dissimilar pseudo-absence selection (#75).
 
+### Fixed
+- **Skill #9 `olmoearth-similarity` catalog wording** corrected to match the
+  implementation: it described "FAISS" but the tool runs an **exact brute-force
+  top-K kNN** in-process (FAISS is the scale-up follow-up, per the analysis
+  docstring). Aligned `README.md`, `SKILLS.md` (catalog row + #9 section, incl.
+  removing a fictional `faiss_index_build` tool), `skills/registry.py`, and the
+  `system:python` sandbox wording. Honest-results doc fix from the #92 audit.
+
 ## [1.1.0] - 2026-05-31
 
 Post-1.0 checkpoint: two new skills (catalog 15 -> 17), the `make serve` cache

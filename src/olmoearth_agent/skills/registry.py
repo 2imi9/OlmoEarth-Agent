@@ -152,7 +152,8 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-similarity",
         "Analyze",
         "implemented",
-        "FAISS over OlmoEarth Base embeddings; geographic-prior warning.",
+        "Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up "
+        "follow-up); geographic-prior warning.",
         ["olmoearth_similarity_search"],
     ),
     SkillSpec(

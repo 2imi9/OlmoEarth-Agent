@@ -77,7 +77,7 @@ The capability set ships as **18 skills**, grouped by EO-workflow stage.
 | 6 | `olmoearth-change-detect` | Two-or-more-date trajectory diff (refuses naïve 2-date diffs) | **Run** |
 | 7 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
 | 8 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
-| 9 | `olmoearth-similarity` | FAISS over fine-tuned OlmoEarth Base embeddings | **Analyze** |
+| 9 | `olmoearth-similarity` | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up follow-up) | **Analyze** |
 | 10 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer-Pebesma Area of Applicability | **Analyze** |
 | 11 | `olmoearth-cloud-mask-audit` | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
 | 12 | `olmoearth-qgis-bridge` | Tile URLs → QGIS WMTS + COG with a sidecar uncertainty raster | **Integrate** |

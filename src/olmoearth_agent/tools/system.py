@@ -4,7 +4,7 @@
 
 Lets the agent run a short Python snippet for LIGHT orchestration/inspection
 between API calls: open an rslearn ``Dataset``, tag a train/val split, compute
-a quick stat, drive a FAISS/embeddings step (skills #4/#9 assume this tool).
+a quick stat, drive an embeddings step (e.g. skill #4's notebook glue).
 
 This is ARBITRARY CODE EXECUTION, so it is **opt-in**: the bundle is empty
 unless ``OLMOEARTH_RUN_PYTHON`` is truthy. Even then it is a deliberately small
@@ -109,8 +109,8 @@ def build_system_tools() -> list[RegisteredTool]:
                     "Run a short Python snippet; returns its stdout, stderr, "
                     "and exit code. Use for LIGHT orchestration/inspection "
                     "between API calls: open an rslearn Dataset, tag a "
-                    "train/val split, compute a quick statistic, drive a "
-                    "FAISS/embeddings step. Runs in an isolated subprocess "
+                    "train/val split, compute a quick statistic, drive an "
+                    "embeddings step. Runs in an isolated subprocess "
                     "with a wall-clock timeout and an output cap, in a "
                     "throwaway working directory; STATE DOES NOT PERSIST "
                     "across calls. The heavy geospatial/rslearn/GDAL stack may "
