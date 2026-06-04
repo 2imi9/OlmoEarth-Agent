@@ -474,8 +474,10 @@ a:hover { color: var(--text); }
 .modal-desc { margin: 0; font-size: 13.5px; color: var(--text-dim); line-height: 1.55; }
 .modal-ex-label { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-faint); margin-top: 2px; }
 .modal-actions { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
-.modal-link { font-size: 12.5px; color: var(--mint-link); background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; }
-.modal-link:hover { color: var(--mint); }
+/* "Full spec" reuses the .card-use button shape as a neutral secondary, so the
+   two modal actions share one button format. */
+.card-use.is-secondary { background: var(--bg-2); color: var(--text-dim); border-color: var(--line); }
+.card-use.is-secondary:hover { background: var(--panel-2); border-color: var(--line); color: var(--text); }
 .card-ex { margin: 0; padding-left: 11px; border-left: 2px solid var(--line); font-size: 13.5px; line-height: 1.55; color: var(--text); font-style: italic; }
 .card-use {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
@@ -486,8 +488,8 @@ a:hover { color: var(--text); }
 .card-use:hover { background: rgba(15,203,140,.22); border-color: rgba(15,203,140,.5); }
 .card-use .ic { font-size: 14px; }
 .modal-card.is-pink .card-ic { background: rgba(240,82,156,.13); color: var(--pink); }
-.modal-card.is-pink .card-use { background: rgba(240,82,156,.12); color: var(--pink); border-color: rgba(240,82,156,.28); }
-.modal-card.is-pink .card-use:hover { background: rgba(240,82,156,.22); border-color: rgba(240,82,156,.5); }
+.modal-card.is-pink .card-use:not(.is-secondary) { background: rgba(240,82,156,.12); color: var(--pink); border-color: rgba(240,82,156,.28); }
+.modal-card.is-pink .card-use:not(.is-secondary):hover { background: rgba(240,82,156,.22); border-color: rgba(240,82,156,.5); }
 #promptInput.flash { animation: flash-glow .7s ease; }
 @keyframes flash-glow { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 3px rgba(15,203,140,.25); } }
 
@@ -509,6 +511,11 @@ a:hover { color: var(--text); }
 .detail-h { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--mint); }
 .detail-p { margin: 0; font-size: 15px; line-height: 1.65; color: var(--text); }
 .detail-tools { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; color: var(--mint-soft); background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); padding: 12px 14px; }
+.detail-io { display: flex; flex-direction: column; gap: 8px; }
+.detail-io-row { display: flex; gap: 12px; align-items: baseline; }
+.detail-io-k { flex: none; width: 32px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--mint); padding-top: 2px; }
+.detail-io-v { font-size: 14.5px; line-height: 1.6; color: var(--text); }
+.detail-stage { font-size: 14px; color: var(--text-dim); }
 .detail-link { font-size: 13px; color: var(--mint-link); }
 .detail-link:hover { color: var(--mint); }
 

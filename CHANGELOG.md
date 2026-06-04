@@ -9,6 +9,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Skill #18 `olmoearth-negative-sampler`** (catalog 17 -> 18): generates the
+  missing negative / background class for a *presence-only* label set as
+  buffered, spatially-thinned (optionally embedding-dissimilar) pseudo-absences,
+  and writes a combined GeoJSON that round-trips back through the vendored
+  `olmoearth-data-prep` audit -- clearing its negative-class check, which
+  hard-FAILs a presence-only set. Resolves the documented dead-end where the
+  audit detected the missing class but `--negative-class auto` was deferred
+  upstream. In-process tool `olmoearth_negative_sampler`; pure-Python logic in
+  `analysis/negative_sampler.py` (no GDAL), inverting skill #9's similarity
+  ranking for the environmentally-dissimilar pseudo-absence selection (#75).
+
 ## [1.1.0] - 2026-05-31
 
 Post-1.0 checkpoint: two new skills (catalog 15 -> 17), the `make serve` cache

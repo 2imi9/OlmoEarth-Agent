@@ -1,4 +1,4 @@
-/* The 17-skill capability grid + the pop-out introduction modal + the in-app
+/* The 18-skill capability grid + the pop-out introduction modal + the in-app
    full-spec detail page. Self-contained: clicking a card opens the modal;
    "Full spec" opens the detail page; "Use this brief" drops the example into
    the composer. */
@@ -21,6 +21,7 @@ const ICONS = {
   database:    '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   fingerprint: '<path d="M5 11a7 7 0 0114 0M8 12a4 4 0 018 0v2M12 13v5M8 15v3M16 15v2"/>',
   docspark:    '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10.5 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
+  scatter:     '<circle cx="6" cy="7" r="1.4"/><circle cx="17" cy="6" r="1.4"/><circle cx="9" cy="16" r="1.4"/><circle cx="18" cy="15" r="1.4"/><circle cx="12" cy="11" r="2.4"/><path d="M3 20h18"/>',
 };
 
 const SKILLS = [
@@ -41,6 +42,7 @@ const SKILLS = [
   { n: 15, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.', ex: 'Write a stakeholder brief for this karst-vulnerability result with the live map tiles.' },
   { n: 16, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.', ex: 'Find and cite the paper behind the Area-of-Applicability method I used.' },
   { n: 17, slug: 'automate',          cat: 'Configure', icon: 'wand',        desc: 'One call: auto-decides embeddings vs fine-tune and proposes a config; optional HF introspection.', ex: 'I have 200 labels and a T4 - should I fine-tune or use embeddings? Set it up.' },
+  { n: 18, slug: 'negative-sampler',  cat: 'Prep',      icon: 'scatter',     desc: 'Presence-only labels into a trainable set: buffered, thinned (optionally embedding-dissimilar) background class.', ex: 'My karst-site labels are presence-only and the audit fails for a missing negative class - generate background samples.' },
 ];
 
 // Fuller "what it does + why" per skill, shown in the pop-out. The card shows
@@ -63,6 +65,7 @@ const SKILL_SPECS = {
   15: `Assembles a stakeholder Markdown report from prediction results and the run's provenance, with a freshness gate that withholds and strikes through tiles older than a configurable window - so a disaster-response brief never shows stale imagery.`,
   16: `Unified arXiv + OpenAlex search and DOI / arXiv-id resolution, deduped across sources and key-free (OpenAlex polite pool). Grounds EO citations in real papers instead of world-knowledge or hallucinated links, under a no-fabrication, cite-the-real-URL contract.`,
   17: `One call that auto-decides embeddings vs fine-tune (porting #4's decision table) and proposes a config - model size, classifier head, embeddings-notebook command, fine-tune schedule, and a Studio job-config hand-off - and can read a Hugging Face dataset's rows + classes to fill its inputs. Reports what is missing rather than guessing.`,
+  18: `Generates the missing negative/background class for a presence-only label set so it becomes trainable. Drops candidate points within a buffer of any positive, keeps the accepted negatives spatially thinned, and - when the inputs carry embeddings - ranks candidates by environmental dissimilarity to the positives (the inverse of #9). Writes a combined GeoJSON that round-trips straight back through the data-prep audit, converting its hard FAIL on a missing negative class into a PASS. Deterministic, no GDAL; surfaces a placement shortfall as a warning rather than under-filling silently.`,
 };
 
 // Tools each skill composes, shown on the full-spec detail page. From PLAN.md section 1 + SKILLS.md.
@@ -84,6 +87,30 @@ const SKILL_TOOLS = {
   15: `olmoearth_case_narrative · build_narrative (reads provenance + results)`,
   16: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
   17: `olmoearth_automate · analysis.automate decide() + propose_config + fetch_hf_dataset_profile (reuses #4's table)`,
+  18: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
+};
+
+// What each skill takes in and gives back, for the full-spec detail page.
+// Concise In -> Out, mirroring the "In:/Out:" lines in SKILLS.md.
+const SKILL_IO = {
+  1:  { in: 'Labels as GeoJSON / CSV / Shapefile.', out: 'A Studio-importable file (sample_category schema; MIME / 10K-record / multi-metric guards applied).' },
+  2:  { in: 'Labels + area definitions (bbox or watershed AOIs).', out: 'An rslearn dataset.json + a Lightning YAML, passed through a 7-criteria audit.' },
+  3:  { in: 'A free-text task description.', out: 'Studio job-wizard answers (output type, model size, time frame, sources, patch size) + a cross-field validation.' },
+  4:  { in: 'Sample count, class count, compute tier, goal.', out: 'An embeddings-vs-fine-tune recommendation + a runnable extraction notebook (you run it).' },
+  5:  { in: 'A model_id, an AOI, and a time range.', out: 'A submitted prediction, then result tiles / pixel values / features by class (async by reference).' },
+  6:  { in: 'Three or more dated per-layer summaries.', out: 'Trajectory metrics (step deltas, net change, largest interval, trend) - refuses fewer than 3 dates.' },
+  7:  { in: 'OlmoEarth + a baseline model on shared ground truth.', out: 'A per-metric table (accuracy / macro-F1 / mean-IoU) with deltas, a winner, and a difference raster.' },
+  8:  { in: 'Labeled points (and optionally predictions).', out: 'A random-vs-spatial CV inflation ratio + risk band, plus per-class precision / recall / F1 / IoU.' },
+  9:  { in: 'A query embedding + a corpus (optionally parallel coords).', out: 'Top-K nearest matches + a geographic-prior warning when matches cluster near the query.' },
+  10: { in: 'Training-set + query embeddings.', out: 'A Meyer-Pebesma Area-of-Applicability flag marking out-of-distribution points.' },
+  11: { in: 'Aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA).', out: 'A disagreement summary + a bad-mask-vs-bad-model verdict for a suspect region.' },
+  12: { in: "A prediction's relative tile template.", out: 'An absolute QGIS XYZ URL + an OGC SLD colour-ramp style + Bearer-auth load steps.' },
+  13: { in: 'Your Studio projects + predictions.', out: 'Curated JSON files (ids / names / statuses / times; no geometry) grouped by project or status.' },
+  14: { in: "The run's tool-call log on ThreadState.", out: 'An append-only manifest (tool, sha256 of args, id-only summary) + a runnable replay script.' },
+  15: { in: 'Prediction results + the run provenance.', out: 'A stakeholder Markdown brief with live tiles and a freshness gate that strikes through stale imagery.' },
+  16: { in: 'A free-text query, or a single DOI / arXiv id.', out: 'Curated paper records (title, authors, year, venue, url, citations), deduped across arXiv + OpenAlex.' },
+  17: { in: 'A task (or HF dataset id) + counts / compute / goal.', out: 'An embeddings-vs-fine-tune decision + a proposed config (model size, head, notebook / fine-tune plan).' },
+  18: { in: 'A presence-only labels GeoJSON path (one positive class).', out: 'A combined GeoJSON with a buffered, spatially-thinned negative class that passes the data-prep audit.' },
 };
 
 export function renderCards() {
@@ -130,7 +157,9 @@ function openSkillModal(s) {
         <button class="card-use" type="button" data-use>Use this brief
           <svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
-        <button class="modal-link" type="button" data-detail>Full spec →</button>
+        <button class="card-use is-secondary" type="button" data-detail>Full spec
+          <svg viewBox="0 0 24 24" class="ic"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>
+        </button>
       </div>
     </div>`;
   modal.dataset.n = s.n;
@@ -170,6 +199,21 @@ function openSkillDetail(s) {
       <section class="detail-sec">
         <h3 class="detail-h">What it does &amp; why</h3>
         <p class="detail-p">${SKILL_SPECS[s.n] || s.desc}</p>
+      </section>
+      ${
+        SKILL_IO[s.n]
+          ? `<section class="detail-sec">
+        <h3 class="detail-h">Inputs and outputs</h3>
+        <div class="detail-io">
+          <div class="detail-io-row"><span class="detail-io-k">In</span><span class="detail-io-v">${SKILL_IO[s.n].in}</span></div>
+          <div class="detail-io-row"><span class="detail-io-k">Out</span><span class="detail-io-v">${SKILL_IO[s.n].out}</span></div>
+        </div>
+      </section>`
+          : ''
+      }
+      <section class="detail-sec">
+        <h3 class="detail-h">Stage</h3>
+        <p class="detail-p detail-stage">${s.cat} &middot; skill #${s.n} of 18 in the OlmoEarth workflow (Prep &rarr; Configure &rarr; Run &rarr; Analyze &rarr; Integrate &rarr; Report).</p>
       </section>
       <section class="detail-sec">
         <h3 class="detail-h">Tools it composes</h3>

@@ -1,0 +1,785 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.0,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.95556,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.91111,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.86667,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.82222,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.77778,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.73333,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.68889,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.64444,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.6,
+          40.6
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.0,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.95556,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.91111,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.86667,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.82222,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.77778,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.73333,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.68889,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.64444,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.6,
+          40.68
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.0,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.95556,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.91111,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.86667,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.82222,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.77778,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.73333,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.68889,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.64444,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.6,
+          40.76
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.0,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.95556,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.91111,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.86667,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.82222,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.77778,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.73333,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.68889,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.64444,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.6,
+          40.84
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.0,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.95556,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.91111,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.86667,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.82222,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.77778,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.73333,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.68889,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.64444,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.6,
+          40.92
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -78.0,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.95556,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.91111,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.86667,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.82222,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.77778,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.73333,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.68889,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.64444,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -77.6,
+          41.0
+        ]
+      },
+      "properties": {
+        "sample_category": "karst"
+      }
+    }
+  ]
+}

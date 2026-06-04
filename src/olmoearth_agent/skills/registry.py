@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 17 skills.
+"""Skill catalog manifest, the harness's view of all 18 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -26,6 +26,7 @@ from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.litsearch import build_litsearch_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
+from olmoearth_agent.tools.negative_sampler import build_negative_sampler_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
@@ -224,6 +225,16 @@ SKILLS: list[SkillSpec] = [
         "classifier, notebook/fine-tune plan); optional HF-dataset introspection.",
         ["olmoearth_automate"],
     ),
+    SkillSpec(
+        18,
+        "olmoearth-negative-sampler",
+        "Prep",
+        "implemented",
+        "Presence-only labels -> trainable set: generate a buffered, "
+        "spatially-thinned (optionally embedding-dissimilar) negative class "
+        "so the data-prep audit's negative-class check passes.",
+        ["olmoearth_negative_sampler"],
+    ),
 ]
 
 
@@ -249,6 +260,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_uncertainty_tools())
     registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
+    registry.register_all(build_negative_sampler_tools())
     registry.register_all(build_litsearch_tools())
     registry.register_all(build_automate_tools())
     registry.register_all(build_export_tools())
