@@ -11,6 +11,7 @@ a plain-text answer or the turn budget is exhausted.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,8 +19,11 @@ from typing import Any
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message
+from olmoearth_agent.security import egress
 from olmoearth_agent.studio.client import StudioClient
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are the OlmoEarth Studio agent. You help Earth-observation "
@@ -109,6 +113,25 @@ class LeadAgent:
             # (a hosted model does not), or long answers truncate mid-sentence.
             self.system_prompt += LOCAL_BUDGET_CLAUSE
 
+    def _record_external_endpoints(self) -> None:
+        """Note the external Studio endpoint this run uses in the manifest.
+
+        Best-effort audit trail (host only, never raises): the provenance log
+        then answers "what external host did this run contact". Enforcement of
+        the endpoint happens earlier, at client construction (see
+        ``security/egress.py``); here we only record.
+        """
+        try:
+            base = getattr(self.studio.config, "base_url", None)
+            if base:
+                self.state.provenance.record_egress(
+                    egress.check_endpoint(base, "studio")
+                )
+        except Exception:  # provenance bookkeeping must never break a run
+            logger.debug(
+                "could not record studio endpoint in provenance", exc_info=True
+            )
+
     async def run_stream(
         self,
         brief: str,
@@ -144,6 +167,7 @@ class LeadAgent:
             messages.extend(history)
         messages.append(Message(role="user", content=brief))
         ctx = ToolContext(studio=self.studio, state=self.state)
+        self._record_external_endpoints()
 
         for turn in range(1, max_turns + 1):
             self.state.turn_count = turn

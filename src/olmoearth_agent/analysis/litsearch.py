@@ -35,6 +35,8 @@ from typing import Any
 
 import httpx
 
+from olmoearth_agent.security import egress
+
 #: arXiv Atom search endpoint (no auth, ~1 req / 3 s courtesy rate).
 ARXIV_API = "http://export.arxiv.org/api/query"
 #: OpenAlex works endpoint (public; polite pool via ``mailto``).
@@ -299,6 +301,7 @@ def _httpx_fetcher(client: httpx.AsyncClient) -> Fetcher:
     """A :data:`Fetcher` over ``httpx`` with bounded retry on transient errors."""
 
     async def fetch(url: str, params: dict[str, Any]) -> tuple[int, str]:
+        egress.validate_endpoint(url, "litsearch")
         for attempt in range(_MAX_ATTEMPTS):
             try:
                 resp = await client.get(url, params=params)

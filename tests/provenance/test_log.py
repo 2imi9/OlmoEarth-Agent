@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from olmoearth_agent.provenance.log import ProvenanceLog
+from olmoearth_agent.security.egress import EgressDecision
 
 
 def test_record_tool_call_appends_entry() -> None:
@@ -45,7 +46,10 @@ def test_prediction_id_lifted_from_result() -> None:
     entry = log.record_tool_call(
         "olmoearth_get_prediction",
         {"prediction_id": "x"},
-        {"ok": True, "result": {"id": "pred1", "model_id": "m1", "status": "completed"}},
+        {
+            "ok": True,
+            "result": {"id": "pred1", "model_id": "m1", "status": "completed"},
+        },
     )
     # get_prediction's "id" is a prediction id
     assert entry.prediction_id == "pred1"
@@ -63,3 +67,18 @@ def test_to_json_and_replay_script() -> None:
     script = log.replay_script()
     assert "run_id: r2" in script
     assert "olmoearth_load_context" in script
+
+
+def test_record_egress_appends_audit_entry() -> None:
+    log = ProvenanceLog(run_id="r3")
+    record = log.record_egress(
+        EgressDecision(
+            allowed=True, host="olmoearth.allenai.org", capability="studio", reason="ok"
+        )
+    )
+    assert record["host"] == "olmoearth.allenai.org"
+    assert record["capability"] == "studio"
+    assert record["allowed"] is True
+    manifest = log.to_dict()
+    assert manifest["egress_count"] == 1
+    assert manifest["egress"][0]["host"] == "olmoearth.allenai.org"

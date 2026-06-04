@@ -15,9 +15,12 @@ import json
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from olmoearth_agent.types import ProvenanceManifest
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, avoids an import cycle
+    from olmoearth_agent.security.egress import EgressDecision
 
 # Keys we lift out of a tool result into the manifest's typed fields.
 _ID_KEYS = ("prediction_id", "id", "model_id")
@@ -52,6 +55,10 @@ class ProvenanceLog:
     def __init__(self, run_id: str | None = None) -> None:
         self.run_id = run_id or str(uuid.uuid4())
         self.entries: list[ProvenanceManifest] = []
+        #: Outbound-endpoint decisions (host + capability + verdict), appended
+        #: by the egress guard. Host only -- never a full URL -- so a key in a
+        #: query string can never land here. See ``security/egress.py``.
+        self.egress: list[dict[str, Any]] = []
 
     def record_tool_call(
         self,
@@ -80,12 +87,31 @@ class ProvenanceLog:
         self.entries.append(entry)
         return entry
 
+    def record_egress(self, decision: "EgressDecision") -> dict[str, Any]:
+        """Append one outbound-endpoint decision to the audit trail.
+
+        Records the capability, the bare host, the allow/deny verdict, and the
+        reason -- enough to answer "what external hosts did this run contact,
+        and were any off the allowlist?" without storing the URL itself.
+        """
+        record = {
+            "timestamp": _utc_now(),
+            "capability": decision.capability,
+            "host": decision.host,
+            "allowed": decision.allowed,
+            "reason": decision.reason,
+        }
+        self.egress.append(record)
+        return record
+
     def to_dict(self) -> dict[str, Any]:
         """Full manifest as a JSON-able dict."""
         return {
             "run_id": self.run_id,
             "entry_count": len(self.entries),
             "entries": [asdict(e) for e in self.entries],
+            "egress_count": len(self.egress),
+            "egress": list(self.egress),
         }
 
     def to_json(self, *, indent: int = 2) -> str:

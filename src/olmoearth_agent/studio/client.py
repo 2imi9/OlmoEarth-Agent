@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import httpx
 
+from olmoearth_agent.security import egress
 from olmoearth_agent.types import ApiEnvelope, ProjectRef, StudioContext
 
 DEFAULT_BASE_URL = "https://olmoearth.allenai.org/api/v1"
@@ -77,6 +78,9 @@ class StudioClient:
 
     def __init__(self, config: StudioConfig | None = None) -> None:
         self.config = config or StudioConfig.from_env()
+        # Guard the (env-overridable) base URL before the Bearer key is bound
+        # to a client: a malicious OLMOEARTH_BASE_URL must not exfiltrate it.
+        egress.validate_endpoint(self.config.base_url, "studio")
         self._client = httpx.AsyncClient(
             base_url=self.config.base_url,
             headers={

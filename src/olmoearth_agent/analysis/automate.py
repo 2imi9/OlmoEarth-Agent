@@ -30,6 +30,8 @@ from typing import Any
 
 import httpx
 
+from olmoearth_agent.security import egress
+
 # --- compute tiers + goal vocab (ported from the vendored recommend.py) ---
 COMPUTE_TIERS = ["cpu", "t4", "colab", "free", "v100", "a100", "h100", "multi-gpu"]
 STRONG_COMPUTE = {"a100", "h100", "multi-gpu"}
@@ -274,6 +276,7 @@ def _httpx_fetcher(client: httpx.AsyncClient) -> Fetcher:
     import asyncio
 
     async def fetch(url: str, params: dict[str, Any]) -> tuple[int, str]:
+        egress.validate_endpoint(url, "hf")
         for attempt in range(_MAX_ATTEMPTS):
             try:
                 resp = await client.get(url, params=params)

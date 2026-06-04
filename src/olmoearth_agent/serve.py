@@ -44,7 +44,9 @@ from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.harness import LeadAgent, ThreadState
 from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
+from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
 from olmoearth_agent.llm.types import Message
+from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
@@ -233,6 +235,12 @@ def _llm_for_request(request: Request) -> Any:
         raise HTTPException(status_code=400, detail="missing API key for backend")
     model = request.headers.get("x-llm-model", "").strip()
     if backend in ("claude", "anthropic"):
+        # Guard the destination before the BYO key is handed to the client, so a
+        # mis-pointed endpoint cannot become a credential-exfiltration channel.
+        try:
+            egress.validate_endpoint(DEFAULT_ANTHROPIC_BASE_URL, "llm-cloud")
+        except egress.EgressError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         kwargs: dict[str, Any] = {"api_key": api_key}
         if model:
             kwargs["model"] = model
@@ -243,6 +251,10 @@ def _llm_for_request(request: Request) -> Any:
     provider = _OPENAI_PROVIDERS.get(backend)
     if provider is None:
         raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
+    try:
+        egress.validate_endpoint(provider["base_url"], "llm-cloud")
+    except egress.EgressError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return OlmoEarthLLM(
         ServingConfig(
             endpoint=provider["base_url"],

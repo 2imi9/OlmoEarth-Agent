@@ -56,3 +56,37 @@ async def test_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     res = await _handler(monkeypatch)({"code": "import time; time.sleep(5)"}, None)
     assert res["ok"] is False
     assert "timed out" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_subprocess_cannot_read_agent_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Secrets in the parent env must not reach the executed snippet.
+    monkeypatch.setenv("OLMOEARTH_API_KEY", "super-secret-studio-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "super-secret-anthropic-key")
+    monkeypatch.setenv("HF_TOKEN", "super-secret-hf-token")
+    code = (
+        "import os;"
+        "print('OE', os.environ.get('OLMOEARTH_API_KEY'));"
+        "print('ANTH', os.environ.get('ANTHROPIC_API_KEY'));"
+        "print('HF', os.environ.get('HF_TOKEN'))"
+    )
+    res = await _handler(monkeypatch)({"code": code}, None)
+    assert res["ok"] is True
+    assert "super-secret" not in res["stdout"]
+    assert "OE None" in res["stdout"]
+    assert "ANTH None" in res["stdout"]
+    assert "HF None" in res["stdout"]
+
+
+@pytest.mark.asyncio
+async def test_subprocess_keeps_os_essential_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The scrub is a credential denylist, not a wipe: PATH still reaches the child.
+    res = await _handler(monkeypatch)(
+        {"code": "import os; print('HASPATH', bool(os.environ.get('PATH')))"}, None
+    )
+    assert res["ok"] is True
+    assert "HASPATH True" in res["stdout"]
