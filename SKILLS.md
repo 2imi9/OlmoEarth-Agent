@@ -34,7 +34,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 6 | Run | [`olmoearth-change-detect`](#6-olmoearth-change-detect) | Two-or-more-date trajectory diff (refuses two-date naïve diff). |
 | 7 | Run | [`olmoearth-baseline-compare`](#7-olmoearth-baseline-compare) | Studio vs. AlphaEarth side-by-side on transfer regions. |
 | 8 | Analyze | [`olmoearth-evaluate`](#8-olmoearth-evaluate) | Spatial-block CV + NNDM-LOO over `/prediction-results`. |
-| 9 | Analyze | [`olmoearth-similarity`](#9-olmoearth-similarity) | FAISS over fine-tuned OlmoEarth Base embeddings. |
+| 9 | Analyze | [`olmoearth-similarity`](#9-olmoearth-similarity) | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up); geographic-prior warning. |
 | 10 | Analyze | [`olmoearth-uncertainty`](#10-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
 | 11 | Analyze | [`olmoearth-cloud-mask-audit`](#11-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
 | 12 | Integrate | [`olmoearth-qgis-bridge`](#12-olmoearth-qgis-bridge) | Tile URLs → QGIS WMTS + COG with sidecar uncertainty raster. |
@@ -219,14 +219,14 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **In:** query AOI / patch.
 **Out:** top-K similar patches with similarity scores + geographic-prior warning.
 
-**What.** FAISS index over fine-tuned OlmoEarth Base embeddings. Returns top-K patches with similarity scores plus a geographic-prior warning when results cluster in the same biome as the query.
+**What.** Exact brute-force top-K kNN (cosine or Euclidean) over OlmoEarth Base embeddings the caller supplies. FAISS indexing is the scale-up follow-up; exact kNN is correct and dependency-free at the sizes the agent passes in. Returns top-K patches with similarity scores plus a geographic-prior warning when results cluster in the same biome as the query.
 
 **Why.** [NASA Earthdata's Similarity Search tool](https://www.earthdata.nasa.gov/dashboard/services/similarity-search) helps scientists avoid manually inspecting large satellite-imagery regions. Public AlphaEarth demos show similarity search correlates well with independent risk models in match tasks. OlmoEarth has competitive embeddings (Base wins 15 of 24 kNN tasks per [arXiv:2511.13655](https://arxiv.org/abs/2511.13655)) but no skill exposing similarity search. This is the most-requested missing primitive.
 
 **Tools composed.**
-- `olmoearth.fetch_embedding` (`PLAN.md` §1, new in v0.4).
-- FAISS runs inside the `olmoearth_similarity_search` tool handler — not the `system:python` sandbox (FAISS is not preloaded there).
-- Skill-local: `faiss_index_build`, `geographic_prior_check`.
+- `olmoearth.fetch_embedding` (`PLAN.md` §1) for sourcing embeddings; the skill as built takes bring-your-own embedding vectors (no in-sandbox fetch).
+- The kNN search runs in-process inside the `olmoearth_similarity_search` tool handler (pure Python, no heavy deps), not the `system:python` sandbox.
+- Skill-local: `similarity_search` (exact brute-force kNN), `geographic_prior_check`.
 
 ---
 
