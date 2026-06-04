@@ -185,3 +185,69 @@ def test_embedding_dimension_mismatch_rejected() -> None:
             candidate_embeddings=[[1.0, 0.0]],
             exclusion_km=1.0,
         )
+
+
+def test_contamination_guard_excludes_near_duplicates() -> None:
+    # Candidate 0's embedding is identical to the positive -> likely a hidden
+    # positive; candidate 1 is the opposite direction.
+    out = sample_negatives(
+        [(0.0, 0.0)],
+        positive_embeddings=[[1.0, 0.0]],
+        candidates=[(10.0, 10.0), (-10.0, -10.0)],
+        candidate_embeddings=[[1.0, 0.0], [-1.0, 0.0]],
+        n_negatives=2,
+        exclusion_km=1.0,
+        min_separation_km=0.0,
+        contamination_threshold=0.9,
+    )
+    assert out["n_contamination_excluded"] == 1
+    assert out["negatives"] == [[-10.0, -10.0]]  # only the dissimilar one survives
+
+
+def test_contamination_guard_can_exhaust_survivors() -> None:
+    out = sample_negatives(
+        [(0.0, 0.0)],
+        positive_embeddings=[[1.0, 0.0]],
+        candidates=[(10.0, 10.0)],
+        candidate_embeddings=[[1.0, 0.0]],  # identical -> contaminated
+        n_negatives=1,
+        exclusion_km=1.0,
+        contamination_threshold=0.5,
+    )
+    assert out["n_negatives"] == 0
+    assert out["n_contamination_excluded"] == 1
+    assert any("contamination threshold" in w for w in out["warnings"])
+
+
+def test_contamination_threshold_without_embeddings_warns() -> None:
+    out = sample_negatives([(0.0, 0.0)], exclusion_km=0.0, contamination_threshold=0.9)
+    assert any("no embeddings" in w for w in out["warnings"])
+    assert out["n_contamination_excluded"] == 0
+
+
+def test_invalid_contamination_threshold_rejected() -> None:
+    with pytest.raises(ValueError, match="contamination_threshold"):
+        sample_negatives([(0.0, 0.0)], contamination_threshold=2.0)
+
+
+def test_quality_report_buffer_stats() -> None:
+    out = sample_negatives([(0.0, 0.0), (1.0, 1.0)], exclusion_km=2.0, n_negatives=3)
+    quality = out["quality"]
+    assert quality["min_buffer_km"] >= 2.0  # the buffer held
+    assert "mean_buffer_km" in quality
+    assert "note" in quality  # honest caveat always present
+    assert "similarity_to_positive" not in quality  # no embeddings -> no sim stats
+
+
+def test_quality_report_similarity_with_embeddings() -> None:
+    out = sample_negatives(
+        [(0.0, 0.0)],
+        positive_embeddings=[[1.0, 0.0]],
+        candidates=[(10.0, 10.0), (20.0, 20.0)],
+        candidate_embeddings=[[0.0, 1.0], [-1.0, 0.0]],
+        n_negatives=2,
+        exclusion_km=1.0,
+        min_separation_km=0.0,
+    )
+    sim = out["quality"]["similarity_to_positive"]
+    assert sim["min"] <= sim["mean"] <= sim["max"]

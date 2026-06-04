@@ -200,6 +200,7 @@ async def _negative_sampler(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         positive_embeddings=pos_emb if cand_emb is not None else None,
         candidate_embeddings=cand_emb,
         oversample=int(args.get("oversample", DEFAULT_OVERSAMPLE)),
+        contamination_threshold=args.get("contamination_threshold"),
     )
 
     # Build the combined FeatureCollection; keep coordinates out of the chat
@@ -251,10 +252,15 @@ def build_negative_sampler_tools() -> list[RegisteredTool]:
                     "If the positives (and an optional candidates_path) carry "
                     "properties.embedding vectors, negatives are ranked by "
                     "environmental dissimilarity to the positives (inverts skill "
-                    "#9); otherwise by spatial dispersion. Returns counts + the "
-                    "output path + warnings only (no raw coordinates). Tune "
-                    "exclusion_km (buffer around positives) and min_separation_km "
-                    "(spacing between negatives) for your sensor resolution."
+                    "#9), and with contamination_threshold set it also drops "
+                    "candidates that resemble a positive too closely (likely "
+                    "unmapped positives); otherwise selection is by spatial "
+                    "dispersion. Returns counts + the output path + a quality "
+                    "report (buffer-km and similarity-to-positive stats so you can "
+                    "judge the negatives) + warnings only (no raw coordinates). "
+                    "Tune exclusion_km (buffer around positives) and "
+                    "min_separation_km (spacing between negatives) for your "
+                    "sensor resolution."
                 ),
                 parameters={
                     "type": "object",
@@ -305,6 +311,16 @@ def build_negative_sampler_tools() -> list[RegisteredTool]:
                             "type": "integer",
                             "default": DEFAULT_OVERSAMPLE,
                             "description": "Candidate-grid oversampling factor.",
+                        },
+                        "contamination_threshold": {
+                            "type": "number",
+                            "description": (
+                                "Cosine in [-1,1]. With embeddings, drop candidates "
+                                "whose similarity to any positive is >= this (likely "
+                                "unmapped positives) before ranking. Omit to disable; "
+                                "check the result's quality.similarity_to_positive to "
+                                "pick a value."
+                            ),
                         },
                     },
                     "required": ["positives_path"],

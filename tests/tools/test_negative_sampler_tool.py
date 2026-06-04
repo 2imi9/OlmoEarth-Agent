@@ -289,3 +289,16 @@ async def test_embedding_ranking_from_candidates_file(tmp_path: Path) -> None:
     assert len(negs) == 1
     # The dissimilar candidate ([-1,0] @ -30,-30) must be the one chosen.
     assert negs[0]["geometry"]["coordinates"] == [-30.0, -30.0]
+
+
+@pytest.mark.asyncio
+async def test_result_surfaces_quality_report(tmp_path: Path) -> None:
+    src_path = tmp_path / "labels.geojson"
+    _write(src_path, _presence_only())
+    tool = build_negative_sampler_tools()[0]
+    result = await tool.handler({"positives_path": str(src_path)}, _ctx())
+    assert "n_contamination_excluded" in result
+    quality = result["quality"]
+    assert "min_buffer_km" in quality and "mean_buffer_km" in quality
+    assert "note" in quality
+    assert "negatives" not in result  # quality is summary-only, still no raw coords
