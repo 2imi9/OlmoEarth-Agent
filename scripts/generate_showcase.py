@@ -392,7 +392,7 @@ async def main() -> None:
             )
         )
 
-        # ---- #8 evaluate (three tools; NNDM-LOO transcript is a regen TODO) ----
+        # ---- #8 evaluate (three tools) ----
         sections.append(
             render(
                 8,
@@ -422,6 +422,27 @@ async def main() -> None:
                     "Score a 3-class prediction against ground truth. "
                     "y_true = [1,1,0,0,2,2], y_pred = [1,0,0,0,2,2]. Give me "
                     "per-class precision, recall, F1 and IoU.",
+                ),
+            )
+        )
+        sections.append(
+            render(
+                8,
+                "olmoearth-evaluate",
+                "Analyze",
+                "NNDM-LOO folds for an unbiased map-accuracy estimate (CAST port)",
+                await capture(
+                    llm,
+                    build_evaluate_tools(),
+                    "My training labels are clustered but I need to predict over a "
+                    "much wider area, so plain leave-one-out CV will look too "
+                    "optimistic. Training points (lon,lat): [[0,0],[0.02,0],"
+                    "[0,0.02],[5,5],[5.02,5],[5,5.02]]. A sample of points from my "
+                    "prediction area: [[-2,-2],[2,-2],[6,-2],[-2,2],[2,2],[6,2],"
+                    "[-2,6],[2,6],[6,6]]. Build NNDM leave-one-out CV folds with "
+                    "olmoearth_nndm_cv so the accuracy estimate is unbiased over "
+                    "the prediction area, and tell me how much optimistic bias "
+                    "plain LOO would have had.",
                 ),
             )
         )

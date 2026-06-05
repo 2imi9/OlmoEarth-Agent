@@ -25,14 +25,12 @@ Skills #5 and #13 are captured against the **live Studio API** (#5 read-only: th
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to import field-collected labels (CSV with points and class column) into OlmoEarth Studio and wants to know about potential mistakes during data preparation.
-They explicitly asked to:
-1. List available instruction skills.
-2. Load the "data-prep" one.
-3. Walk them through key pitfalls.
+The user wants to:
+1. List the available OlmoEarth instruction skills.
+2. Load the "data-prep" skill (based on their description).
+3. Get a walkthrough of key pitfalls from that skill.
 
-First, I will call `olmoearth_list_skills` to see what's available. Based on the description, there should be a skill related to data preparation. Then I will load it and provide the requested information.
-I will follow the instructions strictly. First step: list skills.
+I will first call `olmoearth_list_skills` to see what's available. Based on the user's prompt mentioning "preparing labels", I expect to see something related to data preparation or label prep. Then I will load that skill using `olmoearth_load_skill`. Finally, I will synthesize the information for the user.
 ```
 
 **Function call** - `olmoearth_list_skills`:
@@ -69,7 +67,7 @@ I will follow the instructions strictly. First step: list skills.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants to list available skills and then load the data-prep one. I've listed the skills. Now I need to load "olmoearth-data-prep".
+The user wants to see the available skills and then specifically load the "olmoearth-data-prep" skill. I've already listed the skills. Now I need to load the "olmoearth-data-prep" skill to provide the instructions for data preparation.
 ```
 
 **Function call** - `olmoearth_load_skill`:
@@ -230,25 +228,32 @@ For fine-tuning, the canonical pattern is:
 
 **Qwen3.6 answer.**
 
-> Here are the available OlmoEarth instruction skills:
+> The available OlmoEarth instruction skills are:
 
-1. **olmoearth-data-prep**: Converts raw geospatial labels into OlmoEarth-ready datasets and avoids common import pitfalls.
-2. **olmoearth-embeddings**: Helps decide between embeddings (kNN, linear probe) vs full fine-tuning and emits a Jupyter notebook for embedding extraction.
-3. **olmoearth-rslearn**: Operates the rslearn toolkit to run data staging, training, inference, and debugging.
-4. **olmoearth-studio-job-config**: Recommends Studio job settings (model size, time frame, patch size, etc.).
+1. **olmoearth-data-prep** – Converts raw geospatial labels into OlmoEarth-ready datasets and avoids the 8 known prep pitfalls.
+2. **olmoearth-embeddings** – Helps you choose between embeddings (kNN/linear probe) vs full fine-tuning and emits a runnable notebook.
+3. **olmoearth-rslearn** – Operates the rslearn toolkit for running data pipelines, training, and inference.
+4. **olmoearth-studio-job-config** – Recommends Studio job settings (output type, model size, timeframe, patch size) from a plain-English description.
 
-I have loaded the **olmoearth-data-prep** skill for you. Since you are importing field-collected point labels from a CSV, here are the **8 known pitfalls** to avoid:
+I’ve loaded the `olmoearth-data-prep` skill. Here’s how to avoid the common pitfalls when importing your CSV of points with a class column:
 
-1.  **Wrong field names / Schema confusion**: OlmoEarth uses specific literal field names (e.g., `properties.sample_category` for Studio import, or `properties.oe_labels.{key}` for production). Mixing these up or using generic names like `label` or `class` will cause silent rejections or failures.
-2.  **Bbox AOIs instead of real watersheds**: For hydrology or specific event work, do not use bounding boxes. Use actual basin polygons (via NLDI/HUC) to avoid polluting your embeddings with unrelated cover.
-3.  **Studio range-locking on multiple metrics**: If you have multiple metrics, uploading them together can cause issues. The prep scripts emit one import file per metric.
-4.  **`.geojson` MIME-type rejection**: Browsers (especially on Windows) may reject `.geojson` uploads as `application/octet-stream`. Always upload the `.json` version as well.
-5.  **Imbalanced class distribution via quantile binning**: Quantile binning can lead to severe imbalance (e.g., 96% vs 0.1%). Use equal-frequency binning instead. The audit script warns if the max/min class ratio exceeds 10.
-6.  **Random splits inflating accuracy**: Randomly splitting labels can give misleadingly high accuracy. The prep scripts handle spatial cross-validation (sorting by longitude and assigning every Nth feature to val).
-7.  **Timeout on large uploads (>10k records)**: Studio has a 1-hour upload limit. If you have more than 10,000 samples, the data prep will auto-split them into smaller shards.
-8.  **Missing negative class**: Classification models need a negative or "background" class to prevent false positives. The audit script will fail if no such class is present.
+### The 8 Known Pitfalls & How to Avoid Them
 
-**Recommended Action**: Validate your CSV fields against the `properties.sample_category` schema (for Studio import) and run the `audit.py` script before uploading to ensure you pass all quality checks.
+1. **Wrong field names / schema confusion:** OlmoEarth Studio expects specific literal field names (`properties.sample_category` for import). If you’ve exported raw annotations from Studio previously, they use `es_label` and need renaming. Mixing these up causes silent rejection.
+2. **Bbox AOIs instead of real watersheds:** For hydrological tasks, never use bounding boxes—they include unrelated cover that pollutes embeddings. Use actual basin polygons via NLDI or HUC-12s.
+3. **Studio range-locking on multiple metrics:** Uploading multiple metrics in one file can cause Studio to range-lock incorrectly. The prep script emits separate import files for each metric.
+4. **`.geojson` MIME-type rejection:** Windows browsers sometimes reject `.geojson` as `application/octet-stream`. Always export both `.geojson` and `.json` variants.
+5. **Quantile binning creating class imbalance:** Quantile-based binning can result in highly skewed distributions (e.g., 96% vs 0.1%). The audit tool warns if the max/min ratio exceeds 10:1; prefer equal-frequency binning.
+6. **Random splits inflating accuracy:** Random train/val splits across space lead to overoptimistic accuracy because nearby points are highly correlated. Use spatial splitting (e.g., longitude-based partitioning).
+7. **Upload timeout on large files:** Studio has a 1-hour upload limit. If you have >10,000 records, the prep tool will automatically split them into geographically coherent shards.
+8. **Missing negative class:** Without a "background" or "other" class, your model will predict target classes everywhere (high false-positive rate). The audit fails if no negative class is detected.
+
+### Quick Workflow Summary
+1. **Validate Schema:** Ensure your CSV uses `properties.sample_category` for the class column before upload.
+2. **Audit Your Data:** Run the provided `audit.py` script on your GeoJSON output to check all 7 quality criteria (volume, schema, distribution, etc.).
+3. **Export Correctly:** Use `write_config.py` to generate both `.geojson` and `.json` files for Studio import, ensuring auto-sharding if you have many points.
+
+Would you like help converting your specific CSV into the required format or running the audit script?
 
 ---
 
@@ -263,54 +268,17 @@ I have loaded the **olmoearth-data-prep** skill for you. Since you are importing
 **Qwen3.6 reasoning:**
 
 ```
-The user needs help configuring an OlmoEarth Studio training job for land-cover segmentation and wants me to load the 'olmoearth-studio-job-config' instruction skill and summarize it.
+The user wants to configure an OlmoEarth Studio training job for a land-cover segmentation task.
+They specifically requested me to load the 'olmoearth-studio-job-config' skill.
+I should use the `olmoearth_load_skill` tool with the name "olmoearth-studio-job-config".
 
-1.  First, I need to check if the skill exists or list available skills to find the correct name if it varies slightly.
-2.  Then, I will load the skill using `olmoearth_load_skill`.
-3.  Finally, I will summarize the instructions for filling in the wizard.
+After loading the skill, I will read the instructions and summarize how to fill it in based on the land-cover segmentation context.
 
-Let's start by listing skills to see the exact name. The user said 'olmoearth-studio-job-config', but the tool description says "List the available OlmoEarth instruction skills...". I'll call list_skills first just to be safe and get the context, then load the requested one. Actually, looking at the request, the user was specific about the name they want loaded ('olmoearth-studio-job-config'). I will try loading it directly. If it fails (unlikely given the prompt style), I would check the list. However, standard protocol is often to list first if unsure, but here the user provided a specific name. Let's look at the tool definition again. `olmoearth_list_skills` lists available skills. `olmoearth_load_skill` loads one by name. I will try loading 'olmoearth-studio-job-config' directly as requested.
+Plan:
+1. Call `olmoearth_load_skill` with name="olmoearth-studio-job-config".
+2. Summarize the steps provided in the loaded skill text for configuring the job for land-cover segmentation.
 
-Wait, usually it is safer to list first if the names aren't obvious, but "Load the 'olmoearth-studio-job-config' instruction skill" implies this is the specific string needed. Let's assume the user knows the name or I should verify. Given the persona instructions "Call this when a task involves preparing labels, configuring a Studio job...", listing is actually a good first step to confirm the name matches exactly what is in the system.
-
-Let's list skills first.
-```
-
-**Function call** - `olmoearth_list_skills`:
-
-```json
-{}
-```
-
-**Function result:**
-
-```json
-{
-  "skills": [
-    {
-      "name": "olmoearth-data-prep",
-      "description": "Convert raw geospatial labels (CSV / GeoJSON / Shapefile / station tables) into OlmoEarth-ready datasets that pass Studio import and avoid the 8 known prep pitfalls. Use whenever the user is preparing labels for OlmoEarth, building an rslearn dataset config, uploading to OlmoEarth Studio or Roger Studio, exporting Studio annotations for olmoearth_run, fetching real watershed AOIs (NLDI / NHD / HUC), splitting train/val for an EO model, troubleshooting Studio import errors (wrong field names, MIME-type rejection, 1-hour timeout), or asking about equal-frequency binning, spatial cross-validation, negative-class generation, or class imbalance for OlmoEarth fine-tuning. Trigger even when \"OlmoEarth\" isn't said explicitly — rslearn dataset configs, Sentinel-2 windows, Planetary Computer queries, sample_category / es_label / oe_labels schema questions, or watershed-vs-bbox decisions in an EO/labeling context all warrant this skill."
-    },
-    {
-      "name": "olmoearth-embeddings",
-      "description": "Decide whether to use OlmoEarth embeddings (kNN / linear probe / clustering on frozen features) vs full fine-tuning for a specific Earth-observation task — and emit a runnable Jupyter notebook that extracts embeddings on the user's data. Use whenever the user asks \"should I use embeddings or fine-tune\", \"is my dataset too small to fine-tune\", \"I have <100 labels — what now\", \"kNN vs linear probe vs MLP head on OlmoEarth features\", \"how do I extract OlmoEarth embeddings from this data\", \"I want to do similarity search / clustering / nearest-neighbor on satellite imagery\", \"Nano vs Tiny vs Base embeddings\", or \"generate a notebook to run OlmoEarth on my rslearn dataset\". Trigger even when \"embeddings\" isn't said explicitly: \"I only have 50 labels and a T4 GPU\" or \"I want to find areas that look like this one\" both warrant this skill. Pairs with `olmoearth-studio-job-config` (that skill picks Studio settings, this skill decides embeddings-vs-fine-tune at code level and emits the notebook)."
-    },
-    {
-      "name": "olmoearth-rslearn",
-      "description": "Operate the rslearn toolkit — the data + training engine under OlmoEarth (https://github.com/allenai/rslearn). Use whenever the user wants to RUN rslearn rather than just configure it: build/stage an rslearn dataset (the 4-stage add_windows → prepare → ingest → materialize pipeline), pull imagery from a data source (Sentinel-2 / Sentinel-1 / Landsat / NAIP / Google Earth Engine / Planetary Computer / local files), fine-tune or run inference on a foundation model (rslearn model fit / predict with a Lightning YAML), extract embeddings from a frozen encoder, tag a train/val split, or debug an rslearn run (no scenes found, CRS mismatch, cloud-cover sort, slow ingest/materialize). This is the layer that olmoearth-data-prep (which only WRITES config.json/YAML) and olmoearth-embeddings (which only EMITS a notebook) hand off to. Trigger on rslearn CLI questions, dataset config.json + model.yaml shapes, \"how do I run/train/materialize ...\", windows, band_sets, data_sources.*, RslearnDataModule / SegmentationTask / UNetDecoder, even when \"rslearn\" isn't named but the user is staging EO data or fine-tuning over it."
-    },
-    {
-      "name": "olmoearth-studio-job-config",
-      "description": "Recommend OlmoEarth Studio job settings (output type, foundation model size, time frame, imagery sources, patch size) from a plain-English task description. Use whenever the user is creating a new Studio job / model and asking \"which output type / which model size / per-pixel vs window / Nano vs Tiny vs Base / how much before-after context / Sentinel-1 or just S2 / what patch size / 3 vs 6 vs 12 month period / how big a window for detection\" — or pasting fragments of the Studio job wizard (e.g. \"What should this model produce?\", \"Which OlmoEarth foundation model should we fine-tune?\", \"What time frame is important context\", \"How much surrounding area should the model use?\"). Trigger even when \"Studio\" isn't said explicitly: any \"I want to predict X from satellite imagery, what settings should I pick\" question in an OlmoEarth / rslearn / Sentinel-2 context warrants this skill. Pairs with `olmoearth-data-prep` (this skill chooses the config, that skill produces the data the config consumes)."
-    }
-  ]
-}
-```
-
-**Qwen3.6 reasoning (cont.):**
-
-```
-The user wants to configure a new OlmoEarth Studio training job for a land-cover segmentation task and is asking how to answer the wizard. They specifically requested to load the 'olmoearth-studio-job-config' instruction skill. Let me load that skill now.
+Let's start by loading the skill.
 ```
 
 **Function call** - `olmoearth_load_skill`:
@@ -567,65 +535,56 @@ See [`references/presets.md`](references/presets.md) for verified-from-Studio-ex
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants to configure a new OlmoEarth Studio training job for a land-cover segmentation task. I've loaded the `olmoearth-studio-job-config` skill which provides detailed guidance on how to fill in each of the six wizard fields. Let me summarize this for the researcher based on the specific task: "land-cover segmentation".
+The user wants to configure a new OlmoEarth Studio training job for a land-cover segmentation task. They've asked me to load the `olmoearth-studio-job-config` skill and summarize how to fill it in. I have successfully loaded the skill and received its instructions. Now I need to summarize the key steps for filling in the wizard, specifically tailored to a land-cover segmentation task, based on the skill instructions.
 
-Looking at the common task presets in the skill description:
-- **Land cover** — per-pixel classification, Base, 12-month period, S2, 320–640 m
+Let's break down the 6 fields in the wizard as described in the skill:
 
-Let me provide a clear summary of how to answer the wizard for this specific task.
+1.  **Output Type**: For land-cover segmentation, it's "Per-pixel classification (semantic segmentation)".
+2.  **Foundation Model Size**: Default is usually Tiny, but for land cover (often >5 classes like crop, urban, forest, water, etc.), the heuristic says to step UP to `base` if there are many classes (>5). Land cover typically has 5-17 classes depending on the schema (e.g., ESA WorldCover, ESRI), so Base is often recommended.
+3.  **Label Field**: This depends on the user's specific dataset/schema (e.g., `oe_labels.category` or `land_cover_class`). I should note they need to pick their own label field.
+4.  **Time Frame**: Land cover is typically a stable property, so "Period" of "12 months (annual)". Start months default to all 12 unless there's a specific growing-season constraint, but for general land cover, `[1,2,...,12]` or just the annual period is fine.
+5.  **Imagery Sources**: Default is `["sentinel2"]`. Add Sentinel-1 only if cloud cover is high (>30%) and texture helps, but generally S2 is enough for spectral land cover signatures.
+6.  **Patch Size**: For per-pixel classification, the default is `320 m`. Use `640 m` if looking at landscape-scale context/inter-field effects.
+
+I will summarize these steps clearly for the researcher. I don't need to call any other tools. I will just provide the summary.
 ```
 
 **Qwen3.6 answer.**
 
-> Here's how to fill in each of the six OlmoEarth Studio job wizard fields for a **land-cover segmentation** task:
+> Based on the `olmoearth-studio-job-config` skill, here is how you should fill in the wizard for a **land-cover segmentation** task:
 
----
+### 1. Output type → Per-pixel classification (semantic segmentation)
+Since land cover assigns a category to every pixel within an area, select **Per-pixel classification**. Do not choose "window-level" unless you are predicting a single label for an entire tile (e.g., "what is the dominant ecosystem in this 320x320m patch?").
 
-### 1. Output type → **Per-pixel classification (semantic segmentation)**
-Land cover assigns one category per pixel across an entire map, which matches semantic segmentation — not window-level classification (one label per region) or detection (discrete objects).
+### 2. Foundation model size → `Base`
+*   **Default rule:** Start with `Tiny`.
+*   **Adjustment for land cover:** Land-cover schemas often have more than 5 classes (e.g., crop, urban, forest, water, wetland, bare soil, etc.). The skill advises stepping **UP to `Base`** if you have many classes or a small dataset where representation quality is critical.
 
-### 2. Foundation model size → **Base**
-The skill's preset for land cover recommends **Base** (~90M params). Land-cover datasets typically have more than 5 classes and require strong representation quality, so Base is safer. If you're certain you have >20,000 labeled samples and can run fine-tuning with minimal compute, Tiny could work, but Base is the default recommendation for this task type.
+### 3. Label field → [Your schema's specific field]
+The wizard will ask for the metadata field on your GeoJSON labels (e.g., `oe_labels.category`, `land_cover_class`). **Do not invent this**; pick the exact string from your prepared label data that holds the class names.
 
-### 3. Label field → **Your project-specific label column**
-The wizard asks which metadata field on your labels GeoJSON contains the land-cover categories (e.g., `oe_labels.category` or similar). You'll see this after preparing your data with the sibling skill `olmoearth-data-prep`, which audits your schema. Pick the exact field name shown in your dataset.
+### 4. Time frame → Period: 12 months
+*   **Mode:** Choose **A period of time** (annual), as land cover is generally a stable property rather than a transient event like a flood or vessel.
+*   **Length:** Select **12 months**.
+*   **Start months:** Unless you are targeting a specific phenological snapshot, leave this to the default or full year. If focusing on agricultural land cover in the Northern Hemisphere, `[3, 4]` might be relevant, but for general mapping, `1–12` is standard.
 
-### 4. Time frame → **12-month period**
-Land cover is an annual property, so select a **12-month (annual) period**. For `start_months`, use all 12 unless you have a specific growing-season constraint. The skill notes that full-year coverage (`[1–12]`) is appropriate because land-cover labels are stable year-round.
+### 5. Imagery sources → `["sentinel2"]`
+*   **Default:** Sentinel-2 is sufficient for most spectral signatures used in land cover.
+*   **Exception:** Add `"sentinel1"` only if your study area has >30% average cloud cover or if you specifically need radar texture to distinguish certain classes (e.g., wetlands vs. open water).
 
-### 5. Imagery sources → **Sentinel-2 only**
-Start with `["sentinel2"]` alone. Sentinel-1 (radar) is not needed for land cover, as the task relies on spectral signatures rather than texture or cloud penetration. Add S1 later only if you're debugging and find persistent cloud-cover issues in a tropical region.
+### 6. Patch size → 320 m (Small)
+*   For per-pixel classification, the recommended default is **320 m**. This provides enough context for single-field boundaries without "smearing" labels across neighboring features.
+*   Consider **640 m** if you are mapping large-scale landscape properties where inter-field effects matter.
 
-### 6. Patch size → **320 m or 640 m**
-- Use **320 m** (Small) for most land-cover tasks to capture single-field or parcel context without smearing across neighboring classes.
-- Consider **640 m** (Medium) if your labels reference landscape-scale patterns or inter-field transitions.
+### Summary Checklist
+1.  **Output Type:** Per-pixel classification
+2.  **Model:** Base (due to likely >5 classes)
+3.  **Label Field:** [Your specific label column name]
+4.  **Time Frame:** Period, 12 months
+5.  **Imagery:** Sentinel-2 only (unless cloudy region)
+6.  **Patch Size:** 320 m
 
----
-
-### Summary config JSON
-```json
-{
-  "output_type": "per_pixel_classification",
-  "foundation_model": "base",
-  "label_field": "oe_labels.category",
-  "time_frame": {
-    "mode": "period",
-    "period_months": 12,
-    "start_months": [1,2,3,4,5,6,7,8,9,10,11,12]
-  },
-  "imagery_sources": ["sentinel2"],
-  "patch_size_m": 320,
-  "rationale": {
-    "output_type": "Land cover assigns a category to every pixel → semantic segmentation",
-    "foundation_model": ">5 classes with fine-grained boundaries → Base for representation quality",
-    "time_frame": "Annual land-cover is stable year-round; full 12-month window captures seasonal variation",
-    "imagery_sources": "Spectral signatures from Sentinel-2 suffice for land cover; S1 adds compute but little value",
-    "patch_size_m": "320 m provides field-level context while maintaining boundary sharpness"
-  }
-}
-```
-
-**Next step:** If you haven't prepared your labels yet, run the `olmoearth-data-prep` skill to ensure your GeoJSON schema is valid before creating this Studio job. The label field in the wizard must match whatever field name `olmoearth-data-prep` produces.
+Once you have this configuration, proceed to the next steps in the wizard or refer to the `olmoearth-data-prep` skill if you haven't prepared your label data yet.
 
 ---
 
@@ -640,23 +599,12 @@ Start with `["sentinel2"]` alone. Sentinel-1 (radar) is not needed for land cove
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to decide between using OlmoEarth embeddings with a shallow classifier versus fine-tuning the full model for a crop-type mapping task. They specifically asked me to load the 'olmoearth-embeddings' skill. I will call the `olmoearth_list_skills` tool first to verify the exact name of the skill, although the user provided a likely candidate. Then I will load that skill.
+The user wants to know whether to use OlmoEarth embeddings with a shallow classifier or fine-tune the full model for a crop-type mapping task. They specifically asked to load the 'olmoearth-embeddings' instruction skill to get the decision criteria.
 
-Looking at the list of skills usually available or inferred from the prompt context:
-1.  olmoearth_data_prep
-2.  olmoearth_studio_job_config
-3.  olmoearth_embeddings_vs_fine_tune
+I need to call `olmoearth_list_skills` first to check if the skill name is correct and exists, or just directly try to load `olmoearth-embeddings`. The user provided a specific name: 'olmoearth-embeddings'. Let me list skills first to see the exact names available. Actually, the prompt says "Load the 'olmoearth-embeddings' instruction skill", so I will check the list first to confirm the exact name, or just call it directly if I'm confident. The tool description for `olmoearth_list_skills` says: "Call this when a task involves preparing labels, configuring a Studio job, or choosing embeddings-vs-fine-tune, to see which skill to load." So listing skills is appropriate here.
 
-The user asked for 'olmoearth-embeddings', but based on standard naming conventions and the description of the first function ("List the available OlmoEarth instruction skills... embeddings vs fine-tune"), it's highly probable the skill is named `olmoearth_embeddings_vs_fine_tune` or similar. I will check the list first to be precise.
-
-Wait, looking at the prompt again: "Call this when a task involves preparing labels, configuring a Studio job, or choosing embeddings-vs-fine-tune...".
-The user specifically asked for 'olmoearth-embeddings'. I should probably list skills first to get the exact name, but the prompt implies I can load by name. Let's list them to ensure accuracy.
-
-Step 1: Call `olmoearth_list_skills`.
-Step 2: Load the appropriate skill based on the result (likely `olmoearth_embeddings_vs_fine_tune`).
-Step 3: Summarize the criteria for the user.
-
-Let's start with listing skills.
+Wait, the user explicitly said: "Load the 'olmoearth-embeddings' instruction skill". I'll list skills first to verify names, then load it. Actually, I can just call `olmoearth_load_skill` with the exact name provided by the user, or list skills first. I'll list skills to be safe and see the available options.
+Let's call `olmoearth_list_skills`.
 ```
 
 **Function call** - `olmoearth_list_skills`:
@@ -693,7 +641,7 @@ Let's start with listing skills.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants to decide between using embeddings with a shallow classifier or fine-tuning the full model for their crop-type mapping task. They specifically asked me to load the 'olmoearth-embeddings' instruction skill to get the decision criteria.
+The user wants to decide between using embeddings or fine-tuning for crop-type mapping. The relevant skill is `olmoearth-embeddings`. I need to load this skill now.
 ```
 
 **Function call** - `olmoearth_load_skill`:
@@ -886,109 +834,91 @@ python scripts/recommend.py \
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user is asking for the decision criteria between using OlmoEarth embeddings with a shallow classifier versus fine-tuning the full model, specifically for a crop-type mapping task. I have loaded the `olmoearth-embeddings` skill and now need to provide the decision criteria based on the instructions.
+The user wants to know whether to use embeddings or fine-tune for crop-type mapping. I've loaded the 'olmoearth-embeddings' skill and have the instructions. Let me analyze their task based on the decision rules in the skill:
 
-Let me extract the key decision criteria from the loaded skill:
+For a "crop-type mapping" task, this sounds like a classification task with multiple classes (different crop types). However, the user hasn't provided:
+1. Number of labeled samples
+2. Compute budget/GPU access
+3. Whether this is for rapid prototyping or production
 
-1. Quick decision rules (precedence order)
-2. Decision table (when to use which approach)
-3. Cost/accuracy reference
-4. Classifier recommendations
+According to the quick decision rules in the skill, I need to work through them in order:
 
-I should present this clearly for a crop-type mapping task context. The user didn't provide specific details about their dataset size, compute budget, or whether they need production-level accuracy, so I'll provide the decision framework and explain how to apply it to their crop-type mapping task.
+1. **Goal overrides everything**: Not explicitly similarity search/clustering - they want classification ("crop-type mapping")
+2. **Fewer than 100 labeled samples → embeddings + kNN**
+3. **Compute gates fine-tuning**: T4/V100/Colab/free tier/CPU → embeddings + linear probe
+4. **Production goal + strong compute → fine_tune**
+5. **More than 2000 samples + strong compute → embeddings_then_fine_tune**
+6. **100–2000 samples → embeddings + linear probe**
+7. **Otherwise → embeddings + linear probe**
+
+The user hasn't provided enough information (sample count, compute resources, production vs prototyping goal) to give a definitive answer. However, I can provide the decision framework and what would lead to each recommendation based on the skill's criteria.
+
+I should NOT invent data or ids, and I should interpret the result for the researcher. The user asked me to "give me the decision criteria" so I should present the key decision rules from the loaded skill.
+
+Let me structure my response:
+1. Present the key decision criteria from the olmoearth-embeddings skill
+2. Explain that for crop-type mapping, the right choice depends on a few factors they haven't specified
+3. Give them the framework to decide based on their specific situation
+
+I'll cite the pitfall numbers and reference docs if mentioned in the skill instructions. Looking through, I see references to:
+- `references/when_to_use.md` - full decision tree
+- `references/classifier_choice.md` - kNN vs linear probe vs MLP head
+
+
+- `references/model_sizes.md` - embedding-dim-vs-model-size tradeoffs
+
+I'll synthesize this into a concise response that addresses their crop-type mapping question using the decision framework from the skill.
 ```
 
 **Qwen3.6 answer.**
 
-> # Decision Criteria: Embeddings vs Fine-Tuning for Crop-Type Mapping
+> Based on the loaded **olmoearth-embeddings** skill instructions, here are the decision criteria for your crop-type mapping task:
 
-## Quick Decision Rules (apply in order — first match wins)
+## Decision Rules (apply in priority order)
 
-1. **Goal overrides everything.**
-   - Similarity/search/retrieval → embeddings, no classifier (Tiny model). No labels yet → embeddings + clustering (Tiny). Ignore sample count and compute for these.
+1. **If you have < 100 labeled samples** → Use **embeddings + kNN** (cosine distance). Fine-tuning will overfit at this size.
 
-2. **Fewer than 100 labeled samples** → embeddings + kNN (cosine). Fine-tuning overfits at this size.
+2. **If your compute is limited** (T4, V100, Colab/free tier, or CPU) → Use **embeddings + linear probe**, regardless of dataset size. Full fine-tuning requires A100/H100/multi-GPU hardware.
 
-3. **Compute gates fine-tuning.**
-   - Full fine-tuning (and staged embeddings-then-fine-tune) requires **strong compute: A100 / H100 / multi-GPU**.
-   - On **T4, V100, Colab/free tier, or CPU** → embeddings + linear probe, *regardless of dataset size or production goal*. Flag the accuracy gap explicitly.
+3. **If this is for rapid prototyping/data exploration** → Use **embeddings + kNN/linear probe**. You get a working baseline in minutes (~2–3 GB GPU memory).
 
-4. **Production goal + strong compute** → fine-tune (full 30-epoch schedule).
+4. **If you have 100–2,000 samples with strong compute** → Start with **embeddings + linear probe**, then fine-tune only if the probe plateaus below your accuracy target.
 
-5. **More than 2000 samples + strong compute** → embeddings_then_fine_tune: run embeddings + linear-probe baseline first (minutes), then fine-tune.
+5. **If you have > 2,000 samples AND strong compute** → Use **embeddings_then_fine_tune**: run the embeddings baseline first (minutes), then commit to a full 30-epoch fine-tune schedule.
 
-6. **100–2000 samples** → embeddings + linear probe. Fine-tune later only if the probe plateaus below requirements.
+6. **If production deployment or maximum accuracy is needed** with strong compute → Commit to **full fine-tuning**.
 
-7. **Otherwise** (weak signals) → embeddings + linear probe as safe baseline; note missing inputs (samples, classes, compute, goal).
+## Performance & Cost Reference
 
----
-
-## Decision Table (from the tutorial's "When to Use Which Approach?")
-
-| Scenario | Recommended |
-|---|---|
-| Rapid prototyping / exploring data | **Embeddings + kNN/LP** |
-| Limited GPU resources (T4, Colab free, no GPU) | **Embeddings + kNN/LP** |
-| Small labeled dataset (<100 samples) | **Embeddings + kNN/LP** |
-| Similarity search / clustering / nearest-neighbor | **Embeddings** (no classifier needed) |
-| Weak labels or no labels yet | **Embeddings** + weak-label pipeline |
-| Maximum accuracy needed | **Fine-tuning** |
-| Production deployment | **Fine-tuning** |
-| Task very different from pre-training (e.g., SAR-only, thermal-only) | **Fine-tuning** |
-| Need to update model with new modalities | **Fine-tuning** |
-
----
-
-## Cost / Accuracy Reference (AWF Kenya LULC, T4 GPU)
-
-| Approach | Accuracy | Time | GPU memory |
-|---|---|---|---|
+| Approach | Accuracy | Time | GPU Memory |
+|----------|----------|------|------------|
 | Embeddings + kNN/LP | ~70–75% | Minutes | ~2–3 GB |
-| Fine-tuning (4 epochs) | ~70–75% | ~15–20 min | ~4–6 GB |
-| Fine-tuning (30 epochs) | ~82–87% | ~2–3 h | ~4–6 GB |
+| Fine-tune (4 epochs) | ~70–75% | ~15–20 min | ~4–6 GB |
+| Fine-tune (30 epochs) | ~82–87% | ~2–3 h | ~4–6 GB |
 
-**Two takeaways:**
-- Short fine-tunes don't beat embeddings — if you're going to fine-tune, budget the full schedule.
-- Embeddings get you to a working baseline in *minutes*. Always run embeddings first to validate the data and task, even if you intend to fine-tune later.
+**Key takeaway:** Short fine-tunes don't beat embeddings. If you go the fine-tuning route, budget for the full 30-epoch schedule. Always run embeddings first to validate your data and pipeline, even if you intend to fine-tune later.
 
----
-
-## Model Size Selection (applies to every branch)
-
-| Model | Params | Embedding dim | Tradeoff |
-|---|---|---|---|
-| **Nano** | ~1.4M | 128 | Fastest extraction (~2–3 min for 1K windows on T4), good for clustering and binary tasks |
-| **Tiny** | ~6.2M | 192 | **Default for most embedding-based classifiers** |
-| **Base** | ~90M | 768 | Strongest representations; use for fine-grained or multi-class downstream tasks |
-| **Large** | ~300M | 1024 | Diminishing returns (~85% on tutorial benchmark vs Base ~87%) |
-
-- **Default: Tiny.**
-- Choose **Base only when classes > 5 OR samples < 2000**.
-- A large dataset on few classes stays **Tiny** even when fine-tuning.
-
----
-
-## Classifier Recommendations (on top of embeddings)
+## Which classifier on top of embeddings?
 
 | Classifier | When |
-|---|---|
-| **kNN (cosine, k=10–20)** | Tiny datasets (<100 labels per class), exploratory, similarity-search adjacent. Tutorial uses k=20. |
-| **Linear probe (logistic regression on StandardScaler-normalized embeddings)** | Default for classification. Robust, fast, interpretable coefficients. |
-| **Small MLP head (1–2 hidden layers, 256 units)** | When linear probe plateaus and you have >2K samples. Captures non-linear class boundaries without unfreezing the encoder. |
+|------------|------|
+| **kNN (cosine, k=10–20)** | Tiny datasets (<100 labels per class), exploratory work |
+| **Linear probe (logistic regression)** | Default for classification. Robust and interpretable. |
+| **Small MLP head** | When linear probe plateaus and you have >2K samples |
 
-The generated notebook trains both kNN and linear probe by default and reports both accuracies side-by-side. If neither breaks 75% of the tutorial-benchmark accuracy on your task, that's the signal to graduate to fine-tuning.
+## Model size recommendation
+
+- **Default: Tiny** (192-dim embeddings) — works well for most tasks
+- **Base** (768-dim embeddings) — choose only if classes > 5 OR samples < 2,000 (better representations with more classes or less data)
 
 ---
 
-## How to Apply This to Your Crop-Type Mapping Task
+To give you a specific recommendation, I'd need to know:
+1. **How many labeled samples** do you have for crop types?
+2. **What GPU/compute access** do you have? (T4, A100, Colab, etc.)
+3. **Is this for production** or prototyping/exploration?
 
-To give you a specific recommendation, I'd need:
-- **Number of crop classes** (e.g., 3: corn/soy/wheat vs 20+)
-- **Labeled sample count** per class or total (<100? 100–2000? >2000?)
-- **Compute budget** (T4/Colab/free tier vs A100/multi-GPU)
-- **Goal** (rapid prototyping/exploration vs production deployment vs maximum accuracy)
-
-If you share those details, I can give you a precise recommendation and even generate a runnable notebook for the embeddings path.
+If you'd like, I can generate a runnable Jupyter notebook that extracts OlmoEarth embeddings on your dataset and trains both kNN + linear probe baselines — just provide your rslearn dataset path and class count.
 
 ---
 
@@ -1008,11 +938,7 @@ The user wants me to:
 2. Pull the result tiles for one of those predictions
 3. Not submit anything new
 
-To do this, I need to:
-1. First, use `olmoearth_search_predictions` to find existing predictions and discover a reusable model_id
-2. Then use `olmoearth_fetch_results` or `olmoearth_get_prediction_result` to get the result tiles for one of those predictions
-
-Let me start by searching for existing predictions. I don't need to specify a project_id since they said "in my existing OlmoEarth predictions" without specifying a particular project.
+Let me start by searching for predictions to see what's available. I'll use olmoearth_search_predictions without any project_id to get all predictions.
 ```
 
 **Function call** - `olmoearth_search_predictions`:
@@ -1109,11 +1035,20 @@ Let me start by searching for existing predictions. I don't need to specify a pr
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants to find a reusable model in their existing OlmoEarth predictions and then pull the result tiles for one of those predictions. Let me look at the results:
+The user wants to find a reusable model in existing predictions and then pull the result tiles for one of those predictions.
 
-I can see 12 predictions with various statuses (completed or failed). I should pick one that is completed to get the results tiles. Let me pick "PA KARST Final--01-01-2025--12-31-2025--sc-bai" which has status "completed" and model_id "5f3916ab-d293-4f73-970d-4ede1c5cbfda".
+Looking at the results, I can see several predictions with different model_ids:
+- "5f3916ab-d293-4f73-970d-4ede1c5cbfda" (completed)
+- "97da7213-341a-4872-9ef7-25df0324ec59" (completed)
+- "3ea439be-4f17-422b-b9c4-6d0237c4742b" (completed)
+- "259cca22-80a7-4516-bf45-21cad0612e1d" (failed)
+- "80cb8a1b-89cb-41ca-9b25-37dab7c25420" (appears multiple times, some completed, some failed)
+- "1be97692-6fb6-4f56-9099-a8bfecbcd6da" (failed)
+- "044f7ac7-e668-4100-a32d-290b7aa7972a" (appears multiple times, some completed, some failed)
 
-Now I need to fetch the results for this prediction using its id: "c40d608e-dabc-46f0-85a7-722f6f7a610d"
+A reusable model would be one that has at least one completed prediction. Let me pick one with a completed prediction. I'll use prediction ID "c40d608e-dabc-46f0-85a7-722f6f7a610d" which is completed and uses model_id "5f3916ab-d293-4f73-970d-4ede1c5cbfda".
+
+Now I need to fetch the results for this prediction using olmoearth_fetch_results.
 ```
 
 **Function call** - `olmoearth_fetch_results`:
@@ -1150,49 +1085,37 @@ Now I need to fetch the results for this prediction using its id: "c40d608e-dabc
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user asked me to:
-1. Find a reusable model in their existing OlmoEarth predictions
-2. Pull the result tiles for one of those predictions
+The user wants:
+1. A reusable model from their existing predictions
+2. The result tiles for one of those predictions
 
-I found several predictions. Looking at them, I can see multiple completed predictions with different model_ids. Some models appear to be reused across multiple predictions (like "044f7ac7-e668-4100-a32d-290b7aa7972a" which is used by 4 predictions).
+From the search results, I can see several completed predictions with different model_ids. I'll highlight a reusable model (one that has multiple successful predictions or is clearly reusable), then provide the tile URLs for one of the completed predictions.
 
-I selected the first completed prediction:
-- ID: c40d608e-dabc-46f0-85a7-722f6f7a610d
-- Name: "PA KARST Final--01-01-2025--12-31-2025--sc-bai"
-- Status: completed
-- Model ID: 5f3916ab-d293-4f73-970d-4ede1c5cbfda
+The prediction "c40d608e-dabc-46f0-85a7-722f6f7a610d" (PA KARST Final--01-01-2025--12-31-2025--sc-bai) uses model_id "5f3916ab-d293-4f73-970d-4ede1c5cbfda" and is completed.
 
-Then I fetched the results for this prediction and got:
-- Result ID: 0a098ce7-21be-4481-a165-7ce92fd1e605
-- Tile URLs: /api/v1/prediction-results/0a098ce7-21be-4481-a165-7ce92fd1e605/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score
-- Property names: ["sample_karst_score"]
-- File format: png
+The fetch_results returned:
+- result_id: 0a098ce7-21be-4481-a165-7ce92fd1e605
+- tile_urls: /api/v1/prediction-results/0a098ce7-21be-4481-a165-7ce92fd1e605/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score
+- property_names: ["sample_karst_score"]
+- file_format: png
 
-Now I should provide a clear answer to the researcher.
+I should present this clearly to the user.
 ```
 
 **Qwen3.6 answer.**
 
-> I found your existing predictions and retrieved results from one of them.
+> Here's what I found:
 
-**Reusable Models Found:**
-Your account has 12 predictions across several models. Here are some reusable models with multiple completed runs:
+**Reusable Model:** 
+Model ID `5f3916ab-d293-4f73-970d-4ede1c5cbfda` is associated with your completed prediction **"PA KARST Final--01-01-2025--12-31-2025--sc-bai"** (prediction ID `c40d608e-dabc-46f0-85a7-722f6f7a610d`). This model produced a successfully completed prediction that you can reuse.
 
-| Model ID | Prediction Count (Completed) | Example Prediction |
-|----------|------------------------------|-------------------|
-| `044f7ac7-e668-4100-a32d-290b7aa7972a` | 3 completed | "Potomac Prediction", "short test" |
-| `80cb8a1b-89cb-41ca-9b25-37dab7c25420` | 2 completed | "PA KARST Central V6--05-20-2020", "PA KARST Central V6--05-19-2026" |
-| `5f3916ab-d293-4f73-970d-4ede1c5cbfda` | 1 completed | "PA KARST Final--01-01-2025--12-31-2025--sc-bai" |
-
-**Result Tiles Retrieved:**
-For prediction **`c40d608e-dabc-46f0-85a7-722f6f7a610d`** ("PA KARST Final"), I found one result:
-
+**Result Tiles for this Prediction:**
 - **Result ID:** `0a098ce7-21be-4481-a165-7ce92fd1e605`
-- **Property:** `sample_karst_score`
-- **Format:** PNG tiles
-- **Tile URL template:** `/api/v1/prediction-results/0a098ce7-21be-4481-a165-7ce92fd1e605/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`
+- **Tile URL Template:** `/api/v1/prediction-results/0a098ce7-21be-4481-a165-7ce92fd1e605/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`
+- **Property Mapped:** `sample_karst_score`
+- **File Format:** PNG
 
-You can use the tile URL template above with any valid {z}, {x}, {y} coordinates to retrieve map tiles for this karst score prediction.
+You can fetch individual map tiles by replacing `{z}`, `{x}`, and `{y}` with the appropriate zoom level and tile coordinates in the URL above.
 
 ---
 
@@ -1207,8 +1130,7 @@ You can use the tile URL template above with any valid {z}, {x}, {y} coordinates
 **Qwen3.6 reasoning:**
 
 ```
-The user wants me to analyze a time series of karst prediction results to determine if there's a genuine upward trend or just quarter-to-quarter fluctuation. They've provided 4 data points for 4 quarters in 2024:
-
+The user wants me to analyze the trend of positive-area fraction for karst predictions across four quarters of 2024. They have provided:
 - 2024-03-01 = 0.12
 - 2024-06-01 = 0.18
 - 2024-09-01 = 0.15
@@ -1216,12 +1138,12 @@ The user wants me to analyze a time series of karst prediction results to determ
 
 The metric is "karst_positive_fraction".
 
-I need to use the olmoearth_change_detect tool with:
-- series: an array of 4 objects, each with a date and value
+I need to call the olmoearth_change_detect tool with:
+- series: an array of at least 3 objects, each with a date and value. Since dates are provided, I'll include them.
 - metric: "karst_positive_fraction"
-- tol: optional, not specified by user, so I'll use the default
+- tol: not specified, so I'll use the default (0)
 
-The dates should be in ISO-8601 format as provided. Let me construct the call.
+Let me construct the series array with the four data points in chronological order.
 ```
 
 **Function call** - `olmoearth_change_detect`:
@@ -1290,27 +1212,35 @@ The dates should be in ISO-8601 format as provided. Let me construct the call.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The change detection tool indicates an "oscillating" trend rather than a steady increasing or decreasing one. However, it's important to look at the full picture:
+The tool result shows the following:
+- n_dates: 4 dates as expected
+- values: [0.12, 0.18, 0.15, 0.27]
+- step_deltas: [0.06, -0.03, 0.12] - meaning it went up by 0.06, down by 0.03, then up by 0.12
+- net_change: 0.15 (from 0.12 to 0.27)
+- max_step: The largest change was from 2024-09-01 to 2024-12-01, with a delta of 0.12
+- reversals: 2 - this is interesting, let me think about what this means. A reversal count typically counts how many times the trend changes direction. Here we have up -> down -> up, so that's 2 reversals (up to down, then down to up). Wait, actually with 3 steps, there can be at most 2 reversals if it goes up-down-up or down-up-down.
+- trend: "oscillating" - the tool has classified this as oscillating rather than increasing
+- monotonic: false - not a steady increase
 
-- Net change is +0.15 (from 0.12 to 0.27)
-- There are 2 reversals in the trajectory
-- The largest single-step change was between Sept and Dec (+0.12)
-- The trend label is "oscillating" which means there were directional changes
+So despite the net positive change of 0.15 (from 0.12 to 0.27), the tool classifies the trend as "oscillating" due to the dip in Q3. The researcher asked if it's genuinely trending up or just wobbling quarter to quarter. The tool says "oscillating", which suggests it's wobbling, despite the overall increase.
 
-So while there's a net increase, it's not a monotonic (steadily increasing) trend - there was a dip between June and September before the big jump in Q4.
-
-I should explain this to the researcher clearly.
+Let me provide a clear interpretation for the researcher.
 ```
 
 **Qwen3.6 answer.**
 
-> The change-detection analysis shows that while the positive area **increased overall** (net change of +0.15, from 0.12 to 0.27 over the year), the trajectory was **not steadily increasing**. Here's what happened:
+> Based on the change-detection analysis:
 
-- Q1→Q2: increased by 0.06
-- Q2→Q3: **decreased** by 0.03 (the dip)
-- Q3→Q4: surged by 0.12 (the largest single-step change)
+**Net change:** +0.15 (from 0.12 in March to 0.27 in December) — so there *is* an overall increase in positive karst fraction over the year.
 
-The trend is classified as **"oscillating"** because there were two directional reversals (up, then down, then up). The late-year surge in Q4 drove most of the net gain and masks the mid-year dip, but it's not a smooth, monotonic upward trend. If you're looking for evidence of steady karst development across the year, the data suggests something more complex — growth interrupted by a temporary decline before accelerating again toward year-end.
+**However, the trend is labeled "oscillating," not increasing.** Here's why:
+- Q1→Q2: +0.06 (increase)
+- Q2→Q3: -0.03 (decrease — a reversal)
+- Q3→Q4: +0.12 (sharp increase — another reversal)
+
+The tool detected **2 reversals** in direction, meaning the trajectory went up, then down, then up again. This qualifies as "wobbling quarter to quarter" rather than a steady, monotonic upward trend.
+
+The largest single-step jump happened between September and December (+0.12), which drove most of the net gain. So while there is a positive net change over the full year, it's not a consistent climb — it's more accurate to describe it as an **oscillating pattern with a late surge**, rather than a genuine steady uptrend. If you need to distinguish true monotonic growth from volatile behavior for downstream analysis, this time series would be classified as non-monotonic/oscillating.
 
 ---
 
@@ -1325,50 +1255,25 @@ The trend is classified as **"oscillating"** because there were two directional 
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to compare OlmoEarth vs AlphaEarth on a specific ground truth with 6 validation pixels.
+The user wants to compare OlmoEarth vs AlphaEarth on 6 validation pixels.
+Ground truth: y_true = [1, 1, 0, 0, 1, 0]
+OlmoEarth predictions: [1, 1, 0, 0, 1, 0] with score layer [0.9, 0.8, 0.2, 0.1, 0.85, 0.3]
+AlphaEarth predictions: [1, 0, 0, 1, 1, 0] with score layer [0.6, 0.55, 0.3, 0.4, 0.5, 0.45]
 
-Given data:
-- y_true = [1, 1, 0, 0, 1, 0]
-- olmoearth_pred = [1, 1, 0, 0, 1, 0]
-- alphaearth_pred = [1, 0, 0, 1, 1, 0]
-- olmoearth_layer (score layer) = [0.9, 0.8, 0.2, 0.1, 0.85, 0.3]
-- alphaearth_layer (score layer) = [0.6, 0.55, 0.3, 0.4, 0.5, 0.45]
+I need to call `olmoearth_baseline_compare` with:
+- y_true: [1, 1, 0, 0, 1, 0]
+- olmoearth_pred: [1, 1, 0, 0, 1, 0]
+- alphaearth_pred: [1, 0, 0, 1, 1, 0]
+- olmoearth_layer: [0.9, 0.8, 0.2, 0.1, 0.85, 0.3]
+- alphaearth_layer: [0.6, 0.55, 0.3, 0.4, 0.5, 0.45]
 
-I need to use the `olmoearth_baseline_compare` function with these arguments. The label names are not strictly required but I can infer them from context (e.g., "OlmoEarth" and "AlphaEarth"), though they are optional parameters.
+Optional labels are not strictly required but I can add them if needed, or leave them out. The prompt says "optionally pass aligned score layers".
+Let's check the function signature:
+```
+"parameters": {"properties": {"alphaearth_label": {"type": "string"}, "alphaearth_layer": {"items": {"type": "number"}, "type": "array"}, "alphaearth_pred": {"items": {"type": ["integer", "string"]}, "type": "array"}, "olmoearth_label": {"type": "string"}, "olmoearth_layer": {"items": {"type": "number"}, "type": "array"}, "olmoearth_pred": {"items": {"type": ["integer", "string"]}, "type": "array"}, "y_true": {"items": {"type": ["integer", "string"]}, "type": "array"}}, "required": ["y_true", "olmoearth_pred", "alphaearth_pred"], "type": "object"}
+```
 
-Let's construct the tool call.
-Required: y_true, olmoearth_pred, alphaearth_pred
-Optional: olmoearth_layer, alphaearth_layer, olmoearth_label, alphaearth_label
-
-I will pass all provided data.
-y_true = [1, 1, 0, 0, 1, 0]
-olmoearth_pred = [1, 1, 0, 0, 1, 0]
-alphaearth_pred = [1, 0, 0, 1, 1, 0]
-olmoearth_layer = [0.9, 0.8, 0.2, 0.1, 0.85, 0.3]
-alphaearth_layer = [0.6, 0.55, 0.3, 0.4, 0.5, 0.45]
-
-Let's call the tool. 
-No extra thinking needed. Proceed. 
-Wait, checking parameters: `olmoearth_label` and `alphaearth_label` are optional strings. I'll omit them to be safe or just use generic names if needed, but they aren't required. The function signature says `required: ["y_true", "olmoearth_pred", "alphaearth_pred"]`. So I'm good.
-Let's call it. 
-I will format the arguments exactly as requested.
-`y_true`: [1, 1, 0, 0, 1, 0]
-`olmoearth_pred`: [1, 1, 0, 0, 1, 0]
-`alphaearth_pred`: [1, 0, 0, 1, 1, 0]
-`olmoearth_layer`: [0.9, 0.8, 0.2, 0.1, 0.85, 0.3]
-`alphaearth_layer`: [0.6, 0.55, 0.3, 0.4, 0.5, 0.45]
-All set. 
-Proceeding. 
-(Self-Correction/Verification during thought)
-Check types: y_true items are integer/string, olmoearth_pred same, alphaearth_pred same. layers are numbers. Matches schema.
-Ready. 
-Output matches function call. 
-Proceeds. 
-[Tool Call] olmoearth_baseline_compare(y_true=[1,1,0,0,1,0], olmoearth_pred=[1,1,0,0,1,0], alphaearth_pred=[1,0,0,1,1,0], olmoearth_layer=[0.9,0.8,0.2,0.1,0.85,0.3], alphaearth_layer=[0.6,0.55,0.3,0.4,0.5,0.45])
-Done. 
-Output generation. 
-[Result interpretation] I will wait for the tool response to generate the final answer. Since I am simulating the tool call, I will output it now.
-Actually, I need to produce the tool call first.
+All required parameters are present. I will make the tool call.
 ```
 
 **Function call** - `olmoearth_baseline_compare`:
@@ -1527,44 +1432,35 @@ Actually, I need to produce the tool call first.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants to know if OlmoEarth beats AlphaEarth on their validation pixels. I have the tool results now and need to interpret them for the researcher.
+The user wants to know if OlmoEarth beats the AlphaEarth baseline based on the provided validation pixels. I have already called the tool and got the results. Now I need to interpret and present these results clearly to the researcher.
 
-Let's break down the results:
-- OlmoEarth: Perfect scores across all metrics (Accuracy = 1.0, Macro F1 = 1.0, Mean IoU = 1.0). It predicted exactly the same as ground truth.
-- AlphaEarth: Accuracy = 0.6667, Macro F1 = 0.6667, Mean IoU = 0.5.
-- Deltas: OlmoEarth leads by +0.3333 in accuracy and macro F1, and +0.5 in mean IoU.
-- Overall winner: OlmoEarth.
-- Difference raster shows per-pixel score differences.
+Key findings from the tool output:
+1. **OlmoEarth Performance**: Perfect scores across all metrics - 100% accuracy, 1.0 macro-F1, 1.0 mean IoU. This matches the ground truth exactly.
+2. **AlphaEarth Performance**: 66.67% accuracy, 0.6667 macro-F1, 0.5 mean IoU. It made 2 errors (misclassified pixels 1 and 3).
+3. **Comparison Deltas**: OlmoEarth outperforms AlphaEarth by +0.3333 in both accuracy and macro-F1, and by +0.5 in mean IoU. All deltas favor OlmoEarth.
+4. **Score Layer Differences**: Mean absolute difference is ~0.242, with OlmoEarth having higher confidence on correctly predicted pixels and AlphaEarth being less certain overall. The raster differences show OlmoEarth had larger positive gaps on pixels 0, 1, 3, 4 and smaller negative gaps on pixels 2, 5.
 
-I will formulate a clear, concise answer interpreting these results for the researcher.
-No further tool calls needed. I'll just present the interpretation. 
-Structure:
-- Direct answer: Yes, OlmoEarth clearly beats AlphaEarth here.
-- Metric breakdown (Accuracy, Macro F1, Mean IoU) with values and deltas.
-- Note on predictions: OlmoEarth achieved perfect classification (100% accuracy), while AlphaEarth made 2 errors out of 6 pixels.
-- Score layer differences: Mention the per-pixel confidence differences if relevant, but keep it brief.
-- Concluding statement suitable for a paper/report context (referencing the transfer region context).
-All aligned with the tool output. Proceed. 
-Output matches response.✅
+I will structure the response to clearly state whether OlmoEarth beats AlphaEarth, summarize the metric comparisons, highlight the specific misclassifications by AlphaEarth, and briefly mention the score layer behavior before concluding.
 ```
 
 **Qwen3.6 answer.**
 
-> Yes, OlmoEarth clearly outperforms the AlphaEarth baseline on this 6-pixel validation set in your transfer region. Here's how they compare:
+> Yes, **OlmoEarth decisively beats the AlphaEarth baseline** in this transfer region. 
 
-**Performance Metrics & Deltas**
-| Metric | OlmoEarth | AlphaEarth | Delta (OlmoEarth - AlphaEarth) |
-|--------|-----------|------------|--------------------------------|
-| Accuracy | 1.0000 | 0.6667 | **+0.3333** |
-| Macro F1 | 1.0000 | 0.6667 | **+0.3333** |
-| Mean IoU | 1.0000 | 0.5000 | **+0.5000** |
+Here is the head-to-head breakdown across your 6 validation pixels:
 
-**Key Observations:**
-* **Perfect Classification:** OlmoEarth matches the ground truth exactly on all 6 pixels, achieving flawless per-class precision, recall, F1 (1.0), and IoU (1.0). 
-* **AlphaEarth Errors:** AlphaEarth misclassified 2 out of 6 pixels (indices 1 and 3), dropping its accuracy to ~67% and halving the Mean IoU relative to OlmoEarth.
-* **Score Layer Confidence:** The per-pixel confidence differences show mixed directionality (`[0.3, 0.25, -0.1, -0.3, 0.35, -0.15]`), but OlmoEarth maintains higher absolute confidence on the correctly classified majority and completely separates classes in its output probabilities.
+* **Accuracy**: OlmoEarth achieved a perfect **100%**, while AlphaEarth reached **66.7%** (a +33.3% delta).
+* **Macro-F1 Score**: OlmoEarth scored **1.0** vs AlphaEarth's **0.67** (+0.33 delta).
+* **Mean IoU**: OlmoEarth scored **1.0** vs AlphaEarth's **0.5** (+0.5 delta).
 
-**Conclusion for Your Report:** In this transfer region evaluation, fine-tuned OlmoEarth demonstrably beats the AlphaEarth baseline, achieving a perfect 100% accuracy score versus AlphaEarth's 67%, with substantial gains across all segmentation metrics (especially +50pp on Mean IoU). You can confidently cite this as an instance where OlmoEarth outperforms the GEE-derived AlphaEarth embedding baseline.
+**Where AlphaEarth failed:**
+AlphaEarth misclassified exactly two pixels:
+- **Pixel 1** (Ground Truth: `1`) was predicted as `0`.
+- **Pixel 3** (Ground Truth: `0`) was predicted as `1`.
+
+OlmoEarth matched the ground-truth labels perfectly on all 6 pixels, with consistently higher confidence scores (the score layer differences show OlmoEarth had stronger separation between correct classes across the board). 
+
+If you need a detailed cell-by-cell difference raster or want to run this comparison over a larger validation tile, just let me know. Otherwise, you can confidently cite that OlmoEarth outperforms AlphaEarth in this transfer region.
 
 ---
 
@@ -1579,20 +1475,18 @@ Output matches response.✅
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to check if using random cross-validation will overstate map accuracy compared to spatial-block CV for a specific set of label points.
-They provided the coordinates: [[0,0],[0.02,0],[0,0.02],[10,0],[10.02,0],[10,0.02],[20,0],[20.02,0],[20,0.02]].
-They want to use n_folds=3.
+The user wants to check if using a random 3-fold train/test split will overstate their map accuracy given that their training labels are in 3 tight geographic clusters. They've provided the coordinates: [[0,0],[0.02,0],[0,0.02],[10,0],[10.02,0],[10,0.02],[20,0],[20.02,0],[20,0.02]].
 
-I need to call the `olmoearth_cv_inflation_check` function with:
+I need to use the `olmoearth_cv_inflation_check` function to check this risk. Let me look at the parameters:
+- `points`: Required - List of [lon, lat] coordinate pairs in degrees. This is provided by the user.
+- `n_folds`: Optional, default 5 - The user specified n_folds=3.
+- `block_deg`: Optional, default 0.5 - Not specified by the user, so I'll use the default.
+
+The function description says: "Check whether RANDOM cross-validation would overstate map accuracy on these label points, vs spatial-block CV. Returns the mean test-to-train distance under each and their ratio (Ploton 2020 / Meyer-Pebesma effect). Run this BEFORE reporting any accuracy number, and use spatial-block CV when the ratio is >= 1.5."
+
+So I need to call:
 - points: [[0,0],[0.02,0],[0,0.02],[10,0],[10.02,0],[10,0.02],[20,0],[20.02,0],[20,0.02]]
 - n_folds: 3
-
-Let's check the parameters for `olmoearth_cv_inflation_check`:
-- points (required): List of [lon, lat] coordinate pairs in degrees.
-- n_folds (default 5): integer
-- block_deg (default 0.5): number
-
-All required parameters are provided or have defaults. I will make the call.
 ```
 
 **Function call** - `olmoearth_cv_inflation_check`:
@@ -1659,23 +1553,23 @@ All required parameters are provided or have defaults. I will make the call.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The tool call was successful and returned clear results. Let me interpret this for the researcher:
+The tool result shows:
+- n_points: 9
+- n_folds: 3
+- mean_test_to_train_km_random: 2.429
+- mean_test_to_train_km_spatial: 1110.469
+- spatial_to_random_ratio: 457.25
+- inflation_risk: "high"
+- recommendation: "Report spatial-block CV metrics; random CV will overstate accuracy here."
 
-- There are 9 points across 3 geographic clusters
-- The ratio of mean test-to-train distance under spatial-block CV vs random CV is 457.25, which is much greater than the 1.5 threshold
-- The inflation risk is rated as "high"
-- The recommendation is to use spatial-block CV instead of random CV
-
-This clearly answers the researcher's question about whether random 3-fold CV will overstate map accuracy.
+The ratio (457.25) is well above the threshold of 1.5 mentioned in the tool description, confirming that random cross-validation will significantly overstate map accuracy due to the tight geographic clustering of the training labels.
 ```
 
 **Qwen3.6 answer.**
 
-> Yes, a random 3-fold train/test split will significantly overstate your map accuracy. The inflation check returns a **spatial-to-random distance ratio of 457.25** — far exceeding the 1.5 threshold where Meyer-Pebesma (Ploton 2020) spatial autocorrelation effects become problematic.
+> Yes, random 3-fold CV will **severely overstate** your map accuracy. The inflation check returns a spatial-to-random distance ratio of **457.25** (well above the 1.5 threshold), with test-to-train distances averaging only ~2.4 km for random splits versus ~1,110 km for spatial-block splits. This extreme gap reflects your labels' tight clustering into three nearby groups.
 
-The mean test-to-train distance under random splitting is only ~2.4 km, while spatial-block CV yields ~1110 km separation. This extreme ratio confirms that random folds will leave many test points geographically very close to training points (especially within those tight 0.02° clusters), leading to optimistically biased accuracy estimates.
-
-**Recommendation:** Use spatial-block cross-validation for any accuracy reporting on these labels.
+**Recommendation:** Use **spatial-block cross-validation** instead of random splits to get an unbiased accuracy estimate for your map.
 
 ---
 
@@ -1692,18 +1586,19 @@ The mean test-to-train distance under random splitting is only ~2.4 km, while sp
 ```
 The user wants to evaluate a 3-class prediction against ground truth.
 They provided:
+y_true = [1,1,0,0,2,2]
+y_pred = [1,0,0,0,2,2]
+
+I need to use the `olmoearth_classification_metrics` tool.
+Parameters required:
+- y_true: array of class labels (integers or strings)
+- y_pred: array of class labels (integers or strings)
+
+I will pass exactly what they provided.
 y_true = [1, 1, 0, 0, 2, 2]
 y_pred = [1, 0, 0, 0, 2, 2]
-
-I need to call the `olmoearth_classification_metrics` function with these arrays.
-The function signature is:
-`olmoearth_classification_metrics(y_true, y_pred)`
-
-Let's prepare the arguments:
-y_true = [1, 1, 0, 0, 2, 2]
-y_pred = [1, 0, 0, 0, 2, 2]
-
-I will call the tool.
+Let's call the tool. 
+All parameters match the schema.
 ```
 
 **Function call** - `olmoearth_classification_metrics`:
@@ -1771,34 +1666,461 @@ I will call the tool.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The tool successfully computed the classification metrics. The results show:
+The results are already provided in the tool response. I just need to interpret and present them clearly for the researcher.
 
-- Accuracy: 0.8333 (5/6 correct)
-- Per-class metrics:
-  - Class 0: Precision=0.6667, Recall=1.0, F1=0.8, IoU=0.6667
-  - Class 1: Precision=1.0, Recall=0.5, F1=0.6667, IoU=0.5
-  - Class 2: Precision=1.0, Recall=1.0, F1=1.0, IoU=1.0
+Let's organize the per-class metrics:
 
-I should present these results clearly to the researcher in plain text.
+Class 0:
+- Precision: 0.6667 (66.67%)
+- Recall: 1.0 (100%)
+- F1: 0.8 (80%)
+- IoU: 0.6667 (66.67%)
+
+Class 1:
+- Precision: 1.0 (100%)
+- Recall: 0.5 (50%)
+- F1: 0.6667 (66.67%)
+- IoU: 0.5 (50%)
+
+Class 2:
+- Precision: 1.0 (100%)
+- Recall: 1.0 (100%)
+- F1: 1.0 (100%)
+- IoU: 1.0 (100%)
+
+Macro-F1: 0.8222
+Mean IoU: 0.7222
+Overall Accuracy: 0.8333
+
+I'll present this clearly.
 ```
 
 **Qwen3.6 answer.**
 
-> Here are the classification metrics for your 3-class prediction:
+> Here are the per-class metrics for your 3-class prediction:
 
-**Overall Accuracy:** 0.8333 (5 out of 6 pixels correct)
+**Class 0** (support: 2)
+- Precision: 0.6667 (66.67%)
+- Recall: 1.0000 (100%)
+- F1 Score: 0.8000
+- IoU: 0.6667
 
-**Per-Class Metrics:**
+**Class 1** (support: 2)
+- Precision: 1.0000 (100%)
+- Recall: 0.5000 (50%)
+- F1 Score: 0.6667
+- IoU: 0.5000
 
-- **Class 0:** Precision = 0.667, Recall = 1.000, F1 = 0.800, IoU = 0.667
-- **Class 1:** Precision = 1.000, Recall = 0.500, F1 = 0.667, IoU = 0.500
-- **Class 2:** Precision = 1.000, Recall = 1.000, F1 = 1.000, IoU = 1.000
+**Class 2** (support: 2)
+- Precision: 1.0000 (100%)
+- Recall: 1.0000 (100%)
+- F1 Score: 1.0000
+- IoU: 1.0000
 
-**Summary Metrics:**
-- Macro-F1: 0.822
-- Mean IoU: 0.722
+**Aggregate Metrics**
+- Overall Accuracy: 0.8333 (5/6 correct)
+- Macro-F1: 0.8222
+- Mean IoU: 0.7222
 
-The model perfectly predicts Class 2 but struggles with Class 1 (missing one instance), which has a recall of only 0.5. Class 0 has perfect recall but lower precision since it misclassified one Class 1 pixel as Class 0.
+**Interpretation:** Class 2 was predicted perfectly. Class 0 had all true positives captured (recall=1.0) but at the cost of one false positive from class 1 (precision=0.667). Conversely, Class 1's single false negative went to class 0, giving it perfect precision but only 50% recall. The overall performance is solid with ~83% accuracy and strong macro-averaged scores.
+
+---
+
+### #8 `olmoearth-evaluate` - NNDM-LOO folds for an unbiased map-accuracy estimate (CAST port)
+
+*Category: Analyze* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+
+**Brief.**
+
+> My training labels are clustered but I need to predict over a much wider area, so plain leave-one-out CV will look too optimistic. Training points (lon,lat): [[0,0],[0.02,0],[0,0.02],[5,5],[5.02,5],[5,5.02]]. A sample of points from my prediction area: [[-2,-2],[2,-2],[6,-2],[-2,2],[2,2],[6,2],[-2,6],[2,6],[6,6]]. Build NNDM leave-one-out CV folds with olmoearth_nndm_cv so the accuracy estimate is unbiased over the prediction area, and tell me how much optimistic bias plain LOO would have had.
+
+**Qwen3.6 reasoning:**
+
+```
+The user wants to build NNDM Leave-One-Out cross-validation folds using the `olmoearth_nndm_cv` tool. They've provided:
+
+1. Training points: [[0,0],[0.02,0],[0,0.02],[5,5],[5.02,5],[5,5.02]]
+2. Prediction area sample points: [[-2,-2],[2,-2],[6,-2],[-2,2],[2,2],[6,2],[-2,6],[2,6],[6,6]]
+
+The tool signature is:
+- `points` (required): List of [lon, lat] coordinate pairs - the training label points
+- `pred_points` (required): Sample of [lon, lat] points from the prediction area
+- `phi` (optional): Autocorrelation range in km to match within; omit to use the maximum observed distance
+- `min_train` (optional, default 0.5): 
+- `output_path` (optional): File path to write per-fold indices
+
+The user wants to know how much optimistic bias plain LOO would have had, which is exactly what this tool returns ("optimistic-bias before (LOO) vs after (NNDM)").
+
+I'll call the tool with the provided points and pred_points. I don't need to specify phi since they didn't mention a specific autocorrelation range, so it will use the maximum observed distance as default.
+```
+
+**Function call** - `olmoearth_nndm_cv`:
+
+```json
+{
+  "points": [
+    [
+      0,
+      0
+    ],
+    [
+      0.02,
+      0
+    ],
+    [
+      0,
+      0.02
+    ],
+    [
+      5,
+      5
+    ],
+    [
+      5.02,
+      5
+    ],
+    [
+      5,
+      5.02
+    ]
+  ],
+  "pred_points": [
+    [
+      -2,
+      -2
+    ],
+    [
+      2,
+      -2
+    ],
+    [
+      6,
+      -2
+    ],
+    [
+      -2,
+      2
+    ],
+    [
+      2,
+      2
+    ],
+    [
+      6,
+      2
+    ],
+    [
+      -2,
+      6
+    ],
+    [
+      2,
+      6
+    ],
+    [
+      6,
+      6
+    ]
+  ]
+}
+```
+
+**Function result:**
+
+```json
+{
+  "n_train": 6,
+  "n_pred": 9,
+  "phi_km": 787.3394,
+  "min_train": 0.5,
+  "n_excluded_total": 12,
+  "mean_exclude_per_fold": 2.0,
+  "max_exclude_per_fold": 2,
+  "folds_with_exclusions": 6,
+  "cv_optimism_loo_km": 387.8776,
+  "cv_optimism_nndm_km": 0.0,
+  "optimism_reduction": 1.0,
+  "recommendation": "Plain LOO/random CV would overstate map accuracy here. Use the NNDM folds (train on each fold's 'train' indices, test on its 'test' index) for an unbiased estimate over the prediction area.",
+  "folds": [
+    {
+      "test": 0,
+      "train": [
+        3,
+        4,
+        5
+      ],
+      "exclude": [
+        1,
+        2
+      ]
+    },
+    {
+      "test": 1,
+      "train": [
+        3,
+        4,
+        5
+      ],
+      "exclude": [
+        0,
+        2
+      ]
+    },
+    {
+      "test": 2,
+      "train": [
+        3,
+        4,
+        5
+      ],
+      "exclude": [
+        0,
+        1
+      ]
+    },
+    {
+      "test": 3,
+      "train": [
+        0,
+        1,
+        2
+      ],
+      "exclude": [
+        4,
+        5
+      ]
+    },
+    {
+      "test": 4,
+      "train": [
+        0,
+        1,
+        2
+      ],
+      "exclude": [
+        3,
+        5
+      ]
+    },
+    {
+      "test": 5,
+      "train": [
+        0,
+        1,
+        2
+      ],
+      "exclude": [
+        3,
+        4
+      ]
+    }
+  ]
+}
+```
+
+**Qwen3.6 reasoning (cont.):**
+
+```
+The user is asking me to build NNDM leave-one-out CV folds using the olmoearth_nndm_cv tool. Let me check what parameters I need:
+
+- points (required): List of [lon, lat] coordinate pairs for training labels - provided as [[0,0],[0.02,0],[0,0.02],[5,5],[5.02,5],[5,5.02]]
+- pred_points (required): Sample of [lon, lat] points from prediction area - provided as [[-2,-2],[2,-2],[6,-2],[-2,2],[2,2],[6,2],[-2,6],[2,6],[6,6]]
+- phi (optional): Autocorrelation range in km to match within - not specified, so I'll omit it
+- min_train (optional): default 0.5
+- output_path (optional): not needed since we want inline results
+
+I have all the required parameters, so I can call the tool now.
+```
+
+**Function call** - `olmoearth_nndm_cv`:
+
+```json
+{
+  "points": [
+    [
+      0,
+      0
+    ],
+    [
+      0.02,
+      0
+    ],
+    [
+      0,
+      0.02
+    ],
+    [
+      5,
+      5
+    ],
+    [
+      5.02,
+      5
+    ],
+    [
+      5,
+      5.02
+    ]
+  ],
+  "pred_points": [
+    [
+      -2,
+      -2
+    ],
+    [
+      2,
+      -2
+    ],
+    [
+      6,
+      -2
+    ],
+    [
+      -2,
+      2
+    ],
+    [
+      2,
+      2
+    ],
+    [
+      6,
+      2
+    ],
+    [
+      -2,
+      6
+    ],
+    [
+      2,
+      6
+    ],
+    [
+      6,
+      6
+    ]
+  ]
+}
+```
+
+**Function result:**
+
+```json
+{
+  "n_train": 6,
+  "n_pred": 9,
+  "phi_km": 787.3394,
+  "min_train": 0.5,
+  "n_excluded_total": 12,
+  "mean_exclude_per_fold": 2.0,
+  "max_exclude_per_fold": 2,
+  "folds_with_exclusions": 6,
+  "cv_optimism_loo_km": 387.8776,
+  "cv_optimism_nndm_km": 0.0,
+  "optimism_reduction": 1.0,
+  "recommendation": "Plain LOO/random CV would overstate map accuracy here. Use the NNDM folds (train on each fold's 'train' indices, test on its 'test' index) for an unbiased estimate over the prediction area.",
+  "folds": [
+    {
+      "test": 0,
+      "train": [
+        3,
+        4,
+        5
+      ],
+      "exclude": [
+        1,
+        2
+      ]
+    },
+    {
+      "test": 1,
+      "train": [
+        3,
+        4,
+        5
+      ],
+      "exclude": [
+        0,
+        2
+      ]
+    },
+    {
+      "test": 2,
+      "train": [
+        3,
+        4,
+        5
+      ],
+      "exclude": [
+        0,
+        1
+      ]
+    },
+    {
+      "test": 3,
+      "train": [
+        0,
+        1,
+        2
+      ],
+      "exclude": [
+        4,
+        5
+      ]
+    },
+    {
+      "test": 4,
+      "train": [
+        0,
+        1,
+        2
+      ],
+      "exclude": [
+        3,
+        5
+      ]
+    },
+    {
+      "test": 5,
+      "train": [
+        0,
+        1,
+        2
+      ],
+      "exclude": [
+        3,
+        4
+      ]
+    }
+  ]
+}
+```
+
+**Qwen3.6 reasoning (cont.):**
+
+```
+The user already got the result from the first call. The second call is redundant but returns the same data. Let me interpret the results for the researcher.
+
+Key findings:
+- cv_optimism_loo_km: 387.8776 km - this represents how much closer LOO test points are to training data compared to the prediction area
+- cv_optimism_nndm_km: 0.0 km - NNDM removes this bias
+- optimism_reduction: 1.0 (or 100% reduction in optimistic bias)
+- The recommendation clearly states plain LOO would overstate accuracy
+
+I should explain what this means in practical terms for the researcher.
+```
+
+**Qwen3.6 answer.**
+
+> The NNDM CV folds have been built successfully. Here's what you need to know:
+
+**Optimistic bias in plain LOO:** Plain leave-one-out cross-validation would be **387.9 km too optimistic**. This large value reflects how your 6 training labels are tightly clustered (two groups near [0,0] and [5,5]), while your prediction area spans a much wider region up to ±6 degrees. In LOO, each test point is extremely close to its remaining 5 training neighbors, but real predictions occur far from any label.
+
+**NNDM correction:** The NNDM procedure reduced this optimistic bias to **0 km** (a 100% reduction) by excluding nearby training points per fold and matching the train-to-test distance distribution to your prediction area.
+
+**Folds:** You have 6 folds total. Each fold trains on 3 points from one cluster and tests on 1 point from the *other* cluster, excluding its 2 nearest neighbors in that same cluster. This ensures each test is truly evaluating interpolation/extrapolation distance comparable to your actual prediction area.
+
+**Recommendation:** Do not use plain LOO or random k-fold for accuracy reporting here. Use these NNDM folds—train on each fold's `train` indices and evaluate on its `test` index—to get an unbiased accuracy estimate over your wider prediction domain.
 
 ---
 
@@ -1813,25 +2135,28 @@ The model perfectly predicts Class 2 but struggles with Class 1 (missing one ins
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to find sites whose embeddings most resemble a given query embedding.
-They provided:
-Query embedding: [0.9, 0.1, 0.0]
-Corpus IDs: ['site_A', 'site_B', 'site_C', 'site_D']
-Corpus embeddings: [[0.9,0.1,0.0],[0.8,0.2,0.0],[0.1,0.9,0.0],[0.0,0.1,0.9]]
-Coordinates: [[-77.1,40.4],[-76.9,40.6],[12.5,41.9],[-122.3,47.6]]
-Query coordinate: [-77.0, 40.5]
-k=3
+The user wants to find the top 3 sites whose embeddings most resemble the query embedding [0.9, 0.1, 0.0].
 
-I need to call `olmoearth_similarity_search` with these parameters.
-Let's check the function signature:
-`query`: [0.9, 0.1, 0.0]
-`corpus`: [[0.9,0.1,0.0],[0.8,0.2,0.0],[0.1,0.9,0.0],[0.0,0.1,0.9]]
-`ids`: ['site_A','site_B','site_C','site_D']
-`coords`: [[-77.1,40.4],[-76.9,40.6],[12.5,41.9],[-122.3,47.6]]
-`query_coord`: [-77.0, 40.5]
-`k`: 3
+Here's what I need to pass to the `olmoearth_similarity_search` tool:
+- `query`: [0.9, 0.1, 0.0]
+- `corpus`: [[0.9, 0.1, 0.0], [0.8, 0.2, 0.0], [0.1, 0.9, 0.0], [0.0, 0.1, 0.9]]
+- `ids`: ['site_A', 'site_B', 'site_C', 'site_D']
+- `k`: 3
+- `query_coord`: [-77.0, 40.5]
+- `coords`: [[-77.1, 40.4], [-76.9, 40.6], [12.5, 41.9], [-122.3, 47.6]]
 
-Everything matches the required and optional parameters. I will make the tool call.
+All required parameters are provided. Optional ones like `metric` and `prior_radius_km` can use defaults.
+I will call the tool now. 
+Wait, checking the coordinates format: The description says `coords` should be parallel [lon, lat] for the corpus. The input gives coordinates (lon,lat) [[-77.1,40.4],[-76.9,40.6],[12.5,41.9],[-122.3,47.6]]. This matches.
+I will construct the tool call. 
+All set. 
+Calling `olmoearth_similarity_search`. 
+Proceeds. 
+(Self-Correction/Verification during thought)
+Check parameter names: `query`, `corpus`, `ids`, `k`, `metric`, `query_coord`, `coords`, `prior_radius_km`.
+Values match exactly.
+Ready. 
+Output matches request.
 ```
 
 **Function call** - `olmoearth_similarity_search`:
@@ -1871,6 +2196,11 @@ Everything matches the required and optional parameters. I will make the tool ca
     "site_C",
     "site_D"
   ],
+  "k": 3,
+  "query_coord": [
+    -77.0,
+    40.5
+  ],
   "coords": [
     [
       -77.1,
@@ -1888,12 +2218,7 @@ Everything matches the required and optional parameters. I will make the tool ca
       -122.3,
       47.6
     ]
-  ],
-  "query_coord": [
-    -77.0,
-    40.5
-  ],
-  "k": 3
+  ]
 }
 ```
 
@@ -1934,63 +2259,18 @@ Everything matches the required and optional parameters. I will make the tool ca
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user asked for the top 3 sites whose embeddings most resemble their query embedding [0.9, 0.1, 0.0].
-I called the `olmoearth_similarity_search` tool with the provided query, corpus, ids, coords, query_coord, and k=3.
-The tool returned:
-Top matches: site_A (score 1.0), site_B (score 0.99), site_C (score 0.22).
-Geographic prior warning: Yes, 2/3 top matches fall within 100 km of the query. The similarity may reflect geographic proximity rather than feature resemblance.
-
-I need to interpret this result for the researcher in plain text. I will list the top 3 sites and scores, and then convey the geographic warning clearly.
-Let's double check the scores and IDs.
-site_A: score 1.0 (exact match)
-site_B: score ~0.991
-site_C: score ~0.22
-The warning says 2/3 top matches fall within 100 km of the query, which corresponds to site_A and site_B. They are geographically close, so their high similarity might be due to being in the same region rather than purely feature-based similarity. site_C is far away (Rome area) and has a lower score, but it's still in the top 3 because the other option (site_D) isn't in the top 3. Wait, site_D would be further down.
-
-I will formulate the response now.
-Structure:
-- Top 3 matches with their similarity scores.
-- Explanation of the geographic prior warning.
-- Advice/interpretation for the researcher.
-All plain text. No tool calls needed.✅
-Proceed. 
-Self-Correction/Verification during thought:
-Check coordinates: query is [-77, 40.5] (Philly area). site_A [-77.1, 40.4], site_B [-76.9, 40.6]. Both are indeed within ~2-3 km. So they are geographically clustered.
-site_C is [12.5, 41.9] (Rome). distance is huge (~6800 km).
-site_D is [-122.3, 47.6] (Seattle).
-The warning accurately notes that site_A and site_B are within the radius, so their high cosine similarity might just be because they are nearby in the embedding space due to geographic locality priors or just sharing local features. Actually, the query is exactly site_A's embedding. So score 1.0 is exact match. site_B is very close vector-wise too.
-I will state the results clearly. 
-Output matches requirement.✅
-Done. 
-Generating response. 
-[Output Generation] -> "Here are the top 3 sites most similar to your query embedding [0.9, 0.1, 0.0] (k=3, cosine similarity):
-1. **site_A** – Score: 1.00 (exact match)
-2. **site_B** – Score: ~0.99
-3. **site_C** – Score: ~0.22
-
-⚠️ **Geographic Prior Warning:** The system detected that 2 out of 3 top matches (site_A and site_B) fall within a 100 km radius of your query location [-77.0, 40.5]. This means their high similarity scores may largely reflect geographic proximity (i.e., they are nearby in the same region/biome) rather than purely distinct feature-level resemblance. If you need embeddings that capture semantic or biophysical similarity independent of location, you may want to filter out local neighbors or use a larger prior radius/knowledge base for de-duplication." -> This is concise and accurate. Matches instructions.✅
-Proceeds. 
-All steps verified. Output matches response. 
-[Final Check of the Prompt] "Return the top k=3 and warn me if the matches are just nearby in space rather than similar in features." -> Addressed. 
-Ready. 
-Output Generation. 
-(Self-Correction/Refinement during drafting)
-I should make sure I don't use markdown formatting that might violate "plain-text answer", but standard bullet/number lists are fine. I'll keep it simple.
-The prompt says "reply with a short plain-text answer that interprets the result for the researcher."
-I will output exactly that.✅
-Proceeds. 
-[Output Generation] -> (See response)
+The user asked for the sites whose embeddings most resemble their query embedding [0.9, 0.1, 0.0]. I called the olmoearth_similarity_search tool with the provided corpus, ids, coordinates, query_coord, and k=3. The tool returned the top 3 matches: site_A (score 1.0), site_B (score 0.990992), and site_C (score 0.219512). It also issued a geographic prior warning because 2 out of 3 top matches fall within 100 km of the query, suggesting that the similarity might be due to geographic proximity rather than feature resemblance. I should present this information clearly to the user.
 ```
 
 **Qwen3.6 answer.**
 
-> Here are the top 3 sites most similar to your query embedding [0.9, 0.1, 0.0] (k=3, cosine metric):
+> Here are your top 3 most similar sites:
 
-1. site_A – Similarity score: 1.00 (exact match)
-2. site_B – Similarity score: ~0.99
-3. site_C – Similarity score: ~0.22
+1. **site_A** – cosine similarity: 1.0  
+2. **site_B** – cosine similarity: ~0.991  
+3. **site_C** – cosine similarity: ~0.22  
 
-⚠️ Geographic Prior Warning: The system flagged that 2 out of the 3 top matches (site_A and site_B) fall within a 100 km radius of your query location [-77.0, 40.5]. This means their high similarity scores are likely driven by geographic proximity (i.e., they share the same local region/biome context) rather than purely distinct feature-level resemblance. If your goal is to find semantically or biophysically similar sites independent of location, consider filtering out these local neighbors or adjusting your search to prioritize non-local matches. site_C, despite being geographically distant (~6,800 km away), remains in the top 3 only because its lower feature similarity still ranks above site_D.
+⚠️ **Geographic warning**: Two of the three top matches (site_A and site_B) lie within 100 km of your query location. This suggests their high similarity may partly reflect shared regional/geographic traits rather than purely distinct feature-space resemblance. Keep this in mind when interpreting the results.
 
 ---
 
@@ -2005,15 +2285,15 @@ Proceeds.
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to check which of their new AOI points fall outside their model's Area of Applicability (AOA).
+The user wants to check which of two new AOI points fall outside their model's Area of Applicability (AOA).
 They provided:
 - `train_features`: [[0.1,0.2],[0.15,0.25],[0.12,0.18],[0.2,0.22],[0.13,0.21]]
 - `new_features`: [[0.14,0.2],[5.0,5.0]]
 
-I need to call the `olmoearth_area_of_applicability` tool with these arguments. No weights are provided, so I will omit the optional `weights` parameter.
-Then I will interpret the results for the researcher.
-The tool description says it returns dissimilarity index, whether it is inside AOA, OOD fraction, and a verdict.
-Let's make the call.
+I need to use the `olmoearth_area_of_applicability` tool with these arguments.
+The `weights` argument is optional, so I won't include it.
+
+Let's call the tool.
 ```
 
 **Function call** - `olmoearth_area_of_applicability`:
@@ -2085,30 +2365,24 @@ Let's make the call.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants to check which of the two new AOI points fall outside their model's Area of Applicability (AOA). The tool call was successful and returned detailed results.
+Here are the results interpretation:
+- The tool evaluated two new points against the training data.
+- Point 1: `new_features[0] = [0.14, 0.2]` has a dissimilarity index (DI) of 0.249 and falls **inside** the AOA (`inside_aoa: true`).
+- Point 2: `new_features[1] = [5.0, 5.0]` has a DI of 119.07 and falls **outside** the AOA (`inside_aoa: false`).
+- The AO threshold is ~1.473.
+- Overall verdict is "mostly-OOD" with an OOD fraction of 0.5 (1 out of 2 points).
 
-Let me interpret the results:
-- Two new features were scored
-- The AOA threshold is 1.473442
-- First point [0.14, 0.2]: DI = 0.249007, inside_aoa = true (within training range)
-- Second point [5.0, 5.0]: DI = 119.071127, inside_aoa = false (far outside training range)
-
-The tool correctly identified that:
-1. The first point (0.14, 0.2) is well within the training data's feature space and falls safely inside the AOA.
-2. The second point (5.0, 5.0) has an extremely high dissimilarity index (DI ≈ 119.07), which is far beyond the AOA threshold of ~1.47, meaning it's strongly outside the model's Area of Applicability.
-
-The overall verdict for this batch is "mostly-OOD" due to one point being OOD out of two total points (50% OOD fraction).
-I will provide a clear explanation of these results to the researcher.
+I will formulate a clear, concise answer for the researcher based on this output. No further tool calls are needed.
 ```
 
 **Qwen3.6 answer.**
 
 > Based on the Area of Applicability (AOA) analysis:
 
-* **Point 1 `[0.14, 0.2]` is INSIDE your model's AOA.** It has a low dissimilarity index (`DI = 0.25`), well below the calculated AOA threshold (`~1.47`). This point falls safely within the feature space of your training data and should be reliable for prediction.
-* **Point 2 `[5.0, 5.0]` is OUTSIDE your model's AOA.** It has a very high dissimilarity index (`DI ≈ 119.07`), which far exceeds the AOA threshold. This point is a severe extrapolation that your model was never trained to handle. 
+*   **Point 1 `[0.14, 0.2]`** has a dissimilarity index of **0.25**, which is below the AOI threshold (~1.47). This point falls **inside** your model's area of applicability and should yield reliable predictions.
+*   **Point 2 `[5.0, 5.0]`** has a very high dissimilarity index of **119.07**, placing it far outside the training feature space. This point falls **outside** the AOA, indicating significant extrapolation. You should treat predictions for this location with caution or exclude them, as standard softmax confidence scores would not have flagged this high uncertainty.
 
-**Recommendation:** Do not trust predictions for `[5.0, 5.0]`. Softmax confidence may still be high on this point, but it would represent confidently wrong extrapolation. You should either collect training data closer to this region or apply an OOD masking strategy to flag/ignore these predictions.
+Overall, your model is operating mostly-out-of-distribution (OOD fraction: 0.5) due to the second AOI point.
 
 ---
 
@@ -2123,29 +2397,42 @@ I will provide a clear explanation of these results to the researcher.
 **Qwen3.6 reasoning:**
 
 ```
-The user wants me to audit an ensemble of cloud masks for an 8-pixel scene and check if the model's errors on specific pixels are due to cloud confusion or a real model miss.
+The user wants to audit an ensemble of cloud masks and check if model errors are due to cloud mask confusion or model limitations.
 
-Let me parse the information:
-- cfmask=[1,1,0,0,0,1,0,0]
-- s2cloudless=[1,1,1,0,0,1,0,0]
-- sen2cor=[1,0,0,0,1,1,0,0]
-- maja=[1,1,0,0,0,0,0,0]
-- model_error=[0,1,1,0,0,0,0,0] (errors on pixels 2 and 3)
-
-Wait, the user says "model made errors on pixels 2 and 3", but in the array notation (0-indexed), that would be indices 1 and 2. Let me check:
-- index 0: model_error[0] = 0
-- index 1: model_error[1] = 1 (this is pixel 2 if 1-indexed, or just index 1)
-- index 2: model_error[2] = 1 (this is pixel 3 if 1-indexed, or just index 2)
-- index 3-7: model_error[3:8] = 0
-
-The user says "pixels 2 and 3", which likely means indices 1 and 2 in 0-indexed notation, or the 2nd and 3rd elements. The array provided is [0,1,1,0,0,0,0,0], so positions 1 and 2 have value 1. This matches "pixels 2 and 3" if we count from 1.
-
-I need to call olmoearth_cloud_mask_audit with:
-- masks: {"cfmask": [1,1,0,0,0,1,0,0], "s2cloudless": [1,1,1,0,0,1,0,0], "sen2cor": [1,0,0,0,1,1,0,0], "maja": [1,1,0,0,0,0,0,0]}
+I need to call `olmoearth_cloud_mask_audit` with the following parameters:
+- masks: A dictionary of algorithm names to their binary cloud masks.
+  - cfmask: [1,1,0,0,0,1,0,0]
+  - s2cloudless: [1,1,1,0,0,1,0,0]
+  - sen2cor: [1,0,0,0,1,1,0,0]
+  - maja: [1,1,0,0,0,0,0,0]
 - model_error: [0,1,1,0,0,0,0,0]
-- threshold: I'll use the default 0.6
 
-Let me make the tool call.
+The user mentions "pixels 2 and 3", which in 0-indexed arrays corresponds to indices 1 and 2. The `model_error` array provided is `[0,1,1,0,0,0,0,0]`, which matches indices 1 and 2 having errors.
+
+Let's construct the function call.
+masks = {
+  "cfmask": [1,1,0,0,0,1,0,0],
+  "s2cloudless": [1,1,1,0,0,1,0,0],
+  "sen2cor": [1,0,0,0,1,1,0,0],
+  "maja": [1,1,0,0,0,0,0,0]
+}
+model_error = [0,1,1,0,0,0,0,0]
+
+The threshold parameter is optional and defaults to 0.6, so I won't specify it unless needed. All arrays have length 8 as required.
+I will call the tool now. 
+Let's verify the masks match the prompt exactly:
+cfmask=[1,1,0,0,0,1,0,0] -> correct
+s2cloudless=[1,1,1,0,0,1,0,0] -> correct
+sen2cor=[1,0,0,0,1,1,0,0] -> correct
+maja=[1,1,0,0,0,0,0,0] -> correct
+model_error=[0,1,1,0,0,0,0,0] -> correct.
+
+Ready. I will call the function. 
+Wait, the prompt says "pixels 2 and 3", but in programming it's usually 0-indexed or 1-indexed. The array given `[0,1,1,0,0,0,0,0]` has errors at index 1 and 2 (which would be pixels 2 and 3 in 1-based indexing). So the array is correct as provided. I will just pass it as is.
+Calling tool. 
+All good. 
+Proceeding. 
+[Tool Call] olmoearth_cloud_mask_audit(masks={"cfmask": [1,1,0,0,0,1,0,0], "s2cloudless": [1,1,1,0,0,1,0,0], "sen2cor": [1,0,0,0,1,1,0,0], "maja": [1,1,0,0,0,0,0,0]}, model_error=[0,1,1,0,0,0,0,0])
 ```
 
 **Function call** - `olmoearth_cloud_mask_audit`:
@@ -2203,8 +2490,7 @@ Let me make the tool call.
     0,
     0,
     0
-  ],
-  "threshold": 0.6
+  ]
 }
 ```
 
@@ -2261,45 +2547,17 @@ Let me make the tool call.
 }
 ```
 
-**Qwen3.6 reasoning (cont.):**
-
-```
-The audit result is in. Let's interpret it for the researcher.
-
-Key findings:
-- The two model errors occurred at pixels 2 and 3 (1-indexed in the brief, which matches indices 1 and 2 in 0-indexed arrays).
-- Looking at the masks for these pixels:
-  - Pixel 2 (index 1): cfmask=1, s2cloudless=1, sen2cor=0, maja=1 -> Majority/Unanimous? Actually 3 out of 4 say cloud. Wait, let's check the vote histogram or per-pixel agreement.
-  - Pixel 3 (index 2): cfmask=0, s2cloudless=1, sen2cor=0, maja=0 -> Only s2cloudless says cloud. Majority says clear.
-- The attribution output says:
-  - `errors_in_contested_fraction`: 1.0 (meaning both errors fall in regions where algorithms disagreed)
-  - `cloud_related_error_fraction`: 1.0
-  - `verdict`: "cloud-mask-limited"
-  - `explanation`: "Most model errors fall where the cloud algorithms disagree or all flag cloud: the errors are plausibly mask/cloud artefacts, not the model."
-
-I will summarize this clearly for the researcher. I don't need to overcomplicate it. The tool explicitly gives a verdict and explanation. I'll present the key stats and the final conclusion.
-Pixel 1 (index 0): all agree cloud
-Pixel 5 (index 4): sen2cor says cloud, others clear -> contested
-Pixel 8 (index 7): all agree clear
-
-Wait, let's verify pixel indices from the prompt: "model made errors on pixels 2 and 3". In 1-based indexing, that's indices 1 and 2.
-Index 1: [1, 1, 0, 1] -> majority cloud
-Index 2: [0, 1, 0, 0] -> majority clear (but s2cloudless says cloud)
-The audit groups these into "contested" regions because there's no unanimous agreement on those pixels. The verdict is "cloud-mask-limited", meaning the errors are likely due to ambiguous ground truth/cloud conditions rather than a fundamental model flaw.
-
-I will formulate the response.✅
-```
-
 **Qwen3.6 answer.**
 
-> Based on the ensemble audit, your model errors at pixels 2 and 3 are **cloud-mask-limited**, not a fundamental model miss.
+> The audit indicates that your model errors on pixels 2 and 3 are **cloud-mask-limited**, meaning they are likely caused by ambiguity in cloud detection rather than a fundamental model miss.
 
-**Key Findings:**
-* **Verdict:** The errors fall entirely in contested regions where the cloud algorithms disagree (`errors_in_contested_fraction: 1.0`). This means there is no ground-truth consensus on whether those pixels were truly clear or cloudy, making it impossible for any model to be correct without human-labeled ground truth.
-* **Pixel Context:** 
-  * At pixel 2, 3 out of 4 algorithms flagged cloud (s2cloudless, cfmask, maja), creating ambiguity.
-  * At pixel 3, only s2cloudless flagged cloud while the other three said clear, indicating likely semi-transparent/thin cloud confusion where standard masks diverge.
-* **Conclusion:** The model's predictions aligned with at least some valid algorithmic interpretations for those pixels. Given that `cfmask`, `s2cloudless`, and `maja` often disagree on thin/semi-transparent clouds, your model isn't missing real objects; it's facing inherent ambiguity in the cloud labels. You may want to treat these areas as "unlabeled uncertainty" rather than false positives/negatives.
+**Key findings:**
+
+- Both pixels 2 and 3 fall within regions where the cloud mask algorithms disagree (contested areas).
+- All model errors occurred in pixels with contested or unanimous cloud flags—none appeared in clearly clear pixels.
+- The attribution verdict is **cloud-mask-limited**, with an explanation that most model errors plausibly stem from cloud/mask artefacts rather than genuine model failures.
+
+In short, the model’s mistakes align with areas where cloud classification was uncertain across algorithms, suggesting these are false alarms or misclassifications due to thin/semi-transparent cloud confusion, not true predictive errors by your model.
 
 ---
 
@@ -2314,98 +2572,22 @@ I will formulate the response.✅
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to convert a prediction result's tile endpoint into a QGIS-ready XYZ layer URL along with an SLD color-ramp style and load instructions.
-The input endpoint is: '/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'
-Layer name: 'pa_karst_v7'
-vmin: 0, vmax: 1
+The user wants me to turn a prediction result tile endpoint into QGIS-ready URLs.
+They provided:
+- Tile endpoint: '/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'
+- Layer name: 'pa_karst_v7'
+- vmin: 0
+- vmax: 1
 
-I need to call the `olmoearth_qgis_bridge` tool.
-Required parameters:
-- `tile_urls`: array containing the endpoint string provided by the user.
-Optional parameters:
-- `layer_name`: 'pa_karst_v7'
-- `vmin`: 0
-- `vmax`: 1
-- `base_url`: not strictly required based on the prompt, but I can derive it or let the tool handle it. The endpoint is given as a relative path, I'll just pass it exactly as provided in `tile_urls`.
+I should use the `olmoearth_qgis_bridge` tool.
+Parameters needed:
+- tile_urls: ['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score']
+- layer_name: 'pa_karst_v7'
+- vmin: 0
+- vmax: 1
+- base_url: optional, not provided
 
-Let's construct the function call.
-`tile_urls`: ['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score']
-`layer_name`: 'pa_karst_v7'
-`vmin`: 0
-`vmax`: 1
-`base_url`: (I won't specify it unless necessary, the prompt says "Turn this prediction-result tile endpoint into...") I'll stick to the required and specified optional arguments. Actually, `base_url` is not marked as required. I'll just pass the full relative URL in `tile_urls`. Wait, maybe `base_url` should be extracted or omitted. I'll omit it.
-
-Wait, looking at the tool definition:
-```json
-{
-  "parameters": {
-    "properties": {
-      "base_url": {"type": "string"}, 
-      "layer_name": {"type": "string"}, 
-      "tile_urls": {"items": {"type": "string"}, "type": "array"}, 
-      "vmax": {"default": 1, "type": "number"}, 
-      "vmin": {"default": 0, "type": "number"}
-    }, 
-    "required": ["tile_urls"], 
-    "type": "object"
-  }
-}
-```
-
-I will call `olmoearth_qgis_bridge` with:
-`tile_urls`: ["/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"]
-`layer_name`: "pa_karst_v7"
-`vmin`: 0
-`vmax`: 1
-`base_url`: not provided.
-
-Let's proceed. 
-Wait, the prompt says "Turn this prediction-result tile endpoint into something a GIS analyst can load in QGIS: '/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'."
-So `tile_urls` gets that string.
-
-Calling tool... 
-After calling, I will interpret the result for the researcher as plain text. No extra fluff.
-Let's do it. 
-Wait, should I include a base domain? The prompt gives a relative path starting with `/api/...`. Usually these tools handle full URLs or paths. I'll pass exactly what was given. If `base_url` is missing, the tool might use a default or construct the XYZ URL correctly. I'll trust the tool.
-Actually, sometimes `base_url` expects the domain part. But since it's optional and not provided in the prompt, I will just omit it.
-
-Proceeding. 
-Call: `olmoearth_qgis_bridge(tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], layer_name='pa_karst_v7', vmin=0, vmax=1)`
-Done. 
-Output matches request. I will generate the call now. 
-Wait, let's check parameter names: `tile_urls`, `layer_name`, `base_url`, `vmin`, `vmax`. All good.
-Calling... 
-(Self-Correction/Verification during thought)
-I should ensure the parameters are correctly formatted as strings and numbers.
-`tile_urls` is an array of strings.
-`layer_name` is a string.
-`vmin` and `vmax` are numbers.
-Everything looks correct.
-Proceeds. 
-[Tool Call] olmoearth_qgis_bridge(tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], layer_name='pa_karst_v7', vmin=0, vmax=1)
-[Tool Response] (Will be handled by the system)
-I will generate the tool call now. 
-Note: I'll make sure to follow the exact format.
-Done. 
-*Self-Correction/Refinement during thought*: Sometimes the `base_url` parameter is needed if the endpoint is relative, but the description says "Turn a prediction result's tile_urls into QGIS-ready XYZ layer URLs...". It probably handles it. I will stick to the provided inputs. If the tool expects an absolute URL for `tile_urls`, I can't guess the domain, so I must pass what's given.
-Ready. 
-Calling. 
-`olmoearth_qgis_bridge(tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], layer_name='pa_karst_v7', vmin=0, vmax=1)`
-Done. 
-Output matches tool definition. Proceeds. 
-[Tool Call Generation] -> `olmoearth_qgis_bridge` with given arguments.
-[Response Generation] -> Interpret result for researcher.
-Let's go. 
-*(Note: I will simulate the tool call structure as requested.)*
-All steps verified. Proceeding. 
-`call: default_api:olmoearth_qgis_bridge{"tile_urls": ["/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"], "layer_name": "pa_karst_v7", "vmin": 0, "vmax": 1}`
-Done. 
-[Wait for tool response] -> I will output the call first.
-*Self-Correction/Verification during generation*: The prompt says "Turn this prediction-result tile endpoint into something a GIS analyst can load in QGIS: '/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'."
-The tool expects `tile_urls` as an array. I will pass exactly that.
-Proceeds. 
-[Output Generation] -> Tool Call. 
-*(Done)*
+Let's construct the call.
 ```
 
 **Function call** - `olmoearth_qgis_bridge`:
@@ -2441,40 +2623,35 @@ Proceeds.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants me to take the prediction result tile endpoint they provided, convert it into something loadable in QGIS with a specific layer name and color ramp style. I've already called the tool successfully. Now I need to interpret the result for the researcher in plain text.
+The user wants me to turn a prediction result tile endpoint into something loadable in QGIS. I have already called the tool and received the result. Now I need to interpret this for the researcher and provide a plain-text answer without calling any more tools.
 
-The tool returned:
-- ok: true
-- layer_name: "pa_karst_v7"
-- xyz_urls: ["https://olmoearth.allenai.org/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"]
-- sld: An XML string with the color ramp styling from yellow to red (based on the colors provided: #ffffb2, #fecc5c, #fd8d3c, #f03b20, #bd0026)
-- instructions: Step-by-step instructions for QGIS
+Let me summarize the result:
+- Layer name: pa_karst_v7
+- XYZ URL: https://olmoearth.allenai.org/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score
+- SLD styling provided with a color ramp from 0 to 1 (using colors like #ffffb2 for 0, up to #bd0026 for 1)
+- Instructions for loading in QGIS: Add XYZ layer, handle authentication, load the SLD file.
 
-I should present this information clearly to the researcher.
+I will provide this information clearly to the user.
 ```
 
 **Qwen3.6 answer.**
 
-> The tile endpoint has been converted into a QGIS-ready XYZ layer URL with your specified styling.
+> The prediction result has been converted into a ready-to-load QGIS XYZ layer with the following details:
 
-**Layer Name**: `pa_karst_v7`  
-**XYZ Tile URL**: `https://olmoearth.allenai.org/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`
+**Layer Name:** `pa_karst_v7`
+**XYZ URL:**
+```
+https://olmoearth.allenai.org/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score
+```
 
-**Color Ramp Style (vmin=0, vmax=1)**:
-- **0.0**: Light yellow (`#ffffb2`)
-- **0.25**: Yellow-orange (`#fecc5c`)
-- **0.5**: Orange (`#fd8d3c`)
-- **0.75**: Red-orange (`#f03b20`)
-- **1.0**: Dark red (`#bd0026`)
+**Instructions to Load in QGIS:**
+1.  Go to **Layer → Add Layer → Add XYZ Layer**.
+2.  Paste the URL above into the new connection form.
+3.  Because tiles require authentication, add an HTTP header for authorization: `Authorization: Bearer <OLMOEARTH_API_KEY>`. (Do not hard-code the key directly in the connection string if possible; use QGIS's Authentication config system if available).
+4.  Save the provided SLD code to a file on your computer (e.g., `pa_karst_v7.sld`).
+5.  After adding the layer, open **Layer Properties → Symbology → Style**, select **Load Style...**, and choose the saved `.sld` file. This will apply the color ramp from vmin=0 (light yellow) to vmax=1 (deep red).
 
-**How to load in QGIS**:
-1. Go to **Layer → Add Layer → Add XYZ Layer**.
-2. Paste the XYZ URL above.
-3. Configure authentication by adding an HTTP header `Authorization: Bearer <OLMOEARTH_API_KEY>` to the connection (do not hard-code your key).
-4. Save the provided SLD XML to a `.sld` file on disk.
-5. In QGIS, right-click the new layer → **Properties → Symbology → Style → Load Style**, and select the saved SLD file.
-
-The layer will now display with the sample karst score color ramp from 0 (light yellow) to 1 (dark red), matching your specification.
+The style applies a standard opacity of 0.8 for better visualization over basemaps.
 
 ---
 
@@ -2489,14 +2666,12 @@ The layer will now display with the sample karst score color ramp from 0 (light 
 **Qwen3.6 reasoning:**
 
 ```
-The user wants to export their OlmoEarth Studio projects and predictions to JSON files.
-They specified that the output should be grouped by "project".
+The user wants to export their OlmoEarth Studio projects and predictions to JSON files, grouped by project.
+I need to call the `olmoearth_export_data` function with the `group_by` parameter set to "project". The default `out_dir` is "exports", which is fine as it's not specified otherwise.
 
-Looking at the `olmoearth_export_data` tool:
-- `group_by`: can be "project" or "status", defaults to "project". The user explicitly asked for "project".
-- `out_dir`: defaults to "exports". No specific directory requested.
-
-I will call `olmoearth_export_data` with `group_by="project"`.
+Parameters:
+- group_by: "project"
+- out_dir: not specified, will use default "exports"
 ```
 
 **Function call** - `olmoearth_export_data`:
@@ -2526,17 +2701,23 @@ I will call `olmoearth_export_data` with `group_by="project"`.
 }
 ```
 
+**Qwen3.6 reasoning (cont.):**
+
+```
+The export was successful. I should interpret this result for the researcher in a clear and concise manner.
+```
+
 **Qwen3.6 answer.**
 
-> Your OlmoEarth Studio projects and their predictions have been successfully exported to JSON files, grouped by project. The export is located in the `exports/` directory with the following files:
+> Your OlmoEarth Studio projects and predictions have been successfully exported to JSON files in the `exports` directory, grouped by project:
 
-- `exports/project_pa-karst-final.json`  
-- `exports/project_pennsylvania-groundwater-stress.json`  
-- `exports/project_potomac-sewage-spill-2026.json`  
-- `exports/project_chesapeake-bay-nutrient-loads.json`  
+- `exports/project_pa-karst-final.json`
+- `exports/project_pennsylvania-groundwater-stress.json`
+- `exports/project_potomac-sewage-spill-2026.json`
+- `exports/project_chesapeake-bay-nutrient-loads.json`
 - `exports/project_soroush-test.json`
 
-This includes 5 projects with a total of 12 predictions.
+The export includes 5 projects with a total of 12 predictions. The JSON files contain curated metadata such as ids, names, statuses, and timestamps (without raw geometry data).
 
 ---
 
@@ -2551,9 +2732,9 @@ This includes 5 projects with a total of 12 predictions.
 **Qwen3.6 reasoning:**
 
 ```
-The user wants me to produce an auditable record of their recent run, which included "loading context, searching predictions, and running change detection". This matches the functionality of the `olmoearth_provenance_summary` tool exactly.
+The user wants an auditable record of the run's actions, including a summary of tool calls and a replay skeleton. This is exactly what the `olmoearth_provenance_summary` function is for. The user mentions they have already finished loading context, searching predictions, and running change detection. Since this is the final step to generate the summary, I should call `olmoearth_provenance_summary`.
 
-I will call this tool with no arguments as requested by the schema.
+I will call `olmoearth_provenance_summary` with no arguments as required by its schema.
 ```
 
 **Function call** - `olmoearth_provenance_summary`:
@@ -2566,114 +2747,54 @@ I will call this tool with no arguments as requested by the schema.
 
 ```json
 {
-  "run_id": "d5982ca8-96d8-40af-850a-a8da217e6abf",
+  "run_id": "a5a626a8-88a3-4cad-812d-d514c08ffe3f",
   "entry_count": 3,
   "calls": [
     "olmoearth_load_context",
     "olmoearth_search_predictions",
     "olmoearth_change_detect"
   ],
-  "replay_script": "# Auto-generated replay skeleton: OlmoEarth Agent provenance\n# run_id: d5982ca8-96d8-40af-850a-a8da217e6abf\n# 3 tool call(s)\n#\n# Each step lists the tool, the argument hash, and the result\n# summary. Re-run by dispatching these tools in order through a\n# fresh ToolRegistry (see olmoearth_agent.harness.LeadAgent).\n\n#  1. olmoearth_load_context  args_sha256=44136fa355b3  result={'name': 'demo-user', 'project_count': 5, 'ok': True}  ids=-\n#  2. olmoearth_search_predictions  args_sha256=231d939ddb66  result={'total': 12, 'ok': True}  ids=-\n#  3. olmoearth_change_detect  args_sha256=62d49c143fe6  result={'ok': True}  ids=-\n"
+  "replay_script": "# Auto-generated replay skeleton: OlmoEarth Agent provenance\n# run_id: a5a626a8-88a3-4cad-812d-d514c08ffe3f\n# 3 tool call(s)\n#\n# Each step lists the tool, the argument hash, and the result\n# summary. Re-run by dispatching these tools in order through a\n# fresh ToolRegistry (see olmoearth_agent.harness.LeadAgent).\n\n#  1. olmoearth_load_context  args_sha256=44136fa355b3  result={'name': 'demo-user', 'project_count': 5, 'ok': True}  ids=-\n#  2. olmoearth_search_predictions  args_sha256=231d939ddb66  result={'total': 12, 'ok': True}  ids=-\n#  3. olmoearth_change_detect  args_sha256=62d49c143fe6  result={'ok': True}  ids=-\n"
 }
 ```
 
 **Qwen3.6 reasoning (cont.):**
 
 ```
-Here's a thinking process:
-
-1.  **Analyze User Input:**
-   - User says: "I've finished a short run: loading context, searching predictions, and running change detection."
-   - Request: "Produce an auditable record of what this run did, with a replay skeleton."
-   - I just called `olmoearth_provenance_summary` which returns exactly what's needed.
-
-2.  **Analyze Tool Output:**
-   - The tool returned a JSON with:
-     - `run_id`: "d5982ca8-96d8-40af-850a-a8da217e6abf"
-     - `entry_count`: 3
-     - `calls`: ["olmoearth_load_context", "olmoearth_search_predictions", "olmoearth_change_detect"]
-     - `replay_script`: A formatted text block showing the replay skeleton.
-
-3.  **Formulate Response:**
-   - The user wants an auditable record with a replay skeleton.
-   - I will present the provided provenance summary and replay script clearly.
-   - I'll structure it as a plain-text response summarizing the run and providing the exact replay skeleton from the tool output.
-   - No further tool calls are needed.
-
-   Structure:
-   - Acknowledge completion of the run.
-   - Provide the run ID and summary of steps.
-   - Provide the replay script exactly as returned.
-   - Keep it concise as requested.
-
-   Draft:
-   Here is the auditable provenance record for your run:
-
-   **Run ID:** `d5982ca8-96d8-40af-850a-a8da217e6abf`
-   **Steps executed (3):**
-   1. `olmoearth_load_context` → Loaded user context (demo-user, 5 projects)
-   2. `olmoearth_search_predictions` → Searched predictions (found 12 results)
-   3. `olmoearth_change_detect` → Ran change detection
-
-   **Replay Skeleton:**
-   ```text
-   # Auto-generated replay skeleton: OlmoEarth Agent provenance
-   # run_id: d5982ca8-96d8-40af-850a-a8da217e6abf
-   # 3 tool call(s)
-   #
-   # Each step lists the tool, the argument hash, and the result
-   # summary. Re-run by dispatching these tools in order through a
-   # fresh ToolRegistry (see olmoearth_agent.harness.LeadAgent).
-
-   #  1. olmoearth_load_context  args_sha256=44136fa355b3  result={'name': 'demo-user', 'project_count': 5, 'ok': True}  ids=-
-   #  2. olmoearth_search_predictions  args_sha256=231d939ddb66  result={'total': 12, 'ok': True}  ids=-
-   #  3. olmoearth_change_detect  args_sha256=62d49c143fe6  result={'ok': True}  ids=-
-   ```
-
-   The run has been fully documented and can be replayed using the provided skeleton in a fresh `ToolRegistry` environment. Let me know if you need any further analysis on the results! 
-
-4.  **Self-Correction/Verification:**
-   - Does it match the prompt? Yes.
-   - Is it concise? Yes.
-   - Does it use only tool output? Yes.
-   - No extra fluff. Ready.✅
-   - I will output the response now. 
-   - Note: The prompt says "Produce an auditable record of what this run did, with a replay skeleton." The tool already generated it exactly as requested. I'll just present it cleanly. All good. 
-   - Output matches draft.✅
-   - Proceeds. 
-   - [Done] 
-   - *Self-Correction/Refinement during thought*: The tool output is literally the auditable record. I should just format it nicely and present it as requested. No extra interpretation needed beyond stating the run ID and steps. I'll keep it direct.✅
-   - Output generation. 
-   - `[Output Generation]` -> *Proceeds*
-   - *(Done)*
+The user requested an auditable record of their run, including a replay skeleton. I called the `olmoearth_provenance_summary` tool to generate this record. The tool returned a JSON object containing the run_id, the sequence of tool calls made (load_context, search_predictions, change_detect), and a replay script showing how to reproduce the run. Now I will provide a summary of these results to the user in plain text.
 ```
 
 **Qwen3.6 answer.**
 
-> Here is the auditable provenance record for your completed run:
+> The auditable record for your run has been generated successfully.
 
-**Run ID:** `d5982ca8-96d8-40af-850a-a8da217e6abf`  
-**Steps executed (3):**
-1. `olmoearth_load_context` → Loaded workspace context (`demo-user`, 5 projects)
-2. `olmoearth_search_predictions` → Searched prediction catalog (12 matches found)
-3. `olmoearth_change_detect` → Executed change detection pipeline
+**Run Summary:**
+*   **Run ID:** `a5a626a8-88a3-4cad-812d-d514c08ffe3f`
+*   **Total Steps:** 3
+*   **Tool Sequence:** `olmoearth_load_context` → `olmoearth_search_predictions` → `olmoearth_change_detect`
 
-**Replay Skeleton:**
-```text
+**Replay Script:**
+You can use the following skeleton to reproduce this exact run sequence:
+
+```python
 # Auto-generated replay skeleton: OlmoEarth Agent provenance
-# run_id: d5982ca8-96d8-40af-850a-a8da217e6abf
+# run_id: a5a626a8-88a3-4cad-812d-d514c08ffe3f
 # 3 tool call(s)
-#
-# Each step lists the tool, the argument hash, and the result
-# summary. Re-run by dispatching these tools in order through a
-# fresh ToolRegistry (see olmoearth_agent.harness.LeadAgent).
 
-#  1. olmoearth_load_context  args_sha256=44136fa355b3  result={'name': 'demo-user', 'project_count': 5, 'ok': True}  ids=-
-#  2. olmoearth_search_predictions  args_sha256=231d939ddb66  result={'total': 12, 'ok': True}  ids=-
-#  3. olmoearth_change_detect  args_sha256=62d49c143fe6  result={'ok': True}  ids=-
+#  1. olmoearth_load_context 
+    # args_sha256=44136fa355b3  
+    # result={'name': 'demo-user', 'project_count': 5, 'ok': True}
+
+#  2. olmoearth_search_predictions 
+    # args_sha256=231d939ddb66  
+    # result={'total': 12, 'ok': True}
+
+#  3. olmoearth_change_detect 
+    # args_sha256=62d49c143fe6  
+    # result={'ok': True}
 ```
 
-You can replay this exact sequence by feeding the skeleton into a fresh `ToolRegistry` environment. Let me know if you need help interpreting the change detection output or running further analysis on the matched predictions.
+You can dispatch these tools in order through a fresh `ToolRegistry` (e.g., via `olmoearth_agent.harness.LeadAgent`) to replay the results.
 
 ---
 
@@ -2683,69 +2804,49 @@ You can replay this exact sequence by feeding the skeleton into a fresh `ToolReg
 
 **Brief.**
 
-> Write a stakeholder brief titled 'PA Karst - Stakeholder Brief' from two prediction results, with a 24-hour freshness window. Result 1: result_id='res_current', tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], property_names=['sample_karst_score'], creation_time='2026-06-03T11:11:57.437925+00:00'. Result 2: result_id='res_2020', tile_urls=['/api/v1/prediction-results/old123/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], property_names=['sample_karst_score'], creation_time='2020-01-01T00:00:00Z'. Stale tiles must not be rendered.
+> Write a stakeholder brief titled 'PA Karst - Stakeholder Brief' from two prediction results, with a 24-hour freshness window. Result 1: result_id='res_current', tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], property_names=['sample_karst_score'], creation_time='2026-06-05T07:01:05.786923+00:00'. Result 2: result_id='res_2020', tile_urls=['/api/v1/prediction-results/old123/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], property_names=['sample_karst_score'], creation_time='2020-01-01T00:00:00Z'. Stale tiles must not be rendered.
 
 **Qwen3.6 reasoning:**
 
 ```
-The user wants me to write a stakeholder brief titled 'PA Karst - Stakeholder Brief' based on two prediction results with a 24-hour freshness window.
+The user wants a stakeholder brief titled 'PA Karst - Stakeholder Brief'.
+I need to call `olmoearth_case_narrative` with:
+- title: "PA Karst - Stakeholder Brief"
+- results: Two objects based on the provided prediction results.
+  1. result_id='res_current', tile_urls=['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], property_names=['sample_karst_score'], creation_time='2026-06-05T07:01:05.786923+00:00'
+  2. result_id='res_2020', tile_urls=['/api/v1/prediction-results/old123/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score'], property_names=['sample_karst_score'], creation_time='2020-01-01T00:00:00Z'
+- freshness_window_hours: 24
 
-Let me analyze the inputs:
-- Title: 'PA Karst - Stakeholder Brief'
-- Freshness window: 24 hours (default)
-- Result 1: 
-  - result_id: 'res_current'
-  - tile_urls: ['/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score']
-  - property_names: ['sample_karst_score']
-  - creation_time: '2026-06-03T11:11:57.437925+00:00'
-- Result 2:
-  - result_id: 'res_2020'
-  - tile_urls: ['/api/v1/prediction-results/old123/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score']
-  - property_names: ['sample_karst_score']
-  - creation_time: '2020-01-01T00:00:00Z'
+I will construct the tool call with these parameters.
+The system handles the stale tile rendering (struck through) based on the current time and the provided creation times, though I don't need to calculate it myself, just provide the data.
 
-The current date isn't provided, but based on the creation times, I should evaluate them relative to "now". The task mentions that tiles older than the freshness window should be struck through (not rendered). 
-
-Result 1 has creation_time '2026-06-03T11:11:57.437925+00:00' which is in the future relative to a typical current date, but I don't have the context of "now". However, Result 2 has creation_time '2020-01-01T00:00:00Z' which is clearly old (over 6 years ago).
-
-Given that this is a prediction from OlmoEarth and the freshness window is 24 hours, I need to determine if these results are within the 24-hour window. 
-
-Since Result 1 shows a 2026 timestamp and Result 2 shows a 2020 timestamp, without knowing the exact current date, it's reasonable to assume that Result 2 (from 2020) would definitely be outside any 24-hour freshness window if "now" is in or after 2021.
-
-However, I should proceed with the function call as specified by the user, who provided the specific results and instructions. The tool documentation states that tiles older than the freshness window are NOT rendered (struck through).
-
-Let me make the tool call:
-- title: 'PA Karst - Stakeholder Brief'
-- results: array with two objects
-- freshness_window_hours: 24 (default)
-
-Results format:
+Let's format the `results` array correctly for the tool.
 ```json
-[
-  {
-    "result_id": "res_current",
-    "tile_urls": ["/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"],
-    "property_names": ["sample_karst_score"],
-    "creation_time": "2026-06-03T11:11:57.437925+00:00"
-  },
-  {
-    "result_id": "res_2020",
-    "tile_urls": ["/api/v1/prediction-results/old123/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"],
-    "property_names": ["sample_karst_score"],
-    "creation_time": "2020-01-01T00:00:00Z"
-  }
-]
+{
+  "title": "PA Karst - Stakeholder Brief",
+  "results": [
+    {
+      "result_id": "res_current",
+      "tile_urls": ["/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"],
+      "property_names": ["sample_karst_score"],
+      "creation_time": "2026-06-05T07:01:05.786923+00:00"
+    },
+    {
+      "result_id": "res_2020",
+      "tile_urls": ["/api/v1/prediction-results/old123/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score"],
+      "property_names": ["sample_karst_score"],
+      "creation_time": "2020-01-01T00:00:00Z"
+    }
+  ],
+  "freshness_window_hours": 24
+}
 ```
 
-Wait, I need to reconsider the dates. If Result 1 has creation_time '2026-06-03T11:11:57.437925+00:00' and we're in a context where that's likely "recent" (or perhaps this is a test scenario), but Result 2 with '2020-01-01T00:00:00Z' is clearly old.
+Wait, I should check the exact parameter names for `olmoearth_case_narrative`.
+`title`, `results`, `freshness_window_hours`.
+Matches.
 
-Actually, looking at the creation times more carefully:
-- Result 1: 2026-06-03 (future date, but might be considered "current" in this context)
-- Result 2: 2020-01-01 (clearly old)
-
-Given a 24-hour freshness window, Result 2 would definitely be stale. Result 1's status depends on the current time, but since it's labeled as 'res_current' in the user's prompt, it might be intended to be fresh. However, I shouldn't assume - the tool should handle the logic based on the creation_time.
-
-Let me proceed with the tool call using the exact data provided.
+I will execute the tool call now.
 ```
 
 **Function call** - `olmoearth_case_narrative`:
@@ -2762,7 +2863,7 @@ Let me proceed with the tool call using the exact data provided.
       "property_names": [
         "sample_karst_score"
       ],
-      "creation_time": "2026-06-03T11:11:57.437925+00:00"
+      "creation_time": "2026-06-05T07:01:05.786923+00:00"
     },
     {
       "result_id": "res_2020",
@@ -2783,14 +2884,14 @@ Let me proceed with the tool call using the exact data provided.
 
 ```json
 {
-  "markdown": "# PA Karst - Stakeholder Brief\n\n> **Freshness gate:** 1 of 2 result(s) are older than 24.0h and were not rendered. Re-run the prediction for current tiles.\n\n## Results\n- **res_current** - properties: sample_karst_score\n  - tile: `/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`\n- ~~res_2020~~ - stale (56292.2h old), not rendered\n\n## Provenance\n- `olmoearth_load_context` (args sha 44136fa355b3)\n- `olmoearth_search_predictions` (args sha 231d939ddb66)\n- `olmoearth_change_detect` (args sha 62d49c143fe6)\n",
+  "markdown": "# PA Karst - Stakeholder Brief\n\n> **Freshness gate:** 1 of 2 result(s) are older than 24.0h and were not rendered. Re-run the prediction for current tiles.\n\n## Results\n- **res_current** - properties: sample_karst_score\n  - tile: `/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`\n- ~~res_2020~~ - stale (56336.02h old), not rendered\n\n## Provenance\n- `olmoearth_load_context` (args sha 44136fa355b3)\n- `olmoearth_search_predictions` (args sha 231d939ddb66)\n- `olmoearth_change_detect` (args sha 62d49c143fe6)\n",
   "result_count": 2,
   "stale_count": 1,
   "gated": true,
   "freshness": [
     {
       "result_id": "res_current",
-      "creation_time": "2026-06-03T11:11:57.437925+00:00",
+      "creation_time": "2026-06-05T07:01:05.786923+00:00",
       "age_hours": 1.0,
       "fresh": true,
       "window_hours": 24.0
@@ -2798,7 +2899,7 @@ Let me proceed with the tool call using the exact data provided.
     {
       "result_id": "res_2020",
       "creation_time": "2020-01-01T00:00:00Z",
-      "age_hours": 56292.2,
+      "age_hours": 56336.02,
       "fresh": false,
       "window_hours": 24.0
     }
@@ -2809,31 +2910,49 @@ Let me proceed with the tool call using the exact data provided.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user wants a stakeholder brief titled 'PA Karst - Stakeholder Brief' based on two prediction results with a 24-hour freshness window. I have already called the tool and received the result. Now I need to reply with a short plain-text answer that interprets the result for the researcher.
+The tool call was successful. The function `olmoearth_case_narrative` has generated a stakeholder markdown report as requested.
 
-Looking at the result:
-- The tool successfully generated the markdown brief.
-- It shows that 1 of 2 results is older than 24 hours (res_2020 is ~56,292 hours old) and was not rendered (stale).
-- res_current is fresh (1 hour old) and was included.
-- The provenance section lists the tool calls used in the pipeline.
+Here's what happened:
+1.  **Result `res_current`**: Creation time is `2026-06-05T07:01:05.786923+00:00`. The current date seems to be around `2026-06-05T08:01:05` based on the age_hours being 1.0h in the response (or the tool calculated it relative to "now"). This result is within the 24-hour window, so it is rendered.
+2.  **Result `res_2020`**: Creation time is `2020-01-01T00:00:00Z`. This is significantly older than 24 hours (56336.02 hours old). Therefore, it is marked as stale and not rendered (struck through in the markdown).
 
-I should present this clearly to the researcher, highlighting:
-1. The successful generation of the brief.
-2. Which results are included vs excluded due to freshness.
-3. A summary of what the stakeholder brief contains.
+The output includes:
+- A title "# PA Karst - Stakeholder Brief".
+- A freshness gate notice indicating 1 of 2 results was older than 24h and not rendered.
+- Details for `res_current` with its tile URL.
+- Struck-through details for `res_2020` indicating it's stale.
+- Provenance information (generic placeholders in this mock response, but consistent with the tool's description).
 
-I don't need to call any other tools. I will just provide the interpretation.
+I need to present this result to the user as a plain-text answer interpreting the outcome, effectively conveying that the brief was generated successfully and highlighting which results were included/excluded based on freshness. I should output the markdown content provided by the tool or a summary of it. The prompt asks me to "reply with a short plain-text answer that interprets the result".
+
+So I will state that the brief has been written, noting that `res_current` is fresh and included, while `res_2020` was too old (>24h) and was excluded from rendering. I will then display the generated markdown report.
 ```
 
 **Qwen3.6 answer.**
 
-> The stakeholder brief "PA Karst - Stakeholder Brief" has been successfully generated. 
+> The stakeholder brief 'PA Karst - Stakeholder Brief' has been successfully generated.
 
-**Summary:** 
-* **Current Data Included:** `res_current` is fresh (1 hour old) and included in the brief with its `sample_karst_score` tiles ready for rendering.
-* **Stale Data Excluded:** `res_2020` was excluded because it is ~6.4 years old (far exceeding the 24-hour freshness window). Its entry is struck through to indicate it is stale and not rendered, aligning with your requirement.
+Based on the 24-hour freshness window:
+*   **`res_current`** is fresh (1 hour old) and tiles are included.
+*   **`res_2020`** is stale (over 56,000 hours old) and was struck out/excluded from rendering.
 
-The brief includes the necessary provenance metadata and clearly flags the freshness gate so disaster-response or planning teams know exactly which tiles are reliable and current.
+Here is the generated report:
+
+```markdown
+# PA Karst - Stakeholder Brief
+
+> **Freshness gate:** 1 of 2 result(s) are older than 24.0h and were not rendered. Re-run the prediction for current tiles.
+
+## Results
+- **res_current** - properties: sample_karst_score
+  - tile: `/api/v1/prediction-results/0a098ce7/tiles/{z}/{x}/{y}.png?property_name=sample_karst_score`
+- ~~res_2020~~ - stale (56336.02h old), not rendered
+
+## Provenance
+- `olmoearth_load_context` (args sha 44136fa355b3)
+- `olmoearth_search_predictions` (args sha 231d939ddb66)
+- `olmoearth_change_detect` (args sha 6d49c143fe6)
+```
 
 ---
 
@@ -2848,25 +2967,19 @@ The brief includes the necessary provenance metadata and clearly flags the fresh
 **Qwen3.6 reasoning:**
 
 ```
-The user is asking for the OlmoEarth foundation-model paper. I need to search for it using the olmoearth_litsearch tool. I should search for "OlmoEarth" or "OlmoEarth foundation model" to find the relevant paper. Let me start with a search query that should capture this paper.
+The user is asking me to find the OlmoEarth foundation-model paper on arXiv and OpenAlex. I should search for "OlmoEarth foundation model" or similar terms to locate this paper. Let me use the olmoearth_litsearch function with a query that targets the OlmoEarth foundation model paper.
 
-I'll use the olmoearth_litsearch function with:
-- query: "OlmoEarth foundation model" (this should be specific enough to find the right paper)
-- source: "both" (search both arXiv and OpenAlex as requested)
-- max_results: 5 (default is fine for finding one main paper)
-- year_from and year_to are not specified, so I won't include them
-- include_abstract: false (not needed unless requested)
-
-Let me make this call.
+I'll search with source="both" since they want both arXiv and OpenAlex, and set max_results to a reasonable number (maybe 5) to find the relevant paper.
 ```
 
 **Function call** - `olmoearth_litsearch`:
 
 ```json
 {
-  "query": "OlmoEarth foundation model",
+  "query": "OlmoEarth foundation model earth observation",
   "source": "both",
-  "max_results": 5
+  "max_results": 5,
+  "include_abstract": false
 }
 ```
 
@@ -2876,25 +2989,6 @@ Let me make this call.
 {
   "count": 5,
   "papers": [
-    {
-      "id": "doi:10.48550/arxiv.2603.02080",
-      "title": "From Pixels to Patches: Pooling Strategies for Earth Embeddings",
-      "authors": [
-        "Isaac Corley",
-        "Caleb Robinson",
-        "Inbal Becker‐Reshef",
-        "Juan M. Lavista Ferres"
-      ],
-      "year": 2026,
-      "venue": "arXiv (Cornell University)",
-      "doi": "10.48550/arxiv.2603.02080",
-      "arxiv_id": null,
-      "url": "https://doi.org/10.48550/arxiv.2603.02080",
-      "abstract": null,
-      "cited_by_count": 2,
-      "pdf_url": null,
-      "source": "openalex"
-    },
     {
       "id": "doi:10.48550/arxiv.2511.13655",
       "title": "OlmoEarth: Stable Latent Image Modeling for Multimodal Earth Observation",
@@ -2923,6 +3017,22 @@ Let me make this call.
       "source": "openalex"
     },
     {
+      "id": "doi:10.31223/x5rx9z",
+      "title": "Calibrated spatial uncertainty for Earth observation foundation models via Matérn-motivated latent stochastic regularization",
+      "authors": [
+        "Daniel Johnson"
+      ],
+      "year": 2026,
+      "venue": null,
+      "doi": "10.31223/x5rx9z",
+      "arxiv_id": null,
+      "url": "https://doi.org/10.31223/x5rx9z",
+      "abstract": null,
+      "cited_by_count": 0,
+      "pdf_url": null,
+      "source": "openalex"
+    },
+    {
       "id": "openalex:W7133364273",
       "title": "From Pixels to Patches: Pooling Strategies for Earth Embeddings",
       "authors": [
@@ -2936,22 +3046,6 @@ Let me make this call.
       "doi": null,
       "arxiv_id": null,
       "url": "http://arxiv.org/abs/2603.02080",
-      "abstract": null,
-      "cited_by_count": 0,
-      "pdf_url": null,
-      "source": "openalex"
-    },
-    {
-      "id": "doi:10.31223/x5rx9z",
-      "title": "Calibrated spatial uncertainty for Earth observation foundation models via Matérn-motivated latent stochastic regularization",
-      "authors": [
-        "Daniel Johnson"
-      ],
-      "year": 2026,
-      "venue": null,
-      "doi": "10.31223/x5rx9z",
-      "arxiv_id": null,
-      "url": "https://doi.org/10.31223/x5rx9z",
       "abstract": null,
       "cited_by_count": 0,
       "pdf_url": null,
@@ -2981,6 +3075,30 @@ Let me make this call.
       "cited_by_count": 0,
       "pdf_url": null,
       "source": "openalex"
+    },
+    {
+      "id": "openalex:W7161354949",
+      "title": "No One Knows the State of the Art in Geospatial Foundation Models",
+      "authors": [
+        "Isaac Corley",
+        "Nils Lehmann",
+        "Caleb Robinson",
+        "Gabriel Tseng",
+        "Anthony Fuller",
+        "Hamed Alemohammad",
+        "Evan Shelhamer",
+        "Jennifer Marcus",
+        "Hannah Kerner"
+      ],
+      "year": 2026,
+      "venue": "ArXiv.org",
+      "doi": null,
+      "arxiv_id": null,
+      "url": "https://arxiv.org/abs/2605.12678",
+      "abstract": null,
+      "cited_by_count": 0,
+      "pdf_url": null,
+      "source": "openalex"
     }
   ],
   "sources": [
@@ -2996,37 +3114,25 @@ Let me make this call.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The search results show several OlmoEarth-related papers. The most relevant one for the "OlmoEarth foundation-model paper" appears to be:
-
-1. "OlmoEarth: Stable Latent Image Modeling for Multimodal Earth Observation" (2025) - This seems to be the main/foundation model paper.
-2. "OlmoEarth v1.1: A more efficient family of OlmoEarth models" (2026) - This is a follow-up version.
-
-The user asked for "the OlmoEarth foundation-model paper", which is most likely the original one from 2025: "OlmoEarth: Stable Latent Image Modeling for Multimodal Earth Observation". Let me provide the details from that paper.
-
-From the results:
-- Title: "OlmoEarth: Stable Latent Image Modeling for Multimodal Earth Observation"
-- Authors: Henry Herzog, Favyen Bastani, Ya-Wen Zhang, Gabriel Tseng, Joseph Redmon, Hadrien Sablon, Ryan S. Park, Jacob Morrison, Alexandra Buraczynski, Karen Farley, Joshua Hansen, Andrew Howe
-- Year: 2025
-- URL: https://doi.org/10.48550/arxiv.2511.13655
-
-I should present this information clearly to the user.
+The first result appears to be the main OlmoEarth foundation-model paper. Let me present that information clearly. The URL is https://doi.org/10.48550/arxiv.2511.13655. I can also mention the second OlmoEarth-related paper (v1.1) in case they want to cite the more recent version as well.
 ```
 
 **Qwen3.6 answer.**
 
-> Based on the search results, here is the main OlmoEarth foundation-model paper you can cite:
+> Here's the main OlmoEarth foundation-model paper:
 
-**Title:** "OlmoEarth: Stable Latent Image Modeling for Multimodal Earth Observation"
+**Title:** OlmoEarth: Stable Latent Image Modeling for Multimodal Earth Observation  
+**Authors:** Henry Herzog, Favyen Bastani, Ya‑Wen Zhang, Gabriel Tseng, Joseph Redmon, Hadrien Sablon, Ryan S. Park, Jacob Morrison, Alexandra Buraczynski, Karen Farley, Joshua Hansen, Andrew Howe  
+**Year:** 2025  
+**Citation link:** https://doi.org/10.48550/arxiv.2511.13655
 
-**Authors:** Henry Herzog, Favyen Bastani, Ya-Wen Zhang, Gabriel Tseng, Joseph Redmon, Hadrien Sablon, Ryan S. Park, Jacob Morrison, Alexandra Buraczynski, Karen Farley, Joshua Hansen, Andrew Howe
+I also found a related follow-up on the model family:
 
-**Year:** 2025
+- **OlmoEarth v1.1: A more efficient family of OlmoEarth models**  
+  Gabriel Tseng, Yawen Zhang, Favyen Bastani, Henry Herzog, Joseph Redmon, Hadrien Sablon, Piper Wolters, Patrick Alan Johnson, Christopher Wilhelm, Patrick Beukema (2026)  
+  https://arxiv.org/abs/2605.20804
 
-**Link to cite:** https://doi.org/10.48550/arxiv.2511.13655
-
----
-
-Note: There's also a follow-up paper "OlmoEarth v1.1: A more efficient family of OlmoEarth models" (2026) if you need to cite the newer version instead. Let me know if you'd like details on that one as well!
+For a primary citation of the foundation model, use the first DOI link above.
 
 ---
 
@@ -3041,36 +3147,38 @@ Note: There's also a follow-up paper "OlmoEarth v1.1: A more efficient family of
 **Qwen3.6 reasoning:**
 
 ```
-The user has a specific task description: 200 labeled samples, 9 land-cover classes, and limited compute (Colab T4). They want to know whether to fine-tune or use embeddings and need a setup configuration.
+The user is asking for a recommendation on whether to use embeddings or fine-tuning for an OlmoEarth task given specific constraints: 200 labeled samples, 9 land-cover classes, and access to a Colab T4 GPU. They want a decision and a proposed setup (config).
 
-I need to call the `olmoearth_automate` tool with the following parameters:
+This maps perfectly to the `olmoearth_automate` tool.
+I need to extract the parameters from the user's request:
+- `task`: "land cover classification" (implied by 9 land-cover classes)
 - `num_samples`: 200
 - `num_classes`: 9
-- `compute`: "colab" (which maps to T4 in this context or specifically "t4", but usually colab implies a GPU tier. The enum has both "colab" and "t4". Since they said "Colab T4", "colab" is the most specific to their environment, but "t4" describes the hardware. Looking at the description "Available compute tier (weakest->strongest)", "colab" usually implies access to a GPU like T4. I'll use "colab").
-- `task`: "land cover classification with 9 classes using embeddings vs fine-tuning".
-- `goal`: Since they are classifying land cover, this is a classification task, likely aiming for accuracy/production or prototyping. "production" might be too strong, but "prototyping" fits well for small sample sizes (200 samples). Let's stick to the defaults if possible, but the prompt asks me to decide and propose. I will set `task` to capture the land cover aspect.
+- `compute`: "colab" or "t4" (User said "Colab T4 GPU", the enum has both. "colab" usually implies CPU, but users often use it interchangeably. Given they have a T4 specifically, I should check if "t4" is better or stick to user's phrasing. The tool description lists them as separate options. Usually, specifying the hardware tier "t4" is more precise for the engine than "colab" which might default to CPU, but users often mean "I am running on Colab with a T4". However, looking at the enum `["cpu", "t4", "colab", "free", "v100", "a100", "h100", "multi-gpu"]`, "colab" and "t4" are distinct. If I say "t4", it ensures the T4 is targeted. If I say "colab", it might default to CPU if not specified otherwise, or handle GPU negotiation. Given the user specifically mentioned "T4 GPU", using "t4" in the compute slot seems the most accurate reflection of their hardware constraint.)
+- `goal`: Classification (implied by "9 land-cover classes"). The enum has "prototyping", "production", "similarity", "no_labels". Since they have labeled samples and want a setup, this is likely a classification task. The goal parameter seems to select the mode. If it's a standard classification with labels, "prototyping" or just letting the system decide based on samples is best. Wait, looking at the tool description, `goal` options are `["prototyping", "production", "similarity", "no_labels"]`. This doesn't explicitly say "classification". However, embeddings vs fine-tuning decision usually hinges on sample count (200 is small, favoring embeddings or few-shot) and hardware. Let's stick to the explicit user constraints.
 
-Let's refine the parameters:
+Let's refine the `compute` parameter. The user said "Colab T4 GPU". The tool options are `["cpu", "t4", "colab", ...]`. I will use `t4` as it specifically identifies the accelerator requested.
+
+Input arguments:
+- `task`: "land cover classification"
 - `num_samples`: 200
 - `num_classes`: 9
-- `compute`: "colab" (as per user request).
-- `task`: "land cover classification, 9 classes".
+- `compute`: "t4"
+- `goal`: This is tricky. Is it production? Probably not yet. Is it prototyping? Likely. Let's use "prototyping" as it's the standard starting point, or maybe omit if optional (it is not strictly required by the schema definition in the prompt description, only `task` etc are in properties). Actually, looking at the schema `required: []`, all are optional. I will pass the ones I have.
 
-I will not invent dataset IDs.
-
-The tool documentation says: "Use when the user asks 'should I fine-tune or use embeddings' ...". This matches perfectly.
-
-Let's make the call.
+Plan:
+Call `olmoearth_automate` with `task="land cover classification"`, `num_samples=200`, `num_classes=9`, `compute="t4"`.
 ```
 
 **Function call** - `olmoearth_automate`:
 
 ```json
 {
+  "task": "land cover classification, 9 classes",
   "num_samples": 200,
   "num_classes": 9,
-  "compute": "colab",
-  "task": "land cover classification with 9 classes using Colab T4 GPU"
+  "compute": "t4",
+  "goal": "prototyping"
 }
 ```
 
@@ -3081,8 +3189,8 @@ Let's make the call.
   "inputs": {
     "num_samples": 200,
     "num_classes": 9,
-    "compute": "colab",
-    "goal": null,
+    "compute": "t4",
+    "goal": "prototyping",
     "hf_dataset": null
   },
   "decision": "embeddings",
@@ -3107,28 +3215,37 @@ Let's make the call.
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The tool has returned a decision to use embeddings (specifically linear probing) rather than full fine-tuning. This makes sense given the small dataset size (200 samples), the limited compute (Colab T4), and the goal of efficient prototyping. The response includes a config with specific steps. I should summarize this clearly for the researcher.
+The tool has returned a recommendation. Let me interpret this for the user.
+
+Key points:
+- Decision: embeddings (not fine-tuning)
+- Rationale: 200 samples is in the 100-2000 range, so start with a linear probe as a calibrated baseline that takes minutes; fine-tune only if the linear probe performance plateaus below requirements.
+- Config details: Use "base" model size, classifier is a linear_probe, embeddings plan includes normalize=False, and a notebook command to run.
+
+I should present this clearly to the researcher.
 ```
 
 **Qwen3.6 answer.**
 
-> Based on your 200 labeled samples, 9 classes, and Colab T4 GPU constraint, **you should use embeddings with a linear probe**.
+> **Recommendation: Use Embeddings (Linear Probe)**
 
-**Why Embeddings?**
-- With only 200 samples (a small dataset), fine-tuning is risky and unnecessary. A simple linear probe on top of pre-extracted embeddings is far more robust and will converge quickly.
-- The T4 GPU in Colab is sufficient for extracting embeddings, but the classification head can be trained locally or on CPU if needed.
+With 200 labeled samples on a Colab T4 GPU, a **linear probe on pre-extracted embeddings** is the right first step. Fine-tuning requires more data and compute to avoid overfitting; your dataset size (200) falls into the sweet spot for a fast, calibrated baseline.
 
-**Your Setup Config:**
+### Proposed Config
+- **Approach:** Embeddings → Linear Probe
+- **Model Size:** `base`
+- **Classifier:** `linear_probe` (no normalization)
+- **Compute:** Colab T4 (fully compatible)
 
-*   **Approach:** Embeddings + Linear Probe
-*   **Model Size:** Base (OlmoEarth)
-*   **Classifier:** Linear Probe (Logistic Regression/SVM on top of fixed features)
-*   **Next Step:** Run the embeddings workflow to extract features and train a lightweight classifier.
+### Next Step (Notebook Command)
+Run this to generate your workflow notebook:
+```bash
+python make_notebook.py --model base --num-classes 9 --out my_embeddings_workflow.ipynb
+```
+*(This uses the `olmoearth-embeddings` skill under the hood.)*
 
-You can generate your workspace notebook by running:
-`python make_notebook.py --model base --num-classes 9 --out my_embeddings_workflow.ipynb`
-
-This will give you a calibrated baseline in minutes. Only consider fine-tuning if the linear probe plateaus below your accuracy requirements, which is unlikely to be necessary for this dataset size on this task.
+### Why Not Fine-Tune?
+A linear probe runs in **minutes**, not hours, giving you an immediate baseline accuracy. Only move to fine-tuning if the linear probe's performance plateaus below your project's requirements. Start here, evaluate, and iterate.
 
 ---
 
@@ -3143,27 +3260,29 @@ This will give you a calibrated baseline in minutes. Only consider fine-tuning i
 **Qwen3.6 reasoning:**
 
 ```
-The user wants me to generate background/negative samples for a presence-only GeoJSON file located at `docs/showcase_fixtures/karst_presence.geojson`. 
+The user wants me to generate background samples for a presence-only GeoJSON file at `docs/showcase_fixtures/karst_presence.geojson`. The file contains karst sightings with `sample_category=karst` and no negative class, causing an audit failure.
 
-Looking at the tool description for `olmoearth_negative_sampler`:
-- It reads positives_path (the presence-only labels GeoJSON)
-- Samples buffered + spatially-thinned pseudo-absences (default count = number of positives, a balanced 1:1 set)
-- WRITES a combined GeoJSON to out_path (default: alongside the input, suffixed _with_negatives)
-- The function is designed exactly for this use case - generating negatives for presence-only labels
+I need to use the `olmoearth_negative_sampler` tool with:
+- `positives_path`: "docs/showcase_fixtures/karst_presence.geojson"
+- `out_path`: Should be written next to the input, so I'll use "docs/showcase_fixtures/karst_presence_with_negatives.geojson" (following the default suffix pattern mentioned in the tool description)
 
-The user wants:
-- positives_path: "docs/showcase_fixtures/karst_presence.geojson"
-- out_path: Should write next to the input. The default behavior is "alongside the input, suffixed _with_negatives", so if I don't specify out_path, it should automatically be "docs/showcase_fixtures/karst_presence_with_negatives.geojson"
-- All other parameters are optional and the user hasn't specified any custom values, so I'll use defaults
+The other parameters are optional and have sensible defaults:
+- `negative_label`: Default is "background", which is appropriate
+- `n_negatives`: Default is number of positives (1:1 balanced set), which seems fine
+- `exclusion_km`: Default 1 km, should be okay for karst features
+- `min_separation_km`: Will use default which is exclusion_km
+- `oversample`: Default 8
+- `contamination_threshold`: Not specified, so I'll omit it
 
-The tool will generate background samples to make the label set trainable for the data-prep audit.
+Let me make the tool call.
 ```
 
 **Function call** - `olmoearth_negative_sampler`:
 
 ```json
 {
-  "positives_path": "docs/showcase_fixtures/karst_presence.geojson"
+  "positives_path": "docs/showcase_fixtures/karst_presence.geojson",
+  "out_path": "docs/showcase_fixtures/karst_presence_with_negatives.geojson"
 }
 ```
 
@@ -3177,6 +3296,7 @@ The tool will generate background samples to make the label set trainable for th
   "candidate_source": "grid",
   "n_candidates": 484,
   "n_excluded_by_buffer": 32,
+  "n_contamination_excluded": 0,
   "n_survivors": 452,
   "ranking": "spatial_dispersion",
   "exclusion_km": 1.0,
@@ -3188,6 +3308,11 @@ The tool will generate background samples to make the label set trainable for th
     41.05
   ],
   "positive_to_negative_ratio": 1.0,
+  "quality": {
+    "note": "Pseudo-absences are a heuristic, not verified absences: spot-check that none coincide with an unmapped positive. Lower similarity_to_positive means more credible negatives.",
+    "min_buffer_km": 1.064,
+    "mean_buffer_km": 3.27
+  },
   "warnings": [],
   "out_path": "docs/showcase_fixtures/karst_presence_with_negatives.geojson",
   "negative_label": "background",
@@ -3200,27 +3325,30 @@ The tool will generate background samples to make the label set trainable for th
 **Qwen3.6 reasoning (cont.):**
 
 ```
-The user asked me to generate background samples for a presence-only label file to make it trainable. I called the olmoearth_negative_sampler tool with the positives_path set to docs/showcase_fixtures/karst_presence.geojson, and no out_path was specified so it should write next to the input by default (with _with_negatives suffix as shown in the result).
+The tool call was successful. Let me summarize the results for the researcher:
 
-The result shows:
-- 60 positives were processed
-- 60 negatives were generated (1:1 ratio)
-- Candidates came from a grid (484 total, 32 excluded by buffer, 452 survivors)
-- Ranking was spatial_dispersion
-- Output path is docs/showcase_fixtures/karst_presence_with_negatives.geojson
-- Total features in output: 120 (60 positive + 60 negative)
-- No warnings
+- Generated 60 background (negative) samples to balance with 60 positive karst sightings
+- Used spatial dispersion ranking since no embeddings were available
+- Applied 1km exclusion buffer around positives and 1km separation between negatives
+- The output file is at docs/showcase_fixtures/karst_presence_with_negatives.geojson
+- Total features: 120 (60 positives + 60 negatives)
+- No warnings generated
+- Quality metrics show min buffer of 1.064km and mean buffer of 3.27km from positives to negatives
 
-I should provide a concise plain-text answer interpreting this result for the researcher.
+The researcher can now use this combined GeoJSON file which should pass the data-prep audit since it now has a "background" class.
 ```
 
 **Qwen3.6 answer.**
 
-> Background generation complete! Your presence-only label file (`docs/showcase_fixtures/karst_presence.geojson`) has been converted to a balanced, audit-ready dataset:
+> Successfully generated background samples for your karst presence-only labels. The output is saved at `docs/showcase_fixtures/karst_presence_with_negatives.geojson`.
 
-- **Positives:** 60 karst sightings (original)
-- **Negatives:** 60 background samples (generated using spatial dispersion ranking from a candidate grid)
-- **Output:** `docs/showcase_fixtures/karst_presence_with_negatives.geojson` (120 total features, 1:1 class ratio)
+**Summary:**
+- **Positives:** 60 karst sightings (sample_category=karst)
+- **Negatives:** 60 pseudo-absences added (sample_category=background)
+- **Total features:** 120
+- **Ranking method:** Spatial dispersion (no embeddings present)
+- **Buffer/separation:** 1km around positives; 1km between negatives
+- **Quality stats:** Mean distance from positives to negatives is 3.27km (min 1.06km), confirming good spatial separation
 
-The negative class is labeled `background`. You can now re-run the data-prep audit on this output file—the negative-class check should pass. Let me know if you'd like to tune parameters (e.g., `exclusion_km`, `min_separation_km`, or candidate source) for your sensor resolution!
+The combined GeoJSON now includes both classes and should pass the data-prep audit. Re-run the audit on `karst_presence_with_negatives.geojson` to confirm, then you can train with this balanced dataset.
 
