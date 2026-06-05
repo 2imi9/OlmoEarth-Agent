@@ -20,6 +20,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   upstream. In-process tool `olmoearth_negative_sampler`; pure-Python logic in
   `analysis/negative_sampler.py` (no GDAL), inverting skill #9's similarity
   ranking for the environmentally-dissimilar pseudo-absence selection (#75).
+- **NNDM-LOO cross-validation for skill #8 `olmoearth-evaluate`** (tool
+  `olmoearth_nndm_cv`): Nearest Neighbour Distance Matching Leave-One-Out CV
+  (Mila et al. 2022) for an unbiased map-accuracy estimate over the actual
+  prediction area, where the random-vs-spatial inflation check only flags the
+  risk. Pure-Python `evaluation/nndm.py` (no GDAL; reuses `spatial_cv`'s
+  haversine), a faithful port of R CAST's `nndm` verified against the reference
+  algorithm (an exact hand-traced execution + the `predpoints==trainpoints`
+  invariant from CAST's own tests). Reports the optimistic-bias before (LOO) vs
+  after (NNDM) and writes the per-fold train/test/exclude indices inline or to a
+  file. Closes the catalog's previously-aspirational NNDM-LOO claim (#92).
 
 ### Changed
 - **Skill #18 `olmoearth-negative-sampler` -- accuracy refinement**: addresses

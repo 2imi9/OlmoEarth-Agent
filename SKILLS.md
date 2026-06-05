@@ -209,8 +209,9 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **Why.** [Ploton et al. (Nat. Commun. 11:4540, 2020)](https://www.nature.com/articles/s41467-020-18321-y) showed that standard random CV can report strong R² on models with near-zero spatial predictive skill. [Meyer & Pebesma (MEE 12:1620, 2021)](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13650) formalized this. Without spatial CV, every case narrative the agent produces risks publishing inflated metrics. This is the most-cited methodological pain in EO ML literature.
 
 **Tools composed.**
-- `utils.spatial_train_val_split` (`PLAN.md` §1).
-- Skill-local: `spatial_block_cv`, `nndm_loo`, `per_class_metrics`.
+- `olmoearth_cv_inflation_check`: random-vs-spatial-block test-to-train distance ratio (the fast "is my accuracy inflated?" check).
+- `olmoearth_nndm_cv`: NNDM Leave-One-Out folds for an unbiased estimate over the actual prediction area, a faithful pure-Python port of R [CAST](https://github.com/HannaMeyer/CAST)'s `nndm` ([Milà et al., MEE 13:1304, 2022](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13851)) — verified against the reference algorithm (exact hand-trace + the `predpoints==trainpoints` invariant).
+- `olmoearth_classification_metrics`: accuracy + per-class precision / recall / F1 / IoU.
 
 ---
 
