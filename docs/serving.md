@@ -59,7 +59,7 @@ docker run -d --name oe-llama --gpus all -p 8000:8000 \
 
 > The compose bind-mounts your host `~/.cache/huggingface` (the same cache the
 > one-off `docker run` above uses), so the ~17.7 GB GGUF downloads **once** and
-> is reused on every later `make serve` — no re-download. `make serve` (via
+> is reused on every later `make serve` -- no re-download. `make serve` (via
 > [`scripts/serve-llm.sh`](../scripts/serve-llm.sh)) resolves and exports
 > `HF_CACHE_DIR` for you, including the `C:/Users/<you>/.cache/huggingface` form
 > Docker Desktop needs on Windows. If you instead run `docker compose ... up` by
@@ -67,7 +67,7 @@ docker run -d --name oe-llama --gpus all -p 8000:8000 \
 > `HF_CACHE_DIR=C:/Users/<you>/.cache/huggingface docker compose -f docker/llama.compose.yml up`.
 > Set `HF_PROXY=http://host.docker.internal:7897` only for a genuine first-run
 > download behind a host proxy (`127.0.0.1` won't work from inside the container).
-> Upgrading from the old named-volume setup leaves an orphan — reclaim it with
+> Upgrading from the old named-volume setup leaves an orphan -- reclaim it with
 > `docker volume rm docker_hf_cache`.
 
 The server listens on `http://localhost:8000/v1` (OpenAI Chat
@@ -86,10 +86,10 @@ path; without `LLM_ENDPOINT` set, those tests skip.
 
 | Flag | Why |
 |---|---|
-| `--jinja` | **Required for tool calling**: activates the GGUF chat template so the model emits parseable `tool_calls`. Without it, tool calls come back as text and the integration tests fail at `finish_reason == "tool_calls"`. |
+| `--jinja` | **Required for first-class tool calling**: activates the GGUF chat template so the model emits structured `tool_calls` directly. Without it the call arrives as text and the client falls back to text-recovery (`client.py` `_extract_text_tool_calls`) to still surface it as `finish_reason == "tool_calls"`; the live function-calling test is least flaky with it on. |
 | `--no-mmap` | Loads the file fully instead of mmap'ing, avoiding the slow mmap-over-virtiofs path that stalls large loads on Docker Desktop / WSL. |
 | `-ngl 999` | Offload all layers to the GPU. |
-| `-c 8192` | **Total** context, which llama.cpp splits across parallel slots (it defaults to ~4 → ~2048 tokens each). Fine for short chats, but a full `SKILL.md` loaded mid-conversation overflows a 2048-token slot. For skill-heavy or long-context runs, use one big slot: `--parallel 1 -c 16384`. |
+| `-c 8192` | **Total** context, which llama.cpp splits across parallel slots (it defaults to ~4 -> ~2048 tokens each). Fine for short chats, but a full `SKILL.md` loaded mid-conversation overflows a 2048-token slot. For skill-heavy or long-context runs, use one big slot: `--parallel 1 -c 16384`. |
 
 ## Hardware
 

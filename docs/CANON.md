@@ -59,8 +59,8 @@ uv run pytest -q
 
 ## Documents governed by this canon
 
-`README.md` · `PLAN.md` · `SKILLS.md` · `AGENTS.md` · `CONTRIBUTING.md`
-· `docs/serving.md` · `.env.example` · `docker/llama.compose.yml` ·
+`README.md` | `PLAN.md` | `SKILLS.md` | `AGENTS.md` | `CONTRIBUTING.md`
+ | `docs/serving.md` | `.env.example` | `docker/llama.compose.yml` | 
 `src/olmoearth_agent/llm/{config,__init__,client,presets}.py`
 
 `CHANGELOG.md` is **history**: never rewritten to match canon; new

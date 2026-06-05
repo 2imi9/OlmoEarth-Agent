@@ -143,9 +143,13 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-evaluate",
         "Analyze",
         "implemented",
-        "Random-vs-spatial CV inflation check + classification "
-        "metrics. NNDM-LOO follows.",
-        ["olmoearth_cv_inflation_check", "olmoearth_classification_metrics"],
+        "Random-vs-spatial CV inflation check + classification metrics + "
+        "NNDM-LOO cross-validation (CAST port) for an unbiased map-accuracy estimate.",
+        [
+            "olmoearth_cv_inflation_check",
+            "olmoearth_classification_metrics",
+            "olmoearth_nndm_cv",
+        ],
     ),
     SkillSpec(
         9,

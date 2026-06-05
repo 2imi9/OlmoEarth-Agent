@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Onboarding context for coding agents (Claude Code, Cursor, Codex, Aider, …) working on this repository. Follows the [agents.md](https://agents.md/) convention: a sibling to `README.md` that holds agent-specific guidance.
+Onboarding context for coding agents (Claude Code, Cursor, Codex, Aider, ...) working on this repository. Follows the [agents.md](https://agents.md/) convention: a sibling to `README.md` that holds agent-specific guidance.
 
 The agent's runtime contract lives in [`PLAN.md`](PLAN.md). This file is about how to *contribute to* the codebase, not how the agent itself behaves at runtime.
 
@@ -51,7 +51,8 @@ uv run pytest -m integration        # needs OLMOEARTH_API_KEY
 │   ├── analysis/        # change-detect, similarity, uncertainty, cloud-mask
 │   ├── evaluation/      # spatial CV + classification metrics
 │   ├── reporting/       # case narrative + QGIS export
-│   └── provenance/      # tool-call manifest + replay
+│   ├── provenance/      # tool-call manifest + replay
+│   └── security/        # egress allowlist + SSRF guard (PLAN.md §3.4)
 └── tests/               # unit + integration (mirrors the package layout)
 ```
 
@@ -64,7 +65,7 @@ uv run pytest -m integration        # needs OLMOEARTH_API_KEY
 - **No AI co-author trailers in commits.** Don't add `Co-Authored-By: Claude` or similar. Disclose AI involvement in the PR description if it was substantial. See [`CONTRIBUTING.md` §8](CONTRIBUTING.md#8-ai-assisted-contributions).
 - **PR title is release-note quality** (it goes into `CHANGELOG.md`).
 - **`pre-commit` is required** before review.
-- **Operational rules in [`PLAN.md`](PLAN.md) §3 are not suggestions.** A change that breaks one of them must update both the rule and the corresponding test in `tests/test_operational_rules.py`.
+- **Operational rules in [`PLAN.md`](PLAN.md) §3 are not suggestions.** A change that breaks one of them must update both the rule and its coverage test. Rule checks live beside the tool they guard (e.g. `tests/tools/test_negative_sampler_tool.py` asserts §3.1).
 
 ---
 
