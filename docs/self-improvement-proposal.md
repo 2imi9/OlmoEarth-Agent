@@ -214,8 +214,8 @@ A single small PR scoped to one tool with an objective post-condition --
 `analysis.automate.decide()`:
 
 1. Add `verify: Callable[[dict[str, Any]], tuple[bool, str]] | None = None` to
-   `RegisteredTool` in `tools/registry.py` (default `None` -> existing ~16 tools
-   unchanged, zero risk).
+   `RegisteredTool` in `tools/registry.py` (default `None` -> all currently
+   registered tools unchanged, zero risk).
 2. Add `reflections: list[str] = field(default_factory=list)` to `ThreadState`
    (`harness/state.py`), next to the existing append-only `provenance`.
 3. In `LeadAgent.run_stream`, after `result = await self.registry.dispatch(...)`:
@@ -254,10 +254,10 @@ empirically capped by what prompting + verification can reach. Neither holds tod
 
 ## 5. References
 
-- Reflexion: <https://arxiv.org/abs/2303.11366> · Self-Refine: <https://arxiv.org/abs/2303.17651>
+- Reflexion: <https://arxiv.org/abs/2303.11366> | Self-Refine: <https://arxiv.org/abs/2303.17651>
 - Huang et al., "LLMs Cannot Self-Correct Reasoning Yet" (ICLR'24): <https://arxiv.org/abs/2310.01798>
 - Kamoi et al., self-correction survey (TACL'24): <https://arxiv.org/abs/2406.01297>
-- Large Language Monkeys (repeated sampling + verifier): <https://arxiv.org/abs/2407.21787> · Archon: <https://arxiv.org/abs/2409.15254>
+- Large Language Monkeys (repeated sampling + verifier): <https://arxiv.org/abs/2407.21787> | Archon: <https://arxiv.org/abs/2409.15254>
 - Weaver / generator-verifier gap: <https://arxiv.org/abs/2506.18203>
 - "Let's Verify Step by Step" (process/checkpoint supervision): <https://arxiv.org/abs/2305.20050>
 - MemGPT: <https://arxiv.org/abs/2310.08560>

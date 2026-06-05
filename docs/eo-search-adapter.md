@@ -106,6 +106,6 @@ and borrows the one capability we lack, without standing up a planetary index.
 
 ## 5. References
 
-- LGND (Clay-based geo-embeddings; open Sentinel-2 embeddings): <https://lgnd.ai/resources/geo-embeddings-101> · AWS Open Data "LGND Clay v1.5 Sentinel-2": <https://registry.opendata.aws/lgnd-clay-v1-5-sentinel2/>
+- LGND (Clay-based geo-embeddings; open Sentinel-2 embeddings): <https://lgnd.ai/resources/geo-embeddings-101> | AWS Open Data "LGND Clay v1.5 Sentinel-2": <https://registry.opendata.aws/lgnd-clay-v1-5-sentinel2/>
 - Clay Foundation Model: <https://clay-foundation.github.io/model/>
 - In-repo: `src/olmoearth_agent/analysis/similarity.py` (skill #9), [`SKILLS.md`](../SKILLS.md) (#7 bring-your-own exported embeddings, #9 similarity), [`eo-skills-shortlist.md`](eo-skills-shortlist.md), issues #59 (draw AOI) and #90 (Studio-native skill + area + chat flow).

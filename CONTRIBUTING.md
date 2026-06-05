@@ -80,7 +80,7 @@ Configured in `pyproject.toml`:
 - **Framework:** [pytest](https://docs.pytest.org/).
 - **Coverage gate:** 90%, same as [earth2studio's testing guide](https://nvidia.github.io/earth2studio/userguide/developer/testing.html). CI fails below this.
 - **Integration vs unit:** integration tests that hit the live OlmoEarth Studio API are tagged `@pytest.mark.integration` and require `OLMOEARTH_API_KEY` in the environment; unit tests must not.
-- **Operational-rule tests:** every rule in `PLAN.md` §3 has a corresponding test in `tests/test_operational_rules.py`. Adding a new rule? Add the test in the same PR.
+- **Operational-rule tests:** every rule in `PLAN.md` §3 should have a corresponding test, placed beside the tool that enforces it (e.g. `tests/tools/test_negative_sampler_tool.py` covers §3.1). Adding a new rule? Add its test in the same PR.
 
 ---
 
@@ -94,7 +94,7 @@ Configured in `pyproject.toml`:
 
 ## 8. AI-assisted contributions
 
-Coding agents (Claude Code, Cursor, Codex, Aider, …) are welcome to assist contributions. The rules:
+Coding agents (Claude Code, Cursor, Codex, Aider, ...) are welcome to assist contributions. The rules:
 
 1. **You are the author.** The DCO sign-off (`Signed-off-by:`) names a human. AI tools do not certify the DCO. This matches the [OpenInfra Foundation's AI policy](https://openinfra.org/legal/ai-policy/): *"The 'Signed-Off-By' label is a statement that you take responsibility for the entire contents of the commit, including any parts that were generated or assisted by AI tools."*
 2. **Understand and verify what you submit.** If an agent wrote it, you must be able to explain it and have tested it. Reviewers may ask you to do so.

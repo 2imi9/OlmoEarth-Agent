@@ -116,6 +116,6 @@ al. 2012, [doi:10.1111/j.2041-210X.2011.00172.x](https://doi.org/10.1111/j.2041-
 - Olofsson et al., "Good practices for estimating area and assessing accuracy of land change" (RSE 2014): <https://doi.org/10.1016/j.rse.2014.02.015>
 - Barbet-Massin et al., pseudo-absence selection (MEE 2012): <https://doi.org/10.1111/j.2041-210X.2011.00172.x>
 - LandCoverNet (label/imagery temporal correspondence): <https://arxiv.org/abs/2012.03111>
-- Reduced Focal Loss (class imbalance): <https://arxiv.org/abs/1903.01347> · "Fine-tune Smarter, Not Harder" (layer-wise LR for EO foundation models): <https://arxiv.org/abs/2504.17397>
+- Reduced Focal Loss (class imbalance): <https://arxiv.org/abs/1903.01347> | "Fine-tune Smarter, Not Harder" (layer-wise LR for EO foundation models): <https://arxiv.org/abs/2504.17397>
 - Karasiak et al., spatial leakage in CV (ML 2021): <https://doi.org/10.1007/s10994-021-05972-1>
 - In-repo: [`SKILLS.md`](../SKILLS.md), [`PLAN.md`](../PLAN.md), vendored `olmoearth-data-prep` (`vendor/olmoearth-skills/`), issue #59 (downloadable export artifacts).

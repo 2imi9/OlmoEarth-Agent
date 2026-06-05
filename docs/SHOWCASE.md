@@ -14,9 +14,9 @@ Skills #5 and #13 are captured against the **live Studio API** (#5 read-only: th
 
 ---
 
-### #1-2 `olmoearth-data-prep` - labels → Studio-ready dataset (8 prep pitfalls), via load_skill
+### #1-2 `olmoearth-data-prep` - labels -> Studio-ready dataset (8 prep pitfalls), via load_skill
 
-*Category: Prep* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Prep* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -252,9 +252,9 @@ I have loaded the **olmoearth-data-prep** skill for you. Since you are importing
 
 ---
 
-### #3 `olmoearth-studio-job-config` - task description → Studio job-wizard answers (14 presets)
+### #3 `olmoearth-studio-job-config` - task description -> Studio job-wizard answers (14 presets)
 
-*Category: Configure* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Configure* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -631,7 +631,7 @@ Start with `["sentinel2"]` alone. Sentinel-1 (radar) is not needed for land cove
 
 ### #4 `olmoearth-embeddings` - embeddings-vs-fine-tune decision, via load_skill
 
-*Category: Configure* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Configure* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -994,7 +994,7 @@ If you share those details, I can give you a precise recommendation and even gen
 
 ### #5 `olmoearth-predict` - the core run loop: discover a model_id, then fetch result tiles
 
-*Category: Run* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Run* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -1198,7 +1198,7 @@ You can use the tile URL template above with any valid {z}, {x}, {y} coordinates
 
 ### #6 `olmoearth-change-detect` - multi-date trajectory diff (refuses naive 2-date)
 
-*Category: Run* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Run* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -1316,7 +1316,7 @@ The trend is classified as **"oscillating"** because there were two directional 
 
 ### #7 `olmoearth-baseline-compare` - OlmoEarth vs AlphaEarth head-to-head
 
-*Category: Run* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Run* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -1570,7 +1570,7 @@ Output matches response.✅
 
 ### #8 `olmoearth-evaluate` - random-vs-spatial CV inflation check
 
-*Category: Analyze* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Analyze* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -1681,7 +1681,7 @@ The mean test-to-train distance under random splitting is only ~2.4 km, while sp
 
 ### #8 `olmoearth-evaluate` - per-class classification metrics
 
-*Category: Analyze* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Analyze* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -1804,7 +1804,7 @@ The model perfectly predicts Class 2 but struggles with Class 1 (missing one ins
 
 ### #9 `olmoearth-similarity` - top-K embedding search + geographic-prior warning
 
-*Category: Analyze* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Analyze* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -1996,7 +1996,7 @@ Proceeds.
 
 ### #10 `olmoearth-uncertainty` - Meyer-Pebesma Area-of-Applicability OOD flag
 
-*Category: Analyze* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Analyze* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -2114,7 +2114,7 @@ I will provide a clear explanation of these results to the researcher.
 
 ### #11 `olmoearth-cloud-mask-audit` - ensemble disagreement + bad-mask-vs-bad-model verdict
 
-*Category: Analyze* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Analyze* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -2303,9 +2303,9 @@ I will formulate the response.✅
 
 ---
 
-### #12 `olmoearth-qgis-bridge` - tile URLs → QGIS XYZ layer + OGC SLD style
+### #12 `olmoearth-qgis-bridge` - tile URLs -> QGIS XYZ layer + OGC SLD style
 
-*Category: Integrate* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Integrate* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -2480,7 +2480,7 @@ The layer will now display with the sample karst score color ramp from 0 (light 
 
 ### #13 `olmoearth-data-export` - export Studio projects + predictions, grouped, to JSON
 
-*Category: Integrate* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Integrate* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -2542,7 +2542,7 @@ This includes 5 projects with a total of 12 predictions.
 
 ### #14 `olmoearth-provenance` - manifest over every tool call + replay skeleton
 
-*Category: Report* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Report* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -2679,7 +2679,7 @@ You can replay this exact sequence by feeding the skeleton into a fresh `ToolReg
 
 ### #15 `olmoearth-case-narrative` - stakeholder Markdown writeup + freshness gate
 
-*Category: Report* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Report* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -2839,7 +2839,7 @@ The brief includes the necessary provenance metadata and clearly flags the fresh
 
 ### #16 `olmoearth-litsearch` - live arXiv + OpenAlex search to ground a citation
 
-*Category: Report* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Report* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -3032,7 +3032,7 @@ Note: There's also a follow-up paper "OlmoEarth v1.1: A more efficient family of
 
 ### #17 `olmoearth-automate` - auto-decide embeddings vs fine-tune + propose a config
 
-*Category: Configure* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Configure* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 
@@ -3134,7 +3134,7 @@ This will give you a calibrated baseline in minutes. Only consider fine-tuning i
 
 ### #18 `olmoearth-negative-sampler` - generate a negative/background class for a presence-only set
 
-*Category: Prep* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
+*Category: Prep* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, llama.cpp)*
 
 **Brief.**
 

@@ -4,7 +4,7 @@ Detailed spec for the 18 skills the agent ships with. Each skill is an [agentski
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 18 skills implemented (v1.0 shipped #1–#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0; #18 `olmoearth-negative-sampler` added post-1.1). See `CHANGELOG.md`.
+**Status:** 18 skills implemented (v1.0 shipped #1-#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0; #18 `olmoearth-negative-sampler` added post-1.1). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -18,7 +18,7 @@ Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi
 
 Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 are unified upstream as `olmoearth-data-prep` (matching the working implementation) but kept as two numbered entries here.
 
-**Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever…", "Trigger even when…") because the description is the LLM's routing surface. Match it.
+**Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever...", "Trigger even when...") because the description is the LLM's routing surface. Match it.
 
 ---
 
@@ -26,24 +26,24 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 
 | # | Category | Name | What |
 |---|---|---|---|
-| 1 | Prep | [`olmoearth-studio-upload`](#1-olmoearth-studio-upload) | Labels (GeoJSON / CSV / Shapefile) → Studio-importable file with MIME / 10K / multi-metric guards. |
-| 2 | Prep | [`olmoearth-rslearn-config`](#2-olmoearth-rslearn-config) | Labels → `rslearn` `dataset.json` + Lightning YAML with 7-criteria audit. |
-| 3 | Configure | [`olmoearth-studio-job-config`](#3-olmoearth-studio-job-config) | Task description → Studio wizard answers with 14 presets + cross-field validator. |
+| 1 | Prep | [`olmoearth-studio-upload`](#1-olmoearth-studio-upload) | Labels (GeoJSON / CSV / Shapefile) -> Studio-importable file with MIME / 10K / multi-metric guards. |
+| 2 | Prep | [`olmoearth-rslearn-config`](#2-olmoearth-rslearn-config) | Labels -> `rslearn` `dataset.json` + Lightning YAML with 7-criteria audit. |
+| 3 | Configure | [`olmoearth-studio-job-config`](#3-olmoearth-studio-job-config) | Task description -> Studio wizard answers with 14 presets + cross-field validator. |
 | 4 | Configure | [`olmoearth-embeddings`](#4-olmoearth-embeddings) | Embeddings-vs-fine-tune **guidance** + a generated runnable notebook (you run it). |
-| 5 | Run | [`olmoearth-predict`](#5-olmoearth-predict) | The core run primitive: submit / poll / pixel-value / features / files. |
-| 6 | Run | [`olmoearth-change-detect`](#6-olmoearth-change-detect) | Two-or-more-date trajectory diff (refuses two-date naïve diff). |
+| 5 | Run | [`olmoearth-predict`](#5-olmoearth-predict) | The core run primitive: submit / poll / fetch results; pixel-value / features follow. |
+| 6 | Run | [`olmoearth-change-detect`](#6-olmoearth-change-detect) | Two-or-more-date trajectory diff (refuses two-date naive diff). |
 | 7 | Run | [`olmoearth-baseline-compare`](#7-olmoearth-baseline-compare) | Studio vs. AlphaEarth side-by-side on transfer regions. |
 | 8 | Analyze | [`olmoearth-evaluate`](#8-olmoearth-evaluate) | Spatial-block CV + NNDM-LOO over `/prediction-results`. |
 | 9 | Analyze | [`olmoearth-similarity`](#9-olmoearth-similarity) | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up); geographic-prior warning. |
 | 10 | Analyze | [`olmoearth-uncertainty`](#10-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
 | 11 | Analyze | [`olmoearth-cloud-mask-audit`](#11-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
-| 12 | Integrate | [`olmoearth-qgis-bridge`](#12-olmoearth-qgis-bridge) | Tile URLs → QGIS WMTS + COG with sidecar uncertainty raster. |
+| 12 | Integrate | [`olmoearth-qgis-bridge`](#12-olmoearth-qgis-bridge) | Tile URLs -> QGIS WMTS + COG with sidecar uncertainty raster. |
 | 13 | Integrate | [`olmoearth-data-export`](#13-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 | 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
 | 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | **One call**: auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HF-dataset introspection. |
-| 18 | Prep | [`olmoearth-negative-sampler`](#18-olmoearth-negative-sampler) | Presence-only labels → trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
+| 18 | Prep | [`olmoearth-negative-sampler`](#18-olmoearth-negative-sampler) | Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
 
 ### Example briefs
 
@@ -67,8 +67,8 @@ A realistic prompt that routes to each skill - what a user would actually type:
 | 14 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
 | 15 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
 | 16 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
-| 17 | `olmoearth-automate` | "I have 200 labels and a T4 — should I fine-tune or use embeddings? Set it up." |
-| 18 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class — generate background samples." |
+| 17 | `olmoearth-automate` | "I have 200 labels and a T4 -- should I fine-tune or use embeddings? Set it up." |
+| 18 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class -- generate background samples." |
 
 ---
 
@@ -141,7 +141,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **Tools composed.**
 - `olmoearth.fetch_embedding` (`PLAN.md` §1, new in v0.4).
-- `system.python` (opt-in subprocess) for light checks only — the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack the sandbox does not guarantee).
+- `system:python` (opt-in subprocess) for light checks only -- the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack the sandbox does not guarantee).
 - Skill-local: `decision_matrix`, `knn_head`, `linear_probe_head`.
 
 ---
@@ -151,15 +151,15 @@ A realistic prompt that routes to each skill - what a user would actually type:
 ### 5. `olmoearth-predict`
 
 **In:** Studio project + area + model_id + time range + config.
-**Out:** `PredictionRef`, status, tiles, vectors, pixel values, feature matches.
+**Out:** `PredictionRef`, status, and result tiles / vectors / metrics.
 
-**What.** Submit a prediction (`POST /predictions`), poll progress (`GET /predictions/{id}`), query pixel values at points (`/pixel-value`), search result features by class (`/features/search`), download raw outputs via token (`/files`).
+**What.** Submit a prediction (`POST /predictions`), poll progress (`GET /predictions/{id}`), and fetch results (tiles / vectors / metrics). Pixel-value at points (`/pixel-value`) and feature-search by class (`/features/search`) are defined in `PLAN.md` §1 but not yet built as tools.
 
 **Why.** The Studio API is async with a 5-state status enum (`pending / running / completed / failed / cancelled`) and a `download_token` flow. Without a wrapper, every case study re-implements the polling loop, retry on result-creation failures, and the tile-vs-raw-output decision. This is the core run primitive every other skill depends on.
 
 **Tools composed.**
-- `olmoearth.submit_prediction`, `poll_prediction`, `fetch_results` (`PLAN.md` §1).
-- `olmoearth.pixel_value`, `features_search` (`PLAN.md` §1, new in v0.4).
+- `olmoearth_search_predictions`, `olmoearth_submit_prediction`, `olmoearth_get_prediction`, `olmoearth_fetch_results`, `olmoearth_get_prediction_result` (wrapping `PLAN.md` §1 submit / poll / fetch_results).
+- `olmoearth.pixel_value`, `features_search` (`PLAN.md` §1; not yet built as tools).
 
 **First skill to ship.** Foundation that #6, #7, #9, #10 all reuse.
 
@@ -167,7 +167,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ### 6. `olmoearth-change-detect`
 
-**In:** Studio project + area + ≥3 time points (refuses 2).
+**In:** Studio project + area + >=3 time points (refuses 2).
 **Out:** change layer + trajectory metrics.
 
 **What.** Two POSTs to `/predictions` at t0 and t1, plus at least one intermediate time, produce a change layer. Forces a 3+-date trajectory for conservation and agriculture cases rather than a single before / after.
@@ -189,11 +189,11 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **Why.** AlphaEarth-based models are documented to underperform under cross-region transfer ([Ma et al. arXiv:2601.00857](https://arxiv.org/abs/2601.00857), preprint; specific magnitudes may revise). Fine-tuned OlmoEarth's "substantially outperformed" claim lands only if cases include side-by-side runs in regions where AlphaEarth actually fails, not on home-turf regions where it is competitive.
 
-**Dependency.** Requires AlphaEarth access via the Earth Engine MCP. AlphaEarth has been Trusted-Tester gated through late 2025; verify access before running. UNVERIFIED if access has opened up; flag at skill load time.
+**Dependency.** The AlphaEarth side is data you export from the public Google Earth Engine "Satellite Embedding" dataset; the skill takes those bring-your-own predictions / scores and makes no live GEE or MCP connection. (AlphaEarth embeddings are now public via GEE, so no Trusted-Tester access is required.)
 
 **Tools composed.**
 - Skill #5.
-- Skill-local: `alphaearth_via_gee_mcp`, `compare_metrics`, `difference_raster`.
+- Skill-local: `compare_metrics`, `difference_raster`, exposed as the `olmoearth_baseline_compare` tool (operates on the two metric sets the caller already has).
 
 ---
 
@@ -206,11 +206,11 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **What.** Spatial-block cross-validation, leave-one-region-out, nearest-neighbor-distance-matching LOO-CV for true map accuracy.
 
-**Why.** [Ploton et al. (Nat. Commun. 11:4540, 2020)](https://www.nature.com/articles/s41467-020-18321-y) showed that standard random CV can report strong R² on models with near-zero spatial predictive skill. [Meyer & Pebesma (MEE 12:1620, 2021)](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13650) formalized this. Without spatial CV, every case narrative the agent produces risks publishing inflated metrics. This is the most-cited methodological pain in EO ML literature.
+**Why.** [Ploton et al. (Nat. Commun. 11:4540, 2020)](https://www.nature.com/articles/s41467-020-18321-y) showed that standard random CV can report strong R2 on models with near-zero spatial predictive skill. [Meyer & Pebesma (MEE 12:1620, 2021)](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13650) formalized this. Without spatial CV, every case narrative the agent produces risks publishing inflated metrics. This is the most-cited methodological pain in EO ML literature.
 
 **Tools composed.**
 - `olmoearth_cv_inflation_check`: random-vs-spatial-block test-to-train distance ratio (the fast "is my accuracy inflated?" check).
-- `olmoearth_nndm_cv`: NNDM Leave-One-Out folds for an unbiased estimate over the actual prediction area, a faithful pure-Python port of R [CAST](https://github.com/HannaMeyer/CAST)'s `nndm` ([Milà et al., MEE 13:1304, 2022](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13851)) — verified against the reference algorithm (exact hand-trace + the `predpoints==trainpoints` invariant).
+- `olmoearth_nndm_cv`: NNDM Leave-One-Out folds for an unbiased estimate over the actual prediction area, a faithful pure-Python port of R [CAST](https://github.com/HannaMeyer/CAST)'s `nndm` ([Mila et al., MEE 13:1304, 2022](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13851)) -- verified against the reference algorithm (exact hand-trace + the `predpoints==trainpoints` invariant).
 - `olmoearth_classification_metrics`: accuracy + per-class precision / recall / F1 / IoU.
 
 ---
@@ -284,7 +284,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 USGS / NOAA MCPs *into* an AOI) needs external MCPs the user must connect
 and isn't core. It was reframed to the more useful, self-contained
 **export our own Studio data, grouped**, implemented as
-`olmoearth_export_data` (projects + predictions → JSON grouped by project
+`olmoearth_export_data` (projects + predictions -> JSON grouped by project
 or status; `tools/export.py`). Verified live. The original
 external-MCP-ingest idea is parked (re-open if a case needs it).
 
@@ -345,12 +345,12 @@ The original spec follows for reference:
 **In:** a free-text query, or a single DOI / arXiv id.
 **Out:** curated paper records (id, title, authors, year, venue, doi, arxiv_id, url, cited_by_count; abstract optional), deduped across sources.
 
-**What.** Searches arXiv (Atom API) and OpenAlex (`/works`), and resolves a DOI or arXiv id to one record. Key-free — OpenAlex is queried via the documented polite-pool `mailto` (set `OLMOEARTH_OPENALEX_MAILTO` to opt in). Round-robin blends the two sources, then dedups on DOI → arXiv id → normalized title. Returns bibliographic metadata only — never full text / PDF bytes and never geometry — so it is provenance-safe.
+**What.** Searches arXiv (Atom API) and OpenAlex (`/works`), and resolves a DOI or arXiv id to one record. Key-free -- OpenAlex is queried via the documented polite-pool `mailto` (set `OLMOEARTH_OPENALEX_MAILTO` to opt in). Round-robin blends the two sources, then dedups on DOI -> arXiv id -> normalized title. Returns bibliographic metadata only -- never full text / PDF bytes and never geometry -- so it is provenance-safe.
 
-**Why.** The catalog already *cites* a body of EO literature (spatial CV, cloud masking, OlmoEarth / AlphaEarth embeddings, WorldCereal), but before this skill the agent could only lean on world-knowledge or hallucinate links — the exact failure mode Google DeepMind's Science Skills report documents and that its own arXiv/OpenAlex skills fix. This grounds the case-narrative / research workflow in real, citable sources. **No fabrication:** never invents DOIs / ids / titles, reports empty results as empty, and returns a real `url` to cite for every record.
+**Why.** The catalog already *cites* a body of EO literature (spatial CV, cloud masking, OlmoEarth / AlphaEarth embeddings, WorldCereal), but before this skill the agent could only lean on world-knowledge or hallucinate links -- the exact failure mode Google DeepMind's Science Skills report documents and that its own arXiv/OpenAlex skills fix. This grounds the case-narrative / research workflow in real, citable sources. **No fabrication:** never invents DOIs / ids / titles, reports empty results as empty, and returns a real `url` to cite for every record.
 
 **Tools composed.**
-- `olmoearth_litsearch` (unified arXiv + OpenAlex search) + `olmoearth_litsearch_resolve` (DOI / arXiv-id → one record).
+- `olmoearth_litsearch` (unified arXiv + OpenAlex search) + `olmoearth_litsearch_resolve` (DOI / arXiv-id -> one record).
 - Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}.
 
 ---
@@ -362,7 +362,7 @@ The original spec follows for reference:
 
 **Versus #4.** [`olmoearth-embeddings`](#4-olmoearth-embeddings) (#4) is the *guidance + notebook generator* (the user runs the notebook). This skill is the *one-call* version: it decides programmatically and emits a ready config, can fill its inputs from a Hugging Face dataset, and reuses #4's decision table rather than duplicating it.
 
-**What.** Applies the embeddings-vs-fine-tune precedence rules — a faithful port of the vendored `olmoearth-embeddings` `recommend.decide` (kept in sync) — then proposes an actionable config. Given a Hugging Face dataset id, it reads the row count + ClassLabel classes from the public datasets-server to fill the inputs. Inputs are task metadata only (no geometry), so results are provenance-safe.
+**What.** Applies the embeddings-vs-fine-tune precedence rules -- a faithful port of the vendored `olmoearth-embeddings` `recommend.decide` (kept in sync) -- then proposes an actionable config. Given a Hugging Face dataset id, it reads the row count + ClassLabel classes from the public datasets-server to fill the inputs. Inputs are task metadata only (no geometry), so results are provenance-safe.
 
 **Why.** Picking embeddings vs fine-tune, the model size, and the classifier head is the most common configuration decision in EO foundation-model use, and the precedence (sample-size / compute / goal) is easy to get wrong by hand. This automates the call and proposes a runnable plan, routing Studio-side specifics to `olmoearth-studio-job-config`. **No fabrication:** reports `ask_for` when key inputs are missing rather than guessing, and never invents dataset stats.
 
@@ -377,12 +377,12 @@ The original spec follows for reference:
 **In:** a presence-only labels GeoJSON path (`positives_path`); optional `candidates_path`, `negative_label`, `n_negatives`, `exclusion_km`, `min_separation_km`, `contamination_threshold`.
 **Out:** a combined GeoJSON (positives + generated negatives) written to `out_path`, plus a counts/ranking summary and a `quality` report (no raw coordinates in chat).
 
-**What.** Generates the missing negative/background class for a presence-only label set as **buffered, spatially-thinned pseudo-absences** (Barbet-Massin et al. 2012): candidate background points within `exclusion_km` of any positive are dropped, accepted negatives are kept `min_separation_km` apart, and — when the inputs carry per-feature `properties.embedding` vectors — candidates are ranked by environmental *dissimilarity* to the positive centroid (the inverse of skill #9's similarity search). With `contamination_threshold` set, the embedding path also drops candidates whose similarity to *any* positive meets the threshold — likely **unmapped positives** — guarding against environmental contamination on top of the spatial buffer. Defaults to a balanced 1:1 set and writes the negatives under the same schema field the positives use (`sample_category` / `es_label` / `oe_labels.category`). Deterministic; no GDAL.
+**What.** Generates the missing negative/background class for a presence-only label set as **buffered, spatially-thinned pseudo-absences** (Barbet-Massin et al. 2012): candidate background points within `exclusion_km` of any positive are dropped, accepted negatives are kept `min_separation_km` apart, and -- when the inputs carry per-feature `properties.embedding` vectors -- candidates are ranked by environmental *dissimilarity* to the positive centroid (the inverse of skill #9's similarity search). With `contamination_threshold` set, the embedding path also drops candidates whose similarity to *any* positive meets the threshold -- likely **unmapped positives** -- guarding against environmental contamination on top of the spatial buffer. Defaults to a balanced 1:1 set and writes the negatives under the same schema field the positives use (`sample_category` / `es_label` / `oe_labels.category`). Deterministic; no GDAL.
 
-**Why.** A presence-only set is not trainable — a classifier with no counter-examples predicts the positive class everywhere (the "false positives everywhere" failure, pitfall #8 in `olmoearth-data-prep`). That skill's `audit.py` *detects* the gap (it hard-FAILs `check_negative_class`) but its `--negative-class auto` was deferred, so the agent could previously only report the dataset as unusable and stop. This skill converts that dead-end into a finished artifact: the combined file round-trips straight back through the data-prep audit and clears the negative-class check. **Honest by construction:** pseudo-absences are a heuristic, never verified absences, so every result carries a `quality` report (nearest-positive distance + similarity-to-positive stats) for the user to judge and tune; the negative label must be one the audit recognizes; and a placement shortfall (buffer / thinning / contamination / extent too tight) is surfaced as a warning rather than silently under-filled.
+**Why.** A presence-only set is not trainable -- a classifier with no counter-examples predicts the positive class everywhere (the "false positives everywhere" failure, pitfall #8 in `olmoearth-data-prep`). That skill's `audit.py` *detects* the gap (it hard-FAILs `check_negative_class`) but its `--negative-class auto` was deferred, so the agent could previously only report the dataset as unusable and stop. This skill converts that dead-end into a finished artifact: the combined file round-trips straight back through the data-prep audit and clears the negative-class check. **Honest by construction:** pseudo-absences are a heuristic, never verified absences, so every result carries a `quality` report (nearest-positive distance + similarity-to-positive stats) for the user to judge and tune; the negative label must be one the audit recognizes; and a placement shortfall (buffer / thinning / contamination / extent too tight) is surfaced as a warning rather than silently under-filled.
 
 **Tools composed.**
-- `olmoearth_negative_sampler` (file → file; counts + path returned).
+- `olmoearth_negative_sampler` (file -> file; counts + path returned).
 - Logic in `analysis/negative_sampler.py` (buffer + farthest-point/embedding-dissimilarity selection, reusing `evaluation.spatial_cv.haversine_km`); composes the data-prep audit's negative-class contract.
 
 ---

@@ -206,7 +206,7 @@ def render(
     """Render one captured run as a Markdown showcase block."""
     parts = [
         f"### #{num} `{name}` - {what}\n",
-        f"*Category: {category}* · *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, "
+        f"*Category: {category}* - *Model: Qwen3.6-35B-A3B (`UD-IQ4_XS`, "
         f"llama.cpp)*\n",
         f"**Brief.**\n\n> {transcript.brief}\n",
     ]
@@ -267,7 +267,7 @@ async def main() -> None:
                 "1-2",
                 "olmoearth-data-prep",
                 "Prep",
-                "labels → Studio-ready dataset (8 prep pitfalls), via load_skill",
+                "labels -> Studio-ready dataset (8 prep pitfalls), via load_skill",
                 await capture(
                     llm,
                     build_skill_tools(),
@@ -287,7 +287,7 @@ async def main() -> None:
                 3,
                 "olmoearth-studio-job-config",
                 "Configure",
-                "task description → Studio job-wizard answers (14 presets)",
+                "task description -> Studio job-wizard answers (14 presets)",
                 await capture(
                     llm,
                     build_skill_tools(),
@@ -346,7 +346,7 @@ async def main() -> None:
                     "the core run loop: search / submit / poll / fetch results",
                     "Calls the live OlmoEarth Studio API (`/predictions/*`); set "
                     "`OLMOEARTH_API_KEY` to capture a live read-only run here "
-                    "(search predictions → fetch result tiles). The write half "
+                    "(search predictions -> fetch result tiles). The write half "
                     "(submit / poll) is intentionally never exercised by this "
                     "generator.",
                 )
@@ -392,7 +392,7 @@ async def main() -> None:
             )
         )
 
-        # ---- #8 evaluate (two tools) ----
+        # ---- #8 evaluate (three tools; NNDM-LOO transcript is a regen TODO) ----
         sections.append(
             render(
                 8,
@@ -495,7 +495,7 @@ async def main() -> None:
                 12,
                 "olmoearth-qgis-bridge",
                 "Integrate",
-                "tile URLs → QGIS XYZ layer + OGC SLD style",
+                "tile URLs -> QGIS XYZ layer + OGC SLD style",
                 await capture(
                     llm,
                     build_qgis_tools(),
