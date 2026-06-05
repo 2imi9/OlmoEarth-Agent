@@ -39,6 +39,27 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   removing a fictional `faiss_index_build` tool), `skills/registry.py`, and the
   `system:python` sandbox wording. Honest-results doc fix from the #92 audit.
 
+### Security
+- **In-process egress guard** (`security/egress.py`), informed by NVIDIA
+  NemoClaw's network-policy model and SSRF guard
+  ([`docs/nemoclaw-assessment.md`](docs/nemoclaw-assessment.md)). A
+  per-capability host allowlist (`studio`, `llm-cloud`, `llm-local`, `litsearch`,
+  `hf`) plus an SSRF block of private / loopback / link-local / cloud-metadata
+  address ranges, validating every outbound endpoint before a request -- and any
+  credential -- leaves the process. Wired into `StudioClient` (guards the
+  `OLMOEARTH_BASE_URL`-overridable base URL before the Bearer key is bound), the
+  hosted-LLM path in `serve._llm_for_request` (before the BYO key is handed over),
+  and the litsearch / HF fetchers. Modes: `OLMOEARTH_EGRESS=audit` (default; log
+  only, never breaks a deployment) / `enforce` (block, HTTP 403 on the LLM path) /
+  `off`; `OLMOEARTH_EGRESS_ALLOW` allowlists a self-hosted Studio or LLM host.
+  Decisions are recorded host-only in the provenance manifest
+  (`ProvenanceLog.record_egress`).
+- **Credential-scrubbed subprocess** for the opt-in `olmoearth_run_python` tool:
+  the agent's Studio / LLM / cloud keys are removed from the child environment so
+  executed snippets cannot read and exfiltrate them. Defence-in-depth, not a
+  network sandbox; OS-essential env is preserved so it still launches. Advances
+  the sandbox spec (#54).
+
 ## [1.1.0] - 2026-05-31
 
 Post-1.0 checkpoint: two new skills (catalog 15 -> 17), the `make serve` cache
