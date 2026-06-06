@@ -10,6 +10,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #19 `olmoearth-latent-change`** (catalog 18 -> 19): a JEPA latent-prediction
+  change detector on **frozen** OlmoEarth embeddings, shipped as a thin
+  **out-of-process** link to the new standalone heavy-ML repo
+  [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)
+  (PyTorch + CUDA, kept *out* of this torch-free agent). A lightweight head predicts the
+  time-2 patch embedding from time-1; the prediction residual is the change score
+  (I-JEPA, Assran et al. CVPR 2023). On the OSCD test split (frozen OlmoEarth-v1-Base)
+  it beats the cosine baseline by **+0.22 F1** (0.25 -> 0.47) and ~3x AP, reaching
+  unsupervised-SOTA-level **F1 0.54 label-free** (robust threshold), integrity-verified
+  (9x chance, permutation control). A Phase-2 gate study found current general VLMs
+  cannot deliver calibrated, localized raster change comparison, so the agent needs this
+  calibrated pixel-level tool. **Catalog / skill-contract only here** (`SKILLS.md` #19);
+  no heavy dependencies added. Complementary to #6 `olmoearth-change-detect` (Studio-API
+  trajectory diff). Out = georeferenced heatmap GeoTIFF + %-area-changed + top-k GeoJSON.
 - **Skill #18 `olmoearth-negative-sampler`** (catalog 17 -> 18): generates the
   missing negative / background class for a *presence-only* label set as
   buffered, spatially-thinned (optionally embedding-dissimilar) pseudo-absences,

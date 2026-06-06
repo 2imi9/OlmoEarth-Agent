@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 18 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 19 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 18 skills implemented (v1.0 shipped #1-#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0; #18 `olmoearth-negative-sampler` added post-1.1). See `CHANGELOG.md`.
+**Status:** 19 skills — 18 implemented in-repo + #19 out-of-process (v1.0 shipped #1-#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0; #18 `olmoearth-negative-sampler` added post-1.1; #19 `olmoearth-latent-change` -- **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) -- added post-1.1). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -44,6 +44,7 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 | 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
 | 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | **One call**: auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HF-dataset introspection. |
 | 18 | Prep | [`olmoearth-negative-sampler`](#18-olmoearth-negative-sampler) | Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
+| 19 | Run | [`olmoearth-latent-change`](#19-olmoearth-latent-change) | **Out-of-process** local-model JEPA latent-prediction change detector (separate repo); 2 S2 GeoTIFFs -> change heatmap + %area + top-k GeoJSON. Complementary to #6. |
 
 ### Example briefs
 
@@ -69,6 +70,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 | 16 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
 | 17 | `olmoearth-automate` | "I have 200 labels and a T4 -- should I fine-tune or use embeddings? Set it up." |
 | 18 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class -- generate background samples." |
+| 19 | `olmoearth-latent-change` | "I have before/after Sentinel-2 GeoTIFFs of this AOI -- give me a pixel-level change heatmap and the percent of area that changed." |
 
 ---
 
@@ -387,11 +389,24 @@ The original spec follows for reference:
 
 ---
 
+### 19. `olmoearth-latent-change`
+
+**In:** two co-registered 12-band Sentinel-2 GeoTIFFs (or AOI + 2 dates) + a trained predictor checkpoint.
+**Out:** a georeferenced change-score heatmap GeoTIFF (CRS / transform preserved), percent-area-changed, top-k changed-region GeoJSON (area + mean score), and a summary-stats JSON.
+
+**What.** A JEPA latent-prediction change detector on **frozen** OlmoEarth embeddings: a lightweight head predicts the time-2 patch embedding from time-1, and the prediction residual is the change score (I-JEPA, Assran et al. CVPR 2023). Runs **out-of-process** in the standalone heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) (PyTorch + CUDA); the agent shells out to `python -m oejc.skill` and consumes the products. **Complementary to #6** `olmoearth-change-detect` (Studio-API multi-date trajectory diff, no local model): this is a local-model two-date pixel-level detector.
+
+**Why.** A naive embedding-difference (cosine) flags seasonal / illumination shifts as false change; the learned latent forward-model scores only deviation from the "normal" transition. On the OSCD test split (frozen OlmoEarth-v1-Base) it beats the cosine baseline by **+0.22 F1** (0.25 -> 0.47) and ~3x average precision, reaching **unsupervised-SOTA-level F1 0.54, label-free** (robust per-scene threshold) -- integrity-verified (9x chance, permutation control, disjoint train / test cities). A Phase-2 gate study found current general VLMs cannot deliver calibrated, localized raster change comparison (uncalibrated, prompt-dependent, no pixel output), so the agent needs this calibrated pixel-level tool. Full results + plan live in the separate repo's `RESULTS.md` / `PLAN.md`.
+
+**Dependency.** The heavy PyTorch + CUDA + rasterio stack lives in the **separate** repo and is kept **out of this torch-free agent**; the agent invokes it out-of-process (CLI or container). No heavy dependencies are added here. A torch-free subprocess tool-wrapper (so the agent loop can call it live) is the natural follow-up.
+
+---
+
 ## Roadmap reference
 
 Implementation order tracks `PLAN.md` §6. First skill to ship is **#5 `olmoearth-predict`** (the foundation that #6, #7, #9, #10 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 18 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #18.
+Candidate skills beyond the current 19 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #18.
 
 ## Adding a skill
 
