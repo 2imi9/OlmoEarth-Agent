@@ -62,10 +62,10 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules -- trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call -- are enforced by the harness, not the model.
 
-The capability set ships as **18 skills**, grouped by EO-workflow stage.
+The capability set ships as **19 skills**, grouped by EO-workflow stage.
 
 <details>
-<summary><strong>The 18 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
+<summary><strong>The 19 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
@@ -87,6 +87,7 @@ The capability set ships as **18 skills**, grouped by EO-workflow stage.
 | 16 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations | **Report** |
 | 17 | `olmoearth-automate` | **One call** that auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HuggingFace-dataset introspection | **Configure** |
 | 18 | `olmoearth-negative-sampler` | Presence-only labels -> trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
+| 19 | `olmoearth-latent-change` | **Out-of-process** local-model JEPA latent-prediction change detector (separate repo [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)); 2 S2 GeoTIFFs -> change heatmap + %area + top-k GeoJSON | **Run** |
 
 </details>
 
