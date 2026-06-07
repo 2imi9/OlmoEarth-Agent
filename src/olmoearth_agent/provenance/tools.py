@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-provenance`` tool bundle (skill #14).
+"""The ``olmoearth-provenance`` tool bundle (skill #13).
 
 Exposes the run's provenance log to the agent so it can report what was
 done and emit a replay skeleton at the end of a task.

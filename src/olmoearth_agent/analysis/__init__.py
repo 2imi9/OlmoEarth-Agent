@@ -4,17 +4,17 @@
 
 Pure Python (no heavy deps), operating on data the agent already has:
 
-- skill #6 (``olmoearth-change-detect``): the change-detection
-  trajectory diff that refuses the two-date case which hides gradual
-  drift (``SKILLS.md`` #6).
-- skill #7 (``olmoearth-baseline-compare``): OlmoEarth-vs-AlphaEarth
-  per-metric comparison + difference raster (``SKILLS.md`` #7).
-- skill #9 (``olmoearth-similarity``): embedding top-K similarity search
-  with a geographic-prior warning (``SKILLS.md`` #9).
-- skill #10 (``olmoearth-uncertainty``): the Meyer-Pebesma
-  Area-of-Applicability out-of-distribution flag (``SKILLS.md`` #10).
-- skill #11 (``olmoearth-cloud-mask-audit``): the cloud-mask ensemble
-  disagreement audit + bad-mask-vs-bad-model verdict (``SKILLS.md`` #11).
+- skill #5 (``olmoearth-change-detection``, Engine A): the in-process
+  change-detection trajectory diff that refuses the two-date case which
+  hides gradual drift (``SKILLS.md`` #5).
+- skill #6 (``olmoearth-baseline-compare``): OlmoEarth-vs-AlphaEarth
+  per-metric comparison + difference raster (``SKILLS.md`` #6).
+- skill #8 (``olmoearth-similarity``): embedding top-K similarity search
+  with a geographic-prior warning (``SKILLS.md`` #8).
+- skill #9 (``olmoearth-uncertainty``): the Meyer-Pebesma
+  Area-of-Applicability out-of-distribution flag (``SKILLS.md`` #9).
+- skill #10 (``olmoearth-cloud-mask-audit``): the cloud-mask ensemble
+  disagreement audit + bad-mask-vs-bad-model verdict (``SKILLS.md`` #10).
 """
 
 from olmoearth_agent.analysis.baseline import compare_metrics, difference_raster

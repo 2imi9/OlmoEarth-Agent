@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Cloud-mask ensemble audit (skill #11, ``olmoearth-cloud-mask-audit``).
+"""Cloud-mask ensemble audit (skill #10, ``olmoearth-cloud-mask-audit``).
 
 Pure Python, no raster deps. Given several aligned cloud masks for the
 same scene, one per algorithm (CFMask, s2cloudless, Sen2Cor, MAJA, or

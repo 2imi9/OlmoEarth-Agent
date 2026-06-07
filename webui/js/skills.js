@@ -1,4 +1,4 @@
-/* The 18-skill capability grid + the pop-out introduction modal + the in-app
+/* The 16-skill capability grid + the pop-out introduction modal + the in-app
    full-spec detail page. Self-contained: clicking a card opens the modal;
    "Full spec" opens the detail page; "Use this brief" drops the example into
    the composer. */
@@ -25,92 +25,84 @@ const ICONS = {
 };
 
 const SKILLS = [
-  { n: 1,  slug: 'studio-upload',     cat: 'Prep',      icon: 'upload',      desc: 'Labels → a Studio-importable file with MIME, 10K-record, and multi-metric guards.', ex: 'I have 3,000 field plots as a GeoJSON - get them into Studio without the Windows MIME error.' },
-  { n: 2,  slug: 'rslearn-config',    cat: 'Prep',      icon: 'sliders',     desc: 'Labels → an rslearn dataset.json + Lightning YAML, with a 7-criteria audit.', ex: 'Turn my labeled crop polygons + HUC-12 watershed AOIs into an rslearn dataset.json + Lightning YAML.' },
-  { n: 3,  slug: 'studio-job-config', cat: 'Configure', icon: 'wand',        desc: 'Task description → Studio job-wizard answers; 14 presets + a cross-field validator.', ex: 'I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard.' },
-  { n: 4,  slug: 'embeddings',        cat: 'Configure', icon: 'branch',      desc: 'Embeddings-vs-fine-tune decision, plus a runnable extraction notebook.', ex: 'I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook.' },
-  { n: 5,  slug: 'predict',           cat: 'Run',       icon: 'satellite',   desc: 'The core run loop: find a model, submit, poll, and fetch result tiles.', pink: true, ex: 'Run a flood-extent prediction over this AOI for last month and return the result tiles.' },
-  { n: 6,  slug: 'change-detect',     cat: 'Run',       icon: 'trend',       desc: 'A multi-date (≥3) trajectory diff; it refuses a naive 2-date diff.', pink: true, ex: 'Did forest cover decline across these four quarterly snapshots, or is it just noise?' },
-  { n: 7,  slug: 'baseline-compare',  cat: 'Run',       icon: 'compare',     desc: 'OlmoEarth vs AlphaEarth, head-to-head on transfer regions.', pink: true, ex: 'Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles.' },
-  { n: 8,  slug: 'evaluate',          cat: 'Analyze',   icon: 'barcheck',    desc: 'A random-vs-spatial CV inflation check, plus per-class metrics.', ex: 'My model reports 92% accuracy - re-check it with spatial cross-validation, not random splits.' },
-  { n: 9,  slug: 'similarity',        cat: 'Analyze',   icon: 'search',      desc: 'Top-K embedding search with a geographic-prior warning.', ex: 'Find the 20 patches most similar to this illegal-mining site across the basin.' },
-  { n: 10, slug: 'uncertainty',       cat: 'Analyze',   icon: 'shield',      desc: 'A Meyer-Pebesma Area-of-Applicability out-of-distribution flag.', ex: 'Flag which parts of my prediction AOI fall outside the training distribution.' },
-  { n: 11, slug: 'cloud-mask-audit',  cat: 'Analyze',   icon: 'cloud',       desc: 'CFMask / s2cloudless / Sen2Cor / MAJA disagreement: bad mask vs bad model.', ex: 'My prediction looks wrong over this scene - bad cloud mask or bad model?' },
-  { n: 12, slug: 'qgis-bridge',       cat: 'Integrate', icon: 'layers',      desc: 'Tile URLs → a QGIS XYZ layer + an OGC SLD style, ready to load.', ex: 'Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop.' },
-  { n: 13, slug: 'data-export',       cat: 'Integrate', icon: 'database',    desc: 'Export Studio projects + predictions to JSON, grouped by project or status.', ex: 'Export all my Studio projects and their predictions to JSON, grouped by status.' },
-  { n: 14, slug: 'provenance',        cat: 'Report',    icon: 'fingerprint', desc: 'A manifest over every tool call, plus a one-command replay script.', ex: 'Produce a replay script + manifest so an auditor can reproduce this prediction.' },
-  { n: 15, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.', ex: 'Write a stakeholder brief for this karst-vulnerability result with the live map tiles.' },
-  { n: 16, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.', ex: 'Find and cite the paper behind the Area-of-Applicability method I used.' },
-  { n: 17, slug: 'automate',          cat: 'Configure', icon: 'wand',        desc: 'One call: auto-decides embeddings vs fine-tune and proposes a config; optional HF introspection.', ex: 'I have 200 labels and a T4 - should I fine-tune or use embeddings? Set it up.' },
-  { n: 18, slug: 'negative-sampler',  cat: 'Prep',      icon: 'scatter',     desc: 'Presence-only labels into a trainable set: buffered, thinned (optionally embedding-dissimilar) background class.', ex: 'My karst-site labels are presence-only and the audit fails for a missing negative class - generate background samples.' },
+  { n: 1,  slug: 'data-prep',         cat: 'Prep',      icon: 'upload',      desc: 'Labels → a Studio-importable file (MIME / 10K / multi-metric guards) AND an rslearn dataset.json + Lightning YAML, with a 7-criteria audit.', ex: 'I have 3,000 field plots as a GeoJSON - get them into Studio without the Windows MIME error, then build the rslearn dataset.json.' },
+  { n: 2,  slug: 'studio-job-config', cat: 'Configure', icon: 'wand',        desc: 'Task description → Studio job-wizard answers; 14 presets + a cross-field validator.', ex: 'I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard.' },
+  { n: 3,  slug: 'embeddings',        cat: 'Configure', icon: 'branch',      desc: 'Embeddings-vs-fine-tune: guidance + a runnable notebook, plus a one-call decide-and-configure (optional HF introspection).', ex: 'I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook, or just set it up.' },
+  { n: 4,  slug: 'predict',           cat: 'Run',       icon: 'satellite',   desc: 'The core run loop: find a model, submit, poll, and fetch result tiles.', pink: true, ex: 'Run a flood-extent prediction over this AOI for last month and return the result tiles.' },
+  { n: 5,  slug: 'change-detection',  cat: 'Run',       icon: 'trend',       desc: 'Change detection, two engines: a Studio multi-date (≥3) trajectory diff, and an out-of-process JEPA latent pixel detector.', pink: true, ex: 'Did forest cover decline across these four quarterly snapshots, or is it just noise?' },
+  { n: 6,  slug: 'baseline-compare',  cat: 'Run',       icon: 'compare',     desc: 'OlmoEarth vs AlphaEarth, head-to-head on transfer regions.', pink: true, ex: 'Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles.' },
+  { n: 7,  slug: 'evaluate',          cat: 'Analyze',   icon: 'barcheck',    desc: 'A random-vs-spatial CV inflation check + NNDM-LOO, plus per-class metrics.', ex: 'My model reports 92% accuracy - re-check it with spatial cross-validation, not random splits.' },
+  { n: 8,  slug: 'similarity',        cat: 'Analyze',   icon: 'search',      desc: 'Top-K embedding search with a geographic-prior warning.', ex: 'Find the 20 patches most similar to this illegal-mining site across the basin.' },
+  { n: 9,  slug: 'uncertainty',       cat: 'Analyze',   icon: 'shield',      desc: 'A Meyer-Pebesma Area-of-Applicability out-of-distribution flag.', ex: 'Flag which parts of my prediction AOI fall outside the training distribution.' },
+  { n: 10, slug: 'cloud-mask-audit',  cat: 'Analyze',   icon: 'cloud',       desc: 'CFMask / s2cloudless / Sen2Cor / MAJA disagreement: bad mask vs bad model.', ex: 'My prediction looks wrong over this scene - bad cloud mask or bad model?' },
+  { n: 11, slug: 'qgis-bridge',       cat: 'Integrate', icon: 'layers',      desc: 'Tile URLs → a QGIS XYZ layer + an OGC SLD style, ready to load.', ex: 'Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop.' },
+  { n: 12, slug: 'data-export',       cat: 'Integrate', icon: 'database',    desc: 'Export Studio projects + predictions to JSON, grouped by project or status.', ex: 'Export all my Studio projects and their predictions to JSON, grouped by status.' },
+  { n: 13, slug: 'provenance',        cat: 'Report',    icon: 'fingerprint', desc: 'A manifest over every tool call, plus a one-command replay script.', ex: 'Produce a replay script + manifest so an auditor can reproduce this prediction.' },
+  { n: 14, slug: 'case-narrative',    cat: 'Report',    icon: 'docspark',    desc: 'A stakeholder Markdown brief with a freshness gate on stale tiles.', ex: 'Write a stakeholder brief for this karst-vulnerability result with the live map tiles.' },
+  { n: 15, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.', ex: 'Find and cite the paper behind the Area-of-Applicability method I used.' },
+  { n: 16, slug: 'negative-sampler',  cat: 'Prep',      icon: 'scatter',     desc: 'Presence-only labels into a trainable set: buffered, thinned (optionally embedding-dissimilar) background class.', ex: 'My karst-site labels are presence-only and the audit fails for a missing negative class - generate background samples.' },
 ];
 
 // Fuller "what it does + why" per skill, shown in the pop-out. The card shows
 // the one-line desc above; this is the spec summary. Full academic spec: SKILLS.md.
 const SKILL_SPECS = {
-  1: `Enforces the sample_category schema, shards at 10K records, works around the Windows .geojson MIME rejection, and splits multi-metric files. Onboarding friction is the most repeated dropoff for case providers, and Studio uploads fail silently without these guards.`,
-  2: `Writes an rslearn dataset.json (single-layer 3-bandset or per-month production layout) plus a Lightning YAML, handles the es_label rename trap and watershed AOIs (NLDI / HUC-12), and runs a 7-criteria audit before a multi-hour training run fails silently.`,
-  3: `Maps a task description to Studio wizard answers - output type, model size, time-frame mode, S2-vs-+S1 sources, patch size - from 14 verified presets, with a cross-field validator that catches traps (detection + 320m patch, embeddings + single-moment) before you submit.`,
-  4: `The embeddings-vs-fine-tune decision grounded in the OlmoEarth accuracy / time / VRAM table, plus a parameterized notebook that extracts Nano/Tiny/Base/Large embeddings and trains kNN + linear-probe heads. This is the guidance version - you run the notebook. For one-call automation, see #17.`,
-  5: `The core run primitive: discover a reusable model_id, submit a prediction, poll with backoff, then fetch results - XYZ raster tiles, MVT vectors, pixel values, or features by class. Async-by-reference, and cost-guarded on fine-tunes.`,
-  6: `Turns a dated series of per-date layer summaries into trajectory metrics: step deltas, net change, the largest-change interval, a reversal count, and a trend label. Refuses fewer than 3 dates, because a 2-date diff cannot tell a steady trend from a flood that peaked then receded.`,
-  7: `Runs OlmoEarth vs a baseline foundation model head-to-head on shared ground truth: a per-metric table (accuracy / macro-F1 / mean-IoU) with deltas and an overall winner, plus a cell-by-cell difference raster, to substantiate a transfer-region claim honestly.`,
-  8: `Compares test-to-train nearest-neighbour distance under random vs spatial-block CV and reports the accuracy-inflation ratio and risk band (Ploton 2020 / Meyer-Pebesma 2021), plus per-class precision / recall / F1 / IoU. The guard against random splits overstating accuracy on clustered data.`,
-  9: `Returns the top-K embedding vectors most similar to a query (cosine or Euclidean kNN), with a geographic-prior warning when the matches cluster near the query - because then "similarity" may reflect location (same biome) rather than genuine feature resemblance.`,
-  10: `Implements the Meyer-Pebesma Area of Applicability: each point's dissimilarity index vs the training set, flagging out-of-distribution points beyond the training data's own outlier threshold. The point: softmax confidence is not OOD detection - a model can be confidently wrong off-distribution.`,
-  11: `Summarizes where several aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA) agree vs disagree, then returns a bad-mask-vs-bad-model verdict for a model-error region. Surfaces disagreement rather than one ground-truth mask, because algorithms diverge on thin, semi-transparent cloud.`,
-  12: `Resolves a prediction's relative tile template into an absolute QGIS XYZ URL and builds a well-formed OGC SLD color-ramp style, with Bearer-auth load instructions. Closes the hot-cloud-to-cold-desktop loop for the QGIS audience without embedding your key.`,
-  13: `Exports your Studio projects and their predictions to JSON, grouped by project or status and curated to ids / names / statuses / times (no raw geometry). The self-contained alternative to wiring third-party data MCPs.`,
-  14: `Records one manifest entry per tool call - tool name, sha256 of args, an id-only result summary, never raw geometry - and emits an auditable manifest plus a runnable replay skeleton. Serves EUDR / REDD+ MRV audit needs and the EO reproducibility gap.`,
-  15: `Assembles a stakeholder Markdown report from prediction results and the run's provenance, with a freshness gate that withholds and strikes through tiles older than a configurable window - so a disaster-response brief never shows stale imagery.`,
-  16: `Unified arXiv + OpenAlex search and DOI / arXiv-id resolution, deduped across sources and key-free (OpenAlex polite pool). Grounds EO citations in real papers instead of world-knowledge or hallucinated links, under a no-fabrication, cite-the-real-URL contract.`,
-  17: `One call that auto-decides embeddings vs fine-tune (porting #4's decision table) and proposes a config - model size, classifier head, embeddings-notebook command, fine-tune schedule, and a Studio job-config hand-off - and can read a Hugging Face dataset's rows + classes to fill its inputs. Reports what is missing rather than guessing.`,
-  18: `Generates the missing negative/background class for a presence-only label set so it becomes trainable. Drops candidate points within a buffer of any positive, keeps the accepted negatives spatially thinned, and - when the inputs carry embeddings - ranks candidates by environmental dissimilarity to the positives (the inverse of #9). Writes a combined GeoJSON that round-trips straight back through the data-prep audit, converting its hard FAIL on a missing negative class into a PASS. Deterministic, no GDAL; surfaces a placement shortfall as a warning rather than under-filling silently.`,
+  1: `Labels → a Studio-importable file and/or an rslearn dataset.json + Lightning YAML. Enforces the sample_category / es_label / oe_labels schemas, shards at 10K records, works around the Windows .geojson MIME rejection, splits multi-metric files, handles the es_label rename and watershed AOIs (NLDI / HUC-12), and runs a 7-criteria audit before a multi-hour training run fails silently. The single vendored olmoearth-data-prep package.`,
+  2: `Maps a task description to Studio wizard answers - output type, model size, time-frame mode, S2-vs-+S1 sources, patch size - from 14 verified presets, with a cross-field validator that catches traps (detection + 320m patch, embeddings + single-moment) before you submit.`,
+  3: `The embeddings-vs-fine-tune decision grounded in the OlmoEarth accuracy / time / VRAM table, offered two ways: a parameterized notebook that extracts Nano/Tiny/Base/Large embeddings and trains kNN + linear-probe heads (you run it), and a one-call olmoearth_automate that decides programmatically and proposes a config (model size, head, notebook/fine-tune plan), optionally reading a Hugging Face dataset's rows + classes. Reports what's missing rather than guessing.`,
+  4: `The core run primitive: discover a reusable model_id, submit a prediction, poll with backoff, then fetch results - XYZ raster tiles, MVT vectors, pixel values, or features by class. Async-by-reference, and cost-guarded on fine-tunes. AOIs can be drawn on a map in the chat (olmoearth_request_aoi) and stored as a Studio area.`,
+  5: `Change detection with two complementary engines. Engine A (in-process): turns a dated series of per-date summaries into trajectory metrics - step deltas, net change, largest interval, reversal count, trend - and refuses fewer than 3 dates, because a 2-date diff cannot tell a steady trend from a flood that peaked then receded. Engine B (out-of-process, separate torch repo): a JEPA latent-prediction detector on frozen OlmoEarth embeddings - the residual of predicting t2 from t1 is the change score - giving a calibrated pixel-level heatmap (beats a cosine baseline by +0.22 F1 on OSCD, label-free).`,
+  6: `Runs OlmoEarth vs a baseline foundation model head-to-head on shared ground truth: a per-metric table (accuracy / macro-F1 / mean-IoU) with deltas and an overall winner, plus a cell-by-cell difference raster, to substantiate a transfer-region claim honestly.`,
+  7: `Compares test-to-train nearest-neighbour distance under random vs spatial-block CV and reports the accuracy-inflation ratio and risk band (Ploton 2020 / Meyer-Pebesma 2021), plus an NNDM-LOO unbiased estimate and per-class precision / recall / F1 / IoU. The guard against random splits overstating accuracy on clustered data.`,
+  8: `Returns the top-K embedding vectors most similar to a query (cosine or Euclidean kNN), with a geographic-prior warning when the matches cluster near the query - because then "similarity" may reflect location (same biome) rather than genuine feature resemblance.`,
+  9: `Implements the Meyer-Pebesma Area of Applicability: each point's dissimilarity index vs the training set, flagging out-of-distribution points beyond the training data's own outlier threshold. The point: softmax confidence is not OOD detection - a model can be confidently wrong off-distribution.`,
+  10: `Summarizes where several aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA) agree vs disagree, then returns a bad-mask-vs-bad-model verdict for a model-error region. Surfaces disagreement rather than one ground-truth mask, because algorithms diverge on thin, semi-transparent cloud.`,
+  11: `Resolves a prediction's relative tile template into an absolute QGIS XYZ URL and builds a well-formed OGC SLD color-ramp style, with Bearer-auth load instructions. Closes the hot-cloud-to-cold-desktop loop for the QGIS audience without embedding your key.`,
+  12: `Exports your Studio projects and their predictions to JSON, grouped by project or status and curated to ids / names / statuses / times (no raw geometry). The self-contained alternative to wiring third-party data MCPs.`,
+  13: `Records one manifest entry per tool call - tool name, sha256 of args, an id-only result summary, never raw geometry - and emits an auditable manifest plus a runnable replay skeleton. Serves EUDR / REDD+ MRV audit needs and the EO reproducibility gap.`,
+  14: `Assembles a stakeholder Markdown report from prediction results and the run's provenance, with a freshness gate that withholds and strikes through tiles older than a configurable window - so a disaster-response brief never shows stale imagery.`,
+  15: `Unified arXiv + OpenAlex search and DOI / arXiv-id resolution, deduped across sources and key-free (OpenAlex polite pool). Grounds EO citations in real papers instead of world-knowledge or hallucinated links, under a no-fabrication, cite-the-real-URL contract.`,
+  16: `Generates the missing negative/background class for a presence-only label set so it becomes trainable. Drops candidate points within a buffer of any positive, keeps the accepted negatives spatially thinned, and - when the inputs carry embeddings - ranks candidates by environmental dissimilarity to the positives (the inverse of #8). Writes a combined GeoJSON that round-trips straight back through the data-prep audit, converting its hard FAIL on a missing negative class into a PASS. Deterministic, no GDAL; surfaces a placement shortfall as a warning rather than under-filling silently.`,
 };
 
 // Tools each skill composes, shown on the full-spec detail page. From PLAN.md section 1 + SKILLS.md.
 const SKILL_TOOLS = {
-  1: `olmoearth.upload_labels · validate_studio_mime · shard_at_10k · split_multi_metric`,
-  2: `eo.window_tile · olmoearth.resolve_to_aoi · write_rslearn_config · audit_7_criteria · rename_es_label`,
-  3: `Studio job-wizard presets (14) + a cross-field validator`,
-  4: `olmoearth.fetch_embedding · decision_matrix · knn_head · linear_probe_head · system.python (light checks)`,
-  5: `olmoearth_search_predictions · olmoearth_submit_prediction · olmoearth_get_prediction · olmoearth_fetch_results · olmoearth_pixel_value · olmoearth_features_search`,
-  6: `olmoearth_change_detect (composes #5 olmoearth-predict) · enforce_min_3_dates · diff_layers`,
-  7: `olmoearth_baseline_compare · compare_metrics (reuses #8 classification_metrics) · difference_raster`,
-  8: `olmoearth_cv_inflation_check · olmoearth_classification_metrics · spatial_block_folds · haversine`,
-  9: `olmoearth_similarity_search · similarity_search (brute-force kNN) · geographic_prior_check`,
-  10: `olmoearth_area_of_applicability · dissimilarity index (Meyer-Pebesma) · ood_flag`,
-  11: `olmoearth_cloud_mask_audit · ensemble_disagree · verdict_classifier`,
-  12: `olmoearth_qgis_bridge · resolve_xyz_url · build_raster_sld`,
-  13: `olmoearth_export_data (reads projects + predictions, curated)`,
-  14: `olmoearth_provenance_summary · ProvenanceLog on ThreadState · replay_script`,
-  15: `olmoearth_case_narrative · build_narrative (reads provenance + results)`,
-  16: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
-  17: `olmoearth_automate · analysis.automate decide() + propose_config + fetch_hf_dataset_profile (reuses #4's table)`,
-  18: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
+  1: `olmoearth_load_skill · validate_studio_mime · shard_at_10k · split_multi_metric · write_rslearn_config · audit_7_criteria · rename_es_label`,
+  2: `olmoearth_load_skill · Studio job-wizard presets (14) + a cross-field validator`,
+  3: `olmoearth_load_skill (guidance + notebook) · olmoearth_automate (decide + propose_config + fetch_hf_dataset_profile) · decision_matrix · knn_head · linear_probe_head`,
+  4: `olmoearth_search_predictions · olmoearth_submit_prediction · olmoearth_get_prediction · olmoearth_fetch_results · olmoearth_get_prediction_result · olmoearth_request_aoi`,
+  5: `olmoearth_change_detect (Engine A, composes #4; enforce_min_3_dates · diff_layers) · Engine B: out-of-process python -m oejc.skill (JEPA latent residual)`,
+  6: `olmoearth_baseline_compare · compare_metrics (reuses #7 classification_metrics) · difference_raster`,
+  7: `olmoearth_cv_inflation_check · olmoearth_nndm_cv · olmoearth_classification_metrics · spatial_block_folds · haversine`,
+  8: `olmoearth_similarity_search · similarity_search (brute-force kNN) · geographic_prior_check`,
+  9: `olmoearth_area_of_applicability · dissimilarity index (Meyer-Pebesma) · ood_flag`,
+  10: `olmoearth_cloud_mask_audit · ensemble_disagree · verdict_classifier`,
+  11: `olmoearth_qgis_bridge · resolve_xyz_url · build_raster_sld`,
+  12: `olmoearth_export_data (reads projects + predictions, curated)`,
+  13: `olmoearth_provenance_summary · ProvenanceLog on ThreadState · replay_script`,
+  14: `olmoearth_case_narrative · build_narrative (reads provenance + results)`,
+  15: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
+  16: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
 };
 
 // What each skill takes in and gives back, for the full-spec detail page.
 // Concise In -> Out, mirroring the "In:/Out:" lines in SKILLS.md.
 const SKILL_IO = {
-  1:  { in: 'Labels as GeoJSON / CSV / Shapefile.', out: 'A Studio-importable file (sample_category schema; MIME / 10K-record / multi-metric guards applied).' },
-  2:  { in: 'Labels + area definitions (bbox or watershed AOIs).', out: 'An rslearn dataset.json + a Lightning YAML, passed through a 7-criteria audit.' },
-  3:  { in: 'A free-text task description.', out: 'Studio job-wizard answers (output type, model size, time frame, sources, patch size) + a cross-field validation.' },
-  4:  { in: 'Sample count, class count, compute tier, goal.', out: 'An embeddings-vs-fine-tune recommendation + a runnable extraction notebook (you run it).' },
-  5:  { in: 'A model_id, an AOI, and a time range.', out: 'A submitted prediction, then result tiles / pixel values / features by class (async by reference).' },
-  6:  { in: 'Three or more dated per-layer summaries.', out: 'Trajectory metrics (step deltas, net change, largest interval, trend) - refuses fewer than 3 dates.' },
-  7:  { in: 'OlmoEarth + a baseline model on shared ground truth.', out: 'A per-metric table (accuracy / macro-F1 / mean-IoU) with deltas, a winner, and a difference raster.' },
-  8:  { in: 'Labeled points (and optionally predictions).', out: 'A random-vs-spatial CV inflation ratio + risk band, plus per-class precision / recall / F1 / IoU.' },
-  9:  { in: 'A query embedding + a corpus (optionally parallel coords).', out: 'Top-K nearest matches + a geographic-prior warning when matches cluster near the query.' },
-  10: { in: 'Training-set + query embeddings.', out: 'A Meyer-Pebesma Area-of-Applicability flag marking out-of-distribution points.' },
-  11: { in: 'Aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA).', out: 'A disagreement summary + a bad-mask-vs-bad-model verdict for a suspect region.' },
-  12: { in: "A prediction's relative tile template.", out: 'An absolute QGIS XYZ URL + an OGC SLD colour-ramp style + Bearer-auth load steps.' },
-  13: { in: 'Your Studio projects + predictions.', out: 'Curated JSON files (ids / names / statuses / times; no geometry) grouped by project or status.' },
-  14: { in: "The run's tool-call log on ThreadState.", out: 'An append-only manifest (tool, sha256 of args, id-only summary) + a runnable replay script.' },
-  15: { in: 'Prediction results + the run provenance.', out: 'A stakeholder Markdown brief with live tiles and a freshness gate that strikes through stale imagery.' },
-  16: { in: 'A free-text query, or a single DOI / arXiv id.', out: 'Curated paper records (title, authors, year, venue, url, citations), deduped across arXiv + OpenAlex.' },
-  17: { in: 'A task (or HF dataset id) + counts / compute / goal.', out: 'An embeddings-vs-fine-tune decision + a proposed config (model size, head, notebook / fine-tune plan).' },
-  18: { in: 'A presence-only labels GeoJSON path (one positive class).', out: 'A combined GeoJSON with a buffered, spatially-thinned negative class that passes the data-prep audit.' },
+  1:  { in: 'Labels as GeoJSON / CSV / Shapefile (+ optional AOIs).', out: 'A Studio-importable file and/or an rslearn dataset.json + Lightning YAML, through MIME / 10K / multi-metric guards and a 7-criteria audit.' },
+  2:  { in: 'A free-text task description.', out: 'Studio job-wizard answers (output type, model size, time frame, sources, patch size) + a cross-field validation.' },
+  3:  { in: 'Sample count, class count, compute tier, goal (or a HF dataset id).', out: 'An embeddings-vs-fine-tune recommendation + a runnable extraction notebook and/or a proposed config.' },
+  4:  { in: 'A model_id, an AOI (draw it on the map), and a time range.', out: 'A submitted prediction, then result tiles / pixel values / features by class (async by reference).' },
+  5:  { in: 'Engine A: 3+ dated per-layer summaries. Engine B: two co-registered S2 GeoTIFFs (or AOI + 2 dates).', out: 'A: trajectory metrics (refuses <3 dates). B: a georeferenced change heatmap + %-area-changed + top-k GeoJSON.' },
+  6:  { in: 'OlmoEarth + a baseline model on shared ground truth.', out: 'A per-metric table (accuracy / macro-F1 / mean-IoU) with deltas, a winner, and a difference raster.' },
+  7:  { in: 'Labeled points (and optionally predictions).', out: 'A random-vs-spatial CV inflation ratio + risk band, an NNDM-LOO estimate, and per-class precision / recall / F1 / IoU.' },
+  8:  { in: 'A query embedding + a corpus (optionally parallel coords).', out: 'Top-K nearest matches + a geographic-prior warning when matches cluster near the query.' },
+  9:  { in: 'Training-set + query embeddings.', out: 'A Meyer-Pebesma Area-of-Applicability flag marking out-of-distribution points.' },
+  10: { in: 'Aligned cloud masks (CFMask / s2cloudless / Sen2Cor / MAJA).', out: 'A disagreement summary + a bad-mask-vs-bad-model verdict for a suspect region.' },
+  11: { in: "A prediction's relative tile template.", out: 'An absolute QGIS XYZ URL + an OGC SLD colour-ramp style + Bearer-auth load steps.' },
+  12: { in: 'Your Studio projects + predictions.', out: 'Curated JSON files (ids / names / statuses / times; no geometry) grouped by project or status.' },
+  13: { in: "The run's tool-call log on ThreadState.", out: 'An append-only manifest (tool, sha256 of args, id-only summary) + a runnable replay script.' },
+  14: { in: 'Prediction results + the run provenance.', out: 'A stakeholder Markdown brief with live tiles and a freshness gate that strikes through stale imagery.' },
+  15: { in: 'A free-text query, or a single DOI / arXiv id.', out: 'Curated paper records (title, authors, year, venue, url, citations), deduped across arXiv + OpenAlex.' },
+  16: { in: 'A presence-only labels GeoJSON path (one positive class).', out: 'A combined GeoJSON with a buffered, spatially-thinned negative class that passes the data-prep audit.' },
 };
 
 export function renderCards() {
@@ -213,7 +205,7 @@ function openSkillDetail(s) {
       }
       <section class="detail-sec">
         <h3 class="detail-h">Stage</h3>
-        <p class="detail-p detail-stage">${s.cat} &middot; skill #${s.n} of 18 in the OlmoEarth workflow (Prep &rarr; Configure &rarr; Run &rarr; Analyze &rarr; Integrate &rarr; Report).</p>
+        <p class="detail-p detail-stage">${s.cat} &middot; skill #${s.n} of 16 in the OlmoEarth workflow (Prep &rarr; Configure &rarr; Run &rarr; Analyze &rarr; Integrate &rarr; Report).</p>
       </section>
       <section class="detail-sec">
         <h3 class="detail-h">Tools it composes</h3>

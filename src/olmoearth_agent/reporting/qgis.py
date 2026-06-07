@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""QGIS bridge helpers (skill #12).
+"""QGIS bridge helpers (skill #11).
 
 Turn a prediction result's tile templates into QGIS-ready XYZ URLs and an
 OGC SLD style. Pure functions, no QGIS dependency. The generated SLD is

@@ -1,22 +1,22 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 19 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 16 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 19 skills — 18 implemented in-repo + #19 out-of-process (v1.0 shipped #1-#15 on 2026-05-31; #16 `olmoearth-litsearch` + #17 `olmoearth-automate` added post-1.0; #18 `olmoearth-negative-sampler` added post-1.1; #19 `olmoearth-latent-change` -- **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) -- added post-1.1). See `CHANGELOG.md`.
+**Status:** 16 skills — 15 implemented in-repo + the out-of-process JEPA change engine (v1.0 shipped the originals on 2026-05-31; `olmoearth-litsearch` and the `olmoearth_automate` facet added post-1.0; `olmoearth-negative-sampler` added post-1.1; the JEPA latent-change engine — **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) — added post-1.1, now folded into skill #5 `olmoearth-change-detection`). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
-Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17). The agent vendors them rather than re-implementing.
+Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17). The agent vendors them rather than re-implementing. The three vendored `SKILL.md` packages map one-to-one to catalog skills #1-#3.
 
 | Upstream | Catalog mapping |
 |---|---|
-| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skills **#1 + #2 unified**: 8 prep pitfalls + 7-criteria audit; recognizes all three schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
-| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#3**: 14 verified presets + cross-field validator. |
-| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#4**: embeddings-vs-fine-tune **guidance** + a Nano/Tiny/Base/Large notebook generator. (Skill #17 `olmoearth-automate` is the one-call automated version that reuses this decision table.) |
+| [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) | Skill **#1**: 8 prep pitfalls + 7-criteria audit; labels -> Studio import AND rslearn config; recognizes all three schemas (`sample_category` / `es_label` / `oe_labels.{key}`). |
+| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#2**: 14 verified presets + cross-field validator. |
+| [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#3**: embeddings-vs-fine-tune **guidance** + a Nano/Tiny/Base/Large notebook generator; the in-repo `olmoearth_automate` tool is the one-call automated version that reuses the same decision table. |
 
-Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 are unified upstream as `olmoearth-data-prep` (matching the working implementation) but kept as two numbered entries here.
+Skills #4-#16 are implemented in this repo (see `CHANGELOG.md`).
 
 **Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever...", "Trigger even when...") because the description is the LLM's routing surface. Match it.
 
@@ -26,25 +26,22 @@ Skills #5-#15 are implemented in this repo (see `CHANGELOG.md`). Catalog #1/#2 a
 
 | # | Category | Name | What |
 |---|---|---|---|
-| 1 | Prep | [`olmoearth-studio-upload`](#1-olmoearth-studio-upload) | Labels (GeoJSON / CSV / Shapefile) -> Studio-importable file with MIME / 10K / multi-metric guards. |
-| 2 | Prep | [`olmoearth-rslearn-config`](#2-olmoearth-rslearn-config) | Labels -> `rslearn` `dataset.json` + Lightning YAML with 7-criteria audit. |
-| 3 | Configure | [`olmoearth-studio-job-config`](#3-olmoearth-studio-job-config) | Task description -> Studio wizard answers with 14 presets + cross-field validator. |
-| 4 | Configure | [`olmoearth-embeddings`](#4-olmoearth-embeddings) | Embeddings-vs-fine-tune **guidance** + a generated runnable notebook (you run it). |
-| 5 | Run | [`olmoearth-predict`](#5-olmoearth-predict) | The core run primitive: submit / poll / fetch results; pixel-value / features follow. |
-| 6 | Run | [`olmoearth-change-detect`](#6-olmoearth-change-detect) | Two-or-more-date trajectory diff (refuses two-date naive diff). |
-| 7 | Run | [`olmoearth-baseline-compare`](#7-olmoearth-baseline-compare) | Studio vs. AlphaEarth side-by-side on transfer regions. |
-| 8 | Analyze | [`olmoearth-evaluate`](#8-olmoearth-evaluate) | Spatial-block CV + NNDM-LOO over `/prediction-results`. |
-| 9 | Analyze | [`olmoearth-similarity`](#9-olmoearth-similarity) | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up); geographic-prior warning. |
-| 10 | Analyze | [`olmoearth-uncertainty`](#10-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
-| 11 | Analyze | [`olmoearth-cloud-mask-audit`](#11-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
-| 12 | Integrate | [`olmoearth-qgis-bridge`](#12-olmoearth-qgis-bridge) | Tile URLs -> QGIS WMTS + COG with sidecar uncertainty raster. |
-| 13 | Integrate | [`olmoearth-data-export`](#13-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
-| 14 | Report | [`olmoearth-provenance`](#14-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
-| 15 | Report | [`olmoearth-case-narrative`](#15-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
-| 16 | Report | [`olmoearth-litsearch`](#16-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
-| 17 | Configure | [`olmoearth-automate`](#17-olmoearth-automate) | **One call**: auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HF-dataset introspection. |
-| 18 | Prep | [`olmoearth-negative-sampler`](#18-olmoearth-negative-sampler) | Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
-| 19 | Run | [`olmoearth-latent-change`](#19-olmoearth-latent-change) | **Out-of-process** local-model JEPA latent-prediction change detector (separate repo); 2 S2 GeoTIFFs -> change heatmap + %area + top-k GeoJSON. Complementary to #6. |
+| 1 | Prep | [`olmoearth-data-prep`](#1-olmoearth-data-prep) | Labels (GeoJSON / CSV / Shapefile) -> Studio-importable file (MIME / 10K / multi-metric guards) AND an `rslearn` `dataset.json` + Lightning YAML, with a 7-criteria audit. |
+| 2 | Configure | [`olmoearth-studio-job-config`](#2-olmoearth-studio-job-config) | Task description -> Studio wizard answers with 14 presets + cross-field validator. |
+| 3 | Configure | [`olmoearth-embeddings`](#3-olmoearth-embeddings) | Embeddings-vs-fine-tune decision: **guidance + a runnable notebook** (you run it), plus the **one-call** `olmoearth_automate` (decide + propose a config; optional HF-dataset introspection). |
+| 4 | Run | [`olmoearth-predict`](#4-olmoearth-predict) | The core run primitive: submit / poll / fetch results; pixel-value / features follow. |
+| 5 | Run | [`olmoearth-change-detection`](#5-olmoearth-change-detection) | Change detection, two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date), and an out-of-process JEPA latent-prediction pixel detector (separate repo). |
+| 6 | Run | [`olmoearth-baseline-compare`](#6-olmoearth-baseline-compare) | Studio vs. AlphaEarth side-by-side on transfer regions. |
+| 7 | Analyze | [`olmoearth-evaluate`](#7-olmoearth-evaluate) | Spatial-block CV + NNDM-LOO over `/prediction-results`. |
+| 8 | Analyze | [`olmoearth-similarity`](#8-olmoearth-similarity) | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up); geographic-prior warning. |
+| 9 | Analyze | [`olmoearth-uncertainty`](#9-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
+| 10 | Analyze | [`olmoearth-cloud-mask-audit`](#10-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
+| 11 | Integrate | [`olmoearth-qgis-bridge`](#11-olmoearth-qgis-bridge) | Tile URLs -> QGIS WMTS + COG with sidecar uncertainty raster. |
+| 12 | Integrate | [`olmoearth-data-export`](#12-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
+| 13 | Report | [`olmoearth-provenance`](#13-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
+| 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
+| 15 | Report | [`olmoearth-litsearch`](#15-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
+| 16 | Prep | [`olmoearth-negative-sampler`](#16-olmoearth-negative-sampler) | Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
 
 ### Example briefs
 
@@ -52,67 +49,48 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 | # | Skill | Example brief |
 |---|---|---|
-| 1 | `olmoearth-studio-upload` | "I have 3,000 field plots as a GeoJSON - get them into Studio without the Windows MIME error." |
-| 2 | `olmoearth-rslearn-config` | "Turn my labeled crop polygons + HUC-12 watershed AOIs into an rslearn dataset.json + Lightning YAML." |
-| 3 | `olmoearth-studio-job-config` | "I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard." |
-| 4 | `olmoearth-embeddings` | "I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook." |
-| 5 | `olmoearth-predict` | "Run a flood-extent prediction over this AOI for last month and return the result tiles." |
-| 6 | `olmoearth-change-detect` | "Did forest cover decline across these four quarterly snapshots, or is it just noise?" |
-| 7 | `olmoearth-baseline-compare` | "Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles." |
-| 8 | `olmoearth-evaluate` | "My model reports 92% accuracy - re-check it with spatial cross-validation, not random splits." |
-| 9 | `olmoearth-similarity` | "Find the 20 patches most similar to this illegal-mining site across the basin." |
-| 10 | `olmoearth-uncertainty` | "Flag which parts of my prediction AOI fall outside the model's training distribution." |
-| 11 | `olmoearth-cloud-mask-audit` | "My prediction looks wrong over this scene - bad cloud mask or bad model?" |
-| 12 | `olmoearth-qgis-bridge` | "Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop." |
-| 13 | `olmoearth-data-export` | "Export all my Studio projects and their predictions to JSON, grouped by status." |
-| 14 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
-| 15 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
-| 16 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
-| 17 | `olmoearth-automate` | "I have 200 labels and a T4 -- should I fine-tune or use embeddings? Set it up." |
-| 18 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class -- generate background samples." |
-| 19 | `olmoearth-latent-change` | "I have before/after Sentinel-2 GeoTIFFs of this AOI -- give me a pixel-level change heatmap and the percent of area that changed." |
+| 1 | `olmoearth-data-prep` | "I have 3,000 field plots as a GeoJSON - get them into Studio without the Windows MIME error, then build the rslearn dataset.json." |
+| 2 | `olmoearth-studio-job-config` | "I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard." |
+| 3 | `olmoearth-embeddings` | "I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook (or just set it up)." |
+| 4 | `olmoearth-predict` | "Run a flood-extent prediction over this AOI for last month and return the result tiles." |
+| 5 | `olmoearth-change-detection` | "Did forest cover decline across these four quarterly snapshots, or is it just noise?" |
+| 6 | `olmoearth-baseline-compare` | "Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles." |
+| 7 | `olmoearth-evaluate` | "My model reports 92% accuracy - re-check it with spatial cross-validation, not random splits." |
+| 8 | `olmoearth-similarity` | "Find the 20 patches most similar to this illegal-mining site across the basin." |
+| 9 | `olmoearth-uncertainty` | "Flag which parts of my prediction AOI fall outside the model's training distribution." |
+| 10 | `olmoearth-cloud-mask-audit` | "My prediction looks wrong over this scene - bad cloud mask or bad model?" |
+| 11 | `olmoearth-qgis-bridge` | "Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop." |
+| 12 | `olmoearth-data-export` | "Export all my Studio projects and their predictions to JSON, grouped by status." |
+| 13 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
+| 14 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
+| 15 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
+| 16 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class -- generate background samples." |
 
 ---
 
 ## Prep
 
-### 1. `olmoearth-studio-upload`
+### 1. `olmoearth-data-prep`
 
-**Upstream:** unified with skill #2 inside [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep). See the [`SKILL.md`](https://raw.githubusercontent.com/2imi9/OlmoEarth-Skills/main/skills/olmoearth-data-prep/SKILL.md) and `scripts/audit.py`, `scripts/write_config.py`. Split-vs-unify decision tracked above.
+**Upstream:** the single vendored [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep) package (see the [`SKILL.md`](https://raw.githubusercontent.com/2imi9/OlmoEarth-Skills/main/skills/olmoearth-data-prep/SKILL.md) and `scripts/audit.py`, `scripts/write_config.py`). It covers both halves of label prep — Studio import and rslearn config — which earlier catalog versions split into two entries.
 
-**In:** labels as GeoJSON / CSV / Shapefile.
-**Out:** Studio-importable file.
+**In:** labels as GeoJSON / CSV / Shapefile (+ optional AOIs).
+**Out:** a Studio-importable file AND/OR an `rslearn` `dataset.json` + Lightning YAML.
 
-**What.** `sample_category` schema enforcement, sharding at 10K records, dual file extension to bypass Windows MIME rejection, multi-metric file split when more than one numeric column is present.
+**What.** *Studio import:* `sample_category` schema enforcement, sharding at 10K records, dual file extension to bypass Windows MIME rejection, multi-metric file split when more than one numeric column is present. *rslearn config:* `oe_labels` schema, single-layer 3-bandset (AWF-style) or per-month production layout, the `es_label` rename, watershed AOIs from NLDI / HUC-12, and a 7-criteria audit before training starts. Recognizes all three label schemas (`sample_category` / `es_label` / `oe_labels.{key}`).
 
-**Why.** Onboarding friction is the most repeated dropoff point for case providers. Studio uploads break silently: Windows rejects `.geojson` as `application/octet-stream`, and uploads above 10K records hit the 1-hour timeout. Without a defensive uploader, partner teams lose hours per case to format errors that surface only after retry.
-
-**Tools composed.**
-- `olmoearth.upload_labels` (`PLAN.md` §1).
-- Skill-local: `validate_studio_mime`, `shard_at_10k`, `split_multi_metric`.
-
----
-
-### 2. `olmoearth-rslearn-config`
-
-**Upstream:** unified with skill #1 inside [`olmoearth-data-prep`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-data-prep). The upstream skill emits both AWF-style (1 sentinel2 layer with 3 zoom_offset bandsets) and production-style (12 per-month layers) `dataset.json` layouts.
-
-**In:** labels + AOIs.
-**Out:** `rslearn` `dataset.json` + Lightning YAML.
-
-**What.** `oe_labels` schema, single-layer 3-bandset or per-month production layout, `es_label` rename, watershed AOIs from NLDI / HUC-12, 7-criteria audit before training starts.
-
-**Why.** Config friction is a documented barrier to operationalizing geospatial foundation models ([WorldCereal deployment lessons, arXiv:2508.00858](https://arxiv.org/abs/2508.00858), preprint). The `es_label` rename trap and layout confusion cause silent failures that only show up after a multi-hour training run.
+**Why.** Onboarding friction is the most repeated dropoff point for case providers. Studio uploads break silently: Windows rejects `.geojson` as `application/octet-stream`, and uploads above 10K records hit the 1-hour timeout. Config friction is likewise a documented barrier to operationalizing geospatial foundation models ([WorldCereal deployment lessons, arXiv:2508.00858](https://arxiv.org/abs/2508.00858), preprint): the `es_label` rename trap and layout confusion cause silent failures that only show up after a multi-hour training run.
 
 **Tools composed.**
-- `eo.window_tile`, `olmoearth.resolve_to_aoi` (`PLAN.md` §1).
-- Skill-local: `write_rslearn_config`, `audit_7_criteria`, `rename_es_label`.
+- `olmoearth_load_skill` (pulls the vendored `SKILL.md` into context on demand).
+- Upstream skill-local: `validate_studio_mime`, `shard_at_10k`, `split_multi_metric`, `write_rslearn_config`, `audit_7_criteria`, `rename_es_label`; `eo.window_tile` / `olmoearth.resolve_to_aoi` (`PLAN.md` §1).
+- Composes with skill #16 `olmoearth-negative-sampler`, whose output round-trips back through this skill's audit.
 
 ---
 
 ## Configure
 
-### 3. `olmoearth-studio-job-config`
+### 2. `olmoearth-studio-job-config`
 
 **Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config). Vendor as-is.
 
@@ -124,33 +102,30 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **Why.** Cross-field traps exist: detection with 320 m patch fails silently, Landsat is not yet available as a source, embeddings mode is incompatible with single-moment time frame. Researchers without OlmoEarth-specific intuition iterate on a misconfigured wizard for days. The validator catches the trap before the job is submitted.
 
 **Tools composed.**
-- Skill-local: `studio_job_validate`, `apply_preset`, `cross_field_check`.
+- `olmoearth_load_skill`; skill-local: `studio_job_validate`, `apply_preset`, `cross_field_check`.
 
 ---
 
-### 4. `olmoearth-embeddings`
+### 3. `olmoearth-embeddings`
 
-**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings). Vendor as-is; grounded in the AWF Kenya tutorial's accuracy/time/VRAM table. Handles the small-dataset (<100 samples), limited-compute (T4 / Colab), similarity-search, and "no labels yet" cases.
+**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings); grounded in the AWF Kenya tutorial's accuracy/time/VRAM table. Handles the small-dataset (<100 samples), limited-compute (T4 / Colab), similarity-search, and "no labels yet" cases.
 
-**In:** task profile (label volume, class balance, target VRAM, target latency).
-**Out:** embeddings-vs-fine-tune decision + runnable `.ipynb`.
+**In:** task profile (label volume, class balance, target VRAM, target latency); or a free-form `task` / a Hugging Face `hf_dataset` id for the one-call path.
+**Out:** an embeddings-vs-fine-tune decision + either a runnable `.ipynb` (the guidance path) or a ready config (the one-call path).
 
-**Versus #17.** This skill is the human-in-the-loop *guidance + notebook generator*: it explains the decision and emits a notebook the **user** runs. [`olmoearth-automate`](#17-olmoearth-automate) (#17) is the *one-call* automation that decides programmatically and proposes a config, reusing this skill's decision table.
+**What.** One embeddings-vs-fine-tune decision, offered two ways. **Guidance + notebook (vendored):** explains the decision grounded in the fine-tuned OlmoEarth benchmark table and emits a parameterized notebook that extracts Nano / Tiny / Base / Large embeddings and trains kNN + linear-probe heads for the **user** to run. **One-call automation (in-repo `olmoearth_automate`):** applies the same precedence rules programmatically — a faithful port of the vendored `recommend.decide`, kept in sync — and proposes an actionable config (model size, classifier head, an embeddings-notebook command, a fine-tune schedule, and a hand-off to skill #2 `olmoearth-studio-job-config`); given a Hugging Face dataset id it reads the row count + ClassLabel classes from the public datasets-server to fill its inputs. Inputs are task metadata only (no geometry), so results are provenance-safe.
 
-**What.** Decision grounded in the fine-tuned OlmoEarth benchmark table. Parameterized notebook extracts OlmoEarth Nano / Tiny / Base / Large embeddings and trains kNN + linear-probe heads.
-
-**Why.** Embeddings-vs-fine-tune is the most frequent decision point in EO foundation model use. Practitioners without empirical guidance over-fit Large models on small samples or under-use embeddings when they would have sufficed. The measured accuracy / time / VRAM tradeoffs from fine-tuned OlmoEarth make the choice visible and actionable. This is also a direct counter to AlphaEarth being shipped as annualized embeddings only.
+**Why.** Embeddings-vs-fine-tune is the most frequent decision point in EO foundation model use. Practitioners without empirical guidance over-fit Large models on small samples or under-use embeddings when they would have sufficed. The measured accuracy / time / VRAM tradeoffs make the choice visible and actionable — a direct counter to AlphaEarth being shipped as annualized embeddings only. **No fabrication:** the one-call path reports `ask_for` when key inputs are missing rather than guessing, and never invents dataset stats.
 
 **Tools composed.**
-- `olmoearth.fetch_embedding` (`PLAN.md` §1, new in v0.4).
-- `system:python` (opt-in subprocess) for light checks only -- the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack the sandbox does not guarantee).
-- Skill-local: `decision_matrix`, `knn_head`, `linear_probe_head`.
+- `olmoearth_load_skill` (the vendored guidance + notebook generator) and `olmoearth_automate` (the in-repo one-call decision + config + optional HF-dataset introspection).
+- `olmoearth.fetch_embedding` (`PLAN.md` §1); logic in `analysis/automate.py` (decision port + `propose_config` + `fetch_hf_dataset_profile`); `system:python` (opt-in subprocess) for light checks only — the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack the sandbox does not guarantee).
 
 ---
 
 ## Run
 
-### 5. `olmoearth-predict`
+### 4. `olmoearth-predict`
 
 **In:** Studio project + area + model_id + time range + config.
 **Out:** `PredictionRef`, status, and result tiles / vectors / metrics.
@@ -163,28 +138,28 @@ A realistic prompt that routes to each skill - what a user would actually type:
 - `olmoearth_search_predictions`, `olmoearth_submit_prediction`, `olmoearth_get_prediction`, `olmoearth_fetch_results`, `olmoearth_get_prediction_result` (wrapping `PLAN.md` §1 submit / poll / fetch_results).
 - `olmoearth.pixel_value`, `features_search` (`PLAN.md` §1; not yet built as tools).
 
-**AOI input (draw-in-chat).** `submit_prediction` needs an `area_id`. Rather than ask the user to type a bbox, the agent calls the foundational `olmoearth_request_aoi` tool, which surfaces an interactive map in the web UI; the user **draws** a rectangle or polygon, it is stored as a Studio area (`POST /areas` -> `area_id`), and its `area_id` + bounding box are fed back on the next turn. The same drawn bbox also feeds bbox-based skills such as #19 `olmoearth-latent-change`.
+**AOI input (draw-in-chat).** `submit_prediction` needs an `area_id`. Rather than ask the user to type a bbox, the agent calls the foundational `olmoearth_request_aoi` tool, which surfaces an interactive map in the web UI; the user **draws** a rectangle or polygon, it is stored as a Studio area (`POST /areas` -> `area_id`), and its `area_id` + bounding box are fed back on the next turn. The same drawn bbox also feeds the JEPA engine of skill #5.
 
-**First skill to ship.** Foundation that #6, #7, #9, #10 all reuse.
-
----
-
-### 6. `olmoearth-change-detect`
-
-**In:** Studio project + area + >=3 time points (refuses 2).
-**Out:** change layer + trajectory metrics.
-
-**What.** Two POSTs to `/predictions` at t0 and t1, plus at least one intermediate time, produce a change layer. Forces a 3+-date trajectory for conservation and agriculture cases rather than a single before / after.
-
-**Why.** Two-date diffs hide gradual drift. Annualized embedding products structurally cannot capture intra-annual signals such as cover-crop transitions, flood peaks, and harvest timing (consistent with [Ma et al. arXiv:2601.00857](https://arxiv.org/abs/2601.00857), preprint). Deforestation monitoring, crop calendars, and disaster workflows all need a trajectory. The skill enforces a minimum 3-date pattern so the agent does not publish false-change reports based on a single noisy pair.
-
-**Tools composed.**
-- Skill #5 (`olmoearth-predict`).
-- Skill-local: `diff_layers`, `enforce_min_3_dates`.
+**First skill to ship.** Foundation that #5, #6, #8, #9 all reuse.
 
 ---
 
-### 7. `olmoearth-baseline-compare`
+### 5. `olmoearth-change-detection`
+
+**In:** *(Engine A)* Studio project + area + >=3 time points (refuses 2). *(Engine B)* two co-registered 12-band Sentinel-2 GeoTIFFs (or AOI + 2 dates) + a trained predictor checkpoint.
+**Out:** *(A)* change layer + trajectory metrics. *(B)* a georeferenced change-score heatmap GeoTIFF (CRS / transform preserved), percent-area-changed, top-k changed-region GeoJSON, and a summary-stats JSON.
+
+One capability, two complementary engines.
+
+**Engine A — Studio multi-date trajectory diff (in-process).** Turns a dated series of per-date layer summaries into trajectory metrics: step deltas, net change, the largest-change interval, a reversal count, and a trend label. Refuses fewer than 3 dates, because a 2-date diff cannot tell a steady trend from a flood that peaked then receded. Two-date diffs hide gradual drift, and annualized embedding products structurally cannot capture intra-annual signals such as cover-crop transitions, flood peaks, and harvest timing (consistent with [Ma et al. arXiv:2601.00857](https://arxiv.org/abs/2601.00857), preprint). Tool: `olmoearth_change_detect` (composes skill #4).
+
+**Engine B — JEPA latent-prediction detector (out-of-process).** A change detector on **frozen** OlmoEarth embeddings: a lightweight head predicts the time-2 patch embedding from time-1, and the prediction residual is the change score (I-JEPA, Assran et al. CVPR 2023). Runs **out-of-process** in the standalone heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) (PyTorch + CUDA); the agent shells out to `python -m oejc.skill` and consumes the products. A naive embedding-difference (cosine) flags seasonal / illumination shifts as false change; the learned latent forward-model scores only deviation from the "normal" transition. On the OSCD test split (frozen OlmoEarth-v1-Base) it beats the cosine baseline by **+0.22 F1** (0.25 -> 0.47) and ~3x average precision, reaching **unsupervised-SOTA-level F1 0.54, label-free** (robust per-scene threshold) — integrity-verified (9x chance, permutation control, disjoint train / test cities). A Phase-2 gate study found current general VLMs cannot deliver calibrated, localized raster change comparison, so the agent needs this calibrated pixel-level tool. Full results + plan live in the separate repo's `RESULTS.md` / `PLAN.md`.
+
+**Dependency.** Engine B's heavy PyTorch + CUDA + rasterio stack lives in the **separate** repo and is kept **out of this torch-free agent**; the agent invokes it out-of-process (CLI or container). No heavy dependencies are added here. A torch-free subprocess tool-wrapper (so the agent loop can call it live) is the natural follow-up.
+
+---
+
+### 6. `olmoearth-baseline-compare`
 
 **In:** Studio project + area + transfer-region AOI.
 **Out:** difference raster + per-metric comparison table.
@@ -196,14 +171,14 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **Dependency.** The AlphaEarth side is data you export from the public Google Earth Engine "Satellite Embedding" dataset; the skill takes those bring-your-own predictions / scores and makes no live GEE or MCP connection. (AlphaEarth embeddings are now public via GEE, so no Trusted-Tester access is required.)
 
 **Tools composed.**
-- Skill #5.
+- Skill #4.
 - Skill-local: `compare_metrics`, `difference_raster`, exposed as the `olmoearth_baseline_compare` tool (operates on the two metric sets the caller already has).
 
 ---
 
 ## Analyze
 
-### 8. `olmoearth-evaluate`
+### 7. `olmoearth-evaluate`
 
 **In:** `ResultBundle` + ground truth.
 **Out:** per-class metrics + spatial-block CV + NNDM-LOO results.
@@ -219,7 +194,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ---
 
-### 9. `olmoearth-similarity`
+### 8. `olmoearth-similarity`
 
 **In:** query AOI / patch.
 **Out:** top-K similar patches with similarity scores + geographic-prior warning.
@@ -235,7 +210,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ---
 
-### 10. `olmoearth-uncertainty`
+### 9. `olmoearth-uncertainty`
 
 **In:** `PredictionRef` + AOI.
 **Out:** confidence map + DI-weighted OOD flag per region.
@@ -250,7 +225,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ---
 
-### 11. `olmoearth-cloud-mask-audit`
+### 10. `olmoearth-cloud-mask-audit`
 
 **In:** STAC items for an AOI + time range.
 **Out:** per-tile cloud-mask disagreement raster + bad-mask-vs-bad-model verdict.
@@ -267,7 +242,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ## Integrate
 
-### 12. `olmoearth-qgis-bridge`
+### 11. `olmoearth-qgis-bridge`
 
 **In:** `ResultBundle.tile_template` + uncertainty.
 **Out:** QGIS WMTS connection file + COG + sidecar uncertainty raster + SLD style.
@@ -282,7 +257,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ---
 
-### 13. `olmoearth-data-export`
+### 12. `olmoearth-data-export`
 
 **REFRAMED 2026-05-28.** The original idea (wire third-party GEE / OSM /
 USGS / NOAA MCPs *into* an AOI) needs external MCPs the user must connect
@@ -311,7 +286,7 @@ The original spec follows for reference:
 
 ## Report
 
-### 14. `olmoearth-provenance`
+### 13. `olmoearth-provenance`
 
 **In:** every API call (transparent wrap).
 **Out:** manifest + single-command replay script.
@@ -328,7 +303,7 @@ The original spec follows for reference:
 
 ---
 
-### 15. `olmoearth-case-narrative`
+### 14. `olmoearth-case-narrative`
 
 **In:** `tile_urls` + provenance manifest.
 **Out:** stakeholder writeup with live tiles + freshness gate.
@@ -338,13 +313,13 @@ The original spec follows for reference:
 **Why.** Practitioners working under operational timelines often need to ship a working solution rather than an optimal one ([WorldCereal lessons, arXiv:2508.00858](https://arxiv.org/abs/2508.00858), preprint). NGO leadership, journalists, and policymakers need outputs tied to map tiles and policy briefs, not Jupyter notebooks. Freshness gating prevents stale-tile reports during disaster response when conditions change within hours.
 
 **Tools composed.**
-- Skill #14 (`olmoearth-provenance`) for manifest read.
+- Skill #13 (`olmoearth-provenance`) for manifest read.
 - `olmoearth.fetch_results` for tile URLs.
 - Skill-local: `freshness_gate`, `narrative_template`, `tile_embed`.
 
 ---
 
-### 16. `olmoearth-litsearch`
+### 15. `olmoearth-litsearch`
 
 **In:** a free-text query, or a single DOI / arXiv id.
 **Out:** curated paper records (id, title, authors, year, venue, doi, arxiv_id, url, cited_by_count; abstract optional), deduped across sources.
@@ -359,31 +334,16 @@ The original spec follows for reference:
 
 ---
 
-### 17. `olmoearth-automate`
+## Prep (continued)
 
-**In:** a free-form `task` (e.g. "land cover, 9 classes, 200 samples, T4 GPU"), explicit `num_samples` / `num_classes` / `compute` / `goal`, and/or a Hugging Face `hf_dataset` id.
-**Out:** a decision (`embeddings` / `embeddings_then_fine_tune` / `fine_tune`), rationale, and a proposed config (model size, classifier head, an embeddings-notebook command, a fine-tune schedule, and a hand-off to `olmoearth-studio-job-config`).
-
-**Versus #4.** [`olmoearth-embeddings`](#4-olmoearth-embeddings) (#4) is the *guidance + notebook generator* (the user runs the notebook). This skill is the *one-call* version: it decides programmatically and emits a ready config, can fill its inputs from a Hugging Face dataset, and reuses #4's decision table rather than duplicating it.
-
-**What.** Applies the embeddings-vs-fine-tune precedence rules -- a faithful port of the vendored `olmoearth-embeddings` `recommend.decide` (kept in sync) -- then proposes an actionable config. Given a Hugging Face dataset id, it reads the row count + ClassLabel classes from the public datasets-server to fill the inputs. Inputs are task metadata only (no geometry), so results are provenance-safe.
-
-**Why.** Picking embeddings vs fine-tune, the model size, and the classifier head is the most common configuration decision in EO foundation-model use, and the precedence (sample-size / compute / goal) is easy to get wrong by hand. This automates the call and proposes a runnable plan, routing Studio-side specifics to `olmoearth-studio-job-config`. **No fabrication:** reports `ask_for` when key inputs are missing rather than guessing, and never invents dataset stats.
-
-**Tools composed.**
-- `olmoearth_automate` (decision + config; optional HF-dataset introspection).
-- Logic in `analysis/automate.py` (decision port + `propose_config` + `fetch_hf_dataset_profile`); reuses the vendored `olmoearth-embeddings` decision table.
-
----
-
-### 18. `olmoearth-negative-sampler`
+### 16. `olmoearth-negative-sampler`
 
 **In:** a presence-only labels GeoJSON path (`positives_path`); optional `candidates_path`, `negative_label`, `n_negatives`, `exclusion_km`, `min_separation_km`, `contamination_threshold`.
 **Out:** a combined GeoJSON (positives + generated negatives) written to `out_path`, plus a counts/ranking summary and a `quality` report (no raw coordinates in chat).
 
-**What.** Generates the missing negative/background class for a presence-only label set as **buffered, spatially-thinned pseudo-absences** (Barbet-Massin et al. 2012): candidate background points within `exclusion_km` of any positive are dropped, accepted negatives are kept `min_separation_km` apart, and -- when the inputs carry per-feature `properties.embedding` vectors -- candidates are ranked by environmental *dissimilarity* to the positive centroid (the inverse of skill #9's similarity search). With `contamination_threshold` set, the embedding path also drops candidates whose similarity to *any* positive meets the threshold -- likely **unmapped positives** -- guarding against environmental contamination on top of the spatial buffer. Defaults to a balanced 1:1 set and writes the negatives under the same schema field the positives use (`sample_category` / `es_label` / `oe_labels.category`). Deterministic; no GDAL.
+**What.** Generates the missing negative/background class for a presence-only label set as **buffered, spatially-thinned pseudo-absences** (Barbet-Massin et al. 2012): candidate background points within `exclusion_km` of any positive are dropped, accepted negatives are kept `min_separation_km` apart, and -- when the inputs carry per-feature `properties.embedding` vectors -- candidates are ranked by environmental *dissimilarity* to the positive centroid (the inverse of skill #8's similarity search). With `contamination_threshold` set, the embedding path also drops candidates whose similarity to *any* positive meets the threshold -- likely **unmapped positives** -- guarding against environmental contamination on top of the spatial buffer. Defaults to a balanced 1:1 set and writes the negatives under the same schema field the positives use (`sample_category` / `es_label` / `oe_labels.category`). Deterministic; no GDAL.
 
-**Why.** A presence-only set is not trainable -- a classifier with no counter-examples predicts the positive class everywhere (the "false positives everywhere" failure, pitfall #8 in `olmoearth-data-prep`). That skill's `audit.py` *detects* the gap (it hard-FAILs `check_negative_class`) but its `--negative-class auto` was deferred, so the agent could previously only report the dataset as unusable and stop. This skill converts that dead-end into a finished artifact: the combined file round-trips straight back through the data-prep audit and clears the negative-class check. **Honest by construction:** pseudo-absences are a heuristic, never verified absences, so every result carries a `quality` report (nearest-positive distance + similarity-to-positive stats) for the user to judge and tune; the negative label must be one the audit recognizes; and a placement shortfall (buffer / thinning / contamination / extent too tight) is surfaced as a warning rather than silently under-filled.
+**Why.** A presence-only set is not trainable -- a classifier with no counter-examples predicts the positive class everywhere (the "false positives everywhere" failure, pitfall #8 in `olmoearth-data-prep`). That skill's `audit.py` *detects* the gap (it hard-FAILs `check_negative_class`) but its `--negative-class auto` was deferred, so the agent could previously only report the dataset as unusable and stop. This skill converts that dead-end into a finished artifact: the combined file round-trips straight back through the skill #1 `olmoearth-data-prep` audit and clears the negative-class check. **Honest by construction:** pseudo-absences are a heuristic, never verified absences, so every result carries a `quality` report (nearest-positive distance + similarity-to-positive stats) for the user to judge and tune; the negative label must be one the audit recognizes; and a placement shortfall (buffer / thinning / contamination / extent too tight) is surfaced as a warning rather than silently under-filled.
 
 **Tools composed.**
 - `olmoearth_negative_sampler` (file -> file; counts + path returned).
@@ -391,24 +351,11 @@ The original spec follows for reference:
 
 ---
 
-### 19. `olmoearth-latent-change`
-
-**In:** two co-registered 12-band Sentinel-2 GeoTIFFs (or AOI + 2 dates) + a trained predictor checkpoint.
-**Out:** a georeferenced change-score heatmap GeoTIFF (CRS / transform preserved), percent-area-changed, top-k changed-region GeoJSON (area + mean score), and a summary-stats JSON.
-
-**What.** A JEPA latent-prediction change detector on **frozen** OlmoEarth embeddings: a lightweight head predicts the time-2 patch embedding from time-1, and the prediction residual is the change score (I-JEPA, Assran et al. CVPR 2023). Runs **out-of-process** in the standalone heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) (PyTorch + CUDA); the agent shells out to `python -m oejc.skill` and consumes the products. **Complementary to #6** `olmoearth-change-detect` (Studio-API multi-date trajectory diff, no local model): this is a local-model two-date pixel-level detector.
-
-**Why.** A naive embedding-difference (cosine) flags seasonal / illumination shifts as false change; the learned latent forward-model scores only deviation from the "normal" transition. On the OSCD test split (frozen OlmoEarth-v1-Base) it beats the cosine baseline by **+0.22 F1** (0.25 -> 0.47) and ~3x average precision, reaching **unsupervised-SOTA-level F1 0.54, label-free** (robust per-scene threshold) -- integrity-verified (9x chance, permutation control, disjoint train / test cities). A Phase-2 gate study found current general VLMs cannot deliver calibrated, localized raster change comparison (uncalibrated, prompt-dependent, no pixel output), so the agent needs this calibrated pixel-level tool. Full results + plan live in the separate repo's `RESULTS.md` / `PLAN.md`.
-
-**Dependency.** The heavy PyTorch + CUDA + rasterio stack lives in the **separate** repo and is kept **out of this torch-free agent**; the agent invokes it out-of-process (CLI or container). No heavy dependencies are added here. A torch-free subprocess tool-wrapper (so the agent loop can call it live) is the natural follow-up.
-
----
-
 ## Roadmap reference
 
-Implementation order tracks `PLAN.md` §6. First skill to ship is **#5 `olmoearth-predict`** (the foundation that #6, #7, #9, #10 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
+Implementation order tracks `PLAN.md` §6. First skill to ship was **#4 `olmoearth-predict`** (the foundation that #5, #6, #8, #9 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 19 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #18.
+Candidate skills beyond the current 16 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
 
 ## Adding a skill
 
@@ -423,6 +370,6 @@ See [`CONTRIBUTING.md` §3](CONTRIBUTING.md#3-branch-and-pr-workflow) for branch
 
 ## Vendoring policy
 
-[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) is canonical for skills #1-#4; agent vendors at a pinned commit. Decide in the first skill PR:
+[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) is canonical for skills #1-#3; agent vendors at a pinned commit. Decide in the first skill PR:
 - **A. Git submodule**: track an upstream SHA; cleanest provenance, harder for casual contributors.
 - **B. Copy + provenance in `skill-card.md`**: simpler, drift risk if the bump is forgotten.

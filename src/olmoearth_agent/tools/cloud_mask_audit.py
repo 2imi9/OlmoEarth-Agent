@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-cloud-mask-audit`` tool bundle (skill #11).
+"""The ``olmoearth-cloud-mask-audit`` tool bundle (skill #10).
 
 Surfaces cloud-mask ensemble disagreement and, when given a model-error
 mask, returns a bad-mask-vs-bad-model verdict. Operates on masks the

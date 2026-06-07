@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-uncertainty`` tool bundle (skill #10).
+"""The ``olmoearth-uncertainty`` tool bundle (skill #9).
 
 Exposes the Meyer-Pebesma Area-of-Applicability OOD flag. Operates on
 feature vectors the caller already has (training-data features + the AOI

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-negative-sampler`` tool bundle (skill #18).
+"""The ``olmoearth-negative-sampler`` tool bundle (skill #16).
 
 Turns a *presence-only* label GeoJSON (every feature is a positive sighting of
 one class) into a **trainable** dataset by generating the missing

@@ -4,7 +4,7 @@
 
 Lets the agent run a short Python snippet for LIGHT orchestration/inspection
 between API calls: open an rslearn ``Dataset``, tag a train/val split, compute
-a quick stat, drive an embeddings step (e.g. skill #4's notebook glue).
+a quick stat, drive an embeddings step (e.g. skill #3's notebook glue).
 
 This is ARBITRARY CODE EXECUTION, so it is **opt-in**: the bundle is empty
 unless ``OLMOEARTH_RUN_PYTHON`` is truthy. Even then it is a deliberately small

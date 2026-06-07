@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Stakeholder narrative with a freshness gate (skill #15).
+"""Stakeholder narrative with a freshness gate (skill #14).
 
 Assembles a Markdown report from prediction results + the run's
 provenance, and **refuses to render stale tiles** past a configurable

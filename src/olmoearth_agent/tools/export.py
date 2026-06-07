@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The data-export tool bundle (skill #13, reframed).
+"""The data-export tool bundle (skill #12, reframed).
 
 Exports the user's Studio projects + predictions, grouped by project or
 by status, as JSON files. Curated to ids / names / statuses / times:

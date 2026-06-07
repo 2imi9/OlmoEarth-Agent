@@ -71,7 +71,7 @@ MAX_TOKENS = 3000
 #: final-answer budget lower to stay clear of the 8K window.
 SKILL_MAX_TOKENS = 2200
 
-#: Skill #5 has a write tool (submit_prediction). The showcase only ever
+#: Skill #4 has a write tool (submit_prediction). The showcase only ever
 #: demonstrates the read-only half so it cannot mutate the user's account.
 _PREDICT_READONLY = {
     "olmoearth_search_predictions",
@@ -261,10 +261,10 @@ async def main() -> None:
         studio = None  # no OLMOEARTH_API_KEY: #5 / #13 fall back to a note
 
     try:
-        # ---- #1-2 olmoearth-data-prep (vendored, progressive disclosure) ----
+        # ---- #1 olmoearth-data-prep (vendored, progressive disclosure) ----
         sections.append(
             render(
-                "1-2",
+                "1",
                 "olmoearth-data-prep",
                 "Prep",
                 "labels -> Studio-ready dataset (8 prep pitfalls), via load_skill",
@@ -281,10 +281,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #3 olmoearth-studio-job-config (vendored) ----
+        # ---- #2 olmoearth-studio-job-config (vendored) ----
         sections.append(
             render(
-                3,
+                2,
                 "olmoearth-studio-job-config",
                 "Configure",
                 "task description -> Studio job-wizard answers (14 presets)",
@@ -300,10 +300,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #4 olmoearth-embeddings (vendored) ----
+        # ---- #3 olmoearth-embeddings (vendored guidance + one-call automate) ----
         sections.append(
             render(
-                4,
+                3,
                 "olmoearth-embeddings",
                 "Configure",
                 "embeddings-vs-fine-tune decision, via load_skill",
@@ -319,11 +319,28 @@ async def main() -> None:
             )
         )
 
-        # ---- #5 olmoearth-predict (live Studio API, read-only) ----
+        # ---- #3 olmoearth-automate: the one-call facet of #3 olmoearth-embeddings ----
+        sections.append(
+            render(
+                3,
+                "olmoearth-automate",
+                "Configure",
+                "auto-decide embeddings vs fine-tune + propose a config",
+                await capture(
+                    llm,
+                    build_automate_tools(),
+                    "I have 200 labeled samples across 9 land-cover classes and only "
+                    "a Colab T4 GPU. Should I fine-tune OlmoEarth or use embeddings, "
+                    "and what setup should I use? Decide and propose a config.",
+                ),
+            )
+        )
+
+        # ---- #4 olmoearth-predict (live Studio API, read-only) ----
         if studio is not None:
             sections.append(
                 render(
-                    5,
+                    4,
                     "olmoearth-predict",
                     "Run",
                     "the core run loop: discover a model_id, then fetch result tiles",
@@ -340,7 +357,7 @@ async def main() -> None:
         else:
             sections.append(
                 _note(
-                    5,
+                    4,
                     "olmoearth-predict",
                     "Run",
                     "the core run loop: search / submit / poll / fetch results",
@@ -352,11 +369,11 @@ async def main() -> None:
                 )
             )
 
-        # ---- #6 change-detect ----
+        # ---- #5 change-detection (Engine A: Studio trajectory) ----
         sections.append(
             render(
-                6,
-                "olmoearth-change-detect",
+                5,
+                "olmoearth-change-detection",
                 "Run",
                 "multi-date trajectory diff (refuses naive 2-date)",
                 await capture(
@@ -372,10 +389,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #7 baseline-compare ----
+        # ---- #6 baseline-compare ----
         sections.append(
             render(
-                7,
+                6,
                 "olmoearth-baseline-compare",
                 "Run",
                 "OlmoEarth vs AlphaEarth head-to-head",
@@ -392,10 +409,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #8 evaluate (three tools) ----
+        # ---- #7 evaluate (three tools) ----
         sections.append(
             render(
-                8,
+                7,
                 "olmoearth-evaluate",
                 "Analyze",
                 "random-vs-spatial CV inflation check",
@@ -412,7 +429,7 @@ async def main() -> None:
         )
         sections.append(
             render(
-                8,
+                7,
                 "olmoearth-evaluate",
                 "Analyze",
                 "per-class classification metrics",
@@ -427,7 +444,7 @@ async def main() -> None:
         )
         sections.append(
             render(
-                8,
+                7,
                 "olmoearth-evaluate",
                 "Analyze",
                 "NNDM-LOO folds for an unbiased map-accuracy estimate (CAST port)",
@@ -447,10 +464,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #9 similarity ----
+        # ---- #8 similarity ----
         sections.append(
             render(
-                9,
+                8,
                 "olmoearth-similarity",
                 "Analyze",
                 "top-K embedding search + geographic-prior warning",
@@ -470,10 +487,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #10 uncertainty ----
+        # ---- #9 uncertainty ----
         sections.append(
             render(
-                10,
+                9,
                 "olmoearth-uncertainty",
                 "Analyze",
                 "Meyer-Pebesma Area-of-Applicability OOD flag",
@@ -490,10 +507,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #11 cloud-mask-audit ----
+        # ---- #10 cloud-mask-audit ----
         sections.append(
             render(
-                11,
+                10,
                 "olmoearth-cloud-mask-audit",
                 "Analyze",
                 "ensemble disagreement + bad-mask-vs-bad-model verdict",
@@ -510,10 +527,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #12 qgis-bridge ----
+        # ---- #11 qgis-bridge ----
         sections.append(
             render(
-                12,
+                11,
                 "olmoearth-qgis-bridge",
                 "Integrate",
                 "tile URLs -> QGIS XYZ layer + OGC SLD style",
@@ -529,11 +546,11 @@ async def main() -> None:
             )
         )
 
-        # ---- #13 olmoearth-data-export (live Studio API) ----
+        # ---- #12 olmoearth-data-export (live Studio API) ----
         if studio is not None:
             sections.append(
                 render(
-                    13,
+                    12,
                     "olmoearth-data-export",
                     "Integrate",
                     "export Studio projects + predictions, grouped, to JSON",
@@ -549,7 +566,7 @@ async def main() -> None:
         else:
             sections.append(
                 _note(
-                    13,
+                    12,
                     "olmoearth-data-export",
                     "Integrate",
                     "export Studio projects + predictions, grouped, to JSON",
@@ -559,12 +576,12 @@ async def main() -> None:
                 )
             )
 
-        # ---- #14 provenance (seeded run log) ----
+        # ---- #13 provenance (seeded run log) ----
         prov_state = ThreadState()
         _seed_provenance(prov_state)
         sections.append(
             render(
-                14,
+                13,
                 "olmoearth-provenance",
                 "Report",
                 "manifest over every tool call + replay skeleton",
@@ -579,13 +596,13 @@ async def main() -> None:
             )
         )
 
-        # ---- #15 case-narrative (seeded provenance, fresh + stale results) ----
+        # ---- #14 case-narrative (seeded provenance, fresh + stale results) ----
         fresh_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         narr_state = ThreadState()
         _seed_provenance(narr_state)
         sections.append(
             render(
-                15,
+                14,
                 "olmoearth-case-narrative",
                 "Report",
                 "stakeholder Markdown writeup + freshness gate",
@@ -609,10 +626,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #16 olmoearth-litsearch (live arXiv + OpenAlex) ----
+        # ---- #15 olmoearth-litsearch (live arXiv + OpenAlex) ----
         sections.append(
             render(
-                16,
+                15,
                 "olmoearth-litsearch",
                 "Report",
                 "live arXiv + OpenAlex search to ground a citation",
@@ -626,27 +643,10 @@ async def main() -> None:
             )
         )
 
-        # ---- #17 olmoearth-automate (local decision + config) ----
+        # ---- #16 olmoearth-negative-sampler (presence-only -> trainable) ----
         sections.append(
             render(
-                17,
-                "olmoearth-automate",
-                "Configure",
-                "auto-decide embeddings vs fine-tune + propose a config",
-                await capture(
-                    llm,
-                    build_automate_tools(),
-                    "I have 200 labeled samples across 9 land-cover classes and only "
-                    "a Colab T4 GPU. Should I fine-tune OlmoEarth or use embeddings, "
-                    "and what setup should I use? Decide and propose a config.",
-                ),
-            )
-        )
-
-        # ---- #18 olmoearth-negative-sampler (presence-only -> trainable) ----
-        sections.append(
-            render(
-                18,
+                16,
                 "olmoearth-negative-sampler",
                 "Prep",
                 "generate a negative/background class for a presence-only set",
@@ -666,18 +666,18 @@ async def main() -> None:
             await studio.aclose()
 
     live_line = (
-        "Skills #5 and #13 are captured against the **live Studio API** "
-        "(#5 read-only: the write half is never exercised); #1-#4 load the "
+        "Skills #4 and #12 are captured against the **live Studio API** "
+        "(#4 read-only: the write half is never exercised); #1-#3 load the "
         "real vendored `SKILL.md` bodies through `olmoearth_load_skill`."
         if studio is not None
-        else "Skills #5 and #13 need `OLMOEARTH_API_KEY` (absent here), so they "
+        else "Skills #4 and #12 need `OLMOEARTH_API_KEY` (absent here), so they "
         "show a short note; every other skill is a live capture."
     )
 
     header = (
         "<!-- Generated by scripts/generate_showcase.py: do not edit by hand. -->\n"
         "# OlmoEarth Agent - Skills in Action\n\n"
-        "The OlmoEarth Agent ships **18 skills** that drive the OlmoEarth Studio "
+        "The OlmoEarth Agent ships **16 skills** that drive the OlmoEarth Studio "
         "platform from natural-language briefs. This page shows each skill, in "
         "order, being **driven by the real LLM**: a brief goes in, the Qwen3.6 "
         "backbone reasons, calls the skill's tool(s), reads the result, and "
@@ -686,9 +686,9 @@ async def main() -> None:
         "agent loop against the live **Qwen3.6-35B-A3B** model (4-bit "
         "`UD-IQ4_XS` GGUF, served via llama.cpp). The reasoning, the function "
         "arguments, and the answer are all the model's own output, and the "
-        "function results are real: the live Studio API (#5, #13), the vendored "
-        "`SKILL.md` files (#1-#4), a live arXiv + OpenAlex search (#16), and real "
-        "computation (#6-#15, #17, #18). Nothing is "
+        "function results are real: the live Studio API (#4, #12), the vendored "
+        "`SKILL.md` files (#1-#3), a live arXiv + OpenAlex search (#15), and real "
+        "computation (#5-#11, #13, #14, #16). Nothing is "
         "fabricated. Because the agent samples at temperature 1.0, each run "
         "captures a fresh trace; the wording varies, the behaviour does not. "
         "Regenerate with:\n>\n"

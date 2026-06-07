@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Group + serialize Studio data for easy export (skill #13, reframed).
+"""Group + serialize Studio data for easy export (skill #12, reframed).
 
 Originally "external-data" (wire third-party MCPs); reframed to the more
 useful + self-contained "export our own Studio data, grouped": projects

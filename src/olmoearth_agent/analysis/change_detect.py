@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Change-detection trajectory diff (skill #6, ``olmoearth-change-detect``).
+"""Change-detection trajectory diff (skill #5 ``olmoearth-change-detection``, Engine A).
 
 Pure Python, no raster deps. The agent extracts one summary ``value`` per
 prediction date (e.g. positive-class fraction or mean score over the AOI,
-from a skill #5 result) and this module turns the dated series into
+from a skill #4 result) and this module turns the dated series into
 trajectory metrics: per-step deltas, net change, the largest-change
 interval, a reversal count, and a trend label.
 
 The headline behaviour is a refusal: a two-date diff reports net change
 but cannot distinguish a steady trend from a reversal (a flood that
 peaked then receded reads as "no change"), so :func:`enforce_min_3_dates`
-requires at least three distinct dates (``SKILLS.md`` #6; Ma et al.
+requires at least three distinct dates (``SKILLS.md`` #5; Ma et al.
 arXiv:2601.00857).
 """
 

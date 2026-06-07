@@ -4,7 +4,7 @@
 
 Pure query-build / parse / cross-source dedup helpers, plus async fetchers that
 take an *injected* async getter (``Fetcher``) so the logic is testable without
-any network. Powers the ``olmoearth-litsearch`` tool bundle (skill #16).
+any network. Powers the ``olmoearth-litsearch`` tool bundle (skill #15).
 
 Both sources are used **key-free**: arXiv needs no auth; OpenAlex is queried via
 the documented "polite pool" by sending a ``mailto`` (read from

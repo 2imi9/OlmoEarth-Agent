@@ -20,7 +20,7 @@ doi:10.1111/j.2041-210X.2011.00172.x):
    rewards).
 3. *Rank* -- when the caller supplies embeddings for the candidates *and* the
    positives, candidates are ordered by **environmental dissimilarity** to the
-   positive centroid -- the inverse of skill #9's similarity search -- so the
+   positive centroid -- the inverse of skill #8's similarity search -- so the
    negatives are drawn from genuinely different conditions. Without embeddings,
    selection falls back to deterministic farthest-point spatial dispersion.
 
@@ -285,7 +285,7 @@ def sample_negatives(
     positive_embeddings, candidate_embeddings
         Optional parallel embedding vectors. When *both* are supplied (and
         ``candidates`` is explicit), negatives are ranked by environmental
-        dissimilarity to the positive centroid (inverts skill #9). Otherwise
+        dissimilarity to the positive centroid (inverts skill #8). Otherwise
         selection uses farthest-point spatial dispersion.
     margin_deg
         Bbox margin when the study area is derived from the positives' extent.
