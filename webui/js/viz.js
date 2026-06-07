@@ -305,6 +305,14 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { padding: [10, 10], maxZoom: 13 });
   setTimeout(() => map.invalidateSize(), 60);
 
+  // Soft radar sweep + per-cell ignite while the diff cells paint in (CSS-driven;
+  // decoupled from the async cell arrival). The beam overlay sits above Leaflet's
+  // overlay pane; JS only toggles .is-scanning here and .viz-cell--in per cell.
+  const scan = document.createElement('div');
+  scan.className = 'viz-scan';
+  el.appendChild(scan);
+  el.classList.add('is-scanning');
+
   const [minx, miny, maxx, maxy] = bbox;
   const dx = (maxx - minx) / n, dy = (maxy - miny) / n;
   const cells = [];
@@ -328,7 +336,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     '<span class="pp-track"><span class="pp-fill"></span></span>';
   const ppCount = prog.querySelector('.pp-count');
   container.insertBefore(prog, status);
-  const endProgress = () => { prog.remove(); status.style.display = ''; };
+  const endProgress = () => {
+    prog.remove(); status.style.display = '';
+    setTimeout(() => el.classList.remove('is-scanning'), 600);  // let the sweep finish a pass
+  };
 
   await pool(cells, 8, async (c) => {
     let va = null, vb = null;
@@ -338,7 +349,8 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     if (typeof va === 'number' && typeof vb === 'number') {
       c.diff = vb - va; xs.push(va); ys.push(vb); absd.push(Math.abs(c.diff));
       if (Math.abs(c.diff) > scaleMax) { scaleMax = Math.abs(c.diff); recolor(); }
-      c.rect = L.rectangle(c.bounds, diffStyle(c.diff, scaleMax)).addTo(map);
+      c.rect = L.rectangle(c.bounds, { ...diffStyle(c.diff, scaleMax), className: 'viz-cell' }).addTo(map);
+      if (c.rect._path) c.rect._path.classList.add('viz-cell--in');  // ignite the SVG path
     }
     ppCount.textContent = done + '/' + total;
     prog.style.setProperty('--pp', (done / total).toFixed(3));
