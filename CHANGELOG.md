@@ -9,6 +9,28 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Changed
+- **Skill catalog consolidated 19 -> 16.** Three pairs of catalog entries were
+  each one capability split across two rows; merged and renumbered:
+  - **#1 `olmoearth-data-prep`** <- the former `olmoearth-studio-upload` (#1) +
+    `olmoearth-rslearn-config` (#2): they were two rows for the single vendored
+    `olmoearth-data-prep` SKILL.md package (now the vendored set = the 3 actual
+    `vendor/olmoearth-skills` dirs).
+  - **#3 `olmoearth-embeddings`** <- the former `olmoearth-embeddings` (#4) +
+    `olmoearth-automate` (#17): one embeddings-vs-fine-tune decision with two
+    facets (vendored guidance + notebook, and the in-repo `olmoearth_automate`
+    one-call tool).
+  - **#5 `olmoearth-change-detection`** <- the former `olmoearth-change-detect`
+    (#6) + `olmoearth-latent-change` (#19): change detection with two engines
+    (in-process Studio multi-date trajectory + out-of-process JEPA latent
+    residual).
+  No tool was removed and the vendored skill index is unchanged, so the agent's
+  routing surface (tool specs + skill index) is identical -- the merge is a
+  catalog/documentation consolidation, not a behaviour change. Propagated across
+  `registry.py`, `SKILLS.md`, `README.md`, the web UI (`skills.js` cards +
+  `index.html` counts), `docs/CANON.md`, `PLAN.md`, every tool/analysis
+  docstring, and a live-regenerated `docs/SHOWCASE.md`.
+
 ### Added
 - **Skill #19 `olmoearth-latent-change`** (catalog 18 -> 19): a JEPA latent-prediction
   change detector on **frozen** OlmoEarth embeddings, shipped as a thin
