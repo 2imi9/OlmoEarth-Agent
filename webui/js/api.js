@@ -38,6 +38,33 @@ export function llmHeaders() {
 
 function keyHeaders() { return { 'X-Olmoearth-Key': studioKey() }; }
 
+/* Client-side GET cache: reopening the Projects tree or the AOI modal should
+   not re-fetch the same read through the (slow) proxy every time. Caches the
+   in-flight promise (concurrent callers share one request) + the resolved
+   JSON for `ttl` ms; a failed request is evicted so it retries. Cleared on a
+   key change; areas invalidated after a create. */
+const _getCache = new Map();  // url -> { ts, promise }
+const _TTL_LONG = 300000;     // projects / areas / extent: rarely change in a session
+const _TTL_SHORT = 45000;     // predictions / results: change as runs progress
+
+function _cachedGet(url, ttl) {
+  const hit = _getCache.get(url);
+  if (hit && Date.now() - hit.ts < ttl) return hit.promise;
+  const promise = fetch(url, { headers: keyHeaders() })
+    .then((res) => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .catch((e) => { _getCache.delete(url); throw e; });
+  _getCache.set(url, { ts: Date.now(), promise });
+  return promise;
+}
+
+/* Drop all cached reads (e.g. when the Studio key changes). */
+export function clearApiCache() { _getCache.clear(); }
+
+/* Drop cached reads whose URL contains `substr` (e.g. after creating an area). */
+export function invalidateApi(substr) {
+  for (const k of Array.from(_getCache.keys())) if (k.includes(substr)) _getCache.delete(k);
+}
+
 // GET /api/health -> the health object, or null when absent (static-file demo).
 export async function apiHealth() {
   const res = await fetch('/api/health', { method: 'GET' });
@@ -66,11 +93,9 @@ export async function apiLlmModels(backend, key) {
   return (await res.json()).models || [];
 }
 
-// GET /api/projects -> [{id, name}, ...]. Throws on !ok.
+// GET /api/projects -> [{id, name}, ...]. Cached. Throws on !ok.
 export async function apiProjects() {
-  const res = await fetch('/api/projects', { headers: keyHeaders() });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()).projects || [];
+  return (await _cachedGet('/api/projects', _TTL_LONG)).projects || [];
 }
 
 // POST /api/areas -> the stored area { id, name, project_id, bbox }. Throws on !ok.
@@ -85,14 +110,15 @@ export async function apiCreateArea(name, geom, projectId) {
     try { detail = (await res.json()).detail || detail; } catch (e) {}
     throw new Error(detail);
   }
+  // The project's area list just changed -> drop its cached read.
+  invalidateApi('/api/projects/' + encodeURIComponent(projectId) + '/areas');
   return (await res.json()).area || {};
 }
 
-// GET /api/projects/{id}/areas -> [{id, name}, ...]. Throws on !ok.
+// GET /api/projects/{id}/areas -> [{id, name}, ...]. Cached. Throws on !ok.
 export async function apiAreas(projectId) {
-  const res = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/areas', { headers: keyHeaders() });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()).areas || [];
+  const url = '/api/projects/' + encodeURIComponent(projectId) + '/areas';
+  return (await _cachedGet(url, _TTL_LONG)).areas || [];
 }
 
 // GET /api/pixel-value -> { value, property, categorical } (value null = nodata). Throws on !ok.
@@ -104,30 +130,26 @@ export async function apiPixelValue(resultId, lon, lat, property) {
   return res.json();
 }
 
-// GET /api/areas/{id} -> { id, name, project_id, geom, bbox }. Throws on !ok.
+// GET /api/areas/{id} -> { id, name, project_id, geom, bbox }. Cached. Throws on !ok.
 export async function apiArea(areaId) {
-  const res = await fetch('/api/areas/' + encodeURIComponent(areaId), { headers: keyHeaders() });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()).area || {};
+  const url = '/api/areas/' + encodeURIComponent(areaId);
+  return (await _cachedGet(url, _TTL_LONG)).area || {};
 }
 
-// GET /api/results/{id}/extent -> { result_id, bbox, tile_url, property }. Throws on !ok.
+// GET /api/results/{id}/extent -> { result_id, bbox, tile_url, property }. Cached. Throws on !ok.
 export async function apiResultExtent(resultId) {
-  const res = await fetch('/api/results/' + encodeURIComponent(resultId) + '/extent', { headers: keyHeaders() });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()).extent || {};
+  const url = '/api/results/' + encodeURIComponent(resultId) + '/extent';
+  return (await _cachedGet(url, _TTL_LONG)).extent || {};
 }
 
-// GET /api/projects/{id}/predictions -> { predictions, models }. Throws on !ok.
+// GET /api/projects/{id}/predictions -> { predictions, models }. Cached (short). Throws on !ok.
 export async function apiPredictions(projectId) {
-  const res = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/predictions', { headers: keyHeaders() });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  const url = '/api/projects/' + encodeURIComponent(projectId) + '/predictions';
+  return _cachedGet(url, _TTL_SHORT);
 }
 
-// GET /api/predictions/{id}/results -> [result, ...]. Throws on !ok.
+// GET /api/predictions/{id}/results -> [result, ...]. Cached (short). Throws on !ok.
 export async function apiResults(predId) {
-  const res = await fetch('/api/predictions/' + encodeURIComponent(predId) + '/results', { headers: keyHeaders() });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()).results || [];
+  const url = '/api/predictions/' + encodeURIComponent(predId) + '/results';
+  return (await _cachedGet(url, _TTL_SHORT)).results || [];
 }
