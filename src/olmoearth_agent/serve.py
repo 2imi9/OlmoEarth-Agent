@@ -191,6 +191,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="OlmoEarth Agent bridge", lifespan=_lifespan)
 
 
+@app.middleware("http")
+async def _revalidate_static(request: Request, call_next: Any) -> Any:
+    """Serve the static web UI with ``Cache-Control: no-cache``.
+
+    The bridge serves the ``webui/`` ES modules with no build step, so a
+    cached old module after an edit is a real footgun (it needs a manual
+    hard refresh). ``no-cache`` makes the browser revalidate every load
+    (304 when unchanged), keeping edits visible without disabling caching
+    outright. API responses (``/api/*``, incl. the SSE stream) are left
+    untouched.
+    """
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
 def _claude_available() -> bool:
     """Whether the optional ``anthropic`` SDK is importable (the claude extra)."""
     return importlib.util.find_spec("anthropic") is not None

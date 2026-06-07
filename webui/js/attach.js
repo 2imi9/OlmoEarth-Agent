@@ -4,6 +4,7 @@
    Studio result dropped from the project tree attaches as context too. */
 
 import { escapeHtml, shortId } from './util.js';
+import { apiArea } from './api.js';
 
 const _TEXT_EXT = /\.(geojson|json|csv|tsv|txt|md|markdown|ya?ml|toml|xml|html?|css|py|js|ts|tsx|jsx|sh|r|sql|ipynb|log|cfg|ini)$/i;
 const _MAX_FILE_CHARS = 60000;
@@ -80,7 +81,7 @@ function renderAttachmentChips() {
    block appended to the brief so the agent can feed it to AOI-needing skills
    (area_id -> submit_prediction, bbox -> bbox-based tools). */
 export function addAoiAttachment(aoi) {
-  if (!aoi || !aoi.geom) return;
+  if (!aoi || (!aoi.geom && !aoi.area_id)) return;
   const bbox = Array.isArray(aoi.bbox) ? aoi.bbox.map((n) => Number(n).toFixed(5)).join(', ') : '';
   const lines = ['The user drew an area of interest (AOI) on the map.'];
   if (aoi.stored && aoi.area_id) {
@@ -99,6 +100,24 @@ export function addAoiAttachment(aoi) {
     text: lines.join('\n'),
   });
   renderAttachmentChips();
+}
+
+/* An AOI dragged in from the Projects tree carries only {id, name,
+   project_id} (the tree list omits geometry). Fetch its geom + bbox, then
+   attach it like a drawn area. A demo-tree area carries its geom inline. */
+async function addAoiFromDrag(data) {
+  if (!data || !data.id) return;
+  if (data.geom) {
+    addAoiAttachment({ name: data.name, geom: data.geom, bbox: data.bbox, area_id: data.id, project_id: data.project_id, stored: !data.demo });
+    return;
+  }
+  try {
+    const a = await apiArea(data.id);
+    addAoiAttachment({ name: a.name || data.name, geom: a.geom, bbox: a.bbox, area_id: a.id, project_id: a.project_id || data.project_id, stored: true });
+  } catch (e) {
+    // Couldn't fetch the geometry; attach the id anyway (still usable for predictions).
+    addAoiAttachment({ name: data.name, area_id: data.id, project_id: data.project_id, stored: true });
+  }
 }
 
 function addResultAttachment(r) {
@@ -148,6 +167,8 @@ export function wireAttach() {
       if (!dt) return;
       const resultJson = dt.getData('application/x-oe-result');
       if (resultJson) { try { addResultAttachment(JSON.parse(resultJson)); } catch (err) {} return; }
+      const aoiJson = dt.getData('application/x-oe-aoi');
+      if (aoiJson) { try { addAoiFromDrag(JSON.parse(aoiJson)); } catch (err) {} return; }
       if (dt.files && dt.files.length) addFiles(dt.files);
     });
   }

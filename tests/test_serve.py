@@ -536,6 +536,13 @@ def test_get_area_requires_key() -> None:
     assert resp.status_code == 400
 
 
+def test_static_assets_are_revalidated() -> None:
+    """The web UI is served no-cache so edited ES modules are never stale."""
+    with TestClient(serve.app) as client:
+        resp = client.get("/")
+    assert resp.headers.get("cache-control") == "no-cache"
+
+
 def test_project_predictions(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
     with TestClient(serve.app) as client:
