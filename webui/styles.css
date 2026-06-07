@@ -724,6 +724,18 @@ a:hover { color: var(--text); }
 .viz-bar-fill { height: 100%; }
 .viz-bar-val { width: 44px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text-dim); }
 .cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
+/* Which result is A / B (so "B - A" is unambiguous). */
+.viz-ab { font-size: 12px; color: var(--text-dim); margin: 4px 0; }
+.viz-ab-a, .viz-ab-b, .viz-ab-d { font-weight: 700; padding: 0 5px; border-radius: 3px; }
+.viz-ab-a { color: #cfe6ff; background: rgba(55,160,255,.22); }
+.viz-ab-b { color: #ffd0e6; background: rgba(240,82,156,.22); }
+.viz-ab-d { color: var(--text-faint); }
+/* Overlay viewer: per-layer opacity sliders. */
+.ov-map { height: 420px; }
+.ov-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ov-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-dim); }
+.ov-lbl { width: 150px; flex: none; }
+.ov-row input[type="range"] { flex: 1; accent-color: var(--mint); }
 /* Result visual shown in the conversation (not the collapsed reasoning). */
 .result-viz { margin: 10px 0 4px; }
 /* Download affordance for chat artifacts (compare / SLD / report). */
