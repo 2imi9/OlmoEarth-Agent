@@ -73,6 +73,35 @@ export async function apiProjects() {
   return (await res.json()).projects || [];
 }
 
+// POST /api/areas -> the stored area { id, name, project_id, bbox }. Throws on !ok.
+export async function apiCreateArea(name, geom, projectId) {
+  const res = await fetch('/api/areas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...keyHeaders() },
+    body: JSON.stringify({ name, geom, project_id: projectId }),
+  });
+  if (!res.ok) {
+    let detail = 'HTTP ' + res.status;
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  return (await res.json()).area || {};
+}
+
+// GET /api/projects/{id}/areas -> [{id, name}, ...]. Throws on !ok.
+export async function apiAreas(projectId) {
+  const res = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/areas', { headers: keyHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return (await res.json()).areas || [];
+}
+
+// GET /api/areas/{id} -> { id, name, project_id, geom, bbox }. Throws on !ok.
+export async function apiArea(areaId) {
+  const res = await fetch('/api/areas/' + encodeURIComponent(areaId), { headers: keyHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return (await res.json()).area || {};
+}
+
 // GET /api/projects/{id}/predictions -> { predictions, models }. Throws on !ok.
 export async function apiPredictions(projectId) {
   const res = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/predictions', { headers: keyHeaders() });

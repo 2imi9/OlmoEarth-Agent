@@ -44,6 +44,7 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_load_context",
         "olmoearth_search_projects",
         "olmoearth_create_project",
+        "olmoearth_request_aoi",
         "olmoearth_get_prediction",
         "olmoearth_search_predictions",
         "olmoearth_submit_prediction",

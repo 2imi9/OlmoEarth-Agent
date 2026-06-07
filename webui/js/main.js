@@ -9,6 +9,7 @@ import { renderCards, wireCards } from './skills.js';
 import { newChat, renderChatList, wirePrompt } from './chat.js';
 import { wireTabs, wireExamples } from './landing.js';
 import { wireAttach } from './attach.js';
+import { wireAoi } from './aoi.js';
 import { wireLlmSubtab, wireLlmNudge, updateLlmNudge } from './llm.js';
 import { renderProjects } from './projects.js';
 
@@ -153,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireTabs();
   wireExamples();
   wireAttach();
+  wireAoi();
   wirePrompt();
   wireMenu();
   wireUserMenu();

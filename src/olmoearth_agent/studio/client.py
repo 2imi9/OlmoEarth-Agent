@@ -317,6 +317,74 @@ class StudioClient:
         )
         return env.one or {}
 
+    # --- areas (AOIs) ---
+
+    async def create_area(
+        self, *, name: str, geom: dict[str, Any], project_id: str
+    ) -> dict[str, Any]:
+        """Create an area / AOI (``POST /areas`` -> 200). Returns the record.
+
+        ``geom`` is a GeoJSON geometry object (``{"type": "Polygon"|
+        "MultiPolygon", "coordinates": [...]}``); Studio requires a polygon
+        or multipolygon, since an area is a spatial region for inference. All
+        three fields are required by ``AreaWrite`` (openapi v0.1.0). The
+        returned ``id`` is the ``area_id`` :meth:`submit_prediction` consumes.
+        """
+        env = await self.post(
+            "/areas", {"name": name, "geom": geom, "project_id": project_id}
+        )
+        return env.one or {}
+
+    async def search_areas(
+        self,
+        *,
+        project_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search areas (read-only). Optionally scope to a project.
+
+        Like ``AreaSearchRequest`` (openapi v0.1.0) has no ``project_id``
+        filter field, so when ``project_id`` is given we filter client-side,
+        scanning up to ``_MAX_FILTER_PAGES`` pages of ``limit``. Search
+        records carry ``id``/``name``/``project_id`` but omit ``geom``
+        (lightweight); fetch one with :meth:`get_area` for the geometry.
+        """
+        env = await self.post(
+            "/areas/search", {"limit": limit, "offset": offset}, retry=True
+        )
+        if project_id is None:
+            return env
+        matches = [r for r in env.records if r.get("project_id") == project_id]
+        page_len, pages = len(env.records), 1
+        while page_len == limit and pages < _MAX_FILTER_PAGES:
+            offset += limit
+            page = await self.post(
+                "/areas/search", {"limit": limit, "offset": offset}, retry=True
+            )
+            page_len, pages = len(page.records), pages + 1
+            matches.extend(r for r in page.records if r.get("project_id") == project_id)
+        env.records = matches
+        return env
+
+    async def get_area(self, area_id: str) -> dict[str, Any]:
+        """Fetch one area (``GET /areas/{id}``), including its ``geom``."""
+        env = await self.get(f"/areas/{area_id}")
+        return env.one or {}
+
+    async def delete_area(self, area_id: str) -> dict[str, Any]:
+        """Delete an area (``DELETE /areas/{id}``). Returns the deleted record.
+
+        Used by the live write test for cleanup. The delete envelope may wrap
+        the record as ``{"record": {...}}`` (as project delete does), so we
+        unwrap the inner ``record`` defensively.
+        """
+        resp = await self._client.request("DELETE", f"/areas/{area_id}")
+        resp.raise_for_status()
+        env = ApiEnvelope.from_response(resp.json())
+        record = env.one or {}
+        return cast(dict[str, Any], record.get("record", record))
+
     # --- models ---
 
     async def search_models(

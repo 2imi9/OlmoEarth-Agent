@@ -6,6 +6,7 @@
 import { escapeHtml, typeText } from './util.js';
 import { renderMarkdown } from './markdown.js';
 import { apiRunStream } from './api.js';
+import { drawAndAttach } from './aoi.js';
 
 /* ── Demo scenarios ──────────────────────────────────────────────────────
    In demo mode a brief plays a canned agent loop with the same event shape as
@@ -146,6 +147,7 @@ export function handleRunEvent(body, ev, staticRender) {
       const res = card.querySelector('.tc-result');
       if (res) { res.hidden = false; res.classList.add('run-step'); res.innerHTML = liveResultHtml(ev); }
     }
+    maybeAoiPrompt(body, ev);
   } else if (ev.type === 'final') {
     if (!staticRender) { const steps = body.querySelector(':scope > .steps'); if (steps) steps.classList.add('collapsed'); }
     body.insertAdjacentHTML('beforeend', '<div class="answer run-step md">' + renderMarkdown(ev.content || '(no answer)') + '</div>');
@@ -158,6 +160,43 @@ export function handleRunEvent(body, ev, staticRender) {
   } else if (ev.type === 'error') {
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');
   }
+}
+
+/* When the agent calls olmoearth_request_aoi, its result carries
+   needs_aoi: true. Surface an inline "Draw the area" button: drawing stores
+   the AOI and seeds a follow-up turn (so the agent continues with an
+   area_id + bbox), instead of asking the user to type coordinates. */
+function maybeAoiPrompt(body, ev) {
+  if (ev.name !== 'olmoearth_request_aoi') return;
+  const inner = ev.result && ev.result.result;
+  if (!inner || !inner.needs_aoi) return;
+  if (body.querySelector('.aoi-request')) return;  // one prompt per turn
+  const purpose = inner.purpose ? ' for ' + escapeHtml(inner.purpose) : '';
+  const wrap = document.createElement('div');
+  wrap.className = 'aoi-request run-step';
+  wrap.innerHTML =
+    '<span class="aoi-request-text">Draw the area of interest' + purpose + ' on a map.</span>' +
+    '<button class="aoi-request-btn" type="button">Draw the area</button>';
+  body.appendChild(wrap);
+  const btn = wrap.querySelector('.aoi-request-btn');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const aoi = await drawAndAttach({ purpose: inner.purpose || '', suggestedName: inner.suggested_name || '' });
+    btn.disabled = false;
+    if (aoi) sendAoiFollowup();
+  });
+}
+
+/* After a drawn AOI is attached, send a short follow-up brief through the
+   normal composer path (which includes the AOI attachment + chat history),
+   so the agent resumes with the area available. */
+function sendAoiFollowup() {
+  const input = document.getElementById('promptInput');
+  const form = document.getElementById('promptForm');
+  if (!input || !form) return;
+  input.value = 'I have drawn the area of interest. Continue using it.';
+  if (form.requestSubmit) form.requestSubmit();
+  else form.dispatchEvent(new Event('submit', { cancelable: true }));
 }
 
 function runStatusEl(label) {
