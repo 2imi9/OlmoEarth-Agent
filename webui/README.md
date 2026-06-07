@@ -23,6 +23,17 @@ with [`demo/record_demo.py`](demo/record_demo.py). Demo runs are scripted (see
 [`js/run.js`](js/run.js) `runDemo`); served by the bridge, the same UI streams the
 real `LeadAgent` over SSE.*
 
+### UI polish showcase
+
+![OlmoEarth Agent - feature showcase](demo/olmoearth-agent-showcase.gif)
+
+*The UI-polish pass in one complex run: live **loading & busy states**, the
+**consecutive-workflow indicator** advancing through the pipeline (load context →
+AOI → model → submit → poll → fetch → report), the in-conversation **result
+block**, and the **difference-map radar scan** (cells igniting behind the sweep).
+Full ~45 s walkthrough: [MP4](demo/olmoearth-agent-showcase.mp4); regenerate with
+[`demo/record_showcase.py`](demo/record_showcase.py).*
+
 ![desktop](screenshots/desktop.png)
 
 ## View it
