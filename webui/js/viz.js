@@ -119,12 +119,18 @@ async function renderResultMap(container, entries) {
     }
     const el = document.createElement('div');
     el.className = 'viz-map';
+    const skel = document.createElement('div');  // shimmer until the result tiles paint
+    skel.className = 'skeleton skel-tile';
+    el.appendChild(skel);
     cell.appendChild(el);
     maps.appendChild(cell);
     const map = L.map(el, { worldCopyJump: true, attributionControl: false }).setView([20, 0], 2);
     osmLayer(L).addTo(map);
-    authTileLayer(L, entry.template).addTo(map);
+    const tiles = authTileLayer(L, entry.template);
+    tiles.on('load', () => skel.remove());
+    tiles.addTo(map);
     setTimeout(() => map.invalidateSize(), 60);
+    setTimeout(() => skel.remove(), 2500);  // fallback if 'load' never fires (cached/sparse)
     // Snap to the raster's extent once it resolves (don't block the map on it).
     if (entry.resultId) {
       apiResultExtent(entry.resultId)
@@ -151,11 +157,11 @@ async function renderResultMap(container, entries) {
     out.className = 'viz-diff';
     container.appendChild(out);
     btn.addEventListener('click', () => {
-      btn.disabled = true;
-      btn.textContent = 'Scanning difference...';
+      btn.classList.add('is-busy');  // blocks re-click + dims; spinner reads on the mint fill
+      btn.innerHTML = '<span class="spinner sm on-pink"></span>Scanning difference…';
       renderDiffScan(out, entries[0], entries[1])
-        .then(() => { btn.textContent = 'Difference map below'; })
-        .catch(() => { btn.disabled = false; btn.textContent = 'Scan difference map'; });
+        .then(() => { btn.classList.remove('is-busy'); btn.textContent = 'Difference map below'; })
+        .catch(() => { btn.classList.remove('is-busy'); btn.textContent = 'Scan difference map'; });
     });
   }
 }
@@ -311,6 +317,19 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   const xs = [], ys = [], absd = [];
   const recolor = () => cells.forEach((c) => { if (c.rect && c.diff != null) c.rect.setStyle(diffStyle(c.diff, scaleMax)); });
 
+  // Swap the "Locating…" caption for a live determinate progress pill ("Scanning 8/25").
+  status.style.display = 'none';
+  const prog = document.createElement('div');
+  prog.className = 'progress-pill';
+  prog.innerHTML =
+    '<span class="spinner sm"></span>' +
+    '<span class="pp-label">Scanning</span>' +
+    '<span class="pp-count">0/' + total + '</span>' +
+    '<span class="pp-track"><span class="pp-fill"></span></span>';
+  const ppCount = prog.querySelector('.pp-count');
+  container.insertBefore(prog, status);
+  const endProgress = () => { prog.remove(); status.style.display = ''; };
+
   await pool(cells, 8, async (c) => {
     let va = null, vb = null;
     try { const r = await apiPixelValue(a.resultId, c.lon, c.lat, opts.property); va = r.value; } catch (e) {}
@@ -321,8 +340,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
       if (Math.abs(c.diff) > scaleMax) { scaleMax = Math.abs(c.diff); recolor(); }
       c.rect = L.rectangle(c.bounds, diffStyle(c.diff, scaleMax)).addTo(map);
     }
-    status.textContent = 'Scanning the difference... ' + done + '/' + total + ' cells';
+    ppCount.textContent = done + '/' + total;
+    prog.style.setProperty('--pp', (done / total).toFixed(3));
   });
+  endProgress();
 
   const m = absd.length;
   if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return null; }

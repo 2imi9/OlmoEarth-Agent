@@ -3,7 +3,7 @@
    on expand. Demo: a canned tree from the sample projects. */
 
 import { BRIDGE } from './store.js';
-import { escapeHtml, shortId } from './util.js';
+import { escapeHtml, shortId, skelRows } from './util.js';
 import { projConnected, apiProjects, apiPredictions, apiResults, apiAreas } from './api.js';
 
 const PROJ_ICONS = {
@@ -123,7 +123,7 @@ async function toggleNode(el, node, childBox) {
   childBox.hidden = !open;
   if (!open || childBox.dataset.loaded) return;
   childBox.dataset.loaded = '1';
-  childBox.innerHTML = '<div class="proj-empty">Loading…</div>';
+  childBox.innerHTML = skelRows(3);
   try {
     const children = await loadChildren(node);
     childBox.innerHTML = '';
@@ -233,7 +233,7 @@ export async function renderProjects() {
     return;
   }
   if (!BRIDGE.live) { renderTree(list, demoProjects()); return; }  // sample tree
-  list.innerHTML = '<div class="proj-empty">Loading your projects…</div>';
+  list.innerHTML = skelRows(4);
   try {
     const projects = (await apiProjects()).map((p) => ({
       kind: 'project', id: p.id || '', name: p.name || '(unnamed)', icon: pickProjIcon(p.name),

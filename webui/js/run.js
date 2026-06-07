@@ -219,8 +219,13 @@ function sendAoiFollowup() {
 
 function runStatusEl(label) {
   const status = document.createElement('div');
-  status.className = 'think run-step';
-  status.innerHTML = '<span class="typing"><span></span><span></span><span></span></span><span class="muted">' + label + '</span>';
+  status.className = 'think run-step run-status';
+  status.innerHTML =
+    '<span class="typing"><span></span><span></span><span></span></span>' +
+    '<div class="run-status-main">' +
+      '<span class="run-status-label">' + label + '</span>' +
+      '<div class="progress-bar"></div>' +
+    '</div>';
   return status;
 }
 

@@ -604,6 +604,100 @@ a:hover { color: var(--text); }
 .tc-dot.running { animation: pulse 1s infinite; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(15,203,140,.20); } 50% { box-shadow: 0 0 0 7px rgba(15,203,140,.04); } }
 
+/* ───────────── Loading & busy states ───────────── */
+/* Implemented from the Claude-design "Loading States" handoff, aligned to our
+   tokens + idiom: color-mix() swapped for rgba() (the rest of this file is
+   rgba-only / maximally compatible), and the skeleton list tuned to the compact
+   sidebar-tree density (the demo's airy spacing read too loose here). Pure CSS
+   keyframes (om-*); honours prefers-reduced-motion at the foot of the block. */
+
+/* 1 — Spinner. Mint ring (reads on dark surfaces); .on-pink = dark ring for a
+   bright fill (the pink send button, the mint scan button). sm/base/md sizes. */
+.spinner {
+  display: inline-block; flex: 0 0 auto;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(15,203,140,.24);
+  border-top-color: var(--mint);
+  vertical-align: -.18em;
+  animation: om-spin .7s linear infinite;
+}
+.spinner.sm { width: 13px; height: 13px; }
+.spinner.md { width: 22px; height: 22px; border-width: 2.5px; }
+.spinner.on-pink { border-color: rgba(6,35,26,.28); border-top-color: #06231a; }
+@keyframes om-spin { to { transform: rotate(360deg); } }
+
+/* 2 — Skeleton shimmer. */
+.skeleton { position: relative; overflow: hidden; background: var(--panel-2); border-radius: var(--radius-sm); }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(250,242,233,.09) 50%, transparent 100%);
+  animation: om-skel-sweep 1.35s ease-in-out infinite;
+}
+@keyframes om-skel-sweep { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(100%); } }
+/* List rows (sidebar tree / project-list loading) — tuned to our compact rows. */
+.skel-list { display: flex; flex-direction: column; gap: 9px; padding: 5px 2px; }
+.skel-row { display: flex; align-items: center; gap: 8px; }
+.skel-dot { width: 14px; height: 14px; flex: 0 0 auto; border-radius: 50%; }
+.skel-line { height: 10px; flex: 1 1 auto; border-radius: var(--radius-pill); }
+.skel-line.short { flex: 0 0 50%; }
+/* Map tile — self-sufficient grid overlay above the Leaflet panes; JS removes
+   it once tiles paint (works as a bare .skel-tile or paired with .skeleton). */
+.viz-map { position: relative; }
+.skel-tile {
+  position: absolute; inset: 0; z-index: 450; pointer-events: none; overflow: hidden;
+  background:
+    linear-gradient(var(--bg-2), var(--bg-2)) padding-box,
+    repeating-linear-gradient(0deg, transparent 0 39px, var(--line-soft) 39px 40px),
+    repeating-linear-gradient(90deg, transparent 0 39px, var(--line-soft) 39px 40px);
+}
+.skel-tile::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(250,242,233,.07) 50%, transparent 100%);
+  animation: om-skel-sweep 1.6s ease-in-out infinite;
+}
+
+/* 3 — Determinate progress pill: [spinner] label  N/total  [track>fill].
+   Fill width is driven by a --pp custom property (0..1). */
+.progress-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 11px 5px 8px; border: 1px solid var(--line);
+  border-radius: var(--radius-pill); background: var(--panel);
+  color: var(--text-dim); font-size: 13px; line-height: 1; white-space: nowrap;
+}
+.pp-label { color: var(--text-dim); }
+.pp-count { font-family: var(--mono); font-size: 12px; letter-spacing: .02em; color: var(--text); }
+.pp-track { display: block; width: 64px; height: 4px; flex: 0 0 auto; overflow: hidden; background: var(--line); border-radius: var(--radius-pill); }
+.pp-fill { display: block; height: 100%; width: calc(var(--pp, 0) * 100%); border-radius: inherit; background: var(--mint); transition: width .2s ease; }
+.progress-pill.is-done { color: var(--mint-soft); }
+.progress-pill.is-done .pp-count { color: var(--mint-soft); }
+.progress-pill.is-done .pp-fill { width: 100%; }
+.progress-pill.is-done .spinner { display: none; }
+
+/* 4 — Indeterminate bar: thin track, sliding mint segment, unknown duration. */
+.progress-bar { position: relative; height: 3px; overflow: hidden; background: var(--line); border-radius: var(--radius-pill); }
+.progress-bar::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 38%; border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--mint), transparent);
+  animation: om-indeterminate 1.15s ease-in-out infinite;
+}
+@keyframes om-indeterminate { 0% { transform: translateX(-110%); } 100% { transform: translateX(370%); } }
+
+/* 5 — Button busy state (dim, block input, hide resting .ic) + run-status. */
+button.is-busy { opacity: .72; pointer-events: none; cursor: default; }
+button.is-busy > .ic { display: none; }
+.run-status { display: flex; align-items: center; gap: 10px; }
+.run-status-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
+.run-status-label { font-size: 12px; color: var(--text-faint); letter-spacing: .02em; }
+.run-status-main .progress-bar { max-width: 220px; }
+
+/* Reduced motion: slow the spinner; freeze the sweeps + the indeterminate bar. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+  .skeleton::after, .skel-tile::after { animation: none; transform: none; background: rgba(250,242,233,.05); }
+  .progress-bar::before { animation: none; transform: none; left: 0; width: 100%; opacity: .5; background: var(--mint); }
+  .pp-fill { transition: none; }
+}
+
 /* ───────────── Footer ───────────── */
 .footer { max-width: var(--maxw); margin: 0 auto; padding: 40px 24px 48px; text-align: center; }
 .foot-brand img { height: 22px; opacity: .8; }
@@ -701,6 +795,7 @@ a:hover { color: var(--text); }
 .viz-diff-btn {
   margin-top: 10px; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
   color: #06231a; background: var(--mint); border: none;
+  display: inline-flex; align-items: center; gap: 7px;
   padding: 7px 14px; border-radius: var(--radius-sm); transition: background .12s;
 }
 .viz-diff-btn:hover { background: var(--mint-link); }
