@@ -566,6 +566,36 @@ def test_result_extent_requires_key() -> None:
     assert resp.status_code == 400
 
 
+def test_pixel_value_proxy_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/pixel-value?result_id=r1&lon=1&lat=2")
+    assert resp.status_code == 400
+
+
+def test_pixel_value_proxy_requires_coords() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/pixel-value?result_id=r1", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 400
+
+
+def test_pixel_value_proxy_extracts_band(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _PV(_FakeStudio):
+        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
+            return {"bands": [{"property_name": "karst", "raw_value": 0.42, "classification": None}]}
+
+    monkeypatch.setattr(serve, "StudioClient", _PV)
+    with TestClient(serve.app) as client:
+        resp = client.get(
+            "/api/pixel-value?result_id=r1&lon=-77.6&lat=40.8",
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["value"] == 0.42
+    assert body["property"] == "karst"
+    assert body["categorical"] is False
+
+
 def test_tile_proxy_requires_key() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/tile/5/3/7?src=%2Ffoo%2F%7Bz%7D%2F%7Bx%7D%2F%7By%7D.png")

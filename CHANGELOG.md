@@ -32,6 +32,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **Difference-map scan (in chat)**: comparing two result rasters now produces a
+  visible **difference output**, not just numbers. A "Scan difference map" button
+  on a two-raster view samples both rasters on a grid over their shared extent
+  (via a new `GET /api/pixel-value` proxy) and paints each cell by `B - A`
+  **progressively as it scans** -- blue where A is higher, pink where B is higher,
+  opacity by magnitude -- then reports mean |diff|, correlation, and agreement.
+  Pure client-side (`js/viz.js renderDiffScan`); pointwise, so it's a grid
+  estimate (default 7x7), shown live.
 - **Quantitative two-result comparison** (`olmoearth_compare_results`, skill #4):
   compare two prediction results numerically with **no ground truth**. It
   samples both rasters on a grid over their shared extent (pointwise

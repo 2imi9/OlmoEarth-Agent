@@ -6,8 +6,37 @@
    AOI widget via js/leaflet.js). Renders nothing for results with no visual. */
 
 import { escapeHtml } from './util.js';
-import { studioKey, apiResultExtent } from './api.js';
+import { studioKey, apiResultExtent, apiPixelValue } from './api.js';
 import { loadLeaflet, osmLayer } from './leaflet.js';
+
+/* Pearson correlation of paired samples (null if undefined). */
+function pearson(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return null;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxx = 0, syy = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { const dx = xs[i] - mx, dy = ys[i] - my; sxx += dx * dx; syy += dy * dy; sxy += dx * dy; }
+  if (sxx <= 0 || syy <= 0) return null;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+/* Run `worker` over `items` with at most `n` concurrent. */
+async function pool(items, n, worker) {
+  let i = 0;
+  const runners = Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; await worker(items[idx], idx); }
+  });
+  await Promise.all(runners);
+}
+
+/* Intersection of two [minLon,minLat,maxLon,maxLat] boxes, or null. */
+function intersectBbox(a, b) {
+  if (!a || !b) return null;
+  const x0 = Math.max(a[0], b[0]), y0 = Math.max(a[1], b[1]);
+  const x1 = Math.min(a[2], b[2]), y1 = Math.min(a[3], b[3]);
+  return x1 > x0 && y1 > y0 ? [x0, y0, x1, y1] : null;
+}
 
 /* Collect {template, resultId} raster entries from a tool result, however it
    nests them. resultId (when present) lets us fetch the raster's extent so the
@@ -109,6 +138,25 @@ async function renderResultMap(container, entries) {
     ? `${entries.length} result rasters, side by side - fit to each raster's extent over an OpenStreetMap basemap.`
     : 'Result raster, fit to its extent over an OpenStreetMap basemap.';
   container.appendChild(hint);
+
+  // Exactly two rasters with ids -> offer a quantitative difference scan.
+  if (entries.length === 2 && entries[0].resultId && entries[1].resultId) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'viz-diff-btn';
+    btn.textContent = 'Scan difference map';
+    container.appendChild(btn);
+    const out = document.createElement('div');
+    out.className = 'viz-diff';
+    container.appendChild(out);
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      btn.textContent = 'Scanning difference...';
+      renderDiffScan(out, entries[0], entries[1])
+        .then(() => { btn.textContent = 'Difference map below'; })
+        .catch(() => { btn.disabled = false; btn.textContent = 'Scan difference map'; });
+    });
+  }
 }
 
 /* A compact SVG line chart for a change-detection trajectory. */
@@ -134,6 +182,79 @@ function renderTrajectory(container, dates, values, trend) {
   wrap.innerHTML = svg +
     `<div class="viz-cap">Trajectory over ${values.length} dates${trend ? ` - trend: <strong>${escapeHtml(trend)}</strong>` : ''}.</div>`;
   container.appendChild(wrap);
+}
+
+/* Diff color: blue where A>B, red where B>A; opacity scales with magnitude. */
+function diffStyle(d, scaleMax) {
+  const t = Math.max(-1, Math.min(1, d / (scaleMax || 1)));
+  return { color: t >= 0 ? '#f0529c' : '#37a0ff', fillColor: t >= 0 ? '#f0529c' : '#37a0ff', weight: 0, fillOpacity: 0.15 + 0.7 * Math.abs(t) };
+}
+
+/* Progressive difference scan of two result rasters: sample both on a grid
+   over their shared extent and paint each cell by (B - A) as it resolves, so
+   the user watches the difference map build up, then see the final stats. */
+export async function renderDiffScan(container, a, b, opts = {}) {
+  // Pointwise pixel-value through the proxy is slow, so default to a modest
+  // grid; the scan is progressive, so the map fills in as it goes.
+  const n = Math.max(4, Math.min(14, opts.grid || 7));
+  let L;
+  try { L = await loadLeaflet(); } catch (e) { container.textContent = 'map unavailable'; return; }
+  const status = document.createElement('div');
+  status.className = 'viz-cap';
+  status.textContent = 'Locating the shared extent...';
+  container.appendChild(status);
+
+  let bbox = null;
+  try {
+    const [ea, eb] = await Promise.all([apiResultExtent(a.resultId), apiResultExtent(b.resultId)]);
+    bbox = intersectBbox(ea.bbox, eb.bbox);
+  } catch (e) { /* fall through */ }
+  if (!bbox) { status.textContent = 'Could not determine the two rasters’ shared extent.'; return; }
+
+  const el = document.createElement('div');
+  el.className = 'viz-map';
+  container.insertBefore(el, status);
+  const map = L.map(el, { worldCopyJump: true, attributionControl: false });
+  osmLayer(L).addTo(map);
+  map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { padding: [10, 10], maxZoom: 13 });
+  setTimeout(() => map.invalidateSize(), 60);
+
+  const [minx, miny, maxx, maxy] = bbox;
+  const dx = (maxx - minx) / n, dy = (maxy - miny) / n;
+  const cells = [];
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    cells.push({ lon: minx + dx * (i + 0.5), lat: miny + dy * (j + 0.5),
+      bounds: [[miny + dy * j, minx + dx * i], [miny + dy * (j + 1), minx + dx * (i + 1)]] });
+  }
+  const total = cells.length;
+  let done = 0, scaleMax = 0.05;
+  const xs = [], ys = [], absd = [];
+  const recolor = () => cells.forEach((c) => { if (c.rect && c.diff != null) c.rect.setStyle(diffStyle(c.diff, scaleMax)); });
+
+  await pool(cells, 8, async (c) => {
+    let va = null, vb = null;
+    try { const r = await apiPixelValue(a.resultId, c.lon, c.lat, opts.property); va = r.value; } catch (e) {}
+    try { const r = await apiPixelValue(b.resultId, c.lon, c.lat, opts.property); vb = r.value; } catch (e) {}
+    done++;
+    if (typeof va === 'number' && typeof vb === 'number') {
+      c.diff = vb - va; xs.push(va); ys.push(vb); absd.push(Math.abs(c.diff));
+      if (Math.abs(c.diff) > scaleMax) { scaleMax = Math.abs(c.diff); recolor(); }
+      c.rect = L.rectangle(c.bounds, diffStyle(c.diff, scaleMax)).addTo(map);
+    }
+    status.textContent = 'Scanning the difference... ' + done + '/' + total + ' cells';
+  });
+
+  const m = absd.length;
+  if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return; }
+  const meanAbs = absd.reduce((p, q) => p + q, 0) / m;
+  const within = absd.filter((d) => d <= (opts.tolerance || 0.1)).length / m;
+  const r = pearson(xs, ys);
+  status.innerHTML =
+    'Difference map (B - A) over ' + m + ' sampled cells · mean |diff| <strong>' + meanAbs.toFixed(3) +
+    '</strong> · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
+    (within * 100).toFixed(0) + '% agree (±' + (opts.tolerance || 0.1) + '). ' +
+    '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>A higher' +
+    '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
 }
 
 /* Render the best inline visual for a tool-result event into `container`.

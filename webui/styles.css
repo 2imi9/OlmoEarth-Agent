@@ -697,6 +697,17 @@ a:hover { color: var(--text); }
 .attach-preview .viz-map { height: 220px; }
 .attach-preview .viz-maps.is-multi .viz-map { height: 200px; }
 .attach-preview .viz-cap { text-align: center; }
+/* Difference scan: trigger button + legend swatches. */
+.viz-diff-btn {
+  margin-top: 10px; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
+  color: #06231a; background: var(--mint); border: none;
+  padding: 7px 14px; border-radius: var(--radius-sm); transition: background .12s;
+}
+.viz-diff-btn:hover { background: var(--mint-link); }
+.viz-diff-btn:disabled { opacity: .6; cursor: default; }
+.viz-diff { margin-top: 10px; }
+.viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
+.viz-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
 .viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
 .viz-chart { margin-top: 2px; }
 .viz-svg {

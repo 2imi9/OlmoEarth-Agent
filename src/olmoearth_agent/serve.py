@@ -699,6 +699,50 @@ async def api_result_extent(result_id: str, request: Request) -> dict[str, Any]:
     }
 
 
+@app.get("/api/pixel-value")
+async def api_pixel_value(request: Request) -> dict[str, Any]:
+    """Pointwise model output at one coordinate (for the difference scan).
+
+    The web UI samples both results on a grid through here to paint a live
+    difference map. ``result_id``, ``lon``, ``lat`` (and optional
+    ``property``) are query params. A point off the raster (Studio 404) is
+    returned as ``value: null`` so the scan just skips that cell.
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    q = request.query_params
+    result_id = q.get("result_id", "").strip()
+    lon, lat = q.get("lon"), q.get("lat")
+    if not result_id or lon is None or lat is None:
+        raise HTTPException(status_code=400, detail="result_id, lon, lat required")
+    try:
+        lon_f, lat_f = float(lon), float(lat)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="lon/lat must be numbers") from exc
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            rec = await studio.pixel_value(result_id, lon_f, lat_f)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return {"ok": True, "value": None}  # off-raster / nodata
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    bands = rec.get("bands") or []
+    prop = q.get("property")
+    band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
+    cls = band.get("classification")
+    return {
+        "ok": True,
+        "value": cls if cls is not None else band.get("raw_value"),
+        "property": band.get("property_name"),
+        "categorical": cls is not None,
+    }
+
+
 @app.get("/api/tile/{z}/{x}/{y}")
 async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
     """Proxy one Studio raster tile, adding the caller's Bearer key.
