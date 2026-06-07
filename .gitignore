@@ -139,6 +139,7 @@ huggingface_cache/
 .claude/sessions/
 .claude/transcripts/
 .claude/skills.local/
+.claude/launch.json
 
 # --- OS junk ---
 desktop.ini
