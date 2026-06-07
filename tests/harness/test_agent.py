@@ -97,6 +97,19 @@ def test_local_flag_appends_budget_clause() -> None:
     assert LOCAL_BUDGET_CLAUSE not in cloud_agent.system_prompt
 
 
+def test_default_prompt_has_run_order_and_guards() -> None:
+    from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT as p
+
+    # The ordered recipe + key dependency guards are present, so the model
+    # discovers a model_id before submitting and polls before fetching.
+    assert "Typical order" in p
+    assert "olmoearth_load_context" in p
+    assert "olmoearth_request_aoi" in p
+    assert "project_id AND area_id AND model_id" in p
+    assert "poll until status is completed before" in p
+    assert "Do not repeat a tool call that already succeeded" in p
+
+
 @pytest.mark.asyncio
 async def test_agent_records_provenance() -> None:
     responses = [
