@@ -48,6 +48,15 @@
           </button>
           <div class="side-body proj-tree" id="projList" aria-label="Your projects"><!-- injected by js/projects.js --></div>
         </section>
+
+        <!-- Saved comparisons (collapsible) -->
+        <section class="side-section" id="cmpSection">
+          <button class="side-head" type="button" data-collapse="compares" aria-expanded="true">
+            <svg viewBox="0 0 24 24" class="caret"><path d="M9 6l6 6-6 6"/></svg>
+            <span>Comparisons</span>
+          </button>
+          <div class="side-body" id="cmpList" aria-label="Saved comparisons"><!-- injected by js/compares.js --></div>
+        </section>
       </div>
 
       <div class="user-area">
@@ -261,6 +270,7 @@
           <span class="llm-nudge-text">Local model isn't running. <button type="button" class="llm-nudge-link" id="llmNudgePick">Use a cloud API</button> (Claude / ChatGPT / Gemini), or start it with <code>make serve</code>.</span>
           <button type="button" class="llm-nudge-x" id="llmNudgeDismiss" aria-label="Dismiss this notice">&times;</button>
         </div>
+        <div class="attach-preview" id="attachPreview" aria-label="Result preview" hidden></div>
         <div class="attachments" id="attachments" aria-label="Attached files"></div>
         <form class="prompt" id="promptForm" autocomplete="off">
           <button class="attach" id="attachBtn" type="button" aria-label="Attach files" title="Attach GeoJSON, code, CSV, PDF, or images">

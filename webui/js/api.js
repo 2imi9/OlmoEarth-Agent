@@ -95,11 +95,27 @@ export async function apiAreas(projectId) {
   return (await res.json()).areas || [];
 }
 
+// GET /api/pixel-value -> { value, property, categorical } (value null = nodata). Throws on !ok.
+export async function apiPixelValue(resultId, lon, lat, property) {
+  const qs = new URLSearchParams({ result_id: resultId, lon: String(lon), lat: String(lat) });
+  if (property) qs.set('property', property);
+  const res = await fetch('/api/pixel-value?' + qs.toString(), { headers: keyHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
 // GET /api/areas/{id} -> { id, name, project_id, geom, bbox }. Throws on !ok.
 export async function apiArea(areaId) {
   const res = await fetch('/api/areas/' + encodeURIComponent(areaId), { headers: keyHeaders() });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return (await res.json()).area || {};
+}
+
+// GET /api/results/{id}/extent -> { result_id, bbox, tile_url, property }. Throws on !ok.
+export async function apiResultExtent(resultId) {
+  const res = await fetch('/api/results/' + encodeURIComponent(resultId) + '/extent', { headers: keyHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return (await res.json()).extent || {};
 }
 
 // GET /api/projects/{id}/predictions -> { predictions, models }. Throws on !ok.

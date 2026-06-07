@@ -676,6 +676,67 @@ a:hover { color: var(--text); }
 /* Leaflet draw toolbar sits over the map; keep it above modal stacking. */
 .aoi-map .leaflet-top, .aoi-map .leaflet-bottom { z-index: 400; }
 
+/* ───────────── In-chat result visuals (js/viz.js) ───────────── */
+.tc-viz { margin-top: 10px; }
+.viz-maps { display: flex; flex-direction: column; gap: 10px; }
+.viz-maps.is-multi { flex-direction: row; flex-wrap: wrap; }
+.viz-maps.is-multi .viz-map-cell { flex: 1 1 280px; min-width: 240px; }
+.viz-map-cell { display: flex; flex-direction: column; gap: 4px; }
+.viz-map-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--mint-soft);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.viz-map {
+  width: 100%; height: 300px; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); overflow: hidden; background: var(--bg-2);
+}
+.viz-maps.is-multi .viz-map { height: 260px; }
+/* Dragged-result preview strip above the composer (compact). */
+.attach-preview { max-width: var(--maxw); margin: 0 auto 10px; }
+.attach-preview:not([hidden]) { display: block; }
+.attach-preview .viz-map { height: 220px; }
+.attach-preview .viz-maps.is-multi .viz-map { height: 200px; }
+.attach-preview .viz-cap { text-align: center; }
+/* Difference scan: trigger button + legend swatches. */
+.viz-diff-btn {
+  margin-top: 10px; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
+  color: #06231a; background: var(--mint); border: none;
+  padding: 7px 14px; border-radius: var(--radius-sm); transition: background .12s;
+}
+.viz-diff-btn:hover { background: var(--mint-link); }
+.viz-diff-btn:disabled { opacity: .6; cursor: default; }
+.viz-diff { margin-top: 10px; }
+.viz-statcard {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px;
+}
+.viz-stat {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+  padding: 6px 12px; font-size: 11px; color: var(--text-dim);
+}
+.viz-stat b { font-size: 15px; color: var(--text); font-weight: 700; }
+.viz-statcard .viz-cap { flex-basis: 100%; }
+.viz-bars { display: block; max-width: 480px; }
+.viz-bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+.viz-bar-label { width: 92px; flex: none; color: var(--text-dim); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viz-bar-track { flex: 1; height: 14px; background: var(--bg-2); border-radius: 3px; overflow: hidden; display: flex; }
+.viz-bar-fill { height: 100%; }
+.viz-bar-val { width: 44px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text-dim); }
+.cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
+.viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
+.viz-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
+.viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
+.viz-chart { margin-top: 2px; }
+.viz-svg {
+  width: 100%; max-width: 480px; height: auto; display: block;
+  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+}
+.viz-line { stroke: var(--mint); stroke-width: 2; }
+.viz-dot { fill: var(--pink); }
+.viz-axt { fill: var(--text-faint); font-size: 9px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
+.viz-map .leaflet-control-layers { font-size: 12px; }
+
 /* ───────────── Responsive ───────────── */
 @media (max-width: 880px) {
   .sidebar {

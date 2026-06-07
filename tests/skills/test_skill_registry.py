@@ -50,6 +50,7 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_submit_prediction",
         "olmoearth_fetch_results",
         "olmoearth_get_prediction_result",
+        "olmoearth_compare_results",
         "olmoearth_baseline_compare",
         "olmoearth_change_detect",
         "olmoearth_cloud_mask_audit",

@@ -113,13 +113,15 @@ SKILLS: list[SkillSpec] = [
         "Run",
         "implemented",
         "Run loop: search predictions (find model_id), submit, poll, "
-        "fetch results (tile URLs). pixel-value/features follow.",
+        "fetch results (tile URLs), and compare two results quantitatively "
+        "(grid-sampled model-vs-model agreement, no ground truth).",
         [
             "olmoearth_search_predictions",
             "olmoearth_submit_prediction",
             "olmoearth_get_prediction",
             "olmoearth_fetch_results",
             "olmoearth_get_prediction_result",
+            "olmoearth_compare_results",
         ],
     ),
     # #5 unifies change-detect + the JEPA latent-change skill: both are change

@@ -252,6 +252,21 @@ class StudioClient:
         env = await self.get(f"/prediction-results/{result_id}")
         return env.one or {}
 
+    async def pixel_value(
+        self, result_id: str, lon: float, lat: float
+    ) -> dict[str, Any]:
+        """Pointwise model output at one coordinate.
+
+        ``GET /prediction-results/{id}/pixel-value?lon=&lat=``. The record's
+        ``bands`` carry per-property ``raw_value`` (regression) and
+        ``classification`` (categorical). Used to sample a result on a grid
+        for a quantitative two-result comparison (no ground truth needed).
+        """
+        env = await self.get(
+            f"/prediction-results/{result_id}/pixel-value?lon={lon}&lat={lat}"
+        )
+        return env.one or {}
+
     async def search_prediction_results(
         self,
         *,

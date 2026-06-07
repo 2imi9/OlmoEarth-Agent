@@ -29,9 +29,11 @@ Requires the ``serve`` extra (``uv sync --extra serve``).
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -39,7 +41,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
@@ -57,6 +59,34 @@ _MAX_TURNS_CEILING = 12
 
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
+
+#: Bounded in-memory caches so a repeated map pan / difference scan does not
+#: re-fetch the same auth-gated Studio raster tiles or pixel values (which are
+#: slow through a proxy). Content is identical per result, so caching by the
+#: resolved request is safe; the caller's key is hashed into the cache key so
+#: distinct keys never share entries. Cleared on process restart.
+_CACHE_MAX = 2048
+_TILE_CACHE: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+_PV_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+
+def _cache_get(cache: OrderedDict[str, Any], k: str) -> Any:
+    if k in cache:
+        cache.move_to_end(k)
+        return cache[k]
+    return None
+
+
+def _cache_put(cache: OrderedDict[str, Any], k: str, v: Any) -> None:
+    cache[k] = v
+    cache.move_to_end(k)
+    while len(cache) > _CACHE_MAX:
+        cache.popitem(last=False)
+
+
+def _key_hash(key: str) -> str:
+    """A short, non-reversible tag for the caller's key, to namespace caches."""
+    return hashlib.sha256(key.encode()).hexdigest()[:12]
 
 
 def _webui_dir() -> Path:
@@ -660,6 +690,145 @@ async def api_prediction_results(
         for r in env.records
     ]
     return {"ok": True, "results": results}
+
+
+@app.get("/api/results/{result_id}/extent")
+async def api_result_extent(result_id: str, request: Request) -> dict[str, Any]:
+    """Geographic extent of a prediction-result, so the chat can show the raster.
+
+    Reads ``result_metadata.geometry`` (the result's bounds) and returns its
+    bbox plus the first tile-URL template and property name. The web UI uses
+    the bbox to fit the result map to the raster (otherwise a small AOI is
+    invisible at world zoom).
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            rec = await studio.get_prediction_result(result_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    geom = (rec.get("result_metadata") or {}).get("geometry")
+    try:
+        bbox = geometry_bbox(geom) if geom else None
+    except ValueError:
+        bbox = None
+    tiles = rec.get("tile_urls") or []
+    props = rec.get("property_names") or []
+    return {
+        "ok": True,
+        "extent": {
+            "result_id": rec.get("id") or result_id,
+            "bbox": bbox,
+            "tile_url": tiles[0] if tiles else None,
+            "property": props[0] if props else None,
+        },
+    }
+
+
+@app.get("/api/pixel-value")
+async def api_pixel_value(request: Request) -> dict[str, Any]:
+    """Pointwise model output at one coordinate (for the difference scan).
+
+    The web UI samples both results on a grid through here to paint a live
+    difference map. ``result_id``, ``lon``, ``lat`` (and optional
+    ``property``) are query params. A point off the raster (Studio 404) is
+    returned as ``value: null`` so the scan just skips that cell.
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    q = request.query_params
+    result_id = q.get("result_id", "").strip()
+    lon, lat = q.get("lon"), q.get("lat")
+    if not result_id or lon is None or lat is None:
+        raise HTTPException(status_code=400, detail="result_id, lon, lat required")
+    try:
+        lon_f, lat_f = float(lon), float(lat)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="lon/lat must be numbers") from exc
+    prop_key = q.get("property") or ""
+    ckey = f"{_key_hash(key)}|{result_id}|{lon_f}|{lat_f}|{prop_key}"
+    cached: dict[str, Any] | None = _cache_get(_PV_CACHE, ckey)
+    if cached is not None:
+        return cached
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            rec = await studio.pixel_value(result_id, lon_f, lat_f)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            out = {"ok": True, "value": None}  # off-raster / nodata
+            _cache_put(_PV_CACHE, ckey, out)
+            return out
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    bands = rec.get("bands") or []
+    prop = q.get("property")
+    band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
+    cls = band.get("classification")
+    out = {
+        "ok": True,
+        "value": cls if cls is not None else band.get("raw_value"),
+        "property": band.get("property_name"),
+        "categorical": cls is not None,
+    }
+    _cache_put(_PV_CACHE, ckey, out)
+    return out
+
+
+@app.get("/api/tile/{z}/{x}/{y}")
+async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
+    """Proxy one Studio raster tile, adding the caller's Bearer key.
+
+    Browser map tiles (``<img>`` requests) cannot carry an Authorization
+    header, and Studio tiles are auth-gated, so the web UI's result map
+    fetches each tile through here (a ``fetch`` *can* send
+    ``X-Olmoearth-Key``). The ``src`` query param is the Studio tile
+    template (with ``{z}/{x}/{y}``); we substitute, resolve it against the
+    Studio origin only (the egress guard blocks any other host -> no SSRF),
+    fetch with the Bearer key, and return the image bytes. A non-200 from
+    Studio is passed through bare so the map simply skips that tile.
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    src = request.query_params.get("src", "")
+    if not src:
+        raise HTTPException(status_code=400, detail="missing 'src' tile template")
+    path = src.replace("{z}", str(z)).replace("{x}", str(x)).replace("{y}", str(y))
+    origin = _studio_base().split("/api/")[0]  # https://olmoearth.allenai.org
+    if path.startswith(("http://", "https://")):
+        url = path
+    else:
+        url = origin + ("" if path.startswith("/") else "/") + path
+    # Hard SSRF guard: the tile must come from the Studio host, independent of
+    # the OLMOEARTH_EGRESS mode (which defaults to log-only) -- this proxy must
+    # never become an open relay for arbitrary URLs.
+    from urllib.parse import urlparse
+
+    if urlparse(url).netloc != urlparse(origin).netloc:
+        raise HTTPException(status_code=403, detail="tile src host not allowed")
+    ckey = _key_hash(key) + "|" + url
+    cached = _cache_get(_TILE_CACHE, ckey)
+    if cached is not None:
+        body, media = cached
+        return Response(content=body, media_type=media)
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {key}"})
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    if resp.status_code != 200:
+        return Response(status_code=resp.status_code)
+    media = resp.headers.get("content-type", "image/png")
+    _cache_put(_TILE_CACHE, ckey, (resp.content, media))
+    return Response(content=resp.content, media_type=media)
 
 
 # Serve the static front-end at the root. Mounted last so the explicit

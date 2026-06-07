@@ -5,6 +5,7 @@
 
 import { escapeHtml, shortId } from './util.js';
 import { apiArea } from './api.js';
+import { renderResultViz } from './viz.js';
 
 const _TEXT_EXT = /\.(geojson|json|csv|tsv|txt|md|markdown|ya?ml|toml|xml|html?|css|py|js|ts|tsx|jsx|sh|r|sql|ipynb|log|cfg|ini)$/i;
 const _MAX_FILE_CHARS = 60000;
@@ -75,6 +76,7 @@ function renderAttachmentChips() {
   box.querySelectorAll('.x[data-rm]').forEach((x) => {
     x.addEventListener('click', () => { pendingAttachments.splice(Number(x.dataset.rm), 1); renderAttachmentChips(); });
   });
+  renderResultPreview();
 }
 
 /* A drawn AOI attaches like a file: a chip in the composer + a structured
@@ -132,8 +134,38 @@ function addResultAttachment(r) {
     name: 'result ' + shortId(r.id || '') + (r.format ? ' (' + r.format + ')' : ''),
     kind: 'result',
     text,
+    result: { id: r.id, tile_url: r.tile_url, properties: r.properties, format: r.format },
   });
   renderAttachmentChips();
+}
+
+/* Preview dragged-in prediction results as raster maps above the composer:
+   pull two results in and see them side by side to compare, before sending.
+   Re-rendered only when the set of result rasters changes (Leaflet maps are
+   expensive to rebuild and re-fetch tiles). */
+let _previewSig = '';
+function renderResultPreview() {
+  const el = document.getElementById('attachPreview');
+  if (!el) return;
+  const results = pendingAttachments.filter(
+    (a) => a.kind === 'result' && a.result && a.result.tile_url && /\{z\}/.test(a.result.tile_url),
+  );
+  const sig = results.map((a) => a.result.tile_url).join('|');
+  if (sig === _previewSig) return;  // unchanged -> keep the existing maps
+  _previewSig = sig;
+  // Clearing el detaches any prior inner; renderResultViz renders async, so a
+  // superseded render appends to its (now-detached) inner instead of leaking
+  // stray maps into the live one.
+  el.innerHTML = '';
+  if (!results.length) { el.hidden = true; return; }
+  el.hidden = false;
+  const inner = document.createElement('div');
+  el.appendChild(inner);
+  const ev = {
+    ok: true,
+    result: { ok: true, result: { results: results.map((a) => ({ result_id: a.result.id, tile_url: a.result.tile_url })) } },
+  };
+  renderResultViz(inner, ev);
 }
 
 export function buildAgentBrief(brief, atts) {

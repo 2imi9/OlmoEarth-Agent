@@ -41,6 +41,60 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **Comparisons panel**: a sidebar section (parallel to Chats and Projects)
+  that **stores** two-raster comparisons. A completed difference scan offers
+  "Save comparison"; the saved record (real stats + the sampled diff grid,
+  captured straight from the live scan -- never fabricated) is persisted to
+  `localStorage` and re-openable in a modal that redraws the stored difference
+  map and its stats with no re-fetch. `js/compares.js`; decoupled from the
+  scan via an `oe:save-comparison` DOM event.
+- **More in-chat charts + auto difference map + a result cache**: (1) skill #4
+  `olmoearth_compare_results` now auto-renders a stat card (correlation,
+  agreement, mean |diff|, RMSE) **and** kicks off the difference-map scan inline
+  -- no button needed. (2) skill #7 `olmoearth-baseline-compare` renders grouped
+  metric bars (model A vs B + overall winner); skill #8
+  `olmoearth_classification_metrics` renders overall + per-class F1 bars. (3) the
+  bridge now caches proxied tiles and pixel values in-memory (LRU, key-namespaced
+  + SSRF-guarded), so panning a result map or re-running a difference scan over
+  overlapping cells is instant instead of re-fetching through the proxy.
+- **Difference-map scan (in chat)**: comparing two result rasters now produces a
+  visible **difference output**, not just numbers. A "Scan difference map" button
+  on a two-raster view samples both rasters on a grid over their shared extent
+  (via a new `GET /api/pixel-value` proxy) and paints each cell by `B - A`
+  **progressively as it scans** -- blue where A is higher, pink where B is higher,
+  opacity by magnitude -- then reports mean |diff|, correlation, and agreement.
+  Pure client-side (`js/viz.js renderDiffScan`); pointwise, so it's a grid
+  estimate (default 7x7), shown live.
+- **Quantitative two-result comparison** (`olmoearth_compare_results`, skill #4):
+  compare two prediction results numerically with **no ground truth**. It
+  samples both rasters on a grid over their shared extent (pointwise
+  `pixel-value`, new `StudioClient.pixel_value`) and returns model-vs-model
+  agreement -- mean / mean-absolute difference, RMSE-between-models, Pearson
+  correlation, and a threshold agreement fraction (regression) or class
+  agreement (classification). This fills the gap behind the side-by-side raster
+  preview: previously the agent could only describe two rasters or recommend a
+  manual GIS overlay, because the accuracy tools (`olmoearth_classification_metrics`)
+  need labels. Pure-Python stats in `analysis/raster_compare.py` (no GDAL/numpy);
+  a system-prompt rule routes "compare these two results" to it. Verified live
+  on two karst runs (correlation 0.997, 96% agreement within 0.1).
+- **In-chat result visuals**: tool results now render an inline visual, not just
+  text. Raster/tile results (predict / fetch-results / qgis-bridge) render on a
+  **Leaflet map fit to the raster's extent** (so the picture actually shows,
+  rather than being an invisible speck at world zoom) over an OpenStreetMap
+  basemap; two-or-more rasters render **side by side** to compare. The extent
+  comes from a new `GET /api/results/{id}/extent` (the result's
+  `result_metadata.geometry` bbox); maps appear immediately and snap to extent
+  as it resolves. **Dragging prediction results** from the sidebar into the
+  composer previews them as rasters above the input -- pull two in to compare
+  them side by side before sending (the original "compare two rasters" case).
+  Studio tiles are auth-gated
+  and browser `<img>` requests can't carry a header, so a new bridge tile-proxy
+  (`GET /api/tile/{z}/{x}/{y}?src=...`) adds the Bearer key server-side and is
+  hard-restricted to the Studio host (no open relay / SSRF). Change-detection
+  results render an **SVG trajectory chart**. New `webui/js/viz.js` (the result
+  visualizer) + `webui/js/leaflet.js` (a Leaflet loader now shared with the AOI
+  draw widget); pure-SVG charts, no new deps. Resolves the gap where comparing
+  rasters showed nothing visual in the chat.
 - **AOI draw-in-chat**: select an area of interest by **drawing** it on a map
   in the chat instead of typing a bbox. A composer "Draw AOI" button opens a
   Leaflet map (OSM basemap, rectangle/polygon tools; loaded from CDN, no build

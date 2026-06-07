@@ -439,6 +439,19 @@ class _FakeStudio:
     ) -> _FakeEnv:
         return _FakeEnv([{"id": "area-1", "name": "Saved AOI", "project_id": project_id}])
 
+    async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
+        return {
+            "id": result_id,
+            "tile_urls": ["/api/v1/prediction-results/r/tiles/{z}/{x}/{y}.png"],
+            "property_names": ["score"],
+            "result_metadata": {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[-78.0, 40.0], [-77.0, 40.0], [-77.0, 41.0], [-78.0, 41.0], [-78.0, 40.0]]],
+                },
+            },
+        }
+
     async def get_area(self, area_id: str) -> dict[str, Any]:
         return {
             "id": area_id,
@@ -534,6 +547,95 @@ def test_get_area_requires_key() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/areas/area-1")
     assert resp.status_code == 400
+
+
+def test_result_extent_returns_bbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/results/r1/extent", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 200
+    ext = resp.json()["extent"]
+    assert ext["bbox"] == [-78.0, 40.0, -77.0, 41.0]
+    assert ext["tile_url"].endswith(".png")
+    assert ext["property"] == "score"
+
+
+def test_result_extent_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/results/r1/extent")
+    assert resp.status_code == 400
+
+
+def test_pixel_value_proxy_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/pixel-value?result_id=r1&lon=1&lat=2")
+    assert resp.status_code == 400
+
+
+def test_pixel_value_proxy_requires_coords() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/pixel-value?result_id=r1", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 400
+
+
+def test_pixel_value_proxy_extracts_band(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _PV(_FakeStudio):
+        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
+            return {"bands": [{"property_name": "karst", "raw_value": 0.42, "classification": None}]}
+
+    monkeypatch.setattr(serve, "StudioClient", _PV)
+    with TestClient(serve.app) as client:
+        resp = client.get(
+            "/api/pixel-value?result_id=r1&lon=-77.6&lat=40.8",
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["value"] == 0.42
+    assert body["property"] == "karst"
+    assert body["categorical"] is False
+
+
+def test_pixel_value_proxy_caches(monkeypatch: pytest.MonkeyPatch) -> None:
+    serve._PV_CACHE.clear()
+    calls = {"n": 0}
+
+    class _Counting(_FakeStudio):
+        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
+            calls["n"] += 1
+            return {"bands": [{"property_name": "k", "raw_value": 0.7, "classification": None}]}
+
+    monkeypatch.setattr(serve, "StudioClient", _Counting)
+    with TestClient(serve.app) as client:
+        h = {"X-Olmoearth-Key": "k"}
+        u = "/api/pixel-value?result_id=cache1&lon=1.0&lat=2.0"
+        a = client.get(u, headers=h)
+        b = client.get(u, headers=h)  # identical -> should hit cache
+    assert a.json()["value"] == 0.7
+    assert b.json()["value"] == 0.7
+    assert calls["n"] == 1  # Studio queried only once
+
+
+def test_tile_proxy_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/tile/5/3/7?src=%2Ffoo%2F%7Bz%7D%2F%7Bx%7D%2F%7By%7D.png")
+    assert resp.status_code == 400
+
+
+def test_tile_proxy_requires_src() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/tile/5/3/7", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 400
+
+
+def test_tile_proxy_rejects_foreign_host() -> None:
+    # An absolute src pointing off the Studio host must be blocked (SSRF guard).
+    import urllib.parse
+
+    src = urllib.parse.quote("https://evil.example.com/{z}/{x}/{y}.png", safe="")
+    with TestClient(serve.app) as client:
+        resp = client.get(f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 403
 
 
 def test_static_assets_are_revalidated() -> None:

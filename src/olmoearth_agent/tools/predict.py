@@ -10,10 +10,116 @@ features, files) are a follow-up within this skill.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
+from olmoearth_agent.analysis.aoi import geometry_bbox
+from olmoearth_agent.analysis.raster_compare import (
+    compare_categorical,
+    compare_numeric,
+    grid_points,
+    intersect_bbox,
+)
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+
+#: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
+_SAMPLE_CONCURRENCY = 8
+
+
+def _result_bbox(record: dict[str, Any]) -> list[float] | None:
+    """A result's [min_lon,min_lat,max_lon,max_lat] from result_metadata.geometry."""
+    geom = (record.get("result_metadata") or {}).get("geometry")
+    if not geom:
+        return None
+    try:
+        return geometry_bbox(geom)
+    except ValueError:
+        return None
+
+
+def _band_value(record: dict[str, Any], property_name: str | None) -> Any:
+    """Extract a pixel-value band's value: ``classification`` if set, else
+    ``raw_value``. Picks the named property, or the first band."""
+    bands = record.get("bands") or []
+    if not bands:
+        return None
+    band = bands[0]
+    if property_name:
+        band = next(
+            (b for b in bands if b.get("property_name") == property_name), bands[0]
+        )
+    cls = band.get("classification")
+    return cls if cls is not None else band.get("raw_value")
+
+
+def _is_categorical(record: dict[str, Any], property_name: str | None) -> bool:
+    bands = record.get("bands") or []
+    if not bands:
+        return False
+    band = bands[0]
+    if property_name:
+        band = next(
+            (b for b in bands if b.get("property_name") == property_name), bands[0]
+        )
+    return band.get("classification") is not None
+
+
+async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    a_id = args["result_id_a"]
+    b_id = args["result_id_b"]
+    prop = args.get("property_name")
+    grid = max(2, min(12, int(args.get("grid", 6))))
+    tol = float(args.get("tolerance", 0.1))
+
+    rec_a = await ctx.studio.get_prediction_result(a_id)
+    rec_b = await ctx.studio.get_prediction_result(b_id)
+    bbox = intersect_bbox(_result_bbox(rec_a), _result_bbox(rec_b))
+    if bbox is None:
+        return {
+            "comparable": False,
+            "reason": "the two results have no overlapping extent (or missing bounds)",
+        }
+    points = grid_points(bbox, grid)
+
+    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
+
+    async def sample(result_id: str, lon: float, lat: float) -> Any:
+        async with sem:
+            try:
+                rec = await ctx.studio.pixel_value(result_id, lon, lat)
+                return rec
+            except Exception:  # off-raster / nodata / transient -> drop the point
+                return None
+
+    recs_a = await asyncio.gather(*[sample(a_id, lo, la) for lo, la in points])
+    recs_b = await asyncio.gather(*[sample(b_id, lo, la) for lo, la in points])
+
+    # Detect categorical vs regression from the first valid sample.
+    first = next((r for r in recs_a if r), None)
+    categorical = bool(first and _is_categorical(first, prop))
+    vals_a = [(_band_value(r, prop) if r else None) for r in recs_a]
+    vals_b = [(_band_value(r, prop) if r else None) for r in recs_b]
+    pairs = list(zip(vals_a, vals_b))
+    stats = (
+        compare_categorical(pairs)
+        if categorical
+        else compare_numeric(pairs, tolerance=tol)
+    )
+    return {
+        "comparable": True,
+        "result_id_a": a_id,
+        "result_id_b": b_id,
+        "property_name": prop or (first.get("bands", [{}])[0].get("property_name") if first else None),
+        "kind": "classification" if categorical else "regression",
+        "grid": f"{grid}x{grid}",
+        "samples_requested": len(points),
+        "shared_extent_bbox": [round(v, 5) for v in bbox],
+        "stats": stats,
+        "method": "pointwise pixel-value sampled on a grid over the shared "
+        "extent (an estimate, not every pixel); no ground truth, so this is "
+        "model-vs-model agreement, not accuracy.",
+    }
 
 
 async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -181,5 +287,47 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_get_prediction_result,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_compare_results",
+                description=(
+                    "Quantitatively compare TWO prediction results over their "
+                    "shared area, with no ground truth. Samples both rasters on "
+                    "a grid (pointwise pixel-value) and returns model-vs-model "
+                    "agreement: mean difference, mean-absolute difference, "
+                    "RMSE-between-models, correlation, and an agreement fraction "
+                    "(regression) or class agreement (classification). Use this "
+                    "to compare two rasters numerically instead of only a visual "
+                    "/ metadata comparison. This is divergence between two model "
+                    "outputs, not accuracy (which needs labels -> use "
+                    "olmoearth_classification_metrics)."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "result_id_a": {"type": "string"},
+                        "result_id_b": {"type": "string"},
+                        "property_name": {
+                            "type": "string",
+                            "description": "Band/property to compare; defaults to "
+                            "the first band.",
+                        },
+                        "grid": {
+                            "type": "integer",
+                            "default": 6,
+                            "description": "Grid size N (N*N sample points; 2-12).",
+                        },
+                        "tolerance": {
+                            "type": "number",
+                            "default": 0.1,
+                            "description": "Regression: |a-b| <= tolerance counts "
+                            "as agreement.",
+                        },
+                    },
+                    "required": ["result_id_a", "result_id_b"],
+                },
+            ),
+            handler=_compare_results,
         ),
     ]
