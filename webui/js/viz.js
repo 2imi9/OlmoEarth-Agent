@@ -1,22 +1,36 @@
 /* In-chat result visuals. Given a tool result, render the most useful inline
-   visual: a Leaflet map of the result's raster tiles (authenticated via the
-   bridge /api/tile proxy), or an SVG trajectory chart for change detection.
-   Pure SVG charts (no deps); Leaflet is lazy-loaded (shared with the AOI
-   widget via js/leaflet.js). Renders nothing for results with no visual. */
+   visual: the result's raster picture(s) on a Leaflet map fit to the raster's
+   extent (authenticated via the bridge /api/tile proxy), or an SVG trajectory
+   chart for change detection. Two-or-more rasters render side by side to
+   compare. Pure SVG charts (no deps); Leaflet is lazy-loaded (shared with the
+   AOI widget via js/leaflet.js). Renders nothing for results with no visual. */
 
 import { escapeHtml } from './util.js';
-import { studioKey } from './api.js';
+import { studioKey, apiResultExtent } from './api.js';
 import { loadLeaflet, osmLayer } from './leaflet.js';
 
-/* Collect XYZ tile templates from a tool result, however it nests them. */
-function tileTemplates(inner) {
+/* Collect {template, resultId} raster entries from a tool result, however it
+   nests them. resultId (when present) lets us fetch the raster's extent so the
+   map can fit to it. */
+function tileEntries(inner) {
   const out = [];
-  const push = (t) => { if (t && typeof t === 'string' && /\{z\}/.test(t)) out.push(t); };
+  const seen = new Set();
+  const add = (template, resultId) => {
+    if (!template || typeof template !== 'string' || !/\{z\}/.test(template)) return;
+    if (seen.has(template)) return;
+    seen.add(template);
+    out.push({ template, resultId: resultId || null });
+  };
+  const fromObj = (o) => {
+    if (!o || typeof o !== 'object') return;
+    const id = o.result_id || o.id || null;
+    add(o.tile_url, id);
+    (o.tile_urls || []).forEach((t) => add(t, id));
+    add(o.xyz_url, id);  // qgis-bridge
+  };
   if (!inner || typeof inner !== 'object') return out;
-  push(inner.tile_url);
-  (inner.tile_urls || []).forEach(push);
-  push(inner.xyz_url);  // qgis-bridge
-  (inner.results || []).forEach((r) => { push(r && r.tile_url); (r && r.tile_urls || []).forEach(push); });
+  fromObj(inner);
+  (inner.results || []).forEach(fromObj);
   return out;
 }
 
@@ -37,43 +51,63 @@ function authTileLayer(L, template) {
       return img;
     },
   });
-  return new Layer('', { opacity: 0.8, maxZoom: 19 });
+  return new Layer('', { opacity: 0.85, maxZoom: 19 });
 }
 
-function shortLabel(t, i) {
-  const m = /property_name=([^&]+)/.exec(t);
+function labelFor(entry, i) {
+  const m = /property_name=([^&]+)/.exec(entry.template);
   if (m) return decodeURIComponent(m[1]);
-  const p = /prediction-results\/([0-9a-f]{6,8})/i.exec(t);
-  return p ? 'result ' + p[1] : 'layer ' + (i + 1);
+  return 'layer ' + (i + 1);
 }
 
-/* Render a map of one-or-more result raster layers. Multiple layers get a
-   toggle (radio) so two rasters can be compared by switching. */
-async function renderResultMap(container, templates, opts = {}) {
+/* Fit a Leaflet map to a [minLon, minLat, maxLon, maxLat] bbox. */
+function fitBbox(map, b) {
+  if (b && b.length === 4 && b.every((n) => Number.isFinite(n))) {
+    map.fitBounds([[b[1], b[0]], [b[3], b[2]]], { padding: [12, 12], maxZoom: 13 });
+  }
+}
+
+/* Render the raster picture(s). Maps are created immediately (so they show
+   without waiting on the slow extent lookup) and then snap to each raster's
+   extent as it resolves; 2+ rasters render side by side to compare. The tile
+   template already carries the colormap, so only the bbox is fetched. */
+async function renderResultMap(container, entries) {
   let L;
   try { L = await loadLeaflet(); } catch (e) { container.textContent = 'map unavailable'; return; }
-  const el = document.createElement('div');
-  el.className = 'viz-map';
-  container.appendChild(el);
-  const map = L.map(el, { worldCopyJump: true, attributionControl: false }).setView(
-    opts.center || [20, 0], opts.zoom || 2,
-  );
-  osmLayer(L).addTo(map);
-  const overlays = {};
-  templates.forEach((t, i) => {
-    const layer = authTileLayer(L, t);
-    overlays[shortLabel(t, i)] = layer;
-    if (i === 0) layer.addTo(map);
+
+  const maps = document.createElement('div');
+  maps.className = 'viz-maps' + (entries.length > 1 ? ' is-multi' : '');
+  container.appendChild(maps);
+  entries.forEach((entry, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'viz-map-cell';
+    if (entries.length > 1) {
+      const cap = document.createElement('div');
+      cap.className = 'viz-map-label';
+      cap.textContent = labelFor(entry, i);
+      cell.appendChild(cap);
+    }
+    const el = document.createElement('div');
+    el.className = 'viz-map';
+    cell.appendChild(el);
+    maps.appendChild(cell);
+    const map = L.map(el, { worldCopyJump: true, attributionControl: false }).setView([20, 0], 2);
+    osmLayer(L).addTo(map);
+    authTileLayer(L, entry.template).addTo(map);
+    setTimeout(() => map.invalidateSize(), 60);
+    // Snap to the raster's extent once it resolves (don't block the map on it).
+    if (entry.resultId) {
+      apiResultExtent(entry.resultId)
+        .then((ext) => fitBbox(map, ext.bbox))
+        .catch(() => { /* extent unknown -> stay at world view */ });
+    }
   });
-  if (templates.length > 1) {
-    L.control.layers(overlays, null, { collapsed: false }).addTo(map);
-  }
-  setTimeout(() => map.invalidateSize(), 60);
+
   const hint = document.createElement('div');
   hint.className = 'viz-cap';
-  hint.textContent = templates.length > 1
-    ? `${templates.length} raster layers - use the toggle to compare; pan/zoom to your area of interest.`
-    : 'Result raster on an OpenStreetMap basemap; pan/zoom to your area of interest.';
+  hint.textContent = entries.length > 1
+    ? `${entries.length} result rasters, side by side - fit to each raster's extent over an OpenStreetMap basemap.`
+    : 'Result raster, fit to its extent over an OpenStreetMap basemap.';
   container.appendChild(hint);
 }
 
@@ -110,8 +144,8 @@ export function renderResultViz(container, ev) {
     const inner = ev.result && ev.result.result;
     if (!inner || typeof inner !== 'object') return false;
 
-    const templates = tileTemplates(inner);
-    if (templates.length) { void renderResultMap(container, templates); return true; }
+    const entries = tileEntries(inner);
+    if (entries.length) { void renderResultMap(container, entries); return true; }
 
     if (Array.isArray(inner.dates) && Array.isArray(inner.values) && inner.values.length >= 2) {
       renderTrajectory(container, inner.dates, inner.values, inner.trend);

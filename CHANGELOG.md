@@ -34,8 +34,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ### Added
 - **In-chat result visuals**: tool results now render an inline visual, not just
   text. Raster/tile results (predict / fetch-results / qgis-bridge) render on a
-  **Leaflet map** with an OpenStreetMap basemap; two-or-more raster layers get a
-  toggle so they can be **compared** by switching. Studio tiles are auth-gated
+  **Leaflet map fit to the raster's extent** (so the picture actually shows,
+  rather than being an invisible speck at world zoom) over an OpenStreetMap
+  basemap; two-or-more rasters render **side by side** to compare. The extent
+  comes from a new `GET /api/results/{id}/extent` (the result's
+  `result_metadata.geometry` bbox); maps appear immediately and snap to extent
+  as it resolves. Studio tiles are auth-gated
   and browser `<img>` requests can't carry a header, so a new bridge tile-proxy
   (`GET /api/tile/{z}/{x}/{y}?src=...`) adds the Bearer key server-side and is
   hard-restricted to the Studio host (no open relay / SSRF). Change-detection

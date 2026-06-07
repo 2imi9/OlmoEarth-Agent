@@ -678,10 +678,19 @@ a:hover { color: var(--text); }
 
 /* ───────────── In-chat result visuals (js/viz.js) ───────────── */
 .tc-viz { margin-top: 10px; }
+.viz-maps { display: flex; flex-direction: column; gap: 10px; }
+.viz-maps.is-multi { flex-direction: row; flex-wrap: wrap; }
+.viz-maps.is-multi .viz-map-cell { flex: 1 1 280px; min-width: 240px; }
+.viz-map-cell { display: flex; flex-direction: column; gap: 4px; }
+.viz-map-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--mint-soft);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
 .viz-map {
   width: 100%; height: 300px; border-radius: var(--radius-sm);
   border: 1px solid var(--line); overflow: hidden; background: var(--bg-2);
 }
+.viz-maps.is-multi .viz-map { height: 260px; }
 .viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
 .viz-chart { margin-top: 2px; }
 .viz-svg {

@@ -439,6 +439,19 @@ class _FakeStudio:
     ) -> _FakeEnv:
         return _FakeEnv([{"id": "area-1", "name": "Saved AOI", "project_id": project_id}])
 
+    async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
+        return {
+            "id": result_id,
+            "tile_urls": ["/api/v1/prediction-results/r/tiles/{z}/{x}/{y}.png"],
+            "property_names": ["score"],
+            "result_metadata": {
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[-78.0, 40.0], [-77.0, 40.0], [-77.0, 41.0], [-78.0, 41.0], [-78.0, 40.0]]],
+                },
+            },
+        }
+
     async def get_area(self, area_id: str) -> dict[str, Any]:
         return {
             "id": area_id,
@@ -533,6 +546,23 @@ def test_get_area_returns_geom_and_bbox(monkeypatch: pytest.MonkeyPatch) -> None
 def test_get_area_requires_key() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/areas/area-1")
+    assert resp.status_code == 400
+
+
+def test_result_extent_returns_bbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/results/r1/extent", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 200
+    ext = resp.json()["extent"]
+    assert ext["bbox"] == [-78.0, 40.0, -77.0, 41.0]
+    assert ext["tile_url"].endswith(".png")
+    assert ext["property"] == "score"
+
+
+def test_result_extent_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/results/r1/extent")
     assert resp.status_code == 400
 
 

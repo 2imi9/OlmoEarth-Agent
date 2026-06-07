@@ -662,6 +662,43 @@ async def api_prediction_results(
     return {"ok": True, "results": results}
 
 
+@app.get("/api/results/{result_id}/extent")
+async def api_result_extent(result_id: str, request: Request) -> dict[str, Any]:
+    """Geographic extent of a prediction-result, so the chat can show the raster.
+
+    Reads ``result_metadata.geometry`` (the result's bounds) and returns its
+    bbox plus the first tile-URL template and property name. The web UI uses
+    the bbox to fit the result map to the raster (otherwise a small AOI is
+    invisible at world zoom).
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            rec = await studio.get_prediction_result(result_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    geom = (rec.get("result_metadata") or {}).get("geometry")
+    try:
+        bbox = geometry_bbox(geom) if geom else None
+    except ValueError:
+        bbox = None
+    tiles = rec.get("tile_urls") or []
+    props = rec.get("property_names") or []
+    return {
+        "ok": True,
+        "extent": {
+            "result_id": rec.get("id") or result_id,
+            "bbox": bbox,
+            "tile_url": tiles[0] if tiles else None,
+            "property": props[0] if props else None,
+        },
+    }
+
+
 @app.get("/api/tile/{z}/{x}/{y}")
 async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
     """Proxy one Studio raster tile, adding the caller's Bearer key.

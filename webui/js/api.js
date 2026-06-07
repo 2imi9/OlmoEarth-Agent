@@ -102,6 +102,13 @@ export async function apiArea(areaId) {
   return (await res.json()).area || {};
 }
 
+// GET /api/results/{id}/extent -> { result_id, bbox, tile_url, property }. Throws on !ok.
+export async function apiResultExtent(resultId) {
+  const res = await fetch('/api/results/' + encodeURIComponent(resultId) + '/extent', { headers: keyHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return (await res.json()).extent || {};
+}
+
 // GET /api/projects/{id}/predictions -> { predictions, models }. Throws on !ok.
 export async function apiPredictions(projectId) {
   const res = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/predictions', { headers: keyHeaders() });
