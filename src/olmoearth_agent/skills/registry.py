@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 18 skills.
+"""Skill catalog manifest, the harness's view of all 16 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -70,44 +70,44 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_get_prediction",
         ],
     ),
-    # #1 + #2 are unified upstream as the `olmoearth-data-prep` SKILL.md
-    # package; vendored via git submodule + loaded by SkillLoader.
+    # #1 unifies the former studio-upload + rslearn-config rows: they were two
+    # catalog entries for the single vendored `olmoearth-data-prep` SKILL.md
+    # package (loaded by SkillLoader). One package -> one entry.
     SkillSpec(
         1,
-        "olmoearth-studio-upload",
+        "olmoearth-data-prep",
         "Prep",
         "vendored",
-        "Labels -> Studio import (MIME/10K/multi-metric guards). "
-        "In upstream olmoearth-data-prep SKILL.md.",
+        "Labels -> Studio import (MIME/10K/multi-metric guards) AND rslearn "
+        "dataset.json + Lightning YAML with a 7-criteria audit. The single "
+        "vendored olmoearth-data-prep SKILL.md package.",
         ["olmoearth_load_skill"],
     ),
     SkillSpec(
         2,
-        "olmoearth-rslearn-config",
-        "Prep",
-        "vendored",
-        "Labels -> rslearn dataset.json + Lightning YAML; 7-criteria "
-        "audit. In upstream olmoearth-data-prep SKILL.md.",
-        ["olmoearth_load_skill"],
-    ),
-    SkillSpec(
-        3,
         "olmoearth-studio-job-config",
         "Configure",
         "vendored",
         "Task description -> Studio wizard answers; 14 presets + validator.",
         ["olmoearth_load_skill"],
     ),
+    # #3 unifies the former embeddings + automate rows: both decide
+    # embeddings-vs-fine-tune. The vendored SKILL.md is the guidance + notebook
+    # generator (load via olmoearth_load_skill); olmoearth_automate is the
+    # in-repo one-call version (decide + propose a config + HF introspection),
+    # which reuses the same decision table.
     SkillSpec(
-        4,
+        3,
         "olmoearth-embeddings",
         "Configure",
         "vendored",
-        "Embeddings-vs-fine-tune decision + runnable notebook.",
-        ["olmoearth_load_skill"],
+        "Embeddings-vs-fine-tune decision: the vendored guidance + runnable "
+        "notebook, plus the in-repo one-call olmoearth_automate (decide + "
+        "config + optional HF-dataset introspection) reusing the same table.",
+        ["olmoearth_load_skill", "olmoearth_automate"],
     ),
     SkillSpec(
-        5,
+        4,
         "olmoearth-predict",
         "Run",
         "implemented",
@@ -121,16 +121,23 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_get_prediction_result",
         ],
     ),
+    # #5 unifies change-detect + the JEPA latent-change skill: both are change
+    # detection, two engines. Engine A = the in-process Studio multi-date
+    # trajectory diff (olmoearth_change_detect). Engine B = the out-of-process
+    # JEPA latent-prediction residual detector in the separate torch repo
+    # 2imi9/olmoearth-jepa-change (no heavy deps here; invoked out-of-process).
     SkillSpec(
-        6,
-        "olmoearth-change-detect",
+        5,
+        "olmoearth-change-detection",
         "Run",
         "implemented",
-        "Multi-date (>=3) trajectory diff; refuses naive 2-date.",
+        "Change detection, two engines: in-process Studio multi-date (>=3) "
+        "trajectory diff (refuses naive 2-date), and an out-of-process JEPA "
+        "latent-prediction residual detector (separate torch repo).",
         ["olmoearth_change_detect"],
     ),
     SkillSpec(
-        7,
+        6,
         "olmoearth-baseline-compare",
         "Run",
         "implemented",
@@ -139,7 +146,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_baseline_compare"],
     ),
     SkillSpec(
-        8,
+        7,
         "olmoearth-evaluate",
         "Analyze",
         "implemented",
@@ -152,7 +159,7 @@ SKILLS: list[SkillSpec] = [
         ],
     ),
     SkillSpec(
-        9,
+        8,
         "olmoearth-similarity",
         "Analyze",
         "implemented",
@@ -161,7 +168,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_similarity_search"],
     ),
     SkillSpec(
-        10,
+        9,
         "olmoearth-uncertainty",
         "Analyze",
         "implemented",
@@ -169,7 +176,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_area_of_applicability"],
     ),
     SkillSpec(
-        11,
+        10,
         "olmoearth-cloud-mask-audit",
         "Analyze",
         "implemented",
@@ -177,7 +184,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_cloud_mask_audit"],
     ),
     SkillSpec(
-        12,
+        11,
         "olmoearth-qgis-bridge",
         "Integrate",
         "implemented",
@@ -185,10 +192,10 @@ SKILLS: list[SkillSpec] = [
         "instructions. (COG export follows.)",
         ["olmoearth_qgis_bridge"],
     ),
-    # #13 reframed from "wire external MCPs" to "export our own Studio
+    # #12 reframed from "wire external MCPs" to "export our own Studio
     # data, grouped" (more useful, self-contained). See CHANGELOG.
     SkillSpec(
-        13,
+        12,
         "olmoearth-data-export",
         "Integrate",
         "implemented",
@@ -197,7 +204,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_export_data"],
     ),
     SkillSpec(
-        14,
+        13,
         "olmoearth-provenance",
         "Report",
         "implemented",
@@ -205,7 +212,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_provenance_summary"],
     ),
     SkillSpec(
-        15,
+        14,
         "olmoearth-case-narrative",
         "Report",
         "implemented",
@@ -213,7 +220,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_case_narrative"],
     ),
     SkillSpec(
-        16,
+        15,
         "olmoearth-litsearch",
         "Report",
         "implemented",
@@ -222,16 +229,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_litsearch", "olmoearth_litsearch_resolve"],
     ),
     SkillSpec(
-        17,
-        "olmoearth-automate",
-        "Configure",
-        "implemented",
-        "Auto-decide embeddings vs fine-tune + propose a config (model size, "
-        "classifier, notebook/fine-tune plan); optional HF-dataset introspection.",
-        ["olmoearth_automate"],
-    ),
-    SkillSpec(
-        18,
+        16,
         "olmoearth-negative-sampler",
         "Prep",
         "implemented",

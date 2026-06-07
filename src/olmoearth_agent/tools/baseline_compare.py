@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-baseline-compare`` tool bundle (skill #7).
+"""The ``olmoearth-baseline-compare`` tool bundle (skill #6).
 
 Side-by-side OlmoEarth-vs-AlphaEarth comparison on shared labels / AOI:
 a per-metric table (always) plus an optional cell-by-cell difference

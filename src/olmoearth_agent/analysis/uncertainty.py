@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Area-of-Applicability OOD flag (skill #10, ``olmoearth-uncertainty``).
+"""Area-of-Applicability OOD flag (skill #9, ``olmoearth-uncertainty``).
 
 Pure Python, no heavy deps. Implements the Meyer & Pebesma (2021, MEE
 12:1620) Area of Applicability: a model's predictions are trustworthy

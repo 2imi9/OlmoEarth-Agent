@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-evaluate`` tool bundle (skill #8).
+"""The ``olmoearth-evaluate`` tool bundle (skill #7).
 
 Honest map-accuracy tools: the random-vs-spatial CV inflation check,
 classification metrics, and NNDM-LOO cross-validation (Mila et al. 2022, a

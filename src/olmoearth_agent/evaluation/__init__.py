@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Honest map-accuracy evaluation for skill #8 (``olmoearth-evaluate``).
+"""Honest map-accuracy evaluation for skill #7 (``olmoearth-evaluate``).
 
 Pure-Python (no heavy deps) spatial cross-validation and metrics. The
 headline is the random-vs-spatial inflation diagnostic that

@@ -11,10 +11,10 @@ from olmoearth_agent.skills.registry import (
 )
 
 
-def test_catalog_covers_all_18_skills() -> None:
+def test_catalog_covers_all_16_skills() -> None:
     numbered = [s for s in SKILLS if s.number >= 1]
-    assert len(numbered) == 18
-    assert {s.number for s in numbered} == set(range(1, 19))
+    assert len(numbered) == 16
+    assert {s.number for s in numbered} == set(range(1, 17))
 
 
 def test_foundational_entry_is_implemented() -> None:
@@ -22,11 +22,11 @@ def test_foundational_entry_is_implemented() -> None:
     assert any(s.name == "studio-core" for s in implemented)
 
 
-def test_vendored_skills_are_the_four_existing() -> None:
+def test_vendored_skills_match_the_three_packages() -> None:
+    # Three vendored SKILL.md packages = three dirs under vendor/.../skills/.
     vendored = {s.name for s in skills_by_status("vendored")}
     assert vendored == {
-        "olmoearth-studio-upload",
-        "olmoearth-rslearn-config",
+        "olmoearth-data-prep",
         "olmoearth-studio-job-config",
         "olmoearth-embeddings",
     }

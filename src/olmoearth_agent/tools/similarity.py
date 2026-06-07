@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-similarity`` tool bundle (skill #9).
+"""The ``olmoearth-similarity`` tool bundle (skill #8).
 
 Exact top-K similarity search over embedding vectors the caller already
 has, with an optional geographic-prior warning. Returns summary results

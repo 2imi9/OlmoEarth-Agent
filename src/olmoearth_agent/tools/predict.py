@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-predict`` tool bundle (skill #5): the core run loop.
+"""The ``olmoearth-predict`` tool bundle (skill #4): the core run loop.
 
 Search predictions (to discover reusable ``model_id``s), submit a new
 prediction, and poll it. Polling reuses the foundational

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Auto-decide embeddings vs fine-tuning and propose a full config (skill #17).
+"""Auto-decide embeddings vs fine-tuning and propose a full config (the in-repo facet of skill #3 olmoearth-embeddings).
 
 The decision logic (:func:`decide`, :func:`parse_task_string`) is a faithful
 port of the canonical

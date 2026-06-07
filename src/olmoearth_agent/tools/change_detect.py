@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-change-detect`` tool bundle (skill #6).
+"""The ``olmoearth_change_detect`` tool (skill #5 ``olmoearth-change-detection``, Engine A).
 
 A multi-date trajectory diff over per-date layer summaries. Composes
-skill #5 (``olmoearth-predict``): the agent fetches a prediction result
+skill #4 (``olmoearth-predict``): the agent fetches a prediction result
 per date, reduces each to one ``value``, and passes the dated series
 here. Refuses fewer than three dates: a two-date diff hides drift.
 """
@@ -44,7 +44,7 @@ async def _change_detect(args: dict[str, Any], _ctx: ToolContext) -> dict[str, A
 
 
 def build_change_detect_tools() -> list[RegisteredTool]:
-    """Return the ``olmoearth-change-detect`` tool bundle."""
+    """Return the ``olmoearth_change_detect`` tool bundle (skill #5, Engine A)."""
     return [
         RegisteredTool(
             spec=ToolSpec(
@@ -53,7 +53,7 @@ def build_change_detect_tools() -> list[RegisteredTool]:
                     "Compute a multi-date change trajectory from >= 3 dated "
                     "layer summaries. Each series point is one prediction "
                     "date reduced to a single value (e.g. positive-class "
-                    "fraction or mean score over the AOI, from a skill #5 "
+                    "fraction or mean score over the AOI, from a skill #4 "
                     "result). Returns per-step deltas, net change, the "
                     "largest-change interval, a reversal count, and a trend "
                     "label (increasing/decreasing/stable/oscillating). "

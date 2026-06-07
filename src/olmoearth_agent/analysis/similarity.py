@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Embedding similarity search (skill #9, ``olmoearth-similarity``).
+"""Embedding similarity search (skill #8, ``olmoearth-similarity``).
 
 Pure Python, no heavy deps. :func:`similarity_search` is an exact
 brute-force top-K nearest-neighbour search over embedding vectors

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The olmoearth-qgis-bridge tool bundle (skill #12).
+"""The olmoearth-qgis-bridge tool bundle (skill #11).
 
 Turn a prediction result's tile templates into QGIS-ready XYZ URLs + an
 OGC SLD style + load instructions, so a GIS analyst can pull the layer

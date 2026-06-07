@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-automate`` tool bundle (skill #17).
+"""The ``olmoearth-automate`` tool bundle (the in-repo facet of skill #3 olmoearth-embeddings).
 
 One call that auto-decides **embeddings vs fine-tuning** for an Earth-observation
 task and **proposes a config** (model size, classifier head, an embeddings

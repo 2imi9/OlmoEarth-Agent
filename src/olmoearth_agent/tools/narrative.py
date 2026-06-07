@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-case-narrative`` tool bundle (skill #15).
+"""The ``olmoearth-case-narrative`` tool bundle (skill #14).
 
 Turns a run's results + provenance into a stakeholder Markdown report,
 with a freshness gate that refuses to render stale tiles.

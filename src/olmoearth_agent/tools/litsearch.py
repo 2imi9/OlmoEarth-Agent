@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-litsearch`` tool bundle (skill #16).
+"""The ``olmoearth-litsearch`` tool bundle (skill #15).
 
 Literature search + identifier resolution over arXiv and OpenAlex so the agent
 can GROUND EO/geospatial claims and citations in real papers instead of

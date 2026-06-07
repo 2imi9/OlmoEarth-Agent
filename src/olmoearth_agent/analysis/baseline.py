@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""OlmoEarth-vs-AlphaEarth baseline comparison (skill #7, ``olmoearth-baseline-compare``).
+"""OlmoEarth-vs-AlphaEarth baseline comparison (skill #6, ``olmoearth-baseline-compare``).
 
 Pure Python, no heavy deps. Compares two models side-by-side on the same
 labels / AOI: :func:`compare_metrics` builds a per-metric table (reusing

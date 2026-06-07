@@ -5,7 +5,7 @@
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
-[![Skills](https://img.shields.io/badge/skills-19-F0529C.svg)](SKILLS.md)
+[![Skills](https://img.shields.io/badge/skills-16-F0529C.svg)](SKILLS.md)
 [![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
@@ -62,32 +62,29 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules -- trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call -- are enforced by the harness, not the model.
 
-The capability set ships as **19 skills**, grouped by EO-workflow stage.
+The capability set ships as **16 skills**, grouped by EO-workflow stage.
 
 <details>
-<summary><strong>The 19 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
+<summary><strong>The 16 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
-| 1 | `olmoearth-studio-upload` | Labels (GeoJSON/CSV/Shapefile) -> Studio-importable file with MIME / 10K / multi-metric guards | **Prep** |
-| 2 | `olmoearth-rslearn-config` | Labels -> `rslearn` `dataset.json` + Lightning YAML with a 7-criteria audit | **Prep** |
-| 3 | `olmoearth-studio-job-config` | Task description -> Studio wizard answers, 14 presets + cross-field validator | **Configure** |
-| 4 | `olmoearth-embeddings` | Embeddings-vs-fine-tune **guidance** + a runnable-notebook generator (you run the notebook) | **Configure** |
-| 5 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results; pixel-value / features follow | **Run** |
-| 6 | `olmoearth-change-detect` | Two-or-more-date trajectory diff (refuses naive 2-date diffs) | **Run** |
-| 7 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
-| 8 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
-| 9 | `olmoearth-similarity` | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up follow-up) | **Analyze** |
-| 10 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer-Pebesma Area of Applicability | **Analyze** |
-| 11 | `olmoearth-cloud-mask-audit` | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
-| 12 | `olmoearth-qgis-bridge` | Tile URLs -> QGIS WMTS + COG with a sidecar uncertainty raster | **Integrate** |
-| 13 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
-| 14 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
-| 15 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
-| 16 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations | **Report** |
-| 17 | `olmoearth-automate` | **One call** that auto-decides embeddings vs fine-tune + proposes a config (reuses #4's logic); optional HuggingFace-dataset introspection | **Configure** |
-| 18 | `olmoearth-negative-sampler` | Presence-only labels -> trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
-| 19 | `olmoearth-latent-change` | **Out-of-process** local-model JEPA latent-prediction change detector (separate repo [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)); 2 S2 GeoTIFFs -> change heatmap + %area + top-k GeoJSON | **Run** |
+| 1 | `olmoearth-data-prep` | Labels (GeoJSON/CSV/Shapefile) -> Studio-importable file (MIME / 10K / multi-metric guards) AND `rslearn` `dataset.json` + Lightning YAML, with a 7-criteria audit | **Prep** |
+| 2 | `olmoearth-studio-job-config` | Task description -> Studio wizard answers, 14 presets + cross-field validator | **Configure** |
+| 3 | `olmoearth-embeddings` | Embeddings-vs-fine-tune **guidance + a runnable notebook**, plus the **one-call** `olmoearth_automate` (decide + propose a config; optional HuggingFace introspection) | **Configure** |
+| 4 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results; pixel-value / features follow | **Run** |
+| 5 | `olmoearth-change-detection` | Two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date), and an out-of-process JEPA latent-prediction pixel detector (separate repo [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)) | **Run** |
+| 6 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
+| 7 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
+| 8 | `olmoearth-similarity` | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up follow-up) | **Analyze** |
+| 9 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer-Pebesma Area of Applicability | **Analyze** |
+| 10 | `olmoearth-cloud-mask-audit` | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
+| 11 | `olmoearth-qgis-bridge` | Tile URLs -> QGIS WMTS + COG with a sidecar uncertainty raster | **Integrate** |
+| 12 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
+| 13 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
+| 14 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
+| 15 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations | **Report** |
+| 16 | `olmoearth-negative-sampler` | Presence-only labels -> trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
 
 </details>
 
@@ -103,7 +100,7 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 | **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
 | **Harness** | A compact catalog of function-call tools + an **opt-in** `system:python` subprocess for light glue, with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
-| **Skills** | 18-skill catalog; vendored #1-#4 via submodule `vendor/olmoearth-skills` |
+| **Skills** | 16-skill catalog; vendored #1-#3 via submodule `vendor/olmoearth-skills` |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
 
 </details>
