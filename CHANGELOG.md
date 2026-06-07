@@ -32,6 +32,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **Comparisons panel**: a sidebar section (parallel to Chats and Projects)
+  that **stores** two-raster comparisons. A completed difference scan offers
+  "Save comparison"; the saved record (real stats + the sampled diff grid,
+  captured straight from the live scan -- never fabricated) is persisted to
+  `localStorage` and re-openable in a modal that redraws the stored difference
+  map and its stats with no re-fetch. `js/compares.js`; decoupled from the
+  scan via an `oe:save-comparison` DOM event.
 - **More in-chat charts + auto difference map + a result cache**: (1) skill #4
   `olmoearth_compare_results` now auto-renders a stat card (correlation,
   agreement, mean |diff|, RMSE) **and** kicks off the difference-map scan inline

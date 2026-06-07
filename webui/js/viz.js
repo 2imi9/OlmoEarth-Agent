@@ -245,23 +245,59 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   });
 
   const m = absd.length;
-  if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return; }
+  if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return null; }
+  const tol = opts.tolerance || 0.1;
+  const diffs = cells.filter((c) => c.diff != null).map((c) => c.diff);
   const meanAbs = absd.reduce((p, q) => p + q, 0) / m;
-  const within = absd.filter((d) => d <= (opts.tolerance || 0.1)).length / m;
+  const maxAbs = Math.max(...absd);
+  const meanDiff = diffs.reduce((p, q) => p + q, 0) / m;
+  const rmse = Math.sqrt(diffs.reduce((p, q) => p + q * q, 0) / m);
+  const within = absd.filter((d) => d <= tol).length / m;
   const r = pearson(xs, ys);
+  const stats = {
+    n_samples: m,
+    correlation: r == null ? null : Number(r.toFixed(4)),
+    agreement_fraction: Number(within.toFixed(4)),
+    mean_abs_diff: Number(meanAbs.toFixed(6)),
+    max_abs_diff: Number(maxAbs.toFixed(6)),
+    mean_diff_b_minus_a: Number(meanDiff.toFixed(6)),
+    rmse_between_models: Number(rmse.toFixed(6)),
+    tolerance: tol,
+  };
   status.innerHTML =
     'Difference map (B - A) over ' + m + ' sampled cells · mean |diff| <strong>' + meanAbs.toFixed(3) +
     '</strong> · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
-    (within * 100).toFixed(0) + '% agree (±' + (opts.tolerance || 0.1) + '). ' +
+    (within * 100).toFixed(0) + '% agree (±' + tol + '). ' +
     '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>A higher' +
     '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
+
+  // Captured straight from the live scan (real values), so a saved comparison
+  // is never fabricated. Offer to store it in the Comparisons panel.
+  const record = {
+    resultIdA: a.resultId, resultIdB: b.resultId, property: opts.property || null,
+    bbox, cellSize: [dx, dy], tolerance: tol, stats,
+    cells: cells.filter((c) => c.diff != null).map((c) => ({
+      lon: Number(c.lon.toFixed(6)), lat: Number(c.lat.toFixed(6)), diff: Number(c.diff.toFixed(6)),
+    })),
+  };
+  if (opts.saveable !== false) {
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'viz-diff-btn';
+    save.textContent = 'Save comparison';
+    save.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('oe:save-comparison', { detail: record }));
+      save.textContent = 'Saved to Comparisons';
+      save.disabled = true;
+    });
+    container.appendChild(save);
+  }
+  return record;
 }
 
-/* A compact stat card for olmoearth_compare_results, then the difference map
-   auto-scanned (so a quantitative compare appears with both the numbers and
-   the visual, no button needed). */
-function renderCompareCard(container, inner) {
-  const s = inner.stats || {};
+/* A compact stat card from a compare `stats` object (real numbers only). */
+function statChips(s, caption) {
+  s = s || {};
   const rows = [];
   const add = (k, v) => { if (v !== undefined && v !== null) rows.push([k, v]); };
   add('correlation', s.correlation);
@@ -274,8 +310,16 @@ function renderCompareCard(container, inner) {
   card.className = 'viz-statcard';
   card.innerHTML = rows.map(([k, v]) =>
     `<span class="viz-stat"><b>${escapeHtml(String(v))}</b>${escapeHtml(k)}</span>`).join('') +
-    `<div class="viz-cap">Model-vs-model agreement (no ground truth). Difference map below.</div>`;
-  container.appendChild(card);
+    (caption ? `<div class="viz-cap">${escapeHtml(caption)}</div>` : '');
+  return card;
+}
+
+/* A compact stat card for olmoearth_compare_results, then the difference map
+   auto-scanned (so a quantitative compare appears with both the numbers and
+   the visual, no button needed). */
+function renderCompareCard(container, inner) {
+  const s = inner.stats || {};
+  container.appendChild(statChips(s, 'Model-vs-model agreement (no ground truth). Difference map below.'));
   if (inner.result_id_a && inner.result_id_b) {
     const out = document.createElement('div');
     out.className = 'viz-diff';
@@ -283,6 +327,35 @@ function renderCompareCard(container, inner) {
     void renderDiffScan(out, { resultId: inner.result_id_a }, { resultId: inner.result_id_b },
       { property: inner.property_name, tolerance: s.tolerance });
   }
+}
+
+/* Re-render a SAVED comparison (stored real stats + grid cells) - no re-fetch,
+   no fabrication: it draws exactly the data captured during the live scan. */
+export async function renderStoredComparison(container, record) {
+  container.appendChild(statChips(record.stats, 'Saved comparison - model-vs-model agreement (no ground truth).'));
+  let L;
+  try { L = await loadLeaflet(); } catch (e) { return; }
+  const el = document.createElement('div');
+  el.className = 'viz-map';
+  container.appendChild(el);
+  const map = L.map(el, { worldCopyJump: true, attributionControl: false });
+  osmLayer(L).addTo(map);
+  const b = record.bbox;
+  if (b) map.fitBounds([[b[1], b[0]], [b[3], b[2]]], { padding: [10, 10], maxZoom: 13 });
+  setTimeout(() => map.invalidateSize(), 60);
+  const cells = record.cells || [];
+  const [dx, dy] = record.cellSize || [0.01, 0.01];
+  const scaleMax = Math.max(0.05, ...cells.map((c) => Math.abs(c.diff)));
+  cells.forEach((c) => {
+    const bounds = [[c.lat - dy / 2, c.lon - dx / 2], [c.lat + dy / 2, c.lon + dx / 2]];
+    L.rectangle(bounds, diffStyle(c.diff, scaleMax)).addTo(map);
+  });
+  const cap = document.createElement('div');
+  cap.className = 'viz-cap';
+  cap.innerHTML = 'Difference map (B - A) over ' + cells.length + ' cells. ' +
+    '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>A higher' +
+    '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
+  container.appendChild(cap);
 }
 
 /* Horizontal bars for 0..1 metric rows [{label, value, color}]. */

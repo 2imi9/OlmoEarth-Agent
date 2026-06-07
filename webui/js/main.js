@@ -12,6 +12,7 @@ import { wireAttach } from './attach.js';
 import { wireAoi } from './aoi.js';
 import { wireLlmSubtab, wireLlmNudge, updateLlmNudge } from './llm.js';
 import { renderProjects } from './projects.js';
+import { wireCompares } from './compares.js';
 
 // Re-rendered by wireKey so detectBridge() can refresh the key card once the
 // live/demo mode is known.
@@ -160,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireUserMenu();
   wireLlmNudge();
   wireCollapsibles();
+  wireCompares();   // saved-comparisons panel + save-event listener
   wireKey();        // initial render (demo assumptions) + renderProjects
   renderChatList();
   newChat();        // start on a fresh empty chat (landing visible)
