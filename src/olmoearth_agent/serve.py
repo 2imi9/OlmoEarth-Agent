@@ -33,6 +33,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -87,6 +88,40 @@ def _cache_put(cache: OrderedDict[str, Any], k: str, v: Any) -> None:
 def _key_hash(key: str) -> str:
     """A short, non-reversible tag for the caller's key, to namespace caches."""
     return hashlib.sha256(key.encode()).hexdigest()[:12]
+
+
+#: Short-TTL cache for read endpoints (projects / areas / predictions / ...).
+#: Survives client page reloads (unlike the in-page api.js cache), so reopening
+#: the Projects tree / AOI modal after a refresh skips the slow Studio round
+#: trip. Keyed by capability + key-hash + ids; TTL keeps it fresh enough.
+_READ_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+_READ_CACHE_MAX = 512
+_READ_TTL_LONG = 300.0   # projects / areas / extent: rarely change in a session
+_READ_TTL_SHORT = 30.0   # predictions / results: change as runs progress
+
+
+def _read_cache_get(k: str) -> dict[str, Any] | None:
+    hit = _READ_CACHE.get(k)
+    if hit is None:
+        return None
+    expiry, payload = hit
+    if time.monotonic() > expiry:
+        _READ_CACHE.pop(k, None)
+        return None
+    _READ_CACHE.move_to_end(k)
+    return payload
+
+
+def _read_cache_put(k: str, payload: dict[str, Any], ttl: float) -> None:
+    _READ_CACHE[k] = (time.monotonic() + ttl, payload)
+    _READ_CACHE.move_to_end(k)
+    while len(_READ_CACHE) > _READ_CACHE_MAX:
+        _READ_CACHE.popitem(last=False)
+
+
+def _read_cache_invalidate(substr: str) -> None:
+    for k in [key for key in _READ_CACHE if substr in key]:
+        _READ_CACHE.pop(k, None)
 
 
 def _webui_dir() -> Path:
@@ -432,6 +467,10 @@ async def api_projects(request: Request) -> dict[str, Any]:
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")
+    ckey = f"projects|{_key_hash(key)}"
+    cached = _read_cache_get(ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -439,12 +478,14 @@ async def api_projects(request: Request) -> dict[str, Any]:
             ctx = await studio.load_context()
     except Exception as exc:  # surfaced to the caller, not swallowed
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
-    return {
+    payload = {
         "ok": True,
         "user_name": ctx.user_name,
         "organization": ctx.organization,
         "projects": [{"id": p.id, "name": p.name} for p in ctx.projects],
     }
+    _read_cache_put(ckey, payload, _READ_TTL_LONG)
+    return payload
 
 
 @app.post("/api/run")
@@ -561,6 +602,8 @@ async def api_create_area(request: Request) -> dict[str, Any]:
             )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    # The project's area list changed -> drop its cached read (server + clients).
+    _read_cache_invalidate(f"areas|{_key_hash(key)}|{project_id}")
     return {
         "ok": True,
         "area": {
@@ -578,6 +621,10 @@ async def api_project_areas(project_id: str, request: Request) -> dict[str, Any]
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")
+    ckey = f"areas|{_key_hash(key)}|{project_id}"
+    cached = _read_cache_get(ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -585,13 +632,15 @@ async def api_project_areas(project_id: str, request: Request) -> dict[str, Any]
             env = await studio.search_areas(project_id=project_id, limit=200)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
-    return {
+    payload = {
         "ok": True,
         "areas": [
             {"id": r.get("id", ""), "name": r.get("name") or "(unnamed)"}
             for r in env.records
         ],
     }
+    _read_cache_put(ckey, payload, _READ_TTL_LONG)
+    return payload
 
 
 @app.get("/api/areas/{area_id}")
@@ -605,6 +654,10 @@ async def api_get_area(area_id: str, request: Request) -> dict[str, Any]:
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")
+    ckey = f"area|{_key_hash(key)}|{area_id}"
+    cached = _read_cache_get(ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -617,7 +670,7 @@ async def api_get_area(area_id: str, request: Request) -> dict[str, Any]:
         bbox = geometry_bbox(geom) if geom else None
     except ValueError:
         bbox = None
-    return {
+    payload = {
         "ok": True,
         "area": {
             "id": record.get("id"),
@@ -627,6 +680,8 @@ async def api_get_area(area_id: str, request: Request) -> dict[str, Any]:
             "bbox": bbox,
         },
     }
+    _read_cache_put(ckey, payload, _READ_TTL_LONG)
+    return payload
 
 
 @app.get("/api/projects/{project_id}/predictions")
@@ -642,6 +697,10 @@ async def api_project_predictions(project_id: str, request: Request) -> dict[str
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")
+    ckey = f"preds|{_key_hash(key)}|{project_id}"
+    cached = _read_cache_get(ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -659,7 +718,9 @@ async def api_project_predictions(project_id: str, request: Request) -> dict[str
         }
         for r in env.records
     ]
-    return {"ok": True, "predictions": predictions, "models": models}
+    payload = {"ok": True, "predictions": predictions, "models": models}
+    _read_cache_put(ckey, payload, _READ_TTL_SHORT)
+    return payload
 
 
 @app.get("/api/predictions/{prediction_id}/results")
@@ -670,6 +731,10 @@ async def api_prediction_results(
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")
+    ckey = f"results|{_key_hash(key)}|{prediction_id}"
+    cached = _read_cache_get(ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -689,7 +754,9 @@ async def api_prediction_results(
         }
         for r in env.records
     ]
-    return {"ok": True, "results": results}
+    payload = {"ok": True, "results": results}
+    _read_cache_put(ckey, payload, _READ_TTL_SHORT)
+    return payload
 
 
 @app.get("/api/results/{result_id}/extent")
@@ -704,6 +771,10 @@ async def api_result_extent(result_id: str, request: Request) -> dict[str, Any]:
     key = _studio_key(request)
     if not key:
         raise HTTPException(status_code=400, detail="missing Studio key")
+    ckey = f"extent|{_key_hash(key)}|{result_id}"
+    cached = _read_cache_get(ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -718,7 +789,7 @@ async def api_result_extent(result_id: str, request: Request) -> dict[str, Any]:
         bbox = None
     tiles = rec.get("tile_urls") or []
     props = rec.get("property_names") or []
-    return {
+    payload = {
         "ok": True,
         "extent": {
             "result_id": rec.get("id") or result_id,
@@ -727,6 +798,8 @@ async def api_result_extent(result_id: str, request: Request) -> dict[str, Any]:
             "property": props[0] if props else None,
         },
     }
+    _read_cache_put(ckey, payload, _READ_TTL_LONG)
+    return payload
 
 
 @app.get("/api/pixel-value")
