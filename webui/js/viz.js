@@ -5,7 +5,7 @@
    compare. Pure SVG charts (no deps); Leaflet is lazy-loaded (shared with the
    AOI widget via js/leaflet.js). Renders nothing for results with no visual. */
 
-import { escapeHtml } from './util.js';
+import { escapeHtml, shortId } from './util.js';
 import { studioKey, apiResultExtent, apiPixelValue } from './api.js';
 import { loadLeaflet, osmLayer } from './leaflet.js';
 import { downloadBar, downloadJson, downloadText, comparisonCsv } from './download.js';
@@ -191,6 +191,84 @@ function diffStyle(d, scaleMax) {
   return { color: t >= 0 ? '#f0529c' : '#37a0ff', fillColor: t >= 0 ? '#f0529c' : '#37a0ff', weight: 0, fillOpacity: 0.15 + 0.7 * Math.abs(t) };
 }
 
+/* A small "which result is A / B" label so the B - A direction is unambiguous. */
+function abLabel(idA, idB) {
+  const el = document.createElement('div');
+  el.className = 'viz-ab';
+  el.innerHTML =
+    '<span class="viz-ab-a">A</span> result ' + escapeHtml(shortId(idA || '?')) +
+    ' &nbsp;<span class="viz-ab-b">B</span> result ' + escapeHtml(shortId(idB || '?')) +
+    ' &nbsp;<span class="viz-ab-d">difference = B - A</span>';
+  return el;
+}
+
+/* Overlay viewer: A, B, and the difference on ONE map, each with an opacity
+   slider so you can fade between them. A/B raster tiles come from each
+   result's extent (tile template + bbox); the difference is the saved grid. */
+export async function renderOverlayViewer(record) {
+  const back = document.createElement('div');
+  back.className = 'aoi-modal';
+  back.innerHTML =
+    '<div class="aoi-card" role="dialog" aria-modal="true" aria-label="A / B / difference overlay">' +
+      '<div class="aoi-head"><div class="aoi-title">Overlay: A, B and the difference' +
+        '<span class="aoi-purpose">slide to fade each layer</span></div>' +
+        '<button class="aoi-x" type="button" aria-label="Close">&times;</button></div>' +
+      '<div class="viz-map ov-map"></div>' +
+      '<div class="ov-controls"></div>' +
+    '</div>';
+  document.body.appendChild(back);
+  let map = null;
+  const close = () => { try { map && map.remove(); } catch (e) {} back.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  back.querySelector('.aoi-x').addEventListener('click', close);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+
+  let L;
+  try { L = await loadLeaflet(); } catch (e) { back.querySelector('.ov-map').textContent = 'map unavailable'; return; }
+  const el = back.querySelector('.ov-map');
+  map = L.map(el, { worldCopyJump: true, attributionControl: false });
+  osmLayer(L).addTo(map);
+  map.createPane('ovdiff');
+  map.getPane('ovdiff').style.zIndex = '450';
+
+  let bbox = record.bbox || null;
+  let tA = null, tB = null;
+  try { const ea = await apiResultExtent(record.resultIdA); tA = ea.tile_url; bbox = bbox || ea.bbox; } catch (e) {}
+  try { const eb = await apiResultExtent(record.resultIdB); tB = eb.tile_url; } catch (e) {}
+  const layerA = tA ? authTileLayer(L, tA) : null;
+  const layerB = tB ? authTileLayer(L, tB) : null;
+  if (layerA) { layerA.setOpacity(1); layerA.addTo(map); }
+  if (layerB) { layerB.setOpacity(0); layerB.addTo(map); }
+
+  const cells = record.cells || [];
+  const [dx, dy] = record.cellSize || [0.01, 0.01];
+  const scaleMax = Math.max(0.05, ...cells.map((c) => Math.abs(c.diff)));
+  cells.forEach((c) => {
+    const b = [[c.lat - dy / 2, c.lon - dx / 2], [c.lat + dy / 2, c.lon + dx / 2]];
+    L.rectangle(b, { ...diffStyle(c.diff, scaleMax), pane: 'ovdiff' }).addTo(map);
+  });
+  map.getPane('ovdiff').style.opacity = '0.6';
+  if (bbox) map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { padding: [10, 10], maxZoom: 13 });
+  setTimeout(() => map.invalidateSize(), 60);
+
+  const controls = back.querySelector('.ov-controls');
+  const slider = (labelHtml, val, disabled, on) => {
+    const row = document.createElement('label');
+    row.className = 'ov-row';
+    row.innerHTML = '<span class="ov-lbl">' + labelHtml + '</span>';
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = '0'; inp.max = '100'; inp.value = String(val);
+    inp.disabled = disabled;
+    inp.addEventListener('input', () => on(Number(inp.value) / 100));
+    row.appendChild(inp);
+    controls.appendChild(row);
+  };
+  slider('<span class="viz-ab-a">A</span> ' + escapeHtml(shortId(record.resultIdA || '?')), 100, !layerA, (v) => layerA && layerA.setOpacity(v));
+  slider('<span class="viz-ab-b">B</span> ' + escapeHtml(shortId(record.resultIdB || '?')), 0, !layerB, (v) => layerB && layerB.setOpacity(v));
+  slider('<span class="viz-ab-d">Difference (B - A)</span>', 60, cells.length === 0, (v) => { map.getPane('ovdiff').style.opacity = String(v); });
+}
+
 /* Progressive difference scan of two result rasters: sample both on a grid
    over their shared extent and paint each cell by (B - A) as it resolves, so
    the user watches the difference map build up, then see the final stats. */
@@ -215,6 +293,7 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   const el = document.createElement('div');
   el.className = 'viz-map';
   container.insertBefore(el, status);
+  container.insertBefore(abLabel(a.resultId, b.resultId), el);
   const map = L.map(el, { worldCopyJump: true, attributionControl: false });
   osmLayer(L).addTo(map);
   map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { padding: [10, 10], maxZoom: 13 });
@@ -294,6 +373,7 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     container.appendChild(save);
   }
   container.appendChild(downloadBar([
+    { label: 'Open overlay', onClick: () => renderOverlayViewer(record) },
     { label: 'Download JSON', onClick: () => downloadJson('comparison.json', record) },
     { label: 'Download CSV', onClick: () => downloadText('comparison.csv', comparisonCsv(record), 'text/csv') },
   ]));
@@ -325,6 +405,7 @@ function statChips(s, caption) {
 function renderCompareCard(container, inner) {
   const s = inner.stats || {};
   container.appendChild(statChips(s, 'Model-vs-model agreement (no ground truth). Difference map below.'));
+  container.appendChild(abLabel(inner.result_id_a, inner.result_id_b));
   if (inner.result_id_a && inner.result_id_b) {
     const out = document.createElement('div');
     out.className = 'viz-diff';
@@ -338,6 +419,7 @@ function renderCompareCard(container, inner) {
    no fabrication: it draws exactly the data captured during the live scan. */
 export async function renderStoredComparison(container, record) {
   container.appendChild(statChips(record.stats, 'Saved comparison - model-vs-model agreement (no ground truth).'));
+  container.appendChild(abLabel(record.resultIdA, record.resultIdB));
   let L;
   try { L = await loadLeaflet(); } catch (e) { return; }
   const el = document.createElement('div');
@@ -362,6 +444,7 @@ export async function renderStoredComparison(container, record) {
     '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
   container.appendChild(cap);
   container.appendChild(downloadBar([
+    { label: 'Open overlay', onClick: () => renderOverlayViewer(record) },
     { label: 'Download JSON', onClick: () => downloadJson('comparison.json', record) },
     { label: 'Download CSV', onClick: () => downloadText('comparison.csv', comparisonCsv(record), 'text/csv') },
   ]));
