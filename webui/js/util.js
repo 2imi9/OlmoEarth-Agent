@@ -21,3 +21,13 @@ export function typeText(el, text, speed) {
 }
 
 export function shortId(s) { s = String(s || ''); return s.length > 8 ? s.slice(0, 8) : s; }
+
+/* Skeleton-shimmer placeholder rows (dot + line) for list/tree loading states. */
+export function skelRows(n) {
+  let s = '<div class="skel-list">';
+  for (let i = 0; i < (n || 3); i++) {
+    s += '<div class="skel-row"><span class="skeleton skel-dot"></span>' +
+         '<span class="skeleton skel-line' + (i % 2 ? ' short' : '') + '"></span></div>';
+  }
+  return s + '</div>';
+}

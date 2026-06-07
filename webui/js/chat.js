@@ -148,7 +148,12 @@ export function renderChatList() {
 // The composer's send path: append the turn, run it, persist + update history.
 function setSendingUI(on) {
   const btn = document.querySelector('.send');
-  if (btn) btn.disabled = on;
+  if (!btn) return;
+  btn.disabled = on;
+  btn.classList.toggle('is-busy', on);  // hides the .ic arrow, dims, blocks input
+  let sp = btn.querySelector('.spinner');
+  if (on && !sp) { sp = document.createElement('span'); sp.className = 'spinner sm on-pink'; btn.appendChild(sp); }
+  else if (!on && sp) sp.remove();
 }
 
 function handleSend(brief, attachments) {

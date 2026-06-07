@@ -250,9 +250,16 @@ export async function openDrawModal(opts = {}) {
         return;
       }
       els.use.disabled = true;
+      els.use.classList.add('is-busy');  // pink fill -> dark on-pink ring
+      const useSpin = document.createElement('span');
+      useSpin.className = 'spinner sm on-pink';
+      useSpin.style.marginRight = '7px';
+      els.use.insertBefore(useSpin, els.use.firstChild);
+      const clearBusy = () => { useSpin.remove(); els.use.classList.remove('is-busy'); };
       setStatus(els, 'Storing the area in OlmoEarth Studio…');
       try {
         const area = await apiCreateArea(name, geom, projectId);
+        clearBusy();
         finish({
           name: area.name || name,
           geom,
@@ -262,6 +269,7 @@ export async function openDrawModal(opts = {}) {
           stored: true,
         });
       } catch (e) {
+        clearBusy();
         els.use.disabled = false;
         setStatus(els, 'Couldn’t store the area: ' + ((e && e.message) || e) + '. Use it un-stored?', 'is-error');
         els.use.textContent = 'Use without storing';
