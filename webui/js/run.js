@@ -7,6 +7,7 @@ import { escapeHtml, typeText } from './util.js';
 import { renderMarkdown } from './markdown.js';
 import { apiRunStream } from './api.js';
 import { drawAndAttach } from './aoi.js';
+import { renderResultViz } from './viz.js';
 
 /* ── Demo scenarios ──────────────────────────────────────────────────────
    In demo mode a brief plays a canned agent loop with the same event shape as
@@ -146,6 +147,11 @@ export function handleRunEvent(body, ev, staticRender) {
       const st = card.querySelector('.tc-state'); if (st) st.textContent = ev.ok ? 'called' : 'failed';
       const res = card.querySelector('.tc-result');
       if (res) { res.hidden = false; res.classList.add('run-step'); res.innerHTML = liveResultHtml(ev); }
+      // Inline visual for results that have one (raster map / trajectory chart).
+      let viz = card.querySelector(':scope > .tc-viz');
+      if (!viz) { viz = document.createElement('div'); viz.className = 'tc-viz run-step'; card.appendChild(viz); }
+      else { viz.innerHTML = ''; }
+      if (!renderResultViz(viz, ev)) viz.remove();
     }
     maybeAoiPrompt(body, ev);
   } else if (ev.type === 'final') {

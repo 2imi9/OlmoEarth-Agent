@@ -676,6 +676,24 @@ a:hover { color: var(--text); }
 /* Leaflet draw toolbar sits over the map; keep it above modal stacking. */
 .aoi-map .leaflet-top, .aoi-map .leaflet-bottom { z-index: 400; }
 
+/* ───────────── In-chat result visuals (js/viz.js) ───────────── */
+.tc-viz { margin-top: 10px; }
+.viz-map {
+  width: 100%; height: 300px; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); overflow: hidden; background: var(--bg-2);
+}
+.viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
+.viz-chart { margin-top: 2px; }
+.viz-svg {
+  width: 100%; max-width: 480px; height: auto; display: block;
+  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+}
+.viz-line { stroke: var(--mint); stroke-width: 2; }
+.viz-dot { fill: var(--pink); }
+.viz-axt { fill: var(--text-faint); font-size: 9px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
+.viz-map .leaflet-control-layers { font-size: 12px; }
+
 /* ───────────── Responsive ───────────── */
 @media (max-width: 880px) {
   .sidebar {

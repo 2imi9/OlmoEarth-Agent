@@ -9,60 +9,7 @@ import { BRIDGE } from './store.js';
 import { escapeHtml } from './util.js';
 import { apiArea, apiAreas, apiCreateArea, apiProjects, projConnected } from './api.js';
 import { addAoiAttachment } from './attach.js';
-
-/* Leaflet 1.7.1 + Leaflet.draw 1.0.4: a known-good pair (Leaflet 1.8+ renamed
-   L.Polyline._flat, which Leaflet.draw 1.0.4 still calls). */
-const LEAFLET = 'https://cdn.jsdelivr.net/npm/leaflet@1.7.1/dist';
-const LEAFLET_DRAW = 'https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist';
-
-let _leafletPromise = null;
-
-function _loadCss(href) {
-  if (document.querySelector(`link[href="${href}"]`)) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = href;
-  document.head.appendChild(link);
-}
-
-function _loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[data-src="${src}"]`);
-    if (existing) { existing.addEventListener('load', resolve); existing.addEventListener('error', reject); return; }
-    const s = document.createElement('script');
-    s.src = src; s.dataset.src = src; s.async = false;
-    s.addEventListener('load', resolve);
-    s.addEventListener('error', () => reject(new Error('failed to load ' + src)));
-    document.head.appendChild(s);
-  });
-}
-
-/* Load Leaflet + Leaflet.draw once; resolve to window.L. */
-function loadLeaflet() {
-  if (_leafletPromise) return _leafletPromise;
-  _leafletPromise = (async () => {
-    _loadCss(`${LEAFLET}/leaflet.css`);
-    _loadCss(`${LEAFLET_DRAW}/leaflet.draw.css`);
-    await _loadScript(`${LEAFLET}/leaflet.js`);
-    await _loadScript(`${LEAFLET_DRAW}/leaflet.draw.js`);
-    if (!window.L) throw new Error('Leaflet did not load');
-    return window.L;
-  })().catch((e) => { _leafletPromise = null; throw e; });
-  return _leafletPromise;
-}
-
-/* Bounding box [minLon, minLat, maxLon, maxLat] from a GeoJSON geometry. */
-function geomBbox(geom) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const walk = (c) => {
-    if (typeof c[0] === 'number' && typeof c[1] === 'number') {
-      minX = Math.min(minX, c[0]); maxX = Math.max(maxX, c[0]);
-      minY = Math.min(minY, c[1]); maxY = Math.max(maxY, c[1]);
-    } else if (Array.isArray(c)) { c.forEach(walk); }
-  };
-  walk(geom.coordinates || []);
-  return [minX, minY, maxX, maxY];
-}
+import { loadLeaflet, geomBbox } from './leaflet.js';
 
 function fmtBbox(b) {
   return b.map((n) => n.toFixed(4)).join(', ');
@@ -184,7 +131,7 @@ export async function openDrawModal(opts = {}) {
   opts = opts || {};
   let L;
   try {
-    L = await loadLeaflet();
+    L = await loadLeaflet({ draw: true });
   } catch (e) {
     alert('Could not load the map library (' + ((e && e.message) || e) + ').');
     return null;

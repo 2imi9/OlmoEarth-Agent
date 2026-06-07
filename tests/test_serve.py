@@ -536,6 +536,28 @@ def test_get_area_requires_key() -> None:
     assert resp.status_code == 400
 
 
+def test_tile_proxy_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/tile/5/3/7?src=%2Ffoo%2F%7Bz%7D%2F%7Bx%7D%2F%7By%7D.png")
+    assert resp.status_code == 400
+
+
+def test_tile_proxy_requires_src() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/tile/5/3/7", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 400
+
+
+def test_tile_proxy_rejects_foreign_host() -> None:
+    # An absolute src pointing off the Studio host must be blocked (SSRF guard).
+    import urllib.parse
+
+    src = urllib.parse.quote("https://evil.example.com/{z}/{x}/{y}.png", safe="")
+    with TestClient(serve.app) as client:
+        resp = client.get(f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 403
+
+
 def test_static_assets_are_revalidated() -> None:
     """The web UI is served no-cache so edited ES modules are never stale."""
     with TestClient(serve.app) as client:

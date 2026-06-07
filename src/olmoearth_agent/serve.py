@@ -39,7 +39,7 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
@@ -660,6 +660,52 @@ async def api_prediction_results(
         for r in env.records
     ]
     return {"ok": True, "results": results}
+
+
+@app.get("/api/tile/{z}/{x}/{y}")
+async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
+    """Proxy one Studio raster tile, adding the caller's Bearer key.
+
+    Browser map tiles (``<img>`` requests) cannot carry an Authorization
+    header, and Studio tiles are auth-gated, so the web UI's result map
+    fetches each tile through here (a ``fetch`` *can* send
+    ``X-Olmoearth-Key``). The ``src`` query param is the Studio tile
+    template (with ``{z}/{x}/{y}``); we substitute, resolve it against the
+    Studio origin only (the egress guard blocks any other host -> no SSRF),
+    fetch with the Bearer key, and return the image bytes. A non-200 from
+    Studio is passed through bare so the map simply skips that tile.
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    src = request.query_params.get("src", "")
+    if not src:
+        raise HTTPException(status_code=400, detail="missing 'src' tile template")
+    path = src.replace("{z}", str(z)).replace("{x}", str(x)).replace("{y}", str(y))
+    origin = _studio_base().split("/api/")[0]  # https://olmoearth.allenai.org
+    if path.startswith(("http://", "https://")):
+        url = path
+    else:
+        url = origin + ("" if path.startswith("/") else "/") + path
+    # Hard SSRF guard: the tile must come from the Studio host, independent of
+    # the OLMOEARTH_EGRESS mode (which defaults to log-only) -- this proxy must
+    # never become an open relay for arbitrary URLs.
+    from urllib.parse import urlparse
+
+    if urlparse(url).netloc != urlparse(origin).netloc:
+        raise HTTPException(status_code=403, detail="tile src host not allowed")
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {key}"})
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    if resp.status_code != 200:
+        return Response(status_code=resp.status_code)
+    return Response(
+        content=resp.content,
+        media_type=resp.headers.get("content-type", "image/png"),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # Serve the static front-end at the root. Mounted last so the explicit

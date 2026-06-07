@@ -32,6 +32,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **In-chat result visuals**: tool results now render an inline visual, not just
+  text. Raster/tile results (predict / fetch-results / qgis-bridge) render on a
+  **Leaflet map** with an OpenStreetMap basemap; two-or-more raster layers get a
+  toggle so they can be **compared** by switching. Studio tiles are auth-gated
+  and browser `<img>` requests can't carry a header, so a new bridge tile-proxy
+  (`GET /api/tile/{z}/{x}/{y}?src=...`) adds the Bearer key server-side and is
+  hard-restricted to the Studio host (no open relay / SSRF). Change-detection
+  results render an **SVG trajectory chart**. New `webui/js/viz.js` (the result
+  visualizer) + `webui/js/leaflet.js` (a Leaflet loader now shared with the AOI
+  draw widget); pure-SVG charts, no new deps. Resolves the gap where comparing
+  rasters showed nothing visual in the chat.
 - **AOI draw-in-chat**: select an area of interest by **drawing** it on a map
   in the chat instead of typing a bbox. A composer "Draw AOI" button opens a
   Leaflet map (OSM basemap, rectangle/polygon tools; loaded from CDN, no build
