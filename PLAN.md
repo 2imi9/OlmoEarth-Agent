@@ -441,4 +441,4 @@ https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF | https://huggingface.co/Qwe
 
 ---
 
-*Skills are the unit of progress; multimodal and self-improvement tracks are parked (§7). All 18 in-repo skills are shipped (+ #19 out-of-process; see [`CHANGELOG.md`](CHANGELOG.md)); current work is live-smoke verification and refinement.*
+*Skills are the unit of progress; multimodal and self-improvement tracks are parked (§7). All 16 skills are shipped (skill #5 also has an out-of-process JEPA engine; see [`CHANGELOG.md`](CHANGELOG.md)); current work is live-smoke verification and refinement.*

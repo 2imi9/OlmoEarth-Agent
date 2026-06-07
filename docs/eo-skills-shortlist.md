@@ -1,5 +1,12 @@
 # Additional in-domain EO skills -- research + shortlist
 
+> **Note (2026-06-07).** Written when the catalog had 17 entries; it has since
+> been consolidated to **16** (data-prep #1/#2, embeddings #4/#17, and
+> change-detection #6/#19 were each one capability split across two rows -- now
+> merged). The numbers below are as-written at research time; see `SKILLS.md`
+> for the current catalog. The build-first pick shipped as today's #16
+> `olmoearth-negative-sampler`.
+
 Candidate skills to extend the OlmoEarth Agent catalog beyond the current 17,
 all **in-domain** (Earth observation / geospatial / OlmoEarth Studio) and
 **in-pattern** (pure-Python async `build_*_tools` -> `RegisteredTool`, logic in
