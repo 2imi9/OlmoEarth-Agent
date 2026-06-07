@@ -23,7 +23,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   rendering an inline "Draw the area" button that seeds a follow-up turn.
   The modal can also **reuse a saved area**: pick one of the project's
   existing areas (`GET /api/areas/{id}`) to render it on the map and attach
-  its `area_id` without creating a duplicate.
+  its `area_id` without creating a duplicate. Saved areas also appear as an
+  **"Areas" branch under each project in the sidebar tree** and can be
+  **dragged into the chat** to attach (like prediction results). The dev
+  bridge now serves the static web UI with `Cache-Control: no-cache` so
+  edited (no-build) ES modules are never served stale.
   Pure-Python geometry helpers in `analysis/aoi.py` (GeoJSON Polygon/
   MultiPolygon validation + bbox; no GDAL/numpy, agent stays torch-free).
   Resolves issue #59 (map/draw AOI) and the concrete sub-piece of #90.
