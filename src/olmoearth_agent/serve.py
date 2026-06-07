@@ -42,6 +42,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
 from olmoearth_agent.harness import LeadAgent, ThreadState
 from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
@@ -471,6 +472,79 @@ async def api_run(request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no",  # disable proxy buffering for SSE
         },
     )
+
+
+@app.post("/api/areas")
+async def api_create_area(request: Request) -> dict[str, Any]:
+    """Store a drawn AOI as a Studio area (the AOI-draw-in-chat flow).
+
+    Body: ``{"name": str, "geom": <GeoJSON Polygon/MultiPolygon>,
+    "project_id": str}``. The geometry is the polygon the user drew on the
+    chat map; it is stored via ``POST /areas`` so the returned ``area_id``
+    can drive a prediction (skill #5) and the derived ``bbox`` can drive a
+    bbox-based skill. Returns ``{ok, area: {id, name, project_id, bbox}}``.
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object")
+    name = str(body.get("name", "")).strip()
+    project_id = str(body.get("project_id", "")).strip()
+    geom = body.get("geom")
+    if not name:
+        raise HTTPException(status_code=400, detail="missing 'name'")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="missing 'project_id'")
+    try:
+        geom = validate_polygon_geometry(geom)
+        bbox = geometry_bbox(geom)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            record = await studio.create_area(
+                name=name, geom=geom, project_id=project_id
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    return {
+        "ok": True,
+        "area": {
+            "id": record.get("id"),
+            "name": record.get("name"),
+            "project_id": record.get("project_id") or project_id,
+            "bbox": bbox,
+        },
+    }
+
+
+@app.get("/api/projects/{project_id}/areas")
+async def api_project_areas(project_id: str, request: Request) -> dict[str, Any]:
+    """List a project's existing areas (so a drawn AOI can be reused)."""
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            env = await studio.search_areas(project_id=project_id, limit=200)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    return {
+        "ok": True,
+        "areas": [
+            {"id": r.get("id", ""), "name": r.get("name") or "(unnamed)"}
+            for r in env.records
+        ],
+    }
 
 
 @app.get("/api/projects/{project_id}/predictions")

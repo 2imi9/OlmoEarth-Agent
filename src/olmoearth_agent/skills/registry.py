@@ -67,6 +67,7 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_load_context",
             "olmoearth_search_projects",
             "olmoearth_create_project",
+            "olmoearth_request_aoi",
             "olmoearth_get_prediction",
         ],
     ),

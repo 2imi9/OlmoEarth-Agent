@@ -53,3 +53,45 @@ async def test_live_project_create_get_delete() -> None:
         # Confirm it's gone.
         with pytest.raises(httpx.HTTPStatusError):
             await studio.get_project(project_id)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_live_area_create_get_delete() -> None:
+    if not _ENABLED:
+        pytest.skip("set OLMOEARTH_WRITE_TESTS=1 + OLMOEARTH_API_KEY to run")
+
+    import httpx
+
+    from olmoearth_agent.studio import StudioClient
+
+    name = f"zzz-agent-area-test-{int(time.time())}"
+    geom = {
+        "type": "Polygon",
+        "coordinates": [
+            [[-122.34, 47.62], [-122.33, 47.62], [-122.33, 47.63], [-122.34, 47.62]]
+        ],
+    }
+    async with StudioClient.from_env() as studio:
+        project = await studio.create_project(
+            name=name, description="throwaway; auto-deleted by the area write test"
+        )
+        project_id = project["id"]
+        area_id = None
+        try:
+            area = await studio.create_area(
+                name="zzz-area", geom=geom, project_id=project_id
+            )
+            area_id = area["id"]
+            assert area_id
+            fetched = await studio.get_area(area_id)
+            assert fetched["id"] == area_id
+            assert fetched["geom"]["type"] == "Polygon"
+        finally:
+            if area_id:
+                await studio.delete_area(area_id)
+            await studio.delete_project(project_id)
+
+        if area_id:
+            with pytest.raises(httpx.HTTPStatusError):
+                await studio.get_area(area_id)

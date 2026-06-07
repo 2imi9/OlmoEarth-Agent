@@ -429,6 +429,84 @@ class _FakeStudio:
             ]
         )
 
+    async def create_area(
+        self, *, name: str, geom: dict[str, Any], project_id: str
+    ) -> dict[str, Any]:
+        return {"id": "area-1", "name": name, "project_id": project_id}
+
+    async def search_areas(
+        self, *, project_id: str, limit: int = 200
+    ) -> _FakeEnv:
+        return _FakeEnv([{"id": "area-1", "name": "Saved AOI", "project_id": project_id}])
+
+
+_SQUARE = {
+    "type": "Polygon",
+    "coordinates": [[[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [-1.0, -1.0]]],
+}
+
+
+def test_create_area_stores_and_returns_bbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/areas",
+            json={"name": "Drawn AOI", "geom": _SQUARE, "project_id": "p1"},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 200
+    area = resp.json()["area"]
+    assert area["id"] == "area-1"
+    assert area["project_id"] == "p1"
+    assert area["bbox"] == [-1.0, -1.0, 1.0, 1.0]
+
+
+def test_create_area_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/areas", json={"name": "x", "geom": _SQUARE, "project_id": "p1"}
+        )
+    assert resp.status_code == 400
+
+
+def test_create_area_rejects_non_polygon(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/areas",
+            json={
+                "name": "x",
+                "geom": {"type": "Point", "coordinates": [0, 0]},
+                "project_id": "p1",
+            },
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 400
+    assert "Polygon" in resp.json()["detail"]
+
+
+def test_create_area_requires_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/areas",
+            json={"name": "x", "geom": _SQUARE},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 400
+
+
+def test_project_areas_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.get(
+            "/api/projects/p1/areas", headers={"X-Olmoearth-Key": "k"}
+        )
+    assert resp.status_code == 200
+    areas = resp.json()["areas"]
+    assert areas[0]["id"] == "area-1"
+    assert areas[0]["name"] == "Saved AOI"
+
 
 def test_project_predictions(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(serve, "StudioClient", _FakeStudio)

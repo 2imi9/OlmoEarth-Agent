@@ -80,6 +80,71 @@ async def test_load_context_combines_user_and_projects(
 
 
 @pytest.mark.asyncio
+async def test_create_area_posts_geom_and_returns_record(
+    config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    geom = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+    httpx_mock.add_response(
+        url=f"{BASE}/areas",
+        method="POST",
+        json={"records": [{"id": "a1", "name": "AOI", "project_id": "p1"}]},
+    )
+    async with StudioClient(config) as studio:
+        rec = await studio.create_area(name="AOI", geom=geom, project_id="p1")
+    assert rec["id"] == "a1"
+    request = httpx_mock.get_requests()[0]
+    import json as _json
+
+    sent = _json.loads(request.read())
+    assert sent == {"name": "AOI", "geom": geom, "project_id": "p1"}
+
+
+@pytest.mark.asyncio
+async def test_search_areas_filters_by_project_client_side(
+    config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    httpx_mock.add_response(
+        url=f"{BASE}/areas/search",
+        method="POST",
+        json={
+            "records": [
+                {"id": "a1", "name": "x", "project_id": "p1"},
+                {"id": "a2", "name": "y", "project_id": "p2"},
+            ],
+            "meta": {"total": 2},
+        },
+    )
+    async with StudioClient(config) as studio:
+        env = await studio.search_areas(project_id="p1")
+    assert [r["id"] for r in env.records] == ["a1"]
+
+
+@pytest.mark.asyncio
+async def test_get_area(config: StudioConfig, httpx_mock: HTTPXMock) -> None:
+    geom = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}
+    httpx_mock.add_response(
+        url=f"{BASE}/areas/a1",
+        json={"records": [{"id": "a1", "name": "AOI", "geom": geom}]},
+    )
+    async with StudioClient(config) as studio:
+        rec = await studio.get_area("a1")
+    assert rec["id"] == "a1"
+    assert rec["geom"]["type"] == "Polygon"
+
+
+@pytest.mark.asyncio
+async def test_delete_area(config: StudioConfig, httpx_mock: HTTPXMock) -> None:
+    httpx_mock.add_response(
+        url=f"{BASE}/areas/a1",
+        method="DELETE",
+        json={"records": [{"id": "a1", "name": "AOI"}]},
+    )
+    async with StudioClient(config) as studio:
+        rec = await studio.delete_area("a1")
+    assert rec["id"] == "a1"
+
+
+@pytest.mark.asyncio
 async def test_auth_header_sent(
     config: StudioConfig, httpx_mock: HTTPXMock
 ) -> None:
