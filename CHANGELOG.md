@@ -32,6 +32,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **Quantitative two-result comparison** (`olmoearth_compare_results`, skill #4):
+  compare two prediction results numerically with **no ground truth**. It
+  samples both rasters on a grid over their shared extent (pointwise
+  `pixel-value`, new `StudioClient.pixel_value`) and returns model-vs-model
+  agreement -- mean / mean-absolute difference, RMSE-between-models, Pearson
+  correlation, and a threshold agreement fraction (regression) or class
+  agreement (classification). This fills the gap behind the side-by-side raster
+  preview: previously the agent could only describe two rasters or recommend a
+  manual GIS overlay, because the accuracy tools (`olmoearth_classification_metrics`)
+  need labels. Pure-Python stats in `analysis/raster_compare.py` (no GDAL/numpy);
+  a system-prompt rule routes "compare these two results" to it. Verified live
+  on two karst runs (correlation 0.997, 96% agreement within 0.1).
 - **In-chat result visuals**: tool results now render an inline visual, not just
   text. Raster/tile results (predict / fetch-results / qgis-bridge) render on a
   **Leaflet map fit to the raster's extent** (so the picture actually shows,
