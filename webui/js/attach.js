@@ -63,14 +63,42 @@ function renderAttachmentChips() {
   const box = document.getElementById('attachments');
   if (!box) return;
   box.innerHTML = pendingAttachments.map((a, i) => {
-    const tag = a.kind === 'image' ? ' (image, not read)' : a.error ? ` (${a.error})` : a.kind === 'pdf' ? ' (pdf)' : '';
-    return `<span class="att-chip${a.kind === 'image' ? ' is-image' : ''}">` +
+    const tag = a.kind === 'image' ? ' (image, not read)'
+      : a.kind === 'aoi' ? (a.stored ? ' (stored)' : ' (not stored)')
+      : a.error ? ` (${a.error})` : a.kind === 'pdf' ? ' (pdf)' : '';
+    const cls = a.kind === 'image' ? ' is-image' : a.kind === 'aoi' ? ' is-aoi' : '';
+    return `<span class="att-chip${cls}">` +
       `<span class="nm">${escapeHtml(a.name)}${tag}</span>` +
       `<span class="x" data-rm="${i}" title="Remove" role="button">x</span></span>`;
   }).join('');
   box.querySelectorAll('.x[data-rm]').forEach((x) => {
     x.addEventListener('click', () => { pendingAttachments.splice(Number(x.dataset.rm), 1); renderAttachmentChips(); });
   });
+}
+
+/* A drawn AOI attaches like a file: a chip in the composer + a structured
+   block appended to the brief so the agent can feed it to AOI-needing skills
+   (area_id -> submit_prediction, bbox -> bbox-based tools). */
+export function addAoiAttachment(aoi) {
+  if (!aoi || !aoi.geom) return;
+  const bbox = Array.isArray(aoi.bbox) ? aoi.bbox.map((n) => Number(n).toFixed(5)).join(', ') : '';
+  const lines = ['The user drew an area of interest (AOI) on the map.'];
+  if (aoi.stored && aoi.area_id) {
+    lines.push('It is stored in OlmoEarth Studio.');
+    lines.push('area_id: ' + aoi.area_id + '  (use this for olmoearth_submit_prediction)');
+    if (aoi.project_id) lines.push('project_id: ' + aoi.project_id);
+  } else {
+    lines.push('It is NOT stored in Studio (no project/key); store it first if a prediction needs an area_id.');
+  }
+  if (bbox) lines.push('bbox (min_lon, min_lat, max_lon, max_lat): ' + bbox + '  (use for bbox-based tools)');
+  lines.push('Reference the area_id / bbox in tool calls; do not print raw coordinates back to the user.');
+  pendingAttachments.push({
+    name: 'AOI: ' + (aoi.name || 'drawn area'),
+    kind: 'aoi',
+    stored: !!aoi.stored,
+    text: lines.join('\n'),
+  });
+  renderAttachmentChips();
 }
 
 function addResultAttachment(r) {

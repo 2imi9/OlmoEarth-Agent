@@ -612,6 +612,70 @@ a:hover { color: var(--text); }
 .foot-links a:hover { color: var(--mint-soft); }
 .foot-note { color: var(--text-faint); font-size: 12.5px; margin: 0; }
 
+/* ───────────── AOI draw widget ───────────── */
+/* AOI attachment chip: a mint accent distinguishes a drawn area from a file. */
+.att-chip.is-aoi { color: var(--mint-soft); border-color: rgba(15,203,140,.35); background: rgba(15,203,140,.08); }
+
+/* Inline "draw the area" prompt the agent surfaces (run.js maybeAoiPrompt). */
+.aoi-request {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin: 10px 0; padding: 12px 14px;
+  background: rgba(15,203,140,.07); border: 1px solid rgba(15,203,140,.28);
+  border-radius: var(--radius);
+}
+.aoi-request-text { font-size: 13.5px; color: var(--text); }
+.aoi-request-btn {
+  margin-left: auto; flex: none; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
+  color: #06231a; background: var(--mint); border: none;
+  padding: 7px 14px; border-radius: var(--radius-sm); transition: background .12s, transform .1s;
+}
+.aoi-request-btn:hover { background: var(--mint-link); }
+.aoi-request-btn:active { transform: scale(.97); }
+.aoi-request-btn:disabled { opacity: .5; cursor: default; }
+
+/* Draw modal */
+.aoi-modal { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(3,18,20,.66); }
+.aoi-modal[hidden] { display: none; }
+.aoi-card {
+  position: relative; width: min(760px, 96vw); max-height: 92vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 12px;
+}
+.aoi-head { display: flex; align-items: flex-start; gap: 10px; }
+.aoi-title { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aoi-purpose { font-size: 12px; font-weight: 600; color: var(--mint-soft); background: rgba(15,203,140,.12); padding: 2px 8px; border-radius: var(--radius-pill); }
+.aoi-x {
+  margin-left: auto; flex: none; cursor: pointer; font-size: 22px; line-height: 1;
+  background: none; border: none; color: var(--text-faint); width: 30px; height: 30px; border-radius: var(--radius-sm);
+}
+.aoi-x:hover { color: var(--text); background: var(--bg-2); }
+.aoi-hint { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+.aoi-map { width: 100%; height: 380px; border-radius: var(--radius-sm); border: 1px solid var(--line); overflow: hidden; background: var(--bg-2); }
+.aoi-meta { display: flex; gap: 12px; flex-wrap: wrap; }
+.aoi-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
+.aoi-field > span { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-faint); }
+.aoi-input {
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--text);
+  font: inherit; font-size: 14px; padding: 8px 10px; border-radius: var(--radius-sm);
+}
+.aoi-input:focus { outline: none; border-color: var(--pink); }
+.aoi-bbox { font-size: 12px; color: var(--text-dim); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.aoi-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.aoi-btn {
+  cursor: pointer; font: inherit; font-weight: 600; font-size: 13.5px;
+  padding: 9px 16px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: transparent; color: var(--text-dim);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.aoi-btn:hover { color: var(--text); border-color: var(--text-faint); }
+.aoi-btn.is-primary { background: var(--pink); color: #2a0a1a; border-color: var(--pink); }
+.aoi-btn.is-primary:hover { background: var(--pink-hi); border-color: var(--pink-hi); }
+.aoi-btn.is-fallback { background: var(--mint); color: #06231a; border-color: var(--mint); }
+.aoi-btn:disabled { opacity: .45; cursor: default; }
+.aoi-status { font-size: 12.5px; color: var(--text-dim); }
+.aoi-status.is-error { color: var(--pink-hi); }
+/* Leaflet draw toolbar sits over the map; keep it above modal stacking. */
+.aoi-map .leaflet-top, .aoi-map .leaflet-bottom { z-index: 400; }
+
 /* ───────────── Responsive ───────────── */
 @media (max-width: 880px) {
   .sidebar {
