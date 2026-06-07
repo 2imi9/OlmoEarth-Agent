@@ -723,6 +723,17 @@ a:hover { color: var(--text); }
 .viz-bar-fill { height: 100%; }
 .viz-bar-val { width: 44px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text-dim); }
 .cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
+/* Result visual shown in the conversation (not the collapsed reasoning). */
+.result-viz { margin: 10px 0 4px; }
+/* Download affordance for chat artifacts (compare / SLD / report). */
+.dl-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.dl-btn {
+  cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--mint-soft); background: rgba(15,203,140,.08);
+  border: 1px solid rgba(15,203,140,.3); border-radius: var(--radius-sm);
+  padding: 6px 12px; transition: background .12s, border-color .12s;
+}
+.dl-btn:hover { background: rgba(15,203,140,.18); border-color: rgba(15,203,140,.5); }
 .viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .viz-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
 .viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }

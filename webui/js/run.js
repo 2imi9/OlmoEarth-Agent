@@ -147,12 +147,13 @@ export function handleRunEvent(body, ev, staticRender) {
       const st = card.querySelector('.tc-state'); if (st) st.textContent = ev.ok ? 'called' : 'failed';
       const res = card.querySelector('.tc-result');
       if (res) { res.hidden = false; res.classList.add('run-step'); res.innerHTML = liveResultHtml(ev); }
-      // Inline visual for results that have one (raster map / trajectory chart).
-      let viz = card.querySelector(':scope > .tc-viz');
-      if (!viz) { viz = document.createElement('div'); viz.className = 'tc-viz run-step'; card.appendChild(viz); }
-      else { viz.innerHTML = ''; }
-      if (!renderResultViz(viz, ev)) viz.remove();
     }
+    // The raw result (chips + JSON) stays in the collapsed "Reasoning & tools".
+    // The visual RESULT (maps / charts / compare) belongs in the conversation,
+    // so render it into the main body, not the collapsed steps.
+    const viz = document.createElement('div');
+    viz.className = 'result-viz run-step';
+    if (renderResultViz(viz, ev)) body.appendChild(viz);
     maybeAoiPrompt(body, ev);
   } else if (ev.type === 'final') {
     if (!staticRender) { const steps = body.querySelector(':scope > .steps'); if (steps) steps.classList.add('collapsed'); }
