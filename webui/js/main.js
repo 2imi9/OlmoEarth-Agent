@@ -4,7 +4,7 @@
    served by olmoearth_agent.serve. No build step - native ES modules. */
 
 import { BRIDGE } from './store.js';
-import { apiHealth, agentMaxTurns } from './api.js';
+import { apiHealth, agentMaxTurns, clearApiCache } from './api.js';
 import { renderCards, wireCards } from './skills.js';
 import { newChat, renderChatList, wirePrompt } from './chat.js';
 import { wireTabs, wireExamples } from './landing.js';
@@ -87,7 +87,8 @@ function wireKey() {
   const status = document.getElementById('userStatus');
   const maskKey = (k) => (k.length <= 6 ? k : k.slice(0, 6) + '••••' + k.slice(-2));
   const get = () => { try { return localStorage.getItem(LS) || ''; } catch (e) { return ''; } };
-  const set = (v) => { try { v ? localStorage.setItem(LS, v) : localStorage.removeItem(LS); } catch (e) {} };
+  // Changing the key invalidates every cached read (different account / scope).
+  const set = (v) => { try { v ? localStorage.setItem(LS, v) : localStorage.removeItem(LS); } catch (e) {} clearApiCache(); };
   function render() {
     const k = get(); const on = !!k;
     if (connect) connect.hidden = on;

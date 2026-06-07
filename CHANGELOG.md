@@ -41,6 +41,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **Result visuals in the conversation + downloadable artifacts**: a tool
+  result's visual (map / chart / compare / difference map) now renders in the
+  conversation flow instead of inside the collapsed "Reasoning & tools" (the raw
+  chips + JSON stay there). Chat artifacts are downloadable: a difference
+  comparison offers **Download JSON / CSV** (the real stats + sampled grid), a
+  qgis-bridge result offers **Download .sld**, and a case-narrative offers
+  **Download report (.md)**. Client-side Blob downloads (`js/download.js`); no
+  server round-trip.
 - **Comparisons panel**: a sidebar section (parallel to Chats and Projects)
   that **stores** two-raster comparisons. A completed difference scan offers
   "Save comparison"; the saved record (real stats + the sampled diff grid,

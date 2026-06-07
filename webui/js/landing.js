@@ -11,6 +11,7 @@ const EXAMPLE_BRIEFS = {
     'Detect new surface water in the Chesapeake over the last 12 months.',
   ],
   analyze: [
+    'Compare my two prediction runs over the same area and show the difference map.',
     'Did karst-positive area trend up across these 4 quarterly snapshots?',
     'Compare OlmoEarth vs AlphaEarth on a transfer region.',
     'Flag predictions that fall outside my training data (area of applicability).',

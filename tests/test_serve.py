@@ -17,6 +17,16 @@ from olmoearth_agent import serve  # noqa: E402
 from olmoearth_agent.llm.types import ChatResponse, Message  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _clear_bridge_caches() -> Any:
+    """The bridge's tile / pixel / read caches are module-global; clear them
+    between tests so a cached response can't leak across cases."""
+    serve._READ_CACHE.clear()
+    serve._TILE_CACHE.clear()
+    serve._PV_CACHE.clear()
+    yield
+
+
 class _FakeLLM:
     """Minimal stand-in for OlmoEarthLLM: scripted responses + a config."""
 
@@ -518,6 +528,44 @@ def test_create_area_requires_project_id(monkeypatch: pytest.MonkeyPatch) -> Non
             headers={"X-Olmoearth-Key": "k"},
         )
     assert resp.status_code == 400
+
+
+def test_read_cache_serves_repeat_without_requerying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"n": 0}
+
+    class _CountingCtx:
+        def __init__(self, *_a: Any, **_k: Any) -> None: ...
+        async def __aenter__(self) -> "_CountingCtx":
+            return self
+        async def __aexit__(self, *_a: Any) -> None: ...
+        async def load_context(self) -> Any:
+            calls["n"] += 1
+            from olmoearth_agent.types import StudioContext
+            return StudioContext(user_id="u", user_name="U", organization="O", projects=[])
+
+    monkeypatch.setattr(serve, "StudioClient", _CountingCtx)
+    with TestClient(serve.app) as client:
+        h = {"X-Olmoearth-Key": "k"}
+        client.get("/api/projects", headers=h)
+        client.get("/api/projects", headers=h)  # served from the read cache
+    assert calls["n"] == 1
+
+
+def test_create_area_invalidates_areas_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        h = {"X-Olmoearth-Key": "k"}
+        client.get("/api/projects/p1/areas", headers=h)  # populate cache
+        assert any("areas|" in key and "|p1" in key for key in serve._READ_CACHE)
+        client.post(
+            "/api/areas",
+            json={"name": "x", "geom": _SQUARE, "project_id": "p1"},
+            headers=h,
+        )
+        # the create dropped p1's cached area list
+        assert not any("areas|" in key and "|p1" in key for key in serve._READ_CACHE)
 
 
 def test_project_areas_list(monkeypatch: pytest.MonkeyPatch) -> None:

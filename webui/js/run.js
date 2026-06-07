@@ -27,10 +27,21 @@ const SCENARIOS = {
     result: [['name', 'demo-user'], ['project_count', '5'], ['ok', 'true']],
     answer: "You have **5** OlmoEarth Studio projects. Here's how they relate to **water quality**:\n\n| Project | Relevance |\n|---|---|\n| **Chesapeake - water quality** | ✓ Strong: nutrient loading |\n| **Potomac - change detection** | ✓ Strong: sewage spill event |\n| **PA Karst** | ~ Moderate: karst aquifer vulnerability |\n| **Mangrove - Indonesia** | ✗ Low: coastal extent |\n| **Solar arrays - California** | ✗ None: energy infrastructure |\n\nWant the per-project predictions, or a stakeholder brief?",
   },
+  // Honest demo: no fabricated stats - it explains the real flow and asks for a key.
+  compare: {
+    reasoning: "Two runs over the same area with no ground-truth labels, so I compare them to each other (agreement), not accuracy. That needs to sample both rasters - which requires your Studio key.",
+    tool: 'olmoearth_compare_results',
+    args: '{\n  "result_id_a": "<first result>",\n  "result_id_b": "<second result>"\n}',
+    result: [['note', 'demo mode: connect a Studio key to sample the real rasters']],
+    answer: "This is the demo, so I can't sample your real rasters here. Connect your **Studio key** (top bar), then either drag two prediction results into the chat or ask me to compare two runs. I'll report model-vs-model **agreement** (correlation, mean difference, agreement %) and scan a live **difference map** - blue where one run scores higher, pink where the other does. No ground-truth labels are needed; that would be *accuracy*, which is a different tool.",
+  },
 };
 
 function pickScenario(brief) {
-  return /project|how many|account|water quality/i.test(brief || '') ? SCENARIOS.projects : SCENARIOS.change;
+  const b = brief || '';
+  if (/difference map|compare .*\bruns?\b|do they agree|two (prediction )?results/i.test(b)) return SCENARIOS.compare;
+  if (/project|how many|account|water quality/i.test(b)) return SCENARIOS.projects;
+  return SCENARIOS.change;
 }
 
 function demoEvents(brief) {
@@ -147,12 +158,13 @@ export function handleRunEvent(body, ev, staticRender) {
       const st = card.querySelector('.tc-state'); if (st) st.textContent = ev.ok ? 'called' : 'failed';
       const res = card.querySelector('.tc-result');
       if (res) { res.hidden = false; res.classList.add('run-step'); res.innerHTML = liveResultHtml(ev); }
-      // Inline visual for results that have one (raster map / trajectory chart).
-      let viz = card.querySelector(':scope > .tc-viz');
-      if (!viz) { viz = document.createElement('div'); viz.className = 'tc-viz run-step'; card.appendChild(viz); }
-      else { viz.innerHTML = ''; }
-      if (!renderResultViz(viz, ev)) viz.remove();
     }
+    // The raw result (chips + JSON) stays in the collapsed "Reasoning & tools".
+    // The visual RESULT (maps / charts / compare) belongs in the conversation,
+    // so render it into the main body, not the collapsed steps.
+    const viz = document.createElement('div');
+    viz.className = 'result-viz run-step';
+    if (renderResultViz(viz, ev)) body.appendChild(viz);
     maybeAoiPrompt(body, ev);
   } else if (ev.type === 'final') {
     if (!staticRender) { const steps = body.querySelector(':scope > .steps'); if (steps) steps.classList.add('collapsed'); }

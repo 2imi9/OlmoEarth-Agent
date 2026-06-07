@@ -8,6 +8,7 @@
 import { escapeHtml } from './util.js';
 import { studioKey, apiResultExtent, apiPixelValue } from './api.js';
 import { loadLeaflet, osmLayer } from './leaflet.js';
+import { downloadBar, downloadJson, downloadText, comparisonCsv } from './download.js';
 
 /* Pearson correlation of paired samples (null if undefined). */
 function pearson(xs, ys) {
@@ -292,6 +293,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     });
     container.appendChild(save);
   }
+  container.appendChild(downloadBar([
+    { label: 'Download JSON', onClick: () => downloadJson('comparison.json', record) },
+    { label: 'Download CSV', onClick: () => downloadText('comparison.csv', comparisonCsv(record), 'text/csv') },
+  ]));
   return record;
 }
 
@@ -356,6 +361,10 @@ export async function renderStoredComparison(container, record) {
     '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>A higher' +
     '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
   container.appendChild(cap);
+  container.appendChild(downloadBar([
+    { label: 'Download JSON', onClick: () => downloadJson('comparison.json', record) },
+    { label: 'Download CSV', onClick: () => downloadText('comparison.csv', comparisonCsv(record), 'text/csv') },
+  ]));
 }
 
 /* Horizontal bars for 0..1 metric rows [{label, value, color}]. */
@@ -414,6 +423,20 @@ export function renderResultViz(container, ev) {
     if (!ev || !ev.ok) return false;
     const inner = ev.result && ev.result.result;
     if (!inner || typeof inner !== 'object') return false;
+    let any = false;
+
+    // Downloadable text artifacts (don't early-return: a qgis result also maps).
+    if (typeof inner.sld === 'string' && inner.sld) {
+      const name = (inner.layer_name || 'style') + '.sld';
+      container.appendChild(downloadBar([{ label: 'Download .sld style',
+        onClick: () => downloadText(name, inner.sld, 'application/vnd.ogc.sld+xml') }]));
+      any = true;
+    }
+    if (typeof inner.markdown === 'string' && inner.markdown) {
+      container.appendChild(downloadBar([{ label: 'Download report (.md)',
+        onClick: () => downloadText('case-narrative.md', inner.markdown, 'text/markdown') }]));
+      any = true;
+    }
 
     // Quantitative compare: show the numbers + auto-scan the difference map.
     if (inner.comparable === true && inner.result_id_a && inner.result_id_b) {
@@ -438,7 +461,7 @@ export function renderResultViz(container, ev) {
       renderTrajectory(container, inner.dates, inner.values, inner.trend);
       return true;
     }
-    return false;
+    return any;  // true if a downloadable artifact (sld / markdown) was shown
   } catch (e) {
     return false;
   }
