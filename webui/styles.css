@@ -771,90 +771,142 @@ button.is-busy > .ic { display: none; }
 .aoi-map .leaflet-top, .aoi-map .leaflet-bottom { z-index: 400; }
 
 /* ───────────── In-chat result visuals (js/viz.js) ───────────── */
+/* Result-block treatment from the Claude-design "Result block" handoff: the
+   container becomes a cohesive card with a flex-gap rhythm + a faint "RESULT"
+   eyebrow, and the parts/buttons get polished spacing + hover/active states.
+   Aligned to our app: color-mix() -> rgba(); .viz-bar-fill gets display:block
+   (our fills are <span>, the demo used <div>); .viz-chart carries its own gap
+   (our caption is nested inside it, not a sibling); the inline diff legend and
+   the trajectory axis size are kept for our narrower SVG chart. */
 .tc-viz { margin-top: 10px; }
-.viz-maps { display: flex; flex-direction: column; gap: 10px; }
-.viz-maps.is-multi { flex-direction: row; flex-wrap: wrap; }
-.viz-maps.is-multi .viz-map-cell { flex: 1 1 280px; min-width: 240px; }
-.viz-map-cell { display: flex; flex-direction: column; gap: 4px; }
+
+/* CARD */
+.result-viz {
+  display: flex; flex-direction: column; gap: 14px;
+  margin: 14px 0; padding: 15px 16px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 6px 22px rgba(0,0,0,.28);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.result-viz:hover { border-color: rgba(15,203,140,.28); box-shadow: 0 10px 30px rgba(0,0,0,.34); }
+/* Faint "RESULT" eyebrow as the first flex item (no DOM/JS change needed). */
+.result-viz::before {
+  content: "RESULT"; align-self: flex-start; line-height: 1;
+  padding-left: 9px; border-left: 2px solid var(--pink);
+  font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.result-viz > :first-child { margin-top: 0; }
+.result-viz > :last-child { margin-bottom: 0; }
+
+/* MAPS */
+.viz-maps { display: block; }
+.viz-maps.is-multi { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.viz-map-cell { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .viz-map-label {
-  font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--mint-soft);
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-faint);
 }
 .viz-map {
   width: 100%; height: 300px; border-radius: var(--radius-sm);
   border: 1px solid var(--line); overflow: hidden; background: var(--bg-2);
 }
 .viz-maps.is-multi .viz-map { height: 260px; }
-/* Dragged-result preview strip above the composer (compact). */
+/* Dragged-result preview strip above the composer (compact; not a result card). */
 .attach-preview { max-width: var(--maxw); margin: 0 auto 10px; }
 .attach-preview:not([hidden]) { display: block; }
 .attach-preview .viz-map { height: 220px; }
 .attach-preview .viz-maps.is-multi .viz-map { height: 200px; }
 .attach-preview .viz-cap { text-align: center; }
-/* Difference scan: trigger button + legend swatches. */
-.viz-diff-btn {
-  margin-top: 10px; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
-  color: #06231a; background: var(--mint); border: none;
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 7px 14px; border-radius: var(--radius-sm); transition: background .12s;
-}
-.viz-diff-btn:hover { background: var(--mint-link); }
-.viz-diff-btn:disabled { opacity: .6; cursor: default; }
-.viz-diff { margin-top: 10px; }
-.viz-statcard {
-  display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px;
-}
+
+/* STAT CHIPS (label on top, bold value below — JS emits label then <b>value</b>) */
+.viz-statcard { display: flex; flex-wrap: wrap; gap: 8px; }
 .viz-stat {
-  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 12px;
   background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
-  padding: 6px 12px; font-size: 11px; color: var(--text-dim);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-faint); white-space: nowrap;
 }
-.viz-stat b { font-size: 15px; color: var(--text); font-weight: 700; }
+.viz-stat b {
+  font-size: 18px; font-weight: 700; letter-spacing: normal; text-transform: none;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
 .viz-statcard .viz-cap { flex-basis: 100%; }
 .diff-illust { width: 100%; max-width: 360px; height: auto; display: block; margin: 8px 0 2px; border-radius: var(--radius-sm); border: 1px solid var(--line); }
-.viz-bars { display: block; max-width: 480px; }
-.viz-bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
-.viz-bar-label { width: 92px; flex: none; color: var(--text-dim); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.viz-bar-track { flex: 1; height: 14px; background: var(--bg-2); border-radius: 3px; overflow: hidden; display: flex; }
-.viz-bar-fill { height: 100%; }
-.viz-bar-val { width: 44px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text-dim); }
-.cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
-/* Which result is A / B (so "B - A" is unambiguous). */
-.viz-ab { font-size: 12px; color: var(--text-dim); margin: 4px 0; }
-.viz-ab-a, .viz-ab-b, .viz-ab-d { font-weight: 700; padding: 0 5px; border-radius: 3px; }
-.viz-ab-a { color: #cfe6ff; background: rgba(55,160,255,.22); }
-.viz-ab-b { color: #ffd0e6; background: rgba(240,82,156,.22); }
+
+/* A / B LINE */
+.viz-ab { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 13px; color: var(--text-dim); }
+.viz-ab b { font-weight: 600; }
+.viz-ab-a { color: #37a0ff; font-weight: 600; }
+.viz-ab-b { color: var(--pink); font-weight: 600; }
 .viz-ab-d { color: var(--text-faint); }
+
+/* BARS (rows are CSS grid; fills are <span> -> need display:block) */
+.viz-bars { display: flex; flex-direction: column; gap: 9px; }
+.viz-bar-row { display: grid; grid-template-columns: minmax(72px, 120px) 1fr auto; align-items: center; gap: 12px; font-size: 13px; }
+.viz-bar-label { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viz-bar-track { height: 10px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-pill); overflow: hidden; }
+.viz-bar-fill { display: block; height: 100%; background: var(--pink); border-radius: var(--radius-pill); }
+.viz-bar-val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
+
+/* DIFF SCAN output container: internal rhythm for the map + A/B + pill + caption. */
+.viz-diff { display: flex; flex-direction: column; gap: 10px; }
+.viz-diff > .progress-pill { align-self: flex-start; }
+
 /* Overlay viewer: per-layer opacity sliders. */
 .ov-map { height: 420px; }
 .ov-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .ov-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-dim); }
 .ov-lbl { width: 150px; flex: none; }
 .ov-row input[type="range"] { flex: 1; accent-color: var(--mint); }
-/* Result visual shown in the conversation (not the collapsed reasoning). */
-.result-viz { margin: 10px 0 4px; }
-/* Download affordance for chat artifacts (compare / SLD / report). */
-.dl-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.dl-btn {
-  cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600;
-  color: var(--mint-soft); background: rgba(15,203,140,.08);
-  border: 1px solid rgba(15,203,140,.3); border-radius: var(--radius-sm);
-  padding: 6px 12px; transition: background .12s, border-color .12s;
+
+/* PRIMARY ACTION — mint-filled */
+.viz-diff-btn {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 16px; font: inherit; font-size: 13px; font-weight: 700;
+  color: #06231a; background: var(--mint); border: 1px solid transparent; border-radius: var(--radius-pill);
+  cursor: pointer; transition: background .13s ease, transform .12s ease, box-shadow .13s ease;
 }
-.dl-btn:hover { background: rgba(15,203,140,.18); border-color: rgba(15,203,140,.5); }
+.viz-diff-btn:hover { background: #2cd19a; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15,203,140,.26); }
+.viz-diff-btn:active { background: var(--mint); transform: translateY(0); box-shadow: none; }
+.viz-diff-btn:focus-visible { outline: 2px solid var(--mint-soft); outline-offset: 2px; }
+.viz-diff-btn:disabled { opacity: .6; cursor: default; }
+
+/* DOWNLOAD BAR — mint-outline (secondary), with a hairline footer divider */
+.dl-bar { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
+.dl-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--mint-link);
+  background: transparent; border: 1px solid rgba(15,203,140,.44); border-radius: var(--radius-pill);
+  cursor: pointer; transition: background .13s ease, border-color .13s ease, color .13s ease, transform .12s ease;
+}
+.dl-btn:hover { color: var(--mint-soft); background: rgba(15,203,140,.12); border-color: rgba(15,203,140,.72); transform: translateY(-1px); }
+.dl-btn:active { background: rgba(15,203,140,.2); transform: translateY(0); }
+.dl-btn:focus-visible { outline: 2px solid var(--mint-soft); outline-offset: 2px; }
+
+/* LEGEND (inline within the diff summary caption) */
 .viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .viz-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
-.viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
-.viz-chart { margin-top: 2px; }
+
+/* CAPTION + CHART */
+.viz-cap { font-size: 12px; line-height: 1.45; color: var(--text-faint); text-wrap: pretty; }
+.viz-chart { display: flex; flex-direction: column; gap: 6px; }
 .viz-svg {
-  width: 100%; max-width: 480px; height: auto; display: block;
+  width: 100%; max-width: 560px; height: auto; display: block;
   background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
 }
-.viz-line { stroke: var(--mint); stroke-width: 2; }
+.viz-line { fill: none; stroke: var(--mint); stroke-width: 2; }
 .viz-dot { fill: var(--pink); }
 .viz-axt { fill: var(--text-faint); font-size: 9px; font-family: ui-monospace, Menlo, Consolas, monospace; }
 .viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
 .viz-map .leaflet-control-layers { font-size: 12px; }
+
+/* Reduced motion: drop the card/button hover transitions + lift. */
+@media (prefers-reduced-motion: reduce) {
+  .result-viz, .viz-diff-btn, .dl-btn { transition: none; }
+  .result-viz:hover, .viz-diff-btn:hover, .dl-btn:hover { transform: none; }
+}
 
 /* ───────────── Difference-map scan (js/viz.js) ───────────── */
 /* From the Claude-design "Difference-map scan" handoff: a soft radar sweep +

@@ -427,7 +427,7 @@ function statChips(s, caption) {
   const card = document.createElement('div');
   card.className = 'viz-statcard';
   card.innerHTML = rows.map(([k, v]) =>
-    `<span class="viz-stat"><b>${escapeHtml(String(v))}</b>${escapeHtml(k)}</span>`).join('') +
+    `<span class="viz-stat">${escapeHtml(k)}<b>${escapeHtml(String(v))}</b></span>`).join('') +
     (caption ? `<div class="viz-cap">${escapeHtml(caption)}</div>` : '');
   return card;
 }
