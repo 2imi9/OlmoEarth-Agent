@@ -257,6 +257,83 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
 }
 
+/* A compact stat card for olmoearth_compare_results, then the difference map
+   auto-scanned (so a quantitative compare appears with both the numbers and
+   the visual, no button needed). */
+function renderCompareCard(container, inner) {
+  const s = inner.stats || {};
+  const rows = [];
+  const add = (k, v) => { if (v !== undefined && v !== null) rows.push([k, v]); };
+  add('correlation', s.correlation);
+  add('agreement', s.agreement_fraction != null ? (s.agreement_fraction * 100).toFixed(0) + '%' : null);
+  add('mean |diff|', s.mean_abs_diff);
+  add('RMSE', s.rmse_between_models);
+  add('max |diff|', s.max_abs_diff);
+  add('samples', s.n_samples);
+  const card = document.createElement('div');
+  card.className = 'viz-statcard';
+  card.innerHTML = rows.map(([k, v]) =>
+    `<span class="viz-stat"><b>${escapeHtml(String(v))}</b>${escapeHtml(k)}</span>`).join('') +
+    `<div class="viz-cap">Model-vs-model agreement (no ground truth). Difference map below.</div>`;
+  container.appendChild(card);
+  if (inner.result_id_a && inner.result_id_b) {
+    const out = document.createElement('div');
+    out.className = 'viz-diff';
+    container.appendChild(out);
+    void renderDiffScan(out, { resultId: inner.result_id_a }, { resultId: inner.result_id_b },
+      { property: inner.property_name, tolerance: s.tolerance });
+  }
+}
+
+/* Horizontal bars for 0..1 metric rows [{label, value, color}]. */
+function bars(rows) {
+  const wrap = document.createElement('div');
+  wrap.className = 'viz-bars';
+  wrap.innerHTML = rows.map((r) => {
+    const v = Number(r.value);
+    const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, v * 100)) : 0;
+    return '<div class="viz-bar-row">' +
+      `<span class="viz-bar-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</span>` +
+      `<span class="viz-bar-track"><span class="viz-bar-fill" style="width:${pct.toFixed(1)}%;background:${r.color || 'var(--mint)'}"></span></span>` +
+      `<span class="viz-bar-val">${Number.isFinite(v) ? v.toFixed(3) : 'n/a'}</span>` +
+    '</div>';
+  }).join('');
+  return wrap;
+}
+
+/* baseline-compare: grouped bars (model A vs model B) per headline metric. */
+function renderComparisonBars(container, inner) {
+  const la = (inner.model_a || {}).label || 'a';
+  const lb = (inner.model_b || {}).label || 'b';
+  const rows = [];
+  (inner.comparison || []).forEach((c) => {
+    rows.push({ label: `${c.metric} - ${la}`, value: c[la], color: 'var(--mint)' });
+    rows.push({ label: `${c.metric} - ${lb}`, value: c[lb], color: 'var(--pink)' });
+  });
+  container.appendChild(bars(rows));
+  const cap = document.createElement('div');
+  cap.className = 'viz-cap';
+  cap.innerHTML = `0-1 metric scores, ${escapeHtml(la)} vs ${escapeHtml(lb)}` +
+    (inner.overall_winner ? ` - overall winner: <strong>${escapeHtml(inner.overall_winner)}</strong>` : '') + '.';
+  container.appendChild(cap);
+}
+
+/* evaluate: overall metrics + per-class F1 bars. */
+function renderMetricsBars(container, inner) {
+  const rows = [
+    { label: 'accuracy', value: inner.accuracy, color: 'var(--mint)' },
+    { label: 'macro F1', value: inner.macro_f1, color: 'var(--mint)' },
+    { label: 'mean IoU', value: inner.mean_iou, color: 'var(--mint)' },
+  ];
+  Object.entries(inner.per_class || {}).slice(0, 10).forEach(([cls, m]) =>
+    rows.push({ label: `${cls} F1`, value: (m || {}).f1, color: 'var(--pink)' }));
+  container.appendChild(bars(rows));
+  const cap = document.createElement('div');
+  cap.className = 'viz-cap';
+  cap.innerHTML = `Accuracy <strong>${((inner.accuracy || 0) * 100).toFixed(0)}%</strong> over n=${escapeHtml(String(inner.n))}; per-class F1 in pink.`;
+  container.appendChild(cap);
+}
+
 /* Render the best inline visual for a tool-result event into `container`.
    Returns true if it rendered something. */
 export function renderResultViz(container, ev) {
@@ -264,6 +341,22 @@ export function renderResultViz(container, ev) {
     if (!ev || !ev.ok) return false;
     const inner = ev.result && ev.result.result;
     if (!inner || typeof inner !== 'object') return false;
+
+    // Quantitative compare: show the numbers + auto-scan the difference map.
+    if (inner.comparable === true && inner.result_id_a && inner.result_id_b) {
+      renderCompareCard(container, inner);
+      return true;
+    }
+    // baseline-compare: grouped metric bars.
+    if (Array.isArray(inner.comparison) && inner.model_a && inner.model_b) {
+      renderComparisonBars(container, inner);
+      return true;
+    }
+    // evaluate: classification metrics bars.
+    if (inner.per_class && typeof inner.per_class === 'object' && inner.accuracy != null) {
+      renderMetricsBars(container, inner);
+      return true;
+    }
 
     const entries = tileEntries(inner);
     if (entries.length) { void renderResultMap(container, entries); return true; }

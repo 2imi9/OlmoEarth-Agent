@@ -32,6 +32,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **More in-chat charts + auto difference map + a result cache**: (1) skill #4
+  `olmoearth_compare_results` now auto-renders a stat card (correlation,
+  agreement, mean |diff|, RMSE) **and** kicks off the difference-map scan inline
+  -- no button needed. (2) skill #7 `olmoearth-baseline-compare` renders grouped
+  metric bars (model A vs B + overall winner); skill #8
+  `olmoearth_classification_metrics` renders overall + per-class F1 bars. (3) the
+  bridge now caches proxied tiles and pixel values in-memory (LRU, key-namespaced
+  + SSRF-guarded), so panning a result map or re-running a difference scan over
+  overlapping cells is instant instead of re-fetching through the proxy.
 - **Difference-map scan (in chat)**: comparing two result rasters now produces a
   visible **difference output**, not just numbers. A "Scan difference map" button
   on a two-raster view samples both rasters on a grid over their shared extent

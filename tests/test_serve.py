@@ -596,6 +596,26 @@ def test_pixel_value_proxy_extracts_band(monkeypatch: pytest.MonkeyPatch) -> Non
     assert body["categorical"] is False
 
 
+def test_pixel_value_proxy_caches(monkeypatch: pytest.MonkeyPatch) -> None:
+    serve._PV_CACHE.clear()
+    calls = {"n": 0}
+
+    class _Counting(_FakeStudio):
+        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
+            calls["n"] += 1
+            return {"bands": [{"property_name": "k", "raw_value": 0.7, "classification": None}]}
+
+    monkeypatch.setattr(serve, "StudioClient", _Counting)
+    with TestClient(serve.app) as client:
+        h = {"X-Olmoearth-Key": "k"}
+        u = "/api/pixel-value?result_id=cache1&lon=1.0&lat=2.0"
+        a = client.get(u, headers=h)
+        b = client.get(u, headers=h)  # identical -> should hit cache
+    assert a.json()["value"] == 0.7
+    assert b.json()["value"] == 0.7
+    assert calls["n"] == 1  # Studio queried only once
+
+
 def test_tile_proxy_requires_key() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/tile/5/3/7?src=%2Ffoo%2F%7Bz%7D%2F%7Bx%7D%2F%7By%7D.png")

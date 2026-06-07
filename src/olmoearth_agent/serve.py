@@ -29,9 +29,11 @@ Requires the ``serve`` extra (``uv sync --extra serve``).
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -57,6 +59,34 @@ _MAX_TURNS_CEILING = 12
 
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
+
+#: Bounded in-memory caches so a repeated map pan / difference scan does not
+#: re-fetch the same auth-gated Studio raster tiles or pixel values (which are
+#: slow through a proxy). Content is identical per result, so caching by the
+#: resolved request is safe; the caller's key is hashed into the cache key so
+#: distinct keys never share entries. Cleared on process restart.
+_CACHE_MAX = 2048
+_TILE_CACHE: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
+_PV_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+
+def _cache_get(cache: OrderedDict[str, Any], k: str) -> Any:
+    if k in cache:
+        cache.move_to_end(k)
+        return cache[k]
+    return None
+
+
+def _cache_put(cache: OrderedDict[str, Any], k: str, v: Any) -> None:
+    cache[k] = v
+    cache.move_to_end(k)
+    while len(cache) > _CACHE_MAX:
+        cache.popitem(last=False)
+
+
+def _key_hash(key: str) -> str:
+    """A short, non-reversible tag for the caller's key, to namespace caches."""
+    return hashlib.sha256(key.encode()).hexdigest()[:12]
 
 
 def _webui_dir() -> Path:
@@ -720,6 +750,11 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
         lon_f, lat_f = float(lon), float(lat)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="lon/lat must be numbers") from exc
+    prop_key = q.get("property") or ""
+    ckey = f"{_key_hash(key)}|{result_id}|{lon_f}|{lat_f}|{prop_key}"
+    cached: dict[str, Any] | None = _cache_get(_PV_CACHE, ckey)
+    if cached is not None:
+        return cached
     try:
         async with StudioClient(
             StudioConfig(api_key=key, base_url=_studio_base())
@@ -727,7 +762,9 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
             rec = await studio.pixel_value(result_id, lon_f, lat_f)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
-            return {"ok": True, "value": None}  # off-raster / nodata
+            out = {"ok": True, "value": None}  # off-raster / nodata
+            _cache_put(_PV_CACHE, ckey, out)
+            return out
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
@@ -735,12 +772,14 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
     prop = q.get("property")
     band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
     cls = band.get("classification")
-    return {
+    out = {
         "ok": True,
         "value": cls if cls is not None else band.get("raw_value"),
         "property": band.get("property_name"),
         "categorical": cls is not None,
     }
+    _cache_put(_PV_CACHE, ckey, out)
+    return out
 
 
 @app.get("/api/tile/{z}/{x}/{y}")
@@ -775,6 +814,11 @@ async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
 
     if urlparse(url).netloc != urlparse(origin).netloc:
         raise HTTPException(status_code=403, detail="tile src host not allowed")
+    ckey = _key_hash(key) + "|" + url
+    cached = _cache_get(_TILE_CACHE, ckey)
+    if cached is not None:
+        body, media = cached
+        return Response(content=body, media_type=media)
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.get(url, headers={"Authorization": f"Bearer {key}"})
@@ -782,11 +826,9 @@ async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     if resp.status_code != 200:
         return Response(status_code=resp.status_code)
-    return Response(
-        content=resp.content,
-        media_type=resp.headers.get("content-type", "image/png"),
-        headers={"Cache-Control": "no-store"},
-    )
+    media = resp.headers.get("content-type", "image/png")
+    _cache_put(_TILE_CACHE, ckey, (resp.content, media))
+    return Response(content=resp.content, media_type=media)
 
 
 # Serve the static front-end at the root. Mounted last so the explicit

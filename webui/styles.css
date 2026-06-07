@@ -706,6 +706,22 @@ a:hover { color: var(--text); }
 .viz-diff-btn:hover { background: var(--mint-link); }
 .viz-diff-btn:disabled { opacity: .6; cursor: default; }
 .viz-diff { margin-top: 10px; }
+.viz-statcard {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px;
+}
+.viz-stat {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
+  padding: 6px 12px; font-size: 11px; color: var(--text-dim);
+}
+.viz-stat b { font-size: 15px; color: var(--text); font-weight: 700; }
+.viz-statcard .viz-cap { flex-basis: 100%; }
+.viz-bars { display: block; max-width: 480px; }
+.viz-bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+.viz-bar-label { width: 92px; flex: none; color: var(--text-dim); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viz-bar-track { flex: 1; height: 14px; background: var(--bg-2); border-radius: 3px; overflow: hidden; display: flex; }
+.viz-bar-fill { height: 100%; }
+.viz-bar-val { width: 44px; flex: none; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text-dim); }
 .viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .viz-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
 .viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
