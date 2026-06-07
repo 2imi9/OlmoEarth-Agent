@@ -39,7 +39,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   basemap; two-or-more rasters render **side by side** to compare. The extent
   comes from a new `GET /api/results/{id}/extent` (the result's
   `result_metadata.geometry` bbox); maps appear immediately and snap to extent
-  as it resolves. Studio tiles are auth-gated
+  as it resolves. **Dragging prediction results** from the sidebar into the
+  composer previews them as rasters above the input -- pull two in to compare
+  them side by side before sending (the original "compare two rasters" case).
+  Studio tiles are auth-gated
   and browser `<img>` requests can't carry a header, so a new bridge tile-proxy
   (`GET /api/tile/{z}/{x}/{y}?src=...`) adds the Bearer key server-side and is
   hard-restricted to the Studio host (no open relay / SSRF). Change-detection

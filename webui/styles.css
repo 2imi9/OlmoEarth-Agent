@@ -691,6 +691,12 @@ a:hover { color: var(--text); }
   border: 1px solid var(--line); overflow: hidden; background: var(--bg-2);
 }
 .viz-maps.is-multi .viz-map { height: 260px; }
+/* Dragged-result preview strip above the composer (compact). */
+.attach-preview { max-width: var(--maxw); margin: 0 auto 10px; }
+.attach-preview:not([hidden]) { display: block; }
+.attach-preview .viz-map { height: 220px; }
+.attach-preview .viz-maps.is-multi .viz-map { height: 200px; }
+.attach-preview .viz-cap { text-align: center; }
 .viz-cap { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.5; }
 .viz-chart { margin-top: 2px; }
 .viz-svg {
