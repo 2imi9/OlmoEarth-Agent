@@ -21,6 +21,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the widget itself: a new foundational tool `olmoearth_request_aoi` lets it
   ask the user to draw an area when a task needs one and none was given,
   rendering an inline "Draw the area" button that seeds a follow-up turn.
+  The modal can also **reuse a saved area**: pick one of the project's
+  existing areas (`GET /api/areas/{id}`) to render it on the map and attach
+  its `area_id` without creating a duplicate.
   Pure-Python geometry helpers in `analysis/aoi.py` (GeoJSON Polygon/
   MultiPolygon validation + bbox; no GDAL/numpy, agent stays torch-free).
   Resolves issue #59 (map/draw AOI) and the concrete sub-piece of #90.
