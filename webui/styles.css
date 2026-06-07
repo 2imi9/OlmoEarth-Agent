@@ -856,6 +856,68 @@ button.is-busy > .ic { display: none; }
 .viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
 .viz-map .leaflet-control-layers { font-size: 12px; }
 
+/* ───────────── Difference-map scan (js/viz.js) ───────────── */
+/* From the Claude-design "Difference-map scan" handoff: a soft radar sweep +
+   per-cell ignite over the Leaflet diff raster. Cells (.viz-cell) are SVG <path>;
+   JS owns their fill + fill-opacity (magnitude) and toggles .viz-cell--in on
+   paint and .is-scanning on .viz-map — this CSS never sets cell color. Aligned
+   to our idiom: color-mix() swapped for rgba(). Honours reduced-motion. */
+
+/* A — sweep / radar pass. Beam overlay above Leaflet's overlay pane (z 400),
+   so the diff cells read as "behind" the light. Invisible at rest. */
+.viz-map .viz-scan {
+  position: absolute; inset: 0; z-index: 440; pointer-events: none;
+  opacity: 0; overflow: hidden; border-radius: inherit; transition: opacity .15s ease;
+}
+.viz-map.is-scanning .viz-scan { opacity: 1; }
+/* Faint static scanline texture, only seen while the overlay is up. */
+.viz-map .viz-scan::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(to bottom,
+    rgba(15,203,140,.04) 0, rgba(15,203,140,.04) 1px, transparent 1px, transparent 4px);
+  opacity: .5;
+}
+/* The travelling light bar: soft mint body, brighter leading edge on the right. */
+.viz-map .viz-scan::before {
+  content: ""; position: absolute; top: -2%; bottom: -2%; left: 0; width: 130px; pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(15,203,140,.07) 46%,
+    rgba(15,203,140,.16) 84%,
+    rgba(159,234,209,.6) 97%,
+    rgba(159,234,209,.95) 100%);
+  box-shadow: 1px 0 8px rgba(159,234,209,.38);
+  transform: translateX(-30px); will-change: left;  /* no screen blend: our basemap is light OSM, not the demo's dark surface */
+}
+.viz-map.is-scanning .viz-scan::before { animation: om-scan-sweep 2.2s linear infinite; }
+@keyframes om-scan-sweep { from { left: -150px; } to { left: 100%; } }
+
+/* B — cell ignite. Animate element opacity only (multiplies with the JS-set
+   fill-opacity, so the magnitude encoding is never clobbered). */
+.viz-cell { transform-box: fill-box; transform-origin: center; }
+.viz-cell--in { animation: om-scan-ignite .4s ease-out both; }
+@keyframes om-scan-ignite {
+  from { opacity: 0; transform: scale(.55); }
+  55%  { opacity: 1; }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* C — land pulse: a whisper-quiet breathing tint over the surface during a scan. */
+.viz-map.is-scanning::after {
+  content: ""; position: absolute; inset: 0; z-index: 430; pointer-events: none;
+  border-radius: inherit; background: rgba(15,203,140,.5);
+  opacity: .04; animation: om-scan-breathe 3.8s ease-in-out infinite;
+}
+@keyframes om-scan-breathe { 0%, 100% { opacity: .035; } 50% { opacity: .11; } }
+
+/* Reduced motion: no travelling beam, no breathing; cells plain-fade in. */
+@media (prefers-reduced-motion: reduce) {
+  .viz-map .viz-scan::before { animation: none; left: 0; opacity: 0; }
+  .viz-map.is-scanning::after { animation: none; opacity: .03; }
+  .viz-cell--in { animation: om-scan-fade .25s ease both; }
+  @keyframes om-scan-fade { from { opacity: 0; } to { opacity: 1; } }
+}
+
 /* ───────────── Responsive ───────────── */
 @media (max-width: 880px) {
   .sidebar {
