@@ -10,6 +10,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Changed
+- **Tool-calling order guidance in the system prompt.** `DEFAULT_SYSTEM_PROMPT`
+  now includes an explicit "typical run order" recipe with dependency guards:
+  load context -> draw/resolve an AOI -> discover a reusable `model_id` ->
+  submit (only with `project_id` AND `area_id` AND `model_id` AND a time range)
+  -> poll to completed -> fetch -> analyze/report last; plus "search before
+  create" and "do not repeat a succeeded call." Helps the model (especially the
+  small local one) avoid out-of-order calls (submitting before discovering a
+  model, fetching before completion) and redundant loops. No behaviour change to
+  the harness; prompt-only.
 - **Skill catalog consolidated 19 -> 16.** Three pairs of catalog entries were
   each one capability split across two rows; merged and renumbered:
   - **#1 `olmoearth-data-prep`** <- the former `olmoearth-studio-upload` (#1) +
