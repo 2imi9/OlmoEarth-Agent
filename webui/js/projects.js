@@ -4,7 +4,7 @@
 
 import { BRIDGE } from './store.js';
 import { escapeHtml, shortId } from './util.js';
-import { projConnected, apiProjects, apiPredictions, apiResults } from './api.js';
+import { projConnected, apiProjects, apiPredictions, apiResults, apiAreas } from './api.js';
 
 const PROJ_ICONS = {
   map:  '<path d="M9 3L3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/>',
@@ -18,6 +18,8 @@ const NODE_ICONS = {
   embeddings: '<circle cx="6" cy="7" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="18" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/><circle cx="15" cy="14" r="1.5"/><circle cx="19" cy="17" r="1.5"/><circle cx="6" cy="19" r="1.5"/><circle cx="12" cy="20" r="1.5"/>',
   prediction: '<path d="M4 17l5-5 3 3 7-8"/><path d="M15 7h5v5"/>',
   result:     '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  areas:      '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/>',
+  area:       '<path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/>',
 };
 
 /* Studio model_type -> a friendly badge label and a coarse kind for the
@@ -101,6 +103,15 @@ function makeTreeNode(node) {
         e.dataTransfer.effectAllowed = 'copy';
       });
     }
+    if (node.kind === 'area' && node.area) {
+      row.draggable = true;
+      row.title = 'Drag into the chat to attach this area';
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/x-oe-aoi', JSON.stringify(node.area));
+        e.dataTransfer.setData('text/plain', node.area.name || 'AOI');
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+    }
   } else {
     row.addEventListener('click', () => toggleNode(el, node, childBox));
   }
@@ -152,11 +163,26 @@ function resultNode(r) {
   };
 }
 
+function areasGroupNode(projectId) {
+  // A lazy "Areas" branch under a project; expands to its saved AOIs.
+  return { kind: 'areas', id: 'areas-' + projectId, name: 'Areas', projectId };
+}
+function areaNode(a, projectId) {
+  return {
+    kind: 'area', id: a.id, name: a.name || ('area ' + shortId(a.id)), leaf: true,
+    area: { id: a.id, name: a.name || '', project_id: projectId },
+  };
+}
+
 async function loadChildren(node) {
   if (!BRIDGE.live) return node.children || [];
   if (node.kind === 'project') {
     const data = await apiPredictions(node.id);
-    return groupByModel(data.predictions || [], data.models || {});
+    // Areas first (the AOIs you can drag into chat), then the model groups.
+    return [areasGroupNode(node.id), ...groupByModel(data.predictions || [], data.models || {})];
+  }
+  if (node.kind === 'areas') {
+    return (await apiAreas(node.projectId)).map((a) => areaNode(a, node.projectId));
   }
   if (node.kind === 'model') return node.predictions.map(predNode);
   if (node.kind === 'prediction') {
@@ -167,15 +193,21 @@ async function loadChildren(node) {
 
 function emptyLabel(node) {
   if (node.kind === 'project') return 'No predictions in this project yet.';
+  if (node.kind === 'areas') return 'No saved areas yet. Draw one with the map button in the composer.';
   if (node.kind === 'model') return 'No predictions for this model.';
   if (node.kind === 'prediction') return 'No results for this prediction yet.';
   return 'Empty.';
 }
 
 function demoProjects() {
+  const demoGeom = { type: 'Polygon', coordinates: [[[-0.1, 0.0], [0.1, 0.0], [0.1, 0.15], [-0.1, 0.15], [-0.1, 0.0]]] };
   return PROJECTS.map((p) => ({
     kind: 'project', id: p.id, name: p.name, icon: p.icon, meta: p.meta,
     children: [
+      { kind: 'areas', id: 'areas-' + p.id, name: 'Areas', meta: 1, children: [
+        { kind: 'area', id: 'area-' + p.id, name: p.name + ' AOI', leaf: true,
+          area: { id: 'area-' + p.id, name: p.name + ' AOI', geom: demoGeom, bbox: [-0.1, 0.0, 0.1, 0.15], demo: true } },
+      ] },
       { kind: 'model', id: 'm-' + p.id, name: p.name + ' model',
         modelType: p.model || 'fine_tuned', badge: modelTypeLabel(p.model || 'fine_tuned'),
         foundation: 'OlmoEarth Nano v1', meta: 1, children: [

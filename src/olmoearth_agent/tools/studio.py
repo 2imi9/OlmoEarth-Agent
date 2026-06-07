@@ -49,6 +49,21 @@ async def _create_project(args: dict[str, Any], ctx: ToolContext) -> dict[str, A
     return {"id": record.get("id"), "name": record.get("name")}
 
 
+async def _request_aoi(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    """Signal the UI to surface the map draw widget; no Studio call.
+
+    Returns a ``needs_aoi`` directive the web UI recognizes (run.js) and
+    renders as an interactive "draw the area" prompt. The drawn polygon is
+    stored as a Studio area and its ``area_id`` + ``bbox`` arrive on the
+    user's next message, so the agent need not ask for coordinates in text.
+    """
+    return {
+        "needs_aoi": True,
+        "purpose": str(args.get("purpose", "")).strip(),
+        "suggested_name": str(args.get("suggested_name", "")).strip(),
+    }
+
+
 async def _get_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     record = await ctx.studio.get_prediction(args["prediction_id"])
     return {
@@ -114,6 +129,37 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_create_project,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_request_aoi",
+                description=(
+                    "Ask the user to DRAW an area of interest (AOI) on a map "
+                    "in the chat. Call this when a task needs a geographic "
+                    "area and none was provided (no area_id, bbox, or polygon "
+                    "in the brief). The user draws a rectangle or polygon; it "
+                    "is stored as a Studio area, and its area_id + bbox arrive "
+                    "with their next message. Prefer this over asking the user "
+                    "to type coordinates or a bbox. After calling it, stop and "
+                    "tell the user to draw the area on the map."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "purpose": {
+                            "type": "string",
+                            "description": "What the AOI is for (e.g. 'change "
+                            "detection over 2023-2024').",
+                        },
+                        "suggested_name": {
+                            "type": "string",
+                            "description": "Optional default name for the area.",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            handler=_request_aoi,
         ),
         RegisteredTool(
             spec=ToolSpec(

@@ -10,6 +10,27 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **AOI draw-in-chat**: select an area of interest by **drawing** it on a map
+  in the chat instead of typing a bbox. A composer "Draw AOI" button opens a
+  Leaflet map (OSM basemap, rectangle/polygon tools; loaded from CDN, no build
+  step); the drawn polygon is stored as an **OlmoEarth Studio area**
+  (`POST /api/areas` -> new `StudioClient.create_area`, verified against the
+  live `POST /api/v1/areas`) and attached to the next brief carrying its
+  `area_id` (for `olmoearth_submit_prediction`) and bounding box (for
+  bbox-based skills such as #19 `olmoearth-latent-change`). The agent surfaces
+  the widget itself: a new foundational tool `olmoearth_request_aoi` lets it
+  ask the user to draw an area when a task needs one and none was given,
+  rendering an inline "Draw the area" button that seeds a follow-up turn.
+  The modal can also **reuse a saved area**: pick one of the project's
+  existing areas (`GET /api/areas/{id}`) to render it on the map and attach
+  its `area_id` without creating a duplicate. Saved areas also appear as an
+  **"Areas" branch under each project in the sidebar tree** and can be
+  **dragged into the chat** to attach (like prediction results). The dev
+  bridge now serves the static web UI with `Cache-Control: no-cache` so
+  edited (no-build) ES modules are never served stale.
+  Pure-Python geometry helpers in `analysis/aoi.py` (GeoJSON Polygon/
+  MultiPolygon validation + bbox; no GDAL/numpy, agent stays torch-free).
+  Resolves issue #59 (map/draw AOI) and the concrete sub-piece of #90.
 - **Skill #19 `olmoearth-latent-change`** (catalog 18 -> 19): a JEPA latent-prediction
   change detector on **frozen** OlmoEarth embeddings, shipped as a thin
   **out-of-process** link to the new standalone heavy-ML repo

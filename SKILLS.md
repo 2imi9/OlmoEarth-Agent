@@ -163,6 +163,8 @@ A realistic prompt that routes to each skill - what a user would actually type:
 - `olmoearth_search_predictions`, `olmoearth_submit_prediction`, `olmoearth_get_prediction`, `olmoearth_fetch_results`, `olmoearth_get_prediction_result` (wrapping `PLAN.md` §1 submit / poll / fetch_results).
 - `olmoearth.pixel_value`, `features_search` (`PLAN.md` §1; not yet built as tools).
 
+**AOI input (draw-in-chat).** `submit_prediction` needs an `area_id`. Rather than ask the user to type a bbox, the agent calls the foundational `olmoearth_request_aoi` tool, which surfaces an interactive map in the web UI; the user **draws** a rectangle or polygon, it is stored as a Studio area (`POST /areas` -> `area_id`), and its `area_id` + bounding box are fed back on the next turn. The same drawn bbox also feeds bbox-based skills such as #19 `olmoearth-latent-change`.
+
 **First skill to ship.** Foundation that #6, #7, #9, #10 all reuse.
 
 ---
