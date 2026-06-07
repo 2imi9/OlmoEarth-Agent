@@ -439,6 +439,17 @@ class _FakeStudio:
     ) -> _FakeEnv:
         return _FakeEnv([{"id": "area-1", "name": "Saved AOI", "project_id": project_id}])
 
+    async def get_area(self, area_id: str) -> dict[str, Any]:
+        return {
+            "id": area_id,
+            "name": "Saved AOI",
+            "project_id": "p1",
+            "geom": {
+                "type": "Polygon",
+                "coordinates": [[[-2.0, -2.0], [2.0, -2.0], [2.0, 2.0], [-2.0, 2.0], [-2.0, -2.0]]],
+            },
+        }
+
 
 _SQUARE = {
     "type": "Polygon",
@@ -506,6 +517,23 @@ def test_project_areas_list(monkeypatch: pytest.MonkeyPatch) -> None:
     areas = resp.json()["areas"]
     assert areas[0]["id"] == "area-1"
     assert areas[0]["name"] == "Saved AOI"
+
+
+def test_get_area_returns_geom_and_bbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/areas/area-1", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 200
+    area = resp.json()["area"]
+    assert area["id"] == "area-1"
+    assert area["geom"]["type"] == "Polygon"
+    assert area["bbox"] == [-2.0, -2.0, 2.0, 2.0]
+
+
+def test_get_area_requires_key() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/areas/area-1")
+    assert resp.status_code == 400
 
 
 def test_project_predictions(monkeypatch: pytest.MonkeyPatch) -> None:

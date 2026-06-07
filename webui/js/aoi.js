@@ -7,7 +7,7 @@
 
 import { BRIDGE } from './store.js';
 import { escapeHtml } from './util.js';
-import { apiCreateArea, apiProjects, projConnected } from './api.js';
+import { apiArea, apiAreas, apiCreateArea, apiProjects, projConnected } from './api.js';
 import { addAoiAttachment } from './attach.js';
 
 /* Leaflet 1.7.1 + Leaflet.draw 1.0.4: a known-good pair (Leaflet 1.8+ renamed
@@ -93,6 +93,8 @@ function buildModalDom(opts) {
           '<input class="aoi-input" id="aoiName" type="text" autocomplete="off" spellcheck="false" /></label>' +
         '<label class="aoi-field aoi-proj-field"><span>Store in project</span>' +
           '<select class="aoi-input" id="aoiProject" aria-label="Project to store the area in"></select></label>' +
+        '<label class="aoi-field aoi-saved-field"><span>Or reuse a saved area</span>' +
+          '<select class="aoi-input" id="aoiSaved" aria-label="Reuse a saved area"></select></label>' +
       '</div>' +
       '<div class="aoi-bbox" id="aoiBbox">No area drawn yet.</div>' +
       '<div class="aoi-actions">' +
@@ -108,6 +110,8 @@ function buildModalDom(opts) {
     name: back.querySelector('#aoiName'),
     project: back.querySelector('#aoiProject'),
     projField: back.querySelector('.aoi-proj-field'),
+    saved: back.querySelector('#aoiSaved'),
+    savedField: back.querySelector('.aoi-saved-field'),
     bbox: back.querySelector('#aoiBbox'),
     use: back.querySelector('.aoi-use'),
     cancel: back.querySelector('.aoi-cancel'),
@@ -122,6 +126,7 @@ async function fillProjects(els) {
   const canStore = BRIDGE.live && projConnected();
   if (!canStore) {
     els.projField.hidden = true;
+    els.savedField.hidden = true;
     els.use.textContent = 'Use area';
     return [];
   }
@@ -131,6 +136,7 @@ async function fillProjects(els) {
     if (!projects.length) {
       els.project.innerHTML = '<option value="">No projects - area used un-stored</option>';
       els.projField.classList.add('is-empty');
+      els.savedField.hidden = true;
       return [];
     }
     els.project.innerHTML = projects
@@ -139,7 +145,29 @@ async function fillProjects(els) {
     return projects;
   } catch (e) {
     els.project.innerHTML = '<option value="">Couldn’t load projects</option>';
+    els.savedField.hidden = true;
     return [];
+  }
+}
+
+const _NEW_AREA = '__new__';
+
+/* Populate the "reuse a saved area" dropdown for the selected project. The
+   first option always draws a new area; the rest are the project's stored
+   areas (id + name). */
+async function loadAreas(els, projectId) {
+  if (!projectId) { els.savedField.hidden = true; return; }
+  els.savedField.hidden = false;
+  els.saved.innerHTML = `<option value="${_NEW_AREA}">Loading saved areas…</option>`;
+  try {
+    const areas = await apiAreas(projectId);
+    const opts = [`<option value="${_NEW_AREA}">— Draw a new area —</option>`];
+    for (const a of areas) {
+      opts.push(`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)}</option>`);
+    }
+    els.saved.innerHTML = opts.join('');
+  } catch (e) {
+    els.saved.innerHTML = `<option value="${_NEW_AREA}">— Draw a new area —</option>`;
   }
 }
 
@@ -185,18 +213,61 @@ export async function openDrawModal(opts = {}) {
   setTimeout(() => map.invalidateSize(), 60);
 
   let geom = null;
+  let reuseAreaId = null;  // set when an existing saved area is selected
+  let reuseName = null;
+  const resetUse = () => { els.use.textContent = 'Use area'; els.use.classList.remove('is-fallback'); };
   const onDrawn = (layer) => {
+    // Drawing a fresh shape supersedes any reused area.
+    reuseAreaId = null;
+    if (els.saved) els.saved.value = _NEW_AREA;
+    resetUse();
     drawn.clearLayers();
     drawn.addLayer(layer);
-    const gj = layer.toGeoJSON();
-    geom = gj.geometry;
-    const b = geomBbox(geom);
-    els.bbox.textContent = 'bbox: ' + fmtBbox(b);
+    geom = layer.toGeoJSON().geometry;
+    els.bbox.textContent = 'bbox: ' + fmtBbox(geomBbox(geom));
     els.use.disabled = false;
   };
   map.on(L.Draw.Event.CREATED, (e) => onDrawn(e.layer));
   map.on(L.Draw.Event.DELETED, () => {
-    if (!drawn.getLayers().length) { geom = null; els.bbox.textContent = 'No area drawn yet.'; els.use.disabled = true; }
+    if (!drawn.getLayers().length) { geom = null; reuseAreaId = null; els.bbox.textContent = 'No area drawn yet.'; els.use.disabled = true; }
+  });
+
+  // Load the selected project's saved areas; reload when the project changes.
+  projectsP.then((projects) => { if (projects && projects.length) loadAreas(els, els.project.value); });
+  els.project.addEventListener('change', () => {
+    reuseAreaId = null; geom = null; drawn.clearLayers(); resetUse();
+    els.bbox.textContent = 'No area drawn yet.'; els.use.disabled = true;
+    loadAreas(els, els.project.value);
+  });
+
+  // Pick a saved area -> fetch its geometry, show it on the map, reuse it.
+  els.saved.addEventListener('change', async () => {
+    const id = els.saved.value;
+    if (!id || id === _NEW_AREA) {
+      reuseAreaId = null; geom = null; drawn.clearLayers(); resetUse();
+      els.bbox.textContent = 'No area drawn yet.'; els.use.disabled = true;
+      return;
+    }
+    setStatus(els, 'Loading saved area…');
+    els.use.disabled = true;
+    try {
+      const area = await apiArea(id);
+      geom = area.geom;
+      reuseAreaId = area.id;
+      reuseName = area.name;
+      drawn.clearLayers();
+      const layer = L.geoJSON(geom);
+      layer.eachLayer((l) => drawn.addLayer(l));
+      try { map.fitBounds(drawn.getBounds(), { maxZoom: 13, padding: [20, 20] }); } catch (e) {}
+      els.bbox.textContent = 'bbox: ' + fmtBbox(area.bbox || geomBbox(geom)) + '  (saved area)';
+      els.use.textContent = 'Use saved area';
+      els.use.disabled = false;
+      setStatus(els, null);
+    } catch (e) {
+      reuseAreaId = null;
+      setStatus(els, 'Couldn’t load that area: ' + ((e && e.message) || e), 'is-error');
+      els.use.disabled = !geom;
+    }
   });
 
   return new Promise((resolve) => {
@@ -210,6 +281,18 @@ export async function openDrawModal(opts = {}) {
     els.back.addEventListener('click', (e) => { if (e.target === els.back) finish(null); });
 
     els.use.addEventListener('click', async () => {
+      // Reuse a saved area: it already exists in Studio, so no new POST.
+      if (reuseAreaId && geom) {
+        finish({
+          name: reuseName || defaultName(),
+          geom,
+          bbox: geomBbox(geom),
+          area_id: reuseAreaId,
+          project_id: (els.project.value || '').trim(),
+          stored: true,
+        });
+        return;
+      }
       if (!geom) return;
       const name = (els.name.value || '').trim() || defaultName();
       const bbox = geomBbox(geom);
@@ -239,7 +322,6 @@ export async function openDrawModal(opts = {}) {
         els.use.onclick = () => finish({ name, geom, bbox, stored: false });
       }
     });
-    void projectsP;
   });
 }
 

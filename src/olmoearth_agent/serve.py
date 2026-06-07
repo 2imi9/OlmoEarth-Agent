@@ -547,6 +547,41 @@ async def api_project_areas(project_id: str, request: Request) -> dict[str, Any]
     }
 
 
+@app.get("/api/areas/{area_id}")
+async def api_get_area(area_id: str, request: Request) -> dict[str, Any]:
+    """Fetch one stored area with its geometry + derived bbox (for reuse).
+
+    The list endpoint omits ``geom`` (lightweight); when the user picks a
+    saved area to reuse, the draw UI calls this to render it on the map and
+    feed its bbox to bbox-based skills.
+    """
+    key = _studio_key(request)
+    if not key:
+        raise HTTPException(status_code=400, detail="missing Studio key")
+    try:
+        async with StudioClient(
+            StudioConfig(api_key=key, base_url=_studio_base())
+        ) as studio:
+            record = await studio.get_area(area_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    geom = record.get("geom")
+    try:
+        bbox = geometry_bbox(geom) if geom else None
+    except ValueError:
+        bbox = None
+    return {
+        "ok": True,
+        "area": {
+            "id": record.get("id"),
+            "name": record.get("name"),
+            "project_id": record.get("project_id"),
+            "geom": geom,
+            "bbox": bbox,
+        },
+    }
+
+
 @app.get("/api/projects/{project_id}/predictions")
 async def api_project_predictions(project_id: str, request: Request) -> dict[str, Any]:
     """Predictions for a project: the tree's model + prediction levels.

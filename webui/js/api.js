@@ -95,6 +95,13 @@ export async function apiAreas(projectId) {
   return (await res.json()).areas || [];
 }
 
+// GET /api/areas/{id} -> { id, name, project_id, geom, bbox }. Throws on !ok.
+export async function apiArea(areaId) {
+  const res = await fetch('/api/areas/' + encodeURIComponent(areaId), { headers: keyHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return (await res.json()).area || {};
+}
+
 // GET /api/projects/{id}/predictions -> { predictions, models }. Throws on !ok.
 export async function apiPredictions(projectId) {
   const res = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/predictions', { headers: keyHeaders() });
