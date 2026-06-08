@@ -145,8 +145,9 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-baseline-compare",
         "Run",
         "implemented",
-        "OlmoEarth vs AlphaEarth on transfer regions (bring-your-own "
-        "exported GEE Satellite Embedding data; no live GEE connection).",
+        "OlmoEarth vs a baseline foundation model (e.g. AlphaEarth) "
+        "side-by-side on transfer regions; bring-your-own exported "
+        "embeddings/predictions (no live GEE connection).",
         ["olmoearth_baseline_compare"],
     ),
     SkillSpec(
@@ -167,8 +168,8 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-similarity",
         "Analyze",
         "implemented",
-        "Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up "
-        "follow-up); geographic-prior warning.",
+        "Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base; "
+        "FAISS = scale-up follow-up); geographic-prior warning.",
         ["olmoearth_similarity_search"],
     ),
     SkillSpec(

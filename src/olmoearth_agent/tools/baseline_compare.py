@@ -54,7 +54,8 @@ def build_baseline_compare_tools() -> list[RegisteredTool]:
             spec=ToolSpec(
                 name="olmoearth_baseline_compare",
                 description=(
-                    "Compare OlmoEarth vs AlphaEarth head-to-head on the "
+                    "Compare OlmoEarth vs a baseline foundation model "
+                    "(e.g. AlphaEarth) head-to-head on the "
                     "same ground truth. Pass y_true plus each model's "
                     "predicted labels (olmoearth_pred, alphaearth_pred); "
                     "returns a per-metric table (accuracy / macro-F1 / "
@@ -62,10 +63,10 @@ def build_baseline_compare_tools() -> list[RegisteredTool]:
                     "overall_winner. Optionally pass aligned score layers "
                     "(olmoearth_layer + alphaearth_layer) for a cell-by-cell "
                     "difference raster. Use this to substantiate an "
-                    "'outperforms AlphaEarth' claim in a transfer region "
-                    "(Ma et al. arXiv:2601.00857). The AlphaEarth side is "
-                    "data you exported from the GEE Satellite Embedding "
-                    "dataset. Read-only."
+                    "'outperforms the baseline' claim in a transfer region "
+                    "(Ma et al. arXiv:2601.00857). The baseline side (e.g. "
+                    "AlphaEarth) is data/predictions you supply (e.g. exported "
+                    "from the GEE Satellite Embedding dataset). Read-only."
                 ),
                 parameters={
                     "type": "object",

@@ -76,7 +76,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 5 | `olmoearth-change-detection` | Two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date), and an out-of-process JEPA latent-prediction pixel detector (separate repo [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)) | **Run** |
 | 6 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
 | 7 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
-| 8 | `olmoearth-similarity` | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up follow-up) | **Analyze** |
+| 8 | `olmoearth-similarity` | Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base; FAISS = scale-up follow-up) | **Analyze** |
 | 9 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer-Pebesma Area of Applicability | **Analyze** |
 | 10 | `olmoearth-cloud-mask-audit` | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
 | 11 | `olmoearth-qgis-bridge` | Tile URLs -> QGIS WMTS + COG with a sidecar uncertainty raster | **Integrate** |
