@@ -604,6 +604,71 @@ a:hover { color: var(--text); }
 .tc-dot.running { animation: pulse 1s infinite; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(15,203,140,.20); } 50% { box-shadow: 0 0 0 7px rgba(15,203,140,.04); } }
 
+/* ───────────── Workflow indicator (js/run.js) ───────────── */
+/* From the Claude-design "Workflow indicator" handoff: a compact vertical
+   progress rail shown above the collapsed "Reasoning & tools" box. JS (run.js)
+   renders the .wf-step list and sets one state class per step as it maps tool
+   calls to stages. color-mix() swapped for rgba() to match the file. */
+.workflow {
+  --wf-m: 18px; --wf-gap-y: 15px; --wf-rail: 2px;
+  display: flex; flex-direction: column; margin: 0 0 12px; font-family: var(--font);
+}
+.wf-eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--text-faint); margin: 0 0 12px; padding-left: 2px;
+}
+.wf-step { position: relative; display: flex; align-items: flex-start; gap: 11px; padding-bottom: var(--wf-gap-y); }
+.wf-step:last-child { padding-bottom: 0; }
+/* Connector segment linking each marker down to the next. */
+.wf-step:not(:last-child)::before {
+  content: ""; position: absolute; left: calc(var(--wf-m) / 2 - var(--wf-rail) / 2);
+  top: 0.75em; width: var(--wf-rail); height: 100%;
+  background: var(--line); border-radius: var(--wf-rail); z-index: 0;
+}
+.wf-step.is-done:not(:last-child)::before { background: rgba(15,203,140,.52); }
+/* The node on the rail. */
+.wf-marker {
+  position: relative; z-index: 1; flex: 0 0 var(--wf-m); width: var(--wf-m); height: var(--wf-m);
+  margin-top: calc((1.5em - var(--wf-m)) / 2); border-radius: var(--radius-pill);
+  background: var(--bg); border: 1.5px solid var(--text-faint); box-sizing: border-box;
+  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+.wf-label { color: var(--text-dim); line-height: 1.5; transition: color .14s ease; text-wrap: pretty; }
+/* Pending (default): faint hollow marker + faint label. */
+.wf-step.is-pending .wf-marker,
+.wf-step:not(.is-active):not(.is-done):not(.is-failed) .wf-marker { background: var(--bg); border-color: rgba(250,242,233,.32); }
+.wf-step.is-pending .wf-label,
+.wf-step:not(.is-active):not(.is-done):not(.is-failed) .wf-label { color: var(--text-faint); }
+/* Done: mint marker + CSS check; dim label. */
+.wf-step.is-done .wf-marker { background: var(--mint); border-color: var(--mint); }
+.wf-step.is-done .wf-marker::after {
+  content: ""; position: absolute; left: 50%; top: 46%; width: 4px; height: 8px;
+  border: solid var(--bg); border-width: 0 2px 2px 0; transform: translate(-50%, -50%) rotate(45deg);
+}
+.wf-step.is-done .wf-label { color: var(--text-dim); }
+/* Active: pink marker, soft heartbeat pulse, glowing core, brighter label. */
+.wf-step.is-active .wf-marker { background: var(--pink); border-color: var(--pink); animation: om-wf-pulse 1.8s ease-out infinite; }
+.wf-step.is-active .wf-marker::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
+  border-radius: var(--radius-pill); background: var(--pink-hi); transform: translate(-50%, -50%);
+}
+.wf-step.is-active .wf-label { color: var(--text); font-weight: 600; }
+@keyframes om-wf-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(240,82,156,.48); }
+  70%  { box-shadow: 0 0 0 7px rgba(240,82,156,0); }
+  100% { box-shadow: 0 0 0 0 rgba(240,82,156,0); }
+}
+/* Failed: red-pink marker + ×; no pulse. */
+.wf-step.is-failed .wf-marker { background: #ea467e; border-color: #ea467e; animation: none; }
+.wf-step.is-failed .wf-marker::after {
+  content: "×"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; line-height: 1; font-weight: 700; color: var(--bg); transform: translateY(-0.5px);
+}
+.wf-step.is-failed .wf-label { color: #f7ced7; }
+@media (prefers-reduced-motion: reduce) {
+  .wf-step.is-active .wf-marker { animation: none; box-shadow: 0 0 0 3px rgba(240,82,156,.28); }
+}
+
 /* ───────────── Loading & busy states ───────────── */
 /* Implemented from the Claude-design "Loading States" handoff, aligned to our
    tokens + idiom: color-mix() swapped for rgba() (the rest of this file is

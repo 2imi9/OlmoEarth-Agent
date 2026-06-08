@@ -82,6 +82,78 @@ function liveResultHtml(ev) {
   return chips.join('') + '<pre class="tc-args tc-result-json">' + escapeHtml(json) + '</pre>';
 }
 
+/* ── Workflow indicator ─────────────────────────────────────────────────
+   A compact progress rail above "Reasoning & tools" that maps the agent's tool
+   calls to the canonical OlmoEarth pipeline. Shown only once a CORE pipeline
+   stage (AOI..fetch) is reached, so plain Q&A turns don't get a misleading rail.
+   Progress is monotonic (the furthest stage reached is active; earlier = done;
+   the final answer completes "Report"). */
+const WF_STAGES = [
+  ['context', 'Load context', (n) => /load_context/.test(n)],
+  ['aoi',     'Define AOI',    (n) => /request_aoi/.test(n)],
+  ['model',   'Find model',    (n) => /load_skill/.test(n)],
+  ['submit',  'Submit run',    (n) => /submit_prediction/.test(n)],
+  ['poll',    'Poll status',   (n) => n === 'olmoearth_get_prediction' || /(^|_)poll/.test(n)],
+  ['fetch',   'Fetch results', (n) => /fetch_results|get_prediction_result|get_results/.test(n)],
+  ['report',  'Report',        () => false],  // completed by the final answer
+];
+const WF_CORE_MIN = 1, WF_CORE_MAX = 5;  // a real pipeline touches one of these
+
+function wfStageFor(name) {
+  const n = name || '';
+  for (let i = 0; i < WF_STAGES.length; i++) if (WF_STAGES[i][2](n)) return i;
+  return -1;
+}
+function ensureWorkflow(body) {
+  let wf = body.querySelector(':scope > .workflow');
+  if (!wf) {
+    wf = document.createElement('div');
+    wf.className = 'workflow run-step';
+    wf.innerHTML = '<div class="wf-eyebrow">Workflow</div>' +
+      WF_STAGES.map(([k, label]) =>
+        `<div class="wf-step is-pending" data-wf="${k}"><span class="wf-marker"></span><span class="wf-label">${escapeHtml(label)}</span></div>`).join('');
+    body.insertBefore(wf, body.firstChild);  // above .steps (which re-anchors after .workflow)
+  }
+  return wf;
+}
+function setWorkflow(body, activeIdx, opts) {
+  opts = opts || {};
+  const wf = body.querySelector(':scope > .workflow');
+  if (!wf) return;
+  wf.querySelectorAll('.wf-step').forEach((st, i) => {
+    st.classList.remove('is-active', 'is-done', 'is-failed', 'is-pending');
+    if (opts.failedIdx != null && i === opts.failedIdx) st.classList.add('is-failed');
+    else if (opts.done || i < activeIdx) st.classList.add('is-done');
+    else if (i === activeIdx) st.classList.add('is-active');
+    else st.classList.add('is-pending');
+  });
+}
+function workflowOnTool(body, name) {
+  const idx = wfStageFor(name);
+  if (idx < 0) return;
+  body._wfFailed = false;  // a new tool call means the run advanced past any prior failure
+  body._wfMax = Math.max(body._wfMax == null ? -1 : body._wfMax, idx);
+  if (!body._wfShown && body._wfMax >= WF_CORE_MIN && body._wfMax <= WF_CORE_MAX) {
+    ensureWorkflow(body); body._wfShown = true;
+  }
+  if (body._wfShown) setWorkflow(body, body._wfMax);
+}
+function workflowOnFail(body, name) {
+  if (!body._wfShown) return;
+  body._wfFailed = true;
+  const idx = wfStageFor(name);
+  setWorkflow(body, body._wfMax || 0, { failedIdx: idx >= 0 ? idx : (body._wfMax || 0) });
+}
+function workflowOnFinal(body) {
+  if (!body._wfShown) return;
+  // A turn can end without completing the pipeline: PAUSING for user input (the
+  // agent asked you to draw an AOI) or after a tool FAILED (it ends with an
+  // explanation). Don't mark everything done in those cases — leave the rail at
+  // its active/failed stage rather than reading "all steps passed".
+  if (body._wfAwaiting || body._wfFailed) return;
+  setWorkflow(body, WF_STAGES.length - 1, { done: true });
+}
+
 // Per-turn "Reasoning & tools" disclosure: thinking + tool calls live in a
 // collapsible block, collapsed by default (a finished turn shows just the
 // answer). Live runs auto-expand it while streaming, then collapse on `final`.
@@ -97,7 +169,9 @@ function ensureSteps(body) {
         '<span class="steps-count"></span>' +
       '</button>' +
       '<div class="steps-body"></div>';
-    body.insertBefore(steps, body.firstChild);
+    const wf = body.querySelector(':scope > .workflow');
+    if (wf) wf.insertAdjacentElement('afterend', steps);  // keep the rail on top
+    else body.insertBefore(steps, body.firstChild);
     steps.querySelector('.steps-head').addEventListener('click', () => steps.classList.toggle('collapsed'));
   }
   return steps;
@@ -139,6 +213,7 @@ export function handleRunEvent(body, ev, staticRender) {
         '<div class="tc-result" hidden></div>' +
       '</div>');
     bumpStepsCount(body);
+    workflowOnTool(body, ev.name);
     if (!staticRender) {
       stepsExpand(body);
       const cards = body.querySelectorAll('.toolcall');
@@ -165,8 +240,14 @@ export function handleRunEvent(body, ev, staticRender) {
     const viz = document.createElement('div');
     viz.className = 'result-viz run-step';
     if (renderResultViz(viz, ev)) body.appendChild(viz);
+    if (ev.ok === false) workflowOnFail(body, ev.name);
+    // request_aoi with needs_aoi pauses the turn for the user to draw — flag it
+    // so the upcoming `final` doesn't mark the whole pipeline complete.
+    const aoiInner = ev.result && ev.result.result;
+    if (ev.name === 'olmoearth_request_aoi' && aoiInner && aoiInner.needs_aoi) body._wfAwaiting = true;
     maybeAoiPrompt(body, ev);
   } else if (ev.type === 'final') {
+    workflowOnFinal(body);
     if (!staticRender) { const steps = body.querySelector(':scope > .steps'); if (steps) steps.classList.add('collapsed'); }
     body.insertAdjacentHTML('beforeend', '<div class="answer run-step md">' + renderMarkdown(ev.content || '(no answer)') + '</div>');
     if (!staticRender) {
@@ -174,8 +255,10 @@ export function handleRunEvent(body, ev, staticRender) {
       const a = ans[ans.length - 1]; if (a) a.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   } else if (ev.type === 'max_turns') {
+    workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
   } else if (ev.type === 'error') {
+    workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');
   }
 }
