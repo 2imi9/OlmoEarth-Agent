@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 16 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 17 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 16 skills — 15 implemented in-repo + the out-of-process JEPA change engine (v1.0 shipped the originals on 2026-05-31; `olmoearth-litsearch` and the `olmoearth_automate` facet added post-1.0; `olmoearth-negative-sampler` added post-1.1; the JEPA latent-change engine — **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) — added post-1.1, now folded into skill #5 `olmoearth-change-detection`). See `CHANGELOG.md`.
+**Status:** 17 skills — 16 implemented in-repo + the out-of-process JEPA change engine (v1.0 shipped the originals on 2026-05-31; `olmoearth-litsearch` and the `olmoearth_automate` facet added post-1.0; `olmoearth-negative-sampler` added post-1.1; the JEPA latent-change engine — **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) — added post-1.1, now folded into skill #5 `olmoearth-change-detection`; #17 `olmoearth-rslearn` added post-1.2 — a vendored "operate rslearn" SKILL.md plus two in-repo torch-free recommend/validate tools). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -352,11 +352,28 @@ The original spec follows for reference:
 
 ---
 
+## Configure (continued)
+
+### 17. `olmoearth-rslearn`
+
+**In:** a plain-language research goal (+ optional `task`, `num_classes`, `label_range`, `sensor`, `cloudy`, `temporal`, `num_samples`, `model_size`); or, for validation, a parsed dataset `config.json` and/or model `model.yaml`.
+**Out:** for *recommend*, a complete explained setup (task + data layout + `encoder -> decoder -> head` + task knobs + fine-tune schedule, each with a one-line *why*, and `ask_for` for missing inputs); for *validate*, `{ok, errors, warnings, checks}`.
+
+**What.** [`rslearn`](https://github.com/allenai/rslearn) (AI2, Apache-2.0) is the data + training engine **under** OlmoEarth. The vendored `olmoearth-rslearn` SKILL.md teaches *running* it (the 4-stage `add_windows -> prepare -> ingest -> materialize` pipeline, then `model fit`/`predict`). On top of that, two **torch-free** in-repo tools let a domain scientist who does **not** know rslearn still set up a correct experiment. `olmoearth_rslearn_recommend` maps a goal to the right rslearn task (segmentation / per-pixel-regression / detection / classification / regression), a sensible OlmoEarth `encoder -> decoder -> head` composition with the channel contract spelled out, the data layout (`data_source` + `space_mode` + `compositing_method` + bands), the task knobs (metrics / loss / `nodata_value` / `scale_factor` from the label range), and a freeze->unfreeze schedule. `olmoearth_rslearn_validate` catches the errors rslearn only surfaces hours into a run: encoder embedding-dim vs decoder `in_channels`, decoder `out_channels` vs `num_classes`, task vs label-type (Segmentation/per-pixel need a raster target; Classification/Detection/Regression need vector), model `inputs.layers`/bands that aren't in the dataset, bad `dtype`/`sort_by`, and the Faster R-CNN background-class **+1** quirk.
+
+**Why.** rslearn's config + `encoder->decoder->head` framework is a wall for the domain scientists OlmoEarth is for — they have a research question and labels, not ML-engineering fluency. These tools turn "read the docs and hand-write YAML" into "describe the goal, get a correct + explained setup, and have it checked before a multi-hour GPU run." **Torch-free by construction:** importing rslearn would pull torch (excluded from this agent), so the logic mirrors rslearn's facts (tasks, model sizes, config enums) as plain data in `analysis/rslearn_advisor.py`, verified against the rslearn repo with a version pointer — heavy training stays **out-of-process** (the JEPA pattern). Pure metadata in/out (no geometry, no network) → provenance-safe.
+
+**Tools composed.**
+- `olmoearth_load_skill` (load the vendored "operate rslearn" SKILL.md for the pipeline + `fit`/`predict`).
+- `olmoearth_rslearn_recommend` + `olmoearth_rslearn_validate` (logic in `analysis/rslearn_advisor.py`; rslearn's tasks/models/config schemas mirrored as torch-free data, verified against the repo).
+
+---
+
 ## Roadmap reference
 
 Implementation order tracks `PLAN.md` §6. First skill to ship was **#4 `olmoearth-predict`** (the foundation that #5, #6, #8, #9 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 16 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
+Candidate skills beyond the current 17 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
 
 ## Adding a skill
 

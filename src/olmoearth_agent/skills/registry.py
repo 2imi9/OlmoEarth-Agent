@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 16 skills.
+"""Skill catalog manifest, the harness's view of all 17 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -30,6 +30,7 @@ from olmoearth_agent.tools.negative_sampler import build_negative_sampler_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
+from olmoearth_agent.tools.rslearn import build_rslearn_tools
 from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
@@ -241,6 +242,28 @@ SKILLS: list[SkillSpec] = [
         "so the data-prep audit's negative-class check passes.",
         ["olmoearth_negative_sampler"],
     ),
+    # #17 promotes the vendored olmoearth-rslearn SKILL.md (it OPERATES rslearn,
+    # the data + training engine under OlmoEarth) to a catalog row, and adds two
+    # in-repo TORCH-FREE tools so a scientist who doesn't know rslearn can be
+    # guided + checked: olmoearth_rslearn_recommend (goal -> an explained setup)
+    # and olmoearth_rslearn_validate (catch config errors before a training run).
+    # Mirrors #3's vendored-SKILL.md + in-repo-tool pattern.
+    SkillSpec(
+        17,
+        "olmoearth-rslearn",
+        "Configure",
+        "vendored",
+        "Operate rslearn (the data + training engine under OlmoEarth): the vendored "
+        "SKILL.md runs add_windows -> prepare -> ingest -> materialize -> model "
+        "fit/predict, plus two in-repo torch-free tools for non-experts -- recommend "
+        "a full setup from a plain-language research goal, and validate a config "
+        "(encoder/decoder/head shapes, task<->label-type, bands) before training.",
+        [
+            "olmoearth_load_skill",
+            "olmoearth_rslearn_recommend",
+            "olmoearth_rslearn_validate",
+        ],
+    ),
 ]
 
 
@@ -269,6 +292,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_negative_sampler_tools())
     registry.register_all(build_litsearch_tools())
     registry.register_all(build_automate_tools())
+    registry.register_all(build_rslearn_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())

@@ -11,10 +11,10 @@ from olmoearth_agent.skills.registry import (
 )
 
 
-def test_catalog_covers_all_16_skills() -> None:
+def test_catalog_covers_all_17_skills() -> None:
     numbered = [s for s in SKILLS if s.number >= 1]
-    assert len(numbered) == 16
-    assert {s.number for s in numbered} == set(range(1, 17))
+    assert len(numbered) == 17
+    assert {s.number for s in numbered} == set(range(1, 18))
 
 
 def test_foundational_entry_is_implemented() -> None:
@@ -22,13 +22,14 @@ def test_foundational_entry_is_implemented() -> None:
     assert any(s.name == "studio-core" for s in implemented)
 
 
-def test_vendored_skills_match_the_three_packages() -> None:
-    # Three vendored SKILL.md packages = three dirs under vendor/.../skills/.
+def test_vendored_skills_match_the_four_packages() -> None:
+    # Four vendored SKILL.md packages = four dirs under vendor/.../skills/.
     vendored = {s.name for s in skills_by_status("vendored")}
     assert vendored == {
         "olmoearth-data-prep",
         "olmoearth-studio-job-config",
         "olmoearth-embeddings",
+        "olmoearth-rslearn",
     }
 
 
@@ -65,6 +66,8 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_litsearch",
         "olmoearth_litsearch_resolve",
         "olmoearth_automate",
+        "olmoearth_rslearn_recommend",
+        "olmoearth_rslearn_validate",
         "olmoearth_negative_sampler",
         "olmoearth_list_skills",
         "olmoearth_load_skill",
