@@ -9,6 +9,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Server-side forced-skill routing** (`forced_skill`): `POST /api/run` accepts an
+  optional allow-list-validated `forced_skill` slug; `LeadAgent` appends a
+  `FORCED SKILL:` directive to the system prompt, and the web UI sends a clean
+  brief + the structured field instead of the client-side rewrite (`parseSkillSlash`
+  replaces `applySkillSlash`). Prompt-steering is the one mechanism that works across
+  all 16 skills and the local Qwen backend (which has no `tool_choice`); a Claude-only
+  `tool_choice` hard-force tier was considered and deferred.
+
 ### Changed
 - **Re-recorded the README walkthrough demo** against the current polished UI --
   the lead GIF/MP4 had been frozen at the pre-polish v1.0.0 layout. Corrected the
