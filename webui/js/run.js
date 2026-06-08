@@ -131,6 +131,7 @@ function setWorkflow(body, activeIdx, opts) {
 function workflowOnTool(body, name) {
   const idx = wfStageFor(name);
   if (idx < 0) return;
+  body._wfFailed = false;  // a new tool call means the run advanced past any prior failure
   body._wfMax = Math.max(body._wfMax == null ? -1 : body._wfMax, idx);
   if (!body._wfShown && body._wfMax >= WF_CORE_MIN && body._wfMax <= WF_CORE_MAX) {
     ensureWorkflow(body); body._wfShown = true;
@@ -139,16 +140,17 @@ function workflowOnTool(body, name) {
 }
 function workflowOnFail(body, name) {
   if (!body._wfShown) return;
+  body._wfFailed = true;
   const idx = wfStageFor(name);
   setWorkflow(body, body._wfMax || 0, { failedIdx: idx >= 0 ? idx : (body._wfMax || 0) });
 }
 function workflowOnFinal(body) {
   if (!body._wfShown) return;
-  // A turn can end by PAUSING for user input (e.g. the agent asked you to draw
-  // an AOI) rather than completing the pipeline. Don't mark everything done in
-  // that case — leave the current stage active so the rail reads "waiting at
-  // Define AOI", not "all steps passed".
-  if (body._wfAwaiting) return;
+  // A turn can end without completing the pipeline: PAUSING for user input (the
+  // agent asked you to draw an AOI) or after a tool FAILED (it ends with an
+  // explanation). Don't mark everything done in those cases — leave the rail at
+  // its active/failed stage rather than reading "all steps passed".
+  if (body._wfAwaiting || body._wfFailed) return;
   setWorkflow(body, WF_STAGES.length - 1, { done: true });
 }
 
