@@ -31,6 +31,25 @@ async function pool(items, n, worker) {
   await Promise.all(runners);
 }
 
+/* One pixel value, RETRYING transient failures. The grid + sample points are
+   deterministic, so the only thing that made a re-scan of the same pair give
+   different stats was cells dropped on a flaky fetch (a transient HTTP/timeout
+   error was swallowed, so that cell wasn't counted). Retrying gives consistent
+   coverage -> reproducible stats. A valid response with a non-numeric value is
+   genuine nodata, so it's returned as null without retrying (consistently). */
+async function pixelAt(resultId, lon, lat, property, tries = 4) {
+  for (let t = 0; t < tries; t++) {
+    try {
+      const r = await apiPixelValue(resultId, lon, lat, property);
+      return r && typeof r.value === 'number' ? r.value : null;
+    } catch (e) {
+      if (t === tries - 1) return null;
+      await new Promise((res) => setTimeout(res, 120 * (t + 1)));  // 120/240/360ms backoff
+    }
+  }
+  return null;
+}
+
 /* Intersection of two [minLon,minLat,maxLon,maxLat] boxes, or null. */
 function intersectBbox(a, b) {
   if (!a || !b) return null;
@@ -361,9 +380,8 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   };
 
   await pool(cells, 8, async (c) => {
-    let va = null, vb = null;
-    try { const r = await apiPixelValue(a.resultId, c.lon, c.lat, opts.property); va = r.value; } catch (e) {}
-    try { const r = await apiPixelValue(b.resultId, c.lon, c.lat, opts.property); vb = r.value; } catch (e) {}
+    const va = await pixelAt(a.resultId, c.lon, c.lat, opts.property);
+    const vb = await pixelAt(b.resultId, c.lon, c.lat, opts.property);
     done++;
     if (typeof va === 'number' && typeof vb === 'number') {
       c.diff = vb - va; xs.push(va); ys.push(vb); absd.push(Math.abs(c.diff));
