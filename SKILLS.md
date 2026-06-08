@@ -31,9 +31,9 @@ Skills #4-#16 are implemented in this repo (see `CHANGELOG.md`).
 | 3 | Configure | [`olmoearth-embeddings`](#3-olmoearth-embeddings) | Embeddings-vs-fine-tune decision: **guidance + a runnable notebook** (you run it), plus the **one-call** `olmoearth_automate` (decide + propose a config; optional HF-dataset introspection). |
 | 4 | Run | [`olmoearth-predict`](#4-olmoearth-predict) | The core run primitive: submit / poll / fetch results; pixel-value / features follow. |
 | 5 | Run | [`olmoearth-change-detection`](#5-olmoearth-change-detection) | Change detection, two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date), and an out-of-process JEPA latent-prediction pixel detector (separate repo). |
-| 6 | Run | [`olmoearth-baseline-compare`](#6-olmoearth-baseline-compare) | Studio vs. AlphaEarth side-by-side on transfer regions. |
+| 6 | Run | [`olmoearth-baseline-compare`](#6-olmoearth-baseline-compare) | Studio vs. a baseline foundation model (e.g. AlphaEarth), side-by-side on transfer regions. |
 | 7 | Analyze | [`olmoearth-evaluate`](#7-olmoearth-evaluate) | Spatial-block CV + NNDM-LOO over `/prediction-results`. |
-| 8 | Analyze | [`olmoearth-similarity`](#8-olmoearth-similarity) | Exact top-K kNN over OlmoEarth Base embeddings (FAISS = scale-up); geographic-prior warning. |
+| 8 | Analyze | [`olmoearth-similarity`](#8-olmoearth-similarity) | Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base; FAISS = scale-up); geographic-prior warning. |
 | 9 | Analyze | [`olmoearth-uncertainty`](#9-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
 | 10 | Analyze | [`olmoearth-cloud-mask-audit`](#10-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
 | 11 | Integrate | [`olmoearth-qgis-bridge`](#11-olmoearth-qgis-bridge) | Tile URLs -> QGIS WMTS + COG with sidecar uncertainty raster. |
@@ -165,7 +165,7 @@ One capability, two complementary engines.
 **In:** Studio project + area + transfer-region AOI.
 **Out:** difference raster + per-metric comparison table.
 
-**What.** Side-by-side OlmoEarth vs AlphaEarth on transfer regions where AlphaEarth is documented to underperform. Returns a difference raster plus a per-metric comparison table.
+**What.** Side-by-side OlmoEarth vs a baseline foundation model (AlphaEarth in the worked example) on transfer regions where the baseline is documented to underperform; bring-your-own exported embeddings/predictions for the baseline. Returns a difference raster plus a per-metric comparison table.
 
 **Why.** AlphaEarth-based models are documented to underperform under cross-region transfer ([Ma et al. arXiv:2601.00857](https://arxiv.org/abs/2601.00857), preprint; specific magnitudes may revise). Fine-tuned OlmoEarth's "substantially outperformed" claim lands only if cases include side-by-side runs in regions where AlphaEarth actually fails, not on home-turf regions where it is competitive.
 
@@ -200,7 +200,7 @@ One capability, two complementary engines.
 **In:** query AOI / patch.
 **Out:** top-K similar patches with similarity scores + geographic-prior warning.
 
-**What.** Exact brute-force top-K kNN (cosine or Euclidean) over OlmoEarth Base embeddings the caller supplies. FAISS indexing is the scale-up follow-up; exact kNN is correct and dependency-free at the sizes the agent passes in. Returns top-K patches with similarity scores plus a geographic-prior warning when results cluster in the same biome as the query.
+**What.** Exact brute-force top-K kNN (cosine or Euclidean) over the embeddings the caller supplies (e.g. OlmoEarth Base). FAISS indexing is the scale-up follow-up; exact kNN is correct and dependency-free at the sizes the agent passes in. Returns top-K patches with similarity scores plus a geographic-prior warning when results cluster in the same biome as the query.
 
 **Why.** [NASA Earthdata's Similarity Search tool](https://www.earthdata.nasa.gov/dashboard/services/similarity-search) helps scientists avoid manually inspecting large satellite-imagery regions. Public AlphaEarth demos show similarity search correlates well with independent risk models in match tasks. OlmoEarth has competitive embeddings (Base wins 15 of 24 kNN tasks per [arXiv:2511.13655](https://arxiv.org/abs/2511.13655)) but no skill exposing similarity search. This is the most-requested missing primitive.
 

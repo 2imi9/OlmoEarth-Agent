@@ -46,6 +46,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - **In-chat result-block download buttons are right-aligned**, matching the
   comparison-modal footer: the leading "Open overlay" action stays left and the
   download buttons sit flush-right (`webui/styles.css`, scoped to `.result-viz`).
+- **Generalized over-specific skill descriptions.** `olmoearth-baseline-compare` (#6)
+  read as "OlmoEarth vs AlphaEarth" and `olmoearth-similarity` (#8) as "over OlmoEarth
+  Base embeddings", but both tools are general — compare vs *any* baseline foundation
+  model / kNN over *supplied* embeddings. Reworded the capability descriptions to
+  "vs a baseline foundation model (e.g. AlphaEarth)" and "supplied embeddings (e.g.
+  OlmoEarth Base)" across `registry.py`, `SKILLS.md`, `README.md`, the tool
+  description, and the web UI card; AlphaEarth stays as the worked example + the
+  science citation. Doc/wording only, no code change (closes #121).
 
 ## [1.2.0] - 2026-06-08
 
