@@ -33,6 +33,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -57,6 +58,10 @@ from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
 
 #: Hard cap on agent round-trips a single browser request may trigger.
 _MAX_TURNS_CEILING = 12
+
+#: Accepted shape of an optional ``forced_skill`` (the webui "/" menu slug). A
+#: tight allow-list so an arbitrary string can't be injected into the prompt.
+_SKILL_SLUG_RE = re.compile(r"^[a-z0-9-]{1,40}$")
 
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
@@ -492,10 +497,12 @@ async def api_projects(request: Request) -> dict[str, Any]:
 async def api_run(request: Request) -> StreamingResponse:
     """Stream a brief's agent loop as Server-Sent Events.
 
-    Body: ``{"brief": str, "max_turns"?: int}``. Each ``run_stream`` event
-    becomes one SSE frame; failures (e.g. the LLM server being down) are
-    delivered as a final ``{"type": "error"}`` frame rather than a dropped
-    connection, so the UI can show them.
+    Body: ``{"brief": str, "max_turns"?: int, "history"?: list,
+    "forced_skill"?: str}``. ``forced_skill`` (a webui "/" menu slug) pins the
+    run to one skill server-side. Each ``run_stream`` event becomes one SSE
+    frame; failures (e.g. the LLM server being down) are delivered as a final
+    ``{"type": "error"}`` frame rather than a dropped connection, so the UI can
+    show them.
     """
     key = _studio_key(request)
     if not key:
@@ -514,6 +521,12 @@ async def api_run(request: Request) -> StreamingResponse:
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="invalid 'max_turns'") from exc
     history = _history_from_body(body)
+    # Optional server-side skill routing: the webui "/" menu sends the picked
+    # skill slug here, pinning the run to it. Malformed values are ignored (not
+    # rejected) so a stray slug never breaks a run.
+    forced_skill = str(body.get("forced_skill", "")).strip().lower()
+    if not _SKILL_SLUG_RE.match(forced_skill):
+        forced_skill = ""
 
     llm = _llm_for_request(request)
     registry = app.state.registry
@@ -530,6 +543,7 @@ async def api_run(request: Request) -> StreamingResponse:
                     studio,
                     state=ThreadState(),
                     skill_index=skill_index,
+                    forced_skill=forced_skill,
                     # The shared app.state.llm is the local model; a per-request
                     # hosted client (Claude/OpenAI/Gemini) is not. Only the local
                     # model gets the brevity/budget clause.

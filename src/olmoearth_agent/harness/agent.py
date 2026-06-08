@@ -86,6 +86,26 @@ LOCAL_BUDGET_CLAUSE = (
 )
 
 
+def _forced_skill_clause(skill: str) -> str:
+    """A system-prompt directive pinning the run to one user-chosen skill.
+
+    Server-side skill routing: the webui's "/" menu sends the picked skill as a
+    structured request field, and the agent turns it into a strong steer here
+    (instead of the client rewriting the user's brief). Works for both the
+    vendored instruction skills - loaded via ``olmoearth_load_skill`` - and the
+    Python tool-bundle skills, which are invoked directly. ``skill`` is the webui
+    slug (e.g. ``change-detection``); the model resolves it against the skill
+    index and tool names.
+    """
+    return (
+        f"\n\nFORCED SKILL: The user explicitly selected the '{skill}' skill for "
+        "this request. Use it: if it has a loadable instruction package, call "
+        "olmoearth_load_skill for it before other tools; otherwise use its "
+        "tool(s) directly. Do not switch to a different skill unless this one is "
+        "clearly inapplicable to the brief - and if so, say which you used and why."
+    )
+
+
 @dataclass
 class AgentResult:
     """Outcome of one :meth:`LeadAgent.run`."""
@@ -120,12 +140,14 @@ class LeadAgent:
         state: ThreadState | None = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         skill_index: str = "",
+        forced_skill: str = "",
         local: bool = False,
     ) -> None:
         self.llm = llm
         self.registry = registry
         self.studio = studio
         self.state = state or ThreadState()
+        self.forced_skill = forced_skill
         self.system_prompt = system_prompt
         if skill_index:
             # Progressive disclosure: list the vendored SKILL.md skills so the
@@ -134,6 +156,9 @@ class LeadAgent:
                 "\n\nAvailable instruction skills (call olmoearth_load_skill "
                 "with the name to get full steps):\n" + skill_index
             )
+        if forced_skill:
+            # Server-side skill routing: pin this run to the user-chosen skill.
+            self.system_prompt += _forced_skill_clause(forced_skill)
         if local:
             # The local model needs an explicit output-budget + brevity reminder
             # (a hosted model does not), or long answers truncate mid-sentence.

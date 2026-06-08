@@ -151,3 +151,44 @@ async def test_stream_seeds_history_before_brief() -> None:
     assert seen[1] == ("user", "How many projects do I have?")
     assert seen[2] == ("assistant", "You have 5.")
     assert seen[3] == ("user", "Which relate to water quality?")
+
+
+class _CapturingLLM:
+    """Captures the messages of the first ``chat`` call, then answers."""
+
+    def __init__(self) -> None:
+        self.messages: list[Message] = []
+
+    async def chat(
+        self, messages: list[Message], *, tools: Any = None, **_kw: Any
+    ) -> ChatResponse:
+        self.messages = list(messages)
+        return ChatResponse(content="ok", tool_calls=[], finish_reason="stop")
+
+
+@pytest.mark.asyncio
+async def test_forced_skill_pins_run_via_system_prompt() -> None:
+    llm = _CapturingLLM()
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+        forced_skill="change-detection",
+    )
+    await _collect(agent, "did forest cover decline?")
+    system = llm.messages[0]
+    assert system.role == "system"
+    assert "FORCED SKILL" in system.content
+    assert "change-detection" in system.content
+
+
+@pytest.mark.asyncio
+async def test_no_forced_skill_leaves_prompt_unpinned() -> None:
+    llm = _CapturingLLM()
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+    )
+    await _collect(agent, "hello")
+    assert "FORCED SKILL" not in llm.messages[0].content

@@ -330,14 +330,15 @@ export function runDemo(body, brief, onEvent) {
 }
 
 // Stream a real agent run over SSE into `body`, emitting events to `onEvent`.
-export async function runLive(body, brief, history, onEvent) {
+// `forcedSkill` (optional) pins the run to one skill server-side (the "/" menu).
+export async function runLive(body, brief, history, onEvent, forcedSkill) {
   body.innerHTML = '';
   const status = runStatusEl('Running the agent…');
   body.appendChild(status);
   let cleared = false;
   const clear = () => { if (!cleared) { status.remove(); cleared = true; } };
   try {
-    const res = await apiRunStream(brief, history);
+    const res = await apiRunStream(brief, history, forcedSkill);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
