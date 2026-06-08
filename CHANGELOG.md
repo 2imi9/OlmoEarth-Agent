@@ -15,6 +15,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   caption accordingly (recorded-on v1.0.0 -> **v1.2.0**). Both the basic
   walkthrough (`webui/demo/record_demo.py`) and the feature showcase
   (`webui/demo/record_showcase.py`) now reflect the shipped UI.
+- **The feature-showcase demo now leads with the in-chat skill slash-command
+  flow** -- the short highlight GIF opens on `/` -> filter to a skill -> Enter ->
+  the routed brief; the workflow rail + difference-scan radar move into the full
+  MP4 (`webui/demo/record_showcase.py`).
+
+### Fixed
+- **In-chat result-block download buttons are right-aligned**, matching the
+  comparison-modal footer: the leading "Open overlay" action stays left and the
+  download buttons sit flush-right (`webui/styles.css`, scoped to `.result-viz`).
 
 ## [1.2.0] - 2026-06-08
 
