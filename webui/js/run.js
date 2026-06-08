@@ -143,7 +143,13 @@ function workflowOnFail(body, name) {
   setWorkflow(body, body._wfMax || 0, { failedIdx: idx >= 0 ? idx : (body._wfMax || 0) });
 }
 function workflowOnFinal(body) {
-  if (body._wfShown) setWorkflow(body, WF_STAGES.length - 1, { done: true });
+  if (!body._wfShown) return;
+  // A turn can end by PAUSING for user input (e.g. the agent asked you to draw
+  // an AOI) rather than completing the pipeline. Don't mark everything done in
+  // that case — leave the current stage active so the rail reads "waiting at
+  // Define AOI", not "all steps passed".
+  if (body._wfAwaiting) return;
+  setWorkflow(body, WF_STAGES.length - 1, { done: true });
 }
 
 // Per-turn "Reasoning & tools" disclosure: thinking + tool calls live in a
@@ -233,6 +239,10 @@ export function handleRunEvent(body, ev, staticRender) {
     viz.className = 'result-viz run-step';
     if (renderResultViz(viz, ev)) body.appendChild(viz);
     if (ev.ok === false) workflowOnFail(body, ev.name);
+    // request_aoi with needs_aoi pauses the turn for the user to draw — flag it
+    // so the upcoming `final` doesn't mark the whole pipeline complete.
+    const aoiInner = ev.result && ev.result.result;
+    if (ev.name === 'olmoearth_request_aoi' && aoiInner && aoiInner.needs_aoi) body._wfAwaiting = true;
     maybeAoiPrompt(body, ev);
   } else if (ev.type === 'final') {
     workflowOnFinal(body);
