@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from olmoearth_agent.analysis.rslearn_advisor import (
     EMBEDDING_SIZES,
+    compose,
+    diagnose,
     recommend,
     validate_config,
 )
@@ -19,7 +21,8 @@ def test_recommend_routes_segmentation_from_plain_language() -> None:
     rec = recommend(goal="map land cover at every pixel", num_classes=10)
     assert rec["task"] == "segmentation"
     assert rec["data"]["label_layer_type"] == "raster"
-    assert "UNetDecoder" in " ".join(rec["model"]["decoder"])
+    # OlmoEarth dense decoder is Upsample -> Conv (the proven data-prep pattern)
+    assert "Conv" in " ".join(rec["model"]["decoder"])
     assert rec["model"]["head"].endswith("SegmentationHead")
     assert rec["model"]["out_channels"] == 10  # = num_classes
 
@@ -165,3 +168,73 @@ def test_validate_empty_input_is_a_warning_not_a_crash() -> None:
     res = validate_config(None, None)
     assert res["ok"] is True
     assert res["warnings"]  # nudges to pass configs
+
+
+# --------------------------------------------------------------------------- #
+# compose
+# --------------------------------------------------------------------------- #
+
+
+def test_compose_segmentation_emits_valid_yaml() -> None:
+    import yaml
+
+    res = compose(task="segmentation", model_size="base", num_classes=7)
+    assert res["ok"] is True
+    # the emitted model.yaml round-trips through a YAML parser
+    cfg = yaml.safe_load(res["yaml"])
+    assert cfg["model"]["init_args"]["model"]["class_path"].endswith("MultiTaskModel")
+    decs = cfg["model"]["init_args"]["model"]["init_args"]["decoders"]["segment"]
+    paths = [d["class_path"] for d in decs]
+    assert any(p.endswith("Upsample") for p in paths)
+    conv = next(d for d in decs if d["class_path"].endswith("Conv"))
+    assert conv["init_args"]["in_channels"] == EMBEDDING_SIZES["base"]
+    assert conv["init_args"]["out_channels"] == 7  # = num_classes
+    assert cfg["data"]["init_args"]["task"]["init_args"]["tasks"]["segment"]["class_path"].endswith("SegmentationTask")
+
+
+def test_compose_classification_pools_and_uses_vector_label() -> None:
+    res = compose(task="classification", num_classes=3, class_names=["a", "b", "c"])
+    cfg = res["config"]
+    decs = cfg["model"]["init_args"]["model"]["init_args"]["decoders"]["classify"]
+    assert any(d["class_path"].endswith("PoolingDecoder") for d in decs)
+    assert cfg["data"]["init_args"]["inputs"]["label"]["data_type"] == "vector"
+
+
+def test_compose_detection_is_guided_not_emitted() -> None:
+    res = compose(task="detection", num_classes=3)
+    assert res["ok"] is False
+    assert "Faster R-CNN" in res["note"]
+
+
+def test_compose_regression_without_scale_factor_asks() -> None:
+    res = compose(task="regression")
+    assert any("scale_factor" in a for a in res["ask_for"])
+
+
+# --------------------------------------------------------------------------- #
+# diagnose
+# --------------------------------------------------------------------------- #
+
+
+def test_diagnose_zero_windows() -> None:
+    res = diagnose(summary={"layers": {"sentinel2": {"windows_prepared": 0, "windows_rejected": 0}}})
+    assert res["ok"] is False
+    assert any("0 windows" in d for d in res["diagnosis"])
+    assert any("--start" in f or "time range" in f for f in res["fixes"])
+
+
+def test_diagnose_no_scenes_from_log() -> None:
+    res = diagnose(log_text="ERROR: no scenes found for window seattle in 2024-06..2024-06")
+    assert any("no scenes" in d.lower() for d in res["diagnosis"])
+
+
+def test_diagnose_crs_hint() -> None:
+    res = diagnose(log_text="windows materialized off-target; EPSG:4326 vs UTM zone mismatch")
+    assert any("CRS" in d or "crs" in d.lower() for d in res["diagnosis"])
+    assert any("src_crs" in f for f in res["fixes"])
+
+
+def test_diagnose_clean_returns_no_known_pattern() -> None:
+    res = diagnose(log_text="prepare complete: 128 windows prepared, 0 rejected")
+    assert res["ok"] is True
+    assert any("No known failure" in d for d in res["diagnosis"])

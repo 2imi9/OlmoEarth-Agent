@@ -365,7 +365,7 @@ The original spec follows for reference:
 
 **Tools composed.**
 - `olmoearth_load_skill` (load the vendored "operate rslearn" SKILL.md for the pipeline + `fit`/`predict`).
-- `olmoearth_rslearn_recommend` + `olmoearth_rslearn_validate` (logic in `analysis/rslearn_advisor.py`; rslearn's tasks/models/config schemas mirrored as torch-free data, verified against the repo).
+- `olmoearth_rslearn_recommend` (goal → explained setup), `olmoearth_rslearn_validate` (catch shape / label-type / band errors before training), `olmoearth_rslearn_compose` (emit a full valid finetune `model.yaml`), and `olmoearth_rslearn_diagnose` (parse a failing `prepare`/`ingest`/`materialize` run → plain-English fixes). Logic in `analysis/rslearn_advisor.py`; rslearn's tasks/models/config schemas mirrored as torch-free data, verified against the repo.
 
 ---
 
