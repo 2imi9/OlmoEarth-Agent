@@ -10,12 +10,25 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Skill #17 `olmoearth-rslearn` — rslearn for non-experts.** Two torch-free
+  in-repo tools that let a domain scientist who doesn't know rslearn still set up a
+  correct OlmoEarth/rslearn experiment: `olmoearth_rslearn_recommend` maps a
+  plain-language research goal to a complete, *explained* setup (task, data layout,
+  `encoder -> decoder -> head`, task knobs, fine-tune schedule), and
+  `olmoearth_rslearn_validate` catches the config errors rslearn only surfaces hours
+  into a run (encoder-dim vs decoder `in_channels`, `out_channels` vs `num_classes`,
+  task vs label-type, missing bands, the Faster R-CNN background-class +1). Logic in
+  `analysis/rslearn_advisor.py` mirrors rslearn's tasks/models/config schemas as data
+  (no torch import; verified against the rslearn repo with a version pointer). This
+  also promotes the previously-uncatalogued vendored `olmoearth-rslearn` SKILL.md to
+  catalog row #17, so the catalog is now **17 skills** (was 16); the slash menu, cards,
+  and `forced_skill` allow-list pick it up automatically.
 - **Server-side forced-skill routing** (`forced_skill`): `POST /api/run` accepts an
   optional allow-list-validated `forced_skill` slug; `LeadAgent` appends a
   `FORCED SKILL:` directive to the system prompt, and the web UI sends a clean
   brief + the structured field instead of the client-side rewrite (`parseSkillSlash`
   replaces `applySkillSlash`). Prompt-steering is the one mechanism that works across
-  all 16 skills and the local Qwen backend (which has no `tool_choice`); a Claude-only
+  all 17 skills and the local Qwen backend (which has no `tool_choice`); a Claude-only
   `tool_choice` hard-force tier was considered and deferred.
 
 ### Changed
@@ -78,7 +91,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   deps), honoring `prefers-reduced-motion`. Plus a feature-showcase demo
   (`webui/demo/record_showcase.py` -> `olmoearth-agent-showcase.{gif,mp4}`).
 - **In-chat skill slash-commands**: type `/` in the composer to call a specific
-  skill directly (like Claude Code's `/commands`) -- a filterable menu of the 16
+  skill directly (like Claude Code's `/commands`) -- a filterable menu of the 17
   skills, arrow-nav + Enter/click to select. The brief is then routed to that
   skill (the displayed message stays as typed). Client-side brief-rewrite in
   `webui/js/slash.js`; a deeper server-side forced-skill mode is future work.

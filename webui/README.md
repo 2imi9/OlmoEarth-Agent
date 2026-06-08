@@ -3,7 +3,7 @@
 A front-end shell for the OlmoEarth Agent, styled after [Ai2 **Asta**](https://asta.allen.ai/)
 (dark-teal canvas, cream text, Manrope, a centered prompt hero, a left sidebar)
 and rebranded with **OlmoEarth** elements (the pink Ai2/OlmoEarth logo, the
-EO/Studio content, the 16-skill catalog).
+EO/Studio content, the 17-skill catalog).
 
 By default it's a **static mock** (no build step, no framework, no tracking),
 so the chat, the projects tree, and the "what a run looks like" transcript are
@@ -13,7 +13,7 @@ agent**: a multi-turn **chat with saved history**, your **real Studio projects a
 a drill-down tree** (project → model/embeddings → predictions → results), and
 briefs streamed through `LeadAgent` over Server-Sent Events. Chat history is kept
 client-side (localStorage), same as the key. Type `/` in the composer to call a
-specific skill directly — a slash-command menu of the 16 skills (like Claude
+specific skill directly — a slash-command menu of the 17 skills (like Claude
 Code's `/commands`).
 
 ![OlmoEarth Agent - demo](demo/olmoearth-agent-demo.gif)
