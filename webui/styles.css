@@ -17,6 +17,7 @@
   --pink-hi:   #f877b3;
   --pink-press:#d63f88;
   --mint:      #0fcb8c;  /* Asta green: secondary accent */
+  --mint-hi:   #2cd19a;  /* lighter mint for hover (mirrors --pink-hi) */
   --mint-link: #37cd8f;
   --mint-soft: #9fead1;
   --radius:    10px;
@@ -936,7 +937,7 @@ button.is-busy > .ic { display: none; }
   color: #06231a; background: var(--mint); border: 1px solid transparent; border-radius: var(--radius-pill);
   cursor: pointer; transition: background .13s ease, transform .12s ease, box-shadow .13s ease;
 }
-.viz-diff-btn:hover { background: #2cd19a; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15,203,140,.26); }
+.viz-diff-btn:hover { background: var(--mint-hi); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(15,203,140,.26); }
 .viz-diff-btn:active { background: var(--mint); transform: translateY(0); box-shadow: none; }
 .viz-diff-btn:focus-visible { outline: 2px solid var(--mint-soft); outline-offset: 2px; }
 .viz-diff-btn:disabled { opacity: .6; cursor: default; }
@@ -1057,4 +1058,15 @@ button.is-busy > .ic { display: none; }
 }
 @media (min-width: 881px) and (max-width: 1180px) {
   .cap-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Reduced motion: neutralize the remaining transcript / modal / live-run motion
+   (the per-feature blocks above already cover the loading kit, diff-scan,
+   workflow rail, and result-block hovers). */
+@media (prefers-reduced-motion: reduce) {
+  .modal-card, .detail, .run-step { animation: none; }
+  #promptInput.flash { animation: none; }
+  .typing span { animation: none; opacity: .55; }
+  .caret::after { animation: none; }
+  .tc-dot.running { animation: none; box-shadow: 0 0 0 3px rgba(15,203,140,.18); }
 }
