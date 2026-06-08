@@ -3,7 +3,7 @@
 A front-end shell for the OlmoEarth Agent, styled after [Ai2 **Asta**](https://asta.allen.ai/)
 (dark-teal canvas, cream text, Manrope, a centered prompt hero, a left sidebar)
 and rebranded with **OlmoEarth** elements (the pink Ai2/OlmoEarth logo, the
-EO/Studio content, the 18-skill catalog).
+EO/Studio content, the 16-skill catalog).
 
 By default it's a **static mock** (no build step, no framework, no tracking),
 so the chat, the projects tree, and the "what a run looks like" transcript are
@@ -61,7 +61,7 @@ Or just open `webui/index.html` in a browser.
 |---|---|
 | `index.html` | markup: sidebar (chats + project tree), chat thread, pinned composer, key popover |
 | `styles.css` | the design system (tokens at `:root`), no preprocessor |
-| `js/`        | the front-end as native **ES modules** (no build step), split by concern: `main.js` (entry + app-shell wiring), `api.js` (every bridge call + request credentials), `store.js` + `util.js`, and feature modules `skills.js`, `chat.js`, `run.js`, `markdown.js`, `projects.js`, `attach.js`, `llm.js`, `landing.js`. Loaded via `<script type="module" src="js/main.js">`. |
+| `js/`        | the front-end as native **ES modules** (no build step), split by concern: `main.js` (entry + app-shell wiring), `api.js` (every bridge call + request credentials), `store.js` + `util.js`, and feature modules `skills.js`, `chat.js`, `run.js`, `markdown.js`, `projects.js`, `attach.js`, `llm.js`, `landing.js`, `aoi.js` (AOI draw-in-chat), `viz.js` (in-chat result visuals), `compares.js` (saved comparisons), `download.js` (chat-artifact downloads), `leaflet.js` (lazy Leaflet loader). Loaded via `<script type="module" src="js/main.js">`. |
 | `assets/OlmoEarth-logo.png` | the OlmoEarth wordmark (the sidebar crops it to just the symbol) |
 | `screenshots/` | reference renders (desktop, transcript, mobile) |
 
@@ -108,6 +108,11 @@ Endpoints:
 | `GET /api/projects` | your real Studio projects (`load_context`) |
 | `GET /api/projects/{id}/predictions` | a project's predictions (the tree groups them by model) |
 | `GET /api/predictions/{id}/results` | a prediction's result tiles/properties |
+| `GET /api/results/{id}/extent` | a result's bbox + tile template (fits the in-chat map) |
+| `GET /api/tile/{z}/{x}/{y}` | auth-gated raster-tile proxy (caches tiles) |
+| `GET /api/pixel-value` | samples one pixel of a result (drives the difference-map scan) |
+| `POST /api/areas` · `GET /api/projects/{id}/areas` · `GET /api/areas/{id}` | create / list / fetch Studio AOIs (the draw-in-chat widget) |
+| `GET /api/llm/models` | detect a hosted backend's available models |
 | `POST /api/run` | streams `LeadAgent.run_stream` as SSE (accepts prior `history` for multi-turn) |
 
 The browser sends your Studio key in the `X-Olmoearth-Key` header; the bridge
