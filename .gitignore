@@ -116,6 +116,11 @@ outputs/
 artifacts/
 exports/
 
+# --- webui demo recorder scratch (record_demo.py / record_showcase.py) ---
+# The committed deliverables are the .gif/.mp4; the raw .webm + palette are temp.
+webui/demo/_rec/
+webui/demo/_palette.png
+
 # --- Geospatial / EO outputs ---
 # Output written by scripts/generate_showcase.py's negative-sampler (#18) demo.
 docs/showcase_fixtures/*_with_negatives.geojson

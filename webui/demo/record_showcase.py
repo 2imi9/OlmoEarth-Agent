@@ -3,10 +3,11 @@
 """Record the OlmoEarth Agent webui FEATURE SHOWCASE (GIF + MP4) in demo mode.
 
 A longer "full function" walkthrough of the UI-polish pass, driven entirely
-through the REAL UI code (no mocked CSS): loading/busy states, the
-consecutive-workflow indicator, the in-conversation result block, and the
-difference-map radar scan. The complex run + diff scan are played through the
-app's real `handleRunEvent` / Leaflet renderers with representative demo data.
+through the REAL UI code (no mocked CSS): the skill slash-command menu,
+loading/busy states, the consecutive-workflow indicator, the in-conversation
+result block, and the difference-map radar scan. The complex run + diff scan are
+played through the app's real `handleRunEvent` / Leaflet renderers with
+representative demo data.
 
 Outputs:
   webui/demo/olmoearth-agent-showcase.mp4  - full walkthrough (~35-40s)
@@ -185,17 +186,30 @@ def _record() -> tuple[Path, dict]:
         page.click("#keyForm button[type=submit]"); time.sleep(0.8)
         page.keyboard.press("Escape"); time.sleep(0.5)
 
-        # 2) Loading + result block: a real demo send shows the busy send button +
-        #    the run-status bar, then the change scenario renders a result card.
+        # 2) Skill slash-command + loading + result block: type "/" to open the
+        #    skill menu, filter it live, select a skill (Enter -> the composer
+        #    fills "/<slug> "), then finish the brief and send. The busy send
+        #    button + run-status bar show, then the routed scenario answers.
+        mark("slash")
+        page.click("#promptInput")
+        page.keyboard.type("/", delay=0)  # "/" opens the skill menu
+        page.wait_for_selector(".slash-menu:not([hidden]) .slash-item", timeout=4000)
+        time.sleep(0.9)  # hold on the full skill menu
+        page.keyboard.type("change", delay=90)  # filter live down to change-detection
+        time.sleep(1.0)  # hold on the filtered match
+        page.keyboard.press("Enter")  # select -> composer fills "/change-detection "
+        time.sleep(0.6)
+        page.keyboard.type(
+            "Did forest cover decline across these four quarterly snapshots?", delay=18
+        )
+        time.sleep(0.5)
         mark("loading")
-        page.fill("#promptInput", "Detect new surface water in the Chesapeake over the last 12 months.")
-        time.sleep(0.4)
         page.click(".composer .send")
-        try:
-            page.wait_for_selector("#chatThread .result-viz", timeout=15000)
-        except Exception:
-            page.wait_for_selector("#chatThread .answer", timeout=15000)
-        time.sleep(2.6)  # hold on the result card
+        # The routed change scenario answers in prose (no result-viz), so wait on
+        # the answer card directly — avoids a dead 15s result-viz timeout.
+        page.wait_for_selector("#chatThread .answer", timeout=15000)
+        time.sleep(2.6)  # hold on the routed answer card
+        mark("slash_end")
 
         # 3) Fresh thread, then the complex pipeline run (workflow rail + result).
         page.click(".btn-new"); time.sleep(0.8)
@@ -252,10 +266,14 @@ def main() -> None:
     try:
         webm, marks = _record()
         print("segment offsets (s):", marks)
-        # GIF highlight = the workflow rail advancing into the result card (the
-        # headline; the diff-scan sweep stays in the full MP4).
-        gif_start = max(0.6, marks.get("workflow", 12.0) - 0.4)
-        gif_secs = min(10.0, marks.get("diffscan", gif_start + 10) - gif_start)
+        # GIF highlight = the skill slash-command flow ("/" -> filter -> select ->
+        # type the brief -> send), the newest feature. End just after the routed
+        # brief is sent; the streaming answer, workflow rail, and diff-scan radar
+        # sweep stay in the full MP4 (and keep the GIF small — streaming text
+        # frames are heavy).
+        gif_start = max(0.6, marks.get("slash", 6.0) - 0.3)
+        gif_end = marks.get("loading", gif_start + 6.0) + 2.2
+        gif_secs = min(8.5, max(5.0, gif_end - gif_start))
         mp4, gif = _convert(webm, gif_start, gif_secs)
         print(
             f"wrote {gif.name} ({gif.stat().st_size // 1024} KB) "
