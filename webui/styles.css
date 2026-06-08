@@ -1040,6 +1040,27 @@ button.is-busy > .ic { display: none; }
   @keyframes om-scan-fade { from { opacity: 0; } to { opacity: 1; } }
 }
 
+/* ───────────── Skill slash-commands (composer "/") ───────────── */
+.prompt { position: relative; }  /* anchor the slash menu above the input */
+.slash-menu {
+  position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 60;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  max-height: 300px; overflow-y: auto; padding: 6px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.slash-menu[hidden] { display: none; }
+.slash-head { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); padding: 4px 10px 6px; }
+.slash-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; color: var(--text-dim);
+  font: inherit; padding: 7px 10px; border-radius: var(--radius-sm);
+}
+.slash-item:hover, .slash-item.is-active { background: var(--bg-2); color: var(--text); }
+.slash-slug { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--mint-link); }
+.slash-item:hover .slash-slug, .slash-item.is-active .slash-slug { color: var(--mint); }
+.slash-desc { font-size: 11.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ───────────── Responsive ───────────── */
 @media (max-width: 880px) {
   .sidebar {

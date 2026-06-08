@@ -6,6 +6,7 @@ import { BRIDGE } from './store.js';
 import { escapeHtml, autosize } from './util.js';
 import { runLive, runDemo, replayEvents } from './run.js';
 import { buildAgentBrief, getPendingAttachments, clearPendingAttachments } from './attach.js';
+import { applySkillSlash } from './slash.js';
 import { projConnected } from './api.js';
 
 const CHATS_LS = 'oe_chats';
@@ -171,7 +172,8 @@ function handleSend(brief, attachments) {
   const body = appendTurnDom(brief, atts);
   persistChat(chat); renderChatList(); setTopTitle(chat.title);
 
-  const agentBrief = buildAgentBrief(brief, atts);  // file text appended for the agent
+  // "/skill ..." routes the brief to that skill (displayed message stays as typed).
+  const agentBrief = buildAgentBrief(applySkillSlash(brief), atts);
   const onEvent = (ev) => aTurn.events.push(ev);
   const done = () => { sending = false; setSendingUI(false); chat.updatedAt = Date.now(); persistChat(chat); renderChatList(); };
   sending = true; setSendingUI(true);
