@@ -953,6 +953,9 @@ button.is-busy > .ic { display: none; }
 .dl-btn:hover { color: var(--mint-soft); background: rgba(15,203,140,.12); border-color: rgba(15,203,140,.72); transform: translateY(-1px); }
 .dl-btn:active { background: rgba(15,203,140,.2); transform: translateY(0); }
 .dl-btn:focus-visible { outline: 2px solid var(--mint-soft); outline-offset: 2px; }
+/* In-chat result block: mirror the modal footer — keep the leading action
+   (e.g. Open overlay) left and push the download buttons to the right. */
+.result-viz .dl-bar .dl-btn:first-child { margin-right: auto; }
 
 /* LEGEND (inline within the diff summary caption) */
 .viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
