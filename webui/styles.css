@@ -849,6 +849,9 @@ button.is-busy > .ic { display: none; }
 .viz-bar-fill { display: block; height: 100%; background: var(--pink); border-radius: var(--radius-pill); }
 .viz-bar-val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
+/* Saved-comparison modal footer: keep the first action (Open overlay) left and
+   push the download buttons to the right. */
+.cmp-modal-body .dl-bar .dl-btn:first-child { margin-right: auto; }
 
 /* DIFF SCAN output container: internal rhythm for the map + A/B + pill + caption. */
 .viz-diff { display: flex; flex-direction: column; gap: 10px; }
