@@ -899,6 +899,7 @@ button.is-busy > .ic { display: none; }
 .viz-line { fill: none; stroke: var(--mint); stroke-width: 2; }
 .viz-dot { fill: var(--pink); }
 .viz-axt { fill: var(--text-faint); font-size: 9px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.viz-axis { stroke: var(--line); stroke-width: 1; }
 .viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
 .viz-map .leaflet-control-layers { font-size: 12px; }
 

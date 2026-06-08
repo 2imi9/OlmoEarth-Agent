@@ -166,22 +166,39 @@ async function renderResultMap(container, entries) {
   }
 }
 
-/* A compact SVG line chart for a change-detection trajectory. */
+/* A compact SVG line chart for a change-detection trajectory. Axis labels live
+   in dedicated gutters (a left margin for the y-range, a bottom margin for the
+   dates) so they never overlap the plotted line/points; first + last dates are
+   edge-anchored so they don't clip, and dates are thinned when there are many. */
 function renderTrajectory(container, dates, values, trend) {
-  const W = 460, H = 150, pad = 28;
-  const xs = values.map((_, i) => pad + (i * (W - 2 * pad)) / Math.max(1, values.length - 1));
+  const W = 480, H = 170;
+  const padL = 46, padR = 16, padT = 16, padB = 30;  // gutters: y-labels left, x-dates bottom
+  const n = values.length;
+  const plotW = W - padL - padR, plotH = H - padT - padB, y0 = H - padB;
+  const xs = values.map((_, i) => padL + (i * plotW) / Math.max(1, n - 1));
   const lo = Math.min(...values), hi = Math.max(...values);
   const span = hi - lo || 1;
-  const y = (v) => H - pad - ((v - lo) / span) * (H - 2 * pad);
+  const y = (v) => y0 - ((v - lo) / span) * plotH;
   const pts = values.map((v, i) => `${xs[i].toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const dots = values.map((v, i) =>
     `<circle cx="${xs[i].toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" class="viz-dot"/>`).join('');
-  const xlab = dates.map((d, i) =>
-    `<text x="${xs[i].toFixed(1)}" y="${H - 8}" class="viz-axt" text-anchor="middle">${escapeHtml(String(d).slice(0, 10))}</text>`).join('');
+  // Date labels: always the first + last (edge-anchored), plus evenly-spaced
+  // middles with enough gap that none overlap — including a middle that would
+  // otherwise land right next to the forced last label.
+  const step = Math.max(1, Math.ceil((90 * (n - 1)) / plotW));
+  const showIdx = new Set([0, n - 1]);
+  for (let i = step; i < n - 1; i += step) if (n - 1 - i >= step) showIdx.add(i);
+  const xlab = dates.map((d, i) => {
+    if (!showIdx.has(i)) return '';
+    const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+    return `<text x="${xs[i].toFixed(1)}" y="${H - 10}" class="viz-axt" text-anchor="${anchor}">${escapeHtml(String(d).slice(0, 10))}</text>`;
+  }).join('');
   const svg =
     `<svg viewBox="0 0 ${W} ${H}" class="viz-svg" role="img" aria-label="trajectory">` +
-      `<text x="${pad}" y="14" class="viz-axt">${hi.toFixed(3)}</text>` +
-      `<text x="${pad}" y="${H - pad}" class="viz-axt">${lo.toFixed(3)}</text>` +
+      `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${y0}" class="viz-axis"/>` +
+      `<line x1="${padL}" y1="${y0}" x2="${W - padR}" y2="${y0}" class="viz-axis"/>` +
+      `<text x="${padL - 7}" y="${padT + 3}" class="viz-axt" text-anchor="end">${hi.toFixed(3)}</text>` +
+      `<text x="${padL - 7}" y="${y0}" class="viz-axt" text-anchor="end">${lo.toFixed(3)}</text>` +
       `<polyline points="${pts}" class="viz-line" fill="none"/>` + dots + xlab +
     `</svg>`;
   const wrap = document.createElement('div');
