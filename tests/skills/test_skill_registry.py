@@ -68,6 +68,8 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_automate",
         "olmoearth_rslearn_recommend",
         "olmoearth_rslearn_validate",
+        "olmoearth_rslearn_compose",
+        "olmoearth_rslearn_diagnose",
         "olmoearth_negative_sampler",
         "olmoearth_list_skills",
         "olmoearth_load_skill",

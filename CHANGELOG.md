@@ -10,14 +10,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
-- **Skill #17 `olmoearth-rslearn` — rslearn for non-experts.** Two torch-free
+- **Skill #17 `olmoearth-rslearn` — rslearn for non-experts.** Four torch-free
   in-repo tools that let a domain scientist who doesn't know rslearn still set up a
   correct OlmoEarth/rslearn experiment: `olmoearth_rslearn_recommend` maps a
   plain-language research goal to a complete, *explained* setup (task, data layout,
   `encoder -> decoder -> head`, task knobs, fine-tune schedule), and
   `olmoearth_rslearn_validate` catches the config errors rslearn only surfaces hours
   into a run (encoder-dim vs decoder `in_channels`, `out_channels` vs `num_classes`,
-  task vs label-type, missing bands, the Faster R-CNN background-class +1). Logic in
+  task vs label-type, missing bands, the Faster R-CNN background-class +1); `olmoearth_rslearn_compose` emits a full valid finetune `model.yaml` (MultiTaskModel + the right decoder/head, mirroring the proven data-prep template); and `olmoearth_rslearn_diagnose` turns a failing `prepare`/`ingest`/`materialize` run into plain-English fixes. Logic in
   `analysis/rslearn_advisor.py` mirrors rslearn's tasks/models/config schemas as data
   (no torch import; verified against the rslearn repo with a version pointer). This
   also promotes the previously-uncatalogued vendored `olmoearth-rslearn` SKILL.md to

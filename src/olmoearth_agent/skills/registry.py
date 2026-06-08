@@ -262,6 +262,8 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_load_skill",
             "olmoearth_rslearn_recommend",
             "olmoearth_rslearn_validate",
+            "olmoearth_rslearn_compose",
+            "olmoearth_rslearn_diagnose",
         ],
     ),
 ]

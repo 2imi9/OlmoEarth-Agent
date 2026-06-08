@@ -30,6 +30,7 @@ tables here. Pure metadata in/out (no geometry, no network) -> provenance-safe.
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -70,7 +71,7 @@ TASKS: dict[str, dict[str, Any]] = {
         "task_class": "rslearn.train.tasks.segmentation.SegmentationTask",
         "label_type": "raster",
         "feature": "FeatureMaps",
-        "decoder": ["rslearn.models.unet.UNetDecoder"],
+        "decoder": ["rslearn.models.upsample.Upsample", "rslearn.models.conv.Conv"],
         "head": "rslearn.train.tasks.segmentation.SegmentationHead",
         "metrics": ["accuracy", "miou"],
         "needs_num_classes": True,
@@ -80,7 +81,7 @@ TASKS: dict[str, dict[str, Any]] = {
         "task_class": "rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask",
         "label_type": "raster",
         "feature": "FeatureMaps",
-        "decoder": ["rslearn.models.unet.UNetDecoder"],
+        "decoder": ["rslearn.models.upsample.Upsample", "rslearn.models.conv.Conv"],
         "head": "rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead",
         "metrics": ["mse", "r2"],
         "needs_num_classes": False,
@@ -456,3 +457,258 @@ def validate_config(
             else f"{len(errors)} blocking error(s) would fail training; fix before running rslearn."
         ),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Composer (emit a full, valid OlmoEarth finetune model.yaml)
+# --------------------------------------------------------------------------- #
+
+#: model_size -> rslearn ModelID (rslearn/models/olmoearth_pretrain/model.py).
+_MODEL_ID = {
+    "nano": "OLMOEARTH_V1_NANO", "tiny": "OLMOEARTH_V1_TINY",
+    "base": "OLMOEARTH_V1_BASE", "large": "OLMOEARTH_V1_LARGE",
+}
+#: Default Sentinel-2 L2A 12-band stack (matches olmoearth-data-prep's template).
+_S2_BANDS = ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+_DECODER_KEY = {"segmentation": "segment", "per_pixel_regression": "regress",
+                "classification": "classify", "regression": "regress"}
+
+
+def _decoder_chain(task: str, emb_dim: int, out_channels: int, patch_size: int) -> list[dict[str, Any]]:
+    """The OlmoEarth decoder chain for a task (mirrors olmoearth-data-prep)."""
+    head = TASKS[task]["head"]
+    if task in {"segmentation", "per_pixel_regression"}:
+        # dense output: upsample the patch features to pixels, then a 1x1 Conv -> head
+        return [
+            {"class_path": "rslearn.models.upsample.Upsample", "init_args": {"scale_factor": patch_size}},
+            {"class_path": "rslearn.models.conv.Conv", "init_args": {
+                "in_channels": emb_dim, "out_channels": out_channels, "kernel_size": 1,
+                "activation": {"class_path": "torch.nn.Identity"}}},
+            {"class_path": head},
+        ]
+    # window-level: pool to a vector, then head
+    return [
+        {"class_path": "rslearn.models.pooling_decoder.PoolingDecoder", "init_args": {
+            "in_channels": emb_dim, "out_channels": out_channels, "num_conv_layers": 1, "num_fc_layers": 1}},
+        {"class_path": head},
+    ]
+
+
+def compose(
+    *,
+    task: str | None = None,
+    goal: str | None = None,
+    model_size: str = "base",
+    num_classes: int | None = None,
+    class_names: list[str] | None = None,
+    property_name: str = "category",
+    scale_factor: float | None = None,
+    dataset_path: str = "data/dataset",
+    bands: list[str] | None = None,
+    freeze_epochs: int = 10,
+    total_epochs: int = 40,
+    nodata_value: int | None = None,
+    patch_size: int = 4,
+) -> dict[str, Any]:
+    """Emit a complete, valid OlmoEarth/rslearn finetune ``model.yaml``.
+
+    Mirrors the proven olmoearth-data-prep template — ``MultiTaskModel`` + a named
+    decoder (Upsample/Conv for dense tasks, PoolingDecoder for window tasks) +
+    ``FreezeUnfreeze`` — generalized across the four dense/window tasks. Returns
+    ``{ok, yaml, config, notes, ask_for}``. Detection is *guided* rather than
+    auto-emitted (Faster R-CNN anchors need tuning). Torch-free (dict + YAML only).
+    """
+    chosen = (task or "").strip().lower() or _route_task(goal or "")
+    if chosen not in TASKS:
+        return {"ok": False, "task": None,
+                "ask_for": ["task (or a clearer goal): " + ", ".join(TASKS)],
+                "note": "Pick the rslearn task to compose a config for."}
+    size = model_size.strip().lower()
+    if size not in EMBEDDING_SIZES:
+        size = "base"
+    emb = EMBEDDING_SIZES[size]
+    ask_for: list[str] = []
+    notes: list[str] = []
+
+    if chosen == "detection":
+        return {
+            "ok": False, "task": "detection",
+            "note": "Detection (Faster R-CNN) needs FPN downsample_factors + anchor_sizes tuned to your "
+            "object scale, so it isn't auto-emitted. Use olmoearth_rslearn_recommend for the shape, and the "
+            "rslearn DetectionTask example (Fpn -> FasterRCNN with num_classes = real classes + 1 for "
+            "background) as the template.",
+            "ask_for": [],
+        }
+
+    t = TASKS[chosen]
+    raster = t["label_type"] == "raster"
+    out_channels = 1
+    if t["needs_num_classes"]:
+        if not num_classes:
+            ask_for.append("num_classes")
+            num_classes = 2  # placeholder so the YAML is well-formed (flagged in ask_for)
+        out_channels = num_classes
+    key = _DECODER_KEY[chosen]
+
+    task_init: dict[str, Any] = {}
+    if chosen == "segmentation":
+        task_init = {"num_classes": num_classes, "zero_is_invalid": False, "nodata_value": nodata_value}
+    elif chosen == "per_pixel_regression":
+        if scale_factor is None:
+            ask_for.append("scale_factor (or a label_range via recommend to derive it)")
+        task_init = {"scale_factor": scale_factor if scale_factor is not None else 1.0,
+                     "metrics": ["mse", "r2"], "nodata_value": nodata_value}
+    elif chosen == "classification":
+        task_init = {"property_name": property_name,
+                     "classes": class_names or [f"class_{i}" for i in range(num_classes or 2)]}
+        if not class_names:
+            notes.append("Replace the placeholder class names with your real category names.")
+    elif chosen == "regression":
+        if scale_factor is None:
+            ask_for.append("scale_factor (or a label_range via recommend to derive it)")
+        task_init = {"property_name": property_name,
+                     "scale_factor": scale_factor if scale_factor is not None else 1.0, "metrics": ["mse"]}
+
+    if raster:
+        label_input = {"data_type": "raster", "layers": ["label"],
+                       "bands": ["category"] if chosen == "segmentation" else ["value"],
+                       "is_target": True, "dtype": "INT32" if chosen == "segmentation" else "FLOAT32"}
+    else:
+        label_input = {"data_type": "vector", "layers": ["label"], "is_target": True}
+
+    monitor = f"val_{key}/accuracy" if chosen in {"segmentation", "classification"} else f"val_{key}/loss"
+    mode = "max" if monitor.endswith("accuracy") else "min"
+
+    config = {
+        "model": {
+            "class_path": "rslearn.train.lightning_module.RslearnLightningModule",
+            "init_args": {
+                "model": {
+                    "class_path": "rslearn.models.multitask.MultiTaskModel",
+                    "init_args": {
+                        "encoder": [{
+                            "class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth",
+                            "init_args": {"model_id": _MODEL_ID[size], "patch_size": patch_size},
+                        }],
+                        "decoders": {key: _decoder_chain(chosen, emb, out_channels, patch_size)},
+                    },
+                },
+                "lr": 0.0001, "plateau": True, "plateau_factor": 0.2, "plateau_patience": 2,
+            },
+        },
+        "data": {
+            "class_path": "rslearn.train.data_module.RslearnDataModule",
+            "init_args": {
+                "path": dataset_path,
+                "inputs": {
+                    "sentinel2_l2a": {"data_type": "raster", "layers": ["sentinel2"],
+                                      "bands": bands or _S2_BANDS, "passthrough": True, "dtype": "FLOAT32"},
+                    "label": label_input,
+                },
+                "task": {
+                    "class_path": "rslearn.train.tasks.multi_task.MultiTask",
+                    "init_args": {
+                        "tasks": {key: {"class_path": t["task_class"], "init_args": task_init}},
+                        "input_mapping": {key: {"label": "targets"}},
+                    },
+                },
+                "batch_size": 4, "num_workers": 4,
+            },
+        },
+        "trainer": {
+            "max_epochs": total_epochs, "accelerator": "gpu", "devices": 1, "log_every_n_steps": 10,
+            "callbacks": [
+                {"class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
+                 "init_args": {"dirpath": "checkpoints", "save_top_k": 1, "save_last": True,
+                               "monitor": monitor, "mode": mode}},
+                {"class_path": "rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze",
+                 "init_args": {"module_selector": ["model", "encoder", 0],
+                               "unfreeze_at_epoch": freeze_epochs, "unfreeze_lr_factor": 10}},
+            ],
+        },
+    }
+
+    notes.append(
+        f"decoder in_channels = {emb} (OlmoEarth {size} embedding dim), out_channels = {out_channels} "
+        f"({'num_classes' if t['needs_num_classes'] else '1 for regression'}); encoder frozen for "
+        f"{freeze_epochs} epochs, then unfrozen at 10x LR. Validate this with olmoearth_rslearn_validate."
+    )
+    text: str | None
+    try:
+        import yaml  # type: ignore[import-untyped]
+        text = yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+    except Exception:  # noqa: BLE001 - YAML is best-effort; the dict is always returned
+        text = None
+        notes.append("PyYAML unavailable; returning the config as a dict only.")
+
+    return {"ok": True, "task": chosen, "model_size": size, "yaml": text, "config": config,
+            "notes": notes, "ask_for": ask_for,
+            "next": "Run olmoearth_rslearn_validate on this model.yaml + your dataset config.json, then "
+            "`rslearn model fit --config model.yaml` (a long GPU job — see the olmoearth-rslearn skill)."}
+
+
+# --------------------------------------------------------------------------- #
+# Diagnoser (parse a failing prepare/ingest/materialize run -> fixes)
+# --------------------------------------------------------------------------- #
+
+
+def diagnose(summary: Any = None, log_text: str | None = None) -> dict[str, Any]:
+    """Turn a failing rslearn run into plain-English fixes.
+
+    Accepts a parsed summary (a ``PrepareDatasetWindowsSummary``-like dict with
+    per-layer ``windows_prepared``/``windows_rejected``/``windows_failed`` +
+    ``error_messages``) and/or raw log text. Pure dict/string inspection — no
+    rslearn import. Returns ``{ok, diagnosis, fixes}``.
+    """
+    diagnosis: list[str] = []
+    fixes: list[str] = []
+
+    def _scan(d: Any) -> None:
+        if isinstance(d, dict):
+            prep, rej, fail = d.get("windows_prepared"), d.get("windows_rejected"), d.get("windows_failed")
+            if prep == 0:
+                diagnosis.append("0 windows prepared for a layer.")
+                fixes.append("Widen --start/--end (the time range likely has no source scenes), or check the "
+                             "AOI box / --src_crs — `prepare` found no scenes intersecting the windows.")
+            if isinstance(rej, int) and isinstance(prep, int) and rej > prep > -1 and rej > 0:
+                diagnosis.append(f"More windows rejected ({rej}) than prepared ({prep}).")
+                fixes.append("min_matches may be too high or cloud filtering too strict — lower min_matches, "
+                             "widen the time range, or confirm sort_by=cloud_cover.")
+            if isinstance(fail, int) and fail > 0:
+                diagnosis.append(f"{fail} windows failed (see error_messages).")
+            for v in d.values():
+                _scan(v)
+        elif isinstance(d, list):
+            for v in d:
+                _scan(v)
+
+    if summary is not None:
+        _scan(summary)
+
+    blob = (log_text or "")
+    if isinstance(summary, (dict, list)):
+        blob += " " + json.dumps(summary)
+    low = blob.lower()
+    if "no scenes" in low or "no items" in low or "0 scenes" in low:
+        diagnosis.append("'no scenes found' in the output.")
+        fixes.append("Widen --start/--end by 2+ weeks, or verify the AOI is within the data source's coverage.")
+    if "crs" in low or "epsg" in low or " utm" in low:
+        diagnosis.append("a CRS/EPSG mismatch is mentioned.")
+        fixes.append("Set --src_crs to your box's CRS (the box is W,S,E,N lon/lat for EPSG:4326); a wrong CRS "
+                     "lands the windows off-target (often in the ocean).")
+    if "out of memory" in low or "oom" in low or ("cuda" in low and "memory" in low):
+        diagnosis.append("an out-of-memory error is mentioned.")
+        fixes.append("Lower batch_size / num_workers or grid_size, or use a smaller OlmoEarth model_id.")
+    if "no space" in low or "disk" in low:
+        diagnosis.append("a disk-space error is mentioned.")
+        fixes.append("`materialize` needs room for cropped tiles — free disk or point --root at a larger volume.")
+    if "401" in low or "403" in low or "unauthorized" in low or "credential" in low:
+        diagnosis.append("an auth/credential error is mentioned.")
+        fixes.append("Check the data-source credentials / Studio key; `ingest` is idempotent, so rerun after fixing.")
+
+    if not diagnosis:
+        diagnosis.append("No known failure pattern detected.")
+        fixes.append("Paste the rslearn prepare/ingest/materialize summary JSON or the error lines for a targeted read.")
+
+    ok = not any(k in d for d in diagnosis for k in ("0 windows", "no scenes", "failed", "error", "memory", "disk", "auth"))
+    return {"ok": ok, "diagnosis": diagnosis, "fixes": fixes}

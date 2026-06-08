@@ -23,6 +23,8 @@ from typing import Any
 from olmoearth_agent.analysis.rslearn_advisor import (
     EMBEDDING_SIZES,
     TASKS,
+    compose,
+    diagnose,
     recommend,
     validate_config,
 )
@@ -50,6 +52,27 @@ async def _validate(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         dataset_config=args.get("dataset_config"),
         model_config=args.get("model_config"),
     )
+
+
+async def _compose(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    return compose(
+        task=args.get("task"),
+        goal=args.get("goal"),
+        model_size=args.get("model_size", "base"),
+        num_classes=args.get("num_classes"),
+        class_names=args.get("class_names"),
+        property_name=args.get("property_name", "category"),
+        scale_factor=args.get("scale_factor"),
+        dataset_path=args.get("dataset_path", "data/dataset"),
+        bands=args.get("bands"),
+        freeze_epochs=args.get("freeze_epochs", 10),
+        total_epochs=args.get("total_epochs", 40),
+        nodata_value=args.get("nodata_value"),
+    )
+
+
+async def _diagnose(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    return diagnose(summary=args.get("summary"), log_text=args.get("log_text"))
 
 
 def build_rslearn_tools() -> list[RegisteredTool]:
@@ -146,5 +169,65 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_validate,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_rslearn_compose",
+                description=(
+                    "Compose a complete, VALID OlmoEarth/rslearn finetune `model.yaml` "
+                    "for the user. Use after `olmoearth_rslearn_recommend`, or when the "
+                    "user says 'write the config', 'give me the YAML', or 'set up the "
+                    "fine-tune'. Mirrors the proven OlmoEarth template (MultiTaskModel "
+                    "+ OlmoEarth encoder -> Upsample/Conv or PoolingDecoder -> task head "
+                    "+ FreezeUnfreeze), with the right decoder/head + channel counts for "
+                    "the task. Returns the YAML string + the config dict. Supports "
+                    "segmentation / per-pixel-regression / classification / regression; "
+                    "detection is guided (Faster R-CNN anchors need tuning), not "
+                    "auto-emitted. Then run olmoearth_rslearn_validate on it."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string", "enum": list(TASKS), "description": "rslearn task (or pass `goal` to infer)."},
+                        "goal": {"type": "string", "description": "Plain-language goal, if task isn't given."},
+                        "model_size": {"type": "string", "enum": list(EMBEDDING_SIZES), "description": "OlmoEarth encoder size (default base)."},
+                        "num_classes": {"type": "integer", "description": "Class count (segmentation/classification)."},
+                        "class_names": {"type": "array", "items": {"type": "string"}, "description": "Class names (classification)."},
+                        "property_name": {"type": "string", "description": "Vector property holding the label (classification/regression; default 'category')."},
+                        "scale_factor": {"type": "number", "description": "Label scale factor (regression tasks)."},
+                        "dataset_path": {"type": "string", "description": "Path to the rslearn dataset dir (default data/dataset)."},
+                        "bands": {"type": "array", "items": {"type": "string"}, "description": "Input bands (default the 12-band S2 L2A stack)."},
+                        "freeze_epochs": {"type": "integer", "description": "Epochs with the encoder frozen before unfreezing (default 10)."},
+                        "total_epochs": {"type": "integer", "description": "Total training epochs (default 40)."},
+                        "nodata_value": {"type": "integer", "description": "NODATA value to mask out of the loss (raster tasks)."},
+                    },
+                    "required": [],
+                },
+            ),
+            handler=_compose,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_rslearn_diagnose",
+                description=(
+                    "Diagnose a FAILING rslearn run (the `prepare` / `ingest` / "
+                    "`materialize` stages) and return plain-English fixes. Use when a "
+                    "scientist pastes an rslearn error or a stage summary and asks "
+                    "'why did this fail' / 'no scenes found' / 'why are there 0 windows'. "
+                    "Pass the parsed stage `summary` (with per-layer windows_prepared/"
+                    "rejected/failed + error_messages) and/or the raw `log_text`. "
+                    "Detects: no scenes / 0 windows, over-rejection (min_matches/cloud), "
+                    "CRS mismatch, out-of-memory, disk, and auth errors. Inspection only."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "object", "description": "Parsed rslearn stage summary (per-layer counts + error_messages)."},
+                        "log_text": {"type": "string", "description": "Raw rslearn CLI output / error text."},
+                    },
+                    "required": [],
+                },
+            ),
+            handler=_diagnose,
         ),
     ]
