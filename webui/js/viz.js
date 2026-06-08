@@ -316,7 +316,9 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   const el = document.createElement('div');
   el.className = 'viz-map';
   container.insertBefore(el, status);
-  container.insertBefore(abLabel(a.resultId, b.resultId), el);
+  // The compare card already prints the A/B legend above the scan, so let the
+  // caller suppress this one to avoid a duplicate line.
+  if (!opts.noAbLabel) container.insertBefore(abLabel(a.resultId, b.resultId), el);
   const map = L.map(el, { worldCopyJump: true, attributionControl: false });
   osmLayer(L).addTo(map);
   map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { padding: [10, 10], maxZoom: 13 });
@@ -461,7 +463,7 @@ function renderCompareCard(container, inner) {
     out.className = 'viz-diff';
     container.appendChild(out);
     void renderDiffScan(out, { resultId: inner.result_id_a }, { resultId: inner.result_id_b },
-      { property: inner.property_name, tolerance: s.tolerance });
+      { property: inner.property_name, tolerance: s.tolerance, noAbLabel: true });
   }
 }
 
