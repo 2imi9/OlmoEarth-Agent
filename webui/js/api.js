@@ -72,11 +72,14 @@ export async function apiHealth() {
 }
 
 // POST /api/run -> the streaming Response; the caller reads the SSE body. Throws on !ok.
-export async function apiRunStream(brief, history) {
+// `forcedSkill` (optional) pins the run to one skill server-side (the "/" menu slug).
+export async function apiRunStream(brief, history, forcedSkill) {
+  const body = { brief, history: history || [], max_turns: agentMaxTurns() };
+  if (forcedSkill) body.forced_skill = forcedSkill;
   const res = await fetch('/api/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...keyHeaders(), ...llmHeaders() },
-    body: JSON.stringify({ brief, history: history || [], max_turns: agentMaxTurns() }),
+    body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) throw new Error('bridge returned HTTP ' + res.status);
   return res;

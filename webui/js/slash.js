@@ -1,24 +1,26 @@
 /* In-chat skill slash-commands. Type "/" in the composer to pick one of the 16
-   skills (like Claude Code's /commands); the brief is then routed to that skill.
-   Webui-only: it rewrites the brief SENT to the agent into a "use the X skill"
-   directive (the displayed message stays as the user typed it; the agent still
-   streams normally). A deeper server-side forced-skill mode is future work. */
+   skills (like Claude Code's /commands); the picked skill is then routed to the
+   agent. The displayed message stays as the user typed it; the brief is sent
+   CLEAN and the skill is pinned SERVER-SIDE via a structured `forced_skill`
+   field (see serve.py / LeadAgent), instead of rewriting the brief into a "use
+   the X skill" directive. In demo mode (no server) the clean brief still drives
+   the canned scenario. */
 
 import { SKILL_LIST } from './skills.js';
 import { escapeHtml, autosize } from './util.js';
 
 const bySlug = new Map(SKILL_LIST.map((s) => [s.slug, s]));
 
-/* "/slug rest" -> a directive for the agent. Returns the brief unchanged when it
+/* Parse "/slug rest" into { skill, brief }: the recognized skill slug (routed to
+   the agent as `forced_skill`) and the brief with the "/slug" stripped, so what
+   the agent sees is clean. Returns { skill: null, brief } unchanged when it
    isn't a recognized skill slash-command (so a stray "/" is sent verbatim). */
-export function applySkillSlash(brief) {
+export function parseSkillSlash(brief) {
   const m = /^\s*\/([a-zA-Z0-9-]+)\b[ \t]*([\s\S]*)$/.exec(brief || '');
-  if (!m) return brief;
+  if (!m) return { skill: null, brief };
   const skill = bySlug.get(m[1].toLowerCase());
-  if (!skill) return brief;
-  const rest = (m[2] || '').trim();
-  const head = `Use the OlmoEarth "${skill.slug}" skill for this request.`;
-  return rest ? `${head}\n\n${rest}` : head;
+  if (!skill) return { skill: null, brief };
+  return { skill: skill.slug, brief: (m[2] || '').trim() };
 }
 
 /* Wire the composer's "/" menu. MUST run before wirePrompt() so this keydown

@@ -167,6 +167,40 @@ def test_run_local_flag_tracks_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["local"] is False
 
 
+def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class _CapAgent:
+        def __init__(self, *_a: Any, **kw: Any) -> None:
+            captured["forced_skill"] = kw.get("forced_skill")
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            yield {"type": "final", "turn": 1, "content": "ok"}
+
+    monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
+    with TestClient(serve.app) as client:
+        # A valid slug is forwarded, lower-cased.
+        client.post(
+            "/api/run",
+            json={"brief": "hi", "forced_skill": "Change-Detection"},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+        assert captured["forced_skill"] == "change-detection"
+        captured.clear()
+        # A malformed value is ignored (empty), not rejected with an error.
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hi", "forced_skill": "drop tables; --"},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+        assert resp.status_code == 200
+        assert captured["forced_skill"] == ""
+        captured.clear()
+        # Absent -> empty (no pin).
+        client.post("/api/run", json={"brief": "hi"}, headers={"X-Olmoearth-Key": "k"})
+    assert captured["forced_skill"] == ""
+
+
 def test_health_reports_claude_available() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/health")

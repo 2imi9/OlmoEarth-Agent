@@ -6,7 +6,7 @@ import { BRIDGE } from './store.js';
 import { escapeHtml, autosize } from './util.js';
 import { runLive, runDemo, replayEvents } from './run.js';
 import { buildAgentBrief, getPendingAttachments, clearPendingAttachments } from './attach.js';
-import { applySkillSlash } from './slash.js';
+import { parseSkillSlash } from './slash.js';
 import { projConnected } from './api.js';
 
 const CHATS_LS = 'oe_chats';
@@ -172,12 +172,17 @@ function handleSend(brief, attachments) {
   const body = appendTurnDom(brief, atts);
   persistChat(chat); renderChatList(); setTopTitle(chat.title);
 
-  // "/skill ..." routes the brief to that skill (displayed message stays as typed).
-  const agentBrief = buildAgentBrief(applySkillSlash(brief), atts);
+  // "/skill ..." routes to that skill server-side via forced_skill; the brief is
+  // sent clean (no rewrite) and the displayed message stays as typed. When the
+  // brief is only "/skill" (no text), fall back to a minimal directive so the
+  // run still has a non-empty brief.
+  const { skill: forcedSkill, brief: rest } = parseSkillSlash(brief);
+  const cleanBrief = rest || (forcedSkill ? `Use the ${forcedSkill} skill for this request.` : brief);
+  const agentBrief = buildAgentBrief(cleanBrief, atts);
   const onEvent = (ev) => aTurn.events.push(ev);
   const done = () => { sending = false; setSendingUI(false); chat.updatedAt = Date.now(); persistChat(chat); renderChatList(); };
   sending = true; setSendingUI(true);
-  if (BRIDGE.live && projConnected()) runLive(body, agentBrief, history, onEvent).then(done, done);
+  if (BRIDGE.live && projConnected()) runLive(body, agentBrief, history, onEvent, forcedSkill).then(done, done);
   else { runDemo(body, agentBrief, onEvent); setTimeout(done, 5200); }
 }
 
