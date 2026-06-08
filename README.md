@@ -19,7 +19,7 @@
 
 <div align="center"><sub>Connect a Studio key, send a brief, and the agent loop streams its reasoning, tool calls, results, and a plain-English answer -- in a multi-turn chat with saved history, a collapsible Studio project tree, and Markdown answers. Need an area of interest? <strong>Draw it on a map</strong> right in the chat and it is stored as a Studio area. &nbsp; | &nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
 
-<div align="center"><sub>Demo recorded on <a href="https://github.com/2imi9/OlmoEarth-Agent/releases/tag/v1.0.0">v1.0.0</a>.</sub></div>
+<div align="center"><sub>Demo recorded on <a href="https://github.com/2imi9/OlmoEarth-Agent/releases/tag/v1.2.0">v1.2.0</a>.</sub></div>
 
 ---
 

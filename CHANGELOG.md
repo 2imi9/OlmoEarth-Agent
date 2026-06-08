@@ -10,6 +10,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Changed
+- **Re-recorded the README walkthrough demo** against the current polished UI --
+  the lead GIF/MP4 had been frozen at the pre-polish v1.0.0 layout. Corrected the
+  caption accordingly (recorded-on v1.0.0 -> **v1.2.0**). Both the basic
+  walkthrough (`webui/demo/record_demo.py`) and the feature showcase
+  (`webui/demo/record_showcase.py`) now reflect the shipped UI.
+
+## [1.2.0] - 2026-06-08
+
+### Changed
 - **Tool-calling order guidance in the system prompt.** `DEFAULT_SYSTEM_PROMPT`
   now includes an explicit "typical run order" recipe with dependency guards:
   load context -> draw/resolve an AOI -> discover a reusable `model_id` ->
@@ -41,6 +50,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   docstring, and a live-regenerated `docs/SHOWCASE.md`.
 
 ### Added
+- **Web UI visual-polish pass** -- a cohesive loading & busy-states kit
+  (spinners, skeletons, progress pill, button-busy state), a **difference-map
+  radar-scan animation** (sweep beam + cells igniting as they resolve, replacing
+  the plain pop-in), a polished **in-conversation result block** (stat chips +
+  map/chart + caption + download bar as one card), and a **consecutive-workflow
+  indicator** rail above "Reasoning & tools" that tracks a prediction pipeline's
+  stages. All plain CSS against the existing `:root` tokens (no build step, no new
+  deps), honoring `prefers-reduced-motion`. Plus a feature-showcase demo
+  (`webui/demo/record_showcase.py` -> `olmoearth-agent-showcase.{gif,mp4}`).
+- **In-chat skill slash-commands**: type `/` in the composer to call a specific
+  skill directly (like Claude Code's `/commands`) -- a filterable menu of the 16
+  skills, arrow-nav + Enter/click to select. The brief is then routed to that
+  skill (the displayed message stays as typed). Client-side brief-rewrite in
+  `webui/js/slash.js`; a deeper server-side forced-skill mode is future work.
 - **Result visuals in the conversation + downloadable artifacts**: a tool
   result's visual (map / chart / compare / difference map) now renders in the
   conversation flow instead of inside the collapsed "Reasoning & tools" (the raw
@@ -170,6 +193,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   is inspectable and the thresholds tunable, rather than trusted blindly.
 
 ### Fixed
+- **Web UI polish fixes** from post-review + a multi-agent doc<->code<->
+  architecture audit (26 raw findings -> 7 adversarially confirmed): the
+  consecutive-workflow rail no longer marks every stage done when a turn pauses to
+  draw an AOI, and no longer wipes a failed stage at end-of-turn; the trajectory
+  chart's axis labels sit in the gutters (no overlap or clipping); the compare
+  card no longer renders the A/B legend twice; the **difference scan is
+  reproducible** -- it retries flaky pixel fetches so the same raster pair yields
+  the same numbers; the comparison-modal download buttons are right-aligned;
+  README "18-skill catalog" -> **16**, with the omitted `js/` modules + bridge
+  endpoints documented; `prefers-reduced-motion` now covers the remaining
+  animations (modal/detail entry, typing dots, caret, tool-call pulse, flash);
+  and a `--mint-hi` design token replaces a hardcoded hover color.
 - **Skill #9 `olmoearth-similarity` catalog wording** corrected to match the
   implementation: it described "FAISS" but the tool runs an **exact brute-force
   top-K kNN** in-process (FAISS is the scale-up follow-up, per the analysis
