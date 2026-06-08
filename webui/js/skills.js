@@ -43,6 +43,9 @@ const SKILLS = [
   { n: 16, slug: 'negative-sampler',  cat: 'Prep',      icon: 'scatter',     desc: 'Presence-only labels into a trainable set: buffered, thinned (optionally embedding-dissimilar) background class.', ex: 'My karst-site labels are presence-only and the audit fails for a missing negative class - generate background samples.' },
 ];
 
+/* Minimal {slug, desc, n} list for the composer's "/" skill slash-commands. */
+export const SKILL_LIST = SKILLS.map((s) => ({ slug: s.slug, desc: s.desc, n: s.n }));
+
 // Fuller "what it does + why" per skill, shown in the pop-out. The card shows
 // the one-line desc above; this is the spec summary. Full academic spec: SKILLS.md.
 const SKILL_SPECS = {

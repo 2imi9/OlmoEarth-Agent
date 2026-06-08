@@ -7,6 +7,7 @@ import { BRIDGE } from './store.js';
 import { apiHealth, agentMaxTurns, clearApiCache } from './api.js';
 import { renderCards, wireCards } from './skills.js';
 import { newChat, renderChatList, wirePrompt } from './chat.js';
+import { wireSlash } from './slash.js';
 import { wireTabs, wireExamples } from './landing.js';
 import { wireAttach } from './attach.js';
 import { wireAoi } from './aoi.js';
@@ -157,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireExamples();
   wireAttach();
   wireAoi();
+  wireSlash();   // before wirePrompt: its Enter handler must run first
   wirePrompt();
   wireMenu();
   wireUserMenu();
