@@ -12,7 +12,9 @@ see [Live mode](#live-mode-the-bridge)) and it upgrades in place to the **live
 agent**: a multi-turn **chat with saved history**, your **real Studio projects as
 a drill-down tree** (project → model/embeddings → predictions → results), and
 briefs streamed through `LeadAgent` over Server-Sent Events. Chat history is kept
-client-side (localStorage), same as the key.
+client-side (localStorage), same as the key. Type `/` in the composer to call a
+specific skill directly — a slash-command menu of the 16 skills (like Claude
+Code's `/commands`).
 
 ![OlmoEarth Agent - demo](demo/olmoearth-agent-demo.gif)
 
