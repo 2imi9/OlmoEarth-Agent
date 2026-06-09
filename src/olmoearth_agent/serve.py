@@ -52,7 +52,7 @@ from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
-from olmoearth_agent.skills import SkillLoader, build_default_registry
+from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
 
@@ -62,6 +62,14 @@ _MAX_TURNS_CEILING = 12
 #: Accepted shape of an optional ``forced_skill`` (the webui "/" menu slug). A
 #: tight allow-list so an arbitrary string can't be injected into the prompt.
 _SKILL_SLUG_RE = re.compile(r"^[a-z0-9-]{1,40}$")
+
+#: The actual catalog slugs a ``forced_skill`` may name (the SkillSpec name with
+#: the ``olmoearth-`` prefix dropped, matching the webui "/" menu). A well-formed
+#: but non-existent slug must NOT be injected into the prompt, so the shape check
+#: is paired with this membership check; #0 (foundational studio-core) is excluded.
+_VALID_FORCED_SKILLS = frozenset(
+    s.name.removeprefix("olmoearth-") for s in SKILLS if s.number >= 1
+)
 
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
@@ -522,10 +530,11 @@ async def api_run(request: Request) -> StreamingResponse:
         raise HTTPException(status_code=400, detail="invalid 'max_turns'") from exc
     history = _history_from_body(body)
     # Optional server-side skill routing: the webui "/" menu sends the picked
-    # skill slug here, pinning the run to it. Malformed values are ignored (not
-    # rejected) so a stray slug never breaks a run.
+    # skill slug here, pinning the run to it. Malformed OR non-existent values are
+    # ignored (not rejected) so a stray slug never breaks a run -- and a
+    # well-formed but unknown slug is never injected into the prompt directive.
     forced_skill = str(body.get("forced_skill", "")).strip().lower()
-    if not _SKILL_SLUG_RE.match(forced_skill):
+    if not _SKILL_SLUG_RE.match(forced_skill) or forced_skill not in _VALID_FORCED_SKILLS:
         forced_skill = ""
 
     llm = _llm_for_request(request)

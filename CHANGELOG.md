@@ -70,6 +70,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   MP4 (`webui/demo/record_showcase.py`).
 
 ### Fixed
+- **`forced_skill` is existence-checked, not just shape-checked.** `POST /api/run`
+  validated the slug's *shape* (a `[a-z0-9-]` regex) but not that it names a real
+  skill, so a well-formed but unknown slug (e.g. `totally-fake-skill`) was injected
+  into the `FORCED SKILL: …the '<slug>' skill` prompt directive. The bridge now also
+  checks membership against the actual catalog (`SKILLS` slugs, the same 17 the webui
+  "/" menu offers) and ignores anything that isn't a real skill (`serve.py`).
 - **In-chat result-block download buttons are right-aligned**, matching the
   comparison-modal footer: the leading "Open overlay" action stays left and the
   download buttons sit flush-right (`webui/styles.css`, scoped to `.result-viz`).
