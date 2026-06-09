@@ -68,8 +68,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   flow** -- the short highlight GIF opens on `/` -> filter to a skill -> Enter ->
   the routed brief; the workflow rail + difference-scan radar move into the full
   MP4 (`webui/demo/record_showcase.py`).
+- **Lighter difference scans + pooled Studio connections.** The diff scan's default
+  grid drops 7->5 (49->25 sampled cells, ~half the pointwise pixel-value calls), and
+  the bridge now reuses one connection-pooled `StudioClient` per key for
+  `/api/pixel-value` and `/api/tile` (`_pooled_studio`, closed on shutdown;
+  `StudioClient.get_bytes` for tile bytes) instead of constructing + closing a client
+  per request — connection hygiene that most helps the map's tile burst. **Note:** this
+  does *not* speed up the pixel-value scan itself; a fresh pixel-value call still takes
+  ~28-70 s, because the cost is Studio's per-point compute (+ proxy round-trip), not the
+  TLS handshake — so the real lever is the smaller grid. (`webui/js/viz.js`, `serve.py`,
+  `studio/client.py`)
 
 ### Fixed
+- **Slash menu lists all 17 skills** (was capped at the first 8) — the `/` command
+  palette is scrollable, so the cap only hid skills 9–17 (`webui/js/slash.js`).
 - **In-chat result-block download buttons are right-aligned**, matching the
   comparison-modal footer: the leading "Open overlay" action stays left and the
   download buttons sit flush-right (`webui/styles.css`, scoped to `.result-viz`).
