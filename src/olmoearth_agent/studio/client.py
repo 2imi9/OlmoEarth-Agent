@@ -105,6 +105,26 @@ class StudioClient:
         """Close the underlying HTTP client."""
         await self._client.aclose()
 
+    async def get_bytes(
+        self, url: str, *, timeout: float | None = None
+    ) -> httpx.Response:
+        """Raw authenticated GET of an absolute URL (no envelope unwrap).
+
+        For proxying binary Studio assets (raster tiles) over this client's
+        keep-alive connection pool, so a burst of fetches reuses connections
+        instead of a fresh TLS handshake per request. ``url`` may be absolute
+        (it overrides ``base_url``); the Bearer header rides along. The caller
+        is responsible for host allow-listing (the tile proxy SSRF-checks the
+        URL before calling this).
+        """
+        # Override the client-level ``Accept: application/json`` so a binary
+        # asset (e.g. an image tile) is returned as bytes, not a JSON error.
+        return await self._client.get(
+            url,
+            headers={"Accept": "*/*"},
+            timeout=timeout if timeout is not None else self.config.timeout_seconds,
+        )
+
     # --- low-level ---
 
     async def _send(

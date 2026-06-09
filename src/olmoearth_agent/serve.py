@@ -29,6 +29,7 @@ Requires the ``serve`` extra (``uv sync --extra serve``).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib.util
 import json
@@ -151,6 +152,50 @@ def _studio_base() -> str:
     return os.environ.get("OLMOEARTH_BASE_URL", DEFAULT_BASE_URL)
 
 
+#: Pooled per-key StudioClient. A burst of pixel-value / tile fetches (the
+#: difference scan samples ~grid^2 x2 points, each through the proxy) was opening
+#: a brand-new ``StudioClient`` -- and thus a fresh TLS handshake -- per request,
+#: which dominated the latency. Reusing one client per key keeps connections
+#: alive, so only the first call pays for the handshake. ``httpx.AsyncClient`` is
+#: safe for concurrent use, so the UI's 8-way concurrent sampling shares one
+#: pooled client fine. A small LRU cap bounds growth; the lifespan closes them.
+_STUDIO_POOL: OrderedDict[str, StudioClient] = OrderedDict()
+_STUDIO_POOL_MAX = 8
+_STUDIO_POOL_LOCK = asyncio.Lock()
+
+
+async def _pooled_studio(key: str) -> StudioClient:
+    """Return a reused, connection-pooled StudioClient for the caller's key."""
+    h = _key_hash(key)
+    client = _STUDIO_POOL.get(h)
+    if client is not None:
+        _STUDIO_POOL.move_to_end(h)
+        return client
+    async with _STUDIO_POOL_LOCK:
+        client = _STUDIO_POOL.get(h)  # re-check under the lock
+        if client is None:
+            client = StudioClient(StudioConfig(api_key=key, base_url=_studio_base()))
+            _STUDIO_POOL[h] = client
+            while len(_STUDIO_POOL) > _STUDIO_POOL_MAX:
+                _, evicted = _STUDIO_POOL.popitem(last=False)
+                try:
+                    await evicted.aclose()
+                except Exception:  # noqa: BLE001, S110 - best-effort close of an evicted client
+                    pass
+        _STUDIO_POOL.move_to_end(h)
+    return client
+
+
+async def _close_studio_pool() -> None:
+    """Close all pooled Studio clients (called on app shutdown)."""
+    for client in list(_STUDIO_POOL.values()):
+        try:
+            await client.aclose()
+        except Exception:  # noqa: BLE001, S110 - best-effort cleanup on shutdown
+            pass
+    _STUDIO_POOL.clear()
+
+
 def _studio_key(request: Request) -> str:
     """Pull the caller's Studio key from the request headers.
 
@@ -264,6 +309,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.registry = build_default_registry()
     app.state.skill_index = SkillLoader().index()
     yield
+    await _close_studio_pool()
 
 
 app = FastAPI(title="OlmoEarth Agent bridge", lifespan=_lifespan)
@@ -852,10 +898,8 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
     if cached is not None:
         return cached
     try:
-        async with StudioClient(
-            StudioConfig(api_key=key, base_url=_studio_base())
-        ) as studio:
-            rec = await studio.pixel_value(result_id, lon_f, lat_f)
+        studio = await _pooled_studio(key)
+        rec = await studio.pixel_value(result_id, lon_f, lat_f)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 404:
             out = {"ok": True, "value": None}  # off-raster / nodata
@@ -916,8 +960,8 @@ async def api_tile(z: int, x: int, y: int, request: Request) -> Response:
         body, media = cached
         return Response(content=body, media_type=media)
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {key}"})
+        studio = await _pooled_studio(key)
+        resp = await studio.get_bytes(url, timeout=20.0)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     if resp.status_code != 200:

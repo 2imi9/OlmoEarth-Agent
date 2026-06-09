@@ -68,6 +68,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   flow** -- the short highlight GIF opens on `/` -> filter to a skill -> Enter ->
   the routed brief; the workflow rail + difference-scan radar move into the full
   MP4 (`webui/demo/record_showcase.py`).
+- **Lighter difference scans + pooled Studio connections.** The diff scan's default
+  grid drops 7->5 (49->25 sampled cells, ~half the pointwise pixel-value calls), and
+  the bridge now reuses one connection-pooled `StudioClient` per key for
+  `/api/pixel-value` and `/api/tile` (`_pooled_studio`, closed on shutdown;
+  `StudioClient.get_bytes` for tile bytes) instead of constructing + closing a client
+  per request — connection hygiene that most helps the map's tile burst. **Note:** this
+  does *not* speed up the pixel-value scan itself; a fresh pixel-value call still takes
+  ~28-70 s, because the cost is Studio's per-point compute (+ proxy round-trip), not the
+  TLS handshake — so the real lever is the smaller grid. (`webui/js/viz.js`, `serve.py`,
+  `studio/client.py`)
 
 ### Fixed
 - **`forced_skill` is existence-checked, not just shape-checked.** `POST /api/run`
@@ -76,6 +86,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   into the `FORCED SKILL: …the '<slug>' skill` prompt directive. The bridge now also
   checks membership against the actual catalog (`SKILLS` slugs, the same 17 the webui
   "/" menu offers) and ignores anything that isn't a real skill (`serve.py`).
+- **Skill #17 doc accuracy: "two tools" → four.** `olmoearth-rslearn` has shipped
+  four in-repo tools since #119 (`recommend` / `validate` / `compose` / `diagnose`,
+  the last two gaining fusion via #120), but several docstrings/descriptions still
+  said "two torch-free tools (recommend/validate)". Corrected the count and added the
+  missing tools across `tools/rslearn.py`, `analysis/rslearn_advisor.py`,
+  `skills/registry.py` (catalog #17), and `SKILLS.md`. Docs only, no behavior change.
+- **Slash menu lists all 17 skills** (was capped at the first 8) — the `/` command
+  palette is scrollable, so the cap only hid skills 9–17 (`webui/js/slash.js`).
 - **In-chat result-block download buttons are right-aligned**, matching the
   comparison-modal footer: the leading "Open overlay" action stays left and the
   download buttons sit flush-right (`webui/styles.css`, scoped to `.result-viz`).
@@ -87,6 +105,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   OlmoEarth Base)" across `registry.py`, `SKILLS.md`, `README.md`, the tool
   description, and the web UI card; AlphaEarth stays as the worked example + the
   science citation. Doc/wording only, no code change (closes #121).
+
+### Security
+- **The LLM client now routes its endpoint through the egress guard.** Studio,
+  litsearch, and HF calls were already validated via `security/egress.py`, but
+  `OlmoEarthLLM` built its OpenAI-compatible client straight from `LLM_ENDPOINT`
+  with no check — so a malicious/misconfigured endpoint could exfiltrate the
+  conversation (and a hosted-provider key). `OlmoEarthLLM.__init__` now validates
+  the endpoint: loopback → the `llm-local` capability, otherwise the `llm-cloud`
+  allowlist (`api.anthropic.com` / `api.openai.com` / `generativelanguage.googleapis.com`).
+  Consistent with the rest of the guard — audit-logs by default, blocks under
+  `OLMOEARTH_EGRESS=enforce`. SSRF to the cloud metadata IP (`169.254.169.254`) is
+  blocked in enforce mode.
 
 ## [1.2.0] - 2026-06-08
 
