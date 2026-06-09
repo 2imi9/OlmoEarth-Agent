@@ -57,6 +57,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   replaces `applySkillSlash`). Prompt-steering is the one mechanism that works across
   all 17 skills and the local Qwen backend (which has no `tool_choice`); a Claude-only
   `tool_choice` hard-force tier was considered and deferred.
+- **Result-raster legend data** (`reporting.qgis.build_legend`): a structured
+  value→color legend (continuous ramp stops, or categorical class entries) so a
+  viewer can actually *read* a score/class map. It shares the same color ramp as the
+  SLD, so a QGIS export and an in-chat legend agree; `olmoearth_qgis_bridge` now
+  returns a `legend` alongside the `sld` (and takes optional `classes` for a
+  categorical layer). Backend for an upcoming web-UI raster legend.
+- **Per-skill workflow stages** (`harness.workflow` + `GET /api/skills`): the source
+  of truth for which run-pipeline stages (`load context → AOI → find model → submit →
+  poll → fetch → report`) a skill's tools actually touch. A **run** skill (predict)
+  gets the full pipeline; an **advisory** skill (e.g. `negative-sampler`, which never
+  submits) gets just `context → report`. Backend so the web UI's workflow rail can
+  skip stages a task will never reach (today it shows all seven, leaving submit/poll/
+  fetch stuck "pending" on an advisory question).
 
 ### Changed
 - **Re-recorded the README walkthrough demo** against the current polished UI --

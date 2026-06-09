@@ -49,6 +49,7 @@ from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
 from olmoearth_agent.harness import LeadAgent, ThreadState
+from olmoearth_agent.harness.workflow import WORKFLOW_STAGES, skill_workflow_stages
 from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
 from olmoearth_agent.llm.types import Message
@@ -490,6 +491,31 @@ async def api_health() -> dict[str, Any]:
         "llm_local_up": await _local_llm_up(llm.config.endpoint),
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
+    }
+
+
+@app.get("/api/skills")
+async def api_skills() -> dict[str, Any]:
+    """Per-skill catalog metadata for the web UI.
+
+    Returns each skill's slug / name / category and the run-pipeline ``stages``
+    its tools actually touch, so the workflow rail can show only the relevant
+    ones (an advisory skill like negative-sampler skips submit/poll/fetch). The
+    full ordered stage list is included so the UI maps keys -> labels from one
+    source of truth.
+    """
+    return {
+        "stages": [{"key": k, "label": label} for k, label, _m in WORKFLOW_STAGES],
+        "skills": [
+            {
+                "slug": s.name.removeprefix("olmoearth-"),
+                "name": s.name,
+                "category": s.category,
+                "stages": skill_workflow_stages(s.tools),
+            }
+            for s in SKILLS
+            if s.number >= 1
+        ],
     }
 
 

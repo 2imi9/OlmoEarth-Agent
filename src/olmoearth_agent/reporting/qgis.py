@@ -13,6 +13,7 @@ what's verified here is that the SLD is well-formed and the URL resolves.
 
 from __future__ import annotations
 
+from typing import Any
 from xml.sax.saxutils import quoteattr
 
 DEFAULT_BASE_URL = "https://olmoearth.allenai.org"
@@ -40,6 +41,49 @@ def _ramp_entries(
         return [(vmin, ramp[0])]
     span = vmax - vmin
     return [(vmin + span * i / (n - 1), color) for i, color in enumerate(ramp)]
+
+
+def build_legend(
+    property_name: str,
+    *,
+    vmin: float = 0.0,
+    vmax: float = 1.0,
+    ramp: tuple[str, ...] = _YLORRD,
+    classes: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Structured legend for a result raster — the value->color mapping a viewer
+    needs to read a score/class map for analysis.
+
+    Shares the same color ramp as :func:`build_raster_sld`, so a QGIS export and
+    an in-chat legend agree. For a **continuous** score layer it returns the ramp
+    stops (``value -> color``); for a **categorical** layer pass ``classes``
+    (``[{value, color?, label?}]``) and it echoes them with stable keys. Pure
+    data (no I/O), so the bridge / web UI can render a swatch strip from it.
+    """
+    if classes is not None:
+        return {
+            "kind": "categorical",
+            "property": property_name,
+            "entries": [
+                {
+                    "value": c.get("value"),
+                    "color": c.get("color", "#888888"),
+                    "label": str(c.get("label", c.get("value", ""))),
+                }
+                for c in classes
+            ],
+        }
+    return {
+        "kind": "continuous",
+        "property": property_name,
+        "vmin": vmin,
+        "vmax": vmax,
+        "ramp": "YlOrRd",
+        "stops": [
+            {"value": round(quantity, 6), "color": color, "label": f"{quantity:.3g}"}
+            for quantity, color in _ramp_entries(vmin, vmax, ramp)
+        ],
+    }
 
 
 def build_raster_sld(
