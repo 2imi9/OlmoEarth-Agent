@@ -107,14 +107,17 @@ a:hover { color: var(--text); }
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-pill);
 }
 .seg-btn {
-  flex: 1; min-width: 0; font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  flex: 1; min-width: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: var(--text-dim);
-  padding: 6px 4px; border-radius: var(--radius-pill); white-space: nowrap;
+  padding: 7px 4px; border-radius: var(--radius-pill);
   transition: color .14s ease, background .14s ease;
 }
+.seg-btn .ic { font-size: 16px; }
 .seg-btn:hover { color: var(--text); }
+.seg-btn:focus-visible { outline: 2px solid var(--mint-hi); outline-offset: 1px; }
 .seg-btn[aria-selected="true"] {
-  color: #06302a; background: var(--mint-hi); font-weight: 700;
+  color: #06302a; background: var(--mint-hi);
   box-shadow: 0 1px 6px -1px rgba(44,209,154,.45);
 }
 

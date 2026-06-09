@@ -38,19 +38,26 @@
 
         <div class="sb-div" role="separator"></div>
 
-        <!-- Segmented switcher: one secondary list at a time -->
+        <!-- Segmented switcher: one secondary list at a time. Icon-only (Claude-style);
+             the name rides in aria-label + title so it stays accessible and on hover. -->
         <div class="sb-switch">
           <div class="seg" id="sideSeg" role="tablist" aria-label="Studio lists">
-            <button class="seg-btn" type="button" role="tab" data-seg="projects" aria-selected="true">Projects</button>
-            <button class="seg-btn" type="button" role="tab" data-seg="comparisons" aria-selected="false">Comparisons</button>
-            <button class="seg-btn" type="button" role="tab" data-seg="areas" aria-selected="false">Areas</button>
+            <button class="seg-btn" type="button" role="tab" id="segProjects" data-seg="projects" aria-selected="true" aria-controls="paneProjects" tabindex="0" aria-label="Projects" title="Projects">
+              <svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </button>
+            <button class="seg-btn" type="button" role="tab" id="segComparisons" data-seg="comparisons" aria-selected="false" aria-controls="paneComparisons" tabindex="-1" aria-label="Comparisons" title="Comparisons">
+              <svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>
+            </button>
+            <button class="seg-btn" type="button" role="tab" id="segAreas" data-seg="areas" aria-selected="false" aria-controls="paneAreas" tabindex="-1" aria-label="Areas" title="Areas">
+              <svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            </button>
           </div>
         </div>
 
         <!-- Secondary panel: the switcher swaps which pane is shown -->
         <div class="sb-secondary">
           <!-- Studio projects (drill-down tree) -->
-          <section class="sb-pane" id="paneProjects" role="tabpanel" aria-label="Projects">
+          <section class="sb-pane" id="paneProjects" role="tabpanel" aria-labelledby="segProjects">
             <div class="sb-lbl">Projects
               <span class="proj-tag" id="projTag" title="Demo data, not your live Studio account">sample</span>
               <span class="sb-count" id="projCount"></span>
@@ -59,13 +66,13 @@
           </section>
 
           <!-- Saved comparisons -->
-          <section class="sb-pane" id="paneComparisons" role="tabpanel" aria-label="Comparisons" hidden>
+          <section class="sb-pane" id="paneComparisons" role="tabpanel" aria-labelledby="segComparisons" hidden>
             <div class="sb-lbl">Comparisons <span class="sb-count" id="cmpCount"></span></div>
             <div class="side-body" id="cmpList" aria-label="Saved comparisons"><!-- injected by js/compares.js --></div>
           </section>
 
           <!-- Areas: AOIs flattened across all projects -->
-          <section class="sb-pane" id="paneAreas" role="tabpanel" aria-label="Areas" hidden>
+          <section class="sb-pane" id="paneAreas" role="tabpanel" aria-labelledby="segAreas" hidden>
             <div class="sb-lbl">Areas <span class="sb-count" id="areaCount"></span></div>
             <div class="side-body" id="areaList" aria-label="Areas across all projects"><!-- injected by js/areas.js --></div>
           </section>

@@ -21,12 +21,15 @@ function renderSegment(seg) {
   else if (seg === 'areas') renderAreas();
 }
 
-/* Show one segment: flip the tab state, swap the visible pane, render its list. */
+/* Show one segment: flip the tab state (+ roving tabindex), swap the visible
+   pane, render its list. */
 export function showSegment(seg) {
   if (!PANES[seg]) seg = 'projects';
   try { localStorage.setItem(LS, seg); } catch (e) {}
   document.querySelectorAll('#sideSeg .seg-btn').forEach((b) => {
-    b.setAttribute('aria-selected', String(b.dataset.seg === seg));
+    const on = b.dataset.seg === seg;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;  // roving tabindex: only the active tab is in the Tab order
   });
   Object.entries(PANES).forEach(([key, id]) => {
     const pane = document.getElementById(id);
@@ -45,6 +48,23 @@ export function wireSwitcher() {
     seg.addEventListener('click', (e) => {
       const b = e.target.closest('.seg-btn');
       if (b && b.dataset.seg) showSegment(b.dataset.seg);
+    });
+    // WAI-ARIA tablist keyboard pattern: Left/Right (and Home/End) move between
+    // tabs, auto-activating each (cheap panel swap) and following focus.
+    seg.addEventListener('keydown', (e) => {
+      const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+      if (!keys.includes(e.key)) return;
+      const tabs = [...seg.querySelectorAll('.seg-btn')];
+      if (!tabs.length) return;
+      const cur = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+      let next = cur < 0 ? 0 : cur;
+      if (e.key === 'ArrowLeft') next = (cur - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'ArrowRight') next = (cur + 1) % tabs.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      e.preventDefault();
+      showSegment(tabs[next].dataset.seg);
+      tabs[next].focus();
     });
   }
   showSegment(current());  // initial paint of the persisted segment
