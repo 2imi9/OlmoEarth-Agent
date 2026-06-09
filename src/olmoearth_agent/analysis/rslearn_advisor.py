@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """rslearn config advisor + validator (the in-repo facet of the olmoearth-rslearn skill).
 
-Two torch-free functions that let a domain scientist who does NOT know rslearn
+Torch-free functions that let a domain scientist who does NOT know rslearn
 still set up a correct OlmoEarth/rslearn experiment:
 
 * :func:`recommend` — a plain-language research goal (+ what's known about the
@@ -10,7 +10,8 @@ still set up a correct OlmoEarth/rslearn experiment:
   the rslearn task, the data layout (data_source + query_config + compositing +
   bands), the model composition (encoder -> decoder -> head), the task knobs
   (metrics / loss / nodata / scale_factor), and a fine-tune schedule. Every
-  choice carries a one-line *why*.
+  choice carries a one-line *why*. With 2+ ``modalities`` it also returns a
+  :func:`recommend_fusion` pre/mid/post strategy.
 * :func:`validate_config` — a dataset ``config.json`` + a model ``model.yaml``
   (parsed to dicts) -> the errors rslearn only surfaces hours into a training
   run: encoder embedding-dim <-> decoder ``in_channels`` <-> ``out_channels`` =
@@ -18,6 +19,10 @@ still set up a correct OlmoEarth/rslearn experiment:
   needs vector); ``inputs.layers`` resolve to dataset layers; bands exist;
   ``data_source`` class_path + ``sort_by`` plausibility; the Faster R-CNN
   background-class +1 quirk.
+* :func:`compose` — emit a complete, valid finetune ``model.yaml`` (single-source,
+  or multi-source fusion via ``modalities`` + ``fusion``).
+* :func:`diagnose` — turn a failing ``prepare`` / ``ingest`` / ``materialize``
+  run (a stage summary and/or log text) into plain-English fixes.
 
 **Torch-free by construction.** This module never imports ``rslearn`` (which
 pulls torch and would break the agent's torch-free guarantee). Instead it

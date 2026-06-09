@@ -256,9 +256,11 @@ SKILLS: list[SkillSpec] = [
         "vendored",
         "Operate rslearn (the data + training engine under OlmoEarth): the vendored "
         "SKILL.md runs add_windows -> prepare -> ingest -> materialize -> model "
-        "fit/predict, plus two in-repo torch-free tools for non-experts -- recommend "
-        "a full setup from a plain-language research goal, and validate a config "
-        "(encoder/decoder/head shapes, task<->label-type, bands) before training.",
+        "fit/predict, plus four in-repo torch-free tools for non-experts -- recommend "
+        "a full setup from a plain-language research goal (+ a pre/mid/post fusion "
+        "strategy for multiple modalities), validate a config (encoder/decoder/head "
+        "shapes, task<->label-type, bands) before training, compose a valid finetune "
+        "model.yaml, and diagnose a failing prepare/ingest/materialize run.",
         [
             "olmoearth_load_skill",
             "olmoearth_rslearn_recommend",

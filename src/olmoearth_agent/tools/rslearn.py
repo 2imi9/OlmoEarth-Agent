@@ -2,14 +2,19 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """The ``olmoearth-rslearn`` in-repo tool bundle (skill #17).
 
-Two torch-free tools that let a scientist who doesn't know rslearn still set up a
+Four torch-free tools that let a scientist who doesn't know rslearn still set up a
 correct OlmoEarth/rslearn experiment:
 
 * ``olmoearth_rslearn_recommend`` — research goal -> a complete, explained setup
-  (task, data layout, model composition, task knobs, fine-tune schedule).
+  (task, data layout, model composition, task knobs, fine-tune schedule); with 2+
+  ``modalities`` it also recommends a pre/mid/post fusion strategy.
 * ``olmoearth_rslearn_validate`` — a dataset config.json + model.yaml -> the
   errors rslearn only surfaces hours into a training run (shape/channel/label-type
   mismatches), caught up front.
+* ``olmoearth_rslearn_compose`` — emit a complete, valid finetune ``model.yaml``
+  (single-source, or multi-source fusion via ``modalities`` + ``fusion``).
+* ``olmoearth_rslearn_diagnose`` — turn a failing ``prepare``/``ingest``/
+  ``materialize`` run into plain-English fixes.
 
 Logic lives in ``analysis/rslearn_advisor.py`` (pure metadata, no torch, no
 network). These complement the vendored ``olmoearth-rslearn`` SKILL.md (loaded
@@ -79,7 +84,7 @@ async def _diagnose(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
 
 
 def build_rslearn_tools() -> list[RegisteredTool]:
-    """Return the ``olmoearth-rslearn`` tool bundle (recommend + validate)."""
+    """Return the ``olmoearth-rslearn`` tool bundle (recommend + validate + compose + diagnose)."""
     return [
         RegisteredTool(
             spec=ToolSpec(

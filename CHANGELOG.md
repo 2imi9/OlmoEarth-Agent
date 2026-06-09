@@ -70,6 +70,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   MP4 (`webui/demo/record_showcase.py`).
 
 ### Fixed
+- **Skill #17 doc accuracy: "two tools" → four.** `olmoearth-rslearn` has shipped
+  four in-repo tools since #119 (`recommend` / `validate` / `compose` / `diagnose`,
+  the last two gaining fusion via #120), but several docstrings/descriptions still
+  said "two torch-free tools (recommend/validate)". Corrected the count and added the
+  missing tools across `tools/rslearn.py`, `analysis/rslearn_advisor.py`,
+  `skills/registry.py` (catalog #17), and `SKILLS.md`. Docs only, no behavior change.
 - **In-chat result-block download buttons are right-aligned**, matching the
   comparison-modal footer: the leading "Open overlay" action stays left and the
   download buttons sit flush-right (`webui/styles.css`, scoped to `.result-viz`).
