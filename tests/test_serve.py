@@ -213,6 +213,21 @@ def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["forced_skill"] == ""
 
 
+def test_skills_endpoint_exposes_per_skill_stages() -> None:
+    with TestClient(serve.app) as client:
+        resp = client.get("/api/skills")
+    assert resp.status_code == 200
+    body = resp.json()
+    # the ordered canonical stage list, for key -> label mapping in the UI
+    stage_keys = [s["key"] for s in body["stages"]]
+    assert stage_keys[0] == "context" and stage_keys[-1] == "report"
+    skills = {s["slug"]: s for s in body["skills"]}
+    # a run skill gets the full pipeline; an advisory skill skips submit/poll/fetch
+    assert "submit" in skills["predict"]["stages"]
+    assert "submit" not in skills["negative-sampler"]["stages"]
+    assert "fetch" not in skills["negative-sampler"]["stages"]
+
+
 def test_health_reports_claude_available() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/health")

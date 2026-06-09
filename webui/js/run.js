@@ -5,7 +5,7 @@
 
 import { escapeHtml, typeText } from './util.js';
 import { renderMarkdown } from './markdown.js';
-import { apiRunStream } from './api.js';
+import { apiRunStream, apiSkills } from './api.js';
 import { drawAndAttach } from './aoi.js';
 import { renderResultViz } from './viz.js';
 
@@ -83,75 +83,95 @@ function liveResultHtml(ev) {
 }
 
 /* ── Workflow indicator ─────────────────────────────────────────────────
-   A compact progress rail above "Reasoning & tools" that maps the agent's tool
-   calls to the canonical OlmoEarth pipeline. Shown only once a CORE pipeline
-   stage (AOI..fetch) is reached, so plain Q&A turns don't get a misleading rail.
-   Progress is monotonic (the furthest stage reached is active; earlier = done;
-   the final answer completes "Report"). */
-const WF_STAGES = [
+   A horizontal progress rail above "Reasoning & tools" mapping the agent's tool
+   calls to the OlmoEarth pipeline. Only the stages RELEVANT to the run are shown:
+   a real prediction run gets the full pipeline; an advisory task (e.g. the
+   negative-sampler, which never submits) gets just Load context -> Report -- so
+   the rail never shows submit/poll/fetch stuck "pending". Stage keys/predicates
+   mirror src/olmoearth_agent/harness/workflow.py (and GET /api/skills). */
+const WF_PIPELINE = [
   ['context', 'Load context', (n) => /load_context/.test(n)],
   ['aoi',     'Define AOI',    (n) => /request_aoi/.test(n)],
-  ['model',   'Find model',    (n) => /load_skill/.test(n)],
+  ['model',   'Find model',    (n) => /load_skill|search_predictions/.test(n)],
   ['submit',  'Submit run',    (n) => /submit_prediction/.test(n)],
-  ['poll',    'Poll status',   (n) => n === 'olmoearth_get_prediction' || /(^|_)poll/.test(n)],
+  ['poll',    'Poll status',   (n) => n === 'olmoearth_get_prediction' || /_poll/.test(n)],
   ['fetch',   'Fetch results', (n) => /fetch_results|get_prediction_result|get_results/.test(n)],
   ['report',  'Report',        () => false],  // completed by the final answer
 ];
-const WF_CORE_MIN = 1, WF_CORE_MAX = 5;  // a real pipeline touches one of these
+const WF_KEYS = WF_PIPELINE.map((s) => s[0]);
+const WF_LABEL = Object.fromEntries(WF_PIPELINE.map((s) => [s[0], s[1]]));
+const WF_CORE = new Set(['aoi', 'model', 'submit', 'poll', 'fetch']);  // a real pipeline touches one
+const WF_CHECK = '<svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.3l2.3 2.3 4.7-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const WF_CROSS = '<svg viewBox="0 0 12 12" fill="none"><path d="M3.2 3.2l5.6 5.6M8.8 3.2l-5.6 5.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
 function wfStageFor(name) {
   const n = name || '';
-  for (let i = 0; i < WF_STAGES.length; i++) if (WF_STAGES[i][2](n)) return i;
-  return -1;
+  for (const [key, , match] of WF_PIPELINE) if (match(n)) return key;
+  return null;
 }
-function ensureWorkflow(body) {
+
+/* The relevant stage keys for this run, in pipeline order. A forced skill (the
+   "/" menu) declares its stages up front (via /api/skills, cached on the body);
+   otherwise we infer from the stages reached so far (+ Report), expanding to the
+   full pipeline once a prediction is submitted (you can't poll without submit). */
+function wfRelevant(body) {
+  const forced = body._wfForced && body._wfSkillStages && body._wfSkillStages[body._wfForced];
+  if (forced) return WF_KEYS.filter((k) => forced.includes(k));
+  const keys = new Set(['context', 'report']);
+  (body._wfReached || new Set()).forEach((k) => keys.add(k));
+  if (keys.has('submit')) WF_KEYS.forEach((k) => keys.add(k));
+  return WF_KEYS.filter((k) => keys.has(k));
+}
+
+function wfRender(body) {
   let wf = body.querySelector(':scope > .workflow');
-  if (!wf) {
-    wf = document.createElement('div');
-    wf.className = 'workflow run-step';
-    wf.innerHTML = '<div class="wf-eyebrow">Workflow</div>' +
-      WF_STAGES.map(([k, label]) =>
-        `<div class="wf-step is-pending" data-wf="${k}"><span class="wf-marker"></span><span class="wf-label">${escapeHtml(label)}</span></div>`).join('');
-    body.insertBefore(wf, body.firstChild);  // above .steps (which re-anchors after .workflow)
-  }
-  return wf;
-}
-function setWorkflow(body, activeIdx, opts) {
-  opts = opts || {};
-  const wf = body.querySelector(':scope > .workflow');
-  if (!wf) return;
-  wf.querySelectorAll('.wf-step').forEach((st, i) => {
-    st.classList.remove('is-active', 'is-done', 'is-failed', 'is-pending');
-    if (opts.failedIdx != null && i === opts.failedIdx) st.classList.add('is-failed');
-    else if (opts.done || i < activeIdx) st.classList.add('is-done');
-    else if (i === activeIdx) st.classList.add('is-active');
-    else st.classList.add('is-pending');
+  if (!wf) { wf = document.createElement('div'); wf.className = 'workflow run-step'; body.insertBefore(wf, body.firstChild); }
+  const keys = wfRelevant(body);
+  const reached = body._wfReached || new Set();
+  let activeIdx = -1;
+  keys.forEach((k, i) => { if (reached.has(k)) activeIdx = i; });  // furthest reached = active
+  const failIdx = body._wfFailedKey ? keys.indexOf(body._wfFailedKey) : -1;
+  const done = !!body._wfDone;
+  const status = keys.map((k, i) => {
+    if (done) return 'is-done';
+    if (failIdx === i) return 'is-failed';
+    if (i < activeIdx) return 'is-done';
+    if (i === activeIdx) return 'is-active';
+    return 'is-pending';
   });
+  wf.innerHTML = '<div class="wf-eyebrow">Workflow</div><div class="wf-rail">' +
+    keys.map((k, i) => {
+      const st = status[i];
+      const prev = i > 0 ? status[i - 1] : null;
+      const lead = prev === 'is-done' ? ' lead-done' : prev === 'is-failed' ? ' lead-fail' : '';
+      const inner = st === 'is-done' ? WF_CHECK : st === 'is-failed' ? WF_CROSS : st === 'is-active' ? '<span class="wf-core"></span>' : '';
+      return `<div class="wf-step ${st}${lead}"><span class="wf-dot">${inner}</span>` +
+        `<span class="wf-label">${escapeHtml(WF_LABEL[k])}</span></div>`;
+    }).join('') + '</div>';
 }
+
 function workflowOnTool(body, name) {
-  const idx = wfStageFor(name);
-  if (idx < 0) return;
-  body._wfFailed = false;  // a new tool call means the run advanced past any prior failure
-  body._wfMax = Math.max(body._wfMax == null ? -1 : body._wfMax, idx);
-  if (!body._wfShown && body._wfMax >= WF_CORE_MIN && body._wfMax <= WF_CORE_MAX) {
-    ensureWorkflow(body); body._wfShown = true;
-  }
-  if (body._wfShown) setWorkflow(body, body._wfMax);
+  const key = wfStageFor(name);
+  if (!key) return;
+  body._wfReached = body._wfReached || new Set();
+  body._wfReached.add(key);
+  body._wfFailedKey = null;  // a new tool call means the run advanced past any prior failure
+  // Show the rail once a real pipeline stage is reached (not plain Q&A), or
+  // immediately if a forced skill already declares its stages.
+  if (!body._wfShown && (WF_CORE.has(key) || body._wfForced)) body._wfShown = true;
+  if (body._wfShown) wfRender(body);
 }
 function workflowOnFail(body, name) {
   if (!body._wfShown) return;
-  body._wfFailed = true;
-  const idx = wfStageFor(name);
-  setWorkflow(body, body._wfMax || 0, { failedIdx: idx >= 0 ? idx : (body._wfMax || 0) });
+  body._wfFailedKey = wfStageFor(name) || body._wfFailedKey || [...(body._wfReached || [])].pop() || 'context';
+  wfRender(body);
 }
 function workflowOnFinal(body) {
   if (!body._wfShown) return;
-  // A turn can end without completing the pipeline: PAUSING for user input (the
-  // agent asked you to draw an AOI) or after a tool FAILED (it ends with an
-  // explanation). Don't mark everything done in those cases — leave the rail at
-  // its active/failed stage rather than reading "all steps passed".
-  if (body._wfAwaiting || body._wfFailed) return;
-  setWorkflow(body, WF_STAGES.length - 1, { done: true });
+  // Don't mark complete when the turn PAUSED for an AOI or ended on a failure.
+  if (body._wfAwaiting || body._wfFailedKey) return;
+  body._wfDone = true;
+  wfRender(body);
 }
 
 // Per-turn "Reasoning & tools" disclosure: thinking + tool calls live in a
@@ -333,6 +353,16 @@ export function runDemo(body, brief, onEvent) {
 // `forcedSkill` (optional) pins the run to one skill server-side (the "/" menu).
 export async function runLive(body, brief, history, onEvent, forcedSkill) {
   body.innerHTML = '';
+  // Workflow rail: track the stages reached; a forced skill declares its relevant
+  // stages up front (so the rail shows the right subset immediately).
+  body._wfForced = forcedSkill || null;
+  body._wfReached = new Set();
+  if (forcedSkill) {
+    apiSkills().then((map) => {
+      body._wfSkillStages = map;
+      if (body._wfForced && map[body._wfForced]) { body._wfShown = true; wfRender(body); }
+    }).catch(() => { /* fall back to observed-stage inference */ });
+  }
   const status = runStatusEl('Running the agent…');
   body.appendChild(status);
   let cleared = false;
