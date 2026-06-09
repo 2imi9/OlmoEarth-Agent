@@ -233,14 +233,56 @@ function diffStyle(d, scaleMax) {
   return { color: t >= 0 ? '#f0529c' : '#37a0ff', fillColor: t >= 0 ? '#f0529c' : '#37a0ff', weight: 0, fillOpacity: 0.15 + 0.7 * Math.abs(t) };
 }
 
-/* A small "which result is A / B" label so the B - A direction is unambiguous. */
-function abLabel(idA, idB) {
+/* Vocabulary for the two comparison kinds. cross_model = two different models
+   over the same area (how much they agree); temporal = one model's output at an
+   earlier (A) vs a later (B) date (net change over time). The numbers are
+   identical; only how we describe them differs. The diff map colors stay fixed
+   (blue = negative / A higher / decreased, pink = positive / B higher /
+   increased) -- only the legend words change. */
+function compareVocab(kind) {
+  if (kind === 'temporal') {
+    return {
+      kind: 'temporal',
+      aRole: 'earlier', bRole: 'later',
+      diffExpr: 'later - earlier',
+      mapTitle: 'Change map (later - earlier)',
+      diffLabel: 'Change (later - earlier)',
+      diffWord: 'change', agreeWord: 'stable',
+      legendLow: 'decreased', legendHigh: 'increased',
+      statCaption: 'Same model, two dates - net change over time (later - earlier). Map below.',
+      savedCaption: 'Saved comparison - net change over time (later - earlier).',
+    };
+  }
+  return {
+    kind: 'cross_model',
+    aRole: 'result', bRole: 'result',
+    diffExpr: 'B - A',
+    mapTitle: 'Difference map (B - A)',
+    diffLabel: 'Difference (B - A)',
+    diffWord: 'diff', agreeWord: 'agree',
+    legendLow: 'A higher', legendHigh: 'B higher',
+    statCaption: 'Model-vs-model agreement (no ground truth). Difference map below.',
+    savedCaption: 'Saved comparison - model-vs-model agreement (no ground truth).',
+  };
+}
+
+/* The fixed blue/pink swatch legend, with kind-aware words. */
+function legendHtml(kind) {
+  const v = compareVocab(kind);
+  return '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>' + v.legendLow +
+    '<span class="viz-sw" style="background:#f0529c"></span>' + v.legendHigh + '</span>';
+}
+
+/* A small "which result is A / B" label so the difference direction is
+   unambiguous (B - A for models, later - earlier for a temporal compare). */
+function abLabel(idA, idB, kind) {
+  const v = compareVocab(kind);
   const el = document.createElement('div');
   el.className = 'viz-ab';
   el.innerHTML =
-    '<span class="viz-ab-a">A</span> result ' + escapeHtml(shortId(idA || '?')) +
-    ' &nbsp;<span class="viz-ab-b">B</span> result ' + escapeHtml(shortId(idB || '?')) +
-    ' &nbsp;<span class="viz-ab-d">difference = B - A</span>';
+    '<span class="viz-ab-a">A</span> ' + v.aRole + ' ' + escapeHtml(shortId(idA || '?')) +
+    ' &nbsp;<span class="viz-ab-b">B</span> ' + v.bRole + ' ' + escapeHtml(shortId(idB || '?')) +
+    ' &nbsp;<span class="viz-ab-d">difference = ' + v.diffExpr + '</span>';
   return el;
 }
 
@@ -308,7 +350,7 @@ export async function renderOverlayViewer(record) {
   };
   slider('<span class="viz-ab-a">A</span> ' + escapeHtml(shortId(record.resultIdA || '?')), 100, !layerA, (v) => layerA && layerA.setOpacity(v));
   slider('<span class="viz-ab-b">B</span> ' + escapeHtml(shortId(record.resultIdB || '?')), 0, !layerB, (v) => layerB && layerB.setOpacity(v));
-  slider('<span class="viz-ab-d">Difference (B - A)</span>', 60, cells.length === 0, (v) => { map.getPane('ovdiff').style.opacity = String(v); });
+  slider('<span class="viz-ab-d">' + compareVocab(record.kind).diffLabel + '</span>', 60, cells.length === 0, (v) => { map.getPane('ovdiff').style.opacity = String(v); });
 }
 
 /* Progressive difference scan of two result rasters: sample both on a grid
@@ -337,7 +379,7 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   container.insertBefore(el, status);
   // The compare card already prints the A/B legend above the scan, so let the
   // caller suppress this one to avoid a duplicate line.
-  if (!opts.noAbLabel) container.insertBefore(abLabel(a.resultId, b.resultId), el);
+  if (!opts.noAbLabel) container.insertBefore(abLabel(a.resultId, b.resultId, opts.kind), el);
   const map = L.map(el, { worldCopyJump: true, attributionControl: false });
   osmLayer(L).addTo(map);
   map.fitBounds([[bbox[1], bbox[0]], [bbox[3], bbox[2]]], { padding: [10, 10], maxZoom: 13 });
@@ -414,18 +456,18 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     rmse_between_models: Number(rmse.toFixed(6)),
     tolerance: tol,
   };
+  const v = compareVocab(opts.kind);
   status.innerHTML =
-    'Difference map (B - A) over ' + m + ' sampled cells · mean |diff| <strong>' + meanAbs.toFixed(3) +
-    '</strong> · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
-    (within * 100).toFixed(0) + '% agree (±' + tol + '). ' +
-    '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>A higher' +
-    '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
+    v.mapTitle + ' over ' + m + ' sampled cells · mean |' + v.diffWord + '| <strong>' + meanAbs.toFixed(3) +
+    '</strong>' + (v.kind === 'temporal' ? ' · net <strong>' + meanDiff.toFixed(3) + '</strong>' : '') +
+    ' · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
+    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + '). ' + legendHtml(v.kind);
 
   // Captured straight from the live scan (real values), so a saved comparison
   // is never fabricated. Offer to store it in the Comparisons panel.
   const record = {
     resultIdA: a.resultId, resultIdB: b.resultId, property: opts.property || null,
-    bbox, cellSize: [dx, dy], tolerance: tol, stats,
+    kind: v.kind, bbox, cellSize: [dx, dy], tolerance: tol, stats,
     cells: cells.filter((c) => c.diff != null).map((c) => ({
       lon: Number(c.lon.toFixed(6)), lat: Number(c.lat.toFixed(6)), diff: Number(c.diff.toFixed(6)),
     })),
@@ -474,22 +516,25 @@ function statChips(s, caption) {
    the visual, no button needed). */
 function renderCompareCard(container, inner) {
   const s = inner.stats || {};
-  container.appendChild(statChips(s, 'Model-vs-model agreement (no ground truth). Difference map below.'));
-  container.appendChild(abLabel(inner.result_id_a, inner.result_id_b));
+  const kind = inner.kind;
+  const v = compareVocab(kind);
+  container.appendChild(statChips(s, v.statCaption));
+  container.appendChild(abLabel(inner.result_id_a, inner.result_id_b, kind));
   if (inner.result_id_a && inner.result_id_b) {
     const out = document.createElement('div');
     out.className = 'viz-diff';
     container.appendChild(out);
     void renderDiffScan(out, { resultId: inner.result_id_a }, { resultId: inner.result_id_b },
-      { property: inner.property_name, tolerance: s.tolerance, noAbLabel: true });
+      { property: inner.property_name, tolerance: s.tolerance, kind, noAbLabel: true });
   }
 }
 
 /* Re-render a SAVED comparison (stored real stats + grid cells) - no re-fetch,
    no fabrication: it draws exactly the data captured during the live scan. */
 export async function renderStoredComparison(container, record) {
-  container.appendChild(statChips(record.stats, 'Saved comparison - model-vs-model agreement (no ground truth).'));
-  container.appendChild(abLabel(record.resultIdA, record.resultIdB));
+  const v = compareVocab(record.kind);
+  container.appendChild(statChips(record.stats, v.savedCaption));
+  container.appendChild(abLabel(record.resultIdA, record.resultIdB, record.kind));
   let L;
   try { L = await loadLeaflet(); } catch (e) { return; }
   const el = document.createElement('div');
@@ -509,9 +554,7 @@ export async function renderStoredComparison(container, record) {
   });
   const cap = document.createElement('div');
   cap.className = 'viz-cap';
-  cap.innerHTML = 'Difference map (B - A) over ' + cells.length + ' cells. ' +
-    '<span class="viz-legend"><span class="viz-sw" style="background:#37a0ff"></span>A higher' +
-    '<span class="viz-sw" style="background:#f0529c"></span>B higher</span>';
+  cap.innerHTML = v.mapTitle + ' over ' + cells.length + ' cells. ' + legendHtml(record.kind);
   container.appendChild(cap);
   container.appendChild(downloadBar([
     { label: 'Open overlay', onClick: () => renderOverlayViewer(record) },

@@ -79,12 +79,69 @@ async def test_compare_results_quantifies_divergence(httpx_mock: HTTPXMock) -> N
         )
 
     assert out["comparable"] is True
-    assert out["kind"] == "regression"
+    assert out["kind"] == "cross_model"  # default comparison mode
+    assert out["value_type"] == "regression"  # data type (renamed from "kind")
+    assert out["narration"]["labels"]["a"] == "model A"
+    assert "model-vs-model agreement" in out["narration"]["framing"]
     s = out["stats"]
     assert s["n_samples"] == 9  # 3x3 grid, all valid
     assert s["mean_diff_b_minus_a"] == 0.05  # B is uniformly +0.05
     assert s["correlation"] == 1.0  # perfectly correlated (B = A + const)
     assert s["agreement_fraction"] == 1.0  # 0.05 <= tolerance 0.1
+
+
+@pytest.mark.asyncio
+async def test_compare_results_temporal_frames_change_over_time(
+    httpx_mock: HTTPXMock,
+) -> None:
+    # Same model, two dates: A = earlier, B = later. B is uniformly +0.05, so
+    # the narration should report a net *increase* over time, not "model agree".
+    httpx_mock.add_response(url=f"{BASE}/prediction-results/a1", json=_result_with_geom("a1"))
+    httpx_mock.add_response(url=f"{BASE}/prediction-results/b1", json=_result_with_geom("b1"))
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        q = parse_qs(urlparse(str(request.url)).query)
+        lon = float(q["lon"][0])
+        offset = 0.05 if "/b1/" in str(request.url) else 0.0
+        return httpx.Response(
+            200,
+            json={
+                "records": [
+                    {
+                        "coordinates": {"lon": lon, "lat": 0},
+                        "bands": [
+                            {
+                                "property_name": "sample_score",
+                                "raw_value": round(lon + offset, 6),
+                                "classification": None,
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_compare_results").handler(
+            {"result_id_a": "a1", "result_id_b": "b1", "kind": "temporal", "grid": 3},
+            ctx,
+        )
+
+    assert out["comparable"] is True
+    assert out["kind"] == "temporal"
+    assert out["value_type"] == "regression"
+    nar = out["narration"]
+    assert nar["labels"] == {
+        "a": "earlier", "b": "later", "diff": "change (later - earlier)"
+    }
+    assert "net increase of 0.05" in nar["headline"]
+    assert "change over time" in nar["framing"]
+    # the framing string (used in `method`) must not claim model agreement
+    assert "not model-vs-model agreement" in nar["framing"]
+    assert "not model-vs-model agreement" in out["method"]
 
 
 @pytest.mark.asyncio

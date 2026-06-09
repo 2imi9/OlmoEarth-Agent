@@ -16,9 +16,11 @@ from typing import Any
 from olmoearth_agent.analysis.aoi import geometry_bbox
 from olmoearth_agent.analysis.raster_compare import (
     compare_categorical,
+    compare_narration,
     compare_numeric,
     grid_points,
     intersect_bbox,
+    normalize_kind,
 )
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
@@ -71,6 +73,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     prop = args.get("property_name")
     grid = max(2, min(12, int(args.get("grid", 6))))
     tol = float(args.get("tolerance", 0.1))
+    kind = normalize_kind(args.get("kind"))
 
     rec_a = await ctx.studio.get_prediction_result(a_id)
     rec_b = await ctx.studio.get_prediction_result(b_id)
@@ -106,19 +109,24 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         if categorical
         else compare_numeric(pairs, tolerance=tol)
     )
+    value_type = "classification" if categorical else "regression"
+    narration = compare_narration(stats, kind=kind, value_type=value_type)
     return {
         "comparable": True,
         "result_id_a": a_id,
         "result_id_b": b_id,
         "property_name": prop or (first.get("bands", [{}])[0].get("property_name") if first else None),
-        "kind": "classification" if categorical else "regression",
+        "kind": kind,
+        "value_type": value_type,
+        "narration": narration,
         "grid": f"{grid}x{grid}",
         "samples_requested": len(points),
         "shared_extent_bbox": [round(v, 5) for v in bbox],
         "stats": stats,
         "method": "pointwise pixel-value sampled on a grid over the shared "
         "extent (an estimate, not every pixel); no ground truth, so this is "
-        "model-vs-model agreement, not accuracy.",
+        + narration["framing"]
+        + ".",
     }
 
 
@@ -294,20 +302,32 @@ def build_predict_tools() -> list[RegisteredTool]:
                 description=(
                     "Quantitatively compare TWO prediction results over their "
                     "shared area, with no ground truth. Samples both rasters on "
-                    "a grid (pointwise pixel-value) and returns model-vs-model "
-                    "agreement: mean difference, mean-absolute difference, "
-                    "RMSE-between-models, correlation, and an agreement fraction "
-                    "(regression) or class agreement (classification). Use this "
-                    "to compare two rasters numerically instead of only a visual "
-                    "/ metadata comparison. This is divergence between two model "
-                    "outputs, not accuracy (which needs labels -> use "
-                    "olmoearth_classification_metrics)."
+                    "a grid (pointwise pixel-value) and returns mean difference, "
+                    "mean-absolute difference, RMSE, correlation, and an "
+                    "agreement fraction (regression) or class agreement "
+                    "(classification). Set kind='cross_model' (default) to "
+                    "compare TWO different models over the same area (how much "
+                    "they agree -- divergence, not accuracy); set kind='temporal' "
+                    "to compare ONE model's output at an earlier (A) vs a later "
+                    "(B) date (net change over time, later minus earlier). The "
+                    "returned narration adapts to the kind. Use this for a "
+                    "numeric comparison instead of only a visual / metadata one; "
+                    "for accuracy against labels use "
+                    "olmoearth_classification_metrics."
                 ),
                 parameters={
                     "type": "object",
                     "properties": {
                         "result_id_a": {"type": "string"},
                         "result_id_b": {"type": "string"},
+                        "kind": {
+                            "type": "string",
+                            "enum": ["cross_model", "temporal"],
+                            "default": "cross_model",
+                            "description": "cross_model = two models, same area "
+                            "(agreement); temporal = one model, earlier (A) vs "
+                            "later (B) date (change over time).",
+                        },
                         "property_name": {
                             "type": "string",
                             "description": "Band/property to compare; defaults to "
