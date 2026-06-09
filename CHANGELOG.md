@@ -82,6 +82,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   description, and the web UI card; AlphaEarth stays as the worked example + the
   science citation. Doc/wording only, no code change (closes #121).
 
+### Security
+- **The LLM client now routes its endpoint through the egress guard.** Studio,
+  litsearch, and HF calls were already validated via `security/egress.py`, but
+  `OlmoEarthLLM` built its OpenAI-compatible client straight from `LLM_ENDPOINT`
+  with no check — so a malicious/misconfigured endpoint could exfiltrate the
+  conversation (and a hosted-provider key). `OlmoEarthLLM.__init__` now validates
+  the endpoint: loopback → the `llm-local` capability, otherwise the `llm-cloud`
+  allowlist (`api.anthropic.com` / `api.openai.com` / `generativelanguage.googleapis.com`).
+  Consistent with the rest of the guard — audit-logs by default, blocks under
+  `OLMOEARTH_EGRESS=enforce`. SSRF to the cloud metadata IP (`169.254.169.254`) is
+  blocked in enforce mode.
+
 ## [1.2.0] - 2026-06-08
 
 ### Changed

@@ -31,6 +31,7 @@ from olmoearth_agent.llm.types import (
     ToolCall,
     ToolSpec,
 )
+from olmoearth_agent.security import egress
 
 # OpenAI Chat Completions exposes a fixed set of top-level sampling
 # parameters; everything else (top_k, chat_template_kwargs, custom vLLM
@@ -235,6 +236,18 @@ class OlmoEarthLLM:
         # that hosted providers like OpenAI and Gemini reject. Used by the
         # bridge for the ChatGPT/Gemini backends.
         self._openai_compat = openai_compat
+        # Guard the (env-overridable) LLM endpoint before the API key is bound to
+        # a client: a malicious LLM_ENDPOINT must not exfiltrate the conversation
+        # or a hosted-provider key. Local inference runs on loopback (the
+        # ``llm-local`` capability); a hosted provider must be a known cloud host
+        # (``llm-cloud``). Picked via the pure verdict so the choice is correct
+        # in audit mode too (where validate_endpoint logs instead of raising).
+        capability = (
+            "llm-local"
+            if egress.check_endpoint(self.config.endpoint, "llm-local").allowed
+            else "llm-cloud"
+        )
+        egress.validate_endpoint(self.config.endpoint, capability)
         self._client = AsyncOpenAI(
             base_url=self.config.endpoint,
             api_key=self.config.api_key,
