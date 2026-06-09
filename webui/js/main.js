@@ -12,8 +12,8 @@ import { wireTabs, wireExamples } from './landing.js';
 import { wireAttach } from './attach.js';
 import { wireAoi } from './aoi.js';
 import { wireLlmSubtab, wireLlmNudge, updateLlmNudge } from './llm.js';
-import { renderProjects } from './projects.js';
 import { wireCompares } from './compares.js';
+import { wireSwitcher, refreshActiveSegment } from './switcher.js';
 
 // Re-rendered by wireKey so detectBridge() can refresh the key card once the
 // live/demo mode is known.
@@ -57,25 +57,6 @@ function wireUserMenu() {
   wireLlmSubtab();
 }
 
-// Collapsible sidebar sections (open/closed state persisted).
-function wireCollapsibles() {
-  const LS = 'oe_collapsed';
-  let state = {};
-  try { state = JSON.parse(localStorage.getItem(LS) || '{}'); } catch (e) {}
-  document.querySelectorAll('.side-head').forEach((head) => {
-    const key = head.dataset.collapse;
-    const section = head.closest('.side-section');
-    if (state[key]) section.classList.add('collapsed');
-    head.setAttribute('aria-expanded', String(!state[key]));
-    head.addEventListener('click', () => {
-      const collapsed = section.classList.toggle('collapsed');
-      head.setAttribute('aria-expanded', String(!collapsed));
-      state[key] = collapsed;
-      try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) {}
-    });
-  });
-}
-
 /* Bring-your-own-key: the user pastes their own Studio API key; stored
    client-side only (localStorage). Real email login is future work. */
 function wireKey() {
@@ -106,7 +87,7 @@ function wireKey() {
         ? 'Connected as <code>' + maskKey(k) + '</code>. Briefs run the <strong>real agent</strong> against your Studio account through the local bridge.'
         : 'Key saved as <code>' + maskKey(k) + "</code>, but this preview <strong>doesn't call Studio yet</strong>. The data shown is sample, not your account.";
     }
-    renderProjects();  // projects only load once a key is connected
+    refreshActiveSegment();  // re-render the visible pane (Projects/Areas load once a key is connected)
   }
   renderKeyState = render;
   if (form) form.addEventListener('submit', (e) => {
@@ -163,9 +144,9 @@ document.addEventListener('DOMContentLoaded', () => {
   wireMenu();
   wireUserMenu();
   wireLlmNudge();
-  wireCollapsibles();
-  wireCompares();   // saved-comparisons panel + save-event listener
-  wireKey();        // initial render (demo assumptions) + renderProjects
+  wireSwitcher();   // segmented Projects · Comparisons · Areas switcher
+  wireCompares();   // saved-comparisons save-event listener
+  wireKey();        // initial render (demo assumptions) + refreshActiveSegment
   renderChatList();
   newChat();        // start on a fresh empty chat (landing visible)
   // Upgrade to live mode if the bridge is serving this page, then re-render.
