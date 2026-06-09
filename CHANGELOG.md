@@ -62,14 +62,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   viewer can actually *read* a score/class map. It shares the same color ramp as the
   SLD, so a QGIS export and an in-chat legend agree; `olmoearth_qgis_bridge` now
   returns a `legend` alongside the `sld` (and takes optional `classes` for a
-  categorical layer). Backend for an upcoming web-UI raster legend.
+  categorical layer). The **web UI** renders it under each result raster as a
+  value→color legend — a hover-readable gradient bar for a continuous score, or
+  labelled swatches for a class map (`webui/js/viz.js` + `styles.css`), built
+  against the Claude-design component spec.
 - **Per-skill workflow stages** (`harness.workflow` + `GET /api/skills`): the source
   of truth for which run-pipeline stages (`load context → AOI → find model → submit →
   poll → fetch → report`) a skill's tools actually touch. A **run** skill (predict)
   gets the full pipeline; an **advisory** skill (e.g. `negative-sampler`, which never
-  submits) gets just `context → report`. Backend so the web UI's workflow rail can
-  skip stages a task will never reach (today it shows all seven, leaving submit/poll/
-  fetch stuck "pending" on an advisory question).
+  submits) gets just `context → report`. The **web UI** workflow rail is now
+  **horizontal and relevance-filtered** — it renders only the stages a task will
+  reach (so an advisory question shows 3 steps, not 7 with submit/poll/fetch stuck
+  "pending"), from the forced skill's stages or inferred from observed tool calls
+  (`webui/js/run.js`, mirroring `harness/workflow.py`).
 
 ### Changed
 - **Re-recorded the README walkthrough demo** against the current polished UI --

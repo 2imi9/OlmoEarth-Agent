@@ -610,64 +610,57 @@ a:hover { color: var(--text); }
    progress rail shown above the collapsed "Reasoning & tools" box. JS (run.js)
    renders the .wf-step list and sets one state class per step as it maps tool
    calls to stages. color-mix() swapped for rgba() to match the file. */
-.workflow {
-  --wf-m: 18px; --wf-gap-y: 15px; --wf-rail: 2px;
-  display: flex; flex-direction: column; margin: 0 0 12px; font-family: var(--font);
-}
+.workflow { margin: 0 0 14px; font-family: var(--font); }
 .wf-eyebrow {
   font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--text-faint); margin: 0 0 12px; padding-left: 2px;
+  color: var(--text-faint); margin: 0 0 10px; padding-left: 2px;
 }
-.wf-step { position: relative; display: flex; align-items: flex-start; gap: 11px; padding-bottom: var(--wf-gap-y); }
-.wf-step:last-child { padding-bottom: 0; }
-/* Connector segment linking each marker down to the next. */
-.wf-step:not(:last-child)::before {
-  content: ""; position: absolute; left: calc(var(--wf-m) / 2 - var(--wf-rail) / 2);
-  top: 0.75em; width: var(--wf-rail); height: 100%;
-  background: var(--line); border-radius: var(--wf-rail); z-index: 0;
+/* Horizontal rail: dots in a row with the label beneath each, connectors between. */
+.wf-rail { --wf-dot: 14px; display: flex; align-items: flex-start; padding: 6px 4px 2px; }
+.wf-step { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; position: relative; }
+/* connector — from the previous dot-center to this dot-center */
+.wf-step::before {
+  content: ""; position: absolute; top: calc(var(--wf-dot) / 2 - 1px); left: -50%;
+  width: 100%; height: 2px; background: var(--line); z-index: 0; border-radius: 2px;
 }
-.wf-step.is-done:not(:last-child)::before { background: rgba(15,203,140,.52); }
-/* The node on the rail. */
-.wf-marker {
-  position: relative; z-index: 1; flex: 0 0 var(--wf-m); width: var(--wf-m); height: var(--wf-m);
-  margin-top: calc((1.5em - var(--wf-m)) / 2); border-radius: var(--radius-pill);
-  background: var(--bg); border: 1.5px solid var(--text-faint); box-sizing: border-box;
-  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease;
+.wf-step:first-child::before { display: none; }
+.wf-step.lead-done::before { background: var(--mint); }
+.wf-step.lead-fail::before { background: linear-gradient(90deg, var(--mint), var(--pink)); }
+.wf-dot {
+  position: relative; z-index: 1; width: var(--wf-dot); height: var(--wf-dot); border-radius: 50%;
+  display: grid; place-items: center; flex: none;
+  background: var(--bg); border: 2px solid var(--text-faint); color: var(--bg);
+  transition: background .14s ease, border-color .14s ease;
 }
-.wf-label { color: var(--text-dim); line-height: 1.5; transition: color .14s ease; text-wrap: pretty; }
-/* Pending (default): faint hollow marker + faint label. */
-.wf-step.is-pending .wf-marker,
-.wf-step:not(.is-active):not(.is-done):not(.is-failed) .wf-marker { background: var(--bg); border-color: rgba(250,242,233,.32); }
-.wf-step.is-pending .wf-label,
-.wf-step:not(.is-active):not(.is-done):not(.is-failed) .wf-label { color: var(--text-faint); }
-/* Done: mint marker + CSS check; dim label. */
-.wf-step.is-done .wf-marker { background: var(--mint); border-color: var(--mint); }
-.wf-step.is-done .wf-marker::after {
-  content: ""; position: absolute; left: 50%; top: 46%; width: 4px; height: 8px;
-  border: solid var(--bg); border-width: 0 2px 2px 0; transform: translate(-50%, -50%) rotate(45deg);
+.wf-dot svg { width: 9px; height: 9px; display: block; }
+.wf-label {
+  margin-top: 9px; font-size: 12px; line-height: 1.16; text-align: center; text-wrap: balance;
+  color: var(--text-faint); max-width: 12ch; min-height: 2.32em;
 }
+/* done — mint dot + check */
+.wf-step.is-done .wf-dot { background: var(--mint); border-color: var(--mint); color: var(--bg); }
 .wf-step.is-done .wf-label { color: var(--text-dim); }
-/* Active: pink marker, soft heartbeat pulse, glowing core, brighter label. */
-.wf-step.is-active .wf-marker { background: var(--pink); border-color: var(--pink); animation: om-wf-pulse 1.8s ease-out infinite; }
-.wf-step.is-active .wf-marker::after {
-  content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px;
-  border-radius: var(--radius-pill); background: var(--pink-hi); transform: translate(-50%, -50%);
+/* active — bigger dot, mint ring + gentle pulse, glowing core */
+.wf-step.is-active .wf-dot {
+  width: calc(var(--wf-dot) + 4px); height: calc(var(--wf-dot) + 4px);
+  background: var(--bg); border-color: var(--mint-hi);
+  box-shadow: 0 0 0 3px rgba(61, 240, 180, .18); animation: om-rail-pulse 2.1s ease-out infinite;
 }
-.wf-step.is-active .wf-label { color: var(--text); font-weight: 600; }
-@keyframes om-wf-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(240,82,156,.48); }
-  70%  { box-shadow: 0 0 0 7px rgba(240,82,156,0); }
-  100% { box-shadow: 0 0 0 0 rgba(240,82,156,0); }
+.wf-step.is-active .wf-core { width: 6px; height: 6px; border-radius: 50%; background: var(--mint-hi); }
+.wf-step.is-active .wf-label { color: var(--text); font-weight: 700; }
+/* pending — faint hollow dot */
+.wf-step.is-pending .wf-dot { border-color: var(--text-faint); opacity: .7; }
+.wf-step.is-pending .wf-label { color: var(--text-faint); }
+/* failed — pink dot + cross */
+.wf-step.is-failed .wf-dot { background: var(--pink); border-color: var(--pink); color: #fff; }
+.wf-step.is-failed .wf-label { color: var(--pink); font-weight: 600; }
+@keyframes om-rail-pulse {
+  0%   { box-shadow: 0 0 0 3px rgba(61, 240, 180, .30), 0 0 0 0 rgba(61, 240, 180, .45); }
+  70%  { box-shadow: 0 0 0 3px rgba(61, 240, 180, .10), 0 0 0 10px rgba(61, 240, 180, 0); }
+  100% { box-shadow: 0 0 0 3px rgba(61, 240, 180, .10), 0 0 0 0 rgba(61, 240, 180, 0); }
 }
-/* Failed: red-pink marker + ×; no pulse. */
-.wf-step.is-failed .wf-marker { background: #ea467e; border-color: #ea467e; animation: none; }
-.wf-step.is-failed .wf-marker::after {
-  content: "×"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 13px; line-height: 1; font-weight: 700; color: var(--bg); transform: translateY(-0.5px);
-}
-.wf-step.is-failed .wf-label { color: #f7ced7; }
 @media (prefers-reduced-motion: reduce) {
-  .wf-step.is-active .wf-marker { animation: none; box-shadow: 0 0 0 3px rgba(240,82,156,.28); }
+  .wf-step.is-active .wf-dot { animation: none; box-shadow: 0 0 0 3px rgba(61, 240, 180, .22); }
 }
 
 /* ───────────── Loading & busy states ───────────── */
@@ -960,6 +953,47 @@ button.is-busy > .ic { display: none; }
 /* LEGEND (inline within the diff summary caption) */
 .viz-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .viz-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 3px 0 8px; vertical-align: middle; }
+
+/* RESULT-RASTER LEGEND (value -> color, under a result map; for analysis).
+   Chrome-less: sits on the panel under the map, never competing with the raster. */
+.viz-rlegend { margin-top: 10px; }
+.viz-rlegend .rl-prop { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.viz-rlegend .rl-name { font-size: 12.5px; font-weight: 600; color: var(--text); letter-spacing: .01em; word-break: break-word; }
+.viz-rlegend .rl-kind {
+  font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-dim); border: 1px solid var(--line); border-radius: var(--radius-pill);
+  padding: 1px 7px; white-space: nowrap; flex: none;
+}
+.rl-grad { position: relative; }
+.rl-bar {
+  position: relative; height: 12px; border-radius: var(--radius-pill); cursor: crosshair;
+  border: 1px solid var(--line);
+}
+.rl-line {
+  position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text);
+  border-radius: 2px; transform: translateX(-50%); opacity: 0; pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(3, 38, 41, .7); transition: opacity .12s;
+}
+.rl-tip {
+  position: absolute; bottom: calc(100% + 8px); transform: translateX(-50%);
+  background: var(--text); color: var(--bg); font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 5px; white-space: nowrap; opacity: 0; pointer-events: none;
+  transition: opacity .12s; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums;
+}
+.rl-tip::after {
+  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--text);
+}
+.rl-bar.is-hover .rl-line, .rl-bar.is-hover .rl-tip { opacity: 1; }
+.rl-scale { display: flex; justify-content: space-between; margin-top: 7px; }
+.rl-scale span { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.rl-scale span:nth-child(2) { color: var(--text-faint); }
+.rl-cats { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.rl-cat { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text); }
+.rl-cat .rl-sw {
+  width: 13px; height: 13px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, .25);
+  flex: none; box-shadow: 0 0 0 1px var(--line-soft);
+}
 
 /* CAPTION + CHART */
 .viz-cap { font-size: 12px; line-height: 1.45; color: var(--text-faint); text-wrap: pretty; }

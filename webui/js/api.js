@@ -101,6 +101,16 @@ export async function apiProjects() {
   return (await _cachedGet('/api/projects', _TTL_LONG)).projects || [];
 }
 
+// GET /api/skills -> { slug: [stageKey, ...] } (per-skill relevant workflow
+// stages). Cached long (the catalog is static). Returns {} on error so the
+// workflow rail falls back to inferring stages from observed tool calls.
+export async function apiSkills() {
+  try {
+    const body = await _cachedGet('/api/skills', _TTL_LONG);
+    return Object.fromEntries((body.skills || []).map((s) => [s.slug, s.stages || []]));
+  } catch (e) { return {}; }
+}
+
 // POST /api/areas -> the stored area { id, name, project_id, bbox }. Throws on !ok.
 export async function apiCreateArea(name, geom, projectId) {
   const res = await fetch('/api/areas', {

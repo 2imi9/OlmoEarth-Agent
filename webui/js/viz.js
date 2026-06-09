@@ -109,6 +109,62 @@ function labelFor(entry, i) {
   return 'layer ' + (i + 1);
 }
 
+/* The 5-stop YlOrRd ramp (mirrors reporting/qgis.py _YLORRD), so a result-raster
+   legend reads the same low->high direction as the QGIS SLD export. */
+const _RAMP = ['#ffffb2', '#fecc5c', '#fd8d3c', '#f03b20', '#bd0026'];
+
+/* Drag/hover the gradient bar to read the mapped score at that position. */
+function wireGrad(bar) {
+  const vmin = +bar.dataset.vmin, vmax = +bar.dataset.vmax;
+  const line = bar.querySelector('.rl-line'), tip = bar.querySelector('.rl-tip');
+  const move = (e) => {
+    const r = bar.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const x = Math.max(0, Math.min(r.width, cx - r.left));
+    line.style.left = x + 'px';
+    tip.style.left = Math.max(14, Math.min(r.width - 14, x)) + 'px';
+    tip.textContent = (vmin + (x / r.width) * (vmax - vmin)).toFixed(2);
+    bar.classList.add('is-hover');
+  };
+  bar.addEventListener('pointermove', move);
+  bar.addEventListener('pointerdown', move);
+  bar.addEventListener('pointerleave', () => bar.classList.remove('is-hover'));
+}
+
+/* A value->color legend under a result raster, so a score map is readable for
+   analysis. Continuous (a score band) by default; pass legend data with
+   kind:'categorical' (entries:[{color,label}]) for a class map. The continuous
+   range defaults to 0..1 (OlmoEarth score outputs); a real range can be supplied. */
+function renderRasterLegend(cell, property, legend) {
+  legend = legend || { kind: 'continuous', vmin: 0, vmax: 1 };
+  const el = document.createElement('div');
+  el.className = 'viz-rlegend';
+  if (legend.kind === 'categorical' && Array.isArray(legend.entries)) {
+    el.innerHTML =
+      `<div class="rl-prop"><span class="rl-name">${escapeHtml(property)}</span>` +
+      '<span class="rl-kind">classes</span></div>' +
+      '<div class="rl-cats">' + legend.entries.map((e) =>
+        `<span class="rl-cat"><span class="rl-sw" style="background:${escapeHtml(e.color)}"></span>` +
+        `${escapeHtml(String(e.label))}</span>`).join('') + '</div>';
+  } else {
+    const vmin = legend.vmin != null ? legend.vmin : 0;
+    const vmax = legend.vmax != null ? legend.vmax : 1;
+    const stops = legend.stops || _RAMP.map((c, i) => ({ color: c, value: vmin + (vmax - vmin) * i / (_RAMP.length - 1) }));
+    const grad = stops.map((s) => `${s.color} ${((s.value - vmin) / (vmax - vmin) * 100).toFixed(1)}%`).join(', ');
+    const fmt = (v) => (Number.isInteger(v) ? v : Number(v).toFixed(2));
+    el.innerHTML =
+      `<div class="rl-prop"><span class="rl-name">${escapeHtml(property)}</span>` +
+      '<span class="rl-kind">score</span></div>' +
+      `<div class="rl-grad"><div class="rl-bar" data-vmin="${vmin}" data-vmax="${vmax}" ` +
+      `style="background:linear-gradient(90deg,${grad})"><div class="rl-line"></div><div class="rl-tip"></div></div>` +
+      `<div class="rl-scale"><span>${fmt(vmin)}</span><span>${fmt((vmin + vmax) / 2)}</span><span>${fmt(vmax)}</span></div></div>`;
+    cell.appendChild(el);
+    wireGrad(el.querySelector('.rl-bar'));
+    return;
+  }
+  cell.appendChild(el);
+}
+
 /* Fit a Leaflet map to a [minLon, minLat, maxLon, maxLat] bbox. */
 function fitBbox(map, b) {
   if (b && b.length === 4 && b.every((n) => Number.isFinite(n))) {
@@ -156,6 +212,8 @@ async function renderResultMap(container, entries) {
         .then((ext) => fitBbox(map, ext.bbox))
         .catch(() => { /* extent unknown -> stay at world view */ });
     }
+    // A value->color legend under each raster so the map is readable for analysis.
+    if (/property_name=/.test(entry.template)) renderRasterLegend(cell, labelFor(entry, i), entry.legend);
   });
 
   const hint = document.createElement('div');
