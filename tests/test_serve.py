@@ -24,7 +24,9 @@ def _clear_bridge_caches() -> Any:
     serve._READ_CACHE.clear()
     serve._TILE_CACHE.clear()
     serve._PV_CACHE.clear()
+    serve._STUDIO_POOL.clear()  # pooled clients are module-global too
     yield
+    serve._STUDIO_POOL.clear()
 
 
 class _FakeLLM:
@@ -416,6 +418,15 @@ class _FakeStudio:
 
     async def __aexit__(self, *_a: Any) -> None: ...
 
+    async def aclose(self) -> None: ...
+
+    async def get_bytes(self, url: str, *, timeout: float | None = None) -> Any:
+        import httpx
+
+        return httpx.Response(
+            200, content=b"PNGDATA", headers={"content-type": "image/png"}
+        )
+
     async def search_predictions(
         self, *, project_id: str, limit: int = 200
     ) -> _FakeEnv:
@@ -718,6 +729,44 @@ def test_tile_proxy_rejects_foreign_host() -> None:
     with TestClient(serve.app) as client:
         resp = client.get(f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"})
     assert resp.status_code == 403
+
+
+def test_tile_proxy_fetches_via_pooled_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A valid tile request fetches bytes through the pooled StudioClient."""
+    import urllib.parse
+
+    monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
+    src = urllib.parse.quote(
+        "https://olmoearth.allenai.org/api/v1/prediction-results/r1/tiles/{z}/{x}/{y}.png",
+        safe="",
+    )
+    with TestClient(serve.app) as client:
+        resp = client.get(f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"})
+    assert resp.status_code == 200
+    assert resp.content == b"PNGDATA"
+    assert resp.headers["content-type"].startswith("image/png")
+
+
+def test_studio_client_pool_reuses_one_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A burst of pixel-value calls for one key reuses a single pooled client
+    (the fix: no fresh TLS handshake per point)."""
+    created = {"n": 0}
+
+    class _Counting(_FakeStudio):
+        def __init__(self, *a: Any, **k: Any) -> None:
+            super().__init__(*a, **k)
+            created["n"] += 1
+
+        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
+            return {"bands": [{"property_name": "k", "raw_value": 0.5, "classification": None}]}
+
+    monkeypatch.setattr(serve, "StudioClient", _Counting)
+    with TestClient(serve.app) as client:
+        h = {"X-Olmoearth-Key": "k"}
+        # distinct coords so neither call is a pixel-value cache hit
+        client.get("/api/pixel-value?result_id=r1&lon=1.0&lat=2.0", headers=h)
+        client.get("/api/pixel-value?result_id=r1&lon=3.0&lat=4.0", headers=h)
+    assert created["n"] == 1  # one StudioClient created and reused across both
 
 
 def test_static_assets_are_revalidated() -> None:

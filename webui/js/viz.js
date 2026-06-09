@@ -357,9 +357,10 @@ export async function renderOverlayViewer(record) {
    over their shared extent and paint each cell by (B - A) as it resolves, so
    the user watches the difference map build up, then see the final stats. */
 export async function renderDiffScan(container, a, b, opts = {}) {
-  // Pointwise pixel-value through the proxy is slow, so default to a modest
-  // grid; the scan is progressive, so the map fills in as it goes.
-  const n = Math.max(4, Math.min(14, opts.grid || 7));
+  // Pointwise pixel-value through the proxy is slow (~grid^2 x2 samples), so
+  // default to a small grid; the scan is progressive, so the map fills in as it
+  // goes. 5x5 = 25 cells keeps a fresh scan responsive; raise opts.grid for detail.
+  const n = Math.max(4, Math.min(14, opts.grid || 5));
   let L;
   try { L = await loadLeaflet(); } catch (e) { container.textContent = 'map unavailable'; return; }
   const status = document.createElement('div');
