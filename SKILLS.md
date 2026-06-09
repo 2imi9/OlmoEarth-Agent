@@ -365,7 +365,7 @@ The original spec follows for reference:
 
 **Tools composed.**
 - `olmoearth_load_skill` (load the vendored "operate rslearn" SKILL.md for the pipeline + `fit`/`predict`).
-- `olmoearth_rslearn_recommend` (goal → explained setup), `olmoearth_rslearn_validate` (catch shape / label-type / band errors before training), `olmoearth_rslearn_compose` (emit a full valid finetune `model.yaml`), and `olmoearth_rslearn_diagnose` (parse a failing `prepare`/`ingest`/`materialize` run → plain-English fixes). Logic in `analysis/rslearn_advisor.py`; rslearn's tasks/models/config schemas mirrored as torch-free data, verified against the repo.
+- `olmoearth_rslearn_recommend` (goal → explained setup; with 2+ `modalities`, also a pre/mid/post **fusion** recommendation), `olmoearth_rslearn_validate` (catch shape / label-type / band errors before training), `olmoearth_rslearn_compose` (emit a full valid finetune `model.yaml`; with 2+ `modalities` it emits a **multi-source fusion** config — `mid` = one OlmoEarth encoder fed every modality and fused internally via cross-modal attention, the OlmoEarth-native default; `cross_attention` / `pre` / `post` return grounded guidance), and `olmoearth_rslearn_diagnose` (parse a failing `prepare`/`ingest`/`materialize` run → plain-English fixes). Logic in `analysis/rslearn_advisor.py`; rslearn's tasks/models/config schemas — including the multi-input modalities (`OlmoEarth.MODALITY_NAMES`) and `CrossAttentionFusionExtractor` — mirrored as torch-free data, verified against the repo.
 
 ---
 

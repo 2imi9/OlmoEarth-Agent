@@ -173,11 +173,14 @@ def recommend(
     temporal: str | None = None,
     num_samples: int | None = None,
     model_size: str | None = None,
+    modalities: list[str] | None = None,
 ) -> dict[str, Any]:
     """Recommend a complete, explained rslearn setup from a research goal.
 
-    All inputs are optional; whatever is missing is listed in ``ask_for``. Pure
-    metadata logic — no network, no torch.
+    All inputs are optional; whatever is missing is listed in ``ask_for``. Pass
+    ``modalities`` (2+) to also get a multi-source **fusion** recommendation
+    (pre / mid / post) under the ``fusion`` key. Pure metadata logic — no network,
+    no torch.
     """
     chosen = (task or "").strip().lower() or _route_task(goal or "")
     ask_for: list[str] = []
@@ -281,6 +284,11 @@ def recommend(
         ],
     }
 
+    fusion = None
+    canon, _ = _normalize_modalities(modalities)
+    if len(canon) >= 2:
+        fusion = recommend_fusion(canon, task=chosen)
+
     return {
         "task": chosen,
         "what_it_does": t["what"],
@@ -288,10 +296,12 @@ def recommend(
         "task_config": task_cfg,
         "data": data,
         "fine_tune": fine_tune,
+        "fusion": fusion,
         "notes": notes,
         "ask_for": ask_for,
         "next": "Pass the assembled config.json + model.yaml to olmoearth_rslearn_validate before training, "
-        "then run it with the olmoearth-rslearn skill (add_windows -> prepare -> ingest -> materialize -> model fit).",
+        "then run it with the olmoearth-rslearn skill (add_windows -> prepare -> ingest -> materialize -> model fit)."
+        + (" For multi-source fusion, compose with olmoearth_rslearn_compose(modalities=..., fusion=...)." if fusion else ""),
     }
 
 
@@ -473,6 +483,303 @@ _S2_BANDS = ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12
 _DECODER_KEY = {"segmentation": "segment", "per_pixel_regression": "regress",
                 "classification": "classify", "regression": "regress"}
 
+# --------------------------------------------------------------------------- #
+# Multi-source fusion (pre / mid / post), grounded in rslearn's multi-input API
+# --------------------------------------------------------------------------- #
+
+#: Each modality -> the input KEY the OlmoEarth encoder reads it under, the
+#: dataset layer's typical bands, a data_source class_path, and whether OlmoEarth
+#: fuses it natively. ``native`` modalities are exactly OlmoEarth.MODALITY_NAMES
+#: (rslearn/models/olmoearth_pretrain/model.py) -- the shared encoder iterates
+#: those names over whatever inputs are present and fuses them internally via
+#: cross-modal attention. A non-native modality (e.g. DEM) is NOT in MODALITY_NAMES,
+#: so it can't ride the shared encoder; it needs a separate encoder path
+#: (CrossAttentionFusionExtractor). Bands verified vs the rslearn clone 2026-06-09
+#: (Sentinel-1 ``vv,vh``; WorldCover single ``B1``); landsat/OSM bands are
+#: defaults to confirm against your own dataset config.
+FUSION_MODALITIES: dict[str, dict[str, Any]] = {
+    "sentinel2_l2a": {
+        "bands": _S2_BANDS, "native": True,
+        "data_source": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "what": "optical, 12-band Sentinel-2 L2A",
+    },
+    "sentinel1": {
+        "bands": ["vv", "vh"], "native": True,
+        "data_source": "rslearn.data_sources.planetary_computer.Sentinel1",
+        "what": "SAR backscatter (sees through cloud and at night)",
+    },
+    "worldcover": {
+        "bands": ["B1"], "native": True,
+        "data_source": "rslearn.data_sources.worldcover.WorldCover",
+        "what": "ESA WorldCover 10 m land-cover prior (static)",
+    },
+    "openstreetmap_raster": {
+        "bands": ["B1"], "native": True,
+        "data_source": "rslearn.data_sources.openstreetmap.OpenStreetMap",
+        "what": "rasterized OpenStreetMap features (roads / buildings)",
+    },
+    "landsat": {
+        "bands": ["B2", "B3", "B4", "B5", "B6", "B7"], "native": True,
+        "data_source": "rslearn.data_sources.planetary_computer.LandsatC2L2",
+        "what": "optical, Landsat (longer historical archive than S2)",
+    },
+    # Not an OlmoEarth pretrain modality -> needs its own encoder path.
+    "dem": {
+        "bands": ["B1"], "native": False,
+        "data_source": "rslearn.data_sources.planetary_computer.CopDemGlo30",
+        "what": "Copernicus DEM elevation (static; not an OlmoEarth pretrain modality)",
+    },
+}
+
+#: Common aliases -> canonical modality key.
+_MODALITY_ALIASES = {
+    "s2": "sentinel2_l2a", "sentinel2": "sentinel2_l2a", "sentinel-2": "sentinel2_l2a",
+    "sentinel2_l2a": "sentinel2_l2a", "optical": "sentinel2_l2a",
+    "s1": "sentinel1", "sentinel-1": "sentinel1", "sar": "sentinel1", "sentinel1": "sentinel1",
+    "worldcover": "worldcover", "landcover": "worldcover", "land_cover": "worldcover",
+    "osm": "openstreetmap_raster", "openstreetmap": "openstreetmap_raster",
+    "openstreetmap_raster": "openstreetmap_raster",
+    "landsat": "landsat", "dem": "dem", "elevation": "dem", "srtm": "dem",
+}
+
+#: The OlmoEarth-native modalities (the shared encoder fuses these internally).
+_NATIVE_MODALITIES = [m for m, v in FUSION_MODALITIES.items() if v["native"]]
+
+
+def _normalize_modalities(
+    modalities: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Map modality aliases to canonical keys; return ``(known, unknown)`` (deduped)."""
+    known: list[str] = []
+    unknown: list[str] = []
+    for m in modalities or []:
+        canon = _MODALITY_ALIASES.get(str(m).strip().lower())
+        if canon and canon not in known:
+            known.append(canon)
+        elif not canon and str(m).strip():
+            unknown.append(str(m))
+    return known, unknown
+
+
+def recommend_fusion(
+    modalities: list[str] | None,
+    *,
+    task: str | None = None,  # noqa: ARG001 - reserved for future task-aware advice
+    robust_to_missing: bool = False,
+) -> dict[str, Any]:
+    """Recommend a multi-source fusion strategy (pre / mid / post) for a modality set.
+
+    Grounded in rslearn's actual multi-input + fusion API:
+
+    * **mid** (feature-level; the RECOMMENDED default) — one OlmoEarth encoder fed
+      several modality inputs. The pretrained encoder fuses them internally via
+      cross-modal attention (it iterates ``OlmoEarth.MODALITY_NAMES`` over whatever
+      inputs are present). No extra fusion module to tune. Valid only when every
+      modality is an OlmoEarth pretrain modality.
+    * **cross_attention** (also mid/feature-level, separate paths) — distinct
+      encoder paths fused by ``rslearn.models.xatt_fusion.CrossAttentionFusionExtractor``
+      (a primary/query stream + context streams, with learned memory tokens and a
+      ``context_dropout_prob`` for missing-context robustness). Use when a modality
+      is NOT an OlmoEarth pretrain modality (e.g. DEM), or differs sharply in
+      resolution/semantics, or you want an explicit primary/context relationship.
+    * **pre** (input concatenation) — stack co-registered bands into a single input,
+      one encoder over the stack. Simplest, but with OlmoEarth you forfeit the
+      modality-specific pretrained embeddings, so it only makes sense for same-grid
+      band *extensions*, not genuinely different sensors.
+    * **post** (decision fusion / ensemble) — train one model per modality and
+      ensemble their predictions. Most robust to a modality being missing at
+      inference (a dropped modality just removes one vote).
+
+    Pure metadata; no torch, no network.
+    """
+    canon, unknown = _normalize_modalities(modalities)
+    if len(canon) < 2:
+        return {
+            "ok": False,
+            "modalities": canon,
+            "unknown_modalities": unknown,
+            "note": "Fusion needs 2+ modalities. With one, call olmoearth_rslearn_compose "
+            "directly. Known modalities: " + ", ".join(FUSION_MODALITIES),
+        }
+
+    non_native = [m for m in canon if not FUSION_MODALITIES[m]["native"]]
+    primary = "sentinel2_l2a" if "sentinel2_l2a" in canon else canon[0]
+
+    if robust_to_missing:
+        strategy, why = "post", (
+            "A modality may be missing at inference, so decision-level fusion is the "
+            "most robust: train one model per modality and ensemble the predictions — "
+            "a dropped modality just removes one vote instead of breaking the forward pass."
+        )
+    elif non_native:
+        strategy, why = "cross_attention", (
+            f"{', '.join(non_native)} is not an OlmoEarth pretrain modality "
+            f"(MODALITY_NAMES = {', '.join(_NATIVE_MODALITIES)}), so it can't ride the "
+            f"shared encoder. Use a CrossAttentionFusionExtractor with {primary} as the "
+            "primary/query path and the other modality as a context path."
+        )
+    else:
+        strategy, why = "mid", (
+            "Every chosen modality is an OlmoEarth pretrain modality, so the simplest and "
+            "strongest option is one OlmoEarth encoder fed all of them — it was pretrained "
+            "to fuse them internally via cross-modal attention, with no extra fusion module "
+            "to tune. compose() can emit this multi-input config directly."
+        )
+
+    alternatives = {
+        "mid": "One OlmoEarth encoder, multiple modality inputs (internal cross-modal fusion).",
+        "cross_attention": "Separate encoder paths fused by CrossAttentionFusionExtractor "
+        "(primary + context); for non-native modalities or an explicit primary/context split.",
+        "pre": "Concatenate co-registered bands at the input; only for same-grid band extensions.",
+        "post": "One model per modality, ensemble predictions; most robust to a missing modality.",
+    }
+    notes = [
+        f"primary modality: {primary} "
+        + ("(Sentinel-2 is the natural query stream)" if primary == "sentinel2_l2a" else ""),
+    ]
+    if any(
+        "temporal" in str(task or "").lower() or m in {"sentinel1", "sentinel2_l2a"}
+        for m in canon
+    ):
+        notes.append(
+            "If a modality is a time series, wrap its encoder in "
+            "rslearn.models.simple_time_series.SimpleTimeSeries (temporal fusion is "
+            "orthogonal to multi-modal fusion)."
+        )
+    if unknown:
+        notes.append(f"unrecognized modalities ignored: {unknown}")
+
+    return {
+        "ok": True,
+        "modalities": canon,
+        "strategy": strategy,
+        "why": why,
+        "primary": primary,
+        "alternatives": alternatives,
+        "unknown_modalities": unknown,
+        "notes": notes,
+        "compose_hint": f"olmoearth_rslearn_compose(task=..., modalities={canon}, fusion='{strategy}')",
+    }
+
+
+def _modality_inputs(
+    modalities: list[str], s2_bands: list[str] | None = None
+) -> dict[str, dict[str, Any]]:
+    """The model-input block for a set of native modalities (one entry each).
+
+    Each modality is keyed by its OlmoEarth modality name and points at a dataset
+    layer of the same short name; ``s2_bands`` overrides the Sentinel-2 band list.
+    """
+    inputs: dict[str, dict[str, Any]] = {}
+    layer_name = {"sentinel2_l2a": "sentinel2", "sentinel1": "sentinel1",
+                  "worldcover": "worldcover", "openstreetmap_raster": "openstreetmap",
+                  "landsat": "landsat", "dem": "dem"}
+    for m in modalities:
+        spec = FUSION_MODALITIES[m]
+        bands = (s2_bands or spec["bands"]) if m == "sentinel2_l2a" else spec["bands"]
+        inputs[m] = {
+            "data_type": "raster",
+            "layers": [layer_name[m]],
+            "bands": list(bands),
+            "passthrough": True,
+            "dtype": "FLOAT32",
+        }
+    return inputs
+
+
+#: Fusion-strategy aliases -> canonical {mid, cross_attention, pre, post}.
+_FUSION_ALIASES = {
+    "mid": "mid", "shared": "mid", "shared_encoder": "mid", "feature": "mid",
+    "cross_attention": "cross_attention", "xatt": "cross_attention",
+    "cross-attention": "cross_attention", "late": "cross_attention",
+    "pre": "pre", "early": "pre", "concat": "pre", "input": "pre",
+    "post": "post", "ensemble": "post", "decision": "post",
+}
+
+
+def _normalize_fusion(fusion: str | None) -> str | None:
+    """Map a fusion-strategy alias to its canonical key, or ``None`` if unset/unknown."""
+    if not fusion:
+        return None
+    return _FUSION_ALIASES.get(str(fusion).strip().lower())
+
+
+def _fusion_guidance(
+    strategy: str,
+    task: str,
+    modalities: list[str],
+    emb: int,
+    size: str,
+    rec: dict[str, Any],
+    unknown: list[str],
+) -> dict[str, Any]:
+    """Grounded guidance for the strategies compose() does not auto-emit.
+
+    ``cross_attention`` returns a real ``CrossAttentionFusionExtractor`` skeleton
+    (class + channel dims grounded in rslearn's ``xatt_fusion``); ``pre`` and
+    ``post`` return the recipe + caveats. No YAML, because each needs choices
+    compose() can't make safely on its own.
+    """
+    primary = rec["primary"]
+    others = [m for m in modalities if m != primary]
+    base: dict[str, Any] = {
+        "ok": True, "task": task, "model_size": size, "strategy": strategy,
+        "modalities": modalities, "why": rec["why"], "yaml": None, "config": None,
+        "alternatives": rec["alternatives"], "unknown_modalities": unknown,
+    }
+    if strategy == "cross_attention":
+        base["guidance"] = {
+            "encoder_class": "rslearn.models.xatt_fusion.CrossAttentionFusionExtractor",
+            "primary_path": f"[OlmoEarth reading {primary}] (the query stream)",
+            "context_paths": [f"[OlmoEarth reading {m}]" for m in others],
+            "primary_output_channels": emb,
+            "context_output_channels": [emb for _ in others],
+            "missing_context_robustness": "set context_dropout_prob > 0 to train for a "
+            "context modality being absent at inference.",
+            "steps": [
+                "Define one encoder path per modality (each an OlmoEarth FeatureExtractor "
+                "restricted to that modality's input).",
+                f"Wrap them in CrossAttentionFusionExtractor(primary_path=[...{primary}...], "
+                f"context_paths=[[...{', '.join(others) or 'context'}...]], "
+                f"primary_output_channels={emb}, context_output_channels={[emb for _ in others]}).",
+                f"Feed the fused {emb}-channel output into the same decoder/head compose() "
+                f"emits for {task} (decoder in_channels = {emb}).",
+            ],
+        }
+        base["note"] = (
+            "cross_attention needs per-path input wiring, so this is a grounded skeleton, "
+            "not an auto-emitted YAML. Assemble the model.yaml and check it with "
+            "olmoearth_rslearn_validate."
+        )
+    elif strategy == "pre":
+        base["guidance"] = {
+            "steps": [
+                "Concatenate the co-registered bands of all modalities into ONE dataset "
+                "layer / input band-set, then run a single encoder over the stack.",
+            ],
+            "caveat": "With OlmoEarth you forfeit the modality-specific pretrained "
+            "embeddings, so input/pre-fusion only makes sense for same-grid band "
+            "EXTENSIONS of one sensor. For genuinely different sensors prefer 'mid' "
+            "(shared encoder): compose(..., fusion='mid').",
+        }
+        base["note"] = "pre-fusion is rarely best with a pretrained multi-modal encoder; see caveat."
+    else:  # post
+        base["guidance"] = {
+            "steps": [
+                f"Run compose() once per modality ({', '.join(modalities)}) to get one "
+                "single-modality model.yaml each.",
+                "Train each model independently.",
+                "Ensemble the per-modality predictions at inference (average probabilities "
+                "or vote) — a missing modality simply drops its vote.",
+            ],
+            "best_when": "you need robustness to a modality being missing at inference and "
+            "each modality is individually informative.",
+        }
+        base["note"] = "post/decision fusion is N independent trainings, not one config."
+    if unknown:
+        base["notes"] = [f"unrecognized modalities ignored: {unknown}"]
+    return base
+
 
 def _decoder_chain(task: str, emb_dim: int, out_channels: int, patch_size: int) -> list[dict[str, Any]]:
     """The OlmoEarth decoder chain for a task (mirrors olmoearth-data-prep)."""
@@ -509,6 +816,8 @@ def compose(
     total_epochs: int = 40,
     nodata_value: int | None = None,
     patch_size: int = 4,
+    modalities: list[str] | None = None,
+    fusion: str | None = None,
 ) -> dict[str, Any]:
     """Emit a complete, valid OlmoEarth/rslearn finetune ``model.yaml``.
 
@@ -517,6 +826,14 @@ def compose(
     ``FreezeUnfreeze`` — generalized across the four dense/window tasks. Returns
     ``{ok, yaml, config, notes, ask_for}``. Detection is *guided* rather than
     auto-emitted (Faster R-CNN anchors need tuning). Torch-free (dict + YAML only).
+
+    Pass ``modalities`` (2+) to compose a **multi-source fusion** config. The
+    ``fusion`` strategy (else auto-picked by :func:`recommend_fusion`) selects the
+    rslearn mechanism: ``mid`` (the default) emits a full valid multi-input config —
+    one OlmoEarth encoder fed every modality, fused internally; ``cross_attention``,
+    ``pre``, and ``post`` return grounded *guidance* (a separate-path
+    ``CrossAttentionFusionExtractor`` skeleton, input-concat caveats, or a
+    train-per-modality-and-ensemble recipe) rather than an auto-emitted YAML.
     """
     chosen = (task or "").strip().lower() or _route_task(goal or "")
     if chosen not in TASKS:
@@ -537,6 +854,48 @@ def compose(
             "object scale, so it isn't auto-emitted. Use olmoearth_rslearn_recommend for the shape, and the "
             "rslearn DetectionTask example (Fpn -> FasterRCNN with num_classes = real classes + 1 for "
             "background) as the template.",
+            "ask_for": [],
+        }
+
+    # --- multi-source fusion: resolve the strategy, emit (mid) or guide (others) ---
+    canon, unknown_modalities = _normalize_modalities(modalities)
+    fusion_block: dict[str, Any] | None = None
+    emit_modalities = ["sentinel2_l2a"]
+    if len(canon) >= 2:
+        strategy = _normalize_fusion(fusion) or recommend_fusion(
+            canon, task=chosen, robust_to_missing=(fusion or "").strip().lower() in {"post", "ensemble"}
+        )["strategy"]
+        rec = recommend_fusion(canon, task=chosen, robust_to_missing=(strategy == "post"))
+        non_native = [m for m in canon if not FUSION_MODALITIES[m]["native"]]
+        # A non-native modality can't ride the shared OlmoEarth encoder -> steer to cross_attention.
+        if strategy == "mid" and non_native:
+            strategy = "cross_attention"
+            rec["why"] = (
+                f"{', '.join(non_native)} is not an OlmoEarth pretrain modality, so 'mid' "
+                "(shared encoder) can't include it; using cross_attention instead. " + rec["why"]
+            )
+        if strategy != "mid":
+            return _fusion_guidance(
+                strategy, chosen, canon, emb, size, rec, unknown_modalities
+            )
+        emit_modalities = canon
+        fusion_block = {
+            "strategy": "mid", "modalities": canon, "why": rec["why"],
+            "mechanism": "one OlmoEarth encoder fed all modality inputs; it fuses them "
+            "internally via cross-modal attention (no extra fusion module).",
+            "alternatives": rec["alternatives"],
+        }
+        if unknown_modalities:
+            notes.append(f"unrecognized modalities ignored: {unknown_modalities}")
+    elif len(canon) == 1:
+        emit_modalities = canon  # single explicit modality (still one OlmoEarth input)
+
+    if not any(FUSION_MODALITIES[m]["native"] for m in emit_modalities):
+        return {
+            "ok": False, "task": chosen, "modalities": emit_modalities,
+            "note": "OlmoEarth's shared encoder needs at least one pretrain modality "
+            f"({', '.join(_NATIVE_MODALITIES)}); {emit_modalities} alone can't be encoded "
+            "by it. Add Sentinel-2, or use cross_attention with a separate encoder path.",
             "ask_for": [],
         }
 
@@ -600,11 +959,7 @@ def compose(
             "class_path": "rslearn.train.data_module.RslearnDataModule",
             "init_args": {
                 "path": dataset_path,
-                "inputs": {
-                    "sentinel2_l2a": {"data_type": "raster", "layers": ["sentinel2"],
-                                      "bands": bands or _S2_BANDS, "passthrough": True, "dtype": "FLOAT32"},
-                    "label": label_input,
-                },
+                "inputs": {**_modality_inputs(emit_modalities, bands), "label": label_input},
                 "task": {
                     "class_path": "rslearn.train.tasks.multi_task.MultiTask",
                     "init_args": {
@@ -628,6 +983,13 @@ def compose(
         },
     }
 
+    if fusion_block:
+        notes.append(
+            f"mid-fusion: one OlmoEarth encoder reads {len(emit_modalities)} modality inputs "
+            f"({', '.join(emit_modalities)}) and fuses them internally — the decoder still sees a "
+            f"single {emb}-channel feature map, so its channel contract is unchanged. Make sure your "
+            "dataset config.json has a layer for each modality input."
+        )
     notes.append(
         f"decoder in_channels = {emb} (OlmoEarth {size} embedding dim), out_channels = {out_channels} "
         f"({'num_classes' if t['needs_num_classes'] else '1 for regression'}); encoder frozen for "
@@ -642,6 +1004,7 @@ def compose(
         notes.append("PyYAML unavailable; returning the config as a dict only.")
 
     return {"ok": True, "task": chosen, "model_size": size, "yaml": text, "config": config,
+            "modalities": emit_modalities, "fusion": fusion_block,
             "notes": notes, "ask_for": ask_for,
             "next": "Run olmoearth_rslearn_validate on this model.yaml + your dataset config.json, then "
             "`rslearn model fit --config model.yaml` (a long GPU job — see the olmoearth-rslearn skill)."}
