@@ -116,3 +116,76 @@ def compare_categorical(
         "agreement_fraction": round(agree / n, 4),
         "n_disagree": n - agree,
     }
+
+
+#: The two comparison modes. ``cross_model`` = two different models over the
+#: same area (how much do they agree?); ``temporal`` = one model's output at an
+#: earlier (A) vs a later (B) date (how much did it change over time?).
+COMPARISON_KINDS = ("cross_model", "temporal")
+
+
+def normalize_kind(kind: str | None) -> str:
+    """Coerce a kind to a known value, defaulting to ``cross_model``."""
+    return kind if kind in COMPARISON_KINDS else "cross_model"
+
+
+def compare_narration(
+    stats: dict[str, Any], *, kind: str, value_type: str
+) -> dict[str, Any]:
+    """Kind-aware human labels for a comparison result.
+
+    The numbers in ``stats`` are identical regardless of kind -- ``B - A`` is
+    ``B - A`` either way. What differs is the *meaning*: ``cross_model`` asks
+    "how much do two model outputs agree?", while ``temporal`` asks "how much
+    did one model's output change between an earlier (A) and a later (B)
+    date?". Returns the A / B / difference labels plus a one-line ``headline``
+    and a ``framing`` caveat so the agent and the web UI tell the right story
+    instead of always saying "model agreement".
+    """
+    kind = normalize_kind(kind)
+    n = stats.get("n_samples", 0)
+    agree = stats.get("agreement_fraction")
+    agree_pct = None if agree is None else round(agree * 100)
+
+    if kind == "temporal":
+        labels = {"a": "earlier", "b": "later", "diff": "change (later - earlier)"}
+        if value_type == "classification":
+            headline = (
+                f"class unchanged in {agree_pct}% of {n} cells"
+                if agree_pct is not None
+                else "no overlapping valid cells to compare over time"
+            )
+        else:
+            net = stats.get("mean_diff_b_minus_a")
+            if net is None:
+                headline = "no overlapping valid cells to compare over time"
+            elif net > 0:
+                headline = f"net increase of {net} (later - earlier) across {n} cells"
+            elif net < 0:
+                headline = (
+                    f"net decrease of {abs(net)} (later - earlier) across {n} cells"
+                )
+            else:
+                headline = f"no net change (later - earlier) across {n} cells"
+        framing = (
+            "change over time for one model (later minus earlier), "
+            "not model-vs-model agreement"
+        )
+    else:  # cross_model
+        labels = {"a": "model A", "b": "model B", "diff": "difference (B - A)"}
+        if value_type == "classification":
+            headline = (
+                f"the two models agree on {agree_pct}% of {n} cells"
+                if agree_pct is not None
+                else "no overlapping valid cells to compare"
+            )
+        else:
+            headline = (
+                f"the two models agree within tolerance on {agree_pct}% of {n} cells"
+                if agree_pct is not None
+                else "no overlapping valid cells to compare"
+            )
+        framing = (
+            "model-vs-model agreement (no ground truth), not accuracy"
+        )
+    return {"kind": kind, "labels": labels, "headline": headline, "framing": framing}

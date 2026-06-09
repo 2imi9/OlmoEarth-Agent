@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from olmoearth_agent.analysis.raster_compare import (
     compare_categorical,
+    compare_narration,
     compare_numeric,
     grid_points,
     intersect_bbox,
+    normalize_kind,
     pearson,
 )
 
@@ -60,3 +62,73 @@ def test_compare_categorical_agreement() -> None:
     assert s["n_samples"] == 3
     assert s["n_disagree"] == 1
     assert s["agreement_fraction"] == round(2 / 3, 4)
+
+
+def test_normalize_kind() -> None:
+    assert normalize_kind("temporal") == "temporal"
+    assert normalize_kind("cross_model") == "cross_model"
+    assert normalize_kind(None) == "cross_model"  # default
+    assert normalize_kind("nonsense") == "cross_model"  # unknown -> default
+
+
+def test_narration_cross_model_regression_frames_agreement() -> None:
+    stats = {"n_samples": 9, "agreement_fraction": 0.78, "mean_diff_b_minus_a": 0.05}
+    nar = compare_narration(stats, kind="cross_model", value_type="regression")
+    assert nar["kind"] == "cross_model"
+    assert nar["labels"] == {"a": "model A", "b": "model B", "diff": "difference (B - A)"}
+    assert "two models agree" in nar["headline"]
+    assert "78% of 9 cells" in nar["headline"]
+    assert "model-vs-model agreement" in nar["framing"]
+    assert "accuracy" in nar["framing"]
+
+
+def test_narration_cross_model_classification() -> None:
+    nar = compare_narration(
+        {"n_samples": 4, "agreement_fraction": 0.5}, kind="cross_model",
+        value_type="classification",
+    )
+    assert nar["headline"] == "the two models agree on 50% of 4 cells"
+
+
+def test_narration_temporal_regression_increase() -> None:
+    stats = {"n_samples": 9, "agreement_fraction": 1.0, "mean_diff_b_minus_a": 0.05}
+    nar = compare_narration(stats, kind="temporal", value_type="regression")
+    assert nar["labels"] == {
+        "a": "earlier", "b": "later", "diff": "change (later - earlier)"
+    }
+    assert nar["headline"] == "net increase of 0.05 (later - earlier) across 9 cells"
+    assert "change over time" in nar["framing"]
+    assert "not model-vs-model agreement" in nar["framing"]
+
+
+def test_narration_temporal_regression_decrease_uses_magnitude() -> None:
+    nar = compare_narration(
+        {"n_samples": 9, "mean_diff_b_minus_a": -0.2}, kind="temporal",
+        value_type="regression",
+    )
+    # sign is conveyed by the word, magnitude is positive
+    assert nar["headline"] == "net decrease of 0.2 (later - earlier) across 9 cells"
+
+
+def test_narration_temporal_regression_no_change() -> None:
+    nar = compare_narration(
+        {"n_samples": 9, "mean_diff_b_minus_a": 0.0}, kind="temporal",
+        value_type="regression",
+    )
+    assert nar["headline"] == "no net change (later - earlier) across 9 cells"
+
+
+def test_narration_temporal_classification_frames_change() -> None:
+    nar = compare_narration(
+        {"n_samples": 9, "agreement_fraction": 0.9}, kind="temporal",
+        value_type="classification",
+    )
+    assert nar["headline"] == "class unchanged in 90% of 9 cells"
+
+
+def test_narration_unknown_kind_falls_back_to_cross_model() -> None:
+    nar = compare_narration(
+        {"n_samples": 1, "agreement_fraction": 1.0}, kind="bogus",
+        value_type="regression",
+    )
+    assert nar["kind"] == "cross_model"

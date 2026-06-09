@@ -37,6 +37,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   (Sentinel-1 `vv,vh`; WorldCover `B1`; the five `MODALITY_NAMES` + their native flag). The
   emitted mid config round-trips through `olmoearth_rslearn_validate` with no errors. Tool count
   unchanged (still four). Closes #120.
+- **Comparison `kind` (`cross_model` | `temporal`) for `olmoearth_compare_results`.**
+  The two-raster compare (skill #4) now distinguishes *two different models over the
+  same area* (`cross_model`, the default — "how much do they agree?") from *one
+  model's output at an earlier (A) vs a later (B) date* (`temporal` — "net change over
+  time, later minus earlier"). The numbers are identical; the *narration* differs. A
+  new `compare_narration()` helper (`analysis/raster_compare.py`) emits kind-aware A/B
+  labels, a one-line headline, and a framing caveat, and the tool returns them plus
+  the comparison `kind` (the old `kind` data-type field is renamed `value_type`). The
+  in-chat compare card, difference-scan caption, A/B legend, saved-comparison view, and
+  overlay slider in `webui/js/viz.js` all branch on the kind (e.g. temporal shows
+  "Change map (later − earlier)" with a *decreased / increased* legend instead of
+  "Difference map (B − A) / A higher / B higher"); records without a `kind` fall back
+  to `cross_model`, so saved comparisons stay readable. Closes #124.
 - **Server-side forced-skill routing** (`forced_skill`): `POST /api/run` accepts an
   optional allow-list-validated `forced_skill` slug; `LeadAgent` appends a
   `FORCED SKILL:` directive to the system prompt, and the web UI sends a clean
