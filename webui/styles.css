@@ -100,26 +100,30 @@ a:hover { color: var(--text); }
 /* Divider between Chats and the switcher */
 .sb-div { height: 1px; background: var(--line); margin: 2px 6px; flex: none; }
 
-/* Segmented switcher: 3-way pill, one active segment fills --mint-hi */
+/* Segmented switcher (Claude-style): the ACTIVE segment shows icon + label in a
+   --mint-hi pill; the inactive ones collapse to icon-only. space-between sits the
+   labeled pill between the two flanking icon buttons. */
 .sb-switch { padding: 2px 2px 4px; flex: none; }
 .seg {
-  display: flex; gap: 2px; padding: 3px;
+  display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 3px;
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-pill);
 }
 .seg-btn {
-  flex: 1; min-width: 0; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; min-width: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 0; background: transparent; color: var(--text-dim);
-  padding: 7px 4px; border-radius: var(--radius-pill);
+  padding: 7px 10px; border-radius: var(--radius-pill);
   transition: color .14s ease, background .14s ease;
 }
 .seg-btn .ic { font-size: 16px; }
+.seg-btn .seg-lbl { display: none; font-size: 11.5px; font-weight: 700; letter-spacing: .01em; white-space: nowrap; }
 .seg-btn:hover { color: var(--text); }
 .seg-btn:focus-visible { outline: 2px solid var(--mint-hi); outline-offset: 1px; }
 .seg-btn[aria-selected="true"] {
   color: #06302a; background: var(--mint-hi);
   box-shadow: 0 1px 6px -1px rgba(44,209,154,.45);
 }
+.seg-btn[aria-selected="true"] .seg-lbl { display: inline; }
 
 /* Secondary panel: one pane shown at a time, scrolls on its own */
 .sb-secondary { display: flex; flex-direction: column; min-height: 0; flex: 6 1 0; }
