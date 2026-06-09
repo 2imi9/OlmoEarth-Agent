@@ -44,7 +44,9 @@ export function wireSlash() {
 
   const render = (q) => {
     const ql = q.toLowerCase();
-    items = SKILL_LIST.filter((s) => s.slug.includes(ql)).slice(0, 8);
+    // Show every matching skill — the menu is scrollable (max-height + overflow),
+    // so an empty "/" lists all skills rather than a misleading first-8 slice.
+    items = SKILL_LIST.filter((s) => s.slug.includes(ql));
     if (!items.length) { close(); return; }
     active = 0;
     menu.innerHTML =
