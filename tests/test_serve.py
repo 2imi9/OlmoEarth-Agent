@@ -198,6 +198,16 @@ def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
         assert resp.status_code == 200
         assert captured["forced_skill"] == ""
         captured.clear()
+        # A well-formed but NON-EXISTENT slug is ignored (never injected into the
+        # prompt directive), even though it passes the shape regex.
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hi", "forced_skill": "totally-fake-skill"},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+        assert resp.status_code == 200
+        assert captured["forced_skill"] == ""
+        captured.clear()
         # Absent -> empty (no pin).
         client.post("/api/run", json={"brief": "hi"}, headers={"X-Olmoearth-Key": "k"})
     assert captured["forced_skill"] == ""

@@ -80,6 +80,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `studio/client.py`)
 
 ### Fixed
+- **`forced_skill` is existence-checked, not just shape-checked.** `POST /api/run`
+  validated the slug's *shape* (a `[a-z0-9-]` regex) but not that it names a real
+  skill, so a well-formed but unknown slug (e.g. `totally-fake-skill`) was injected
+  into the `FORCED SKILL: …the '<slug>' skill` prompt directive. The bridge now also
+  checks membership against the actual catalog (`SKILLS` slugs, the same 17 the webui
+  "/" menu offers) and ignores anything that isn't a real skill (`serve.py`).
 - **Skill #17 doc accuracy: "two tools" → four.** `olmoearth-rslearn` has shipped
   four in-repo tools since #119 (`recommend` / `validate` / `compose` / `diagnose`,
   the last two gaining fusion via #120), but several docstrings/descriptions still
