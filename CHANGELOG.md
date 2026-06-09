@@ -78,11 +78,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 - **Sidebar "switch bar" (Claude-desktop-style nav reorg).** The three stacked
   collapsible sections (Chats / Projects / Comparisons) are replaced by one
-  always-visible **Chats** list plus a 3-way **icon-only segmented switcher**
-  (Projects · Comparisons · **Areas** — folder / compare / map-pin glyphs, names in
-  `aria-label` + tooltip) feeding a single secondary pane — only one list shows at a
-  time, the active segment is persisted, and Chats + the pane share the flexible
-  middle so each scrolls independently. The switcher is a proper **WAI-ARIA tablist**:
+  always-visible **Chats** list plus a 3-way **segmented switcher**
+  (Projects · Comparisons · **Areas** — folder / compare / map-pin glyphs) feeding a
+  single secondary pane. Claude-style, the **active** segment shows its icon + label
+  while the inactive ones collapse to icon-only (names also in `aria-label` + tooltip).
+  Only one list shows at a time, the active segment is persisted, and Chats + the pane
+  share the flexible middle so each scrolls independently. The switcher is a proper **WAI-ARIA tablist**:
   ←/→/Home/End keyboard nav with roving `tabindex`, and `aria-controls`/
   `aria-labelledby` linking each tab to its pane. *New chat* stays pinned
   at the top and the Studio-key chip at the bottom. **Areas is new**: every AOI
