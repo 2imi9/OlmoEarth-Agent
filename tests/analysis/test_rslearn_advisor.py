@@ -9,6 +9,7 @@ from olmoearth_agent.analysis.rslearn_advisor import (
     compose,
     diagnose,
     recommend,
+    recommend_fusion,
     validate_config,
 )
 
@@ -209,6 +210,116 @@ def test_compose_detection_is_guided_not_emitted() -> None:
 def test_compose_regression_without_scale_factor_asks() -> None:
     res = compose(task="regression")
     assert any("scale_factor" in a for a in res["ask_for"])
+
+
+# --------------------------------------------------------------------------- #
+# multi-source fusion (recommend_fusion + compose modalities/fusion)
+# --------------------------------------------------------------------------- #
+
+
+def test_recommend_fusion_native_modalities_pick_mid() -> None:
+    r = recommend_fusion(["sentinel2", "s1"])  # aliases normalize
+    assert r["ok"] is True
+    assert r["modalities"] == ["sentinel2_l2a", "sentinel1"]
+    assert r["strategy"] == "mid"  # both are OlmoEarth pretrain modalities
+    assert r["primary"] == "sentinel2_l2a"
+
+
+def test_recommend_fusion_non_native_picks_cross_attention() -> None:
+    # DEM is not in OlmoEarth.MODALITY_NAMES -> can't ride the shared encoder
+    r = recommend_fusion(["sentinel2", "dem"])
+    assert r["strategy"] == "cross_attention"
+    assert "not an OlmoEarth pretrain modality" in r["why"]
+
+
+def test_recommend_fusion_robust_to_missing_picks_post() -> None:
+    r = recommend_fusion(["sentinel2", "sentinel1"], robust_to_missing=True)
+    assert r["strategy"] == "post"
+
+
+def test_recommend_fusion_single_modality_is_not_fusion() -> None:
+    r = recommend_fusion(["sentinel2"])
+    assert r["ok"] is False
+    assert "2+" in r["note"]
+
+
+def test_compose_default_is_unchanged_single_s2_input() -> None:
+    # No modalities -> backward-compatible single Sentinel-2 input, no fusion block
+    res = compose(task="segmentation", num_classes=3)
+    inputs = res["config"]["data"]["init_args"]["inputs"]
+    assert set(inputs) == {"sentinel2_l2a", "label"}
+    assert res["fusion"] is None
+
+
+def test_compose_mid_fusion_emits_valid_multi_input_config() -> None:
+    res = compose(task="segmentation", num_classes=3,
+                  modalities=["sentinel2", "s1", "worldcover"])
+    assert res["ok"] is True
+    assert res["fusion"]["strategy"] == "mid"
+    inputs = res["config"]["data"]["init_args"]["inputs"]
+    assert set(inputs) == {"sentinel2_l2a", "sentinel1", "worldcover", "label"}
+    # grounded per-modality bands (verified vs the rslearn clone)
+    assert inputs["sentinel1"]["bands"] == ["vv", "vh"]
+    assert inputs["worldcover"]["bands"] == ["B1"]
+    # one OlmoEarth encoder still feeds the decoder (internal fusion, channel contract intact)
+    enc = res["config"]["model"]["init_args"]["model"]["init_args"]["encoder"]
+    assert len(enc) == 1 and enc[0]["class_path"].endswith("OlmoEarth")
+    # and the emitted config passes the validator against a matching dataset config
+    ds = {"layers": {
+        "sentinel2": {"type": "raster", "band_sets": [{"dtype": "uint16", "bands": inputs["sentinel2_l2a"]["bands"]}]},
+        "sentinel1": {"type": "raster", "band_sets": [{"dtype": "float32", "bands": ["vv", "vh"]}]},
+        "worldcover": {"type": "raster", "band_sets": [{"dtype": "uint8", "bands": ["B1"]}]},
+        "label": {"type": "raster", "is_target": True, "band_sets": [{"dtype": "int32", "bands": ["category"]}]},
+    }}
+    v = validate_config(dataset_config=ds, model_config=res["config"])
+    assert v["ok"] is True, v["errors"]
+
+
+def test_compose_cross_attention_returns_grounded_skeleton_not_yaml() -> None:
+    # auto-picked because DEM is non-native
+    res = compose(task="segmentation", num_classes=3, modalities=["sentinel2", "dem"])
+    assert res["strategy"] == "cross_attention"
+    assert res["yaml"] is None  # guidance, not an auto-emitted config
+    g = res["guidance"]
+    assert g["encoder_class"].endswith("CrossAttentionFusionExtractor")
+    assert g["primary_output_channels"] == EMBEDDING_SIZES["base"]
+
+
+def test_compose_mid_with_non_native_modality_is_steered_to_cross_attention() -> None:
+    # forcing mid with a non-native modality must not emit an invalid shared-encoder config
+    res = compose(task="segmentation", num_classes=3,
+                  modalities=["sentinel2", "dem"], fusion="mid")
+    assert res["strategy"] == "cross_attention"
+    assert res["yaml"] is None
+
+
+def test_compose_post_fusion_is_ensemble_guidance() -> None:
+    res = compose(task="classification", num_classes=4,
+                  modalities=["sentinel2", "sentinel1"], fusion="post")
+    assert res["strategy"] == "post"
+    assert res["yaml"] is None
+    assert any("compose()" in s for s in res["guidance"]["steps"])
+
+
+def test_compose_pre_fusion_warns_about_lost_pretrained_embeddings() -> None:
+    res = compose(task="segmentation", num_classes=3,
+                  modalities=["sentinel2", "sentinel1"], fusion="pre")
+    assert res["strategy"] == "pre"
+    assert "pretrained embeddings" in res["guidance"]["caveat"]
+
+
+def test_compose_single_non_native_modality_is_blocked() -> None:
+    res = compose(task="segmentation", num_classes=3, modalities=["dem"])
+    assert res["ok"] is False
+    assert "pretrain modality" in res["note"]
+
+
+def test_recommend_includes_fusion_block_for_multiple_modalities() -> None:
+    res = recommend(goal="map land cover", modalities=["sentinel2", "sentinel1"])
+    assert res["fusion"] is not None
+    assert res["fusion"]["strategy"] == "mid"
+    # single modality -> no fusion block
+    assert recommend(goal="map land cover", modalities=["sentinel2"])["fusion"] is None
 
 
 # --------------------------------------------------------------------------- #

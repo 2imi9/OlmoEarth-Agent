@@ -23,6 +23,20 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   also promotes the previously-uncatalogued vendored `olmoearth-rslearn` SKILL.md to
   catalog row #17, so the catalog is now **17 skills** (was 16); the slash menu, cards,
   and `forced_skill` allow-list pick it up automatically.
+- **Multi-source fusion for skill #17 `olmoearth-rslearn`** (a refinement of `compose()`,
+  not a new skill). `olmoearth_rslearn_compose` and `olmoearth_rslearn_recommend` now take
+  `modalities` (2+, e.g. `['sentinel2','sentinel1','dem']`); a new `recommend_fusion()`
+  picks a **pre / mid / post** strategy with a plain-English why, and `compose()` emits the
+  config. `mid` (the OlmoEarth-native default) emits a **valid multi-input `model.yaml`** —
+  one OlmoEarth encoder fed every modality, fused internally via cross-modal attention (the
+  decoder's channel contract is unchanged); `cross_attention` returns a grounded
+  `rslearn.models.xatt_fusion.CrossAttentionFusionExtractor` skeleton (used automatically when
+  a modality such as DEM isn't in `OlmoEarth.MODALITY_NAMES`); `pre` and `post` return input-
+  concat caveats and a train-per-modality-and-ensemble recipe. Per-modality bands/data-sources
+  (`FUSION_MODALITIES`) are mirrored as torch-free data, verified against the rslearn clone
+  (Sentinel-1 `vv,vh`; WorldCover `B1`; the five `MODALITY_NAMES` + their native flag). The
+  emitted mid config round-trips through `olmoearth_rslearn_validate` with no errors. Tool count
+  unchanged (still four). Closes #120.
 - **Server-side forced-skill routing** (`forced_skill`): `POST /api/run` accepts an
   optional allow-list-validated `forced_skill` slug; `LeadAgent` appends a
   `FORCED SKILL:` directive to the system prompt, and the web UI sends a clean

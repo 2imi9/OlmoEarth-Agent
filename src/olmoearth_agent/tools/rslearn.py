@@ -44,6 +44,7 @@ async def _recommend(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         temporal=args.get("temporal"),
         num_samples=args.get("num_samples"),
         model_size=args.get("model_size"),
+        modalities=args.get("modalities"),
     )
 
 
@@ -68,6 +69,8 @@ async def _compose(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         freeze_epochs=args.get("freeze_epochs", 10),
         total_epochs=args.get("total_epochs", 40),
         nodata_value=args.get("nodata_value"),
+        modalities=args.get("modalities"),
+        fusion=args.get("fusion"),
     )
 
 
@@ -92,9 +95,12 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                     "+ compositing + label layer type), the model composition "
                     "(OlmoEarth encoder -> decoder -> head with the channel contract), "
                     "the task knobs (metrics / loss / nodata / scale_factor), and a "
-                    "fine-tune schedule — each with a one-line why. Provide what you "
-                    "know; missing inputs come back in `ask_for`. Pure guidance "
-                    "(no training is run); pair with olmoearth_rslearn_validate."
+                    "fine-tune schedule — each with a one-line why. Pass `modalities` "
+                    "(2+, e.g. ['sentinel2','sentinel1','dem']) to also get a "
+                    "multi-source FUSION recommendation (pre / mid / post) under "
+                    "`fusion`. Provide what you know; missing inputs come back in "
+                    "`ask_for`. Pure guidance (no training is run); pair with "
+                    "olmoearth_rslearn_validate / olmoearth_rslearn_compose."
                 ),
                 parameters={
                     "type": "object",
@@ -130,6 +136,13 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                             "type": "string",
                             "enum": list(EMBEDDING_SIZES),
                             "description": "OlmoEarth encoder size, if the user has a preference.",
+                        },
+                        "modalities": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Input modalities to fuse, e.g. ['sentinel2', "
+                            "'sentinel1', 'dem']. With 2+, the result includes a `fusion` "
+                            "recommendation (pre/mid/post).",
                         },
                     },
                     "required": [],
@@ -183,7 +196,11 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                     "the task. Returns the YAML string + the config dict. Supports "
                     "segmentation / per-pixel-regression / classification / regression; "
                     "detection is guided (Faster R-CNN anchors need tuning), not "
-                    "auto-emitted. Then run olmoearth_rslearn_validate on it."
+                    "auto-emitted. For MULTI-SOURCE FUSION pass `modalities` (2+, e.g. "
+                    "['sentinel2','sentinel1']): `fusion='mid'` (default) emits a valid "
+                    "multi-input config — one OlmoEarth encoder fed every modality, fused "
+                    "internally; `cross_attention` / `pre` / `post` return grounded "
+                    "guidance instead of a YAML. Then run olmoearth_rslearn_validate on it."
                 ),
                 parameters={
                     "type": "object",
@@ -200,6 +217,18 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                         "freeze_epochs": {"type": "integer", "description": "Epochs with the encoder frozen before unfreezing (default 10)."},
                         "total_epochs": {"type": "integer", "description": "Total training epochs (default 40)."},
                         "nodata_value": {"type": "integer", "description": "NODATA value to mask out of the loss (raster tasks)."},
+                        "modalities": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Modalities to fuse, e.g. ['sentinel2','sentinel1','worldcover']. "
+                            "2+ triggers multi-source fusion.",
+                        },
+                        "fusion": {
+                            "type": "string",
+                            "enum": ["mid", "cross_attention", "pre", "post"],
+                            "description": "Fusion strategy (default auto: 'mid' for OlmoEarth-native "
+                            "modalities). 'mid' emits a multi-input YAML; the others return guidance.",
+                        },
                     },
                     "required": [],
                 },
