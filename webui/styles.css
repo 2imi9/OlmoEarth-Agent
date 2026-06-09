@@ -70,24 +70,62 @@ a:hover { color: var(--text); }
 .btn-new .ic { font-size: 18px; stroke-width: 2.2; }
 .btn-new:hover { background: var(--pink-hi); }
 
-/* Sidebar sections: collapsible Chats history + Projects tree */
+/* Sidebar middle: Chats (always visible) + a segmented switcher feeding one
+   secondary pane. Chats and the secondary pane share the flexible middle and
+   scroll independently, so neither buries the other (Claude-rail style). */
 .side-scroll {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; gap: 6px; padding-right: 2px;
 }
-.side-section { display: flex; flex-direction: column; }
-.side-head {
-  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
-  background: none; border: none; cursor: pointer; padding: 6px 8px;
-  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--text-faint); transition: color .12s;
-}
-.side-head:hover { color: var(--text-dim); }
-.side-head .caret { width: 12px; height: 12px; flex: none; transform: rotate(90deg); transition: transform .15s; }
-.side-section.collapsed .side-head .caret { transform: rotate(0deg); }
-.side-section.collapsed .side-body { display: none; }
 .side-body { display: flex; flex-direction: column; gap: 1px; padding: 1px 0 4px; }
 .side-note { padding: 7px 10px; font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+
+/* Section label (replaces the old collapsible .side-head) */
+.sb-lbl {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sb-count {
+  margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: 0;
+  color: var(--text-dim); background: var(--bg-2); border-radius: var(--radius-pill);
+  padding: 1px 7px; white-space: nowrap;
+}
+.sb-count:empty { display: none; }
+
+/* Chats: primary, scrollable, always visible */
+.sb-chats { display: flex; flex-direction: column; min-height: 0; flex: 5 1 0; }
+.sb-chats .chatscroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
+
+/* Divider between Chats and the switcher */
+.sb-div { height: 1px; background: var(--line); margin: 2px 6px; flex: none; }
+
+/* Segmented switcher: 3-way pill, one active segment fills --mint-hi */
+.sb-switch { padding: 2px 2px 4px; flex: none; }
+.seg {
+  display: flex; gap: 2px; padding: 3px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-pill);
+}
+.seg-btn {
+  flex: 1; min-width: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--text-dim);
+  padding: 7px 4px; border-radius: var(--radius-pill);
+  transition: color .14s ease, background .14s ease;
+}
+.seg-btn .ic { font-size: 16px; }
+.seg-btn:hover { color: var(--text); }
+.seg-btn:focus-visible { outline: 2px solid var(--mint-hi); outline-offset: 1px; }
+.seg-btn[aria-selected="true"] {
+  color: #06302a; background: var(--mint-hi);
+  box-shadow: 0 1px 6px -1px rgba(44,209,154,.45);
+}
+
+/* Secondary panel: one pane shown at a time, scrolls on its own */
+.sb-secondary { display: flex; flex-direction: column; min-height: 0; flex: 6 1 0; }
+.sb-pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.sb-pane[hidden] { display: none; }
+.sb-pane > .side-body { flex: 1; min-height: 0; overflow-y: auto; }
 
 /* Chats history list */
 .chat-item {
@@ -147,10 +185,44 @@ a:hover { color: var(--text); }
 .proj-tag {
   font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   color: var(--text-faint); background: var(--bg-2); border: 1px solid var(--line-soft);
-  padding: 1px 6px; border-radius: var(--radius-pill); margin-left: auto; vertical-align: middle;
+  padding: 1px 6px; border-radius: var(--radius-pill); vertical-align: middle;
 }
+.proj-tag[hidden] { display: none; }
+.proj-tag.is-live { color: var(--pink); background: rgba(240,82,156,.12); border-color: transparent; }
 .proj-empty { padding: 8px 10px; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
 .proj-empty-sub { display: block; margin-top: 3px; color: var(--text-faint); font-size: 11.5px; }
+
+/* Areas pane: AOIs flattened across all projects (id + project label). */
+.area-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  background: none; border: 1px solid transparent; color: var(--text-dim);
+  padding: 6px 9px; border-radius: var(--radius-sm); cursor: grab;
+  transition: background .12s, color .12s;
+}
+.area-row:hover { background: var(--bg-2); color: var(--text); }
+.area-row .ar-pin { font-size: 15px; color: var(--mint-hi); flex: none; }
+.area-row .ar-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.area-row .ar-name { font-size: 13px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.area-row:not(:hover) .ar-name { color: var(--text-dim); }
+.area-row .ar-proj { font-size: 11px; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Progressive fill footer while per-project area fetches resolve. */
+.area-prog { display: flex; align-items: center; gap: 9px; padding: 8px 9px;
+  font-size: 11.5px; color: var(--text-dim); }
+.area-prog[hidden] { display: none; }
+.ar-spin { width: 13px; height: 13px; flex: none; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--mint-hi); animation: ar-spin .8s linear infinite; }
+@keyframes ar-spin { to { transform: rotate(360deg); } }
+
+/* Connect-your-key nudge inside a secondary pane (Projects / Areas, no key). */
+.sb-nudge { margin: 8px 8px; padding: 18px 14px; text-align: center;
+  border: 1px dashed var(--line); border-radius: var(--radius); background: rgba(250,242,233,.03); }
+.sb-nudge .nu-ic { width: 32px; height: 32px; border-radius: 9px; margin: 0 auto 11px;
+  display: grid; place-items: center; background: var(--bg-2); border: 1px solid var(--line); color: var(--mint-hi); }
+.sb-nudge .nu-ic .ic { font-size: 17px; }
+.sb-nudge .nu-t { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 5px; }
+.sb-nudge .nu-d { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; }
 
 /* Key UI is now a popover from the topbar "Add API key" button (not a sidebar card). */
 .key-wrap { position: relative; }
@@ -1127,4 +1199,6 @@ button.is-busy > .ic { display: none; }
   .typing span { animation: none; opacity: .55; }
   .caret::after { animation: none; }
   .tc-dot.running { animation: none; box-shadow: 0 0 0 3px rgba(15,203,140,.18); }
+  .ar-spin { animation: none; border-top-color: var(--mint-hi); }
+  .seg-btn { transition: none; }
 }

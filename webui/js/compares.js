@@ -66,6 +66,8 @@ export function renderCompareList() {
   const list = document.getElementById('cmpList');
   if (!list) return;
   const items = load();
+  const countEl = document.getElementById('cmpCount');
+  if (countEl) countEl.textContent = items.length ? String(items.length) : '';
   if (!items.length) {
     list.innerHTML = '<div class="side-note">No saved comparisons yet. Compare two result rasters, then "Save comparison".</div>';
     return;

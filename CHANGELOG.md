@@ -76,6 +76,28 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   "pending"), from the forced skill's stages or inferred from observed tool calls
   (`webui/js/run.js`, mirroring `harness/workflow.py`).
 
+- **Sidebar "switch bar" (Claude-desktop-style nav reorg).** The three stacked
+  collapsible sections (Chats / Projects / Comparisons) are replaced by one
+  always-visible **Chats** list plus a 3-way **icon-only segmented switcher**
+  (Projects · Comparisons · **Areas** — folder / compare / map-pin glyphs, names in
+  `aria-label` + tooltip) feeding a single secondary pane — only one list shows at a
+  time, the active segment is persisted, and Chats + the pane share the flexible
+  middle so each scrolls independently. The switcher is a proper **WAI-ARIA tablist**:
+  ←/→/Home/End keyboard nav with roving `tabindex`, and `aria-controls`/
+  `aria-labelledby` linking each tab to its pane. *New chat* stays pinned
+  at the top and the Studio-key chip at the bottom. **Areas is new**: every AOI
+  flattened across *all* projects, each labelled with its project (e.g. `Drawn AOI ·
+  PA Karst Final`) and draggable into the chat like a tree area; since Studio has no
+  single "all areas" endpoint it fans out one fetch per project and **fills in
+  progressively** (cached) with a "loading N more projects…" footer rather than
+  blocking. Projects/Areas show a *Connect your Studio key* nudge with no key;
+  Comparisons shows a *save a pair* nudge. Honors `prefers-reduced-motion`; the
+  240px rail collapses to the existing hamburger drawer on mobile. Built from the
+  Claude-design sidebar spec (`webui/index.html`, new `webui/js/switcher.js` +
+  `webui/js/areas.js`, `webui/js/{projects,compares,main}.js`, `styles.css`). The
+  Projects list keeps its shallow drill-down tree (the designer's named alternative
+  to flatten-into-the-main-panel) so drag-to-attach of results and areas still works.
+
 ### Changed
 - **Re-recorded the README walkthrough demo** against the current polished UI --
   the lead GIF/MP4 had been frozen at the pre-polish v1.0.0 layout. Corrected the

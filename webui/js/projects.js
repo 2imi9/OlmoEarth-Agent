@@ -61,7 +61,13 @@ function updateProjTag() {
   if (!projConnected()) { tag.hidden = true; return; }
   tag.hidden = false;
   tag.textContent = BRIDGE.live ? 'live' : 'sample';
+  tag.classList.toggle('is-live', BRIDGE.live);
   tag.title = BRIDGE.live ? 'Your live Studio account' : 'Demo data: not your live Studio account';
+}
+
+function setProjCount(n) {
+  const el = document.getElementById('projCount');
+  if (el) el.textContent = (n == null || n === '') ? '' : String(n);
 }
 
 function treeGlyph(node) {
@@ -229,11 +235,13 @@ export async function renderProjects() {
   if (!list) return;
   updateProjTag();
   if (!projConnected()) {
+    setProjCount('');
     list.innerHTML = '<div class="proj-empty">Connect your Studio key below to load your projects. <span class="proj-empty-sub">Nothing is fetched until you do.</span></div>';
     return;
   }
-  if (!BRIDGE.live) { renderTree(list, demoProjects()); return; }  // sample tree
+  if (!BRIDGE.live) { renderTree(list, demoProjects()); setProjCount(PROJECTS.length); return; }  // sample tree
   list.innerHTML = skelRows(4);
+  setProjCount('');
   try {
     const projects = (await apiProjects()).map((p) => ({
       kind: 'project', id: p.id || '', name: p.name || '(unnamed)', icon: pickProjIcon(p.name),
@@ -243,6 +251,7 @@ export async function renderProjects() {
       return;
     }
     renderTree(list, projects);
+    setProjCount(projects.length);
   } catch (e) {
     list.innerHTML = '<div class="proj-empty">Couldn’t load projects - ' + escapeHtml(String((e && e.message) || e)) + '. <span class="proj-empty-sub">Check your key, or that the bridge can reach Studio.</span></div>';
   }
