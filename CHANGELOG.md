@@ -157,6 +157,27 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   to flatten-into-the-main-panel) so drag-to-attach of results and areas still works.
 
 ### Changed
+- **Skill #2 `olmoearth-studio-job-config` rewritten to Studio's real "new model"
+  wizard** (submodule bump to `2imi9/OlmoEarth-Skills@6839f1a`). The skill now
+  walks the full wizard in order (model name -> model type -> foundation model ->
+  label field -> training data -> data split -> temporal context -> image
+  sources -> surrounding area -> review): the patch ("surrounding area") default
+  is corrected 320 -> **640 m** (the wizard's recommendation for most tasks;
+  160/320 m for fine-grained targets or <1,000-label datasets, 1280 m for
+  large-region labels or detection); the missing **Model name**, **Training data**
+  (full vs a proportion) and **Data split** (Spatial recommended vs a metadata
+  field, + a new `references/data_split.md`) steps are added; model type carries
+  the wizard's fine-tuned-vs-embeddings framing; and the skill content now states
+  the rule the #142 routing fix enforces — **Studio trains on Ai2's compute**:
+  never ask about the user's local hardware, never reroute Studio model creation
+  to local training. `scripts/recommend.py` emits + validates the new fields with
+  the 640 m default and a <1,000-label step-down to 320 m (all 14 presets
+  round-trip its validator). The SkillOpt jobconfig benchmark was regenerated
+  from the updated oracle (`evals/skillopt/`, incl. a neutral patch placeholder
+  in the rollout prompt): the previous skill scores 0.357 hard on the faithful
+  targets, the rewrite **0.714 hard / 0.906 soft** (local Qwen3.6 target,
+  temperature 0) — recovering the optimized level. SKILLS.md #2 and the registry
+  row updated to match.
 - **Re-recorded the README walkthrough demo** against the current polished UI --
   the lead GIF/MP4 had been frozen at the pre-polish v1.0.0 layout. Corrected the
   caption accordingly (recorded-on v1.0.0 -> **v1.2.0**). Both the basic

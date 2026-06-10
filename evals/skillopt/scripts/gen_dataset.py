@@ -82,7 +82,7 @@ SPECS: list[tuple[str, str, int | None, int | None]] = [
     ("biomass", "Regional mean biomass estimation with about 30,000 plot samples.", None, 30000),
     # ecosystem_type (window classification; tiny default; flips base on <2K or >5 classes)
     ("ecosystem_type", "Classify the dominant ecosystem type for each tile across a national park.", None, None),
-    ("ecosystem_type", "One ecosystem label per 320 m tile; only about 1,200 labeled tiles available.", None, 1200),
+    ("ecosystem_type", "One ecosystem label per 640 m tile; only about 1,200 labeled tiles available.", None, 1200),
     ("ecosystem_type", "Per-tile ecosystem classification with seven ecosystem classes across a basin.", 7, None),
     # vessel_detection (single_moment; tiny; flips base on <2K)
     ("vessel_detection", "Detect ships at sea in a scene, combining radar and optical for night and day.", None, None),

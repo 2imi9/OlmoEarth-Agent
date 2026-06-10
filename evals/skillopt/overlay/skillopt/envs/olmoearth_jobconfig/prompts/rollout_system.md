@@ -12,7 +12,7 @@ Reason briefly if you need to, then output your final answer as a single JSON ob
   "foundation_model": "nano | tiny | base",
   "time_frame": {{ "mode": "period | single_moment_with_context | single_moment" }},
   "imagery_sources": ["sentinel2"],
-  "patch_size_m": 320
+  "patch_size_m": "160 | 320 | 640 | 1280"
 }}
 ```
 

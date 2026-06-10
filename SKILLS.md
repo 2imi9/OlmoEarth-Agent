@@ -95,11 +95,11 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config). Vendor as-is.
 
 **In:** task description.
-**Out:** Studio wizard answers.
+**Out:** Studio "new model" wizard answers.
 
-**What.** Picks output type (per-pixel / window / detection / embeddings), model size (Nano / Tiny / Base), time-frame mode (period vs single-moment-with-context vs single-moment), imagery sources (S2 alone vs +S1), patch size (160 / 320 / 640 / 1280 m). 14 verified presets (crop / mangrove / land cover / soil moisture / biomass / vessel / solar / oil slick / flood / drought / burn scar / embeddings) plus a cross-field validator.
+**What.** Walks Studio's "new model" wizard end to end: model name, model type (per-pixel / window / detection / embeddings, with the wizard's fine-tuned-vs-embeddings framing), foundation model (Nano / Tiny / Base), label field, training data (full vs a proportion), data split (Spatial recommended vs a metadata field), temporal context (period vs single-moment-with-context vs single-moment), image sources (S2 alone vs +S1), surrounding area (160 / 320 / **640 default** / 1280 m). 14 verified presets (crop / mangrove / land cover / soil moisture / biomass / vessel / solar / oil slick / flood / drought / burn scar / embeddings) plus a cross-field validator. Studio trains on Ai2's compute — the skill never asks about the user's own hardware and never reroutes Studio model-creation to local training.
 
-**Why.** Cross-field traps exist: detection with 320 m patch fails silently, Landsat is not yet available as a source, embeddings mode is incompatible with single-moment time frame. Researchers without OlmoEarth-specific intuition iterate on a misconfigured wizard for days. The validator catches the trap before the job is submitted.
+**Why.** Cross-field traps exist: detection with a small patch fails silently, Landsat is not yet selectable as a source, embeddings mode is incompatible with the label-dependent steps, random splits leak spatial neighbors. Researchers without OlmoEarth-specific intuition iterate on a misconfigured wizard for days. The validator catches the trap before the model is created.
 
 **Tools composed.**
 - `olmoearth_load_skill`; skill-local: `studio_job_validate`, `apply_preset`, `cross_field_check`.

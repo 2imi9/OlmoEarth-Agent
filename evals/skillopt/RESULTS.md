@@ -6,6 +6,16 @@ project's local **Qwen3.6-35B-A3B** (4-bit GGUF via llama.cpp) — both the
 *optimizer* (proposes skill edits) and the *target* (the frozen agent that runs
 the task).
 
+> **2026-06-10 note:** the job-config skill was later rewritten to match
+> Studio's real "new model" wizard (patch default 640 m, training-data +
+> data-split steps, Ai2-compute framing) and the benchmark dataset was
+> regenerated from the updated oracle, so the numbers below are the
+> historical (pre-rewrite) run. On the regenerated test split the
+> pre-rewrite skill scores 0.357 hard / 0.806 soft (it teaches the old
+> 320 m default; patch correct on 5/14), the rewritten `SKILL.md`
+> **0.714 hard / 0.906 soft** (patch 13/14, output_type 14/14) — recovering
+> the optimized level on the faithful targets.
+
 ## Setup
 
 - **Benchmark env** (new): `skillopt/envs/olmoearth_jobconfig/` — a SkillOpt
