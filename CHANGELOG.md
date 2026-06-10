@@ -10,6 +10,33 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Standalone `olmoearth_pixel_value` for skill #4 `olmoearth-predict`** (#92).
+  Exposes the existing `StudioClient.pixel_value` as a first-class tool: reads one
+  prediction result's model output at a single user-supplied lon/lat (`raw_value`
+  for a regression layer, the class for a categorical one), surfaces every band's
+  value, and returns `available: false` with a reason off-raster instead of
+  raising. Each value is paired with the exact point queried — not an interpolated
+  raster read and not validated truth (use skill #7 for accuracy). Closes the
+  "pixel-value follows" gap; feature-search remains honestly unbuilt.
+- **Ensemble-disagreement confidence for skill #9 `olmoearth-uncertainty`** (#92),
+  delivering the catalog's previously-aspirational "repeated pixel-value"
+  confidence — honestly. `prediction_confidence` (pure, in `analysis/uncertainty.py`)
+  turns per-point repeated/ensemble draws into dispersion stats (std /
+  coefficient-of-variation / range for regression; majority class / vote fractions /
+  normalized Shannon entropy / margin for categorical) folded into a confidence in
+  [0,1]; `olmoearth_ensemble_uncertainty` (live) samples **two or more distinct
+  prediction results** on a shared-extent grid (Studio pixel-value) and treats the
+  >=2 values at each point as ensemble members, so the variance is real — never a
+  fake re-read of one deterministic result. Explicitly labelled epistemic
+  uncertainty (model self-consistency), NOT a calibrated correctness probability;
+  pair with the AOA OOD flag.
+- **QGIS provider files + an honest COG recipe for skill #11 `olmoearth-qgis-bridge`**
+  (#92). `olmoearth_qgis_bridge` now also returns a ready-to-drop QGIS `.qlr`
+  layer-definition (`build_qlr`) and a GDAL_WMS/XYZ descriptor (`build_gdal_wms_xml`)
+  pointing at the authenticated tile endpoint, with the Bearer key kept out of the
+  file (an unresolved sentinel + an `authcfg` note). Because the agent is GDAL-free,
+  a true Cloud-Optimized GeoTIFF is returned as a user-run `gdal_translate -of COG`
+  recipe + rationale (`cog_recipe`), not a fabricated file.
 - **Skill #17 `olmoearth-rslearn` — rslearn for non-experts.** Four torch-free
   in-repo tools that let a domain scientist who doesn't know rslearn still set up a
   correct OlmoEarth/rslearn experiment: `olmoearth_rslearn_recommend` maps a
@@ -121,6 +148,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `studio/client.py`)
 
 ### Fixed
+- **Skill #11 honesty: removed the unbuilt "COG / WMTS / full-precision GeoTIFF /
+  sidecar uncertainty raster" claims** (#92). The agent is GDAL-free and only has
+  tile URLs, so it cannot itself export a COG. `SKILLS.md` (catalog row #11 + §11
+  In/Out/What/Tools) and `registry.py` (#11 summary) now describe what actually
+  ships — a `.qlr` + GDAL_WMS descriptor + SLD + a user-run `gdal_translate -of COG`
+  recipe (noting a COG built from public tiles is a *visual* raster, not
+  full-precision scores) — and the fabricated skill-local tool names
+  (`cog_export`, `qgis_provider_xml`, `write_sld_style`) are corrected to the real
+  `olmoearth_qgis_bridge` / `reporting/qgis.py` functions.
+- **Skill #9 honesty: replaced the fictional `repeated_sampling` tool name and the
+  "Repeated pixel-value" / bare "confidence map" claims** (#92) with the shipped
+  `prediction_confidence` + `olmoearth_ensemble_uncertainty`, framed as ensemble
+  disagreement across distinct results (real variance), not a deterministic re-read.
 - **`forced_skill` is existence-checked, not just shape-checked.** `POST /api/run`
   validated the slug's *shape* (a `[a-z0-9-]` regex) but not that it names a real
   skill, so a well-formed but unknown slug (e.g. `totally-fake-skill`) was injected
