@@ -19,14 +19,6 @@ function setCount(text) {
   if (el) el.textContent = text || '';
 }
 
-function connectNudge() {
-  return '<div class="sb-nudge">' +
-    '<span class="nu-ic"><svg viewBox="0 0 24 24" class="ic"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M17 4l2 2M14 7l2 2"/></svg></span>' +
-    '<div class="nu-t">Connect your Studio key</div>' +
-    '<div class="nu-d">Add your key below to list AOIs across all your projects.</div>' +
-    '</div>';
-}
-
 /* One AOI row. `area` = {id, name, projectId, projectName, geom?, demo?}. Live
    rows carry only id/name/project_id; attach.js fetches the geometry on drop. */
 function areaRow(area) {
@@ -72,13 +64,9 @@ export async function renderAreas() {
   if (!list) return;
   const token = ++renderToken;
 
-  if (!projConnected()) {
-    list.innerHTML = connectNudge();
-    setCount('');
-    return;
-  }
-
-  if (!BRIDGE.live) {  // sample mode: a key is set but the bridge isn't live
+  // Default load-up: show the sample areas immediately (no key required); only
+  // fan out to the live account when a key is connected and the bridge is live.
+  if (!(BRIDGE.live && projConnected())) {
     const demo = demoAreas();
     list.innerHTML = '';
     demo.forEach((a) => list.appendChild(areaRow(a)));

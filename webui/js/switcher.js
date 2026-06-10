@@ -1,14 +1,14 @@
-/* The sidebar's segmented switcher: Projects · Comparisons · Areas all feed one
+/* The sidebar's segmented switcher: Projects · Areas · Results all feed one
    secondary pane, only one shown at a time (Claude-rail style). The active
    segment is persisted, and switching to a pane (re-)renders its list lazily —
    cheap, since the underlying fetches are cached. */
 
 import { renderProjects } from './projects.js';
-import { renderCompareList } from './compares.js';
 import { renderAreas } from './areas.js';
+import { renderResultsList } from './results.js';
 
 const LS = 'oe_sb_segment';
-const PANES = { projects: 'paneProjects', comparisons: 'paneComparisons', areas: 'paneAreas' };
+const PANES = { projects: 'paneProjects', areas: 'paneAreas', results: 'paneResults' };
 
 function current() {
   try { const v = localStorage.getItem(LS); return PANES[v] ? v : 'projects'; }
@@ -17,8 +17,8 @@ function current() {
 
 function renderSegment(seg) {
   if (seg === 'projects') renderProjects();
-  else if (seg === 'comparisons') renderCompareList();
   else if (seg === 'areas') renderAreas();
+  else if (seg === 'results') renderResultsList();
 }
 
 /* Show one segment: flip the tab state (+ roving tabindex), swap the visible

@@ -12,7 +12,7 @@ import { wireTabs, wireExamples } from './landing.js';
 import { wireAttach } from './attach.js';
 import { wireAoi } from './aoi.js';
 import { wireLlmSubtab, wireLlmNudge, updateLlmNudge } from './llm.js';
-import { wireCompares } from './compares.js';
+import { wireResults } from './results.js';
 import { wireSwitcher, refreshActiveSegment } from './switcher.js';
 
 // Re-rendered by wireKey so detectBridge() can refresh the key card once the
@@ -144,8 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
   wireMenu();
   wireUserMenu();
   wireLlmNudge();
-  wireSwitcher();   // segmented Projects · Comparisons · Areas switcher
-  wireCompares();   // saved-comparisons save-event listener
+  wireSwitcher();   // segmented Projects · Areas · Results switcher
+  wireResults();    // saved-results listener (comparisons + file outputs)
   wireKey();        // initial render (demo assumptions) + refreshActiveSegment
   renderChatList();
   newChat();        // start on a fresh empty chat (landing visible)

@@ -4,7 +4,7 @@
 
 import { BRIDGE } from './store.js';
 import { escapeHtml, shortId, skelRows } from './util.js';
-import { projConnected, apiProjects, apiPredictions, apiResults, apiAreas } from './api.js';
+import { projConnected, apiProjects, apiPredictions, apiResults } from './api.js';
 
 const PROJ_ICONS = {
   map:  '<path d="M9 3L3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/>',
@@ -58,11 +58,11 @@ function pickProjIcon(name) {
 function updateProjTag() {
   const tag = document.getElementById('projTag');
   if (!tag) return;
-  if (!projConnected()) { tag.hidden = true; return; }
-  tag.hidden = false;
-  tag.textContent = BRIDGE.live ? 'live' : 'sample';
-  tag.classList.toggle('is-live', BRIDGE.live);
-  tag.title = BRIDGE.live ? 'Your live Studio account' : 'Demo data: not your live Studio account';
+  const live = BRIDGE.live && projConnected();
+  tag.hidden = false;  // the tree always shows data now (sample until a key is live)
+  tag.textContent = live ? 'live' : 'sample';
+  tag.classList.toggle('is-live', live);
+  tag.title = live ? 'Your live Studio account' : 'Demo data: not your live Studio account';
 }
 
 function setProjCount(n) {
@@ -106,15 +106,6 @@ function makeTreeNode(node) {
       row.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('application/x-oe-result', JSON.stringify(node.result));
         e.dataTransfer.setData('text/plain', node.result.tile_url || node.name);
-        e.dataTransfer.effectAllowed = 'copy';
-      });
-    }
-    if (node.kind === 'area' && node.area) {
-      row.draggable = true;
-      row.title = 'Drag into the chat to attach this area';
-      row.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('application/x-oe-aoi', JSON.stringify(node.area));
-        e.dataTransfer.setData('text/plain', node.area.name || 'AOI');
         e.dataTransfer.effectAllowed = 'copy';
       });
     }
@@ -169,26 +160,12 @@ function resultNode(r) {
   };
 }
 
-function areasGroupNode(projectId) {
-  // A lazy "Areas" branch under a project; expands to its saved AOIs.
-  return { kind: 'areas', id: 'areas-' + projectId, name: 'Areas', projectId };
-}
-function areaNode(a, projectId) {
-  return {
-    kind: 'area', id: a.id, name: a.name || ('area ' + shortId(a.id)), leaf: true,
-    area: { id: a.id, name: a.name || '', project_id: projectId },
-  };
-}
-
 async function loadChildren(node) {
   if (!BRIDGE.live) return node.children || [];
   if (node.kind === 'project') {
     const data = await apiPredictions(node.id);
-    // Areas first (the AOIs you can drag into chat), then the model groups.
-    return [areasGroupNode(node.id), ...groupByModel(data.predictions || [], data.models || {})];
-  }
-  if (node.kind === 'areas') {
-    return (await apiAreas(node.projectId)).map((a) => areaNode(a, node.projectId));
+    // Model groups only - AOIs live in the dedicated Areas section now.
+    return groupByModel(data.predictions || [], data.models || {});
   }
   if (node.kind === 'model') return node.predictions.map(predNode);
   if (node.kind === 'prediction') {
@@ -199,21 +176,15 @@ async function loadChildren(node) {
 
 function emptyLabel(node) {
   if (node.kind === 'project') return 'No predictions in this project yet.';
-  if (node.kind === 'areas') return 'No saved areas yet. Draw one with the map button in the composer.';
   if (node.kind === 'model') return 'No predictions for this model.';
   if (node.kind === 'prediction') return 'No results for this prediction yet.';
   return 'Empty.';
 }
 
 function demoProjects() {
-  const demoGeom = { type: 'Polygon', coordinates: [[[-0.1, 0.0], [0.1, 0.0], [0.1, 0.15], [-0.1, 0.15], [-0.1, 0.0]]] };
   return PROJECTS.map((p) => ({
     kind: 'project', id: p.id, name: p.name, icon: p.icon, meta: p.meta,
     children: [
-      { kind: 'areas', id: 'areas-' + p.id, name: 'Areas', meta: 1, children: [
-        { kind: 'area', id: 'area-' + p.id, name: p.name + ' AOI', leaf: true,
-          area: { id: 'area-' + p.id, name: p.name + ' AOI', geom: demoGeom, bbox: [-0.1, 0.0, 0.1, 0.15], demo: true } },
-      ] },
       { kind: 'model', id: 'm-' + p.id, name: p.name + ' model',
         modelType: p.model || 'fine_tuned', badge: modelTypeLabel(p.model || 'fine_tuned'),
         foundation: 'OlmoEarth Nano v1', meta: 1, children: [
@@ -230,16 +201,34 @@ function renderTree(container, nodes) {
   nodes.forEach((n) => container.appendChild(makeTreeNode(n)));
 }
 
+/* Open top-level project nodes so the tree shows in extended form on first
+   paint. `all` expands every top-level node; otherwise only the first. Live mode
+   lazy-loads each project's children on expand, so expanding all fires one
+   predictions fetch per project (acceptable for a typical handful of projects). */
+function expandTree(container, opts) {
+  const nodes = [...container.children].filter(
+    (el) => el.classList && el.classList.contains('tree-node') && !el.classList.contains('leaf'),
+  );
+  const targets = (opts && opts.all) ? nodes : nodes.slice(0, 1);
+  targets.forEach((el) => {
+    if (el.classList.contains('open')) return;
+    const row = el.querySelector(':scope > .tree-row');
+    if (row) row.click();  // triggers toggleNode -> lazy child load
+  });
+}
+
 export async function renderProjects() {
   const list = document.getElementById('projList');
   if (!list) return;
   updateProjTag();
-  if (!projConnected()) {
-    setProjCount('');
-    list.innerHTML = '<div class="proj-empty">Connect your Studio key below to load your projects. <span class="proj-empty-sub">Nothing is fetched until you do.</span></div>';
+  // Default load-up: render the sample tree immediately (no key required), and
+  // only fetch the live account when a key is connected and the bridge is live.
+  if (!(BRIDGE.live && projConnected())) {
+    renderTree(list, demoProjects());
+    setProjCount(PROJECTS.length);
+    expandTree(list, { all: true });   // extended on first paint (cheap inline children)
     return;
   }
-  if (!BRIDGE.live) { renderTree(list, demoProjects()); setProjCount(PROJECTS.length); return; }  // sample tree
   list.innerHTML = skelRows(4);
   setProjCount('');
   try {
@@ -252,6 +241,7 @@ export async function renderProjects() {
     }
     renderTree(list, projects);
     setProjCount(projects.length);
+    expandTree(list, { all: true });   // extend every project on first paint
   } catch (e) {
     list.innerHTML = '<div class="proj-empty">Couldn’t load projects - ' + escapeHtml(String((e && e.message) || e)) + '. <span class="proj-empty-sub">Check your key, or that the bridge can reach Studio.</span></div>';
   }
