@@ -54,7 +54,7 @@ docker run -d --name oe-llama --gpus all -p 8000:8000 \
   ghcr.io/ggml-org/llama.cpp:server-cuda \
   -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS \
   --host 0.0.0.0 --port 8000 \
-  --jinja -ngl 999 -c 8192 --no-mmap
+  --jinja -ngl 999 -c 16384 --parallel 1 --no-mmap
 ```
 
 > The compose bind-mounts your host `~/.cache/huggingface` (the same cache the
@@ -89,7 +89,7 @@ path; without `LLM_ENDPOINT` set, those tests skip.
 | `--jinja` | **Required for first-class tool calling**: activates the GGUF chat template so the model emits structured `tool_calls` directly. Without it the call arrives as text and the client falls back to text-recovery (`client.py` `_extract_text_tool_calls`) to still surface it as `finish_reason == "tool_calls"`; the live function-calling test is least flaky with it on. |
 | `--no-mmap` | Loads the file fully instead of mmap'ing, avoiding the slow mmap-over-virtiofs path that stalls large loads on Docker Desktop / WSL. |
 | `-ngl 999` | Offload all layers to the GPU. |
-| `-c 8192` | **Total** context, which llama.cpp splits across parallel slots (it defaults to ~4 -> ~2048 tokens each). Fine for short chats, but a full `SKILL.md` loaded mid-conversation overflows a 2048-token slot. For skill-heavy or long-context runs, use one big slot: `--parallel 1 -c 16384`. |
+| `-c 16384 --parallel 1` | **Total** context as one big slot. llama.cpp splits `-c` across parallel slots (default ~4), so the old `-c 8192` default gave ~2048 tokens per slot — a single `SKILL.md` loaded mid-conversation overflowed it, and multi-call tool sessions (e.g. several litsearch results) need the headroom even unsplit. One 16384-token slot is the verified skill-heavy configuration; the agent is single-user, so serial slots cost nothing. |
 
 ## Hardware
 
