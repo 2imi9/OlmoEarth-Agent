@@ -27,17 +27,9 @@
         <svg viewBox="0 0 24 24" class="ic"><path d="M12 5v14M5 12h14"/></svg>
         New chat
       </button>
-      <button class="btn-clear" id="clearChats" type="button">Clear chat history</button>
 
       <div class="side-scroll">
-        <!-- Chats: always-visible primary list (Claude-style), scrolls on its own -->
-        <section class="sb-chats" id="chatsSection">
-          <div class="sb-lbl">Chats</div>
-          <div class="side-body chatscroll" id="chatList" aria-label="Saved chats"><!-- injected by js/chat.js --></div>
-        </section>
-
-        <div class="sb-div" role="separator"></div>
-
+        <!-- Studio lists (Projects / Areas / Results) sit directly under New chat. -->
         <!-- Segmented switcher: one secondary list at a time. Claude-style — the
              ACTIVE segment shows icon + label; the inactive ones are icon-only (name
              stays in aria-label + title so it's accessible and on hover). -->
@@ -81,6 +73,15 @@
             <div class="side-body" id="resultsList" aria-label="Saved results"><!-- injected by js/results.js --></div>
           </section>
         </div>
+
+        <div class="sb-div" role="separator"></div>
+
+        <!-- Chats: saved history (scrolls on its own) + its Clear control, grouped -->
+        <section class="sb-chats" id="chatsSection">
+          <div class="sb-lbl">Chats</div>
+          <div class="side-body chatscroll" id="chatList" aria-label="Saved chats"><!-- injected by js/chat.js --></div>
+        </section>
+        <button class="btn-clear" id="clearChats" type="button">Clear chat history</button>
       </div>
 
       <div class="user-area">
