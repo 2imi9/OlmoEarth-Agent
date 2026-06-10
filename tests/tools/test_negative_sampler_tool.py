@@ -40,6 +40,13 @@ def _ctx() -> ToolContext:
     return ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
 
 
+@pytest.fixture(autouse=True)
+def _confine_io_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the path-traversal workspace root at this test's tmp_path so the
+    tool's absolute tmp_path read/write paths resolve inside the workspace."""
+    monkeypatch.setenv("OLMOEARTH_OUTPUT_ROOT", str(tmp_path))
+
+
 def _pt(lon: float, lat: float, field: str, label: str) -> dict[str, Any]:
     if field == "es_label":
         props: dict[str, Any] = {"es_label": label}
@@ -302,3 +309,28 @@ async def test_result_surfaces_quality_report(tmp_path: Path) -> None:
     assert "min_buffer_km" in quality and "mean_buffer_km" in quality
     assert "note" in quality
     assert "negatives" not in result  # quality is summary-only, still no raw coords
+
+
+@pytest.mark.asyncio
+async def test_rejects_read_path_traversal(tmp_path: Path) -> None:
+    # A model-controlled positives_path escaping the workspace root is refused
+    # before any file is opened (closes the arbitrary-read half of the finding).
+    from olmoearth_agent.security.paths import PathTraversalError
+
+    tool = build_negative_sampler_tools()[0]
+    with pytest.raises(PathTraversalError):
+        await tool.handler({"positives_path": "../../etc/passwd"}, _ctx())
+
+
+@pytest.mark.asyncio
+async def test_rejects_out_path_traversal(tmp_path: Path) -> None:
+    # A valid input but an escaping out_path is refused (arbitrary-write half).
+    from olmoearth_agent.security.paths import PathTraversalError
+
+    src_path = tmp_path / "labels.geojson"
+    _write(src_path, _presence_only())
+    tool = build_negative_sampler_tools()[0]
+    with pytest.raises(PathTraversalError):
+        await tool.handler(
+            {"positives_path": str(src_path), "out_path": "../escaped.geojson"}, _ctx()
+        )

@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
+from pytest_httpx import HTTPXMock
 
 from olmoearth_agent.analysis.litsearch import (
     ARXIV_API,
     OPENALEX_WORKS,
+    _guarded_get,
     dedup_merge,
     normalize_arxiv_id,
     normalize_doi,
@@ -19,6 +22,7 @@ from olmoearth_agent.analysis.litsearch import (
     resolve_identifier,
     search_literature,
 )
+from olmoearth_agent.security.egress import EgressError
 
 _ARXIV_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
@@ -163,3 +167,39 @@ async def test_resolve_arxiv_routes_to_arxiv() -> None:
 async def test_resolve_unparseable_raises() -> None:
     with pytest.raises(ValueError, match="could not parse"):
         await resolve_identifier("definitely-not-an-id", fetch=_fetch_map({}))
+
+
+@pytest.mark.asyncio
+async def test_guarded_get_blocks_redirect_to_internal_host_in_enforce(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An allowlisted host that 302-redirects to a cloud-metadata/internal IP is
+    # re-validated and blocked in enforce mode (closes the redirect SSRF gap).
+    monkeypatch.setenv("OLMOEARTH_EGRESS", "enforce")
+    httpx_mock.add_response(
+        url=ARXIV_API,
+        status_code=302,
+        headers={"Location": "http://169.254.169.254/latest/meta-data/"},
+    )
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        with pytest.raises(EgressError):
+            await _guarded_get(client, ARXIV_API, {}, "litsearch")
+
+
+@pytest.mark.asyncio
+async def test_guarded_get_follows_redirect_to_allowlisted_host(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A redirect to another allowlisted litsearch host passes re-validation and
+    # is followed.
+    monkeypatch.setenv("OLMOEARTH_EGRESS", "enforce")
+    httpx_mock.add_response(
+        url=ARXIV_API,
+        status_code=302,
+        headers={"Location": "https://api.openalex.org/works"},
+    )
+    httpx_mock.add_response(url="https://api.openalex.org/works", text="ok")
+    async with httpx.AsyncClient(follow_redirects=False) as client:
+        resp = await _guarded_get(client, ARXIV_API, {}, "litsearch")
+    assert resp.status_code == 200
+    assert resp.text == "ok"

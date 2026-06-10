@@ -9,6 +9,28 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Security
+- **Path-traversal guard: model-controlled tool file I/O is confined to a
+  workspace root.** `olmoearth_export_data` (`out_dir`), `olmoearth_nndm_cv`
+  (`output_path`), and `olmoearth_negative_sampler` (`positives_path` /
+  `candidates_path` / `out_path`) took file paths straight from the model and
+  read/wrote them with no confinement, so a prompt-injected `../../` or absolute
+  path could read or write arbitrary files under the operator's account (clobber a
+  served `webui/js` module, plant a startup script, reflect a JSON file back into
+  chat). A new `security/paths.py` (`safe_path`) resolves every such path under a
+  single workspace root and refuses anything that escapes it. The root is
+  `OLMOEARTH_OUTPUT_ROOT` if set, else `<cwd>/olmoearth_outputs` (deliberately not
+  the CWD/repo, so a relative path lands harmlessly inside the workspace).
+- **Egress redirect re-validation on the litsearch / HuggingFace fetchers.** Both
+  `analysis/litsearch.py` and `analysis/automate.py` validated only the *initial*
+  URL, then followed redirects automatically — an allowlisted host (arXiv /
+  OpenAlex / HF datasets-server) could 3xx-redirect the request to an internal /
+  cloud-metadata address with no second allowlist check. The clients now use
+  `follow_redirects=False` and re-run `egress.validate_endpoint` on every `Location`
+  (bounded hops), so a redirect to a non-allowlisted host is blocked in `enforce`
+  mode. `ARXIV_API` is also switched to `https://export.arxiv.org` so the hop can't
+  be tampered with in transit.
+
 ### Added
 - **Skill #17 `olmoearth-rslearn` — rslearn for non-experts.** Four torch-free
   in-repo tools that let a domain scientist who doesn't know rslearn still set up a

@@ -40,6 +40,13 @@ def _ctx(studio: _FakeStudio) -> ToolContext:
     return ToolContext(studio=studio, state=ThreadState())  # type: ignore[arg-type]
 
 
+@pytest.fixture(autouse=True)
+def _confine_io_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the path-traversal workspace root at this test's tmp_path so the
+    tool's absolute tmp_path arguments resolve inside the workspace."""
+    monkeypatch.setenv("OLMOEARTH_OUTPUT_ROOT", str(tmp_path))
+
+
 @pytest.mark.asyncio
 async def test_export_by_project(tmp_path: Path) -> None:
     studio = _FakeStudio(
@@ -78,3 +85,16 @@ async def test_export_by_status(tmp_path: Path) -> None:
     assert result["groups"] == 2
     assert (tmp_path / "status_completed.json").exists()
     assert (tmp_path / "status_failed.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_export_rejects_out_dir_traversal(tmp_path: Path) -> None:
+    # A model-controlled out_dir escaping the workspace root is refused.
+    from olmoearth_agent.security.paths import PathTraversalError
+
+    studio = _FakeStudio(projects=[], predictions=[])
+    tool = build_export_tools()[0]
+    with pytest.raises(PathTraversalError):
+        await tool.handler(
+            {"group_by": "status", "out_dir": "../escaped_exports"}, _ctx(studio)
+        )
