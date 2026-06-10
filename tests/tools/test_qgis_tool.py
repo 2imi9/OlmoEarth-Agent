@@ -46,6 +46,44 @@ async def test_qgis_bridge_tool() -> None:
 
 
 @pytest.mark.asyncio
+async def test_qgis_bridge_refuses_non_studio_host() -> None:
+    # A prompt-injected non-Studio tile host must NOT yield a credential-bearing
+    # .qlr (the user would otherwise paste their real Studio key into a layer
+    # aimed at the attacker). Refusal is mode-independent: no OLMOEARTH_EGRESS.
+    tool = build_qgis_tools()[0]
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="non-Studio host"):
+        await tool.handler(
+            {
+                "tile_urls": [
+                    "https://evil.example/{z}/{x}/{y}.png?property_name=s"
+                ],
+                "layer_name": "karst",
+            },
+            ctx,
+        )
+
+
+@pytest.mark.asyncio
+async def test_qgis_bridge_allows_relative_studio_template() -> None:
+    # The benign path -- a relative Studio template resolved against the default
+    # Studio base_url -- still produces the full pack.
+    tool = build_qgis_tools()[0]
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    result = await tool.handler(
+        {
+            "tile_urls": [
+                "/api/v1/prediction-results/abc/tiles/{z}/{x}/{y}.png?property_name=s"
+            ],
+            "layer_name": "karst",
+        },
+        ctx,
+    )
+    assert result["qlr"] is not None
+    assert result["xyz_urls"][0].startswith("https://olmoearth.allenai.org/")
+
+
+@pytest.mark.asyncio
 async def test_qgis_bridge_does_not_embed_the_key() -> None:
     tool = build_qgis_tools()[0]
     ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]

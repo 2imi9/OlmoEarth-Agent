@@ -22,6 +22,7 @@ from olmoearth_agent.reporting.qgis import (
     cog_recipe,
     resolve_xyz_url,
 )
+from olmoearth_agent.security import egress
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 
@@ -40,6 +41,28 @@ async def _qgis_bridge(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any
     crs = args.get("crs", "EPSG:3857")
     vmin, vmax = float(args.get("vmin", 0.0)), float(args.get("vmax", 1.0))
     xyz_urls = [resolve_xyz_url(t, base_url) for t in tile_urls]
+    # The .qlr provider file and the COG recipe embed an
+    # `Authorization: Bearer <Studio key>` slot the user fills in at load time,
+    # so they must only ever target the Studio host. base_url/tile_urls are
+    # model-controlled, so a prompt-injected non-Studio host would turn the
+    # generated pack into a credential-exfil channel (the user pastes their real
+    # key into a .qlr aimed at the attacker). Gate on the Studio egress allowlist
+    # before building anything. Mode-independent on purpose: this guards a
+    # generated artifact, not an agent request, so `audit` mode must still refuse
+    # here. A self-hosted Studio host is covered by OLMOEARTH_EGRESS_ALLOW.
+    decisions = [egress.check_endpoint(u, "studio") for u in xyz_urls]
+    untrusted = sorted(
+        {d.host or u for u, d in zip(xyz_urls, decisions) if not d.allowed}
+    )
+    if untrusted:
+        raise ValueError(
+            "refusing to build a QGIS auth pack for non-Studio host(s) "
+            f"{untrusted}: the .qlr and COG recipe embed an "
+            "'Authorization: Bearer <Studio key>' slot that must only point at "
+            "the Studio host (tile_urls/base_url are model-controlled, so this "
+            "blocks a prompt-injected credential-exfil URL). Allowlist a "
+            "self-hosted Studio host with OLMOEARTH_EGRESS_ALLOW."
+        )
     sld = build_raster_sld(layer_name, vmin=vmin, vmax=vmax)
     legend = build_legend(
         _property_from_tiles(tile_urls, layer_name),

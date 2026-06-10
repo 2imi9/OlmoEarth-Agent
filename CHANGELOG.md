@@ -36,7 +36,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   pointing at the authenticated tile endpoint, with the Bearer key kept out of the
   file (an unresolved sentinel + an `authcfg` note). Because the agent is GDAL-free,
   a true Cloud-Optimized GeoTIFF is returned as a user-run `gdal_translate -of COG`
-  recipe + rationale (`cog_recipe`), not a fabricated file.
+  recipe + rationale (`cog_recipe`), not a fabricated file. The credential-bearing
+  files are gated on the Studio egress allowlist (`egress.check_endpoint`), so a
+  model-controlled (e.g. prompt-injected) non-Studio `tile_urls`/`base_url` host is
+  refused rather than baked into a `.qlr` that would exfiltrate the user's key.
 - **Skill #17 `olmoearth-rslearn` — rslearn for non-experts.** Four torch-free
   in-repo tools that let a domain scientist who doesn't know rslearn still set up a
   correct OlmoEarth/rslearn experiment: `olmoearth_rslearn_recommend` maps a
