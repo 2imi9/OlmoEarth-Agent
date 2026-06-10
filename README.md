@@ -77,9 +77,9 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 6 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
 | 7 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
 | 8 | `olmoearth-similarity` | Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base; FAISS = scale-up follow-up) | **Analyze** |
-| 9 | `olmoearth-uncertainty` | Repeated pixel-value + Meyer-Pebesma Area of Applicability | **Analyze** |
+| 9 | `olmoearth-uncertainty` | Meyer-Pebesma Area-of-Applicability (OOD) flag | **Analyze** |
 | 10 | `olmoearth-cloud-mask-audit` | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
-| 11 | `olmoearth-qgis-bridge` | Tile URLs -> QGIS WMTS + COG with a sidecar uncertainty raster | **Integrate** |
+| 11 | `olmoearth-qgis-bridge` | Tile URLs -> QGIS XYZ URLs + OGC SLD ramp style + a readable legend (COG export follows) | **Integrate** |
 | 12 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
 | 13 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
 | 14 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
@@ -109,7 +109,7 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 ## Docs & links
 
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
-- [**SKILLS.md**](SKILLS.md): the full 18-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**SKILLS.md**](SKILLS.md): the full 17-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
 - [**docs/SHOWCASE.md**](docs/SHOWCASE.md): every skill run live, with real outputs
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) | [**CHANGELOG.md**](CHANGELOG.md) | [**AGENTS.md**](AGENTS.md)
