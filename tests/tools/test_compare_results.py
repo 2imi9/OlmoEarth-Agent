@@ -168,3 +168,121 @@ async def test_compare_results_no_overlap(httpx_mock: HTTPXMock) -> None:
             {"result_id_a": "a1", "result_id_b": "b1"}, ctx
         )
     assert out["comparable"] is False
+
+
+# ---------------------------------------------------------------------------
+# olmoearth_compare_group (N results)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_compare_group_pairwise_and_ensemble(httpx_mock: HTTPXMock) -> None:
+    # Three results over the same 0..10 extent. B = A + 0.05 (within the 0.1
+    # tolerance), C = A + 0.5 (out) -> consensus is 0, the divergent pair is
+    # with C, and every hotspot carries a real lon/lat from the grid.
+    for rid in ("a1", "b1", "c1"):
+        httpx_mock.add_response(
+            url=f"{BASE}/prediction-results/{rid}", json=_result_with_geom(rid)
+        )
+
+    offsets = {"a1": 0.0, "b1": 0.05, "c1": 0.5}
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        q = parse_qs(urlparse(url).query)
+        lon = float(q["lon"][0])
+        offset = next(v for k, v in offsets.items() if f"/{k}/" in url)
+        return httpx.Response(
+            200,
+            json={
+                "records": [
+                    {
+                        "coordinates": {"lon": lon, "lat": 0},
+                        "bands": [
+                            {
+                                "property_name": "sample_score",
+                                "raw_value": round(lon + offset, 6),
+                                "classification": None,
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_compare_group").handler(
+            {"result_ids": ["a1", "b1", "c1"], "grid": 3, "tolerance": 0.1}, ctx
+        )
+
+    assert out["comparable"] is True
+    assert out["result_ids"] == ["a1", "b1", "c1"]
+    assert out["value_type"] == "regression"
+    assert out["samples_requested"] == 27  # 3x3 grid x 3 results
+    assert len(out["pairwise"]) == 3
+    ab = next(
+        p
+        for p in out["pairwise"]
+        if {p["result_id_a"], p["result_id_b"]} == {"a1", "b1"}
+    )
+    assert ab["stats"]["agreement_fraction"] == 1.0
+    ens = out["ensemble"]
+    assert ens["n_points_used"] == 9
+    assert ens["consensus_fraction"] == 0.0  # C is 0.5 away everywhere
+    assert "c1" in (
+        out["most_divergent_pair"]["result_id_a"],
+        out["most_divergent_pair"]["result_id_b"],
+    )
+    spots = ens["top_disagreement_points"]
+    assert spots and all("lon" in s and "lat" in s for s in spots)
+    assert "consensus across the group" in out["method"]
+
+
+@pytest.mark.asyncio
+async def test_compare_group_requires_shared_extent(httpx_mock: HTTPXMock) -> None:
+    # a1/b1 overlap, but c1 is disjoint -> no extent shared by ALL results.
+    for rid in ("a1", "b1"):
+        httpx_mock.add_response(
+            url=f"{BASE}/prediction-results/{rid}", json=_result_with_geom(rid)
+        )
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/c1",
+        json={
+            "records": [
+                {
+                    "id": "c1",
+                    "result_metadata": {
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [[50, 50], [60, 50], [60, 60], [50, 60], [50, 50]]
+                            ],
+                        }
+                    },
+                }
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_compare_group").handler(
+            {"result_ids": ["a1", "b1", "c1"]}, ctx
+        )
+    assert out["comparable"] is False
+    assert "shared" in out["reason"]
+
+
+@pytest.mark.asyncio
+async def test_compare_group_validates_id_count() -> None:
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    too_few = await _tool("olmoearth_compare_group").handler(
+        {"result_ids": ["only", "only"]}, ctx  # dedup -> 1 distinct id
+    )
+    assert too_few["comparable"] is False
+    too_many = await _tool("olmoearth_compare_group").handler(
+        {"result_ids": [f"r{i}" for i in range(7)]}, ctx
+    )
+    assert too_many["comparable"] is False

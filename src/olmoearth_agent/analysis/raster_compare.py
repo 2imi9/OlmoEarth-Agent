@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Quantitative comparison of two prediction-result rasters, no ground truth.
+"""Quantitative comparison of prediction-result rasters, no ground truth.
 
 The agent can show two result rasters side by side, but "which differs and by
 how much" needs numbers. With no ground-truth labels, an accuracy metric is
@@ -37,6 +37,23 @@ def intersect_bbox(
     if minx >= maxx or miny >= maxy:
         return None
     return [minx, miny, maxx, maxy]
+
+
+def intersect_bboxes(boxes: list[list[float] | None]) -> list[float] | None:
+    """Intersection of N bounding boxes (fold of :func:`intersect_bbox`).
+
+    Returns ``None`` if the list is empty, any box is missing, or the common
+    overlap is empty — the group comparison needs an extent shared by *every*
+    result.
+    """
+    if not boxes:
+        return None
+    acc = boxes[0]
+    for box in boxes[1:]:
+        acc = intersect_bbox(acc, box)
+        if acc is None:
+            return None
+    return acc
 
 
 def grid_points(bbox: list[float], n: int) -> list[tuple[float, float]]:
@@ -115,6 +132,187 @@ def compare_categorical(
         "n_samples": n,
         "agreement_fraction": round(agree / n, 4),
         "n_disagree": n - agree,
+    }
+
+
+#: Top-K most-divergent grid points surfaced from a group comparison. A cap,
+#: not a page size: the full per-point breakdown would bloat the tool result
+#: (it accumulates in the model's context) without adding decision value.
+_GROUP_HOTSPOT_CAP = 5
+
+
+def _pair_entries(
+    series: list[list[Any]],
+    stat_fn: Any,
+) -> list[dict[str, Any]]:
+    """Per-pair stats for every (i, j) combination of N aligned series."""
+    return [
+        {
+            "a_index": i,
+            "b_index": j,
+            "stats": stat_fn(list(zip(series[i], series[j]))),
+        }
+        for i in range(len(series))
+        for j in range(i + 1, len(series))
+    ]
+
+
+def _most_divergent_pair(pairwise: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The pair with the lowest agreement fraction (ties: fewer samples last)."""
+    scored = [
+        p
+        for p in pairwise
+        if p["stats"].get("agreement_fraction") is not None
+    ]
+    if not scored:
+        return None
+    worst = min(
+        scored,
+        key=lambda p: (p["stats"]["agreement_fraction"], -p["stats"]["n_samples"]),
+    )
+    return {"a_index": worst["a_index"], "b_index": worst["b_index"]}
+
+
+def compare_group_numeric(
+    series: list[list[float | None]], *, tolerance: float
+) -> dict[str, Any]:
+    """Pairwise + ensemble divergence stats for N aligned regression series.
+
+    ``series`` holds one value list per result, aligned on the same grid
+    points (``None`` = nodata / failed sample). Pairwise reuses
+    :func:`compare_numeric`. The ensemble half treats the >=2 valid values at
+    each point as ensemble members: a point is *consensus* when its spread
+    (max - min) is within ``tolerance``, and the most-divergent points are
+    surfaced (by index; the caller maps indices to coordinates).
+    """
+    pairwise = _pair_entries(
+        series, lambda pairs: compare_numeric(pairs, tolerance=tolerance)
+    )
+    n_points = len(series[0]) if series else 0
+    used = 0
+    consensus = 0
+    spreads: list[float] = []
+    stds: list[float] = []
+    per_point: list[tuple[float, int, int]] = []  # (spread, point_index, n_valid)
+    for p in range(n_points):
+        vals: list[float] = [v for s in series if (v := s[p]) is not None]
+        if len(vals) < 2:
+            continue
+        used += 1
+        spread = max(vals) - min(vals)
+        mean = sum(vals) / len(vals)
+        stds.append(sqrt(sum((v - mean) ** 2 for v in vals) / len(vals)))
+        spreads.append(spread)
+        if spread <= tolerance:
+            consensus += 1
+        per_point.append((spread, p, len(vals)))
+    per_point.sort(key=lambda t: -t[0])
+    ensemble: dict[str, Any] = {
+        "n_points_used": used,
+        "tolerance": tolerance,
+    }
+    if used:
+        ensemble.update(
+            consensus_fraction=round(consensus / used, 4),
+            mean_spread=round(sum(spreads) / used, 6),
+            max_spread=round(max(spreads), 6),
+            mean_ensemble_std=round(sum(stds) / used, 6),
+            top_disagreement_points=[
+                {"point_index": idx, "spread": round(spread, 6), "n_models": k}
+                for spread, idx, k in per_point[:_GROUP_HOTSPOT_CAP]
+                if spread > tolerance
+            ],
+        )
+    else:
+        ensemble["note"] = "no grid point has valid values from 2+ results"
+    return {
+        "pairwise": pairwise,
+        "ensemble": ensemble,
+        "most_divergent_pair": _most_divergent_pair(pairwise),
+    }
+
+
+def compare_group_categorical(series: list[list[Any]]) -> dict[str, Any]:
+    """Pairwise + ensemble agreement stats for N aligned categorical series.
+
+    A point is *unanimous* when every valid value agrees; otherwise its
+    majority share (modal-class fraction) measures how split the models are.
+    """
+    pairwise = _pair_entries(series, compare_categorical)
+    n_points = len(series[0]) if series else 0
+    used = 0
+    unanimous = 0
+    majority_shares: list[float] = []
+    per_point: list[tuple[float, int, int]] = []  # (majority_share, index, n_valid)
+    for p in range(n_points):
+        vals = [s[p] for s in series if s[p] is not None]
+        if len(vals) < 2:
+            continue
+        used += 1
+        counts: dict[Any, int] = {}
+        for v in vals:
+            counts[v] = counts.get(v, 0) + 1
+        share = max(counts.values()) / len(vals)
+        majority_shares.append(share)
+        if len(counts) == 1:
+            unanimous += 1
+        per_point.append((share, p, len(vals)))
+    per_point.sort(key=lambda t: t[0])  # most split first
+    ensemble: dict[str, Any] = {"n_points_used": used}
+    if used:
+        ensemble.update(
+            unanimous_fraction=round(unanimous / used, 4),
+            mean_majority_share=round(sum(majority_shares) / used, 4),
+            top_disagreement_points=[
+                {
+                    "point_index": idx,
+                    "majority_share": round(share, 4),
+                    "n_models": k,
+                }
+                for share, idx, k in per_point[:_GROUP_HOTSPOT_CAP]
+                if share < 1.0
+            ],
+        )
+    else:
+        ensemble["note"] = "no grid point has valid values from 2+ results"
+    return {
+        "pairwise": pairwise,
+        "ensemble": ensemble,
+        "most_divergent_pair": _most_divergent_pair(pairwise),
+    }
+
+
+def compare_group_narration(
+    group: dict[str, Any], *, n_results: int, value_type: str
+) -> dict[str, Any]:
+    """Human labels for a group (N-result, cross-model) comparison.
+
+    Group compare has one meaning — N different models over the same area —
+    so unlike :func:`compare_narration` there is no kind branch (a multi-DATE
+    series belongs to the change-detection trajectory, not here).
+    """
+    ensemble = group.get("ensemble") or {}
+    used = ensemble.get("n_points_used", 0)
+    if value_type == "classification":
+        share = ensemble.get("unanimous_fraction")
+        headline = (
+            f"all {n_results} models pick the same class at "
+            f"{round(share * 100)}% of {used} cells"
+            if share is not None
+            else "no overlapping valid cells with 2+ model values"
+        )
+    else:
+        share = ensemble.get("consensus_fraction")
+        headline = (
+            f"all {n_results} models agree within tolerance at "
+            f"{round(share * 100)}% of {used} cells"
+            if share is not None
+            else "no overlapping valid cells with 2+ model values"
+        )
+    return {
+        "headline": headline,
+        "framing": "model-vs-model consensus across the group "
+        "(no ground truth), not accuracy",
     }
 
 

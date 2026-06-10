@@ -132,3 +132,110 @@ def test_narration_unknown_kind_falls_back_to_cross_model() -> None:
         value_type="regression",
     )
     assert nar["kind"] == "cross_model"
+
+
+# ---------------------------------------------------------------------------
+# group (N-result) comparison
+# ---------------------------------------------------------------------------
+
+
+def test_intersect_bboxes_folds_and_rejects_disjoint() -> None:
+    from olmoearth_agent.analysis.raster_compare import intersect_bboxes
+
+    assert intersect_bboxes(
+        [[0, 0, 10, 10], [5, 5, 20, 20], [0, 0, 8, 8]]
+    ) == [5, 5, 8, 8]
+    assert intersect_bboxes([[0, 0, 1, 1], [2, 2, 3, 3], [0, 0, 9, 9]]) is None
+    assert intersect_bboxes([[0, 0, 1, 1], None]) is None
+    assert intersect_bboxes([]) is None
+
+
+def test_compare_group_numeric_pairwise_and_consensus() -> None:
+    from olmoearth_agent.analysis.raster_compare import compare_group_numeric
+
+    # Three aligned series: B = A + 0.05 (within tolerance), C = A + 0.5 (out).
+    a = [1.0, 2.0, 3.0, 4.0]
+    b = [v + 0.05 for v in a]
+    c = [v + 0.5 for v in a]
+    out = compare_group_numeric([a, b, c], tolerance=0.1)
+
+    assert len(out["pairwise"]) == 3  # (0,1), (0,2), (1,2)
+    ab = next(p for p in out["pairwise"] if (p["a_index"], p["b_index"]) == (0, 1))
+    assert ab["stats"]["agreement_fraction"] == 1.0
+    ac = next(p for p in out["pairwise"] if (p["a_index"], p["b_index"]) == (0, 2))
+    assert ac["stats"]["agreement_fraction"] == 0.0
+
+    ens = out["ensemble"]
+    assert ens["n_points_used"] == 4
+    assert ens["consensus_fraction"] == 0.0  # spread 0.5 > tolerance everywhere
+    assert ens["max_spread"] == 0.5
+    # every point is a hotspot candidate; capped list carries index + spread
+    spots = ens["top_disagreement_points"]
+    assert spots and all(s["spread"] == 0.5 and s["n_models"] == 3 for s in spots)
+    # the most divergent pair must involve C (index 2)
+    assert 2 in (out["most_divergent_pair"]["a_index"], out["most_divergent_pair"]["b_index"])
+
+
+def test_compare_group_numeric_full_consensus_and_nones() -> None:
+    from olmoearth_agent.analysis.raster_compare import compare_group_numeric
+
+    a = [1.0, None, 3.0]
+    b = [1.01, 2.0, None]  # only point 0 has 2+ valid values
+    out = compare_group_numeric([a, b], tolerance=0.1)
+    ens = out["ensemble"]
+    assert ens["n_points_used"] == 1
+    assert ens["consensus_fraction"] == 1.0
+    assert ens["top_disagreement_points"] == []  # within tolerance -> no hotspot
+
+
+def test_compare_group_numeric_no_usable_points() -> None:
+    from olmoearth_agent.analysis.raster_compare import compare_group_numeric
+
+    out = compare_group_numeric([[None, 1.0], [2.0, None]], tolerance=0.1)
+    assert out["ensemble"]["n_points_used"] == 0
+    assert "note" in out["ensemble"]
+    assert out["most_divergent_pair"] is None  # no pair has samples
+
+
+def test_compare_group_categorical_unanimity_and_majority() -> None:
+    from olmoearth_agent.analysis.raster_compare import compare_group_categorical
+
+    a = ["water", "urban", "forest"]
+    b = ["water", "urban", "crop"]
+    c = ["water", "bare", "crop"]
+    out = compare_group_categorical([a, b, c])
+
+    assert len(out["pairwise"]) == 3
+    ens = out["ensemble"]
+    assert ens["n_points_used"] == 3
+    assert ens["unanimous_fraction"] == round(1 / 3, 4)  # only point 0
+    # point 1: majority 2/3 (urban); point 2: majority 2/3 (crop); point 0: 1.0
+    assert ens["mean_majority_share"] == round((1.0 + 2 / 3 + 2 / 3) / 3, 4)
+    spots = ens["top_disagreement_points"]
+    assert spots and all(s["majority_share"] < 1.0 for s in spots)
+
+
+def test_compare_group_narration_headlines() -> None:
+    from olmoearth_agent.analysis.raster_compare import (
+        compare_group_narration,
+    )
+
+    nar = compare_group_narration(
+        {"ensemble": {"n_points_used": 9, "consensus_fraction": 0.5}},
+        n_results=3,
+        value_type="regression",
+    )
+    assert "all 3 models agree within tolerance at 50% of 9 cells" == nar["headline"]
+    assert "not accuracy" in nar["framing"]
+
+    nar_cls = compare_group_narration(
+        {"ensemble": {"n_points_used": 4, "unanimous_fraction": 0.25}},
+        n_results=4,
+        value_type="classification",
+    )
+    assert "all 4 models pick the same class at 25% of 4 cells" == nar_cls["headline"]
+
+    empty = compare_group_narration(
+        {"ensemble": {"n_points_used": 0}}, n_results=3, value_type="regression"
+    )
+    assert "no overlapping valid cells" in empty["headline"]
