@@ -46,6 +46,24 @@ a { color: var(--mint-link); text-decoration: none; }
 a:hover { color: var(--text); }
 .ic { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
+/* Thin, subtle scrollbars across every scroll area (project tree, chats, the
+   chat thread, code/result blocks, modals) — replaces the chunky default OS
+   scrollbar with the minimal dark-teal one the rest of the UI is styled for.
+   Firefox: scrollbar-width/color; WebKit: the pseudo-elements. Transparent
+   track; a rounded thumb inset by a transparent border so it reads ~4px thin,
+   brightening on hover. */
+* { scrollbar-width: thin; scrollbar-color: var(--panel-2) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--panel-2);
+  border-radius: var(--radius-pill);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+*::-webkit-scrollbar-corner { background: transparent; }
+
 .app { display: flex; height: 100vh; overflow: hidden; }
 
 /* ───────────── Sidebar ───────────── */
