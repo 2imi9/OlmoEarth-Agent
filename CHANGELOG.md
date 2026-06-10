@@ -9,6 +9,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-10
+
 ### Security
 - **Symmetric egress guard on the Claude backend.** `AnthropicLLM.__init__` now
   validates its endpoint (`egress.validate_endpoint`, capability auto-picked like
@@ -35,6 +37,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   (bounded hops), so a redirect to a non-allowlisted host is blocked in `enforce`
   mode. `ARXIV_API` is also switched to `https://export.arxiv.org` so the hop can't
   be tampered with in transit.
+- **The LLM client now routes its endpoint through the egress guard.** Studio,
+  litsearch, and HF calls were already validated via `security/egress.py`, but
+  `OlmoEarthLLM` built its OpenAI-compatible client straight from `LLM_ENDPOINT`
+  with no check — so a malicious/misconfigured endpoint could exfiltrate the
+  conversation (and a hosted-provider key). `OlmoEarthLLM.__init__` now validates
+  the endpoint: loopback → the `llm-local` capability, otherwise the `llm-cloud`
+  allowlist (`api.anthropic.com` / `api.openai.com` / `generativelanguage.googleapis.com`).
+  Consistent with the rest of the guard — audit-logs by default, blocks under
+  `OLMOEARTH_EGRESS=enforce`. SSRF to the cloud metadata IP (`169.254.169.254`) is
+  blocked in enforce mode.
 
 ### Added
 - **Multi-group compare for skill #4 `olmoearth-predict`:** new
@@ -284,18 +296,6 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   OlmoEarth Base)" across `registry.py`, `SKILLS.md`, `README.md`, the tool
   description, and the web UI card; AlphaEarth stays as the worked example + the
   science citation. Doc/wording only, no code change (closes #121).
-
-### Security
-- **The LLM client now routes its endpoint through the egress guard.** Studio,
-  litsearch, and HF calls were already validated via `security/egress.py`, but
-  `OlmoEarthLLM` built its OpenAI-compatible client straight from `LLM_ENDPOINT`
-  with no check — so a malicious/misconfigured endpoint could exfiltrate the
-  conversation (and a hosted-provider key). `OlmoEarthLLM.__init__` now validates
-  the endpoint: loopback → the `llm-local` capability, otherwise the `llm-cloud`
-  allowlist (`api.anthropic.com` / `api.openai.com` / `generativelanguage.googleapis.com`).
-  Consistent with the rest of the guard — audit-logs by default, blocks under
-  `OLMOEARTH_EGRESS=enforce`. SSRF to the cloud metadata IP (`169.254.169.254`) is
-  blocked in enforce mode.
 
 ## [1.2.0] - 2026-06-08
 

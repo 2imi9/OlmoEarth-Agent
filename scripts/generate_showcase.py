@@ -21,6 +21,16 @@ it (default http://localhost:8000/v1). Skills #5 (predict, read-only) and
 it is absent they degrade to a short documented note. Because the agent
 samples at temperature 1.0, each run captures a fresh trace; the wording
 varies, the behaviour does not.
+
+The #16 brief reads a labels fixture through the path-traversal guard
+(``security/paths.py``), which confines tool file I/O under
+``OLMOEARTH_OUTPUT_ROOT`` (default ``<cwd>/olmoearth_outputs``) — stage
+the fixture inside that root first or the transcript captures a
+FileNotFoundError:
+
+    mkdir -p olmoearth_outputs/docs/showcase_fixtures
+    cp docs/showcase_fixtures/karst_presence.geojson \
+       olmoearth_outputs/docs/showcase_fixtures/
 """
 
 from __future__ import annotations
