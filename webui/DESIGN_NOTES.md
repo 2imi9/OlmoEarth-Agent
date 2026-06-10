@@ -71,9 +71,13 @@ not the window.
   in) get a **difference-map scan**: both are sampled on a grid (`GET
   /api/pixel-value`) and each cell painted by B-A progressively. The bridge
   caches proxied tiles + pixel values so re-scans are fast.
-- **Comparisons panel** (`js/compares.js`), **done**: stores difference-scan
-  results (real stats + diff grid) in `localStorage` and re-opens them in a modal;
-  saved via an `oe:save-comparison` event so `viz.js` need not import the panel.
+- **Results panel** (`js/results.js`), **done**: stores a chat's outputs in
+  `localStorage` — typed `comparison` records (real stats + diff grid, re-opened
+  in a difference-map modal) and typed `file` records (downloadable artifacts:
+  SLD style, case-narrative report, exported JSON/CSV — opened as a text preview
+  + re-download), each shown with a format badge. Saved via `oe:save-comparison`
+  (a difference scan) or the generic `oe:save-result` event, so `viz.js` need not
+  import the panel.
   It is one segment of the sidebar switch bar (below).
 - **Sidebar switch bar** (`js/switcher.js`, `js/areas.js`), **done**: the rail is
   reorganized Claude-desktop style - an always-visible **Chats** list plus a 3-way

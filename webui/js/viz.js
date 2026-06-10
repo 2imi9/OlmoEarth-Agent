@@ -523,7 +523,7 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + '). ' + legendHtml(v.kind);
 
   // Captured straight from the live scan (real values), so a saved comparison
-  // is never fabricated. Offer to store it in the Comparisons panel.
+  // is never fabricated. Offer to store it in the Results panel.
   const record = {
     resultIdA: a.resultId, resultIdB: b.resultId, property: opts.property || null,
     kind: v.kind, bbox, cellSize: [dx, dy], tolerance: tol, stats,
@@ -535,10 +535,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'viz-diff-btn';
-    save.textContent = 'Save comparison';
+    save.textContent = 'Save to Results';
     save.addEventListener('click', () => {
       document.dispatchEvent(new CustomEvent('oe:save-comparison', { detail: record }));
-      save.textContent = 'Saved to Comparisons';
+      save.textContent = 'Saved to Results';
       save.disabled = true;
     });
     container.appendChild(save);
@@ -683,13 +683,21 @@ export function renderResultViz(container, ev) {
     // Downloadable text artifacts (don't early-return: a qgis result also maps).
     if (typeof inner.sld === 'string' && inner.sld) {
       const name = (inner.layer_name || 'style') + '.sld';
-      container.appendChild(downloadBar([{ label: 'Download .sld style',
-        onClick: () => downloadText(name, inner.sld, 'application/vnd.ogc.sld+xml') }]));
+      container.appendChild(downloadBar([
+        { label: 'Download .sld style', onClick: () => downloadText(name, inner.sld, 'application/vnd.ogc.sld+xml') },
+        { label: 'Save to Results', onClick: () => document.dispatchEvent(new CustomEvent('oe:save-result', { detail: {
+          type: 'file', format: 'sld', filename: name, mime: 'application/vnd.ogc.sld+xml',
+          text: inner.sld, title: (inner.layer_name || 'QGIS') + ' style (SLD)' } })) },
+      ]));
       any = true;
     }
     if (typeof inner.markdown === 'string' && inner.markdown) {
-      container.appendChild(downloadBar([{ label: 'Download report (.md)',
-        onClick: () => downloadText('case-narrative.md', inner.markdown, 'text/markdown') }]));
+      container.appendChild(downloadBar([
+        { label: 'Download report (.md)', onClick: () => downloadText('case-narrative.md', inner.markdown, 'text/markdown') },
+        { label: 'Save to Results', onClick: () => document.dispatchEvent(new CustomEvent('oe:save-result', { detail: {
+          type: 'file', format: 'md', filename: 'case-narrative.md', mime: 'text/markdown',
+          text: inner.markdown, title: 'Case narrative' } })) },
+      ]));
       any = true;
     }
 
