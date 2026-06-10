@@ -41,18 +41,20 @@ def build_automate_tools() -> list[RegisteredTool]:
             spec=ToolSpec(
                 name="olmoearth_automate",
                 description=(
-                    "Auto-decide embeddings vs fine-tuning for an OlmoEarth task "
-                    "AND propose a full config (model size, classifier head, an "
-                    "embeddings-notebook command, a fine-tune schedule, and a "
-                    "hand-off to the Studio job wizard). Use when the user asks "
-                    "'should I fine-tune or use embeddings', 'set this up for me', "
-                    "'auto-configure', 'what model size', or points at a dataset "
-                    "and wants a recommended pipeline. Provide what you know: a "
-                    "free-text `task`, explicit `num_samples`/`num_classes`/"
-                    "`compute`/`goal`, and/or a Hugging Face `hf_dataset` id (its "
-                    "row count + label classes are read from the public "
-                    "datasets-server). Returns the decision, rationale, a config, "
-                    "and `ask_for` when key inputs are missing. Honest about "
+                    "Decide embeddings vs fine-tuning for a user running the work "
+                    "THEMSELVES (the embeddings-notebook + local fine-tune path) and "
+                    "propose that config. Use ONLY when the user explicitly weighs "
+                    "'should I fine-tune or use embeddings' for their OWN pipeline / "
+                    "notebook. DO NOT use this to create or configure a model in "
+                    "OlmoEarth Studio (the hosted platform — Ai2 runs the training): "
+                    "for 'set up / configure / build a model to map/detect X', load "
+                    "the `olmoearth-studio-job-config` skill and walk the wizard, and "
+                    "NEVER ask about compute (the `compute` input matters only for "
+                    "self-run training). Provide what you know: a free-text `task`, "
+                    "explicit `num_samples`/`num_classes`/`compute`/`goal`, and/or a "
+                    "Hugging Face `hf_dataset` id (row count + label classes read from "
+                    "the public datasets-server). Returns the decision, rationale, a "
+                    "config, and `ask_for` when key inputs are missing. Honest about "
                     "missing inputs; never invents dataset stats."
                 ),
                 parameters={
