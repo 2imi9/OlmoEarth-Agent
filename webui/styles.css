@@ -151,6 +151,22 @@ a:hover { color: var(--text); }
 .chat-item:hover .chat-del { opacity: 1; }
 .chat-del:hover { color: var(--pink); background: var(--bg); }
 
+/* Saved-results rows: a small format badge replaces the per-row icon, and a
+   file result opens a monospace text preview in the modal. */
+.res-badge {
+  flex: none; min-width: 36px; padding: 2px 5px; border-radius: 5px;
+  font-size: 9px; font-weight: 700; letter-spacing: .04em; text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-faint); background: var(--bg-2); border: 1px solid var(--line);
+}
+.res-badge.res-raster-diff { color: var(--mint-soft); border-color: rgba(15,203,140,.5); background: rgba(15,203,140,.1); }
+.result-file-pre {
+  margin: 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.5;
+  color: var(--text); background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px;
+}
+
 /* Projects drill-down tree */
 .proj-tree { padding: 1px 0 4px; }
 .tree-node { display: flex; flex-direction: column; }

@@ -63,7 +63,7 @@ Or just open `webui/index.html` in a browser.
 |---|---|
 | `index.html` | markup: sidebar (chats + project tree), chat thread, pinned composer, key popover |
 | `styles.css` | the design system (tokens at `:root`), no preprocessor |
-| `js/`        | the front-end as native **ES modules** (no build step), split by concern: `main.js` (entry + app-shell wiring), `api.js` (every bridge call + request credentials), `store.js` + `util.js`, and feature modules `skills.js`, `chat.js`, `run.js`, `markdown.js`, `projects.js`, `attach.js`, `llm.js`, `landing.js`, `aoi.js` (AOI draw-in-chat), `viz.js` (in-chat result visuals), `compares.js` (saved comparisons), `download.js` (chat-artifact downloads), `leaflet.js` (lazy Leaflet loader). Loaded via `<script type="module" src="js/main.js">`. |
+| `js/`        | the front-end as native **ES modules** (no build step), split by concern: `main.js` (entry + app-shell wiring), `api.js` (every bridge call + request credentials), `store.js` + `util.js`, and feature modules `skills.js`, `chat.js`, `run.js`, `markdown.js`, `projects.js`, `attach.js`, `llm.js`, `landing.js`, `aoi.js` (AOI draw-in-chat), `viz.js` (in-chat result visuals), `results.js` (saved results: comparisons + downloadable file outputs), `download.js` (chat-artifact downloads), `leaflet.js` (lazy Leaflet loader). Loaded via `<script type="module" src="js/main.js">`. |
 | `assets/OlmoEarth-logo.png` | the OlmoEarth wordmark (the sidebar crops it to just the symbol) |
 | `screenshots/` | reference renders (desktop, transcript, mobile) |
 
