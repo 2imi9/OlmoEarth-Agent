@@ -28,6 +28,7 @@ from olmoearth_agent.llm.types import (
     ToolCall,
     ToolSpec,
 )
+from olmoearth_agent.security import egress
 
 #: Anthropic's public API base; exposed so a caller can point at a proxy.
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
@@ -212,6 +213,16 @@ class AnthropicLLM:
             timeout_seconds=timeout_seconds,
             max_output_tokens=max_output_tokens,
         )
+        # Guard the destination before handing it the BYO credential -- the same
+        # control OlmoEarthLLM applies (a malicious base_url must not exfiltrate
+        # the key/conversation). Picked via the pure verdict so it is correct in
+        # audit mode too; a loopback override (a local proxy) maps to llm-local.
+        capability = (
+            "llm-local"
+            if egress.check_endpoint(self.config.endpoint, "llm-local").allowed
+            else "llm-cloud"
+        )
+        egress.validate_endpoint(self.config.endpoint, capability)
         client_kwargs: dict[str, Any] = {"timeout": timeout_seconds}
         if base_url:
             client_kwargs["base_url"] = base_url

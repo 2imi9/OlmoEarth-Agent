@@ -39,9 +39,14 @@ def build_skill_tools(loader: "SkillLoader | None" = None) -> list[RegisteredToo
         name = args["name"]
         try:
             body = skill_loader.load(name)
-        except KeyError:
+        except KeyError as exc:
+            # Raise so dispatch reports ok=False with the recovery hint in the
+            # error (a returned {"error": ...} dict is wrapped as ok=True, hiding
+            # the failure). The available names let the model retry.
             available = [s.name for s in skill_loader.discover()]
-            return {"error": f"unknown skill {name!r}", "available": available}
+            raise ValueError(
+                f"unknown skill {name!r}; available: {', '.join(available)}"
+            ) from exc
         return {"name": name, "instructions": body}
 
     return [

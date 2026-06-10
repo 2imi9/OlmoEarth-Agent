@@ -10,6 +10,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Security
+- **Symmetric egress guard on the Claude backend.** `AnthropicLLM.__init__` now
+  validates its endpoint (`egress.validate_endpoint`, capability auto-picked like
+  `OlmoEarthLLM`) before binding the BYO key, instead of relying solely on the
+  `serve.py` call site — so a malicious `base_url` can't exfiltrate the key/chat,
+  consistent with the local-model client.
 - **Path-traversal guard: model-controlled tool file I/O is confined to a
   workspace root.** `olmoearth_export_data` (`out_dir`), `olmoearth_nndm_cv`
   (`output_path`), and `olmoearth_negative_sampler` (`positives_path` /
@@ -173,6 +178,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `studio/client.py`)
 
 ### Fixed
+- **Tool-input failures no longer report as successful calls.** `olmoearth_run_python`
+  (empty code) and `olmoearth_load_skill` (unknown skill) returned an
+  `{"ok"/"error": ...}` dict, which the dispatch envelope wraps as
+  `{"ok": True, "result": ...}` — masking the failure as a success in provenance
+  and the agent loop. They now raise, so dispatch reports `ok=False` (the
+  unknown-skill error carries the available names for retry).
 - **Skill #11 honesty: removed the unbuilt "COG / WMTS / full-precision GeoTIFF /
   sidecar uncertainty raster" claims** (#92). The agent is GDAL-free and only has
   tile URLs, so it cannot itself export a COG. `SKILLS.md` (catalog row #11 + §11

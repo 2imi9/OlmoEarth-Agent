@@ -45,9 +45,10 @@ async def test_nonzero_exit_is_not_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_empty_code(monkeypatch: pytest.MonkeyPatch) -> None:
-    res = await _handler(monkeypatch)({"code": "   "}, None)
-    assert res["ok"] is False
-    assert "no code" in res["error"]
+    # A tool-input error now raises (dispatch reports ok=False) rather than
+    # returning a dict that would be wrapped as a successful call.
+    with pytest.raises(ValueError, match="no code"):
+        await _handler(monkeypatch)({"code": "   "}, None)
 
 
 @pytest.mark.asyncio
