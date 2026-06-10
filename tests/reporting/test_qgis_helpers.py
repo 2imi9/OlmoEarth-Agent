@@ -7,12 +7,21 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 from olmoearth_agent.reporting.qgis import (
+    AUTH_PLACEHOLDER,
+    build_gdal_wms_xml,
     build_legend,
+    build_qlr,
     build_raster_sld,
+    cog_recipe,
     resolve_xyz_url,
 )
 
 _SLD_NS = "http://www.opengis.net/sld"
+
+_TILE = (
+    "https://olmoearth.allenai.org/api/v1/prediction-results/abc/"
+    "tiles/{z}/{x}/{y}.png?property_name=karst_score"
+)
 
 
 def test_build_legend_continuous_has_value_color_stops() -> None:
@@ -85,3 +94,52 @@ def test_build_raster_sld_custom_range() -> None:
     quantities = [float(e.get("quantity")) for e in entries]
     assert quantities[0] == 10.0
     assert quantities[-1] == 20.0
+
+
+def test_build_qlr_is_valid_xml_with_wms_provider() -> None:
+    qlr = build_qlr("karst layer", _TILE, crs="EPSG:3857")
+    root = ET.fromstring(qlr)  # noqa: S314 - parses our own generated XML
+    assert root.tag == "qlr"
+    maplayer = root.find(".//maplayer")
+    assert maplayer is not None and maplayer.get("type") == "raster"
+    assert maplayer.findtext("provider") == "wms"
+    assert maplayer.findtext(".//authid") == "EPSG:3857"
+
+
+def test_build_qlr_never_embeds_the_real_key() -> None:
+    qlr = build_qlr("layer", _TILE)
+    # the unresolved sentinel stands in for the key; no live bearer value
+    assert AUTH_PLACEHOLDER in qlr
+    # the tile url is url-encoded inside the datasource so its & / {} survive
+    assert "%7Bz%7D" in qlr  # {z} encoded
+
+
+def test_build_qlr_sanitizes_layer_id() -> None:
+    # spaces / punctuation in the name must not produce an invalid id token
+    qlr = build_qlr("My Karst (2026)!", _TILE)
+    root = ET.fromstring(qlr)  # noqa: S314 - our own XML
+    layer_id = root.findtext(".//maplayer/id")
+    assert layer_id == "My_Karst_2026_xyz"
+
+
+def test_build_gdal_wms_xml_rewrites_placeholders_and_is_valid() -> None:
+    xml = build_gdal_wms_xml(_TILE, crs="EPSG:3857")
+    root = ET.fromstring(xml)  # noqa: S314 - our own XML
+    assert root.tag == "GDAL_WMS"
+    assert root.find(".//Service").get("name") == "TMS"
+    server_url = root.findtext(".//ServerUrl")
+    assert "${z}/${x}/${y}" in server_url  # GDAL placeholder form
+    assert "{z}/{x}/{y}" not in server_url
+    assert root.findtext(".//YOrigin") == "top"
+    assert root.findtext("Projection") == "EPSG:3857"
+
+
+def test_cog_recipe_is_an_honest_user_run_command() -> None:
+    recipe = cog_recipe()
+    assert "gdal_translate" in recipe["command"]
+    assert "-of COG" in recipe["command"]
+    # honest about why the agent can't produce a COG itself
+    assert "GDAL" in recipe["rationale"]
+    assert "full-precision" in recipe["rationale"]
+    # the key is supplied at run time via an env var, not written to a file
+    assert "$OLMOEARTH_API_KEY" in recipe["command"]

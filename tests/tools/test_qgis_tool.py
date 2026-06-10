@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from olmoearth_agent.harness.state import ThreadState
+from olmoearth_agent.reporting.qgis import AUTH_PLACEHOLDER
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolContext
 
@@ -31,4 +32,73 @@ async def test_qgis_bridge_tool() -> None:
     assert "{z}/{x}/{y}" in result["xyz_urls"][0]
     # SLD is valid XML
     ET.fromstring(result["sld"])  # noqa: S314 - parses our own generated SLD
-    assert any("Authorization: Bearer" in line for line in result["instructions"])
+    # Auth guidance is present, but the key is never embedded -- the
+    # instructions point at the placeholder sentinel, not a baked-in token.
+    assert any(AUTH_PLACEHOLDER in line for line in result["instructions"])
+    # provider files are present and well-formed, key NOT embedded
+    qlr_root = ET.fromstring(result["qlr"])  # noqa: S314 - our own XML
+    assert qlr_root.tag == "qlr"
+    gdal_root = ET.fromstring(result["gdal_wms_xml"])  # noqa: S314 - our own XML
+    assert gdal_root.tag == "GDAL_WMS"
+    # the honest COG recipe is a user-run command, not a fabricated file
+    assert "gdal_translate" in result["cog_recipe"]["command"]
+    assert "-of COG" in result["cog_recipe"]["command"]
+
+
+@pytest.mark.asyncio
+async def test_qgis_bridge_refuses_non_studio_host() -> None:
+    # A prompt-injected non-Studio tile host must NOT yield a credential-bearing
+    # .qlr (the user would otherwise paste their real Studio key into a layer
+    # aimed at the attacker). Refusal is mode-independent: no OLMOEARTH_EGRESS.
+    tool = build_qgis_tools()[0]
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="non-Studio host"):
+        await tool.handler(
+            {
+                "tile_urls": [
+                    "https://evil.example/{z}/{x}/{y}.png?property_name=s"
+                ],
+                "layer_name": "karst",
+            },
+            ctx,
+        )
+
+
+@pytest.mark.asyncio
+async def test_qgis_bridge_allows_relative_studio_template() -> None:
+    # The benign path -- a relative Studio template resolved against the default
+    # Studio base_url -- still produces the full pack.
+    tool = build_qgis_tools()[0]
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    result = await tool.handler(
+        {
+            "tile_urls": [
+                "/api/v1/prediction-results/abc/tiles/{z}/{x}/{y}.png?property_name=s"
+            ],
+            "layer_name": "karst",
+        },
+        ctx,
+    )
+    assert result["qlr"] is not None
+    assert result["xyz_urls"][0].startswith("https://olmoearth.allenai.org/")
+
+
+@pytest.mark.asyncio
+async def test_qgis_bridge_does_not_embed_the_key() -> None:
+    tool = build_qgis_tools()[0]
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    result = await tool.handler(
+        {
+            "tile_urls": [
+                "https://olmoearth.allenai.org/api/v1/prediction-results/abc/"
+                "tiles/{z}/{x}/{y}.png?property_name=s"
+            ],
+            "layer_name": "karst",
+        },
+        ctx,
+    )
+    # the unresolved sentinel is present; no real bearer value is baked in
+    assert "__OLMOEARTH_API_KEY__" in result["qlr"]
+    # GDAL descriptor rewrites {z}/{x}/{y} -> ${z}/${x}/${y}
+    assert "${z}/${x}/${y}" in result["gdal_wms_xml"]
+    assert "{z}/{x}/{y}" not in result["gdal_wms_xml"]

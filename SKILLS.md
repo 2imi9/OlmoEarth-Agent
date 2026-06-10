@@ -29,14 +29,14 @@ Skills #4-#16 are implemented in this repo (see `CHANGELOG.md`).
 | 1 | Prep | [`olmoearth-data-prep`](#1-olmoearth-data-prep) | Labels (GeoJSON / CSV / Shapefile) -> Studio-importable file (MIME / 10K / multi-metric guards) AND an `rslearn` `dataset.json` + Lightning YAML, with a 7-criteria audit. |
 | 2 | Configure | [`olmoearth-studio-job-config`](#2-olmoearth-studio-job-config) | Task description -> Studio wizard answers with 14 presets + cross-field validator. |
 | 3 | Configure | [`olmoearth-embeddings`](#3-olmoearth-embeddings) | Embeddings-vs-fine-tune decision: **guidance + a runnable notebook** (you run it), plus the **one-call** `olmoearth_automate` (decide + propose a config; optional HF-dataset introspection). |
-| 4 | Run | [`olmoearth-predict`](#4-olmoearth-predict) | The core run primitive: submit / poll / fetch results; pixel-value / features follow. |
+| 4 | Run | [`olmoearth-predict`](#4-olmoearth-predict) | The core run primitive: submit / poll / fetch results; sample the model output at a point (pixel-value); features follow. |
 | 5 | Run | [`olmoearth-change-detection`](#5-olmoearth-change-detection) | Change detection, two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date), and an out-of-process JEPA latent-prediction pixel detector (separate repo). |
 | 6 | Run | [`olmoearth-baseline-compare`](#6-olmoearth-baseline-compare) | Studio vs. a baseline foundation model (e.g. AlphaEarth), side-by-side on transfer regions. |
 | 7 | Analyze | [`olmoearth-evaluate`](#7-olmoearth-evaluate) | Spatial-block CV + NNDM-LOO over `/prediction-results`. |
 | 8 | Analyze | [`olmoearth-similarity`](#8-olmoearth-similarity) | Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base; FAISS = scale-up); geographic-prior warning. |
-| 9 | Analyze | [`olmoearth-uncertainty`](#9-olmoearth-uncertainty) | Repeated pixel-value + Meyer-Pebesma Area of Applicability. |
+| 9 | Analyze | [`olmoearth-uncertainty`](#9-olmoearth-uncertainty) | Ensemble-disagreement confidence (across distinct results) + Meyer-Pebesma Area of Applicability. |
 | 10 | Analyze | [`olmoearth-cloud-mask-audit`](#10-olmoearth-cloud-mask-audit) | CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
-| 11 | Integrate | [`olmoearth-qgis-bridge`](#11-olmoearth-qgis-bridge) | Tile URLs -> QGIS WMTS + COG with sidecar uncertainty raster. |
+| 11 | Integrate | [`olmoearth-qgis-bridge`](#11-olmoearth-qgis-bridge) | Tile URLs -> a QGIS `.qlr` layer + a GDAL_WMS/XYZ descriptor + XYZ URLs + an SLD style + a local `gdal_translate` COG recipe. |
 | 12 | Integrate | [`olmoearth-data-export`](#12-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 13 | Report | [`olmoearth-provenance`](#13-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
@@ -130,12 +130,13 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **In:** Studio project + area + model_id + time range + config.
 **Out:** `PredictionRef`, status, and result tiles / vectors / metrics.
 
-**What.** Submit a prediction (`POST /predictions`), poll progress (`GET /predictions/{id}`), and fetch results (tiles / vectors / metrics). Pixel-value at points (`/pixel-value`) and feature-search by class (`/features/search`) are defined in `PLAN.md` §1 but not yet built as tools.
+**What.** Submit a prediction (`POST /predictions`), poll progress (`GET /predictions/{id}`), and fetch results (tiles / vectors / metrics). Pixel-value at a point (`/pixel-value`) is exposed as the `olmoearth_pixel_value` tool (the model's output sampled at one user-supplied lon/lat, not an interpolated read and not validated truth). Feature-search by class (`/features/search`) is defined in `PLAN.md` §1 but not yet built as a tool.
 
 **Why.** The Studio API is async with a 5-state status enum (`pending / running / completed / failed / cancelled`) and a `download_token` flow. Without a wrapper, every case study re-implements the polling loop, retry on result-creation failures, and the tile-vs-raw-output decision. This is the core run primitive every other skill depends on.
 
 **Tools composed.**
 - `olmoearth_search_predictions`, `olmoearth_submit_prediction`, `olmoearth_get_prediction`, `olmoearth_fetch_results`, `olmoearth_get_prediction_result` (wrapping `PLAN.md` §1 submit / poll / fetch_results).
+- `olmoearth_pixel_value`: reads one result's model output at a single lon/lat the user supplies (`raw_value` for a regression layer, the class for a categorical one), or reports `available: false` off-raster. The user provides the point, so echoing it back is `PLAN.md` §3.1-compliant.
 - `olmoearth_compare_results`: a **quantitative** two-result comparison with no ground truth. Samples both rasters on a grid (pointwise `pixel-value`) over their shared extent and returns mean / mean-absolute difference, RMSE, correlation, and an agreement fraction (regression) or class agreement (classification). A `kind` selects the framing: `cross_model` (default) = two different models over the same area (how much they *agree* -- divergence, not accuracy); `temporal` = one model's output at an earlier (A) vs a later (B) date (net *change* over time, later minus earlier). The returned `narration` (labels + headline) and the in-chat card / difference-scan captions adapt to the kind. This is the numeric counterpart to the side-by-side raster preview; for accuracy against labels use skill #7 `olmoearth-evaluate`.
 - `features_search` (`PLAN.md` §1; not yet built as a tool).
 
@@ -213,16 +214,16 @@ One capability, two complementary engines.
 
 ### 9. `olmoearth-uncertainty`
 
-**In:** `PredictionRef` + AOI.
-**Out:** confidence map + DI-weighted OOD flag per region.
+**In:** *(confidence)* two or more prediction results over a shared area; *(OOD)* training-data feature vectors + the AOI points to assess.
+**Out:** *(confidence)* per-point + aggregate ensemble-disagreement stats; *(OOD)* a DI-weighted out-of-distribution flag per point.
 
-**What.** Confidence maps plus a Meyer-Pebesma Dissimilarity-Index-weighted out-of-distribution flag. Warns when an AOI lies outside the trained embedding space.
+**What.** Two complementary uncertainty signals. *Ensemble-disagreement confidence:* samples two or more **distinct** prediction results on a shared-extent grid and treats the per-point values as ensemble members, returning per-point dispersion (std / coefficient-of-variation / range for regression; majority class / vote fractions / normalized Shannon entropy / margin for categorical) folded into a confidence in [0,1]. The variance is real (distinct results), never a fake re-read of one deterministic result, and it is **epistemic uncertainty — model self-consistency, not a calibrated correctness probability.** *Area of Applicability:* a Meyer-Pebesma Dissimilarity-Index-weighted out-of-distribution flag that warns when an AOI lies outside the trained feature space. Use them together: trust a prediction most when it is both inside the AOA and low-dispersion.
 
 **Why.** Softmax confidence is not OOD detection. Meyer & Pebesma's [Area of Applicability framework](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13650) (R [`CAST`](https://cran.r-project.org/package=CAST) package, on CRAN since 2018) is implemented across multiple peer-reviewed methods papers but absent from every EO foundation model platform. AlphaEarth's documented transfer failure under domain shift is exactly what AOA would have flagged.
 
 **Tools composed.**
-- `olmoearth.pixel_value` (`PLAN.md` §1, new in v0.4).
-- Skill-local: `area_of_applicability`, `repeated_sampling`, `ood_flag`.
+- `olmoearth_area_of_applicability` (the AOA / OOD flag over caller-supplied feature vectors) and `olmoearth_ensemble_uncertainty` (samples >= 2 results via `olmoearth.pixel_value`, `PLAN.md` §1, into an ensemble-disagreement confidence map).
+- Logic in `analysis/uncertainty.py`: `area_of_applicability` + `ood_flag` (AOA), and `prediction_confidence` (the pure dispersion / entropy statistics).
 
 ---
 
@@ -245,16 +246,16 @@ One capability, two complementary engines.
 
 ### 11. `olmoearth-qgis-bridge`
 
-**In:** `ResultBundle.tile_template` + uncertainty.
-**Out:** QGIS WMTS connection file + COG + sidecar uncertainty raster + SLD style.
+**In:** a prediction result's `tile_urls` (+ optional ramp range / categorical classes / CRS).
+**Out:** a QGIS `.qlr` layer-definition + a GDAL_WMS/XYZ descriptor + resolved XYZ URLs + an OGC SLD style + a structured legend + a local `gdal_translate` COG recipe.
 
-**What.** Writes a QGIS Processing-toolbox provider and an SLD style derived from the model class metadata. Outputs full-precision GeoTIFF, not just colorized tiles.
+**What.** Emits pure-text files a GIS analyst drops straight into QGIS: a `.qlr` layer-definition for the authenticated XYZ tile endpoint (load in one step), a GDAL_WMS/XYZ descriptor GDAL reads as a raster, resolved XYZ URLs, and an OGC SLD color-ramp style with a matching legend. The Bearer key is **never** baked into a generated file (an unresolved sentinel + an `authcfg` note). The agent is **GDAL-free**, so it does not itself write a Cloud-Optimized GeoTIFF — a real COG needs internal tiling, overview pyramids, and a specific IFD layout only the GeoTIFF/GDAL stack produces. Instead it returns an honest one-line `gdal_translate -of COG ...` recipe the user runs locally on the descriptor; a COG built from the public tiles is a *visual* raster, not the model's full-precision scores (those need the original prediction GeoTIFF, which the tile endpoint does not expose).
 
 **Why.** Existing QGIS deep-learning plugins are documented as inference-only and compute-heavy ([IAMAP, arXiv:2508.00627](https://arxiv.org/abs/2508.00627), preprint). Google shipped a major Earth Engine QGIS plugin upgrade in late 2025 because GIS users will not leave their desktop. Most case providers (NGOs, government analysts, local agencies) live in QGIS or ArcGIS. This skill closes the hot-cold loop.
 
 **Tools composed.**
-- `olmoearth.fetch_results` (`PLAN.md` §1).
-- Skill-local: `write_sld_style`, `cog_export`, `qgis_provider_xml`.
+- `olmoearth.fetch_results` (`PLAN.md` §1) supplies the tile URLs.
+- Exposed as the `olmoearth_qgis_bridge` tool; logic in `reporting/qgis.py`: `resolve_xyz_url`, `build_qlr`, `build_gdal_wms_xml`, `build_raster_sld`, `build_legend`, and `cog_recipe` (the user-run COG command + rationale).
 
 ---
 

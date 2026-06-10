@@ -114,14 +114,16 @@ SKILLS: list[SkillSpec] = [
         "Run",
         "implemented",
         "Run loop: search predictions (find model_id), submit, poll, "
-        "fetch results (tile URLs), and compare two results quantitatively "
-        "(grid-sampled model-vs-model agreement, no ground truth).",
+        "fetch results (tile URLs), sample the model output at a point, and "
+        "compare two results quantitatively (grid-sampled model-vs-model "
+        "agreement, no ground truth).",
         [
             "olmoearth_search_predictions",
             "olmoearth_submit_prediction",
             "olmoearth_get_prediction",
             "olmoearth_fetch_results",
             "olmoearth_get_prediction_result",
+            "olmoearth_pixel_value",
             "olmoearth_compare_results",
         ],
     ),
@@ -177,8 +179,9 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-uncertainty",
         "Analyze",
         "implemented",
-        "Confidence + Meyer-Pebesma Area-of-Applicability OOD flag.",
-        ["olmoearth_area_of_applicability"],
+        "Ensemble-disagreement confidence (across distinct results) + "
+        "Meyer-Pebesma Area-of-Applicability OOD flag.",
+        ["olmoearth_area_of_applicability", "olmoearth_ensemble_uncertainty"],
     ),
     SkillSpec(
         10,
@@ -193,8 +196,9 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-qgis-bridge",
         "Integrate",
         "implemented",
-        "Tile URLs -> QGIS XYZ URLs + OGC SLD ramp style + load "
-        "instructions. (COG export follows.)",
+        "Tile URLs -> a QGIS .qlr layer-definition + a GDAL_WMS/XYZ descriptor "
+        "+ XYZ URLs + an OGC SLD ramp style + a local gdal_translate COG recipe "
+        "(the agent is GDAL-free; key never embedded).",
         ["olmoearth_qgis_bridge"],
     ),
     # #12 reframed from "wire external MCPs" to "export our own Studio

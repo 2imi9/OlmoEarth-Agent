@@ -4,8 +4,9 @@
 
 Search predictions (to discover reusable ``model_id``s), submit a new
 prediction, and poll it. Polling reuses the foundational
-``olmoearth_get_prediction`` tool. Result sub-tools (pixel-value,
-features, files) are a follow-up within this skill.
+``olmoearth_get_prediction`` tool. ``olmoearth_pixel_value`` reads the
+model's output at a single point; feature-search remains a follow-up
+within this skill.
 """
 
 from __future__ import annotations
@@ -40,31 +41,33 @@ def _result_bbox(record: dict[str, Any]) -> list[float] | None:
         return None
 
 
+def _select_band(
+    record: dict[str, Any], property_name: str | None
+) -> dict[str, Any] | None:
+    """Pick the pixel-value band to read: the named property, else the first."""
+    bands: list[dict[str, Any]] = record.get("bands") or []
+    if not bands:
+        return None
+    if property_name:
+        return next(
+            (b for b in bands if b.get("property_name") == property_name), bands[0]
+        )
+    return bands[0]
+
+
 def _band_value(record: dict[str, Any], property_name: str | None) -> Any:
     """Extract a pixel-value band's value: ``classification`` if set, else
     ``raw_value``. Picks the named property, or the first band."""
-    bands = record.get("bands") or []
-    if not bands:
+    band = _select_band(record, property_name)
+    if band is None:
         return None
-    band = bands[0]
-    if property_name:
-        band = next(
-            (b for b in bands if b.get("property_name") == property_name), bands[0]
-        )
     cls = band.get("classification")
     return cls if cls is not None else band.get("raw_value")
 
 
 def _is_categorical(record: dict[str, Any], property_name: str | None) -> bool:
-    bands = record.get("bands") or []
-    if not bands:
-        return False
-    band = bands[0]
-    if property_name:
-        band = next(
-            (b for b in bands if b.get("property_name") == property_name), bands[0]
-        )
-    return band.get("classification") is not None
+    band = _select_band(record, property_name)
+    return band is not None and band.get("classification") is not None
 
 
 async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -200,6 +203,65 @@ async def _get_prediction_result(
     return summary
 
 
+async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Read one prediction result's model output at a single coordinate.
+
+    The user supplies the point, so echoing it back with the value is rule
+    §3.1-compliant (no agent-derived geometry is leaked). Off-raster / nodata
+    / a transient failure resolve to ``available: False`` with a reason rather
+    than an exception, so the model gets a clean "no value there" answer.
+    """
+    result_id = args["result_id"]
+    lon = float(args["lon"])
+    lat = float(args["lat"])
+    prop = args.get("property_name")
+    point = {"lon": round(lon, 6), "lat": round(lat, 6)}
+    try:
+        record = await ctx.studio.pixel_value(result_id, lon, lat)
+    except Exception as exc:  # off-raster / nodata / transient -> clean answer
+        return {
+            "result_id": result_id,
+            "queried_point": point,
+            "available": False,
+            "reason": "pixel-value request failed (off-raster, nodata, or "
+            f"transient): {str(exc)[:200]}",
+        }
+    band = _select_band(record, prop)
+    if band is None:
+        return {
+            "result_id": result_id,
+            "queried_point": point,
+            "available": False,
+            "reason": "no value at this point (off-raster or nodata)",
+        }
+    value = _band_value(record, prop)
+    categorical = _is_categorical(record, prop)
+    out: dict[str, Any] = {
+        "result_id": result_id,
+        "queried_point": point,
+        "available": value is not None,
+        "property_name": band.get("property_name") or prop,
+        "value_type": "classification" if categorical else "regression",
+        "value": value,
+        "bands": [
+            {
+                "property_name": b.get("property_name"),
+                "value": (
+                    b.get("classification")
+                    if b.get("classification") is not None
+                    else b.get("raw_value")
+                ),
+            }
+            for b in (record.get("bands") or [])
+        ],
+    }
+    if value is None:
+        # Band exists but carries no value here -- report it like the other
+        # unavailable paths instead of a bare available=false.
+        out["reason"] = "band present but no value at this point (nodata)"
+    return out
+
+
 def build_predict_tools() -> list[RegisteredTool]:
     """Return the ``olmoearth-predict`` tool bundle (search + submit + results).
 
@@ -295,6 +357,36 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_get_prediction_result,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_pixel_value",
+                description=(
+                    "Read ONE prediction result's model output at a single "
+                    "lon/lat point (the Studio /pixel-value endpoint). Returns "
+                    "the value (raw_value for a regression layer, the class for "
+                    "a categorical layer), the value_type, and every band's "
+                    "value at that point. If the point is off-raster or nodata, "
+                    "returns available=false with a reason. Use this to answer "
+                    "'what does the model predict at this exact location?'; to "
+                    "compare TWO results over an area use olmoearth_compare_results."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "result_id": {"type": "string"},
+                        "lon": {"type": "number"},
+                        "lat": {"type": "number"},
+                        "property_name": {
+                            "type": "string",
+                            "description": "Band/property to read; defaults to "
+                            "the first band.",
+                        },
+                    },
+                    "required": ["result_id", "lon", "lat"],
+                },
+            ),
+            handler=_pixel_value,
         ),
         RegisteredTool(
             spec=ToolSpec(

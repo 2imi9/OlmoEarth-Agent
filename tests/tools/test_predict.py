@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 import pytest
 from pytest_httpx import HTTPXMock
@@ -132,6 +133,117 @@ async def test_get_prediction_result_tool(httpx_mock: HTTPXMock) -> None:
     assert result["result_id"] == "r9"
     assert result["property_names"] == ["karst_score"]
     assert result["result_metadata"] == {"foo": 1}
+
+
+@pytest.mark.asyncio
+async def test_pixel_value_regression(httpx_mock: HTTPXMock) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/prediction-results/r1/pixel-value\?.*"),
+        json={
+            "records": [
+                {
+                    "coordinates": {"lon": 1.5, "lat": 2.5},
+                    "bands": [
+                        {
+                            "property_name": "sample_karst_score",
+                            "raw_value": 0.73,
+                            "classification": None,
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_pixel_value").handler(
+            {"result_id": "r1", "lon": 1.5, "lat": 2.5}, ctx
+        )
+    assert out["available"] is True
+    assert out["value_type"] == "regression"
+    assert out["value"] == 0.73
+    assert out["property_name"] == "sample_karst_score"
+    assert out["queried_point"] == {"lon": 1.5, "lat": 2.5}
+
+
+@pytest.mark.asyncio
+async def test_pixel_value_categorical_and_property_select(
+    httpx_mock: HTTPXMock,
+) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/prediction-results/r2/pixel-value\?.*"),
+        json={
+            "records": [
+                {
+                    "bands": [
+                        {"property_name": "score", "raw_value": 0.1,
+                         "classification": None},
+                        {"property_name": "landcover", "raw_value": None,
+                         "classification": "forest"},
+                    ]
+                }
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_pixel_value").handler(
+            {"result_id": "r2", "lon": 0, "lat": 0, "property_name": "landcover"},
+            ctx,
+        )
+    assert out["value_type"] == "classification"
+    assert out["value"] == "forest"
+    assert out["property_name"] == "landcover"
+    # every band's value is surfaced
+    assert {b["property_name"] for b in out["bands"]} == {"score", "landcover"}
+
+
+@pytest.mark.asyncio
+async def test_pixel_value_off_raster_is_unavailable(httpx_mock: HTTPXMock) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=re.compile(r".*/prediction-results/r3/pixel-value\?.*"),
+        json={"records": [{"coordinates": {"lon": 9, "lat": 9}, "bands": []}]},
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_pixel_value").handler(
+            {"result_id": "r3", "lon": 9, "lat": 9}, ctx
+        )
+    assert out["available"] is False
+    assert "no value" in out["reason"]
+
+
+@pytest.mark.asyncio
+async def test_pixel_value_null_band_value_is_unavailable_with_reason(
+    httpx_mock: HTTPXMock,
+) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    # A band is present but carries neither a raw_value nor a classification:
+    # report it like the other unavailable paths, with a reason, not a bare flag.
+    httpx_mock.add_response(
+        url=re.compile(r".*/prediction-results/r4/pixel-value\?.*"),
+        json={
+            "records": [
+                {"bands": [{"property_name": "score", "raw_value": None,
+                            "classification": None}]}
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool("olmoearth_pixel_value").handler(
+            {"result_id": "r4", "lon": 0, "lat": 0}, ctx
+        )
+    assert out["available"] is False
+    assert out["value"] is None
+    assert "no value" in out["reason"]
 
 
 @pytest.mark.integration
