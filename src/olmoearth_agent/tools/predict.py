@@ -17,10 +17,14 @@ from typing import Any
 from olmoearth_agent.analysis.aoi import geometry_bbox
 from olmoearth_agent.analysis.raster_compare import (
     compare_categorical,
+    compare_group_categorical,
+    compare_group_narration,
+    compare_group_numeric,
     compare_narration,
     compare_numeric,
     grid_points,
     intersect_bbox,
+    intersect_bboxes,
     normalize_kind,
 )
 from olmoearth_agent.llm.types import ToolSpec
@@ -130,6 +134,106 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         "extent (an estimate, not every pixel); no ground truth, so this is "
         + narration["framing"]
         + ".",
+    }
+
+
+#: Group-compare bounds. Results are capped at 6 (15 pairs) and the default
+#: grid is small because every sample is a live Studio pixel-value call
+#: (~0.5-1 min each): N results x grid^2 points is the cost driver.
+_GROUP_MAX_RESULTS = 6
+_GROUP_DEFAULT_GRID = 3
+_GROUP_MAX_GRID = 8
+
+
+async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    raw_ids = args.get("result_ids") or []
+    ids = [str(r) for r in raw_ids if str(r).strip()]
+    # Order-preserving dedup: a repeated id would just re-sample the same raster.
+    ids = list(dict.fromkeys(ids))
+    if len(ids) < 2:
+        return {
+            "comparable": False,
+            "reason": "need at least 2 distinct result_ids (2-6).",
+        }
+    if len(ids) > _GROUP_MAX_RESULTS:
+        return {
+            "comparable": False,
+            "reason": f"too many results ({len(ids)}); cap is "
+            f"{_GROUP_MAX_RESULTS} (each adds grid^2 slow pixel-value calls).",
+        }
+    prop = args.get("property_name")
+    grid = max(2, min(_GROUP_MAX_GRID, int(args.get("grid", _GROUP_DEFAULT_GRID))))
+    tol = float(args.get("tolerance", 0.1))
+
+    records = await asyncio.gather(*[ctx.studio.get_prediction_result(r) for r in ids])
+    bbox = intersect_bboxes([_result_bbox(rec) for rec in records])
+    if bbox is None:
+        return {
+            "comparable": False,
+            "reason": "the results have no extent shared by all of them "
+            "(or one is missing bounds)",
+        }
+    points = grid_points(bbox, grid)
+
+    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
+
+    async def sample(result_id: str, lon: float, lat: float) -> Any:
+        async with sem:
+            try:
+                return await ctx.studio.pixel_value(result_id, lon, lat)
+            except Exception:  # off-raster / nodata / transient -> drop the point
+                return None
+
+    sampled = [
+        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points])
+        for rid in ids
+    ]
+    first = next((r for recs in sampled for r in recs if r), None)
+    categorical = bool(first and _is_categorical(first, prop))
+    series = [
+        [(_band_value(r, prop) if r else None) for r in recs] for recs in sampled
+    ]
+    group = (
+        compare_group_categorical(series)
+        if categorical
+        else compare_group_numeric(series, tolerance=tol)
+    )
+    value_type = "classification" if categorical else "regression"
+
+    # Index -> id / coordinate mapping for readability (the analysis layer
+    # works on indices; ids and lon/lat only exist here).
+    for entry in group["pairwise"]:
+        entry["result_id_a"] = ids[entry.pop("a_index")]
+        entry["result_id_b"] = ids[entry.pop("b_index")]
+    divergent = group.pop("most_divergent_pair", None)
+    if divergent is not None:
+        divergent = {
+            "result_id_a": ids[divergent["a_index"]],
+            "result_id_b": ids[divergent["b_index"]],
+        }
+    for spot in group["ensemble"].get("top_disagreement_points", []):
+        lon, lat = points[spot.pop("point_index")]
+        spot["lon"], spot["lat"] = lon, lat
+
+    narration = compare_group_narration(
+        group, n_results=len(ids), value_type=value_type
+    )
+    return {
+        "comparable": True,
+        "result_ids": ids,
+        "property_name": prop
+        or (first.get("bands", [{}])[0].get("property_name") if first else None),
+        "value_type": value_type,
+        "narration": narration,
+        "grid": f"{grid}x{grid}",
+        "samples_requested": len(points) * len(ids),
+        "shared_extent_bbox": [round(v, 5) for v in bbox],
+        "pairwise": group["pairwise"],
+        "ensemble": group["ensemble"],
+        "most_divergent_pair": divergent,
+        "method": "pointwise pixel-value sampled on a grid over the extent "
+        "shared by all results (an estimate, not every pixel); no ground "
+        "truth, so this is " + narration["framing"] + ".",
     }
 
 
@@ -441,5 +545,60 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_compare_results,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_compare_group",
+                description=(
+                    "Quantitatively compare a GROUP of 2-6 prediction results "
+                    "(different models) over the extent shared by all of them, "
+                    "with no ground truth. Samples every raster on the same "
+                    "grid (pointwise pixel-value) and returns (a) a PAIRWISE "
+                    "matrix -- agreement / difference stats for every pair -- "
+                    "and (b) an ENSEMBLE consensus: the fraction of cells where "
+                    "ALL models agree (within tolerance, or same class), the "
+                    "most divergent pair, and the most-contested grid points "
+                    "(lon/lat). Use when the user compares THREE OR MORE "
+                    "results, or asks where an ensemble of models converges / "
+                    "diverges. For exactly TWO results prefer "
+                    "olmoearth_compare_results (richer two-way stats + temporal "
+                    "mode); for ONE model across MULTIPLE DATES use "
+                    "olmoearth_change_detect (trajectory over time). Each "
+                    "result adds grid^2 slow Studio pixel-value calls, so keep "
+                    "the grid small (default 3x3)."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "result_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 2,
+                            "maxItems": _GROUP_MAX_RESULTS,
+                            "description": "2-6 prediction-result ids "
+                            "(different models over a shared area).",
+                        },
+                        "property_name": {
+                            "type": "string",
+                            "description": "Band/property to compare; defaults to "
+                            "the first band.",
+                        },
+                        "grid": {
+                            "type": "integer",
+                            "default": _GROUP_DEFAULT_GRID,
+                            "description": "Grid size N (N*N sample points per "
+                            f"result; 2-{_GROUP_MAX_GRID}).",
+                        },
+                        "tolerance": {
+                            "type": "number",
+                            "default": 0.1,
+                            "description": "Regression: a cell is consensus when "
+                            "max-min across models <= tolerance.",
+                        },
+                    },
+                    "required": ["result_ids"],
+                },
+            ),
+            handler=_compare_group,
         ),
     ]

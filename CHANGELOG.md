@@ -37,6 +37,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   be tampered with in transit.
 
 ### Added
+- **Multi-group compare for skill #4 `olmoearth-predict`:** new
+  `olmoearth_compare_group` tool — quantitatively compare 2-6 prediction
+  results (different models) over the extent shared by all of them, with no
+  ground truth. Samples every raster on the same grid (pointwise pixel-value)
+  and returns a **pairwise matrix** (the two-way agreement/difference stats
+  for every pair, via the existing `compare_numeric`/`compare_categorical`)
+  plus an **ensemble consensus**: the fraction of cells where ALL models
+  agree (within tolerance, or same class), mean spread / ensemble std
+  (regression) or unanimity + mean majority share (classification), the most
+  divergent pair, and the most-contested grid points as lon/lat hotspots
+  (capped at 5 so the tool result stays context-light). Cross-model only by
+  design: exactly TWO results route to `olmoearth_compare_results` (richer
+  two-way stats + temporal mode), and one model across MULTIPLE DATES routes
+  to `olmoearth_change_detect` (trajectory) — the tool description encodes
+  both boundaries. Group logic is pure
+  (`analysis/raster_compare.py: intersect_bboxes / compare_group_numeric /
+  compare_group_categorical / compare_group_narration`); the default grid is
+  3x3 because each result adds grid^2 slow Studio pixel-value calls.
 - **Standalone `olmoearth_pixel_value` for skill #4 `olmoearth-predict`** (#92).
   Exposes the existing `StudioClient.pixel_value` as a first-class tool: reads one
   prediction result's model output at a single user-supplied lon/lat (`raw_value`
