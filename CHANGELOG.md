@@ -178,6 +178,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `studio/client.py`)
 
 ### Fixed
+- **"Configure a model" now routes to the Studio wizard, not local training.** A
+  plain "set up / configure / build a model to map X" was landing on the rslearn
+  tools (`olmoearth_rslearn_recommend`/`compose` — a local `model.yaml` + freeze
+  schedule) or the embeddings `olmoearth_automate` flow, which asked the user
+  about their **local compute** (CPU / Colab / GPU) — irrelevant on Studio, where
+  Ai2 runs the training. Narrowed those tool descriptions to *self-run* training
+  (defer to `olmoearth-studio-job-config` for Studio model creation) and added a
+  system-prompt routing rule: a create/configure-model request loads the Studio
+  job-config skill and walks the wizard, and never asks about local compute.
+  Verified live: "map crop types in Iowa" / "detect solar farms in California"
+  now route to the Studio wizard with no compute / `model.yaml` questions.
 - **Tool-input failures no longer report as successful calls.** `olmoearth_run_python`
   (empty code) and `olmoearth_load_skill` (unknown skill) returned an
   `{"ok"/"error": ...}` dict, which the dispatch envelope wraps as
