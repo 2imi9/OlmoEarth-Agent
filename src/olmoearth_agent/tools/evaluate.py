@@ -11,13 +11,13 @@ actual prediction area.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from olmoearth_agent.evaluation.metrics import classification_metrics
 from olmoearth_agent.evaluation.nndm import nndm_loo
 from olmoearth_agent.evaluation.spatial_cv import cv_inflation_diagnostic
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.security.paths import safe_path
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 _POINTS_SCHEMA = {
@@ -71,13 +71,17 @@ async def _nndm_cv(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     if output_path:
         # Folds are integer indices (not geometry); writing them to a file keeps
         # a large training set's per-fold lists out of the chat (rule 1).
+        # output_path is model-controlled -> confine it to the workspace root so
+        # a traversing/absolute path can't write outside it.
+        dest = safe_path(output_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "phi_km": result["phi_km"],
             "min_train": result["min_train"],
             "folds": folds,
         }
-        Path(output_path).write_text(json.dumps(payload), encoding="utf-8")
-        result["folds_path"] = output_path
+        dest.write_text(json.dumps(payload), encoding="utf-8")
+        result["folds_path"] = str(dest)
         result["folds_written"] = len(folds)
     else:
         result["folds"] = folds

@@ -31,6 +31,7 @@ from olmoearth_agent.analysis.negative_sampler import (
 )
 from olmoearth_agent.evaluation.spatial_cv import Point
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.security.paths import safe_path
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 #: Negative-class names the data-prep audit's ``check_negative_class`` accepts.
@@ -158,8 +159,11 @@ def _collect(
 
 
 async def _negative_sampler(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    # positives_path/candidates_path/out_path are model-controlled; confine each
+    # to the workspace root so a traversing/absolute path can't read or write
+    # outside it (path-traversal guard).
     positives_path = str(args["positives_path"])
-    with open(positives_path, encoding="utf-8") as handle:
+    with open(safe_path(positives_path), encoding="utf-8") as handle:
         pos_doc = json.load(handle)
     pos_features = _features(pos_doc)
     positives, pos_emb, schema, fields = _collect(pos_features)
@@ -176,7 +180,7 @@ async def _negative_sampler(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     cand_emb: list[list[float]] | None = None
     candidates_path = args.get("candidates_path")
     if candidates_path:
-        with open(str(candidates_path), encoding="utf-8") as handle:
+        with open(safe_path(str(candidates_path)), encoding="utf-8") as handle:
             cand_doc = json.load(handle)
         candidates = []
         cand_embs_raw: list[list[float] | None] = []
@@ -211,14 +215,12 @@ async def _negative_sampler(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     ]
     combined = {"type": "FeatureCollection", "features": [*pos_features, *new_features]}
 
-    out_path = str(args.get("out_path") or _default_out_path(positives_path))
-    out_dir = os.path.dirname(out_path)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
+    out_path = safe_path(str(args.get("out_path") or _default_out_path(positives_path)))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as handle:
         json.dump(combined, handle, ensure_ascii=False, indent=2)
 
-    result["out_path"] = out_path
+    result["out_path"] = str(out_path)
     result["negative_label"] = negative_label
     result["schema_field"] = schema
     result["total_features"] = len(combined["features"])

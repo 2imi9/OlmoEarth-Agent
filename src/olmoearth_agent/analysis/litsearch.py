@@ -38,7 +38,7 @@ import httpx
 from olmoearth_agent.security import egress
 
 #: arXiv Atom search endpoint (no auth, ~1 req / 3 s courtesy rate).
-ARXIV_API = "http://export.arxiv.org/api/query"
+ARXIV_API = "https://export.arxiv.org/api/query"
 #: OpenAlex works endpoint (public; polite pool via ``mailto``).
 OPENALEX_WORKS = "https://api.openalex.org/works"
 
@@ -50,6 +50,8 @@ _AUTHOR_CAP = 12
 #: Transient upstream statuses worth retrying (matches StudioClient).
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
+#: Bounded redirect hops, each re-validated against the egress allowlist.
+_MAX_REDIRECTS = 5
 _TIMEOUT_SECONDS = 20.0
 _USER_AGENT = "OlmoEarth-Agent-litsearch (+https://github.com/2imi9/OlmoEarth-Agent)"
 
@@ -297,6 +299,30 @@ def _openalex_mailto() -> str | None:
     return value or None
 
 
+async def _guarded_get(
+    client: httpx.AsyncClient, url: str, params: dict[str, Any], capability: str
+) -> httpx.Response:
+    """GET ``url`` re-validating every redirect hop against the egress allowlist.
+
+    The client is built with ``follow_redirects=False`` so an allowlisted host
+    cannot bounce the request (or a credential) to an internal/metadata address:
+    each ``Location`` is run back through :func:`egress.validate_endpoint` before
+    it is followed (which raises in ``enforce`` mode), bounded to
+    :data:`_MAX_REDIRECTS` hops.
+    """
+    resp = await client.get(url, params=params)
+    hops = 0
+    while resp.is_redirect and hops < _MAX_REDIRECTS:
+        location = resp.headers.get("location")
+        if not location:
+            break
+        target = str(httpx.URL(resp.url).join(location))
+        egress.validate_endpoint(target, capability)
+        resp = await client.get(target)
+        hops += 1
+    return resp
+
+
 def _httpx_fetcher(client: httpx.AsyncClient) -> Fetcher:
     """A :data:`Fetcher` over ``httpx`` with bounded retry on transient errors."""
 
@@ -304,7 +330,7 @@ def _httpx_fetcher(client: httpx.AsyncClient) -> Fetcher:
         egress.validate_endpoint(url, "litsearch")
         for attempt in range(_MAX_ATTEMPTS):
             try:
-                resp = await client.get(url, params=params)
+                resp = await _guarded_get(client, url, params, "litsearch")
             except httpx.TransportError:
                 if attempt >= _MAX_ATTEMPTS - 1:
                     raise
@@ -439,7 +465,7 @@ async def search_literature(
     async with httpx.AsyncClient(
         timeout=_TIMEOUT_SECONDS,
         headers={"User-Agent": _USER_AGENT},
-        follow_redirects=True,
+        follow_redirects=False,  # redirects are re-validated in _guarded_get
     ) as client:
         return await _run(_httpx_fetcher(client))
 
@@ -500,6 +526,6 @@ async def resolve_identifier(
     async with httpx.AsyncClient(
         timeout=_TIMEOUT_SECONDS,
         headers={"User-Agent": _USER_AGENT},
-        follow_redirects=True,
+        follow_redirects=False,  # redirects are re-validated in _guarded_get
     ) as client:
         return await _run(_httpx_fetcher(client))

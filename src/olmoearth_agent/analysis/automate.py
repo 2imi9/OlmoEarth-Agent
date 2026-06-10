@@ -65,6 +65,8 @@ Fetcher = Callable[[str, dict[str, Any]], Awaitable[tuple[int, str]]]
 _TIMEOUT_SECONDS = 20.0
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _MAX_ATTEMPTS = 3
+#: Bounded redirect hops, each re-validated against the egress allowlist.
+_MAX_REDIRECTS = 5
 _USER_AGENT = "OlmoEarth-Agent-automate (+https://github.com/2imi9/OlmoEarth-Agent)"
 
 
@@ -272,6 +274,29 @@ def parse_hf_info_classes(payload: dict[str, Any]) -> int | None:
     return _hf_label_classes(info.get("features")) if isinstance(info, dict) else None
 
 
+async def _guarded_get(
+    client: httpx.AsyncClient, url: str, params: dict[str, Any], capability: str
+) -> httpx.Response:
+    """GET ``url`` re-validating every redirect hop against the egress allowlist.
+
+    The client is built with ``follow_redirects=False`` so an allowlisted host
+    cannot bounce the request to an internal/metadata address: each ``Location``
+    is run back through :func:`egress.validate_endpoint` before it is followed
+    (which raises in ``enforce`` mode), bounded to :data:`_MAX_REDIRECTS` hops.
+    """
+    resp = await client.get(url, params=params)
+    hops = 0
+    while resp.is_redirect and hops < _MAX_REDIRECTS:
+        location = resp.headers.get("location")
+        if not location:
+            break
+        target = str(httpx.URL(resp.url).join(location))
+        egress.validate_endpoint(target, capability)
+        resp = await client.get(target)
+        hops += 1
+    return resp
+
+
 def _httpx_fetcher(client: httpx.AsyncClient) -> Fetcher:
     import asyncio
 
@@ -279,7 +304,7 @@ def _httpx_fetcher(client: httpx.AsyncClient) -> Fetcher:
         egress.validate_endpoint(url, "hf")
         for attempt in range(_MAX_ATTEMPTS):
             try:
-                resp = await client.get(url, params=params)
+                resp = await _guarded_get(client, url, params, "hf")
             except httpx.TransportError:
                 if attempt >= _MAX_ATTEMPTS - 1:
                     raise
@@ -341,7 +366,7 @@ async def fetch_hf_dataset_profile(
     async with httpx.AsyncClient(
         timeout=_TIMEOUT_SECONDS,
         headers={"User-Agent": _USER_AGENT},
-        follow_redirects=True,
+        follow_redirects=False,  # redirects are re-validated in _guarded_get
     ) as client:
         return await _run(_httpx_fetcher(client))
 

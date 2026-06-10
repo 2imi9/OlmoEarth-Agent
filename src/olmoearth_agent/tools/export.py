@@ -14,6 +14,7 @@ from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.reporting.export import curate, group_items, slugify, to_json
+from olmoearth_agent.security.paths import safe_path
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 _PROJECT_FIELDS = ("id", "name", "description", "creation_time")
@@ -36,7 +37,9 @@ def _write(path: str, obj: Any) -> None:
 
 async def _export_data(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     group_by = args.get("group_by", "project")
-    out_dir = args.get("out_dir", "exports")
+    # out_dir is model-controlled; confine it to the workspace root so a
+    # traversing/absolute path can't write outside it (path-traversal guard).
+    out_dir = safe_path(args.get("out_dir", "exports"))
     os.makedirs(out_dir, exist_ok=True)
 
     projects = [
@@ -74,7 +77,7 @@ async def _export_data(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
 
     return {
         "group_by": group_by,
-        "out_dir": out_dir,
+        "out_dir": str(out_dir),
         "groups": len(files),
         "files": files,
         "project_count": len(projects),
