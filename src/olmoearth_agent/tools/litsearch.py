@@ -33,8 +33,10 @@ from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 # only routing + guardrail surface for an implemented tool -- no SKILL.md gate).
 _RULES = (
     " Never invent DOIs, arXiv ids, titles, or authors; if nothing matches, "
-    "report zero results. When you use a returned paper, cite its `url`. Keep "
-    "exploratory searches to a few focused queries."
+    "report zero results. When you use a returned paper, cite its `url`. "
+    "Results accumulate in your context: budget at most 2-3 searches per "
+    "task, reuse records you already retrieved instead of re-querying, and "
+    "synthesize from what you have rather than broadening the search."
 )
 
 

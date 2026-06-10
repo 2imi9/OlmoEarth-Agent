@@ -44,7 +44,12 @@ OPENALEX_WORKS = "https://api.openalex.org/works"
 
 DEFAULT_MAX_RESULTS = 5
 MAX_RESULTS_CAP = 25
-_ABSTRACT_CAP = 1200
+#: Abstracts are a context-budget item, not a completeness item: a multi-call
+#: litsearch session accumulates every record in the agent's context, and at
+#: 1200 chars (~300 tokens) each, five 5-result calls overflowed the local
+#: model's 16k window before synthesis (reviews 2026-06-10). 500 chars keeps
+#: the claim-bearing first sentences; the `url` is the citation surface.
+_ABSTRACT_CAP = 500
 _AUTHOR_CAP = 12
 
 #: Transient upstream statuses worth retrying (matches StudioClient).

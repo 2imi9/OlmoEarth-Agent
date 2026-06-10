@@ -178,6 +178,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `studio/client.py`)
 
 ### Fixed
+- **litsearch no longer overflows the local model's context on multi-call
+  sessions.** Live coverage-run finding: five `olmoearth_litsearch` calls (all
+  ok) accumulated 18,278 tokens, exceeding the 16,384-token window, so the
+  final synthesis failed with a 400 and no answer. Abstracts are now capped at
+  500 chars (was 1,200 — the `url` is the citation surface, the first
+  sentences carry the claim), both litsearch tool descriptions budget the
+  model explicitly (2-3 searches per task; results accumulate in context;
+  reuse retrieved records), and the served-context default in
+  `docker/llama.compose.yml` is bumped to the verified one-big-slot
+  configuration (`-c 16384 --parallel 1`, was `-c 8192` split across ~4 slots
+  of ~2k tokens each — too small for a single SKILL.md). `docs/serving.md`
+  and `PLAN.md` aligned.
 - **"Configure a model" now routes to the Studio wizard, not local training.** A
   plain "set up / configure / build a model to map X" was landing on the rslearn
   tools (`olmoearth_rslearn_recommend`/`compose` — a local `model.yaml` + freeze
