@@ -90,7 +90,9 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-studio-job-config",
         "Configure",
         "vendored",
-        "Task description -> Studio wizard answers; 14 presets + validator.",
+        "Task description -> full Studio 'new model' wizard answers "
+        "(name/type/foundation/label/training data/split/temporal/sources/area); "
+        "14 presets + validator. Studio trains on Ai2 compute.",
         ["olmoearth_load_skill"],
     ),
     # #3 unifies the former embeddings + automate rows: both decide

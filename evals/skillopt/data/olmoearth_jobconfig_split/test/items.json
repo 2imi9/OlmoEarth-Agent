@@ -17,7 +17,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -38,7 +38,7 @@
         "sentinel2",
         "sentinel1"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -62,7 +62,7 @@
   },
   {
     "id": "ecosystem_type_02",
-    "task_description": "One ecosystem label per 320 m tile; only about 1,200 labeled tiles available.",
+    "task_description": "One ecosystem label per 640 m tile; only about 1,200 labeled tiles available.",
     "task_type": "window_classification",
     "preset_key": "ecosystem_type",
     "expected": {
@@ -78,7 +78,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -99,7 +99,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -121,7 +121,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -196,7 +196,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -258,7 +258,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -278,7 +278,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -299,7 +299,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   }
 ]

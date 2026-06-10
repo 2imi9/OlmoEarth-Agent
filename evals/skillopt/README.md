@@ -35,6 +35,15 @@ no API keys are used.
 | embeddings | 0.417 | **0.833** | [OlmoEarth-Skills PR #2](https://github.com/2imi9/OlmoEarth-Skills/pull/2) |
 | data-prep | 1.000 | 1.000 | — already optimal (no-skill control = 0.375, so the benchmark is real) |
 
+**2026-06-10:** the job-config skill was rewritten to match Studio's real
+"new model" wizard (patch default 640 m, training-data + data-split steps,
+Ai2-compute framing) and the jobconfig dataset was regenerated from the
+updated oracle — the table row above is the historical run. On the
+regenerated test split: pre-rewrite skill 0.357 hard / 0.806 soft (old 320 m
+default; patch 5/14) vs the rewritten `SKILL.md` **0.714 hard / 0.906 soft**
+(patch 13/14). The current skill content is the vendored
+`vendor/olmoearth-skills/.../olmoearth-studio-job-config/SKILL.md` itself.
+
 Full breakdown + the SkillOpt-on-Qwen vs Claude-as-optimizer comparison is in
 [`RESULTS.md`](RESULTS.md).
 

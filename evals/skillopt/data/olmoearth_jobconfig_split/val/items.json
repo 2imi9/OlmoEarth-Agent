@@ -90,7 +90,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -130,7 +130,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   },
   {
@@ -194,7 +194,7 @@
       "imagery_sources": [
         "sentinel2"
       ],
-      "patch_size_m": 320
+      "patch_size_m": 640
     }
   }
 ]
