@@ -30,7 +30,7 @@ PRISM deck use it), so the swap feels native rather than grafted.
 - Tagline structure mirrors Asta's ("A *<role>* that *<does X>*. It uses *<scale>*...").
 - Segmented tabs: Asta's *Find papers / Generate a report / Analyze data* ->
   **Run a prediction / Analyze results / Prep & configure** (the skill stages).
-- Example queries are **real** agent briefs; the capability grid is the **18
+- Example queries are **real** agent briefs; the capability grid is the **17
   skills** from `SKILLS.md`; the transcript is the **real** `olmoearth_change_detect`
   showcase example.
 
@@ -81,7 +81,7 @@ not the window.
   It is one segment of the sidebar switch bar (below).
 - **Sidebar switch bar** (`js/switcher.js`, `js/areas.js`), **done**: the rail is
   reorganized Claude-desktop style - an always-visible **Chats** list plus a 3-way
-  **segmented switcher** (Projects · Comparisons · **Areas**) feeding one secondary
+  **segmented switcher** (Projects · **Areas** · Results) feeding one secondary
   pane (only one shown at a time; the active segment is persisted; Chats and the
   pane scroll independently). **Areas** flattens every AOI across *all* projects
   (label = its project), fanning out one `GET /api/projects/{id}/areas` per project

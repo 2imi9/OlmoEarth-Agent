@@ -108,7 +108,10 @@ async def _run_python(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     """Execute a Python snippet in an isolated, time-bounded subprocess."""
     code = str(args.get("code", ""))
     if not code.strip():
-        return {"ok": False, "error": "no code provided"}
+        # A tool-input error -> raise so dispatch reports ok=False. (A returned
+        # dict is wrapped as {"ok": True, "result": ...}, which would mask the
+        # failure as a successful call in provenance + the agent loop.)
+        raise ValueError("no code provided")
     timeout = _timeout()
     with tempfile.TemporaryDirectory(prefix="oe-run-") as workdir:
         proc = await asyncio.create_subprocess_exec(

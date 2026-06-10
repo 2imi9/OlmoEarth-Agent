@@ -50,6 +50,7 @@ async def test_load_skill_tool_unknown_lists_available(tmp_path: Path) -> None:
     _make_skill(tmp_path, "alpha")
     tools = build_skill_tools(SkillLoader(root=tmp_path))
     ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
-    result = await _tool(tools, "olmoearth_load_skill").handler({"name": "ghost"}, ctx)
-    assert "error" in result
-    assert result["available"] == ["alpha"]
+    # Unknown skill raises (dispatch -> ok=False); the error carries the
+    # available names so the model can retry.
+    with pytest.raises(ValueError, match="unknown skill 'ghost'.*alpha"):
+        await _tool(tools, "olmoearth_load_skill").handler({"name": "ghost"}, ctx)
