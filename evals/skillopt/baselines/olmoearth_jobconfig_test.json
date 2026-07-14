@@ -1,0 +1,9 @@
+{
+  "env": "olmoearth_jobconfig",
+  "split": "test",
+  "n": 14,
+  "hard": 0.714,
+  "soft": 0.906,
+  "source": "RESULTS.md 2026-06-10 - rewritten SKILL.md on the regenerated split",
+  "updated": "2026-06-10"
+}
