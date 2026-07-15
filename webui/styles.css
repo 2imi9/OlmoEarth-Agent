@@ -357,6 +357,12 @@ a:hover { color: var(--text); }
   font: inherit; font-size: 11px; padding: 4px 8px; border-radius: var(--radius-sm); cursor: pointer;
 }
 .llm-detect:hover { color: var(--text); border-color: var(--mint); }
+.llm-auto-row {
+  display: flex; gap: 6px; align-items: center; cursor: pointer;
+  font-size: 11px; color: var(--text-dim); line-height: 1.35; user-select: none;
+}
+.llm-auto-row input { accent-color: var(--mint); margin: 0; flex: none; }
+.llm-auto-row:hover { color: var(--text); }
 .um-input {
   background: var(--bg); border: 1px solid var(--line); color: var(--text);
   font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: var(--radius-sm); width: 100%;

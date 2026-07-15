@@ -15,6 +15,7 @@ export function wireLlmSubtab() {
   const detectBtn = document.getElementById('llmDetect');
   const note = document.getElementById('llmNote');
   const localNote = document.getElementById('llmLocalNote');
+  const autoEl = document.getElementById('llmAuto');
   if (!tabs || !panel) return;
   const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -82,6 +83,12 @@ export function wireLlmSubtab() {
   });
   if (modelEl) modelEl.addEventListener('change', () => lsSet('oe_llm_model_' + backend, modelEl.value));
   if (detectBtn) detectBtn.addEventListener('click', () => detectModels());
+  /* Auto-route toggle (one global flag, applies to any hosted provider):
+     simple lookups go to the free local model via X-LLM-Route: auto. */
+  if (autoEl) {
+    autoEl.checked = lsGet('oe_llm_auto', '') === '1';
+    autoEl.addEventListener('change', () => lsSet('oe_llm_auto', autoEl.checked ? '1' : '0'));
+  }
   syncProvider();
 }
 

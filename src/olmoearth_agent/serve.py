@@ -49,9 +49,11 @@ from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
 from olmoearth_agent.harness import LeadAgent, ThreadState
+from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.workflow import WORKFLOW_STAGES, skill_workflow_stages
 from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
+from olmoearth_agent.llm.router import classify_brief
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
@@ -610,8 +612,24 @@ async def api_run(request: Request) -> StreamingResponse:
         forced_skill = ""
 
     llm = _llm_for_request(request)
+    # Opt-in model routing (webui auto-route toggle -> `X-LLM-Route: auto`):
+    # a simple read-only lookup is demoted from the hosted backend to the free
+    # local model. Demotion only — a complex brief never gains a hosted client
+    # it has no key for, and a wrong "simple" verdict costs quality on one
+    # lookup, not money.
+    route = request.headers.get("x-llm-route", "").strip().lower()
+    if (
+        route == "auto"
+        and llm is not app.state.llm
+        and classify_brief(brief, forced_skill=forced_skill) == "simple"
+    ):
+        await llm.aclose()  # release the unused hosted client
+        llm = app.state.llm
     registry = app.state.registry
     skill_index: str = app.state.skill_index
+    # Cross-thread memory: read per request so a preference remembered in one
+    # conversation applies to the next without a server restart.
+    memory_block = preferences_block()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -625,6 +643,7 @@ async def api_run(request: Request) -> StreamingResponse:
                     state=ThreadState(),
                     skill_index=skill_index,
                     forced_skill=forced_skill,
+                    memory_block=memory_block,
                     # The shared app.state.llm is the local model; a per-request
                     # hosted client (Claude/OpenAI/Gemini) is not. Only the local
                     # model gets the brevity/budget clause.

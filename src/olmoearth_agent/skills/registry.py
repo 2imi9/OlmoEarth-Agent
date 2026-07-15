@@ -25,6 +25,7 @@ from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.litsearch import build_litsearch_tools
+from olmoearth_agent.tools.memory import build_memory_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.negative_sampler import build_negative_sampler_tools
 from olmoearth_agent.tools.predict import build_predict_tools
@@ -310,6 +311,8 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())
     registry.register_all(build_skill_tools())
+    # Cross-thread preference memory (remember/forget); core, not a skill.
+    registry.register_all(build_memory_tools())
     # Opt-in code execution (OLMOEARTH_RUN_PYTHON); an empty bundle otherwise.
     registry.register_all(build_system_tools())
     return registry

@@ -30,6 +30,9 @@ export function llmHeaders() {
     const h = { 'X-LLM-Backend': backend, 'X-LLM-Key': key };
     const model = (localStorage.getItem('oe_llm_model_' + backend) || '').trim();
     if (model) h['X-LLM-Model'] = model;
+    /* Opt-in auto-routing: the bridge demotes simple read-only lookups to the
+       free local model, saving hosted tokens (Shippy-style model routing). */
+    if (localStorage.getItem('oe_llm_auto') === '1') h['X-LLM-Route'] = 'auto';
     return h;
   } catch (e) { return {}; }
 }

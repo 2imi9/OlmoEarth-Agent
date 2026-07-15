@@ -102,6 +102,7 @@ class LeadAgent:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         skill_index: str = "",
         forced_skill: str = "",
+        memory_block: str = "",
         local: bool = False,
     ) -> None:
         self.llm = llm
@@ -117,6 +118,10 @@ class LeadAgent:
                 "\n\nAvailable instruction skills (call olmoearth_load_skill "
                 "with the name to get full steps):\n" + skill_index
             )
+        if memory_block:
+            # Cross-thread memory: durable user preferences (rendered by
+            # harness/memory.py, already framed as data-not-instructions).
+            self.system_prompt += "\n\n" + memory_block
         if forced_skill:
             # Server-side skill routing: pin this run to the user-chosen skill.
             self.system_prompt += _forced_skill_clause(forced_skill)

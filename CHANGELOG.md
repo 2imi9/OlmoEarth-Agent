@@ -40,6 +40,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   non-zero on any hard/soft drop, printing a score-change report — a
   skill/model change that regresses the suite doesn't ship. `--update-baseline`
   promotes an accepted improvement.
+- **Cross-thread preference memory** (Shippy roadmap: "carry persistent facts
+  ... and apply them automatically"). New `harness/memory.py` stores durable
+  user preferences (default project/area, preferred sources, reporting style)
+  in `<workspace>/memory/preferences.json`; the bridge and CLI inject the
+  stored facts into every run's system prompt, so "run it over my usual area"
+  works in a fresh conversation. New core tools `olmoearth_remember` /
+  `olmoearth_forget` let the model save a preference the moment the user
+  states one (soul rule added). Injection-hardened: slug-only keys, values
+  one-line and capped at 240 chars, 50-fact cap, and the prompt block labels
+  the contents as data-not-instructions.
+- **Opt-in model routing** (Shippy roadmap: "not every question needs a
+  frontier model"). New `llm/router.py` classifies a brief as a simple
+  read-only lookup vs a complex investigation (deterministic word-list
+  heuristic; ties break complex). With a hosted backend selected and the new
+  webui "Auto-route simple briefs to the local model" toggle on
+  (`X-LLM-Route: auto`), the bridge demotes simple lookups to the free local
+  model — demotion only, so a wrong "simple" verdict costs quality on one
+  lookup, never money, and a user-forced skill is never demoted.
 
 ## [1.3.0] - 2026-06-10
 

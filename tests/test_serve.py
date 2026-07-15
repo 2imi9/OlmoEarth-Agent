@@ -169,6 +169,78 @@ def test_run_local_flag_tracks_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["local"] is False
 
 
+def test_run_auto_route_demotes_simple_brief_to_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class _CapAgent:
+        def __init__(self, *_a: Any, **kw: Any) -> None:
+            captured["local"] = kw.get("local")
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            yield {"type": "final", "turn": 1, "content": "ok"}
+
+    monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
+    hosted = {
+        "X-Olmoearth-Key": "k",
+        "X-LLM-Backend": "openai",
+        "X-LLM-Key": "sk-x",
+        "X-LLM-Route": "auto",
+    }
+    with TestClient(serve.app) as client:
+        # Simple lookup + auto -> demoted to the shared local model.
+        client.post("/api/run", json={"brief": "list my projects"}, headers=hosted)
+        assert captured["local"] is True
+        captured.clear()
+        # Complex brief + auto -> stays on the hosted backend.
+        client.post(
+            "/api/run",
+            json={"brief": "create and train a flood model for the Mekong"},
+            headers=hosted,
+        )
+        assert captured["local"] is False
+        captured.clear()
+        # A user-forced skill means a workflow: never demoted, even if the
+        # brief itself reads like a lookup.
+        client.post(
+            "/api/run",
+            json={"brief": "list my projects", "forced_skill": "change-detection"},
+            headers=hosted,
+        )
+        assert captured["local"] is False
+        captured.clear()
+        # Without the auto header, the hosted selection is untouched.
+        no_route = {k: v for k, v in hosted.items() if k != "X-LLM-Route"}
+        client.post("/api/run", json={"brief": "list my projects"}, headers=no_route)
+    assert captured["local"] is False
+
+
+def test_run_forwards_memory_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from olmoearth_agent.harness import memory
+    from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
+
+    monkeypatch.setenv(OUTPUT_ROOT_ENV, str(tmp_path))
+    memory.remember("default_area", "Delaware basin (area_id a9)", tmp_path)
+    captured: dict[str, Any] = {}
+
+    class _CapAgent:
+        def __init__(self, *_a: Any, **kw: Any) -> None:
+            captured["memory_block"] = kw.get("memory_block")
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            yield {"type": "final", "turn": 1, "content": "ok"}
+
+    monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
+    with TestClient(serve.app) as client:
+        client.post("/api/run", json={"brief": "hi"}, headers={"X-Olmoearth-Key": "k"})
+    # A preference saved in an earlier conversation reaches the next run's
+    # prompt without a server restart.
+    assert "default_area: Delaware basin (area_id a9)" in captured["memory_block"]
+
+
 def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
