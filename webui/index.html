@@ -113,6 +113,10 @@
                 <button class="llm-detect" id="llmDetect" type="button" title="Detect this provider's available models">Detect</button>
               </div>
               <div class="um-note" id="llmNote">Key is sent only to the provider, per run. Never stored on the server.</div>
+              <label class="llm-auto-row" for="llmAuto" title="Simple read-only lookups (list / show / status) run on the free local model; complex briefs use this provider.">
+                <input type="checkbox" id="llmAuto" />
+                <span>Auto-route simple briefs to the local model</span>
+              </label>
             </div>
           </div>
           <div class="um-section">

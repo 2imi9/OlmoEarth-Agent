@@ -1,0 +1,9 @@
+{
+  "env": "olmoearth_embeddings",
+  "split": "test",
+  "n": 12,
+  "hard": 0.833,
+  "soft": 0.806,
+  "source": "RESULTS.md - refined skill shipped as OlmoEarth-Skills PR #2",
+  "updated": "2026-06-10"
+}

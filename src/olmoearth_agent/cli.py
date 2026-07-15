@@ -18,6 +18,7 @@ import asyncio
 import sys
 
 from olmoearth_agent.harness import AgentResult, LeadAgent
+from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm import OlmoEarthLLM
 from olmoearth_agent.skills import SkillLoader, build_default_registry
@@ -74,6 +75,8 @@ async def run_brief(
             studio,
             state=ThreadState(),
             skill_index=skill_index,
+            # Cross-thread memory applies to CLI runs too (same workspace).
+            memory_block=preferences_block(),
             local=True,  # the CLI runs the local model; keep answers within budget
         )
         return await agent.run(brief, max_turns=max_turns)

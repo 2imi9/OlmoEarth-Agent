@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from olmoearth_agent.llm.types import ToolCall, ToolSpec
 from olmoearth_agent.studio.client import StudioClient
+from olmoearth_agent.tools.validate import schema_summary, validate_arguments
 
 if TYPE_CHECKING:
     from olmoearth_agent.harness.state import ThreadState
@@ -74,9 +75,15 @@ class ToolRegistry:
     ) -> dict[str, Any]:
         """Execute one tool call, returning a JSON-able result envelope.
 
-        Never raises: an unknown tool or a handler exception is returned
-        as ``{"ok": False, "error": ...}`` so the agent loop can feed the
-        failure back to the model and let it recover.
+        Never raises: an unknown tool, malformed arguments, or a handler
+        exception is returned as ``{"ok": False, "error": ...}`` so the agent
+        loop can feed the failure back to the model and let it recover.
+
+        Arguments are validated against the tool's declared JSON Schema
+        *before* the handler runs (see :mod:`olmoearth_agent.tools.validate`),
+        so a missing/mistyped argument comes back as a self-documenting
+        rejection naming the argument and the expected shape — not as a bare
+        ``KeyError`` from handler internals.
         """
         tool = self._tools.get(call.name)
         if tool is None:
@@ -84,9 +91,28 @@ class ToolRegistry:
                 "ok": False,
                 "error": f"unknown tool: {call.name!r}",
                 "available": self.names(),
+                "hint": "Call one of the available tools exactly by name.",
+            }
+        problems = validate_arguments(call.arguments, tool.spec.parameters)
+        if problems:
+            return {
+                "ok": False,
+                "error": f"invalid arguments for {call.name}: "
+                + "; ".join(problems),
+                "expected_arguments": schema_summary(tool.spec.parameters),
+                "hint": "Fix the named arguments to match "
+                "'expected_arguments' and call the tool again.",
             }
         try:
             result = await tool.handler(call.arguments, ctx)
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            return {
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "tool": call.name,
+                "hint": "The tool ran but failed. Check that referenced ids "
+                "exist (discover them with search/list tools) and that "
+                "argument values are valid; do not retry with identical "
+                "arguments.",
+            }
         return {"ok": True, "result": result}

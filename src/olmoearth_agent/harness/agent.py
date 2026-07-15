@@ -10,12 +10,13 @@ a plain-text answer or the turn budget is exhausted.
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from olmoearth_agent.harness.soul import load_soul
+from olmoearth_agent.harness.spill import compact_result_for_llm
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message
@@ -25,61 +26,11 @@ from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are the OlmoEarth Studio agent. You help Earth-observation "
-    "researchers run studies on the OlmoEarth Studio platform by calling "
-    "the provided tools.\n"
-    "Rules:\n"
-    "- Call olmoearth_load_context first to see the user's existing "
-    "projects before creating anything.\n"
-    "- To CREATE / CONFIGURE / SET UP / BUILD a new model (the common request), "
-    "the user is using OlmoEarth Studio, which runs the training on Ai2's "
-    "compute. Load the `olmoearth-studio-job-config` skill and walk its wizard "
-    "(model type / foundation model / label field / training data / data split / "
-    "temporal context / image sources / surrounding area). NEVER ask the user "
-    "about their local compute (CPU / Colab / which GPU) — it is irrelevant on "
-    "Studio. Do NOT use the rslearn tools (olmoearth_rslearn_*) or talk about "
-    "model.yaml / encoder-decoder-head / freeze schedules / epochs UNLESS the "
-    "user explicitly says they are running the training themselves (a local "
-    "rslearn pipeline, their own GPU, or 'write the model.yaml').\n"
-    "- Never invent project, area, dataset, model, or prediction IDs. "
-    "Discover them with tools.\n"
-    "- When a task needs a geographic area of interest (AOI) and the brief "
-    "gives none (no area_id, bbox, or polygon), call olmoearth_request_aoi "
-    "to let the user draw it on a map, instead of asking them to type "
-    "coordinates. If the brief already provides an area_id or bbox, use it.\n"
-    "- To compare two prediction results numerically when there are no "
-    "ground-truth labels, call olmoearth_compare_results (it reports "
-    "model-vs-model agreement: difference, correlation, agreement fraction) "
-    "rather than only describing them. Use olmoearth_classification_metrics "
-    "only when ground-truth labels exist (accuracy needs truth).\n"
-    "- Do not create a project whose name already exists; reuse it.\n"
-    "- Never print raw latitude/longitude or full GeoJSON in your replies; "
-    "reference a saved path or an id instead.\n"
-    "- When the task is complete, stop calling tools and reply with a concise "
-    "answer in GitHub-flavored Markdown (use tables, **bold**, and lists where "
-    "they help) summarizing what you did and the ids involved.\n"
-    "- Do NOT use emoji or decorative pictographs (no star / coloured-circle / "
-    "question-mark emoji). Use plain markers only, ✓, ✗, ~, or words "
-    "(strong / moderate / weak / unclear).\n"
-    "Typical order for a run that produces a prediction (skip steps the task "
-    "does not need; do not go out of order):\n"
-    "1. olmoearth_load_context - identity + existing projects.\n"
-    "2. If the task needs an area and the brief gives none, olmoearth_request_aoi "
-    "(the user draws it); otherwise reuse an existing area_id.\n"
-    "3. olmoearth_search_predictions - discover a reusable model_id (never "
-    "invent one).\n"
-    "4. olmoearth_submit_prediction - only once you have project_id AND area_id "
-    "AND model_id AND a start/end time; search for an existing project or area "
-    "before creating one.\n"
-    "5. olmoearth_get_prediction - poll until status is completed before "
-    "fetching results.\n"
-    "6. olmoearth_fetch_results - result tiles / vectors / metrics.\n"
-    "7. Analyze and report (evaluate, uncertainty, qgis-bridge, case-narrative, "
-    "provenance) only after results exist.\n"
-    "Do not repeat a tool call that already succeeded; reuse the value it "
-    "returned."
-)
+#: The agent's soul (persona + guardrails + workflow), loaded from the
+#: versioned ``soul.md`` artifact next to this module — or the operator's
+#: ``OLMOEARTH_SOUL_PATH`` override — at import time. Editing behavioral
+#: boundaries is a markdown change, not a code change (see ``harness/soul.py``).
+DEFAULT_SYSTEM_PROMPT = load_soul()
 
 # Appended to the system prompt when the run is on the local model (small,
 # limited output budget, and less reliable at following length/style rules than
@@ -151,6 +102,7 @@ class LeadAgent:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         skill_index: str = "",
         forced_skill: str = "",
+        memory_block: str = "",
         local: bool = False,
     ) -> None:
         self.llm = llm
@@ -166,6 +118,10 @@ class LeadAgent:
                 "\n\nAvailable instruction skills (call olmoearth_load_skill "
                 "with the name to get full steps):\n" + skill_index
             )
+        if memory_block:
+            # Cross-thread memory: durable user preferences (rendered by
+            # harness/memory.py, already framed as data-not-instructions).
+            self.system_prompt += "\n\n" + memory_block
         if forced_skill:
             # Server-side skill routing: pin this run to the user-chosen skill.
             self.system_prompt += _forced_skill_clause(forced_skill)
@@ -273,7 +229,11 @@ class LeadAgent:
                         role="tool",
                         tool_call_id=call.id,
                         name=call.name,
-                        content=json.dumps(result),
+                        # Oversized results are spilled to a workspace file and
+                        # replaced by a compact envelope so one big payload
+                        # can't eat the context window. The UI event above and
+                        # the provenance record keep the full result.
+                        content=compact_result_for_llm(call.name, result),
                     )
                 )
 

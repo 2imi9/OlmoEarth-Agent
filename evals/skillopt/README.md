@@ -57,7 +57,8 @@ evals/skillopt/
 ├── overlay/skillopt/envs/olmoearth_*/   # the 3 benchmark envs (copy into a SkillOpt checkout)
 ├── data/olmoearth_*_split/              # train/val/test items.json per skill
 ├── configs/olmoearth_jobconfig/         # SkillOpt training config (job-config)
-└── scripts/             # eval_skill.py, gen_dataset*.py, make_refined_skill.py, probe_local.py
+├── baselines/           # committed per-env scores the regression gate compares against
+└── scripts/             # eval_skill.py, regression_gate.py, gen_dataset*.py, make_refined_skill.py, probe_local.py
 ```
 
 ## Reproduce
@@ -100,6 +101,28 @@ python olmoearth_local/eval_skill.py --env olmoearth_embeddings \
 python scripts/train.py --config configs/olmoearth_jobconfig/default.yaml \
   --backend qwen_chat --num_epochs 2
 ```
+
+## Regression gate
+
+A skill (or model/dataset) change that regresses the eval suite shouldn't
+ship. `eval_skill.py` writes a `summary.json` per run; gate it against the
+committed baseline for the same env/split:
+
+```bash
+python scripts/regression_gate.py \
+  --new outputs/eval_test_SKILL_n14/summary.json \
+  --baseline baselines/olmoearth_jobconfig_test.json
+# exit 0 = pass, 1 = hard/soft dropped (runs are temp-0, so epsilon defaults to 0)
+
+# after an accepted improvement, promote the run:
+python scripts/regression_gate.py --new .../summary.json \
+  --baseline baselines/olmoearth_jobconfig_test.json --update-baseline
+```
+
+`baselines/*.json` are seeded from the shipped-skill numbers in
+[`RESULTS.md`](RESULTS.md) (jobconfig 0.714/0.906 on the regenerated split,
+embeddings 0.833/0.806, data-prep 1.0). Rerun the suite — and the gate —
+whenever a vendored `SKILL.md`, the target model, or a dataset oracle changes.
 
 `gen_dataset*.py` import the vendored skills' `recommend.py` from
 `../OlmoEarth Agent/vendor/olmoearth-skills/...`; adjust the path in those

@@ -1,0 +1,7 @@
+{
+  "env": "olmoearth_dataprep",
+  "split": "test",
+  "hard": 1.0,
+  "source": "RESULTS.md - already optimal (no-skill control = 0.375)",
+  "updated": "2026-06-10"
+}

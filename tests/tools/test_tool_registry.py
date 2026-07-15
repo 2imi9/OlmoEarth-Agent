@@ -62,6 +62,81 @@ async def test_dispatch_success_wraps_result() -> None:
     assert result == {"ok": True, "result": {"x": 1}}
 
 
+@pytest.mark.asyncio
+async def test_dispatch_rejects_missing_required_before_handler_runs() -> None:
+    ran = False
+
+    async def handler(_args: dict[str, Any], _ctx: ToolContext) -> str:
+        nonlocal ran
+        ran = True
+        return "should not run"
+
+    spec = ToolSpec(
+        name="strict",
+        description="t",
+        parameters={
+            "type": "object",
+            "properties": {"project_id": {"type": "string"}},
+            "required": ["project_id"],
+        },
+    )
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=spec, handler=handler))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="strict", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result["ok"] is False
+    assert ran is False
+    assert "missing required argument 'project_id'" in result["error"]
+    # Self-documenting: the envelope restates the expected schema + a hint.
+    assert result["expected_arguments"]["required"] == ["project_id"]
+    assert "hint" in result
+
+
+@pytest.mark.asyncio
+async def test_dispatch_rejects_wrong_type_and_enum() -> None:
+    async def handler(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        return args
+
+    spec = ToolSpec(
+        name="typed",
+        description="t",
+        parameters={
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer"},
+                "mode": {"type": "string", "enum": ["fast", "full"]},
+            },
+            "required": [],
+        },
+    )
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=spec, handler=handler))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="typed", arguments={"limit": "ten", "mode": "turbo"}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result["ok"] is False
+    assert "'limit'" in result["error"] and "'mode'" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_exception_envelope_names_tool_and_hints() -> None:
+    async def boom(_args: dict[str, Any], _ctx: ToolContext) -> None:
+        raise RuntimeError("downstream failed")
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("boom"), handler=boom))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="boom", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result["ok"] is False
+    assert result["tool"] == "boom"
+    assert "hint" in result
+
+
 def test_register_overwrites_by_name() -> None:
     registry = ToolRegistry()
 

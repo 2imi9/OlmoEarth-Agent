@@ -9,6 +9,67 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Soul as a versioned artifact.** The system prompt moved out of a Python
+  string literal in `harness/agent.py` into `harness/soul.md`, a markdown file
+  with an explicit `## Guardrails` section separated from workflow rules —
+  editing behavioral boundaries is now a reviewable markdown change, not a code
+  change (Shippy-style soul/skills/config anatomy, after Ai2's "What building
+  Shippy taught us about building agents"). `harness/soul.py` loads it;
+  `OLMOEARTH_SOUL_PATH` points at an alternative soul file (a broken path falls
+  back to the packaged soul rather than yielding a boundary-less agent).
+- **Tool-argument validation at dispatch.** `ToolRegistry.dispatch` now
+  validates model-emitted arguments against the tool's declared JSON Schema
+  (`tools/validate.py`: `required`, `type`, `enum`, nested objects/arrays;
+  deliberately lenient on undeclared extras and str-coercible scalars) *before*
+  the handler runs. A malformed call comes back as a self-documenting rejection
+  naming the bad argument plus an `expected_arguments` sketch and a recovery
+  hint, instead of a bare `KeyError` from handler internals; handler exceptions
+  now also carry the tool name and a recovery hint.
+- **Oversized tool results spill to disk instead of the context window.**
+  `harness/spill.py`: a tool result whose JSON exceeds
+  `OLMOEARTH_TOOL_RESULT_SPILL_BYTES` (default 20 000; `0` disables) is written
+  whole to `<workspace>/tool_results/` (confined under the `security/paths.py`
+  workspace root) and the LLM receives a compact envelope — preview, structural
+  sketch, saved path, guidance — so one big `fetch_results` payload can't eat a
+  16k-token local-model context. The webui event stream and the provenance log
+  keep the full result.
+- **Eval regression gate.** `evals/skillopt/scripts/regression_gate.py` diffs a
+  new `eval_skill.py` `summary.json` against the committed baseline
+  (`evals/skillopt/baselines/*.json`, seeded from `RESULTS.md`) and exits
+  non-zero on any hard/soft drop, printing a score-change report — a
+  skill/model change that regresses the suite doesn't ship. `--update-baseline`
+  promotes an accepted improvement.
+- **Cross-thread preference memory** (Shippy roadmap: "carry persistent facts
+  ... and apply them automatically"). New `harness/memory.py` stores durable
+  user preferences (default project/area, preferred sources, reporting style)
+  in `<workspace>/memory/preferences.json`; the bridge and CLI inject the
+  stored facts into every run's system prompt, so "run it over my usual area"
+  works in a fresh conversation. New core tools `olmoearth_remember` /
+  `olmoearth_forget` let the model save a preference the moment the user
+  states one (soul rule added). Injection-hardened: slug-only keys, values
+  one-line and capped at 240 chars, 50-fact cap, and the prompt block labels
+  the contents as data-not-instructions.
+- **Opt-in model routing** (Shippy roadmap: "not every question needs a
+  frontier model"). New `llm/router.py` classifies a brief as a simple
+  read-only lookup vs a complex investigation (deterministic word-list
+  heuristic; ties break complex). With a hosted backend selected and the new
+  webui "Auto-route simple briefs to the local model" toggle on
+  (`X-LLM-Route: auto`), the bridge demotes simple lookups to the free local
+  model — demotion only, so a wrong "simple" verdict costs quality on one
+  lookup, never money, and a user-forced skill is never demoted.
+- **Optional Asta backend for litsearch.** `olmoearth_litsearch` accepts
+  `source="asta"`: when Ai2's [Asta CLI](https://github.com/allenai/asta-plugins)
+  is installed and authenticated, the search upgrades from metadata-only
+  arXiv/OpenAlex to Asta's full-text ranked retrieval with AI relevance
+  judgements and supporting snippets (new `analysis/asta.py`, Shippy-style:
+  the agent invokes the deterministic CLI — argv, no shell — which writes its
+  JSON artifact to the confined workspace). Fully detection-gated: without the
+  CLI the tool answers with install guidance and the key-free sources keep
+  working; the subprocess env is credential-scrubbed (agent Studio/LLM keys
+  dropped, `ASTA_*` passed through). `OLMOEARTH_ASTA_BIN` /
+  `OLMOEARTH_ASTA_TIMEOUT` configure the binary and wall-clock cap.
+
 ## [1.3.0] - 2026-06-10
 
 ### Security
