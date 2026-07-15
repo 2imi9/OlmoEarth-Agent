@@ -58,6 +58,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   (`X-LLM-Route: auto`), the bridge demotes simple lookups to the free local
   model — demotion only, so a wrong "simple" verdict costs quality on one
   lookup, never money, and a user-forced skill is never demoted.
+- **Optional Asta backend for litsearch.** `olmoearth_litsearch` accepts
+  `source="asta"`: when Ai2's [Asta CLI](https://github.com/allenai/asta-plugins)
+  is installed and authenticated, the search upgrades from metadata-only
+  arXiv/OpenAlex to Asta's full-text ranked retrieval with AI relevance
+  judgements and supporting snippets (new `analysis/asta.py`, Shippy-style:
+  the agent invokes the deterministic CLI — argv, no shell — which writes its
+  JSON artifact to the confined workspace). Fully detection-gated: without the
+  CLI the tool answers with install guidance and the key-free sources keep
+  working; the subprocess env is credential-scrubbed (agent Studio/LLM keys
+  dropped, `ASTA_*` passed through). `OLMOEARTH_ASTA_BIN` /
+  `OLMOEARTH_ASTA_TIMEOUT` configure the binary and wall-clock cap.
 
 ## [1.3.0] - 2026-06-10
 

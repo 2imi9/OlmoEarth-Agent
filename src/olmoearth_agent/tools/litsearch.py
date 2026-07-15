@@ -14,12 +14,19 @@ world-knowledge or hallucinated links. Two tools:
 Public + key-free (OpenAlex uses the documented polite-pool ``mailto`` when
 ``OLMOEARTH_OPENALEX_MAILTO`` is set). Returns bibliographic metadata only --
 never full text/PDF bytes and never raw geometry -- so it is provenance-safe.
+
+Optional upgrade: ``source="asta"`` routes to Ai2's Asta CLI (full-text ranked
+search with relevance judgements + snippets) when the operator has installed
+and authenticated it -- see :mod:`olmoearth_agent.analysis.asta`. Detection-
+gated; when absent the tool answers with install guidance and the key-free
+sources keep working.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from olmoearth_agent.analysis import asta
 from olmoearth_agent.analysis.litsearch import (
     DEFAULT_MAX_RESULTS,
     MAX_RESULTS_CAP,
@@ -41,9 +48,31 @@ _RULES = (
 
 
 async def _litsearch(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    source = str(args.get("source", "both"))
+    if source == "asta":
+        # Optional full-text backend (Ai2's Asta CLI). Unavailability is a
+        # structured answer with a working fallback, never a dead end.
+        if not asta.asta_available():
+            return {
+                "available": False,
+                "error": (
+                    "source='asta' needs the Asta CLI, which is not installed "
+                    "on this machine."
+                ),
+                "hint": (
+                    "Retry with source='both' (arXiv + OpenAlex, always "
+                    "available). To enable asta: install "
+                    "github.com/allenai/asta-plugins and run 'asta auth login'."
+                ),
+            }
+        return await asta.search_asta(
+            query=str(args.get("query", "")),
+            max_results=int(args.get("max_results", DEFAULT_MAX_RESULTS)),
+            include_abstract=bool(args.get("include_abstract", False)),
+        )
     return await search_literature(
         query=str(args.get("query", "")),
-        source=str(args.get("source", "both")),
+        source=source,
         max_results=int(args.get("max_results", DEFAULT_MAX_RESULTS)),
         year_from=args.get("year_from"),
         year_to=args.get("year_to"),
@@ -74,7 +103,11 @@ def build_litsearch_tools() -> list[RegisteredTool]:
                     "OlmoEarth/AlphaEarth embeddings, WorldCereal). Returns curated "
                     "records (id, title, authors, year, venue, doi, arxiv_id, url, "
                     "cited_by_count; abstract optional) deduped across both sources. "
-                    "Key-free; read-only." + _RULES
+                    "Key-free; read-only. source='asta' (only if installed) upgrades "
+                    "to Ai2's full-text ranked search with relevance judgements and "
+                    "supporting snippets — prefer it for grounding a specific claim "
+                    "when available; if it reports itself unavailable, fall back to "
+                    "'both'." + _RULES
                 ),
                 parameters={
                     "type": "object",
@@ -85,7 +118,7 @@ def build_litsearch_tools() -> list[RegisteredTool]:
                         },
                         "source": {
                             "type": "string",
-                            "enum": ["arxiv", "openalex", "both"],
+                            "enum": ["arxiv", "openalex", "both", "asta"],
                             "default": "both",
                         },
                         "max_results": {
