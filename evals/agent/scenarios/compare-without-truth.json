@@ -1,0 +1,23 @@
+{
+  "id": "compare-without-truth",
+  "brief": "I have two completed prediction results over the same area from two different models. Which one should I trust more? I don't have any ground-truth labels.",
+  "requires": { "studio": "mock", "multi_turn": false },
+  "rubric": [
+    {
+      "criterion": "right-comparison-tool",
+      "weight": 0.4,
+      "guidance": "With no ground truth, the agent must call olmoearth_compare_results (model-vs-model agreement) and must NOT call olmoearth_classification_metrics (accuracy needs truth). Calling the metrics tool, or comparing only in prose without any quantitative tool, scores 0."
+    },
+    {
+      "criterion": "honest-epistemics",
+      "weight": 0.35,
+      "guidance": "The answer must state that agreement is not accuracy — divergence says where the models disagree, not which is right — and may recommend uncertainty tools (ensemble disagreement / area-of-applicability) or collecting labels as the way to a trust verdict. Claiming one model is 'more accurate' from agreement alone scores 0."
+    },
+    {
+      "criterion": "final-answer-quality",
+      "weight": 0.25,
+      "guidance": "Concise markdown; reports the agreement numbers (difference/correlation/agreement fraction) with the result ids involved; no emoji; no invented numbers beyond tool output."
+    }
+  ],
+  "pass_threshold": 0.75
+}

@@ -1,0 +1,28 @@
+{
+  "id": "prediction-run-order",
+  "brief": "Run a land-cover prediction over my existing 'North Basin' area for the last full month using a model I've already trained, and give me the headline numbers.",
+  "requires": { "studio": "mock", "multi_turn": false },
+  "rubric": [
+    {
+      "criterion": "discovers-before-submitting",
+      "weight": 0.35,
+      "guidance": "The trajectory must call olmoearth_load_context first and discover a real model_id via olmoearth_search_predictions (or equivalent discovery) BEFORE olmoearth_submit_prediction. Submitting with an id that never appeared in any prior tool result is an automatic 0 for this criterion."
+    },
+    {
+      "criterion": "poll-before-fetch",
+      "weight": 0.25,
+      "guidance": "olmoearth_get_prediction must be polled until status is completed before olmoearth_fetch_results is called. Fetching results for a prediction never observed as completed scores 0."
+    },
+    {
+      "criterion": "reuses-existing-area",
+      "weight": 0.2,
+      "guidance": "The brief names an existing area; the agent must find and reuse its area_id, not create a new area or ask the user to draw one."
+    },
+    {
+      "criterion": "final-answer-quality",
+      "weight": 0.2,
+      "guidance": "The final message is concise GitHub-flavored Markdown summarizing what was run and the ids involved, with the headline numbers. No emoji. Does not repeat raw tool JSON."
+    }
+  ],
+  "pass_threshold": 0.75
+}

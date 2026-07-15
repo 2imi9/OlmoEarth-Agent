@@ -152,3 +152,6 @@ huggingface_cache/
 desktop.ini
 $RECYCLE.BIN/
 nul
+
+# Local session working notes (audit/review scratch; durable findings go to issues)
+reviews/
