@@ -20,6 +20,25 @@ from __future__ import annotations
 from math import sqrt
 from typing import Any
 
+from olmoearth_agent.analysis.aoi import geometry_bbox
+
+
+def result_bbox(record: dict[str, Any]) -> list[float] | None:
+    """A result record's ``[min_lon, min_lat, max_lon, max_lat]`` extent.
+
+    Reads ``result_metadata.geometry``; returns ``None`` on a missing or
+    unparsable geometry so callers can report "missing bounds" instead of
+    raising. (Shared home for the helper previously duplicated verbatim in
+    ``tools/predict.py`` and ``tools/uncertainty.py``.)
+    """
+    geom = (record.get("result_metadata") or {}).get("geometry")
+    if not geom:
+        return None
+    try:
+        return geometry_bbox(geom)
+    except ValueError:
+        return None
+
 
 def intersect_bbox(
     a: list[float] | None, b: list[float] | None

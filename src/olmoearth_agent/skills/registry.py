@@ -36,6 +36,7 @@ from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.system import build_system_tools
+from olmoearth_agent.tools.trace_shifts import build_trace_shift_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
@@ -298,6 +299,8 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_predict_tools())
     registry.register_all(build_baseline_compare_tools())
     registry.register_all(build_change_detect_tools())
+    # Timeseries shift tracing (skill #5 family): one model across dated results.
+    registry.register_all(build_trace_shift_tools())
     registry.register_all(build_cloud_mask_audit_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_uncertainty_tools())

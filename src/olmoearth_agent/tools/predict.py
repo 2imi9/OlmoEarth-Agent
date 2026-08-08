@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from olmoearth_agent.analysis.aoi import geometry_bbox
 from olmoearth_agent.analysis.raster_compare import (
     compare_categorical,
     compare_group_categorical,
@@ -26,23 +25,13 @@ from olmoearth_agent.analysis.raster_compare import (
     intersect_bbox,
     intersect_bboxes,
     normalize_kind,
+    result_bbox,
 )
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 #: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
 _SAMPLE_CONCURRENCY = 8
-
-
-def _result_bbox(record: dict[str, Any]) -> list[float] | None:
-    """A result's [min_lon,min_lat,max_lon,max_lat] from result_metadata.geometry."""
-    geom = (record.get("result_metadata") or {}).get("geometry")
-    if not geom:
-        return None
-    try:
-        return geometry_bbox(geom)
-    except ValueError:
-        return None
 
 
 def _select_band(
@@ -84,7 +73,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
 
     rec_a = await ctx.studio.get_prediction_result(a_id)
     rec_b = await ctx.studio.get_prediction_result(b_id)
-    bbox = intersect_bbox(_result_bbox(rec_a), _result_bbox(rec_b))
+    bbox = intersect_bbox(result_bbox(rec_a), result_bbox(rec_b))
     if bbox is None:
         return {
             "comparable": False,
@@ -166,7 +155,7 @@ async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
     tol = float(args.get("tolerance", 0.1))
 
     records = await asyncio.gather(*[ctx.studio.get_prediction_result(r) for r in ids])
-    bbox = intersect_bboxes([_result_bbox(rec) for rec in records])
+    bbox = intersect_bboxes([result_bbox(rec) for rec in records])
     if bbox is None:
         return {
             "comparable": False,

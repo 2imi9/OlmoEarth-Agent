@@ -75,7 +75,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 2 | `olmoearth-studio-job-config` | Task description -> Studio wizard answers, 14 presets + cross-field validator | **Configure** |
 | 3 | `olmoearth-embeddings` | Embeddings-vs-fine-tune **guidance + a runnable notebook**, plus the **one-call** `olmoearth_automate` (decide + propose a config; optional HuggingFace introspection) | **Configure** |
 | 4 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results; pixel-value / features follow | **Run** |
-| 5 | `olmoearth-change-detection` | Two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date), and an out-of-process JEPA latent-prediction pixel detector (separate repo [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)) | **Run** |
+| 5 | `olmoearth-change-detection` | Two engines: Studio multi-date (>=3) trajectory diff (refuses naive 2-date) + date-ordered legend-calibrated shift tracing across dated results, and an out-of-process JEPA latent-prediction pixel detector (separate repo [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change)) | **Run** |
 | 6 | `olmoearth-baseline-compare` | Studio vs. a baseline foundation model, side-by-side on transfer regions | **Run** |
 | 7 | `olmoearth-evaluate` | Spatial-block CV + NNDM-LOO over `/prediction-results` | **Analyze** |
 | 8 | `olmoearth-similarity` | Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base; FAISS = scale-up follow-up) | **Analyze** |

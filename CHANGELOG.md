@@ -10,6 +10,26 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **`olmoearth_trace_shifts` — timeseries shift tracing** (skill #5 family).
+  Traces how ONE model's estimates shifted across 3-8 dated prediction results
+  over the same area: discovers each result's date itself (its prediction's
+  `start_time` — result records carry no date), orders the series
+  chronologically (loud given-order fallback when a date is missing, since a
+  silently wrong order flips every shift sign), samples every result on one
+  shared grid, and returns per-step stats (Pearson correlation / mean delta /
+  agreement — the pixel-correlation trace), per-point trajectories (net
+  change, OLS slope, largest step + its dates, top shifted points), and
+  legend-calibrated shift sizes (`value_range` from the project's annotation
+  form when known, observed range otherwise, provenance-labeled). Categorical
+  results get class-transition counts instead. New `analysis/trace_shifts.py`
+  (pure Python, index-based) + `tools/trace_shifts.py`; fills the deliberately
+  unclaimed seam between `olmoearth_compare_results` (2 results),
+  `olmoearth_compare_group` (N models), and `olmoearth_change_detect`
+  (ready-made series). Honest framing: estimate movement, not verified ground
+  change, not accuracy. Also extracted the verbatim-duplicated
+  `_result_bbox` helper from `tools/predict.py` + `tools/uncertainty.py` into
+  `analysis/raster_compare.result_bbox` (the new tool would have been its
+  third copy).
 - **Whole-agent eval scenario seeds** (`evals/agent/`): six rubric-weighted
   scenarios (run-order, two soul-guardrail probes, compare-without-truth,
   memory-preference, simple-lookup-stops) + the scenario/rubric format README.
