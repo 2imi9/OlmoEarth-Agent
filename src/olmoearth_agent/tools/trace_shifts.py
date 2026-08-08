@@ -22,6 +22,7 @@ is small — N results x grid^2 is the budget driver.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Any
 
 from olmoearth_agent.analysis.change_detect import _try_parse
@@ -37,7 +38,7 @@ from olmoearth_agent.analysis.trace_shifts import (
     trace_numeric,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.predict import _band_value, _is_categorical
+from olmoearth_agent.tools.predict import _band_value, _is_categorical, _select_band
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 
 #: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
@@ -51,22 +52,37 @@ _TRACE_DEFAULT_GRID = 3
 _TRACE_MAX_GRID = 6
 
 
-async def _result_date(ctx: ToolContext, record: dict[str, Any]) -> str | None:
-    """A result's date: its prediction's ``start_time`` (fallback ``end_time``).
+async def _result_meta(
+    ctx: ToolContext, record: dict[str, Any]
+) -> tuple[str | None, str | None]:
+    """A result's ``(date, model_id)`` from its prediction record.
 
     Result records carry no date of their own; the prediction they came from
-    does. Best-effort: any lookup failure yields ``None`` and the trace falls
-    back to given-order with an explicit flag, rather than failing the run.
+    does (``start_time``, fallback ``end_time``), and it also names the model
+    — used to refuse a mixed-model series. Best-effort: any lookup failure
+    yields ``(None, None)`` and the trace falls back to given-order with an
+    explicit flag, rather than failing the run.
     """
     prediction_id = record.get("prediction_id")
     if not prediction_id:
-        return None
+        return None, None
     try:
         prediction = await ctx.studio.get_prediction(str(prediction_id))
     except Exception:  # date discovery is best-effort, never fatal
-        return None
+        return None, None
     date = prediction.get("start_time") or prediction.get("end_time")
-    return str(date) if date else None
+    model_id = prediction.get("model_id")
+    return (str(date) if date else None), (str(model_id) if model_id else None)
+
+
+def _sort_instant(parsed: datetime) -> datetime:
+    """A tz-comparable instant: naive datetimes are read as UTC.
+
+    Studio timestamps mix ``Z``-suffixed (tz-aware) and bare (naive) forms;
+    Python refuses to order aware vs naive, which would crash the
+    chronological sort instead of tripping the loud given-order fallback.
+    """
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
 async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -89,8 +105,12 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         }
     prop = args.get("property_name")
     grid = max(2, min(_TRACE_MAX_GRID, int(args.get("grid", _TRACE_DEFAULT_GRID))))
-    tol = float(args.get("tolerance", 0.1))
-    value_range = _value_range(args.get("value_range"))
+    # Negative tolerance would make "increased" and "decreased" overlap and
+    # push shifted_fraction past 1.0 — clamp to the sane floor.
+    tol = max(0.0, float(args.get("tolerance", 0.1)))
+    raw_range = args.get("value_range")
+    value_range = _value_range(raw_range)
+    range_invalid = raw_range is not None and value_range is None
 
     records = [await ctx.studio.get_prediction_result(rid) for rid in ids]
     bbox = intersect_bboxes([result_bbox(rec) for rec in records])
@@ -101,14 +121,41 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
             "is missing bounds); trace needs every result over the same area",
         }
 
-    # Chronological ordering from each result's prediction start_time. If any
-    # date is missing/unparseable, keep the given order and say so — a wrong
-    # order silently flips every "shift" sign, so the fallback must be loud.
-    dates = [await _result_date(ctx, rec) for rec in records]
+    # Date + model discovery from each result's prediction — before any slow
+    # sampling, so a refusal here costs nothing.
+    metas = [await _result_meta(ctx, rec) for rec in records]
+    dates = [m[0] for m in metas]
+    known_models = {m[1] for m in metas if m[1]}
+    if len(known_models) > 1:
+        return {
+            "comparable": False,
+            "reason": "the results span multiple models "
+            f"({sorted(known_models)}); this tool traces ONE model's "
+            "estimates over time — a mixed series would report model "
+            "disagreement as temporal drift. For model-vs-model comparison "
+            "use olmoearth_compare_group.",
+        }
+    model_check = (
+        "single-model" if known_models and all(m[1] for m in metas) else "unverified"
+    )
+
+    # Chronological ordering from the prediction dates. If any date is
+    # missing/unparseable, keep the given order and say so — a wrong order
+    # silently flips every "shift" sign, so the fallback must be loud.
     parsed = [_try_parse(d) if d else None for d in dates]
     known = [p for p in parsed if p is not None]
     if len(known) == len(parsed):
-        order = sorted(range(len(ids)), key=lambda i: known[i])
+        instants = [_sort_instant(p) for p in known]
+        if len(set(instants)) < MIN_RESULTS:
+            return {
+                "comparable": False,
+                "reason": f"the results share dates ({len(set(instants))} "
+                f"distinct of {len(ids)}): a shift trace needs >= "
+                f"{MIN_RESULTS} distinct dates to separate movement over "
+                "time from re-estimation noise. For same-date reruns use "
+                "olmoearth_ensemble_uncertainty.",
+            }
+        order = sorted(range(len(ids)), key=lambda i: instants[i])
         ordering = "chronological"
     else:
         order = list(range(len(ids)))
@@ -131,16 +178,40 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         for rid in ids
     ]
 
-    first = next((r for row in sampled for r in row if r), None)
+    # First USABLE sample (a record can be truthy yet carry empty/None bands,
+    # e.g. a nodata pixel) — it decides categorical-vs-regression and names
+    # the traced band, so it must actually have a value.
+    first = next(
+        (
+            r
+            for row in sampled
+            for r in row
+            if r and _band_value(r, prop) is not None
+        ),
+        None,
+    )
     if first is None:
         return {
             "comparable": False,
-            "reason": "no grid point returned a valid sample from any result",
+            "reason": "no grid point returned a usable sample from any result",
         }
     categorical = _is_categorical(first, prop)
     series: list[list[Any]] = [
         [(_band_value(r, prop) if r else None) for r in row] for row in sampled
     ]
+    if not categorical and any(
+        v is not None and not isinstance(v, (int, float))
+        for row in series
+        for v in row
+    ):
+        # Results disagree on band type (some numeric raw_value, some class
+        # labels): a clean refusal, not a float() traceback after the whole
+        # sampling budget was already spent computing half a trace.
+        return {
+            "comparable": False,
+            "reason": "sampled values mix numeric and categorical bands "
+            "across the results; pass property_name to pin one field",
+        }
 
     if categorical:
         trace = trace_categorical(series)
@@ -148,6 +219,11 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
     else:
         trace = trace_numeric(series, tolerance=tol, value_range=value_range)
         value_type = "regression"
+        if range_invalid:
+            trace["calibration"]["note"] = (
+                "supplied value_range was invalid (need [min, max] with "
+                "max > min) and was ignored; " + trace["calibration"]["note"]
+            )
     narration = trace_narration(trace, value_type=value_type, ordering=ordering)
 
     # Remap analysis indices to real ids/dates/coords (tool-layer convention).
@@ -163,13 +239,22 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
             pp["largest_step_from_date"] = dates[k_from]
             pp["largest_step_to_date"] = dates[k_to]
 
+    sampled_names: set[str] = {
+        name
+        for row in sampled
+        for r in row
+        if r
+        for name in [(_select_band(r, prop) or {}).get("property_name")]
+        if isinstance(name, str)
+    }
     envelope: dict[str, Any] = {
         "comparable": True,
         "result_ids": ids,
         "dates": dates,
         "ordering": ordering,
+        "model_check": model_check,
         "property_name": prop
-        or (first.get("bands", [{}])[0].get("property_name")),
+        or (_select_band(first, prop) or {}).get("property_name"),
         "value_type": value_type,
         "narration": narration,
         "grid": f"{grid}x{grid}",
@@ -182,6 +267,14 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         + narration["framing"]
         + ".",
     }
+    if not prop and len(sampled_names) > 1:
+        # With no property_name, every result reads its own first band —
+        # if the results disagree on what that band is, the traced field is
+        # ambiguous and the caller should pin it.
+        envelope["property_name_note"] = (
+            f"results disagree on the default band ({sorted(sampled_names)}); "
+            "pass property_name to pin the traced field"
+        )
     if value_type == "classification":
         envelope["transitions"] = trace["transitions"]
     else:

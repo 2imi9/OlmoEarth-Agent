@@ -144,9 +144,11 @@ SKILLS: list[SkillSpec] = [
         "Run",
         "implemented",
         "Change detection, two engines: in-process Studio multi-date (>=3) "
-        "trajectory diff (refuses naive 2-date), and an out-of-process JEPA "
+        "trajectory diff (refuses naive 2-date) plus date-ordered, "
+        "legend-calibrated shift tracing across dated results "
+        "(olmoearth_trace_shifts), and an out-of-process JEPA "
         "latent-prediction residual detector (separate torch repo).",
-        ["olmoearth_change_detect"],
+        ["olmoearth_change_detect", "olmoearth_trace_shifts"],
     ),
     SkillSpec(
         6,
