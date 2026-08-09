@@ -36,6 +36,7 @@ def test_known_cloud_provider_allowed_in_enforce(
     # a hosted provider on the llm-cloud allowlist -> allowed
     _llm("https://api.anthropic.com/v1")
     _llm("https://api.openai.com/v1")
+    _llm("https://integrate.api.nvidia.com/v1")
 
 
 def test_malicious_endpoint_blocked_in_enforce(

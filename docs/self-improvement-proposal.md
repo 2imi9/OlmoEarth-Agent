@@ -40,7 +40,7 @@ to adopt first in the OlmoEarth Agent, mapped onto the actual harness. Scope is
 ## 0. Scope and ethos
 
 The agent is a text-only ReAct loop driven by a **weak local model** (Qwen3.6,
-~3B active) or a hosted Claude/ChatGPT/Gemini backend. Three constraints shape
+~3B active) or a hosted Claude/ChatGPT/Gemini/NIM backend. Three constraints shape
 every recommendation:
 
 1. **Honest results.** A verifier must read a *real external signal* -- a tool

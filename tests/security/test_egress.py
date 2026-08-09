@@ -20,6 +20,7 @@ from olmoearth_agent.security import egress
         ("https://api.anthropic.com", "llm-cloud"),
         ("https://api.openai.com/v1", "llm-cloud"),
         ("https://generativelanguage.googleapis.com/v1beta/openai/", "llm-cloud"),
+        ("https://integrate.api.nvidia.com/v1", "llm-cloud"),
         ("http://export.arxiv.org/api/query", "litsearch"),
         ("https://api.openalex.org/works", "litsearch"),
         ("https://datasets-server.huggingface.co/rows", "hf"),

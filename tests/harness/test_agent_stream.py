@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from olmoearth_agent.harness.agent import LeadAgent
+from olmoearth_agent.harness.response_policy import ResponsePolicy
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
 
@@ -192,3 +193,151 @@ async def test_no_forced_skill_leaves_prompt_unpinned() -> None:
     )
     await _collect(agent, "hello")
     assert "FORCED SKILL" not in llm.messages[0].content
+
+
+class _PolicyLLM:
+    """Scripted LLM that records every policy-sensitive chat argument."""
+
+    def __init__(self, responses: Iterable[ChatResponse]) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    async def chat(
+        self, messages: list[Message], *, tools: Any = None, **kwargs: Any
+    ) -> ChatResponse:
+        self.calls.append({"messages": list(messages), "tools": tools, **kwargs})
+        return self.responses.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_concise_policy_appends_contract_and_bounds_turn() -> None:
+    llm = _PolicyLLM(
+        [ChatResponse(content="Prediction p1 completed.", finish_reason="stop")]
+    )
+    policy = ResponsePolicy(concise_max_words=80, concise_max_tokens=2048)
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+        response_policy=policy,
+    )
+
+    events = await _collect(agent, "Check prediction p1")
+
+    assert events[-1]["content"] == "Prediction p1 completed."
+    assert llm.calls[0]["max_tokens"] == 2048
+    system = llm.calls[0]["messages"][0].content
+    assert "RESPONSE CONTRACT (concise default)" in system
+    assert "80 words" in system
+
+
+@pytest.mark.asyncio
+async def test_explicit_detail_gets_larger_budget_without_rewrite() -> None:
+    llm = _PolicyLLM(
+        [ChatResponse(content="A detailed but valid answer.", finish_reason="stop")]
+    )
+    policy = ResponsePolicy(concise_max_words=80, concise_max_tokens=2048)
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+        response_policy=policy,
+    )
+
+    await _collect(agent, "Give me a detailed report")
+
+    assert len(llm.calls) == 1
+    assert llm.calls[0]["max_tokens"] == 8192
+    system = llm.calls[0]["messages"][0].content
+    assert "RESPONSE CONTRACT (detailed" in system
+
+
+@pytest.mark.asyncio
+async def test_overlong_final_gets_one_no_tools_editor_pass() -> None:
+    draft = (
+        "Prediction p1 completed. Output results/p1.json. Extra explanatory "
+        "words make this draft longer than the intentionally tiny test budget."
+    )
+    rewrite = "Prediction p1 completed. Output: results/p1.json."
+    llm = _PolicyLLM(
+        [
+            ChatResponse(content=draft, finish_reason="stop"),
+            ChatResponse(content=rewrite, finish_reason="stop"),
+        ]
+    )
+    policy = ResponsePolicy(
+        concise_max_words=8,
+        concise_max_tokens=2048,
+        repair_max_tokens=256,
+    )
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+        response_policy=policy,
+    )
+
+    events = await _collect(agent, "Check prediction p1")
+
+    assert events[-1] == {
+        "type": "final",
+        "turn": 1,
+        "content": rewrite,
+        "compacted": True,
+    }
+    assert len(llm.calls) == 2
+    assert llm.calls[1]["tools"] is None
+    assert llm.calls[1]["mode"] == "instruct_general"
+    assert llm.calls[1]["max_tokens"] == 256
+    assert llm.calls[1]["preserve_thinking"] is False
+
+
+@pytest.mark.asyncio
+async def test_failed_editor_keeps_completed_answer() -> None:
+    draft = "one two three four five six seven eight nine ten eleven twelve"
+
+    class _FailingEditor(_PolicyLLM):
+        async def chat(
+            self, messages: list[Message], *, tools: Any = None, **kwargs: Any
+        ) -> ChatResponse:
+            if self.calls:
+                raise RuntimeError("editor unavailable")
+            return await super().chat(messages, tools=tools, **kwargs)
+
+    llm = _FailingEditor([ChatResponse(content=draft, finish_reason="stop")])
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+        response_policy=ResponsePolicy(concise_max_words=8),
+    )
+
+    events = await _collect(agent, "Check prediction p1")
+
+    assert events[-1]["content"] == draft
+    assert "compacted" not in events[-1]
+
+
+@pytest.mark.asyncio
+async def test_editor_that_drops_identifier_keeps_completed_answer() -> None:
+    draft = (
+        "Prediction pred-42 completed and produced many extra explanatory words "
+        "that make this response exceed its intentionally tiny test budget."
+    )
+    llm = _PolicyLLM(
+        [
+            ChatResponse(content=draft, finish_reason="stop"),
+            ChatResponse(content="Prediction completed.", finish_reason="stop"),
+        ]
+    )
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+        response_policy=ResponsePolicy(concise_max_words=8),
+    )
+
+    events = await _collect(agent, "Check prediction pred-42")
+
+    assert events[-1]["content"] == draft
+    assert "compacted" not in events[-1]

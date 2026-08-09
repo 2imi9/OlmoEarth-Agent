@@ -10,6 +10,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Hosted NVIDIA NIM backend:** the web UI can route each run to NVIDIA's
+  OpenAI-compatible API with a per-request key and no local GPU. The fixed,
+  allowlisted endpoint defaults to the tool-capable
+  `nvidia/nemotron-3-nano-30b-a3b`; a credential-gated live test measures the
+  concise final-answer contract without local fallback.
+- **Concise response policy:** every backend now receives a run-specific answer
+  contract and a bounded agent-turn output budget (default 4,096 tokens; final
+  answer target 120 words). Explicit detailed/report requests receive a larger
+  budget. If a model still returns an overlong concise answer, the harness runs
+  one tools-disabled lossless editing pass. Rewrites that add or drop statuses,
+  ids, paths, URLs, or numbers are rejected; editor failure preserves the
+  original successful answer. Configure with `OLMOEARTH_RESPONSE_STYLE`,
+  `OLMOEARTH_RESPONSE_MAX_WORDS`, and
+  `OLMOEARTH_AGENT_MAX_OUTPUT_TOKENS`.
+- **Agent runtime decision record** (`docs/agent-runtime-baseline.md`): DeerFlow
+  v2 remains the harness reference; OpenClaw supplies soul/skills/config and
+  capability-eligibility patterns, not the runtime; Shippy remains the domain
+  reliability standard.
 - **Soul as a versioned artifact.** The system prompt moved out of a Python
   string literal in `harness/agent.py` into `harness/soul.md`, a markdown file
   with an explicit `## Guardrails` section separated from workflow rules —

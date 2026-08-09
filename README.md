@@ -31,7 +31,7 @@ OlmoEarth Agent turns a natural-language brief into real geospatial work on [Olm
 
 Pick the backbone for the agent's reasoning - both drive the same live UI:
 
-**A. Cloud API** (Claude / ChatGPT / Gemini) - no Docker, no 17.7 GB download:
+**A. Cloud API** (Claude / ChatGPT / Gemini / NVIDIA NIM) - no Docker, local GPU, or 17.7 GB download:
 
 ```bash
 make setup      # init vendored skills + uv sync --all-extras

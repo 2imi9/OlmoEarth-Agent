@@ -233,8 +233,8 @@ class OlmoEarthLLM:
         self._tracer: Tracer = tracer or _NullTracer()
         # When True, send only standard OpenAI params: drop the Qwen/vLLM
         # extras (top_k via extra_body, chat_template_kwargs.preserve_thinking)
-        # that hosted providers like OpenAI and Gemini reject. Used by the
-        # bridge for the ChatGPT/Gemini backends.
+        # that hosted providers like OpenAI, Gemini, and NIM reject. Used by the
+        # bridge for the ChatGPT/Gemini/NIM backends.
         self._openai_compat = openai_compat
         # Guard the (env-overridable) LLM endpoint before the API key is bound to
         # a client: a malicious LLM_ENDPOINT must not exfiltrate the conversation

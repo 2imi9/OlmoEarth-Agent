@@ -74,7 +74,12 @@ def _register(
 _register("studio", ("olmoearth.allenai.org",))
 _register(
     "llm-cloud",
-    ("api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com"),
+    (
+        "api.anthropic.com",
+        "api.openai.com",
+        "generativelanguage.googleapis.com",
+        "integrate.api.nvidia.com",
+    ),
 )
 _register("llm-local", (), allow_loopback=True)
 _register("litsearch", ("export.arxiv.org", "api.openalex.org"))
