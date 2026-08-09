@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
+# CPU-only live web bridge. Hosted LLM and Studio credentials remain browser
+# BYOK headers; Compose does not read them into the container environment.
+name: olmoearth-agent-bridge
+
+services:
+  bridge:
+    image: olmoearth-agent-bridge:dev
+    build:
+      context: ..
+      dockerfile: docker/bridge.Dockerfile
+    init: true
+    ports:
+      - "${OLMOEARTH_BRIDGE_PORT:-8088}:8088"
+    volumes:
+      - type: bind
+        source: ../olmoearth_outputs
+        target: /app/olmoearth_outputs
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    stop_grace_period: 10s

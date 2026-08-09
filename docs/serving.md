@@ -53,6 +53,20 @@ path stands on its own. If you are on the default **local** backend and the
 local model is not up, the UI shows a one-line nudge to either start it
 (`make serve`) or switch to a cloud provider - it does not fail silently.
 
+To containerize only the live bridge while keeping inference hosted, use the
+separate CPU-only compose target:
+
+```bash
+git submodule update --init
+docker compose -f docker/bridge.compose.yml up --build -d
+# open http://localhost:8088, then select NVIDIA NIM (or another hosted backend)
+```
+
+This image contains the web UI, agent package, and vendored skills, but no
+model weights and no GPU reservation. Studio and provider keys remain
+bring-your-own browser headers; they are not copied into the image or Compose
+environment. Generated artifacts are persisted in `olmoearth_outputs/`.
+
 ## Quick start (Docker)
 
 `make up` does the whole local bring-up in one command (setup, then start the

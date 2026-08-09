@@ -1230,6 +1230,11 @@ button.is-busy > .ic { display: none; }
   .chat-thread { padding: 20px 14px 8px; }
   .topbar-title { display: none; }
 }
+@media (max-width: 480px) {
+  .hero-brand { align-items: center; gap: 8px; }
+  .hero-logo { width: calc(100% - 60px); height: auto; }
+  .hero-agent { flex: none; font-size: 11px; padding: 3px 7px; margin-bottom: 0; }
+}
 @media (min-width: 881px) and (max-width: 1180px) {
   .cap-grid { grid-template-columns: repeat(2, 1fr); }
 }

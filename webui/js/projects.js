@@ -161,7 +161,10 @@ function resultNode(r) {
 }
 
 async function loadChildren(node) {
-  if (!BRIDGE.live) return node.children || [];
+  // The live bridge can be up before a Studio key is connected. In that state
+  // the tree contains inline demo nodes, so expanding them must not issue live
+  // prediction requests that can only return HTTP 400.
+  if (!BRIDGE.live || !projConnected()) return node.children || [];
   if (node.kind === 'project') {
     const data = await apiPredictions(node.id);
     // Model groups only - AOIs live in the dedicated Areas section now.
