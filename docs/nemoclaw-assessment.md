@@ -124,8 +124,8 @@ primitives -- not the capabilities -- are candidates for transfer.
 - **Outbound surface is small and known.** Five capabilities:
   Studio (`olmoearth.allenai.org`, but the base URL is `OLMOEARTH_BASE_URL`-
   overridable), the hosted LLMs (`api.anthropic.com` / `api.openai.com` /
-  `generativelanguage.googleapis.com`), the local LLM (loopback), litsearch
-  (`export.arxiv.org` + `api.openalex.org`), and HF
+  `generativelanguage.googleapis.com` / `integrate.api.nvidia.com`), the local
+  LLM (loopback), litsearch (`export.arxiv.org` + `api.openalex.org`), and HF
   (`datasets-server.huggingface.co`). That small set is exactly what makes a
   static allowlist tractable for us where NemoClaw needs a dynamic policy engine.
 - **We already have a provenance manifest** the agent run owns

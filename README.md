@@ -31,7 +31,7 @@ OlmoEarth Agent turns a natural-language brief into real geospatial work on [Olm
 
 Pick the backbone for the agent's reasoning - both drive the same live UI:
 
-**A. Cloud API** (Claude / ChatGPT / Gemini) - no Docker, no 17.7 GB download:
+**A. Cloud API** (Claude / ChatGPT / Gemini / NVIDIA NIM) - no Docker, local GPU, or 17.7 GB download:
 
 ```bash
 make setup      # init vendored skills + uv sync --all-extras
@@ -39,6 +39,11 @@ make bridge     # live web UI on http://localhost:8088 (no local model needed)
 ```
 
 Open **http://localhost:8088**, paste your Studio key, then go to **Settings -> LLM backend**, pick a provider, and paste that provider's API key. Both keys stay client-side and are sent per request, never stored server-side. Send a brief.
+
+To run that same hosted-model path with the bridge itself in a CPU-only Docker
+container, use `make bridge-docker` (or
+`docker compose -f docker/bridge.compose.yml up --build -d`). It starts no
+local model and requests no GPU.
 
 **B. Local model** (fully offline, free) - one command auto-starts the LLM and the UI:
 

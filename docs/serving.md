@@ -15,9 +15,9 @@ supported stack is **llama.cpp serving the 4-bit GGUF**
 
 ## Cloud API (skip the local model)
 
-The agent's reasoning backbone can be a hosted **Claude**, **ChatGPT**, or
-**Gemini** model instead of the local Qwen3.6. This path needs **no Docker and
-no download** - just the web UI bridge:
+The agent's reasoning backbone can be hosted **Claude**, **ChatGPT**,
+**Gemini**, or **NVIDIA NIM** instead of the local Qwen3.6. This path needs
+**no Docker, local GPU, or model download** - just the web UI bridge:
 
 ```bash
 make setup      # init vendored skills + uv sync --all-extras
@@ -32,13 +32,40 @@ autodetects the provider's current model ids for the dropdown.
 
 - **Claude** uses the native Anthropic SDK - install the extra once:
   `uv sync --extra claude`.
-- **ChatGPT** and **Gemini** use the OpenAI-compatible client (Gemini via its
-  `.../v1beta/openai/` base URL); no extra needed.
+- **ChatGPT**, **Gemini**, and **NVIDIA NIM** use the OpenAI-compatible client;
+  no extra is needed. NIM uses NVIDIA's hosted
+  `https://integrate.api.nvidia.com/v1` endpoint and defaults to the
+  tool-capable
+  [`nvidia/nemotron-3-nano-30b-a3b`](https://build.nvidia.com/nvidia/nemotron-3-nano-30b-a3b/deploy)
+  model.
+
+To run only the hosted-NIM concision smoke test, set `NVIDIA_API_KEY` and run:
+
+```bash
+uv run pytest -m integration tests/harness/test_nim_live.py -vv
+```
+
+The test constructs the NIM client directly and never probes, starts, or falls
+back to the local model.
 
 `make bridge` starts the UI even when no local model is running, so the cloud
 path stands on its own. If you are on the default **local** backend and the
 local model is not up, the UI shows a one-line nudge to either start it
 (`make serve`) or switch to a cloud provider - it does not fail silently.
+
+To containerize only the live bridge while keeping inference hosted, use the
+separate CPU-only compose target:
+
+```bash
+git submodule update --init
+docker compose -f docker/bridge.compose.yml up --build -d
+# open http://localhost:8088, then select NVIDIA NIM (or another hosted backend)
+```
+
+This image contains the web UI, agent package, and vendored skills, but no
+model weights and no GPU reservation. Studio and provider keys remain
+bring-your-own browser headers; they are not copied into the image or Compose
+environment. Generated artifacts are persisted in `olmoearth_outputs/`.
 
 ## Quick start (Docker)
 

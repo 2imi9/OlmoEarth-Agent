@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from olmoearth_agent.harness.response_policy import ResponsePolicy
 from olmoearth_agent.harness.soul import load_soul
 from olmoearth_agent.harness.spill import compact_result_for_llm
 from olmoearth_agent.harness.state import ThreadState
@@ -32,18 +33,13 @@ logger = logging.getLogger(__name__)
 #: boundaries is a markdown change, not a code change (see ``harness/soul.py``).
 DEFAULT_SYSTEM_PROMPT = load_soul()
 
-# Appended to the system prompt when the run is on the local model (small,
-# limited output budget, and less reliable at following length/style rules than
-# a hosted model). Cloud backends omit it - they can afford longer answers and
-# obey "be concise". Restates the no-emoji rule last, where recency helps a
-# weak model honor it.
+# Appended only for the local model. Final-answer length is controlled for every
+# backend by :class:`ResponsePolicy`; this clause prevents the smaller model
+# from spending its bounded completion budget narrating a plan before it acts.
 LOCAL_BUDGET_CLAUSE = (
-    "\n\nIMPORTANT - you are running on a small local model with a limited "
-    "output budget, so a long answer gets cut off mid-sentence. Keep every "
-    "reply short: a 2-3 sentence summary plus at most a 3-5 row table or a few "
-    "bullets. Report only the top few items and offer to expand if the user "
-    "wants more; never dump exhaustive lists or large tables. Plain text only - "
-    "no emoji or decorative pictographs (use the plain markers above)."
+    "\n\nLOCAL MODEL: you have a limited output budget. Spend it selecting and "
+    "calling tools, not narrating a plan or repeating tool results. Follow the "
+    "run-specific RESPONSE CONTRACT appended to this prompt."
 )
 
 
@@ -103,6 +99,7 @@ class LeadAgent:
         skill_index: str = "",
         forced_skill: str = "",
         memory_block: str = "",
+        response_policy: ResponsePolicy | None = None,
         local: bool = False,
     ) -> None:
         self.llm = llm
@@ -110,6 +107,7 @@ class LeadAgent:
         self.studio = studio
         self.state = state or ThreadState()
         self.forced_skill = forced_skill
+        self.response_policy = response_policy or ResponsePolicy.from_env()
         self.system_prompt = system_prompt
         if skill_index:
             # Progressive disclosure: list the vendored SKILL.md skills so the
@@ -129,6 +127,51 @@ class LeadAgent:
             # The local model needs an explicit output-budget + brevity reminder
             # (a hosted model does not), or long answers truncate mid-sentence.
             self.system_prompt += LOCAL_BUDGET_CLAUSE
+
+    async def _compact_final(self, brief: str, draft: str) -> tuple[str, bool]:
+        """Losslessly shorten an over-budget final answer with tools disabled.
+
+        This is an editorial pass, not another agent turn. If the provider
+        fails, returns a tool call, or makes the answer longer, the original
+        answer wins so concision enforcement can never turn a successful run
+        into a failed one.
+        """
+        if not self.response_policy.needs_compaction(brief, draft):
+            return draft, False
+        editor_messages = [
+            Message(
+                role="system",
+                content=(
+                    "You are a lossless response editor. Shorten supplied text "
+                    "without changing facts or performing actions."
+                ),
+            ),
+            Message(
+                role="user",
+                content=self.response_policy.repair_prompt(draft, brief),
+            ),
+        ]
+        try:
+            edited = await self.llm.chat(
+                editor_messages,
+                tools=None,
+                mode="instruct_general",
+                max_tokens=self.response_policy.repair_max_tokens,
+                preserve_thinking=False,
+            )
+        except Exception:  # an editorial failure must not fail a completed task
+            logger.debug("final-answer compaction failed", exc_info=True)
+            return draft, False
+        candidate = (edited.content or "").strip()
+        if (
+            edited.tool_calls
+            or not candidate
+            or self.response_policy.word_count(candidate)
+            >= self.response_policy.word_count(draft)
+            or not self.response_policy.preserves_required_markers(draft, candidate)
+        ):
+            return draft, False
+        return candidate, True
 
     def _record_external_endpoints(self) -> None:
         """Note the external Studio endpoint this run uses in the manifest.
@@ -165,7 +208,8 @@ class LeadAgent:
         - ``thinking``    : the model's reasoning for a turn (``text``).
         - ``tool_call``   : a dispatched call (``name``, ``arguments``, ``id``).
         - ``tool_result`` : its outcome (``name``, ``ok``, ``result``, ``id``).
-        - ``final``       : the plain-text answer (``content``).
+        - ``final``       : the plain-text answer (``content``); optional
+          ``compacted=true`` records an over-budget editorial rewrite.
         - ``max_turns``   : the cap was hit with no answer (``turns``).
 
         Parameters
@@ -179,7 +223,8 @@ class LeadAgent:
             the new ``brief``, so multi-turn follow-ups have context. Inserted
             between the system prompt and the new user message.
         """
-        messages: list[Message] = [Message(role="system", content=self.system_prompt)]
+        run_prompt = self.system_prompt + "\n\n" + self.response_policy.contract(brief)
+        messages: list[Message] = [Message(role="system", content=run_prompt)]
         if history:
             messages.extend(history)
         messages.append(Message(role="user", content=brief))
@@ -188,13 +233,28 @@ class LeadAgent:
 
         for turn in range(1, max_turns + 1):
             self.state.turn_count = turn
-            response = await self.llm.chat(messages, tools=self.registry.specs())
+            response = await self.llm.chat(
+                messages,
+                tools=self.registry.specs(),
+                max_tokens=self.response_policy.max_tokens(brief),
+            )
 
             if response.thinking:
                 yield {"type": "thinking", "turn": turn, "text": response.thinking}
 
             if not response.tool_calls:
-                yield {"type": "final", "turn": turn, "content": response.content}
+                content = response.content
+                compacted = False
+                if content:
+                    content, compacted = await self._compact_final(brief, content)
+                event: dict[str, Any] = {
+                    "type": "final",
+                    "turn": turn,
+                    "content": content,
+                }
+                if compacted:
+                    event["compacted"] = True
+                yield event
                 return
 
             messages.append(

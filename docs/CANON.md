@@ -26,7 +26,7 @@ _Last aligned: 2026-05-31._
 | C7 | Local GPU constraint | RTX 5090 Laptop, 24 GB (Blackwell). This is why NVFP4 (~20 GB weights, no KV headroom) was dropped for GGUF. |
 | C8 | Sampling default | `thinking_general` preset + `chat_template_kwargs.preserve_thinking=True` for multi-turn agent runs (Qwen3.6 model card) |
 | C9 | Skill catalog | 17 skills in `SKILLS.md` (Prep / Configure / Run / Analyze / Integrate / Report). 16 implemented in-repo; skill #5 `olmoearth-change-detection` also has an out-of-process JEPA engine backed by `2imi9/olmoearth-jepa-change`. Vendored #1-#3 + #17 (the four `vendor/olmoearth-skills` packages: data-prep, studio-job-config, embeddings, rslearn) via submodule. Earlier catalog versions split data-prep into #1/#2, embeddings into #4/#17, and change-detection into #6/#19; those were merged. |
-| C10 | **Hosted LLM backends (optional)** | Local Qwen3.6 (C1) is the **default**; the bridge also accepts bring-your-own-key **Claude** (native Anthropic SDK), **ChatGPT**, and **Gemini** (OpenAI-compatible), selected per request (`X-LLM-Backend` / `X-LLM-Key` / `X-LLM-Model`; `GET /api/llm/models` autodetects). Keys are forwarded per request, never stored server-side. |
+| C10 | **Hosted LLM backends (optional)** | Local Qwen3.6 (C1) is the **default**; the bridge also accepts bring-your-own-key **Claude** (native Anthropic SDK), **ChatGPT**, **Gemini**, and hosted **NVIDIA NIM** (OpenAI-compatible; default `nvidia/nemotron-3-nano-30b-a3b`), selected per request (`X-LLM-Backend` / `X-LLM-Key` / `X-LLM-Model`; `GET /api/llm/models` autodetects). Keys are forwarded per request, never stored server-side. |
 
 ## Banned as "the current approach"
 
@@ -60,7 +60,7 @@ uv run pytest -q
 ## Documents governed by this canon
 
 `README.md` | `PLAN.md` | `SKILLS.md` | `AGENTS.md` | `CONTRIBUTING.md`
- | `docs/serving.md` | `.env.example` | `docker/llama.compose.yml` | 
+ | `docs/serving.md` | `.env.example` | `docker/llama.compose.yml` |
 `src/olmoearth_agent/llm/{config,__init__,client,presets}.py`
 
 `CHANGELOG.md` is **history**: never rewritten to match canon; new

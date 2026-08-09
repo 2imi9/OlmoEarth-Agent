@@ -104,6 +104,7 @@
               <button class="llm-tab" type="button" role="tab" data-backend="claude">Claude</button>
               <button class="llm-tab" type="button" role="tab" data-backend="gemini">Gemini</button>
               <button class="llm-tab" type="button" role="tab" data-backend="openai">ChatGPT</button>
+              <button class="llm-tab" type="button" role="tab" data-backend="nim" title="NVIDIA NIM">NIM</button>
             </div>
             <div class="llm-local-note" id="llmLocalNote">No API key needed - the local model runs through the bridge. Just add your <strong>Studio key</strong> (top bar).</div>
             <div class="llm-panel" id="llmPanel" hidden>
@@ -388,7 +389,7 @@
       <!-- Pinned composer -->
       <div class="composer" id="composer">
         <div class="llm-nudge" id="llmNudge" hidden role="status">
-          <span class="llm-nudge-text">Local model isn't running. <button type="button" class="llm-nudge-link" id="llmNudgePick">Use a cloud API</button> (Claude / ChatGPT / Gemini), or start it with <code>make serve</code>.</span>
+          <span class="llm-nudge-text">Local model isn't running. <button type="button" class="llm-nudge-link" id="llmNudgePick">Use a cloud API</button> (Claude / ChatGPT / Gemini / NVIDIA NIM), or start it with <code>make serve</code>.</span>
           <button type="button" class="llm-nudge-x" id="llmNudgeDismiss" aria-label="Dismiss this notice">&times;</button>
         </div>
         <div class="attach-preview" id="attachPreview" aria-label="Result preview" hidden></div>

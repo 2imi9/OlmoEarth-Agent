@@ -18,7 +18,7 @@ export function agentMaxTurns() {
 }
 
 /* LLM backend selection (default local). For a hosted backend (claude | openai |
-   gemini) the bridge builds a per-request client from the key, which rides in a
+   gemini | nim) the bridge builds a per-request client from the key, which rides in a
    header and is never stored server-side (like the Studio key). Key/model are
    stored per provider. Returns {} for local so the default path is untouched. */
 export function llmHeaders() {

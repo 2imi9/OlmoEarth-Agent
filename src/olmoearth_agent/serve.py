@@ -33,6 +33,7 @@ import asyncio
 import hashlib
 import importlib.util
 import json
+import logging
 import os
 import re
 import time
@@ -59,6 +60,8 @@ from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
+
+logger = logging.getLogger(__name__)
 
 #: Hard cap on agent round-trips a single browser request may trigger.
 _MAX_TURNS_CEILING = 12
@@ -113,8 +116,8 @@ def _key_hash(key: str) -> str:
 #: trip. Keyed by capability + key-hash + ids; TTL keeps it fresh enough.
 _READ_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 _READ_CACHE_MAX = 512
-_READ_TTL_LONG = 300.0   # projects / areas / extent: rarely change in a session
-_READ_TTL_SHORT = 30.0   # predictions / results: change as runs progress
+_READ_TTL_LONG = 300.0  # projects / areas / extent: rarely change in a session
+_READ_TTL_SHORT = 30.0  # predictions / results: change as runs progress
 
 
 def _read_cache_get(k: str) -> dict[str, Any] | None:
@@ -183,8 +186,8 @@ async def _pooled_studio(key: str) -> StudioClient:
                 _, evicted = _STUDIO_POOL.popitem(last=False)
                 try:
                     await evicted.aclose()
-                except Exception:  # noqa: BLE001, S110 - best-effort close of an evicted client
-                    pass
+                except Exception:  # noqa: BLE001 - cleanup must not break the request
+                    logger.debug("could not close evicted Studio client", exc_info=True)
         _STUDIO_POOL.move_to_end(h)
     return client
 
@@ -349,6 +352,10 @@ _OPENAI_PROVIDERS: dict[str, dict[str, str]] = {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash",
     },
+    "nim": {
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "nvidia/nemotron-3-nano-30b-a3b",
+    },
 }
 
 
@@ -365,10 +372,10 @@ def _llm_for_request(request: Request) -> Any:
     """Choose the LLM backend for this request (default: the local model).
 
     Hosted backends are selected via ``X-LLM-Backend`` (``claude`` |
-    ``openai`` | ``gemini``) with a bring-your-own ``X-LLM-Key`` and an
+    ``openai`` | ``gemini`` | ``nim``) with a bring-your-own ``X-LLM-Key`` and an
     optional ``X-LLM-Model``. The key is forwarded per request and never
-    stored or logged, mirroring the Studio key. ChatGPT/Gemini share the
-    OpenAI-compatible client (``openai_compat=True`` drops the Qwen extras);
+    stored or logged, mirroring the Studio key. ChatGPT/Gemini/NIM share the
+    OpenAI-compatible client (``openai_compat=True`` drops local-model extras);
     Claude uses the native Anthropic client. Subscription/OAuth auth is not
     wired here.
     """
@@ -424,9 +431,9 @@ def _filter_models(backend: str, ids: list[str]) -> list[str]:
 async def _list_models(backend: str, api_key: str) -> list[str]:
     """List a provider's current model ids for the web UI autodetect.
 
-    Claude uses the Anthropic SDK; ChatGPT/Gemini use the OpenAI SDK against
-    the provider's model-listing endpoint. Network errors propagate to the
-    caller (surfaced as a 502).
+    Claude uses the Anthropic SDK; ChatGPT/Gemini/NIM use the OpenAI SDK
+    against the provider's model-listing endpoint. Network errors propagate
+    to the caller (surfaced as a 502).
     """
     if backend in ("claude", "anthropic"):
         try:
@@ -608,7 +615,10 @@ async def api_run(request: Request) -> StreamingResponse:
     # ignored (not rejected) so a stray slug never breaks a run -- and a
     # well-formed but unknown slug is never injected into the prompt directive.
     forced_skill = str(body.get("forced_skill", "")).strip().lower()
-    if not _SKILL_SLUG_RE.match(forced_skill) or forced_skill not in _VALID_FORCED_SKILLS:
+    if (
+        not _SKILL_SLUG_RE.match(forced_skill)
+        or forced_skill not in _VALID_FORCED_SKILLS
+    ):
         forced_skill = ""
 
     llm = _llm_for_request(request)
@@ -955,7 +965,9 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     bands = rec.get("bands") or []
     prop = q.get("property")
-    band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
+    band = next(
+        (b for b in bands if b.get("property_name") == prop), bands[0] if bands else {}
+    )
     cls = band.get("classification")
     out = {
         "ok": True,

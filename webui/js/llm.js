@@ -1,5 +1,5 @@
 /* LLM backend picker + the cloud-path nudge. Provider subtab: Local | Claude |
-   Gemini | ChatGPT. Picking a hosted provider reveals a key field + an
+   Gemini | ChatGPT | NVIDIA NIM. Picking a hosted provider reveals a key field + an
    auto-detected model dropdown; key/model are remembered per provider, and the
    active provider is oe_llm_backend. "Detect" lists the provider's models. */
 

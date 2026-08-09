@@ -412,6 +412,43 @@ def test_run_uses_openai_backend_when_selected(monkeypatch: pytest.MonkeyPatch) 
     assert captured["llm"].closed is True  # per-request hosted client is released
 
 
+def test_run_uses_hosted_nim_backend_when_selected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_nim(config: Any = None, *, openai_compat: bool = False) -> _FakeLLM:
+        fake = _FakeLLM(
+            [ChatResponse(content="hi from NIM", tool_calls=[], finish_reason="stop")]
+        )
+        if config is not None:
+            captured["endpoint"] = config.endpoint
+            captured["api_key"] = config.api_key
+            captured["model"] = config.model
+            captured["openai_compat"] = openai_compat
+            captured["llm"] = fake
+        return fake
+
+    with TestClient(serve.app) as client:
+        monkeypatch.setattr(serve, "OlmoEarthLLM", _fake_nim)
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hello"},
+            headers={
+                "X-Olmoearth-Key": "k",
+                "X-LLM-Backend": "nim",
+                "X-LLM-Key": "nvapi-test",
+            },
+        )
+    assert resp.status_code == 200
+    assert "hi from NIM" in resp.text
+    assert captured["endpoint"] == "https://integrate.api.nvidia.com/v1"
+    assert captured["api_key"] == "nvapi-test"
+    assert captured["model"] == "nvidia/nemotron-3-nano-30b-a3b"
+    assert captured["openai_compat"] is True
+    assert captured["llm"].closed is True
+
+
 def test_run_rejects_non_object_body() -> None:
     with TestClient(serve.app) as client:
         resp = client.post(
@@ -586,10 +623,10 @@ class _FakeStudio:
     ) -> dict[str, Any]:
         return {"id": "area-1", "name": name, "project_id": project_id}
 
-    async def search_areas(
-        self, *, project_id: str, limit: int = 200
-    ) -> _FakeEnv:
-        return _FakeEnv([{"id": "area-1", "name": "Saved AOI", "project_id": project_id}])
+    async def search_areas(self, *, project_id: str, limit: int = 200) -> _FakeEnv:
+        return _FakeEnv(
+            [{"id": "area-1", "name": "Saved AOI", "project_id": project_id}]
+        )
 
     async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
         return {
@@ -599,7 +636,15 @@ class _FakeStudio:
             "result_metadata": {
                 "geometry": {
                     "type": "Polygon",
-                    "coordinates": [[[-78.0, 40.0], [-77.0, 40.0], [-77.0, 41.0], [-78.0, 41.0], [-78.0, 40.0]]],
+                    "coordinates": [
+                        [
+                            [-78.0, 40.0],
+                            [-77.0, 40.0],
+                            [-77.0, 41.0],
+                            [-78.0, 41.0],
+                            [-78.0, 40.0],
+                        ]
+                    ],
                 },
             },
         }
@@ -611,7 +656,9 @@ class _FakeStudio:
             "project_id": "p1",
             "geom": {
                 "type": "Polygon",
-                "coordinates": [[[-2.0, -2.0], [2.0, -2.0], [2.0, 2.0], [-2.0, 2.0], [-2.0, -2.0]]],
+                "coordinates": [
+                    [[-2.0, -2.0], [2.0, -2.0], [2.0, 2.0], [-2.0, 2.0], [-2.0, -2.0]]
+                ],
             },
         }
 
@@ -681,11 +728,15 @@ def test_read_cache_serves_repeat_without_requerying(
         def __init__(self, *_a: Any, **_k: Any) -> None: ...
         async def __aenter__(self) -> "_CountingCtx":
             return self
+
         async def __aexit__(self, *_a: Any) -> None: ...
         async def load_context(self) -> Any:
             calls["n"] += 1
             from olmoearth_agent.types import StudioContext
-            return StudioContext(user_id="u", user_name="U", organization="O", projects=[])
+
+            return StudioContext(
+                user_id="u", user_name="U", organization="O", projects=[]
+            )
 
     monkeypatch.setattr(serve, "StudioClient", _CountingCtx)
     with TestClient(serve.app) as client:
@@ -713,9 +764,7 @@ def test_create_area_invalidates_areas_cache(monkeypatch: pytest.MonkeyPatch) ->
 def test_project_areas_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(serve, "StudioClient", _FakeStudio)
     with TestClient(serve.app) as client:
-        resp = client.get(
-            "/api/projects/p1/areas", headers={"X-Olmoearth-Key": "k"}
-        )
+        resp = client.get("/api/projects/p1/areas", headers={"X-Olmoearth-Key": "k"})
     assert resp.status_code == 200
     areas = resp.json()["areas"]
     assert areas[0]["id"] == "area-1"
@@ -764,14 +813,26 @@ def test_pixel_value_proxy_requires_key() -> None:
 
 def test_pixel_value_proxy_requires_coords() -> None:
     with TestClient(serve.app) as client:
-        resp = client.get("/api/pixel-value?result_id=r1", headers={"X-Olmoearth-Key": "k"})
+        resp = client.get(
+            "/api/pixel-value?result_id=r1", headers={"X-Olmoearth-Key": "k"}
+        )
     assert resp.status_code == 400
 
 
 def test_pixel_value_proxy_extracts_band(monkeypatch: pytest.MonkeyPatch) -> None:
     class _PV(_FakeStudio):
-        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
-            return {"bands": [{"property_name": "karst", "raw_value": 0.42, "classification": None}]}
+        async def pixel_value(
+            self, result_id: str, lon: float, lat: float
+        ) -> dict[str, Any]:
+            return {
+                "bands": [
+                    {
+                        "property_name": "karst",
+                        "raw_value": 0.42,
+                        "classification": None,
+                    }
+                ]
+            }
 
     monkeypatch.setattr(serve, "StudioClient", _PV)
     with TestClient(serve.app) as client:
@@ -791,9 +852,15 @@ def test_pixel_value_proxy_caches(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"n": 0}
 
     class _Counting(_FakeStudio):
-        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
+        async def pixel_value(
+            self, result_id: str, lon: float, lat: float
+        ) -> dict[str, Any]:
             calls["n"] += 1
-            return {"bands": [{"property_name": "k", "raw_value": 0.7, "classification": None}]}
+            return {
+                "bands": [
+                    {"property_name": "k", "raw_value": 0.7, "classification": None}
+                ]
+            }
 
     monkeypatch.setattr(serve, "StudioClient", _Counting)
     with TestClient(serve.app) as client:
@@ -808,7 +875,9 @@ def test_pixel_value_proxy_caches(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_tile_proxy_requires_key() -> None:
     with TestClient(serve.app) as client:
-        resp = client.get("/api/tile/5/3/7?src=%2Ffoo%2F%7Bz%7D%2F%7Bx%7D%2F%7By%7D.png")
+        resp = client.get(
+            "/api/tile/5/3/7?src=%2Ffoo%2F%7Bz%7D%2F%7Bx%7D%2F%7By%7D.png"
+        )
     assert resp.status_code == 400
 
 
@@ -824,7 +893,9 @@ def test_tile_proxy_rejects_foreign_host() -> None:
 
     src = urllib.parse.quote("https://evil.example.com/{z}/{x}/{y}.png", safe="")
     with TestClient(serve.app) as client:
-        resp = client.get(f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"})
+        resp = client.get(
+            f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"}
+        )
     assert resp.status_code == 403
 
 
@@ -838,7 +909,9 @@ def test_tile_proxy_fetches_via_pooled_client(monkeypatch: pytest.MonkeyPatch) -
         safe="",
     )
     with TestClient(serve.app) as client:
-        resp = client.get(f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"})
+        resp = client.get(
+            f"/api/tile/5/3/7?src={src}", headers={"X-Olmoearth-Key": "k"}
+        )
     assert resp.status_code == 200
     assert resp.content == b"PNGDATA"
     assert resp.headers["content-type"].startswith("image/png")
@@ -854,8 +927,14 @@ def test_studio_client_pool_reuses_one_client(monkeypatch: pytest.MonkeyPatch) -
             super().__init__(*a, **k)
             created["n"] += 1
 
-        async def pixel_value(self, result_id: str, lon: float, lat: float) -> dict[str, Any]:
-            return {"bands": [{"property_name": "k", "raw_value": 0.5, "classification": None}]}
+        async def pixel_value(
+            self, result_id: str, lon: float, lat: float
+        ) -> dict[str, Any]:
+            return {
+                "bands": [
+                    {"property_name": "k", "raw_value": 0.5, "classification": None}
+                ]
+            }
 
     monkeypatch.setattr(serve, "StudioClient", _Counting)
     with TestClient(serve.app) as client:
