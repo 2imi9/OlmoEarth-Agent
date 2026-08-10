@@ -40,6 +40,16 @@ path stands on its own. If you are on the default **local** backend and the
 local model is not up, the UI shows a one-line nudge to either start it
 (`make serve`) or switch to a cloud provider - it does not fail silently.
 
+## Optional CPU reliability gateway
+
+For shared or failure-prone hosted-model traffic, SGLang Model Gateway can sit
+between the existing OpenAI-compatible client and the provider. The optional
+profile adds retries, circuit breaking, and model-call telemetry without using a
+local model or GPU. It does not replace the agent harness, and its MCP and
+conversation-storage features remain disabled. See
+[`docs/sglang-gateway.md`](sglang-gateway.md) for the tested boundary and the
+digest-pinned compose command.
+
 ## Quick start (Docker)
 
 `make up` does the whole local bring-up in one command (setup, then start the
