@@ -40,7 +40,7 @@ Skills #4-#16 are implemented in this repo (see `CHANGELOG.md`).
 | 12 | Integrate | [`olmoearth-data-export`](#12-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 13 | Report | [`olmoearth-provenance`](#13-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
-| 15 | Report | [`olmoearth-litsearch`](#15-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations. |
+| 15 | Report | [`olmoearth-litsearch`](#15-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional Asta full-text backend. |
 | 16 | Prep | [`olmoearth-negative-sampler`](#16-olmoearth-negative-sampler) | Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
 
 ### Example briefs
@@ -327,13 +327,13 @@ The original spec follows for reference:
 **In:** a free-text query, or a single DOI / arXiv id.
 **Out:** curated paper records (id, title, authors, year, venue, doi, arxiv_id, url, cited_by_count; abstract optional), deduped across sources.
 
-**What.** Searches arXiv (Atom API) and OpenAlex (`/works`), and resolves a DOI or arXiv id to one record. Key-free -- OpenAlex is queried via the documented polite-pool `mailto` (set `OLMOEARTH_OPENALEX_MAILTO` to opt in). Round-robin blends the two sources, then dedups on DOI -> arXiv id -> normalized title. Returns bibliographic metadata only -- never full text / PDF bytes and never geometry -- so it is provenance-safe.
+**What.** Searches arXiv (Atom API) and OpenAlex (`/works`), and resolves a DOI or arXiv id to one record. Key-free -- OpenAlex is queried via the documented polite-pool `mailto` (set `OLMOEARTH_OPENALEX_MAILTO` to opt in). Round-robin blends the two sources, then dedups on DOI -> arXiv id -> normalized title. Returns bibliographic metadata only -- never full text / PDF bytes and never geometry -- so it is provenance-safe. **Optional Asta backend:** `source="asta"` routes to Ai2's [Asta CLI](https://github.com/allenai/asta-plugins) (`asta literature find`, invoked argv-only, artifact kept in the workspace) for full-text ranked retrieval with AI relevance judgements and supporting snippets. Detection-gated: without the CLI the tool answers with install guidance and the key-free sources keep working (`OLMOEARTH_ASTA_BIN` / `OLMOEARTH_ASTA_TIMEOUT`; auth is the CLI's own `asta auth login`).
 
 **Why.** The catalog already *cites* a body of EO literature (spatial CV, cloud masking, OlmoEarth / AlphaEarth embeddings, WorldCereal), but before this skill the agent could only lean on world-knowledge or hallucinate links -- the exact failure mode Google DeepMind's Science Skills report documents and that its own arXiv/OpenAlex skills fix. This grounds the case-narrative / research workflow in real, citable sources. **No fabrication:** never invents DOIs / ids / titles, reports empty results as empty, and returns a real `url` to cite for every record.
 
 **Tools composed.**
-- `olmoearth_litsearch` (unified arXiv + OpenAlex search) + `olmoearth_litsearch_resolve` (DOI / arXiv-id -> one record).
-- Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}.
+- `olmoearth_litsearch` (unified arXiv + OpenAlex search; `source="asta"` for the optional full-text backend) + `olmoearth_litsearch_resolve` (DOI / arXiv-id -> one record).
+- Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}; optional Asta subprocess adapter in `analysis/asta.py` (credential-scrubbed env, `ASTA_*` passthrough).
 
 ---
 

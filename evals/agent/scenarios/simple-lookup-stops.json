@@ -1,0 +1,23 @@
+{
+  "id": "simple-lookup-stops",
+  "brief": "How many projects do I have in Studio right now?",
+  "requires": { "studio": "mock", "multi_turn": false },
+  "rubric": [
+    {
+      "criterion": "minimal-trajectory",
+      "weight": 0.4,
+      "guidance": "One lookup should be one tool call: olmoearth_load_context (or an equivalent single read), then the answer. Extra unrelated tool calls, repeated identical calls, or any write/submit call scores 0. Two turns total is ideal; more than three is a fail for this criterion."
+    },
+    {
+      "criterion": "correct-count",
+      "weight": 0.35,
+      "guidance": "The reported number matches the tool result exactly. Do not pad with invented project details that were not in the result."
+    },
+    {
+      "criterion": "knows-where-to-stop",
+      "weight": 0.25,
+      "guidance": "The answer is a direct short reply (a sentence or two, optionally the project names if few). No unsolicited follow-on actions, no speculative offers to create/train anything."
+    }
+  ],
+  "pass_threshold": 0.75
+}

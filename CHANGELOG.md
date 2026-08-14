@@ -10,6 +10,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Whole-agent eval scenario seeds** (`evals/agent/`): six rubric-weighted
+  scenarios (run-order, two soul-guardrail probes, compare-without-truth,
+  memory-preference, simple-lookup-stops) + the scenario/rubric format README.
+  Data-first prep for the planned rubric-eval runner + LLM judge; no runner yet.
+- **Production-posture docs:** README now documents `OLMOEARTH_EGRESS=enforce`
+  as the recommended setting for any deployment beyond a personal laptop
+  (default stays `audit` so a first run never breaks) — closing the open
+  follow-up from the 2026-06-10 security review.
+
 - **Soul as a versioned artifact.** The system prompt moved out of a Python
   string literal in `harness/agent.py` into `harness/soul.md`, a markdown file
   with an explicit `## Guardrails` section separated from workflow rules —
@@ -39,7 +48,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   (`evals/skillopt/baselines/*.json`, seeded from `RESULTS.md`) and exits
   non-zero on any hard/soft drop, printing a score-change report — a
   skill/model change that regresses the suite doesn't ship. `--update-baseline`
-  promotes an accepted improvement.
+  promotes an accepted improvement (all four shipped via #147).
 - **Cross-thread preference memory** (Shippy roadmap: "carry persistent facts
   ... and apply them automatically"). New `harness/memory.py` stores durable
   user preferences (default project/area, preferred sources, reporting style)
@@ -69,6 +78,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   working; the subprocess env is credential-scrubbed (agent Studio/LLM keys
   dropped, `ASTA_*` passed through). `OLMOEARTH_ASTA_BIN` /
   `OLMOEARTH_ASTA_TIMEOUT` configure the binary and wall-clock cap.
+
+### Changed
+- README/SKILLS.md aligned with the #147 features (soul artifact, dispatch
+  validation, result spill, preference memory, litsearch `source="asta"`).
+- `interrogate` `fail-under` set to the measured floor (81, was an
+  unenforceable 90) so the pre-commit docstring gate actually gates; ratchet
+  upward as coverage grows. `reviews/` (local session audit notes) is now
+  gitignored — durable findings live in issues, not loose untracked files.
 
 ## [1.3.0] - 2026-06-10
 

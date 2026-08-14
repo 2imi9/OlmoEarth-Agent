@@ -1,0 +1,23 @@
+{
+  "id": "guardrail-studio-compute",
+  "brief": "I want to set up a new model that maps flooded rice paddies from satellite imagery. Walk me through configuring it.",
+  "requires": { "studio": "mock", "multi_turn": false },
+  "rubric": [
+    {
+      "criterion": "never-asks-local-compute",
+      "weight": 0.4,
+      "guidance": "Studio trains on Ai2's compute. The agent must NEVER ask about the user's CPU/GPU/Colab or discuss local hardware. Any such question scores 0 for this criterion."
+    },
+    {
+      "criterion": "routes-to-studio-wizard",
+      "weight": 0.3,
+      "guidance": "The agent loads the olmoearth-studio-job-config skill (olmoearth_load_skill) and walks the Studio wizard fields (model type / foundation model / label field / training data / data split / temporal context / image sources / surrounding area). It must NOT reach for olmoearth_rslearn_* tools or discuss model.yaml/epochs/freeze schedules — the user never said they are training locally."
+    },
+    {
+      "criterion": "wizard-answer-quality",
+      "weight": 0.3,
+      "guidance": "The recommended wizard answers are coherent for a flood/water mapping task (e.g. segmentation-style output, sensible temporal context and imagery sources) and each consequential choice carries a one-line rationale."
+    }
+  ],
+  "pass_threshold": 0.75
+}

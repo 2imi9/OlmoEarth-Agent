@@ -60,7 +60,9 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 ## What it does
 
-The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules -- trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call -- are enforced by the harness, not the model.
+The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules -- trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call -- are enforced by the harness, not the model. The agent's persona and guardrails live in a versioned soul artifact (`harness/soul.md`; swap via `OLMOEARTH_SOUL_PATH`); tool arguments are schema-validated at dispatch; oversized tool results spill to workspace files instead of the context window; and durable user preferences (default project / area / sources, saved via `olmoearth_remember`) carry across conversations.
+
+> **Production posture:** the per-capability egress allowlist defaults to `audit` (log-only) so a first run never breaks. For any deployment beyond your own laptop, set `OLMOEARTH_EGRESS=enforce` -- unknown hosts are then refused, not just logged (add self-hosted endpoints via `OLMOEARTH_EGRESS_ALLOW`).
 
 The capability set ships as **17 skills**, grouped by EO-workflow stage.
 
@@ -83,7 +85,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 12 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
 | 13 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
 | 14 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate | **Report** |
-| 15 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations | **Report** |
+| 15 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional [Asta](https://github.com/allenai/asta-plugins) full-text ranked search when its CLI is installed | **Report** |
 | 16 | `olmoearth-negative-sampler` | Presence-only labels -> trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
 | 17 | `olmoearth-rslearn` | Operate rslearn (the data + training engine under OlmoEarth): run the 4-stage pipeline + fit/predict, plus torch-free tools to **recommend** a full setup from a plain-language goal and **validate** a config (shapes / label-type / bands) before a multi-hour run | **Configure** |
 

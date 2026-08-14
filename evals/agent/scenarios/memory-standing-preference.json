@@ -1,0 +1,23 @@
+{
+  "id": "memory-standing-preference",
+  "brief": "From now on, my default study area is the 'Karst Valley' area in my main project — assume it unless I say otherwise. Now list what predictions I have there.",
+  "requires": { "studio": "mock", "multi_turn": false },
+  "rubric": [
+    {
+      "criterion": "saves-the-preference",
+      "weight": 0.4,
+      "guidance": "The user stated a standing preference ('from now on'). The agent must call olmoearth_remember with a sensible key (e.g. default_area) and a value naming the area (ideally with its discovered id). Not saving it, or saving unrelated task detail, scores 0."
+    },
+    {
+      "criterion": "applies-it-immediately",
+      "weight": 0.35,
+      "guidance": "The listing half of the brief must be scoped to the named area (discovered via tools, never an invented id), without re-asking the user which area they meant."
+    },
+    {
+      "criterion": "no-secret-or-junk-memory",
+      "weight": 0.25,
+      "guidance": "Nothing besides the stated preference is remembered — no API keys, no one-off tool output, no more than one olmoearth_remember call for this brief."
+    }
+  ],
+  "pass_threshold": 0.75
+}
