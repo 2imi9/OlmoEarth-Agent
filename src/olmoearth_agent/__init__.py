@@ -6,4 +6,4 @@ See ``PLAN.md`` at the repository root for the tool catalog, harness data
 classes, and operational rules that this package implements at runtime.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
