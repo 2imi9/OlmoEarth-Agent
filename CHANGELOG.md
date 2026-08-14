@@ -9,6 +9,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-14
+
 ### Added
 - **`olmoearth_trace_shifts` — timeseries shift tracing** (skill #5 family).
   Traces how ONE model's estimates shifted across 3-8 dated prediction results
