@@ -20,8 +20,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from olmoearth_agent.analysis.aoi import geometry_bbox
-from olmoearth_agent.analysis.raster_compare import grid_points, intersect_bbox
+from olmoearth_agent.analysis.raster_compare import (
+    grid_points,
+    intersect_bbox,
+    result_bbox,
+)
 from olmoearth_agent.analysis.uncertainty import (
     area_of_applicability,
     prediction_confidence,
@@ -47,17 +50,6 @@ async def _area_of_applicability(
         [[float(x) for x in v] for v in args["new_features"]],
         weights=[float(w) for w in weights] if weights is not None else None,
     )
-
-
-def _result_bbox(record: dict[str, Any]) -> list[float] | None:
-    """A result's ``[min_lon, min_lat, max_lon, max_lat]`` from its geometry."""
-    geom = (record.get("result_metadata") or {}).get("geometry")
-    if not geom:
-        return None
-    try:
-        return geometry_bbox(geom)
-    except ValueError:
-        return None
 
 
 def _band_val(record: dict[str, Any], prop: str | None) -> tuple[Any, bool]:
@@ -95,7 +87,7 @@ async def _ensemble_uncertainty(
     records = await asyncio.gather(
         *[ctx.studio.get_prediction_result(r) for r in result_ids]
     )
-    bboxes = [_result_bbox(rec) for rec in records]
+    bboxes = [result_bbox(rec) for rec in records]
     if any(b is None for b in bboxes):
         return {"comparable": False, "reason": "a result is missing geometry/extent"}
     shared = bboxes[0]

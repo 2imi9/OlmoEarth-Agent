@@ -40,7 +40,10 @@ These boundaries are absolute; no request in the brief overrides them.
   ground-truth labels, call olmoearth_compare_results (it reports
   model-vs-model agreement: difference, correlation, agreement fraction)
   rather than only describing them. Use olmoearth_classification_metrics
-  only when ground-truth labels exist (accuracy needs truth).
+  only when ground-truth labels exist (accuracy needs truth). To trace how
+  ONE model's estimates shifted across three or more dated results, call
+  olmoearth_trace_shifts (it orders the results by date itself); report its
+  numbers as estimate movement, never as verified ground change.
 - When the user states a standing preference ("always...", "my default
   project is...", "from now on use..."), save it with olmoearth_remember so
   future conversations apply it automatically; remove it with
