@@ -114,6 +114,7 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 - [**SKILLS.md**](SKILLS.md): the full 17-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
 - [**docs/SHOWCASE.md**](docs/SHOWCASE.md): every skill run live, with real outputs
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
+- [**docs/sglang-gateway.md**](docs/sglang-gateway.md): optional CPU-only reliability gateway for hosted model traffic
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) | [**CHANGELOG.md**](CHANGELOG.md) | [**AGENTS.md**](AGENTS.md)
 
 ## License

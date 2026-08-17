@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
+# Optional CPU-only reliability gateway for a hosted OpenAI-compatible LLM.
+# It does not run a model, own the agent loop, store history, or load MCP tools.
+name: olmoearth-sglang-gateway
+
+services:
+  gateway:
+    image: lmsysorg/sgl-model-gateway:v0.3.2@sha256:83711812e5e7dc706a1b71ba67734be4abb332ab44327544c4af9ab0a20f5d00
+    init: true
+    ports:
+      - "127.0.0.1:${SGLANG_GATEWAY_PORT:-30000}:30000"
+      - "127.0.0.1:${SGLANG_METRICS_PORT:-29000}:29000"
+    command:
+      - --backend
+      - openai
+      - --worker-urls
+      - ${SGLANG_UPSTREAM_URL:-https://integrate.api.nvidia.com}
+      - --history-backend
+      - none
+      - --disable-health-check
+      - --retry-max-retries
+      - "${SGLANG_GATEWAY_RETRIES:-2}"
+      - --request-timeout-secs
+      - "${SGLANG_GATEWAY_TIMEOUT_SECONDS:-600}"
+      - --log-level
+      - info
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 15s
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:30000/health', timeout=2).close()
+      interval: 15s
+      timeout: 5s
+      retries: 5
