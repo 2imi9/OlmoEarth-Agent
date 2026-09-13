@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 17 skills.
+"""Skill catalog manifest, the harness's view of all 18 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -31,6 +31,7 @@ from olmoearth_agent.tools.negative_sampler import build_negative_sampler_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
+from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.rslearn import build_rslearn_tools
 from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
@@ -188,7 +189,9 @@ SKILLS: list[SkillSpec] = [
         "Analyze",
         "implemented",
         "Ensemble-disagreement confidence (across distinct results) + "
-        "Meyer-Pebesma Area-of-Applicability OOD flag.",
+        "Meyer-Pebesma Area-of-Applicability OOD flag. The signals that "
+        "work when Studio gives you hard classes only; when per-class "
+        "scores exist, #18 ranks errors better (measured).",
         ["olmoearth_area_of_applicability", "olmoearth_ensemble_uncertainty"],
     ),
     SkillSpec(
@@ -281,6 +284,32 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_rslearn_diagnose",
         ],
     ),
+    # #18 closes the gap #9 cannot: ranking WHICH windows are wrong, from the
+    # model's own top-1-minus-top-2 margin. Studio's pixel-value returns only
+    # raw_value/classification (no probabilities, no logits), which is exactly
+    # why #9 reached for ensemble disagreement -- with hard classes it is the
+    # only signal available. Given real scores the ordering flips: upstream
+    # (2imi9/olmoearth_inferenceX) measured ensemble disagreement, cross-model
+    # disagreement, two-view disagreement and feature-space typicality against
+    # the margin on seven expert-labelled testbeds and none of them won. So the
+    # two skills are complementary, not rivals: #9 for hard-class Studio
+    # results and for the OOD regime, #18 whenever per-class scores exist.
+    SkillSpec(
+        18,
+        "olmoearth-review-set",
+        "Analyze",
+        "implemented",
+        "Label-free review set from the model's own top-1-minus-top-2 margin: "
+        "which windows to check first at a budget, boundary-first ordering, "
+        "the attainable-ceiling arithmetic, and a grader that scores any "
+        "candidate audit rule against the margin and a no-model control with "
+        "a per-group sign test. Bring-your-own scores (Studio returns none).",
+        [
+            "olmoearth_review_set",
+            "olmoearth_grade_review_rule",
+            "olmoearth_review_budget_ceiling",
+        ],
+    ),
 ]
 
 
@@ -306,6 +335,10 @@ def build_default_registry() -> ToolRegistry:
     registry.register_all(build_cloud_mask_audit_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_uncertainty_tools())
+    # Label-free error ranking (skill #18); complements #9's ensemble/OOD
+    # signals, which are what remain reachable when Studio yields only
+    # hard classes.
+    registry.register_all(build_review_set_tools())
     registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_negative_sampler_tools())

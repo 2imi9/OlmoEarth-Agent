@@ -64,10 +64,10 @@ The LLM reads the brief, plans, and emits a tool call; the harness dispatches it
 
 > **Production posture:** the per-capability egress allowlist defaults to `audit` (log-only) so a first run never breaks. For any deployment beyond your own laptop, set `OLMOEARTH_EGRESS=enforce` -- unknown hosts are then refused, not just logged (add self-hosted endpoints via `OLMOEARTH_EGRESS_ALLOW`).
 
-The capability set ships as **17 skills**, grouped by EO-workflow stage.
+The capability set ships as **18 skills**, grouped by EO-workflow stage.
 
 <details>
-<summary><strong>The 17 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
+<summary><strong>The 18 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
@@ -88,6 +88,7 @@ The capability set ships as **17 skills**, grouped by EO-workflow stage.
 | 15 | `olmoearth-litsearch` | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional [Asta](https://github.com/allenai/asta-plugins) full-text ranked search when its CLI is installed | **Report** |
 | 16 | `olmoearth-negative-sampler` | Presence-only labels -> trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
 | 17 | `olmoearth-rslearn` | Operate rslearn (the data + training engine under OlmoEarth): run the 4-stage pipeline + fit/predict, plus torch-free tools to **recommend** a full setup from a plain-language goal and **validate** a config (shapes / label-type / bands) before a multi-hour run | **Configure** |
+| 18 | `olmoearth-review-set` | **Which windows to check first, without labels.** Ranks windows by the model's own top-1-minus-top-2 margin at your review budget (boundary-first optional), reports the attainable ceiling `min(1, budget/error_rate)` so a capture is read against what was reachable, and grades any candidate audit rule against the margin and a no-model control with a per-group sign test. Bring-your-own scores: Studio returns hard classes only | **Analyze** |
 
 </details>
 

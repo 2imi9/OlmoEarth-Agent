@@ -13,6 +13,21 @@ Two tools:
   deterministic result.
 
 Both return summary statistics only (rule §3.1).
+
+Scope boundary with skill #18 (``olmoearth-review-set``). These two tools
+answer *is this prediction in a regime I should trust* -- self-consistency
+across distinct results, and distance from the training distribution. They
+do **not** rank which windows are wrong: upstream
+(`2imi9/olmoearth_inferenceX <https://github.com/2imi9/olmoearth_inferenceX>`_)
+measured ensemble disagreement and feature-space typicality against the
+model's own top-1-minus-top-2 margin on seven expert-labelled testbeds and
+neither ranked errors better than the margin. That is not a defect in these
+tools: Studio's ``pixel-value`` returns only ``raw_value`` and
+``classification`` -- never probabilities or logits -- so with Studio
+results alone the margin is not computable and ensemble disagreement is the
+only uncertainty signal reachable. When per-class scores *do* exist (rslearn
+predict, an embeddings+probe pass, any exported softmax), route the
+"which windows are wrong" question to ``olmoearth_review_set``.
 """
 
 from __future__ import annotations
@@ -186,6 +201,13 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
                     "detection: softmax confidence is NOT OOD detection: a "
                     "model can be confidently wrong on data unlike its "
                     "training set. Optional per-feature importance weights. "
+                    "This is the OOD question, NOT the error-ranking "
+                    "question: to order windows by how likely each one is "
+                    "WRONG, use olmoearth_review_set (measured: distance to "
+                    "the training features has no scale-free advantage over "
+                    "the model's own margin, 13/27 scenes, sign p=1.00). Use "
+                    "both together: trust a prediction most when it is inside "
+                    "the AOA and high-margin. "
                     "Read-only; summary stats only."
                 ),
                 parameters={
@@ -224,6 +246,20 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
                     "entropy, and margin. This is model self-consistency, NOT a "
                     "calibrated probability of correctness -- pair it with "
                     "olmoearth_area_of_applicability for the OOD regime. "
+                    "PREFER olmoearth_review_set when you have per-class "
+                    "scores (logits/probabilities) for the windows: on seven "
+                    "expert-labelled testbeds the model's own top-1-minus-"
+                    "top-2 margin ranked errors better than ensemble "
+                    "DISAGREEMENT (mutual information), and on all 24 tasks "
+                    "of Ai2's own published embedding suite it beat the best "
+                    "no-model control, 24/24, p=6e-08. Note the honest "
+                    "exception: the margin only TIES ensemble predictive "
+                    "entropy, so if you already have an ensemble its entropy "
+                    "is a fair alternative. Use THIS tool when "
+                    "all you have is Studio results, whose pixel-value "
+                    "returns hard classes and no scores -- then ensemble "
+                    "disagreement is the only signal available, and it is "
+                    "also far more expensive (grid^2 slow calls per result). "
                     "Read-only; summary stats only. Slow (pixel-value is ~tens "
                     "of seconds per point per result) -- keep grid small."
                 ),

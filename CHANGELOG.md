@@ -9,6 +9,54 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 
 ## [Unreleased]
 
+### Added
+- **Skill #18 `olmoearth-review-set` — label-free error ranking.** Answers the
+  question nothing in the catalog answered: *which windows should a human open
+  first, and how much of the error do they catch at that budget?*
+  `olmoearth_review_set` ranks windows by the model's own top-1-minus-top-2
+  margin (boundary-first optional, using a nine-level indicator over the 8
+  neighbours); `olmoearth_grade_review_rule` scores **any** candidate suspicion
+  signal against that margin and a no-model control, with the scene as the unit
+  of replication and a one-sided exact sign test; `olmoearth_review_budget_ceiling`
+  reports `min(1, budget/error_rate)` so a quoted capture is read against what
+  was reachable rather than against 1.0. New `analysis/review_set.py` — pure
+  Python, no new dependencies — carrying ports of `oe_inferencex.metrics`
+  (`aurc_expected`, `oracle_aurc`, `excess_aurc`, tie-aware `capture_at_budget`,
+  `auroc`), verified against the numpy originals to < 1e-9 across 400 randomised
+  cases including heavy ties and degenerate inputs. Tie handling is by
+  expectation under random tie-breaking, so no result depends on raster order.
+  Every result ships the measured evidence and the honest caveats: on all 24
+  tasks of Ai2's own published embedding suite (14 sources, 6,435,473 graded
+  units) the margin beat the best no-model control, 24/24, p = 6e-08, and
+  ensemble disagreement, cross-model disagreement, two-view disagreement and
+  feature-space typicality were each measured against it on expert labels and
+  none ranked errors better — but the margin only **ties** ensemble predictive
+  entropy, one flood event has a no-model NDWI control that matches it, and
+  these numbers order a review well while being badly miscalibrated as
+  probabilities. Evidence from
+  [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
+
+### Changed
+- **Skill #9 `olmoearth-uncertainty` now routes the error-ranking question to
+  #18** instead of silently answering it. Both its tool descriptions and its
+  `SKILLS.md` section state the split: #9 owns self-consistency and the
+  out-of-distribution regime, #18 owns which windows are wrong. This is a
+  scoping fix, not a correction — `StudioClient.pixel_value` returns only
+  `raw_value`/`classification`, never probabilities or logits, so with Studio
+  results alone the margin is not computable and ensemble disagreement is the
+  only uncertainty signal reachable. #18 is therefore bring-your-own-scores,
+  mirroring #8's bring-your-own-embeddings.
+- **Catalog corrections.** Skill #17 `olmoearth-rslearn` was missing from both
+  `SKILLS.md` tables (Catalog and Example briefs) although its section and its
+  webui entries existed; both rows added alongside #18. Skill counts updated
+  from 17 to 18 across `README.md`, `SKILLS.md`, `PLAN.md`, `docs/CANON.md` and
+  `webui/js/skills.js`.
+- `tests/skills/test_skill_registry.py` gained a catalog-integrity test
+  asserting every tool a catalog row advertises is actually built by
+  `build_default_registry()`.
+- Ruff `per-file-ignores` for `tests/**` now also allows `S311`: seeded PRNG
+  fixtures must be reproducible, not unguessable.
+
 ## [1.4.0] - 2026-08-14
 
 ### Added

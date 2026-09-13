@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 17 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 18 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 17 skills — 16 implemented in-repo + the out-of-process JEPA change engine (v1.0 shipped the originals on 2026-05-31; `olmoearth-litsearch` and the `olmoearth_automate` facet added post-1.0; `olmoearth-negative-sampler` added post-1.1; the JEPA latent-change engine — **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) — added post-1.1, now folded into skill #5 `olmoearth-change-detection`; #17 `olmoearth-rslearn` added post-1.2 — a vendored "operate rslearn" SKILL.md plus four in-repo torch-free tools (recommend / validate / compose / diagnose)). See `CHANGELOG.md`.
+**Status:** 18 skills — 17 implemented in-repo + the out-of-process JEPA change engine (v1.0 shipped the originals on 2026-05-31; `olmoearth-litsearch` and the `olmoearth_automate` facet added post-1.0; `olmoearth-negative-sampler` added post-1.1; the JEPA latent-change engine — **out-of-process**, backed by the separate heavy-ML repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) — added post-1.1, now folded into skill #5 `olmoearth-change-detection`; #17 `olmoearth-rslearn` added post-1.2 — a vendored "operate rslearn" SKILL.md plus four in-repo torch-free tools (recommend / validate / compose / diagnose); #18 `olmoearth-review-set` added post-1.4 — label-free error ranking from the model's own margin, the half of the uncertainty question #9 cannot reach). See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -16,7 +16,7 @@ Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi
 | [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#2**: 14 verified presets + cross-field validator. |
 | [`olmoearth-embeddings`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-embeddings) | Skill **#3**: embeddings-vs-fine-tune **guidance** + a Nano/Tiny/Base/Large notebook generator; the in-repo `olmoearth_automate` tool is the one-call automated version that reuses the same decision table. |
 
-Skills #4-#16 are implemented in this repo (see `CHANGELOG.md`).
+Skills #4-#18 are implemented in this repo (see `CHANGELOG.md`).
 
 **Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever...", "Trigger even when...") because the description is the LLM's routing surface. Match it.
 
@@ -42,6 +42,8 @@ Skills #4-#16 are implemented in this repo (see `CHANGELOG.md`).
 | 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
 | 15 | Report | [`olmoearth-litsearch`](#15-olmoearth-litsearch) | arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional Asta full-text backend. |
 | 16 | Prep | [`olmoearth-negative-sampler`](#16-olmoearth-negative-sampler) | Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
+| 17 | Configure | [`olmoearth-rslearn`](#17-olmoearth-rslearn) | Operate rslearn (the engine under OlmoEarth): vendored SKILL.md + four torch-free tools (recommend / validate / compose / diagnose). |
+| 18 | Analyze | [`olmoearth-review-set`](#18-olmoearth-review-set) | Label-free review set from the model's own top-1-minus-top-2 margin: which windows to check first at a budget, boundary-first ordering, the attainable-ceiling arithmetic, and a grader for any candidate audit rule. Bring-your-own scores. |
 
 ### Example briefs
 
@@ -65,6 +67,8 @@ A realistic prompt that routes to each skill - what a user would actually type:
 | 14 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
 | 15 | `olmoearth-litsearch` | "Find and cite the paper behind the Area-of-Applicability method I used." |
 | 16 | `olmoearth-negative-sampler` | "My karst-site labels are presence-only and the audit fails for a missing negative class -- generate background samples." |
+| 17 | `olmoearth-rslearn` | "I have labels and a research question but I have never written an rslearn config -- set one up and check it before I burn GPU hours." |
+| 18 | `olmoearth-review-set` | "The map is done and I can only check 200 of these 4,000 windows. Which 200, and how much of the error will I actually catch?" |
 
 ---
 
@@ -220,7 +224,7 @@ One capability, two complementary engines.
 **In:** *(confidence)* two or more prediction results over a shared area; *(OOD)* training-data feature vectors + the AOI points to assess.
 **Out:** *(confidence)* per-point + aggregate ensemble-disagreement stats; *(OOD)* a DI-weighted out-of-distribution flag per point.
 
-**What.** Two complementary uncertainty signals. *Ensemble-disagreement confidence:* samples two or more **distinct** prediction results on a shared-extent grid and treats the per-point values as ensemble members, returning per-point dispersion (std / coefficient-of-variation / range for regression; majority class / vote fractions / normalized Shannon entropy / margin for categorical) folded into a confidence in [0,1]. The variance is real (distinct results), never a fake re-read of one deterministic result, and it is **epistemic uncertainty — model self-consistency, not a calibrated correctness probability.** *Area of Applicability:* a Meyer-Pebesma Dissimilarity-Index-weighted out-of-distribution flag that warns when an AOI lies outside the trained feature space. Use them together: trust a prediction most when it is both inside the AOA and low-dispersion.
+**What.** Two complementary uncertainty signals. *Ensemble-disagreement confidence:* samples two or more **distinct** prediction results on a shared-extent grid and treats the per-point values as ensemble members, returning per-point dispersion (std / coefficient-of-variation / range for regression; majority class / vote fractions / normalized Shannon entropy / margin for categorical) folded into a confidence in [0,1]. The variance is real (distinct results), never a fake re-read of one deterministic result, and it is **epistemic uncertainty — model self-consistency, not a calibrated correctness probability.** *Area of Applicability:* a Meyer-Pebesma Dissimilarity-Index-weighted out-of-distribution flag that warns when an AOI lies outside the trained feature space. Use them together: trust a prediction most when it is both inside the AOA and low-dispersion. **Scope, and why #18 exists.** Neither signal ranks *which windows are wrong*: upstream ([`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX)) measured ensemble disagreement and feature-space typicality against the model's own top-1-minus-top-2 margin on expert-labelled testbeds and neither won. That is not a defect here — Studio's `pixel-value` returns only `raw_value`/`classification`, never probabilities or logits, so with Studio results alone the margin is not computable and ensemble disagreement is the only signal reachable. When per-class scores do exist, route the error-ranking question to #18 `olmoearth-review-set`.
 
 **Why.** Softmax confidence is not OOD detection. Meyer & Pebesma's [Area of Applicability framework](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13650) (R [`CAST`](https://cran.r-project.org/package=CAST) package, on CRAN since 2018) is implemented across multiple peer-reviewed methods papers but absent from every EO foundation model platform. AlphaEarth's documented transfer failure under domain shift is exactly what AOA would have flagged.
 
@@ -373,11 +377,32 @@ The original spec follows for reference:
 
 ---
 
+## Analyze (continued)
+
+### 18. `olmoearth-review-set`
+
+**In:** per-window model scores (`n_windows x n_classes` logits or probabilities), a review budget, optionally a `[rows, cols]` grid; for grading, a candidate signal + a 0/1 error indicator (+ optional baseline, no-model control, group ids).
+**Out:** the ordered review set at that budget (window index / id / predicted class / margin / boundary count), the margin summary, the attainable-ceiling arithmetic, and an `evidence` + `caveats` block; for grading, per-arm E-AURC / AUROC / capture with a head-to-head verdict and a per-group one-sided exact sign test.
+
+**What.** The question a practitioner asks the moment a prediction map lands: *which windows do I open first, and how much of the error do I catch if I only open 5% of them?* Windows are ranked by the model's own **top-1 minus top-2 margin**, optionally boundary-first (the nine-level indicator: how many of the 8 neighbours were predicted as a different class). `olmoearth_grade_review_rule` is the honest-broker half — it scores *any* candidate suspicion signal against that margin baseline and a no-model control, with the group (scene / event / region) as the unit of replication, because units inside one scene are not independent. `olmoearth_review_budget_ceiling` is the arithmetic guard: no rule can catch more than `min(1, budget / error_rate)` of the errors, so a capture of 0.45 at a 10% budget with a 20% error rate is 90% of what was reachable, not "45%".
+
+**Why.** Three reasons this is a skill rather than a helper. (1) **It is measured, not asserted.** On all 24 scored tasks of Ai2's own published embedding suite — 14 distinct sources, 6,435,473 graded units — the margin beat the best no-model control, one-sided exact sign test 24/24, p = 6e-08; and ensemble disagreement, cross-model disagreement, two-view disagreement and feature-space typicality were each measured against it on expert labels and none ranked errors better. The tool ships those verdicts in its result so the agent cites evidence instead of asserting authority. (2) **It closes a real gap.** Skill #9 answers *is this regime trustworthy*; nothing answered *which windows are wrong*. (3) **It is the cheap half.** #9's ensemble path costs grid² slow `pixel-value` calls per result and needs ≥2 distinct results; this needs one forward pass you already ran.
+
+**Honest limits**, carried in every result's `caveats`: the evidence is for the OlmoEarth family at window level against seven references, not a general theorem; on one Sen1Floods11 flood event a no-model NDWI control matched confidence and beat it under v1.2; the margin only **ties** ensemble *predictive entropy* (the rejection is of the disagreement component, mutual information); a fitted readout that memorised its practice data degrades the ordering; and these numbers order a review well while being badly miscalibrated as probabilities — good for deciding what to look at first, poor for thresholding.
+
+**Bring-your-own scores, by necessity.** Studio exposes no probabilities or logits (`StudioClient.pixel_value` returns `raw_value` / `classification` only), so a margin cannot be recovered from a Studio result. Pass scores from wherever inference ran — rslearn `model predict` (skill #17), an embeddings+probe pass (#3), any exported softmax. This mirrors #8, which likewise takes caller-supplied embeddings. No coordinates are accepted or emitted, so rule §3.1 holds by construction.
+
+**Tools composed.**
+- `olmoearth_review_set` (scores → the ordered review set at a budget, confidence or boundary-first), `olmoearth_grade_review_rule` (candidate vs margin vs no-model control, with a per-group sign test), `olmoearth_review_budget_ceiling` (`min(1, budget/error_rate)`, and what share of it a quoted capture reached).
+- Logic in `analysis/review_set.py`: pure-Python ports of `oe_inferencex.metrics` (`aurc_expected`, `oracle_aurc`, `excess_aurc`, tie-aware `capture_at_budget`, `auroc`), verified against the numpy originals to < 1e-9 over 400 randomised cases including heavy ties and degenerate inputs. Tie handling is by expectation under random tie-breaking, so no result depends on raster order — which matters because the boundary indicator has only nine levels.
+
+---
+
 ## Roadmap reference
 
 Implementation order tracks `PLAN.md` §6. First skill to ship was **#4 `olmoearth-predict`** (the foundation that #5, #6, #8, #9 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 17 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
+Candidate skills beyond the current 18 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
 
 ## Adding a skill
 

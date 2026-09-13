@@ -11,10 +11,21 @@ from olmoearth_agent.skills.registry import (
 )
 
 
-def test_catalog_covers_all_17_skills() -> None:
+def test_catalog_covers_all_18_skills() -> None:
     numbered = [s for s in SKILLS if s.number >= 1]
-    assert len(numbered) == 17
-    assert {s.number for s in numbered} == set(range(1, 18))
+    assert len(numbered) == 18
+    assert {s.number for s in numbered} == set(range(1, 19))
+
+
+def test_every_catalogued_tool_is_actually_registered() -> None:
+    """A catalog row that names a tool the registry never builds is a lie."""
+    registered = set(build_default_registry().names())
+    for skill in SKILLS:
+        if skill.status in ("implemented", "foundational"):
+            for tool in skill.tools:
+                if tool == "olmoearth_load_skill":
+                    continue
+                assert tool in registered, f"#{skill.number} {skill.name}: {tool}"
 
 
 def test_foundational_entry_is_implemented() -> None:
