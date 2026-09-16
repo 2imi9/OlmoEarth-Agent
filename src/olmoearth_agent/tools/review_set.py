@@ -25,6 +25,8 @@ No coordinates in, no coordinates out (rule §3.1).
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Any
 
 from olmoearth_agent.analysis.review_set import (
@@ -49,11 +51,41 @@ _SCORES_SCHEMA = {
 _SERIES = {"type": "array", "items": {"type": "number"}}
 
 
+def _load_scores_file(path: str) -> tuple[list[list[float]], tuple[int, int] | None]:
+    """Read a scores file: a JSON array of rows, or an object with ``scores`` and an optional ``grid``.
+
+    A model-chosen path must not pull arbitrary files into a tool result, so only a ``.json`` under
+    ``OLMOEARTH_SCORES_ROOT`` (or, unset, the working directory) is readable.
+    """
+    root = os.path.realpath(os.environ.get("OLMOEARTH_SCORES_ROOT") or os.getcwd())
+    real = os.path.realpath(path)
+    inside = os.path.commonpath([root, real]) == root
+    if not real.endswith(".json") or not inside:
+        msg = f"scores_path must name a .json file under {root}"
+        raise ValueError(msg)
+    with open(real, encoding="utf-8") as fh:
+        data = json.load(fh)
+    if isinstance(data, dict):
+        grid = data.get("grid")
+        return data["scores"], ((int(grid[0]), int(grid[1])) if grid else None)
+    return data, None
+
+
 async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_review_set``."""
     grid = args.get("grid")
-    return review_set(
-        args["scores"],
+    scores = args.get("scores")
+    if scores is None and args.get("scores_path"):
+        # Scores usually live in a file where inference ran; a model cannot relay
+        # hundreds of rows inline, and asking it to would test transcription.
+        scores, file_grid = _load_scores_file(str(args["scores_path"]))
+        if grid is None and file_grid is not None:
+            grid = list(file_grid)
+    if scores is None:
+        msg = "pass 'scores' (rows inline) or 'scores_path' (a .json file of rows)"
+        raise ValueError(msg)
+    out = review_set(
+        scores,
         budget=float(args.get("budget", 0.05)),
         ids=args.get("ids"),
         grid=(int(grid[0]), int(grid[1])) if grid else None,
@@ -64,6 +96,12 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         ),
         max_listed=int(args.get("max_listed", DEFAULT_MAX_LISTED)),
     )
+    if grid:
+        # Row-major index to (row, col), so a caller with a grid need not do the division itself.
+        cols = int(grid[1])
+        for row in out.get("review", []):
+            row["row"], row["col"] = divmod(int(row["window_index"]), cols)
+    return out
 
 
 async def _grade_review_rule(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
@@ -152,6 +190,17 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "type": "object",
                     "properties": {
                         "scores": _SCORES_SCHEMA,
+                        "scores_path": {
+                            "type": "string",
+                            "description": (
+                                "Instead of 'scores': path to a .json file holding "
+                                "the rows, or an object {'grid': [rows, cols], "
+                                "'scores': rows}. Must sit under "
+                                "OLMOEARTH_SCORES_ROOT. Use this when the scores "
+                                "were written by an inference run; do not retype "
+                                "them."
+                            ),
+                        },
                         "budget": {
                             "type": "number",
                             "default": 0.05,
@@ -210,7 +259,7 @@ def build_review_set_tools() -> list[RegisteredTool]:
                             "description": "Cap on inline review rows.",
                         },
                     },
-                    "required": ["scores"],
+                    "required": [],
                 },
             ),
             handler=_review_set,

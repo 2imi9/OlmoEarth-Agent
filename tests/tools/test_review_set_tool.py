@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from olmoearth_agent.harness.state import ThreadState
@@ -240,3 +242,49 @@ def test_skill_9_and_18_signals_are_comparable_on_identical_windows() -> None:
     ceiling = graded["ceiling_at_budget"]["0.1"]
     for arm in arms.values():
         assert arm["capture_at_budget"]["0.1"] <= ceiling + 1e-9
+
+
+@pytest.mark.asyncio
+async def test_review_set_reads_scores_from_a_json_file(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A file under OLMOEARTH_SCORES_ROOT stands in for inline rows, grid included."""
+    path = tmp_path / "scores.json"
+    path.write_text(json.dumps({"grid": [4, 4], "scores": _SCORES}))
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    tool = _tools()["olmoearth_review_set"]
+    result = await tool.handler({"scores_path": str(path), "budget": 0.25}, _ctx())  # type: ignore[attr-defined]
+    assert {r["window_index"] for r in result["review"]} == {0, 4, 8, 12}
+    assert all(
+        (r["row"], r["col"]) == divmod(r["window_index"], 4) for r in result["review"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_scores_path_outside_the_root_is_refused(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A model-chosen path cannot read outside the allowed root."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "scores.json").write_text(json.dumps(_SCORES))
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(root))
+    result = await _registry().dispatch(
+        ToolCall(
+            id="3",
+            name="olmoearth_review_set",
+            arguments={"scores_path": str(elsewhere / "scores.json")},
+        ),
+        _ctx(),
+    )
+    assert result["ok"] is False
+    assert "scores_path" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_review_set_without_scores_or_path_is_an_error_envelope() -> None:
+    """Neither argument given is reported, never raised."""
+    result = await _registry().dispatch(
+        ToolCall(id="4", name="olmoearth_review_set", arguments={"budget": 0.1}),
+        _ctx(),
+    )
+    assert result["ok"] is False
+    assert "scores" in result["error"]
