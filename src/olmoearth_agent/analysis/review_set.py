@@ -689,3 +689,77 @@ def grade_rule(
             ),
         }
     return out
+
+
+def compare_scores(
+    scores_a: Sequence[Sequence[float]],
+    scores_b: Sequence[Sequence[float]],
+    grid: tuple[int, int] | None = None,
+    max_listed: int = DEFAULT_MAX_LISTED,
+) -> dict[str, Any]:
+    """Compare two inferences of the same windows: how much they differ and where.
+
+    Which side is right is not decided here, because it cannot be without labels:
+    upstream measured that the more confident side is right on 51 to 70 percent
+    of differing windows and that confidence does not order the set (exp58), so
+    the honest answer to "which one do I believe" is to decline and say why.
+    """
+    a = _as_matrix(scores_a)
+    b = _as_matrix(scores_b)
+    if len(a) != len(b):
+        msg = f"the two inferences cover different window counts: {len(a)} and {len(b)}"
+        raise ValueError(msg)
+    ca, cb = predicted_classes(a), predicted_classes(b)
+    ma, mb = margins(a), margins(b)
+    diff = [i for i in range(len(a)) if ca[i] != cb[i]]
+    out: dict[str, Any] = {
+        "n_windows": len(a),
+        "n_differing": len(diff),
+        "share_differing": round(len(diff) / len(a), 6) if a else 0.0,
+        "mean_margin_a_on_differing": (
+            round(sum(ma[i] for i in diff) / len(diff), 6) if diff else None
+        ),
+        "mean_margin_b_on_differing": (
+            round(sum(mb[i] for i in diff) / len(diff), 6) if diff else None
+        ),
+        "which_side_is_right": "not resolvable without labels",
+        "evidence": EVIDENCE,
+        "caveats": list(EVIDENCE_LIMITS)
+        + [
+            "The more confident side is right on 51 to 70 percent of differing windows "
+            "(exp58, upstream) and confidence does not order the set, so this comparison "
+            "does not identify a winner; declining to pick a side is the correct answer."
+        ],
+    }
+    if grid is not None:
+        rows_, cols_ = grid
+        if rows_ * cols_ != len(a):
+            msg = f"grid {grid} does not match {len(a)} windows"
+            raise ValueError(msg)
+        bcount = boundary_counts(ca, rows_, cols_)
+        on_boundary = [bcount[i] > 0 for i in range(len(a))]
+        out["boundary_share_overall"] = round(sum(on_boundary) / len(a), 6)
+        out["boundary_share_of_differing"] = (
+            round(sum(on_boundary[i] for i in diff) / len(diff), 6) if diff else None
+        )
+        out["where"] = (
+            "mostly on class boundaries"
+            if diff
+            and out["boundary_share_of_differing"] > out["boundary_share_overall"]
+            else "spread across the scene"
+        )
+    listed = []
+    for i in diff[:max_listed]:
+        row: dict[str, Any] = {
+            "window_index": i,
+            "class_a": ca[i],
+            "class_b": cb[i],
+            "margin_a": round(ma[i], 6),
+            "margin_b": round(mb[i], 6),
+        }
+        if grid is not None:
+            row["row"], row["col"] = divmod(i, grid[1])
+        listed.append(row)
+    out["differing"] = listed
+    out["n_differing_listed"] = len(listed)
+    return out

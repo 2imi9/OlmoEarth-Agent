@@ -33,9 +33,10 @@ def _registry() -> ToolRegistry:
     return registry
 
 
-def test_bundle_exposes_the_three_catalogued_tools() -> None:
+def test_bundle_exposes_the_four_catalogued_tools() -> None:
     assert set(_tools()) == {
         "olmoearth_review_set",
+        "olmoearth_compare_review",
         "olmoearth_grade_review_rule",
         "olmoearth_review_budget_ceiling",
     }
@@ -288,3 +289,50 @@ async def test_review_set_without_scores_or_path_is_an_error_envelope() -> None:
     )
     assert result["ok"] is False
     assert "scores" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_counts_differences_and_declines_the_side_question() -> (
+    None
+):
+    other = [list(r) for r in _SCORES]
+    other[1], other[2] = [0.1, 5.0], [0.1, 5.0]  # two windows flip class on side B
+    tool = _tools()["olmoearth_compare_review"]
+    result = await tool.handler({"scores_a": _SCORES, "scores_b": other, "grid": [4, 4]}, _ctx())  # type: ignore[attr-defined]
+    assert result["n_differing"] == 2
+    assert {d["window_index"] for d in result["differing"]} == {1, 2}
+    assert result["which_side_is_right"] == "not resolvable without labels"
+    assert any("51 to 70" in c for c in result["caveats"])
+    assert result["where"] in ("mostly on class boundaries", "spread across the scene")
+
+
+@pytest.mark.asyncio
+async def test_compare_review_reads_both_sides_from_files(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    (tmp_path / "a.json").write_text(json.dumps({"grid": [4, 4], "scores": _SCORES}))
+    (tmp_path / "b.json").write_text(json.dumps({"grid": [4, 4], "scores": _SCORES}))
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    result = await _registry().dispatch(
+        ToolCall(
+            id="5",
+            name="olmoearth_compare_review",
+            arguments={
+                "scores_path_a": str(tmp_path / "a.json"),
+                "scores_path_b": str(tmp_path / "b.json"),
+            },
+        ),
+        _ctx(),
+    )
+    assert result["ok"] is True and result["result"]["n_differing"] == 0
+
+
+@pytest.mark.asyncio
+async def test_compare_review_rejects_mismatched_window_counts() -> None:
+    result = await _registry().dispatch(
+        ToolCall(
+            id="6",
+            name="olmoearth_compare_review",
+            arguments={"scores_a": _SCORES, "scores_b": _SCORES[:8]},
+        ),
+        _ctx(),
+    )
+    assert result["ok"] is False and "window counts" in result["error"]

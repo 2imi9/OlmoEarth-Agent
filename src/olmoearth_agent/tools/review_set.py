@@ -2,10 +2,12 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """The ``olmoearth-review-set`` tool bundle (skill #18).
 
-Three tools:
+Four tools:
 
 - ``olmoearth_review_set`` -- rank windows by the model's own top-1 minus
   top-2 margin and return the ones a reviewer should open first at a budget.
+- ``olmoearth_compare_review`` -- compare two inferences of the same windows:
+  how much they differ and where, with the side question declined on evidence.
 - ``olmoearth_grade_review_rule`` -- grade any candidate suspicion signal
   against the margin baseline and a no-model control, with a per-group sign
   test, so a signal that merely sounds principled cannot ship unmeasured.
@@ -33,6 +35,7 @@ from olmoearth_agent.analysis.review_set import (
     DEFAULT_BUDGETS,
     DEFAULT_MAX_LISTED,
     attainable_ceiling,
+    compare_scores,
     grade_rule,
     review_set,
 )
@@ -102,6 +105,28 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         for row in out.get("review", []):
             row["row"], row["col"] = divmod(int(row["window_index"]), cols)
     return out
+
+
+async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_compare_review``."""
+    grid = args.get("grid")
+    sides = []
+    for key in ("a", "b"):
+        scores = args.get(f"scores_{key}")
+        if scores is None and args.get(f"scores_path_{key}"):
+            scores, file_grid = _load_scores_file(str(args[f"scores_path_{key}"]))
+            if grid is None and file_grid is not None:
+                grid = list(file_grid)
+        if scores is None:
+            msg = f"pass 'scores_{key}' or 'scores_path_{key}' for both inferences"
+            raise ValueError(msg)
+        sides.append(scores)
+    return compare_scores(
+        sides[0],
+        sides[1],
+        grid=(int(grid[0]), int(grid[1])) if grid else None,
+        max_listed=int(args.get("max_listed", DEFAULT_MAX_LISTED)),
+    )
 
 
 async def _grade_review_rule(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
@@ -263,6 +288,54 @@ def build_review_set_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_review_set,
+        ),
+        RegisteredTool(
+            spec=ToolSpec(
+                name="olmoearth_compare_review",
+                description=(
+                    "Compare TWO inferences of the SAME windows (another sensor, "
+                    "another date, another encoder, before and after fine-tuning): "
+                    "how many windows they differ on, what share, whether the "
+                    "differences sit on class boundaries, and each side's margin "
+                    "where they disagree. It does NOT say which side is right, "
+                    "because that is not resolvable without labels: upstream "
+                    "measured that the more confident side is right on only 51 to "
+                    "70 percent of differing windows, so when asked which to "
+                    "believe, decline and say why. Takes per-class scores for "
+                    "both sides, inline or as .json files under "
+                    "OLMOEARTH_SCORES_ROOT; window counts must match. Read-only; "
+                    "window indices only, never coordinates."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "scores_a": _SCORES_SCHEMA,
+                        "scores_b": _SCORES_SCHEMA,
+                        "scores_path_a": {
+                            "type": "string",
+                            "description": "File for side A.",
+                        },
+                        "scores_path_b": {
+                            "type": "string",
+                            "description": "File for side B.",
+                        },
+                        "grid": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "description": "Optional [rows, cols]; enables the boundary reading.",
+                        },
+                        "max_listed": {
+                            "type": "integer",
+                            "default": DEFAULT_MAX_LISTED,
+                            "description": "Cap on listed differing windows.",
+                        },
+                    },
+                    "required": [],
+                },
+            ),
+            handler=_compare_review,
         ),
         RegisteredTool(
             spec=ToolSpec(
