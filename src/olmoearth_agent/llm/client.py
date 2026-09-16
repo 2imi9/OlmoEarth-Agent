@@ -67,6 +67,34 @@ _TEXT_TOOLCALL_JSON_RE = re.compile(
 _TOOLCALL_TAG_RE = re.compile(r"</?tool_call>")
 
 
+def decode_tool_arguments(arguments_text: str) -> dict[str, Any]:
+    """Decode a tool call's ``arguments`` field into a dict, never raising.
+
+    OpenAI-format servers send the arguments object JSON-encoded once. Some
+    models (Qwen through a thin shim, for one) encode it twice, so a single
+    decode yields a *string*; a dict is expected downstream, and a string
+    there used to escape as ``AttributeError`` and end the turn. Decode a
+    second time when that happens. Anything that still is not an object is
+    surfaced under ``__raw_arguments`` so the caller can see what the model
+    sent rather than have the call silently dropped.
+    """
+    try:
+        arguments: Any = json.loads(arguments_text)
+    except json.JSONDecodeError:
+        return {"__raw_arguments": arguments_text}
+    if isinstance(arguments, str):
+        try:
+            again: Any = json.loads(arguments)
+        except json.JSONDecodeError:
+            again = None
+        if isinstance(again, dict):
+            return again
+        return {"__raw_arguments": arguments}
+    if not isinstance(arguments, dict):
+        return {"__raw_arguments": arguments_text}
+    return arguments
+
+
 class Tracer(Protocol):
     """Plug point for the provenance middleware (PR #7).
 
@@ -363,14 +391,7 @@ class OlmoEarthLLM:
                     # Future-proofing: ignore non-function tool kinds we
                     # don't model yet (e.g. computer-use, code interpreter).
                     continue
-                arguments_text = raw.function.arguments or "{}"
-                try:
-                    arguments = json.loads(arguments_text)
-                except json.JSONDecodeError:
-                    # Model returned malformed JSON. Surface the raw
-                    # string so the caller can decide what to do; do
-                    # not silently drop the tool call.
-                    arguments = {"__raw_arguments": arguments_text}
+                arguments = decode_tool_arguments(raw.function.arguments or "{}")
                 tool_calls.append(
                     ToolCall(
                         id=raw.id,
