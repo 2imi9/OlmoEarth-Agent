@@ -25,7 +25,9 @@ def test_malformed_json_is_surfaced_not_dropped() -> None:
 
 
 def test_a_string_that_is_not_an_object_is_surfaced() -> None:
-    assert decode_tool_arguments(json.dumps("just text")) == {"__raw_arguments": "just text"}
+    assert decode_tool_arguments(json.dumps("just text")) == {
+        "__raw_arguments": "just text"
+    }
 
 
 def test_a_non_object_json_value_is_surfaced() -> None:
