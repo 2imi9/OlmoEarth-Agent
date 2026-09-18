@@ -42,6 +42,7 @@ const SKILLS = [
   { n: 15, slug: 'litsearch',         cat: 'Report',    icon: 'search',      desc: 'arXiv + OpenAlex search with DOI / arXiv-id resolution to ground citations.', ex: 'Find and cite the paper behind the Area-of-Applicability method I used.' },
   { n: 16, slug: 'negative-sampler',  cat: 'Prep',      icon: 'scatter',     desc: 'Presence-only labels into a trainable set: buffered, thinned (optionally embedding-dissimilar) background class.', ex: 'My karst-site labels are presence-only and the audit fails for a missing negative class - generate background samples.' },
   { n: 17, slug: 'rslearn',           cat: 'Configure', icon: 'sliders',     desc: 'rslearn made approachable: recommend a full setup from a plain-language goal, compose the finetune model.yaml, validate it (encoder/decoder/head shapes, task↔label-type, bands) before a multi-hour run, and diagnose a failed run - plus run-the-pipeline guidance.', ex: 'I want to map flooded buildings after a storm from Sentinel-2 - set up the rslearn task + model for me, then check the config before I train.' },
+  { n: 18, slug: 'review-set',        cat: 'Analyze',   icon: 'filter',      desc: "Which windows to check first, without labels: rank by the model's own top-1-minus-top-2 margin, at your review budget, boundary-first if you want it - plus the ceiling arithmetic and a grader for any candidate audit rule.", ex: 'The map is done and I can only check 200 of these 4,000 windows. Which 200, and how much of the error will I actually catch?' },
 ];
 
 /* Minimal {slug, desc, n} list for the composer's "/" skill slash-commands. */
@@ -67,6 +68,7 @@ const SKILL_SPECS = {
   15: `Unified arXiv + OpenAlex search and DOI / arXiv-id resolution, deduped across sources and key-free (OpenAlex polite pool). Grounds EO citations in real papers instead of world-knowledge or hallucinated links, under a no-fabrication, cite-the-real-URL contract.`,
   16: `Generates the missing negative/background class for a presence-only label set so it becomes trainable. Drops candidate points within a buffer of any positive, keeps the accepted negatives spatially thinned, and - when the inputs carry embeddings - ranks candidates by environmental dissimilarity to the positives (the inverse of #8). Writes a combined GeoJSON that round-trips straight back through the data-prep audit, converting its hard FAIL on a missing negative class into a PASS. Deterministic, no GDAL; surfaces a placement shortfall as a warning rather than under-filling silently.`,
   17: `rslearn - the data + training engine under OlmoEarth - made usable by non-experts. olmoearth_rslearn_recommend turns a plain-language goal into a complete, explained setup: the task (segmentation / per-pixel regression / detection / classification / regression), the data layout (data_source + space_mode + compositing + bands), the model composition (OlmoEarth encoder → decoder → head with the channel contract), the task knobs (metrics / loss / nodata / scale_factor), and a freeze→unfreeze schedule. olmoearth_rslearn_validate catches the errors rslearn only surfaces hours in - encoder-dim vs decoder in_channels, out_channels vs num_classes, task vs label-type, missing bands, the Faster R-CNN background-class +1. olmoearth_rslearn_compose emits the full finetune model.yaml (MultiTaskModel + the right decoder/head); olmoearth_rslearn_diagnose turns a failing prepare/ingest/materialize run into plain-English fixes. Torch-free guidance; the vendored SKILL.md runs the 4-stage data pipeline + model fit/predict.`,
+  18: `The question a practitioner asks the moment a prediction map lands: which windows do I open first, and how much of the error do I catch if I only open 5% of them? olmoearth_review_set ranks windows by the model's own top-1-minus-top-2 margin (low margin = suspect), optionally boundary-first using the nine-level indicator (how many of the 8 neighbours were predicted as a different class). olmoearth_grade_review_rule is the honest broker: it scores any candidate suspicion signal against that margin and a no-model control, with the scene as the unit of replication and a one-sided exact sign test. olmoearth_review_budget_ceiling is the arithmetic guard - no rule can catch more than min(1, budget/error_rate), so a capture of 0.45 at a 10% budget with a 20% error rate is 90% of what was reachable, not '45%'. Measured, not asserted: on all 24 tasks of Ai2's own published embedding suite the margin beat the best no-model control, 24/24, p=6e-08, and ensemble disagreement, cross-model disagreement and feature-space typicality were each measured against it and none ranked errors better. Bring-your-own scores - Studio returns hard classes only, which is exactly why skill #9 reaches for ensemble disagreement instead.`,
 };
 
 // Tools each skill composes, shown on the full-spec detail page. From PLAN.md section 1 + SKILLS.md.
@@ -88,6 +90,7 @@ const SKILL_TOOLS = {
   15: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
   16: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
   17: `olmoearth_load_skill (run the 4-stage pipeline + fit/predict) · olmoearth_rslearn_recommend (goal → explained setup) · olmoearth_rslearn_validate (shape / label-type / band checks) · olmoearth_rslearn_compose (emit the finetune model.yaml) · olmoearth_rslearn_diagnose (failed run → fixes)`,
+  18: `olmoearth_review_set (scores → the ordered review set at a budget) · olmoearth_grade_review_rule (candidate vs margin vs no-model control, per-group sign test) · olmoearth_review_budget_ceiling (min(1, budget/error_rate) and the share of it reached) · analysis.review_set - pure-Python ports of oe_inferencex.metrics, verified against the numpy originals to < 1e-9`,
 };
 
 // What each skill takes in and gives back, for the full-spec detail page.
@@ -110,6 +113,7 @@ const SKILL_IO = {
   15: { in: 'A free-text query, or a single DOI / arXiv id.', out: 'Curated paper records (title, authors, year, venue, url, citations), deduped across arXiv + OpenAlex.' },
   16: { in: 'A presence-only labels GeoJSON path (one positive class).', out: 'A combined GeoJSON with a buffered, spatially-thinned negative class that passes the data-prep audit.' },
   17: { in: 'A plain-language research goal (+ labels / sensor / classes / range), or a dataset config.json + model.yaml.', out: 'A complete, explained rslearn setup (task + data + model + training), or a validation report catching shape / label-type / band errors before a training run.' },
+  18: { in: 'Per-window model scores (n_windows x n_classes logits or probabilities), a review budget, optionally a [rows, cols] grid; for grading, a candidate signal + a 0/1 error indicator.', out: 'The ordered review set with margins and boundary counts, the attainable-ceiling arithmetic, and the measured evidence + honest caveats; for grading, per-arm E-AURC / AUROC / capture with a head-to-head verdict and a per-group sign test.' },
 };
 
 export function renderCards() {
@@ -212,7 +216,7 @@ function openSkillDetail(s) {
       }
       <section class="detail-sec">
         <h3 class="detail-h">Stage</h3>
-        <p class="detail-p detail-stage">${s.cat} &middot; skill #${s.n} of 17 in the OlmoEarth workflow (Prep &rarr; Configure &rarr; Run &rarr; Analyze &rarr; Integrate &rarr; Report).</p>
+        <p class="detail-p detail-stage">${s.cat} &middot; skill #${s.n} of 18 in the OlmoEarth workflow (Prep &rarr; Configure &rarr; Run &rarr; Analyze &rarr; Integrate &rarr; Report).</p>
       </section>
       <section class="detail-sec">
         <h3 class="detail-h">Tools it composes</h3>
