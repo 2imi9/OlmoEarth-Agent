@@ -10,7 +10,9 @@ Five tools:
   prediction result: sample its band on a grid, read a binary score in
   ``[0, 1]`` as ``[1 - s, s]`` (stating that assumption), and rank.
 - ``olmoearth_compare_review`` -- compare two inferences of the same windows:
-  how much they differ and where, with the side question declined on evidence.
+  how much they differ and where, with the side question declined on evidence
+  (and, with the ``inferencex`` extra, what a difference means at the maps'
+  dates).
 - ``olmoearth_grade_review_rule`` -- grade any candidate suspicion signal
   against the margin baseline and a no-model control, with a per-group sign
   test, so a signal that merely sounds principled cannot ship unmeasured.
@@ -56,6 +58,7 @@ from olmoearth_agent.analysis.review_set import (
 )
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.security.paths import safe_path, workspace_root
+from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     FAILED,
@@ -235,6 +238,32 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     return out
 
 
+def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
+    """The package's reading of what a difference means at the maps' dates.
+
+    With the ``inferencex`` extra: ``oe_inferencex.compare.dates_reading`` of
+    ``date_a``, ``date_b`` and ``labels_date`` (``status`` "unstated" when none
+    was given). Without it: a statement that the dates were not assessed.
+    """
+    date_a, date_b = args.get("date_a"), args.get("date_b")
+    labels_date = args.get("labels_date")
+    try:
+        compare = inferencex.load("compare")
+    except inferencex.InferencexMissingError:
+        return {
+            "assessed": False,
+            "a": date_a,
+            "b": date_b,
+            "labels": labels_date,
+            "reason": "the dates were not assessed: reading what a difference "
+            "means across dates needs olmoearth-inferencex (>= 1.3.0)",
+            "install": inferencex.INSTALL_HINT,
+        }
+    reading: dict[str, Any] = dict(compare.dates_reading(date_a, date_b, labels_date))
+    reading["assessed"] = True
+    return reading
+
+
 async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_compare_review``."""
     grid = args.get("grid")
@@ -276,6 +305,26 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
             windows,
             int(grid[1]) if grid else None,
         )
+    dates = _dates_block(args)
+    out["dates"] = dates
+    if dates.get("assessed"):
+        if dates.get("status") in ("different_time", "overlapping_time"):
+            out["which_side_is_right"] = (
+                "not graded: the maps describe different times, so a window where "
+                "they differ may have changed on the ground; "
+                + (
+                    "labels would be graded against their own date "
+                    f"({dates.get('labels')}) only"
+                    if dates.get("labels")
+                    else "no labels_date was given, so no grading is possible even "
+                    "with labels"
+                )
+            )
+        elif dates.get("status") == "partly_stated":
+            out["which_side_is_right"] = (
+                "not graded: only one map's date was given, so an error cannot be "
+                "told from a change on the ground"
+            )
     return out
 
 
@@ -818,18 +867,19 @@ def build_review_set_tools() -> list[RegisteredTool]:
             spec=ToolSpec(
                 name="olmoearth_compare_review",
                 description=(
-                    "Compare TWO inferences of the SAME windows (another sensor, "
-                    "another date, another encoder, before and after fine-tuning): "
-                    "how many windows they differ on, what share, whether the "
-                    "differences sit on class boundaries, and each side's margin "
-                    "where they disagree. It does NOT say which side is right, "
-                    "because that is not resolvable without labels: upstream "
-                    "measured that the more confident side is right on only 51 to "
-                    "70 percent of differing windows, so when asked which to "
-                    "believe, decline and say why. Takes per-class scores for "
-                    "both sides, inline or as .json files under "
-                    "OLMOEARTH_SCORES_ROOT; window counts must match. Read-only; "
-                    "window indices only, never coordinates."
+                    "Compare TWO inferences of the SAME windows (another "
+                    "sensor, date, encoder, before and after fine-tuning): how "
+                    "many windows differ, what share, whether on class "
+                    "boundaries, and each side's margin there. It does NOT say "
+                    "which side is right: without labels that is not resolvable "
+                    "(the more confident side is right on only 51-70% of "
+                    "differing windows), so decline and say why. Pass "
+                    "date_a/date_b (and labels_date) when the maps describe "
+                    "dates: across dates a difference can be real change, and "
+                    "the 'dates' block says so (needs the inferencex extra; "
+                    "otherwise reported as not assessed). Scores inline or as "
+                    ".json files under OLMOEARTH_SCORES_ROOT. Window indices "
+                    "only."
                 ),
                 parameters={
                     "type": "object",
@@ -855,6 +905,21 @@ def build_review_set_tools() -> list[RegisteredTool]:
                             "type": "integer",
                             "default": DEFAULT_MAX_LISTED,
                             "description": "Cap on listed differing windows.",
+                        },
+                        "date_a": {
+                            "type": "string",
+                            "description": "ISO date or period (start/end) map A "
+                            "describes.",
+                        },
+                        "date_b": {
+                            "type": "string",
+                            "description": "ISO date or period map B describes.",
+                        },
+                        "labels_date": {
+                            "type": "string",
+                            "description": "ISO date or period any labels "
+                            "describe; required before grading maps of "
+                            "different dates.",
                         },
                     },
                     "required": [],

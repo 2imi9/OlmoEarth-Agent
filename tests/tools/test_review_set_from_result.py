@@ -273,3 +273,62 @@ async def test_undeclared_metadata_is_read_from_the_sampled_band(
     assert result["sampling"]["n_nodata_dropped"] == 3
     assert result["declared_range"] == [0.0, 1.0]
     assert "scores_path" not in result
+
+
+def _windows_file(path: Path, windows: list[int], values: list[float]) -> str:
+    path.write_text(
+        json.dumps(
+            {"grid": [3, 3], "windows": windows, "scores": [[1 - v, v] for v in values]}
+        )
+    )
+    return str(path)
+
+
+@pytest.mark.asyncio
+async def test_compare_review_maps_windows_back_to_the_grid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    windows = [0, 1, 2, 4, 5, 8]
+    a = _windows_file(tmp_path / "a.json", windows, [0.1, 0.9, 0.2, 0.8, 0.3, 0.7])
+    b = _windows_file(tmp_path / "b.json", windows, [0.1, 0.9, 0.2, 0.2, 0.3, 0.7])
+    other = _windows_file(tmp_path / "c.json", [0, 1, 2, 3, 5, 8], [0.5] * 6)
+    registry = ToolRegistry()
+    registry.register_all(build_review_set_tools())
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    out = await registry.dispatch(
+        ToolCall(
+            id="1",
+            name="olmoearth_compare_review",
+            arguments={
+                "scores_path_a": a,
+                "scores_path_b": b,
+                "date_a": "2024-05-01",
+            },
+        ),
+        ctx,
+    )
+    assert out["ok"] is True
+    result = out["result"]
+    assert [(d["window_index"], d["row"], d["col"]) for d in result["differing"]] == [
+        (4, 1, 1)
+    ]
+    assert result["which_side_is_right"].startswith("not graded: only one map's date")
+    mismatch = await registry.dispatch(
+        ToolCall(
+            id="2",
+            name="olmoearth_compare_review",
+            arguments={"scores_path_a": a, "scores_path_b": other},
+        ),
+        ctx,
+    )
+    assert mismatch["ok"] is False and "different windows" in mismatch["error"]
+    boundary = await registry.dispatch(
+        ToolCall(
+            id="3",
+            name="olmoearth_review_set",
+            arguments={"scores_path": a, "order": "boundary_first"},
+        ),
+        ctx,
+    )
+    assert boundary["ok"] is False and "no-data windows" in boundary["error"]

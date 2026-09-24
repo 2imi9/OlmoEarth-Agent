@@ -22,6 +22,7 @@ from olmoearth_agent.tools.automate import build_automate_tools
 from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
+from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.litsearch import build_litsearch_tools
@@ -300,14 +301,22 @@ SKILLS: list[SkillSpec] = [
         "Analyze",
         "implemented",
         "Label-free review set from the model's own top-1-minus-top-2 margin: "
-        "which windows to check first at a budget, boundary-first ordering, "
-        "the attainable-ceiling arithmetic, and a grader that scores any "
-        "candidate audit rule against the margin and a no-model control with "
-        "a per-group sign test. Bring-your-own scores (Studio returns none).",
+        "which windows to check first at a budget (from caller scores, or from "
+        "a Studio result whose band is a binary score in [0, 1], sampled on a "
+        "grid), boundary-first ordering, the attainable-ceiling arithmetic, and "
+        "a grader for any candidate audit rule. Then how wrong the map is: a "
+        "labelled sample drawn by a design, its error rate with the interval "
+        "that design earns, per-class accuracy and a certified zone (the "
+        "optional olmoearth-inferencex extra). A review set is not a sample.",
         [
             "olmoearth_review_set",
+            "olmoearth_review_set_from_result",
+            "olmoearth_compare_review",
             "olmoearth_grade_review_rule",
             "olmoearth_review_budget_ceiling",
+            "olmoearth_plan_label_sample",
+            "olmoearth_estimate_map_error",
+            "olmoearth_certify_zone",
         ],
     ),
 ]
@@ -339,6 +348,9 @@ def build_default_registry() -> ToolRegistry:
     # signals, which are what remain reachable when Studio yields only
     # hard classes.
     registry.register_all(build_review_set_tools())
+    # How wrong is the map (skill #18, second half): design-based estimation
+    # through the optional inferencex extra; the tools say so when it is absent.
+    registry.register_all(build_estimation_tools())
     registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
     registry.register_all(build_negative_sampler_tools())
