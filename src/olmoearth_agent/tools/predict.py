@@ -22,6 +22,7 @@ from olmoearth_agent.analysis.raster_compare import (
     compare_group_numeric,
     compare_narration,
     compare_numeric,
+    declared_fields,
     declared_range,
     grid_points,
     intersect_bbox,
@@ -40,6 +41,7 @@ from olmoearth_agent.tools.sampling import (
     band_value,
     default_property,
     is_categorical,
+    model_summary,
     read_sample,
     result_nodata_context,
     sample_records,
@@ -307,7 +309,22 @@ async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
     }
 
 
+#: Cap on distinct models resolved per olmoearth_search_predictions call.
+_MAX_MODELS_RESOLVED = 20
+
+#: What a model listing does not contain, stated with it every time.
+_MODELS_SCOPE_NOTE = (
+    "These are the models in this Studio account only. Ai2 also publishes "
+    "fine-tuned OlmoEarth models (the olmoearth_projects configurations and "
+    "their task cards) that are not in this listing; say so instead of "
+    "presenting this list as every model the user can run. prediction_type "
+    "says what a model outputs: a *_regression output is a value per pixel, "
+    "not a class probability and not a confidence."
+)
+
+
 async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_search_predictions``: predictions plus their models."""
     project_id = args.get("project_id")
     env = await ctx.studio.search_predictions(
         project_id=project_id,
@@ -317,7 +334,17 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
     # With a project_id filter the match list is built client-side, so
     # env.total (the unfiltered server total) would mislead; report the
     # actual returned count instead.
-    return {
+    model_ids = list(
+        dict.fromkeys(str(r["model_id"]) for r in env.records if r.get("model_id"))
+    )[:_MAX_MODELS_RESOLVED]
+    cache: dict[str, dict[str, Any] | None] = {}
+    summaries = await asyncio.gather(*[model_summary(ctx, m, cache) for m in model_ids])
+    models = {
+        mid: {k: v for k, v in summary.items() if k != "model_id"}
+        for mid, summary in zip(model_ids, summaries)
+        if summary is not None
+    }
+    out: dict[str, Any] = {
         "total": len(env.records) if project_id else env.total,
         "predictions": [
             {
@@ -329,6 +356,10 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
             for r in env.records
         ],
     }
+    if model_ids:
+        out["models"] = models
+        out["models_note"] = _MODELS_SCOPE_NOTE
+    return out
 
 
 async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -347,17 +378,38 @@ async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str
     return {"id": prediction_id, "status": record.get("status")}
 
 
+def _declared_outputs(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each output property with what the result declares about it.
+
+    A regression output carries its declared ``[min_value, max_value]``; a
+    classification output its class count and labels (capped). No geometry.
+    """
+    return [
+        {"property_name": name, **info}
+        for name, info in declared_fields(record).items()
+    ]
+
+
 def _summarize_result(record: dict[str, Any]) -> dict[str, Any]:
-    return {
+    """A prediction-result record as the agent sees it (no geometry)."""
+    meta = record.get("result_metadata") or {}
+    out: dict[str, Any] = {
         "result_id": record.get("id"),
         "prediction_id": record.get("prediction_id"),
         "tile_urls": record.get("tile_urls"),
         "property_names": record.get("property_names"),
         "file_format": record.get("file_format"),
     }
+    outputs = _declared_outputs(record)
+    if outputs:
+        out["outputs"] = outputs
+    if meta.get("start_datetime") or meta.get("end_datetime"):
+        out["period"] = [meta.get("start_datetime"), meta.get("end_datetime")]
+    return out
 
 
 async def _fetch_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_fetch_results``."""
     env = await ctx.studio.search_prediction_results(
         prediction_id=args["prediction_id"],
         limit=int(args.get("scan_limit", 200)),
@@ -372,9 +424,18 @@ async def _fetch_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
 async def _get_prediction_result(
     args: dict[str, Any], ctx: ToolContext
 ) -> dict[str, Any]:
+    """Handler for ``olmoearth_get_prediction_result``.
+
+    ``result_metadata`` is returned without its ``geometry`` (rule §3.1): the
+    extent is raw coordinates, and the tools that need it read it themselves.
+    """
     record = await ctx.studio.get_prediction_result(args["result_id"])
     summary = _summarize_result(record)
-    summary["result_metadata"] = record.get("result_metadata")
+    meta = record.get("result_metadata")
+    if isinstance(meta, dict) and "geometry" in meta:
+        meta = {k: v for k, v in meta.items() if k != "geometry"}
+        meta["geometry"] = "omitted (rule 3.1)"
+    summary["result_metadata"] = meta
     return summary
 
 
@@ -457,10 +518,15 @@ def build_predict_tools() -> list[RegisteredTool]:
             spec=ToolSpec(
                 name="olmoearth_search_predictions",
                 description=(
-                    "Search predictions, optionally scoped to a project. "
-                    "Returns id, name, status, and model_id for each. Use "
-                    "this to discover a reusable model_id before submitting "
-                    "a new prediction. Read-only."
+                    "Search predictions, optionally scoped to a project: id, "
+                    "name, status and model_id for each, plus a 'models' map "
+                    "with each model's name, model_type and prediction_type "
+                    "(e.g. per_pixel_regression: a value per pixel, not a class "
+                    "probability or a confidence). Use it to find a reusable "
+                    "model_id and to say what each model predicts. It lists "
+                    "this account's models only; Ai2 also publishes fine-tuned "
+                    "OlmoEarth models (task cards), so do not present the list "
+                    "as complete. Read-only."
                 ),
                 parameters={
                     "type": "object",
@@ -512,10 +578,11 @@ def build_predict_tools() -> list[RegisteredTool]:
                 name="olmoearth_fetch_results",
                 description=(
                     "Fetch the output results for a prediction: tile URLs "
-                    "(XYZ/MVT map layers), property names, and file format. "
-                    "Scans recent prediction-results and filters to this "
-                    "prediction (the API has no server-side prediction_id "
-                    "filter). Increase scan_limit if results are older."
+                    "(XYZ/MVT map layers), property names, file format, and "
+                    "'outputs' (each property's declared regression range or "
+                    "classes). Scans recent prediction-results and filters to "
+                    "this prediction (no server-side filter); increase "
+                    "scan_limit if results are older."
                 ),
                 parameters={
                     "type": "object",
@@ -533,7 +600,9 @@ def build_predict_tools() -> list[RegisteredTool]:
                 name="olmoearth_get_prediction_result",
                 description=(
                     "Fetch one prediction-result by its result id: tile "
-                    "URLs, property names, result metadata, and file format."
+                    "URLs, property names, declared outputs (regression range "
+                    "or classes per property), result metadata (without its "
+                    "geometry), and file format."
                 ),
                 parameters={
                     "type": "object",

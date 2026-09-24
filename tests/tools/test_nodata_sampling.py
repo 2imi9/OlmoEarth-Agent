@@ -427,6 +427,32 @@ async def test_single_point_pixel_value_reports_the_sentinel_as_nodata(
 
 
 @pytest.mark.asyncio
+async def test_result_listings_describe_outputs_without_geometry(
+    httpx_mock: HTTPXMock,
+) -> None:
+    body = _result("r9", "sample_karst_score", prediction_id="p1")
+    body["records"][0]["result_metadata"]["start_datetime"] = "2025-01-01T00:00:00Z"
+    httpx_mock.add_response(url=f"{BASE}/prediction-results/r9", json=body)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _predict_tool("olmoearth_get_prediction_result").handler(
+            {"result_id": "r9"}, ctx
+        )
+    assert out["outputs"] == [
+        {
+            "property_name": "sample_karst_score",
+            "value_type": "regression",
+            "min_value": 0.0,
+            "max_value": 1.0,
+        }
+    ]
+    assert out["period"][0] == "2025-01-01T00:00:00Z"
+    assert "'coordinates'" not in repr(out)
+    assert out["result_metadata"]["geometry"] == "omitted (rule 3.1)"
+    assert out["result_metadata"]["regression_fields"][0]["max_value"] == 1.0
+
+
+@pytest.mark.asyncio
 async def test_studio_class_objects_compare_by_label(httpx_mock: HTTPXMock) -> None:
     """Studio's classification is a {label, color} object; it reads as its label."""
     meta = {

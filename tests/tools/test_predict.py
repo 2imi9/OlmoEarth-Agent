@@ -36,11 +36,53 @@ async def test_search_predictions_tool(httpx_mock: HTTPXMock) -> None:
             "meta": {"total": 1},
         },
     )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1",
+        json={
+            "records": [
+                {
+                    "id": "m1",
+                    "name": "KarstBinary",
+                    "model_type": "fine_tuned",
+                    "wizard_answers": {
+                        "prediction_type": "per_pixel_regression",
+                        "nodata_value": None,
+                    },
+                }
+            ]
+        },
+    )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
         result = await _tool("olmoearth_search_predictions").handler({"limit": 5}, ctx)
     assert result["total"] == 1
     assert result["predictions"][0]["model_id"] == "m1"
+    # The model is described by what it outputs, read from the model record,
+    # so a regression score is never narrated as a "confidence layer".
+    model = result["models"]["m1"]
+    assert model["prediction_type"] == "per_pixel_regression"
+    assert model["model_type"] == "fine_tuned"
+    assert "not a class probability" in result["models_note"]
+    assert "Ai2 also publishes" in result["models_note"]
+
+
+@pytest.mark.asyncio
+async def test_search_predictions_survives_a_missing_model(
+    httpx_mock: HTTPXMock,
+) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        json={"records": [{"id": "p1", "model_id": "gone"}], "meta": {"total": 1}},
+    )
+    httpx_mock.add_response(url=f"{BASE}/models/gone", status_code=404)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_search_predictions").handler({}, ctx)
+    assert result["predictions"][0]["model_id"] == "gone"
+    assert result["models"] == {}
 
 
 @pytest.mark.asyncio
