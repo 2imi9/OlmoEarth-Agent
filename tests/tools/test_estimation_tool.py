@@ -497,3 +497,167 @@ def test_population_rows_are_validated() -> None:
     pop = population_from_rows([[0.4, 0.6], [0.3, 0.7]], grid=(2, 2), windows=[3, 0])
     assert pop.n_valid == 2 and pop.map_class == [1, -1, -1, 1]
     assert pop.p1[3] == pytest.approx(0.6)
+
+
+# --------------------------------------------------------------------------- exp86 round 1: the Studio grid
+# Brief 4 on a Studio result (exp86 round 1, all three runs): the model asked
+# for grids of 20 to 64 and got the same "173 valid windows" each time, because
+# the grid was held to 16 without a word; [18, 18] and [30, 30], the form the
+# schema advertised, crashed; and the budget error sent it to "a finer grid".
+
+_KB_BBOX = [0.0, 0.0, 6.0, 6.0]
+
+
+def _kb_value(lon: float, lat: float) -> float:
+    """A deterministic [0, 1] score at a point, no-data (-1) on about a third."""
+    import math
+
+    frac = math.sin(lon * 12.9898 + lat * 78.233) * 43758.5453
+    frac -= math.floor(frac)
+    return -1.0 if frac < 0.33 else round(frac, 4)
+
+
+def _kb_valid(grid: int) -> int:
+    """Valid windows of the mocked result at ``grid`` x ``grid``."""
+    return sum(
+        1 for _r, _c, lo, la in grid_windows(_KB_BBOX, grid) if _kb_value(lo, la) >= 0
+    )
+
+
+def _mock_kb(httpx_mock: HTTPXMock) -> list[int]:
+    """Serve result 'kb' (a [0, 1] score band); return a live count of pixel calls."""
+    box = [[[0, 0], [6, 0], [6, 6], [0, 6], [0, 0]]]
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb",
+        json={
+            "records": [
+                {
+                    "id": "kb",
+                    "property_names": ["sample_karst_score"],
+                    "result_metadata": {
+                        "geometry": {"type": "Polygon", "coordinates": box},
+                        "regression_fields": [
+                            {
+                                "property_name": "sample_karst_score",
+                                "min_value": 0.0,
+                                "max_value": 1.0,
+                            }
+                        ],
+                    },
+                }
+            ]
+        },
+        is_reusable=True,
+    )
+    calls = [0]
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        calls[0] += 1
+        q = parse_qs(urlparse(str(request.url)).query)
+        band = {
+            "property_name": "sample_karst_score",
+            "raw_value": _kb_value(float(q["lon"][0]), float(q["lat"][0])),
+            "classification": None,
+            "regression": {"min_value": 0.0, "max_value": 1.0},
+        }
+        return httpx.Response(200, json={"records": [{"bands": [band]}]})
+
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_a_studio_grid_above_16_is_capped_and_says_so(
+    httpx_mock: HTTPXMock,
+) -> None:
+    calls = _mock_kb(httpx_mock)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "grid": 20, "budget": 10, "design": "random"},
+            ctx,
+        )
+    assert out["ok"] is True, out
+    sampling = out["result"]["sampling"]
+    assert calls[0] == 256  # 16 x 16 pixel-value calls, not 20 x 20
+    assert sampling["grid"] == "16x16"
+    assert sampling["grid_requested"] == 20 and sampling["grid_capped"] is True
+    assert "capped at 16" in sampling["grid_note"]
+    assert sampling["n_valid"] == _kb_valid(16)
+    assert not _BANNED_KEYS & _keys(out["result"])
+
+
+@pytest.mark.asyncio
+async def test_a_studio_grid_in_range_is_stated_uncapped(httpx_mock: HTTPXMock) -> None:
+    _mock_kb(httpx_mock)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "grid": 6, "budget": 5, "design": "random"},
+            ctx,
+        )
+    sampling = out["result"]["sampling"]
+    assert sampling["grid"] == "6x6"
+    assert sampling["grid_requested"] == 6 and sampling["grid_capped"] is False
+    assert "grid_note" not in sampling
+
+
+@pytest.mark.asyncio
+async def test_a_studio_grid_takes_the_rows_cols_form(httpx_mock: HTTPXMock) -> None:
+    """[N, N], the form the schema advertises, is N; a non-square grid is refused."""
+    calls = _mock_kb(httpx_mock)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        square = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "grid": [8, 8], "budget": 5, "design": "random"},
+            ctx,
+        )
+        capped = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "grid": [30, 30], "budget": 5, "design": "random"},
+            ctx,
+        )
+        oblong = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "grid": [8, 12], "budget": 5},
+            ctx,
+        )
+    assert square["ok"] is True, square
+    assert square["result"]["sampling"]["grid"] == "8x8"
+    assert capped["ok"] is True, capped
+    assert capped["result"]["sampling"]["grid"] == "16x16"
+    assert capped["result"]["sampling"]["grid_capped"] is True
+    assert oblong["ok"] is False and "square" in oblong["error"]
+    assert "TypeError" not in oblong["error"]
+    assert calls[0] == 64 + 256  # the refusal samples nothing
+
+
+def test_the_plan_schema_states_the_studio_grid_range() -> None:
+    spec = next(
+        t.spec
+        for t in build_estimation_tools()
+        if t.spec.name == "olmoearth_plan_label_sample"
+    )
+    assert "2-16" in spec.parameters["properties"]["grid"]["description"]
+
+
+@pytest.mark.asyncio
+async def test_the_review_set_from_a_result_states_a_capped_grid(
+    httpx_mock: HTTPXMock,
+) -> None:
+    _mock_kb(httpx_mock)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _call(
+            "olmoearth_review_set_from_result",
+            {"result_id": "kb", "grid": 40, "save_scores": False},
+            ctx,
+        )
+    sampling = out["result"]["sampling"]
+    assert sampling["grid"] == "16x16" and sampling["grid_capped"] is True
+    assert sampling["grid_requested"] == 40

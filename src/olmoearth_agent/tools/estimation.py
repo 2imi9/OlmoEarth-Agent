@@ -47,11 +47,12 @@ from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 from olmoearth_agent.tools.review_set import (
     FROM_RESULT_DEFAULT_GRID,
-    FROM_RESULT_MAX_GRID,
+    FROM_RESULT_GRID_RANGE,
     SampledScores,
     load_json_file,
     load_scores_file,
     read_roots,
+    result_grid,
     sample_result_scores,
     slug,
     write_json_file,
@@ -258,10 +259,8 @@ async def _population(
             map_class=meta.get("map_class"),
         )
     if args.get("result_id"):
-        grid = max(
-            2,
-            min(FROM_RESULT_MAX_GRID, int(args.get("grid", FROM_RESULT_DEFAULT_GRID))),
-        )
+        # N or [N, N], held to 2-16 and stated in the result, never silently.
+        grid, grid_requested = result_grid(args.get("grid"))
         sampled = await sample_result_scores(
             ctx,
             str(args["result_id"]),
@@ -270,6 +269,7 @@ async def _population(
             threshold=(
                 float(args["threshold"]) if args.get("threshold") is not None else None
             ),
+            grid_requested=grid_requested,
         )
         if isinstance(sampled, dict):
             return sampled
@@ -425,6 +425,9 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         )
     if pop.source.get("assumption"):
         out["assumption"] = pop.source["assumption"]
+    if pop.source.get("sampling"):
+        # The grid a Studio result was sampled on, and whether it was capped.
+        out["sampling"] = pop.source["sampling"]
     if pop.score_kind in ("binary_score", "threshold_distance"):
         out["class_meaning"] = {
             "0": "at or below the decision threshold",
@@ -675,7 +678,10 @@ def build_estimation_tools() -> list[RegisteredTool]:
         "grid": {
             "type": ["integer", "array"],
             "items": {"type": "integer"},
-            "description": "N (N x N) or [rows, cols].",
+            "description": "Inline scores: N (N x N) or [rows, cols] of the rows. "
+            f"A Studio result_id: N, {FROM_RESULT_GRID_RANGE} (N x N sampled "
+            f"points, default {FROM_RESULT_DEFAULT_GRID}; [N, N] also taken); a "
+            "larger N is capped, and the result's 'sampling' says so.",
         },
         "property_name": {"type": "string"},
         "threshold": {"type": "number"},

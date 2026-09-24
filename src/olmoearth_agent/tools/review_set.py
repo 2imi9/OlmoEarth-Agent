@@ -92,7 +92,50 @@ SCORES_ROOT_ENV = "OLMOEARTH_SCORES_ROOT"
 #: Grid bounds for sampling a Studio result into review windows: every window
 #: is one live pixel-value call, so the grid is capped (16 x 16 = 256 calls).
 FROM_RESULT_DEFAULT_GRID = 10
+FROM_RESULT_MIN_GRID = 2
 FROM_RESULT_MAX_GRID = 16
+
+#: The grid a Studio result takes, as stated in the tools' schemas.
+FROM_RESULT_GRID_RANGE = f"{FROM_RESULT_MIN_GRID}-{FROM_RESULT_MAX_GRID}"
+
+
+def result_grid(value: Any) -> tuple[int, int | None]:
+    """The side of the square grid a Studio result is sampled on, and the side asked.
+
+    ``value`` is ``N``, ``[N, N]`` or ``None`` (the default side). ``N`` is
+    held to :data:`FROM_RESULT_MIN_GRID`-:data:`FROM_RESULT_MAX_GRID`,
+    because every window is one live pixel-value call; the caller states the
+    hold (:meth:`SampledScores.grid_block`), so it is never silent.
+
+    Parameters
+    ----------
+    value
+        The ``grid`` argument as the model passed it.
+
+    Returns
+    -------
+    tuple[int, int | None]
+        ``(used, requested)``; ``requested`` is ``None`` when no grid was given.
+
+    Raises
+    ------
+    ValueError
+        For a non-square ``[rows, cols]``: a Studio result is sampled square.
+    """
+    if value is None:
+        return FROM_RESULT_DEFAULT_GRID, None
+    if isinstance(value, (list, tuple)):
+        if len(value) != 2 or int(value[0]) != int(value[1]):
+            msg = (
+                "a Studio result is sampled on a square N x N grid: pass grid "
+                f"as one integer N ({FROM_RESULT_GRID_RANGE}), got {list(value)}"
+            )
+            raise ValueError(msg)
+        value = value[0]
+    requested = int(value)
+    used = max(FROM_RESULT_MIN_GRID, min(FROM_RESULT_MAX_GRID, requested))
+    return used, requested
+
 
 #: How a sampled value is judged no-data (the same rule as the compare tools).
 _NODATA_RULE = (
@@ -391,11 +434,31 @@ class SampledScores:
     n_nodata: int
     n_failed: int
     model: dict[str, Any] | None = None
+    #: The side the caller asked for (``None``: the default was used).
+    grid_requested: int | None = None
+
+    def grid_block(self) -> dict[str, Any]:
+        """The grid used, the grid asked for, and whether it was held to the range."""
+        capped = self.grid_requested is not None and self.grid_requested != self.grid
+        block: dict[str, Any] = {
+            "grid": f"{self.grid}x{self.grid}",
+            "grid_requested": self.grid_requested,
+            "grid_capped": capped,
+        }
+        if capped:
+            verb = "capped at" if self.grid == FROM_RESULT_MAX_GRID else "raised to"
+            block["grid_note"] = (
+                f"grid {self.grid_requested} was {verb} {self.grid}: a Studio "
+                f"result is sampled on {FROM_RESULT_GRID_RANGE} points a side "
+                "(each point is one pixel-value call), so the grid used is "
+                f"{self.grid}x{self.grid} = {self.grid * self.grid} points"
+            )
+        return block
 
     def sampling_block(self) -> dict[str, Any]:
         """What was sampled, stated so a grid of points is not read as every pixel."""
         return {
-            "grid": f"{self.grid}x{self.grid}",
+            **self.grid_block(),
             "n_windows_sampled": self.n_sampled,
             "n_valid": len(self.windows),
             "n_nodata_dropped": self.n_nodata,
@@ -460,9 +523,12 @@ async def sample_result_scores(
     grid: int,
     property_name: str | None = None,
     threshold: float | None = None,
+    grid_requested: int | None = None,
 ) -> SampledScores | dict[str, Any]:
     """Sample one Studio result on a grid and build per-window two-class scores.
 
+    ``grid`` is the side used (see :func:`result_grid`); ``grid_requested``,
+    the side asked for, is carried so the result can say when they differ.
     Returns :class:`SampledScores`, or a refusal dict (``ranked: False``) when
     the band cannot be ranked: a classification band, a regression band that
     is not a ``[0, 1]`` score and no ``threshold``, a missing extent, or fewer
@@ -572,6 +638,7 @@ async def sample_result_scores(
         n_nodata=n_nodata,
         n_failed=n_failed,
         model=nodata.model,
+        grid_requested=grid_requested,
     )
 
 
@@ -590,9 +657,7 @@ async def _review_set_from_result(
 ) -> dict[str, Any]:
     """Handler for ``olmoearth_review_set_from_result``."""
     result_id = str(args["result_id"])
-    grid = max(
-        2, min(FROM_RESULT_MAX_GRID, int(args.get("grid", FROM_RESULT_DEFAULT_GRID)))
-    )
+    grid, grid_requested = result_grid(args.get("grid"))
     budgets = _budgets(args.get("budgets"))
     threshold = float(args["threshold"]) if args.get("threshold") is not None else None
     error_rate = (
@@ -606,6 +671,7 @@ async def _review_set_from_result(
         grid=grid,
         property_name=args.get("property_name"),
         threshold=threshold,
+        grid_requested=grid_requested,
     )
     if isinstance(sampled, dict):
         return sampled
@@ -874,7 +940,10 @@ def build_review_set_tools() -> list[RegisteredTool]:
                         "grid": {
                             "type": "integer",
                             "default": FROM_RESULT_DEFAULT_GRID,
-                            "description": f"N*N windows, 2-{FROM_RESULT_MAX_GRID}.",
+                            "minimum": FROM_RESULT_MIN_GRID,
+                            "maximum": FROM_RESULT_MAX_GRID,
+                            "description": f"N*N windows, {FROM_RESULT_GRID_RANGE}; "
+                            "a larger N is capped (the result says so).",
                         },
                         "budgets": dict(
                             _SERIES,
