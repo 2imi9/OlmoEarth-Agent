@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from olmoearth_agent.analysis.review_set import EVIDENCE
 from olmoearth_agent.analysis.uncertainty import area_of_applicability
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
@@ -45,11 +46,19 @@ async def _area_of_applicability(
 ) -> dict[str, Any]:
     """Handler for ``olmoearth_area_of_applicability``."""
     weights = args.get("weights")
-    return area_of_applicability(
+    out = area_of_applicability(
         [[float(x) for x in v] for v in args["train_features"]],
         [[float(x) for x in v] for v in args["new_features"]],
         weights=[float(w) for w in weights] if weights is not None else None,
     )
+    # The measured figure lives here, where it applies, not in the description
+    # every model call carries (a figure there was quoted as a finding).
+    out["error_ranking"] = {
+        "use_instead": "olmoearth_review_set (the model's own margin) to order "
+        "windows by how likely each one is wrong; this flag is the OOD question",
+        "evidence": EVIDENCE["embedding-dissimilarity-rejected"],
+    }
+    return out
 
 
 def build_uncertainty_tools() -> list[RegisteredTool]:
@@ -70,9 +79,8 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
                     "training set. Optional per-feature importance weights. "
                     "This is the OOD question, NOT the error-ranking "
                     "question: to order windows by how likely each one is "
-                    "WRONG, use olmoearth_review_set (measured: distance to "
-                    "the training features has no scale-free advantage over "
-                    "the model's own margin, 13/27 scenes, sign p=1.00). Use "
+                    "WRONG, use olmoearth_review_set (measured upstream: the "
+                    "result's 'error_ranking' gives the evidence). Use "
                     "both together: trust a prediction most when it is inside "
                     "the AOA and high-margin. "
                     "Read-only; summary stats only."

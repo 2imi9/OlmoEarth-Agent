@@ -56,3 +56,17 @@ async def test_invalid_input_surfaces_to_model_via_dispatch() -> None:
     )
     assert result["ok"] is False
     assert "2" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_the_error_ranking_evidence_is_in_the_output_not_the_description() -> (
+    None
+):
+    """A measured figure goes where it applies: the tool's output, which grounds it."""
+    tool = build_uncertainty_tools()[0]
+    assert "13/27" not in tool.spec.description
+    result = await tool.handler(
+        {"train_features": _TRAIN, "new_features": [[0.5, 0.5]]}, _ctx()
+    )
+    assert "13/27 scenes" in result["error_ranking"]["evidence"]
+    assert "olmoearth_review_set" in result["error_ranking"]["use_instead"]
