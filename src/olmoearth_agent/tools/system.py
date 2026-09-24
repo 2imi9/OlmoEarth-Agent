@@ -21,7 +21,7 @@ Studio/LLM keys are removed from ``os.environ`` before the snippet sees it), so
 executed code cannot trivially read and exfiltrate them. This is
 defence-in-depth informed by NemoClaw's sandbox-hardening posture, NOT a
 sandbox: the subprocess is still NOT network-isolated and inherits the rest of
-the environment. See ``docs/nemoclaw-assessment.md``.
+the environment. See ``docs/archive/nemoclaw-assessment.md``.
 """
 
 from __future__ import annotations

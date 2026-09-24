@@ -406,7 +406,7 @@ The original spec follows for reference:
 
 Implementation order tracks `PLAN.md` §6. First skill to ship was **#4 `olmoearth-predict`** (the foundation that #5, #6, #8, #9 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 18 (prioritized) are researched in [`docs/eo-skills-shortlist.md`](docs/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
+Candidate skills beyond the current 18 (prioritized) are researched in [`docs/archive/eo-skills-shortlist.md`](docs/archive/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
 
 ## Adding a skill
 
