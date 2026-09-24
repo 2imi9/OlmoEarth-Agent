@@ -721,9 +721,10 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "the best no-model control on all 24 tasks of Ai2's "
                     "embedding suite; the result's 'evidence' and 'caveats' "
                     "blocks give the rest. Ranks relative suspicion, not a "
-                    "calibrated error probability; not OOD detection (pair with "
-                    "olmoearth_area_of_applicability). Window indices and ids "
-                    "only, never coordinates."
+                    "calibrated error probability; not OOD detection (that is "
+                    "olmoearth_area_of_applicability, skill "
+                    "olmoearth-uncertainty). Window indices and ids only, never "
+                    "coordinates."
                 ),
                 parameters={
                     "type": "object",

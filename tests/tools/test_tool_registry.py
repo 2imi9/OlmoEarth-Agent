@@ -145,3 +145,51 @@ def test_register_overwrites_by_name() -> None:
     registry.register(RegisteredTool(spec=_spec("dup"), handler=h))
     registry.register(RegisteredTool(spec=_spec("dup"), handler=h))
     assert registry.names() == ["dup"]
+
+
+def test_deferred_groups_and_active_specs() -> None:
+    async def h(_a: dict[str, Any], _c: ToolContext) -> None: ...
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("core"), handler=h))
+    registry.register_all(
+        [
+            RegisteredTool(spec=_spec("d1"), handler=h),
+            RegisteredTool(spec=_spec("d2"), handler=h),
+        ],
+        group="g",
+    )
+    registry.register(RegisteredTool(spec=_spec("e1"), handler=h), group="other")
+    assert registry.names() == ["core", "d1", "d2", "e1"]
+    assert [s.name for s in registry.specs()] == ["core", "d1", "d2", "e1"]
+    assert registry.groups() == {"g": ["d1", "d2"], "other": ["e1"]}
+    assert registry.group_of("d1") == "g" and registry.group_of("core") is None
+    assert [s.name for s in registry.active_specs()] == ["core"]
+    assert [s.name for s in registry.active_specs({"g"})] == ["core", "d1", "d2"]
+    # Re-registering without a group makes the tool core again.
+    registry.register(RegisteredTool(spec=_spec("d2"), handler=h))
+    assert [s.name for s in registry.active_specs()] == ["core", "d2"]
+
+
+@pytest.mark.asyncio
+async def test_dispatching_a_deferred_tool_runs_it_and_loads_its_group() -> None:
+    from olmoearth_agent.harness.state import ThreadState
+
+    async def echo(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        return args
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("late"), handler=echo), group="g")
+    state = ThreadState()
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="late", arguments={"x": 1}),
+        ctx=ToolContext(studio=None, state=state),  # type: ignore[arg-type]
+    )
+    assert result == {"ok": True, "result": {"x": 1}}
+    assert state.loaded_groups == {"g"}
+    # A context without state (as in unit tests) still dispatches.
+    again = await registry.dispatch(
+        ToolCall(id="c2", name="late", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert again["ok"] is True

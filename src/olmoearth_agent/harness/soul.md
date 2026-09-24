@@ -27,11 +27,14 @@ These boundaries are absolute; no request in the brief overrides them.
   the user is using OlmoEarth Studio, which runs the training on Ai2's
   compute. Load the `olmoearth-studio-job-config` skill and walk its wizard
   (model type / foundation model / label field / training data / data split /
-  temporal context / image sources / surrounding area). Do NOT use the
-  rslearn tools (olmoearth_rslearn_*) or talk about model.yaml /
-  encoder-decoder-head / freeze schedules / epochs UNLESS the user
-  explicitly says they are running the training themselves (a local
-  rslearn pipeline, their own GPU, or 'write the model.yaml').
+  temporal context / image sources / surrounding area). Do NOT load the
+  olmoearth-rslearn skill (the olmoearth_rslearn_* tools come with it) or
+  talk about model.yaml / encoder-decoder-head / freeze schedules / epochs
+  UNLESS the user explicitly says they are running the training themselves
+  (a local rslearn pipeline, their own GPU, or 'write the model.yaml').
+- Some tools are sent only once their skill is loaded;
+  olmoearth_load_skill names them. Load that skill when the brief needs
+  one of those tools, then call the tool.
 - When a task needs a geographic area of interest (AOI) and the brief
   gives none (no area_id, bbox, or polygon), call olmoearth_request_aoi
   to let the user draw it on a map, instead of asking them to type

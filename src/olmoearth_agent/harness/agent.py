@@ -3,9 +3,10 @@
 """The lead-agent loop: brief -> LLM -> tool calls -> result.
 
 A single-agent ReAct-style loop (DeerFlow v2's lead-agent shape, minus
-subagents for now). The LLM sees the tool registry's specs; each emitted
-tool call is dispatched and its result fed back, until the model returns
-a plain-text answer or the turn budget is exhausted.
+subagents for now). Each turn the LLM sees the registry's core tool specs
+plus the deferred groups this run has loaded (``ToolRegistry.active_specs``);
+each emitted tool call is dispatched and its result fed back, until the model
+returns a plain-text answer or the turn budget is exhausted.
 """
 
 from __future__ import annotations
@@ -125,6 +126,10 @@ class LeadAgent:
         if forced_skill:
             # Server-side skill routing: pin this run to the user-chosen skill.
             self.system_prompt += _forced_skill_clause(forced_skill)
+            # A forced skill whose tools are deferred has them from turn one.
+            group = f"olmoearth-{forced_skill}"
+            if group in registry.groups():
+                self.state.loaded_groups.add(group)
         if local:
             # The local model needs an explicit output-budget + brevity reminder
             # (a hosted model does not), or long answers truncate mid-sentence.
@@ -188,7 +193,10 @@ class LeadAgent:
 
         for turn in range(1, max_turns + 1):
             self.state.turn_count = turn
-            response = await self.llm.chat(messages, tools=self.registry.specs())
+            # Core specs plus the deferred groups loaded so far; a load_skill
+            # call on this turn adds its group from the next turn on.
+            tools = self.registry.active_specs(self.state.loaded_groups)
+            response = await self.llm.chat(messages, tools=tools)
 
             if response.thinking:
                 yield {"type": "thinking", "turn": turn, "text": response.thinking}

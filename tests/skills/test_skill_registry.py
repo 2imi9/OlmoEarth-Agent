@@ -104,3 +104,60 @@ def test_merged_and_removed_tools_are_gone() -> None:
     for skill in SKILLS:
         for gone in ("olmoearth_compare_group", "olmoearth_trace_shifts"):
             assert gone not in skill.tools, f"#{skill.number} lists {gone}"
+
+
+def test_deferred_groups_are_catalog_skills() -> None:
+    """A group is loaded by its skill's name (load_skill, or the UI's forced slug)."""
+    registry = build_default_registry()
+    by_name = {s.name: s for s in SKILLS}
+    for group, tools in registry.groups().items():
+        assert group in by_name, group
+        for tool in tools:
+            assert tool in by_name[group].tools, f"{group} does not list {tool}"
+
+
+def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools() -> None:
+    registry = build_default_registry()
+    core = {s.name for s in registry.active_specs()}
+    for tool in (
+        "olmoearth_load_context",
+        "olmoearth_search_predictions",
+        "olmoearth_submit_prediction",
+        "olmoearth_get_prediction",
+        "olmoearth_fetch_results",
+        "olmoearth_pixel_value",
+        "olmoearth_compare_results",
+        "olmoearth_compare_review",
+        "olmoearth_review_set",
+        "olmoearth_review_set_from_result",
+        "olmoearth_plan_label_sample",
+        "olmoearth_estimate_map_error",
+        "olmoearth_certify_zone",
+        "olmoearth_classification_metrics",
+        "olmoearth_load_skill",
+    ):
+        assert tool in core, tool
+    for deferred in (
+        "olmoearth_automate",
+        "olmoearth_rslearn_recommend",
+        "olmoearth_rslearn_validate",
+        "olmoearth_rslearn_compose",
+        "olmoearth_rslearn_diagnose",
+        "olmoearth_cloud_mask_audit",
+        "olmoearth_similarity_search",
+        "olmoearth_area_of_applicability",
+    ):
+        assert deferred not in core, deferred
+
+
+def test_a_default_turn_carries_about_half_the_spec_tokens() -> None:
+    """Measured as the audit did: len(JSON of the specs) / 4.
+
+    13,706 tokens per turn before the merge and the deferred groups; a
+    default turn now sends the core set only.
+    """
+    import json
+    from dataclasses import asdict
+
+    specs = build_default_registry().active_specs()
+    assert len(json.dumps([asdict(s) for s in specs])) / 4 < 8_000

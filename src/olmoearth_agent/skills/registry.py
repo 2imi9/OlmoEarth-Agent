@@ -321,28 +321,35 @@ SKILLS: list[SkillSpec] = [
 ]
 
 
+#: The one #7 tool sent on every turn; the spatial-CV tools are deferred.
+_EVALUATE_CORE = frozenset({"olmoearth_classification_metrics"})
+
+
 def skills_by_status(status: SkillStatus) -> list[SkillSpec]:
     """All catalog entries with the given build status."""
     return [s for s in SKILLS if s.status == status]
 
 
 def build_default_registry() -> ToolRegistry:
-    """Assemble a :class:`ToolRegistry` from the implemented skill bundles.
+    """Assemble a :class:`ToolRegistry` from every implemented skill bundle.
 
-    Today that is only the foundational Studio tools. As skills land,
-    add their ``build_*_tools()`` bundle here (and flip the catalog
-    ``status`` to ``"implemented"``).
+    Core bundles are sent to the LLM on every turn. Deferred bundles are
+    registered under their skill's name (``group=``) and sent only once that
+    skill is loaded (``olmoearth_load_skill``) or forced from the web UI; see
+    :mod:`olmoearth_agent.tools.registry`. A new skill adds its
+    ``build_*_tools()`` bundle here and flips its catalog ``status``.
     """
     registry = ToolRegistry()
+    # --- Core: sent on every turn. ---
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
     # How Studio results differ (#4, #5 series, #9 ensemble): one tool.
     registry.register_all(build_compare_tools())
-    registry.register_all(build_baseline_compare_tools())
     registry.register_all(build_change_detect_tools())
-    registry.register_all(build_cloud_mask_audit_tools())
-    registry.register_all(build_evaluate_tools())
-    registry.register_all(build_uncertainty_tools())
+    # Accuracy against labels stays core (the comparison and review tools
+    # route to it); #7's spatial-CV tools are deferred below.
+    evaluate = build_evaluate_tools()
+    registry.register_all(t for t in evaluate if t.spec.name in _EVALUATE_CORE)
     # Label-free error ranking (skill #18); complements #9's ensemble/OOD
     # signals, which are what remain reachable when Studio yields only
     # hard classes.
@@ -350,16 +357,36 @@ def build_default_registry() -> ToolRegistry:
     # How wrong is the map (skill #18, second half): design-based estimation
     # through the optional inferencex extra; the tools say so when it is absent.
     registry.register_all(build_estimation_tools())
-    registry.register_all(build_similarity_tools())
     registry.register_all(build_narrative_tools())
-    registry.register_all(build_negative_sampler_tools())
     registry.register_all(build_litsearch_tools())
-    registry.register_all(build_automate_tools())
-    registry.register_all(build_rslearn_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())
-    registry.register_all(build_skill_tools())
+    # --- Deferred: sent once their skill is loaded. ---
+    # Self-run training (#3, #17): only when the user trains the model
+    # themselves; Studio trains on Ai2's compute (soul.md).
+    registry.register_all(build_automate_tools(), group="olmoearth-embeddings")
+    registry.register_all(build_rslearn_tools(), group="olmoearth-rslearn")
+    # Caller-array tools (#6, #7 spatial CV, #8, #9 AOA, #10): their inputs
+    # are arrays the user supplies inline, which no agent tool produces.
+    registry.register_all(
+        build_baseline_compare_tools(), group="olmoearth-baseline-compare"
+    )
+    registry.register_all(
+        (t for t in evaluate if t.spec.name not in _EVALUATE_CORE),
+        group="olmoearth-evaluate",
+    )
+    registry.register_all(build_similarity_tools(), group="olmoearth-similarity")
+    registry.register_all(build_uncertainty_tools(), group="olmoearth-uncertainty")
+    registry.register_all(
+        build_cloud_mask_audit_tools(), group="olmoearth-cloud-mask-audit"
+    )
+    # Label preparation from the user's own presence-only file (#16).
+    registry.register_all(
+        build_negative_sampler_tools(), group="olmoearth-negative-sampler"
+    )
+    # Skill loading, after the deferred bundles so its description lists them.
+    registry.register_all(build_skill_tools(registry=registry))
     # Cross-thread preference memory (remember/forget); core, not a skill.
     registry.register_all(build_memory_tools())
     # Opt-in code execution (OLMOEARTH_RUN_PYTHON); an empty bundle otherwise.

@@ -285,6 +285,34 @@ def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["forced_skill"] == ""
 
 
+def test_forced_skill_sends_its_deferred_tools_from_turn_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The web UI's "/" menu still reaches deferred tools (e.g. rslearn)."""
+    offered: dict[str, set[str]] = {}
+
+    class _Probe(serve.LeadAgent):
+        def __init__(self, *a: Any, **kw: Any) -> None:
+            super().__init__(*a, **kw)
+            specs = self.registry.active_specs(self.state.loaded_groups)
+            offered[kw.get("forced_skill") or ""] = {s.name for s in specs}
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            yield {"type": "final", "turn": 1, "content": "ok"}
+
+    monkeypatch.setattr(serve, "LeadAgent", _Probe)
+    with TestClient(serve.app) as client:
+        for slug in ("rslearn", ""):
+            client.post(
+                "/api/run",
+                json={"brief": "set up training", "forced_skill": slug},
+                headers={"X-Olmoearth-Key": "k"},
+            )
+    assert "olmoearth_rslearn_compose" in offered["rslearn"]
+    assert "olmoearth_rslearn_compose" not in offered[""]
+    assert "olmoearth_compare_results" in offered[""]
+
+
 def test_skills_endpoint_exposes_per_skill_stages() -> None:
     with TestClient(serve.app) as client:
         resp = client.get("/api/skills")

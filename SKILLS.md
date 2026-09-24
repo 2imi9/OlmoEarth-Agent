@@ -45,6 +45,8 @@ Skills #4-#18 are implemented in this repo (see `CHANGELOG.md`).
 | 17 | Configure | [`olmoearth-rslearn`](#17-olmoearth-rslearn) | Operate rslearn (the engine under OlmoEarth): vendored SKILL.md + four torch-free tools (recommend / validate / compose / diagnose). |
 | 18 | Analyze | [`olmoearth-review-set`](#18-olmoearth-review-set) | Label-free review set from the model's own top-1-minus-top-2 margin: which windows to check first at a budget (caller scores, or a Studio result's `[0, 1]` score), boundary-first ordering, the attainable-ceiling arithmetic, a grader for any candidate audit rule; then how wrong the map is, from a labelled sample drawn by a design (optional `inferencex` extra). |
 
+**Tools sent on demand.** To keep each turn's tool list short, the tools of #3 (`olmoearth_automate`), #6, #7's two spatial-CV tools, #8, #9's Area of Applicability, #10, #16 and #17 (the four rslearn tools) are sent to the model only after it loads that skill with `olmoearth_load_skill`, or when the web UI's "/" menu forces the skill. They answer questions a Studio run does not produce the inputs for (self-run training, or arrays and files the user supplies).
+
 ### Example briefs
 
 A realistic prompt that routes to each skill - what a user would actually type:
@@ -228,7 +230,7 @@ One capability, two complementary engines.
 **Why.** Softmax confidence is not OOD detection. Meyer & Pebesma's [Area of Applicability framework](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13650) (R [`CAST`](https://cran.r-project.org/package=CAST) package, on CRAN since 2018) is implemented across multiple peer-reviewed methods papers but absent from every EO foundation model platform. AlphaEarth's documented transfer failure under domain shift is exactly what AOA would have flagged.
 
 **Tools composed.**
-- `olmoearth_area_of_applicability` (the AOA / OOD flag over caller-supplied feature vectors) and `olmoearth_compare_results` with `mode="ensemble"` (samples >= 2 results via `olmoearth.pixel_value`, `PLAN.md` §1, into an ensemble-disagreement confidence map, each cell named by grid `(row, col)`).
+- `olmoearth_area_of_applicability` (the AOA / OOD flag over caller-supplied feature vectors; sent to the model once this skill is loaded) and `olmoearth_compare_results` with `mode="ensemble"` (samples >= 2 results via `olmoearth.pixel_value`, `PLAN.md` §1, into an ensemble-disagreement confidence map, each cell named by grid `(row, col)`).
 - Logic in `analysis/uncertainty.py`: `area_of_applicability` + `ood_flag` (AOA), and `prediction_confidence` (the pure dispersion / entropy statistics).
 
 ---

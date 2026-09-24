@@ -4,7 +4,9 @@
 
 ``olmoearth_area_of_applicability`` is the Meyer-Pebesma Area-of-Applicability
 OOD flag over caller-supplied feature vectors; it returns summary statistics
-only (rule §3.1).
+only (rule §3.1). No agent tool produces those vectors, so the bundle is
+deferred: it is sent once the ``olmoearth-uncertainty`` skill is loaded
+(``olmoearth_load_skill``) or forced from the web UI.
 
 The skill's other half, ensemble disagreement across two or more distinct
 Studio results, is ``olmoearth_compare_results`` with ``mode='ensemble'``

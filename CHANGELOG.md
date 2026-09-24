@@ -78,6 +78,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   statistics. Breaking: `result_id_a`/`result_id_b` inputs are now
   `result_ids`; hotspots are grid `(row, col)` and index, and
   `shared_extent_bbox` is gone (rule 3.1).
+- **Deferred tool groups.** A turn sends the core tools only (about 7,400
+  spec tokens instead of 13,700). The self-run training tools, the
+  caller-array tools and the negative sampler are sent once their skill is
+  loaded with `olmoearth_load_skill`, or forced from the web UI.
 - `olmoearth_load_context` pages projects (`limit`, `offset`, `total`) and
   replaces `olmoearth_search_projects`; `olmoearth_litsearch` takes an
   `identifier` and replaces `olmoearth_litsearch_resolve`;
