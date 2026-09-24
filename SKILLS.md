@@ -8,7 +8,7 @@ Detailed spec for the 18 skills the agent ships with. Each skill is an [agentski
 
 ## Existing implementations (upstream)
 
-Three skills already exist in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17). The agent vendors them rather than re-implementing. The three vendored `SKILL.md` packages map one-to-one to catalog skills #1-#3.
+Three skills came from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17), and their `SKILL.md` packages map one-to-one to catalog skills #1-#3. That repository is now frozen: the maintained copies, with #17's `olmoearth-rslearn`, ship inside the Python package under [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) (moved at commit `6839f1a`; origin, licence and changes since the move in its `README.md`). The links below are to the frozen originals.
 
 | Upstream | Catalog mapping |
 |---|---|
@@ -98,7 +98,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ### 2. `olmoearth-studio-job-config`
 
-**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config). Vendor as-is.
+**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config), moved as-is into `src/olmoearth_agent/skills/packages/`.
 
 **In:** task description.
 **Out:** Studio "new model" wizard answers.
@@ -411,7 +411,7 @@ Candidate skills beyond the current 18 (prioritized) are researched in [`docs/ar
 ## Adding a skill
 
 A new skill is one PR with:
-1. A folder under `skills/<skill-name>/` containing `SKILL.md` + `skill-card.md` + `scripts/` + optional `references/`, `assets/`. For skills already in [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills), vendor the folder verbatim (git submodule or copy + provenance note in `skill-card.md`) rather than re-implementing.
+1. For an instruction skill, a folder under `src/olmoearth_agent/skills/packages/<skill-name>/` containing `SKILL.md` + optional `scripts/`, `references/`, `assets/`; it ships in the wheel and `SkillLoader` discovers it (`tests/skills/test_packaging.py`).
 2. Any new global tools added to `PLAN.md` §1.
 3. A `tests/skills/test_<skill_name>.py` exercising the skill end-to-end against the live Studio API (mark with `@pytest.mark.integration`).
 4. An entry in this `SKILLS.md` matching the per-skill template above.
@@ -421,6 +421,4 @@ See [`CONTRIBUTING.md` §3](CONTRIBUTING.md#3-branch-and-pr-workflow) for branch
 
 ## Vendoring policy
 
-[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) is canonical for skills #1-#3; agent vendors at a pinned commit. Decide in the first skill PR:
-- **A. Git submodule**: track an upstream SHA; cleanest provenance, harder for casual contributors.
-- **B. Copy + provenance in `skill-card.md`**: simpler, drift risk if the bump is forgotten.
+Settled: the packages live in this repository. Skills #1-#3 were first vendored from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) as a git submodule (`vendor/olmoearth-skills`); the four `SKILL.md` packages (#1-#3 and #17) were then moved at commit `6839f1a` into `src/olmoearth_agent/skills/packages/`, and the submodule was removed. The upstream repository is frozen, so edits land here; the packages keep their MIT licence, and their `README.md` records the changes since the move.

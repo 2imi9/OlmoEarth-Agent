@@ -2,9 +2,10 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """The skill-loading tool: ``olmoearth_load_skill``.
 
-Two kinds of skill load through it. An instruction skill (a vendored
-``SKILL.md`` package, #1-#3 and #17) returns its full steps; the index of
-those skills is already in the system prompt, so there is no listing tool.
+Two kinds of skill load through it. An instruction skill (a ``SKILL.md``
+package, #1-#3 and #17, in ``skills/packages/``) returns its full steps; the
+index of those skills is already in the system prompt, so there is no listing
+tool.
 A skill whose tools are deferred (registered with a ``group``; see
 :mod:`olmoearth_agent.tools.registry`) has its group loaded for the rest of
 the run, so those tools' specs are sent from the next turn on. A skill can be

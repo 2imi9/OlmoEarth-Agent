@@ -34,7 +34,7 @@ def test_foundational_entry_is_implemented() -> None:
 
 
 def test_vendored_skills_match_the_four_packages() -> None:
-    # Four vendored SKILL.md packages = four dirs under vendor/.../skills/.
+    # Four SKILL.md packages = four dirs under src/olmoearth_agent/skills/packages/.
     vendored = {s.name for s in skills_by_status("vendored")}
     assert vendored == {
         "olmoearth-data-prep",
