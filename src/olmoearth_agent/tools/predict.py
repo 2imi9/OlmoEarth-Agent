@@ -111,7 +111,8 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         "comparable": True,
         "result_id_a": a_id,
         "result_id_b": b_id,
-        "property_name": prop or (first.get("bands", [{}])[0].get("property_name") if first else None),
+        "property_name": prop
+        or (first.get("bands", [{}])[0].get("property_name") if first else None),
         "kind": kind,
         "value_type": value_type,
         "narration": narration,
@@ -174,14 +175,11 @@ async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
                 return None
 
     sampled = [
-        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points])
-        for rid in ids
+        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points]) for rid in ids
     ]
     first = next((r for recs in sampled for r in recs if r), None)
     categorical = bool(first and _is_categorical(first, prop))
-    series = [
-        [(_band_value(r, prop) if r else None) for r in recs] for recs in sampled
-    ]
+    series = [[(_band_value(r, prop) if r else None) for r in recs] for recs in sampled]
     group = (
         compare_group_categorical(series)
         if categorical

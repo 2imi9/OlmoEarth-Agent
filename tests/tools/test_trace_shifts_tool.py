@@ -24,7 +24,11 @@ BASE = "http://mock-studio/api/v1"
 _OFFSETS = {"ra": 0.0, "rb": 0.1, "rc": 0.2}
 #: result -> prediction -> start_time; input order is deliberately NOT
 #: chronological so the test proves the tool re-orders by date.
-_PREDICTIONS = {"ra": ("pa", "2026-01-01T00:00:00Z"), "rb": ("pb", "2026-02-01T00:00:00Z"), "rc": ("pc", "2026-03-01T00:00:00Z")}
+_PREDICTIONS = {
+    "ra": ("pa", "2026-01-01T00:00:00Z"),
+    "rb": ("pb", "2026-02-01T00:00:00Z"),
+    "rc": ("pc", "2026-03-01T00:00:00Z"),
+}
 
 
 def _tool() -> RegisteredTool:
@@ -41,9 +45,7 @@ def _result_body(rid: str) -> dict[str, Any]:
                 "result_metadata": {
                     "geometry": {
                         "type": "Polygon",
-                        "coordinates": [
-                            [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
-                        ],
+                        "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]],
                     }
                 },
             }
@@ -162,9 +164,7 @@ async def test_trace_falls_back_to_given_order_without_dates(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler(
-            {"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx
-        )
+        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx)
     assert out["comparable"] is True
     assert out["ordering"] == "given-order"
     assert out["result_ids"] == ["rb", "rc", "ra"]  # untouched input order
@@ -178,9 +178,7 @@ async def test_trace_validates_result_count() -> None:
     too_few = await _tool().handler({"result_ids": ["ra", "ra", "rb"]}, ctx)
     assert too_few["comparable"] is False
     assert "olmoearth_compare_results" in too_few["reason"]
-    too_many = await _tool().handler(
-        {"result_ids": [f"r{i}" for i in range(9)]}, ctx
-    )
+    too_many = await _tool().handler({"result_ids": [f"r{i}" for i in range(9)]}, ctx)
     assert too_many["comparable"] is False
     assert "too many results" in too_many["reason"]
 

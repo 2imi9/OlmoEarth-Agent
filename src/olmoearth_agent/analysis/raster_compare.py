@@ -40,9 +40,7 @@ def result_bbox(record: dict[str, Any]) -> list[float] | None:
         return None
 
 
-def intersect_bbox(
-    a: list[float] | None, b: list[float] | None
-) -> list[float] | None:
+def intersect_bbox(a: list[float] | None, b: list[float] | None) -> list[float] | None:
     """Intersection of two ``[min_lon, min_lat, max_lon, max_lat]`` boxes.
 
     Returns ``None`` if either is missing or they do not overlap (so the
@@ -178,11 +176,7 @@ def _pair_entries(
 
 def _most_divergent_pair(pairwise: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The pair with the lowest agreement fraction (ties: fewer samples last)."""
-    scored = [
-        p
-        for p in pairwise
-        if p["stats"].get("agreement_fraction") is not None
-    ]
+    scored = [p for p in pairwise if p["stats"].get("agreement_fraction") is not None]
     if not scored:
         return None
     worst = min(
@@ -402,7 +396,5 @@ def compare_narration(
                 if agree_pct is not None
                 else "no overlapping valid cells to compare"
             )
-        framing = (
-            "model-vs-model agreement (no ground truth), not accuracy"
-        )
+        framing = "model-vs-model agreement (no ground truth), not accuracy"
     return {"kind": kind, "labels": labels, "headline": headline, "framing": framing}

@@ -174,20 +174,14 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
                 return None
 
     sampled: list[list[Any]] = [  # sequential across results, concurrent within one
-        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points])
-        for rid in ids
+        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points]) for rid in ids
     ]
 
     # First USABLE sample (a record can be truthy yet carry empty/None bands,
     # e.g. a nodata pixel) — it decides categorical-vs-regression and names
     # the traced band, so it must actually have a value.
     first = next(
-        (
-            r
-            for row in sampled
-            for r in row
-            if r and _band_value(r, prop) is not None
-        ),
+        (r for row in sampled for r in row if r and _band_value(r, prop) is not None),
         None,
     )
     if first is None:
@@ -200,9 +194,7 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         [(_band_value(r, prop) if r else None) for r in row] for row in sampled
     ]
     if not categorical and any(
-        v is not None and not isinstance(v, (int, float))
-        for row in series
-        for v in row
+        v is not None and not isinstance(v, (int, float)) for row in series for v in row
     ):
         # Results disagree on band type (some numeric raw_value, some class
         # labels): a clean refusal, not a float() traceback after the whole
@@ -253,8 +245,7 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         "dates": dates,
         "ordering": ordering,
         "model_check": model_check,
-        "property_name": prop
-        or (_select_band(first, prop) or {}).get("property_name"),
+        "property_name": prop or (_select_band(first, prop) or {}).get("property_name"),
         "value_type": value_type,
         "narration": narration,
         "grid": f"{grid}x{grid}",

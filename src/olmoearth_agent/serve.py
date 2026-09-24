@@ -113,8 +113,8 @@ def _key_hash(key: str) -> str:
 #: trip. Keyed by capability + key-hash + ids; TTL keeps it fresh enough.
 _READ_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 _READ_CACHE_MAX = 512
-_READ_TTL_LONG = 300.0   # projects / areas / extent: rarely change in a session
-_READ_TTL_SHORT = 30.0   # predictions / results: change as runs progress
+_READ_TTL_LONG = 300.0  # projects / areas / extent: rarely change in a session
+_READ_TTL_SHORT = 30.0  # predictions / results: change as runs progress
 
 
 def _read_cache_get(k: str) -> dict[str, Any] | None:
@@ -183,7 +183,7 @@ async def _pooled_studio(key: str) -> StudioClient:
                 _, evicted = _STUDIO_POOL.popitem(last=False)
                 try:
                     await evicted.aclose()
-                except Exception:  # noqa: BLE001, S110 - best-effort close of an evicted client
+                except Exception:  # noqa: BLE001, S110 - best-effort close
                     pass
         _STUDIO_POOL.move_to_end(h)
     return client
@@ -608,7 +608,10 @@ async def api_run(request: Request) -> StreamingResponse:
     # ignored (not rejected) so a stray slug never breaks a run -- and a
     # well-formed but unknown slug is never injected into the prompt directive.
     forced_skill = str(body.get("forced_skill", "")).strip().lower()
-    if not _SKILL_SLUG_RE.match(forced_skill) or forced_skill not in _VALID_FORCED_SKILLS:
+    if (
+        not _SKILL_SLUG_RE.match(forced_skill)
+        or forced_skill not in _VALID_FORCED_SKILLS
+    ):
         forced_skill = ""
 
     llm = _llm_for_request(request)
@@ -955,7 +958,9 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     bands = rec.get("bands") or []
     prop = q.get("property")
-    band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
+    band = next(
+        (b for b in bands if b.get("property_name") == prop), bands[0] if bands else {}
+    )
     cls = band.get("classification")
     out = {
         "ok": True,

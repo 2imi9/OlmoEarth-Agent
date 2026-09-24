@@ -38,9 +38,7 @@ async def test_search_predictions_tool(httpx_mock: HTTPXMock) -> None:
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        result = await _tool("olmoearth_search_predictions").handler(
-            {"limit": 5}, ctx
-        )
+        result = await _tool("olmoearth_search_predictions").handler({"limit": 5}, ctx)
     assert result["total"] == 1
     assert result["predictions"][0]["model_id"] == "m1"
 
@@ -94,8 +92,13 @@ async def test_fetch_results_filters_by_prediction_id(
         method="POST",
         json={
             "records": [
-                {"id": "r1", "prediction_id": "pX", "tile_urls": ["t1"],
-                 "property_names": ["score"], "file_format": "png"},
+                {
+                    "id": "r1",
+                    "prediction_id": "pX",
+                    "tile_urls": ["t1"],
+                    "property_names": ["score"],
+                    "file_format": "png",
+                },
                 {"id": "r2", "prediction_id": "pOTHER", "tile_urls": ["t2"]},
             ],
             "meta": {"total": 2},
@@ -119,9 +122,14 @@ async def test_get_prediction_result_tool(httpx_mock: HTTPXMock) -> None:
         url=f"{BASE}/prediction-results/r9",
         json={
             "records": [
-                {"id": "r9", "prediction_id": "p1", "tile_urls": ["tpl"],
-                 "property_names": ["karst_score"], "file_format": "png",
-                 "result_metadata": {"foo": 1}}
+                {
+                    "id": "r9",
+                    "prediction_id": "p1",
+                    "tile_urls": ["tpl"],
+                    "property_names": ["karst_score"],
+                    "file_format": "png",
+                    "result_metadata": {"foo": 1},
+                }
             ]
         },
     )
@@ -180,10 +188,16 @@ async def test_pixel_value_categorical_and_property_select(
             "records": [
                 {
                     "bands": [
-                        {"property_name": "score", "raw_value": 0.1,
-                         "classification": None},
-                        {"property_name": "landcover", "raw_value": None,
-                         "classification": "forest"},
+                        {
+                            "property_name": "score",
+                            "raw_value": 0.1,
+                            "classification": None,
+                        },
+                        {
+                            "property_name": "landcover",
+                            "raw_value": None,
+                            "classification": "forest",
+                        },
                     ]
                 }
             ]
@@ -231,8 +245,15 @@ async def test_pixel_value_null_band_value_is_unavailable_with_reason(
         url=re.compile(r".*/prediction-results/r4/pixel-value\?.*"),
         json={
             "records": [
-                {"bands": [{"property_name": "score", "raw_value": None,
-                            "classification": None}]}
+                {
+                    "bands": [
+                        {
+                            "property_name": "score",
+                            "raw_value": None,
+                            "classification": None,
+                        }
+                    ]
+                }
             ]
         },
     )
@@ -257,9 +278,9 @@ async def test_live_search_predictions_have_model_ids() -> None:
     async with StudioClient.from_env() as studio:
         env = await studio.search_predictions(limit=5)
     assert env.total is not None and env.total >= 1
-    assert all(r.get("model_id") for r in env.records), (
-        "every prediction should expose a model_id for reuse"
-    )
+    assert all(
+        r.get("model_id") for r in env.records
+    ), "every prediction should expose a model_id for reuse"
 
 
 @pytest.mark.integration

@@ -298,7 +298,9 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
     other = [list(r) for r in _SCORES]
     other[1], other[2] = [0.1, 5.0], [0.1, 5.0]  # two windows flip class on side B
     tool = _tools()["olmoearth_compare_review"]
-    result = await tool.handler({"scores_a": _SCORES, "scores_b": other, "grid": [4, 4]}, _ctx())  # type: ignore[attr-defined]
+    result = await tool.handler(
+        {"scores_a": _SCORES, "scores_b": other, "grid": [4, 4]}, _ctx()
+    )  # type: ignore[attr-defined]
     assert result["n_differing"] == 2
     assert {d["window_index"] for d in result["differing"]} == {1, 2}
     assert result["which_side_is_right"] == "not resolvable without labels"
@@ -307,7 +309,9 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
 
 
 @pytest.mark.asyncio
-async def test_compare_review_reads_both_sides_from_files(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_compare_review_reads_both_sides_from_files(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
     (tmp_path / "a.json").write_text(json.dumps({"grid": [4, 4], "scores": _SCORES}))
     (tmp_path / "b.json").write_text(json.dumps({"grid": [4, 4], "scores": _SCORES}))
     monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
