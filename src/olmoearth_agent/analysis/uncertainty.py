@@ -247,7 +247,9 @@ def _regression_point(xs: Sequence[float]) -> dict[str, Any]:
     """
     m = len(xs)
     mu = mean(xs)
-    sigma = (sum((x - mu) ** 2 for x in xs) / m) ** 0.5  # population std
+    # population std; typeshed types float ** float as Any (a negative base
+    # gives a complex), and this base is a mean of squares, never negative
+    sigma: float = (sum((x - mu) ** 2 for x in xs) / m) ** 0.5
     if abs(mu) < _CV_EPS:
         cv: float | None = None
         conf: float | None = 1.0 if sigma == 0 else None
