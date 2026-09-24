@@ -62,7 +62,7 @@ class ToolSpec:
 
 @dataclass
 class ChatResponse:
-    """Parsed completion from the vLLM server.
+    """Parsed completion from the OpenAI-compatible LLM server.
 
     ``thinking`` carries the ``<think>...</think>`` block when the model
     is in thinking mode (default for agent runs). It is informational

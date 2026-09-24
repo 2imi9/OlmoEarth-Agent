@@ -1,17 +1,20 @@
-# Serving Qwen3.6-35B-A3B (4-bit GGUF) with llama.cpp
+# Serving the agent's LLM
 
-The OlmoEarth Agent talks to an OpenAI-compatible LLM server. The
-supported stack is **llama.cpp serving the 4-bit GGUF**
-`unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS`. Canonical values live in
-[`docs/CANON.md`](CANON.md) (C1 model, C3 server, C4 quant, C5 env vars).
+The OlmoEarth Agent talks to an OpenAI-compatible LLM server. The local
+default, for a laptop, is **llama.cpp serving the 4-bit GGUF**
+`unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS`; most of this guide covers it. A
+second setup, tested on 24 September 2026, serves a larger model with vLLM on
+a GPU cluster: see [Serving on a GPU cluster with vLLM](#serving-on-a-gpu-cluster-with-vllm).
+Canonical values live in [`docs/CANON.md`](CANON.md) (C1 model, C3 server,
+C4 quant, C5 env vars, C11 cluster option).
 
 > **Prefer a hosted model?** You don't need to serve anything or download 17.7 GB - see [Cloud API (skip the local model)](#cloud-api-skip-the-local-model) below (CANON C10). The rest of this guide covers the local default.
 
-> Why GGUF and not NVFP4? The NVFP4 weights (~20 GB) don't leave KV-cache
-> headroom on a 24 GB card (verified: it stalls at memory profiling). The
-> 4-bit GGUF (~17.7 GB) fits with room to spare and was verified
-> end-to-end. NVFP4 + a larger-context server may return as a datacenter
-> option later, but it is not the path today (CANON C4/C7).
+> Why GGUF and not NVFP4 on the laptop? The Qwen3.6 NVFP4 weights (~20 GB)
+> don't leave KV-cache headroom on a 24 GB card (verified: it stalls at
+> memory profiling). The 4-bit GGUF (~17.7 GB) fits with room to spare and was
+> verified end-to-end (CANON C4/C7). On a data-centre GPU, NVFP4 under vLLM
+> works: see the cluster section.
 
 ## Cloud API (skip the local model)
 
@@ -118,9 +121,80 @@ Switch presets per call with `OlmoEarthLLM.chat(..., mode="instruct_general")`.
 The four presets in `src/olmoearth_agent/llm/presets.py` mirror the
 "Best Practices" table on the model card.
 
+## Serving on a GPU cluster with vLLM
+
+Tested on 24 September 2026: the agent ran end to end, through the web UI, on
+`nvidia/Qwen3.8-27B-NVFP4` served by vLLM on one GPU of a shared cluster, and
+reached from a laptop through an SSH tunnel. The laptop default above does not
+change; use this when a bigger model or a longer context is worth a cluster
+job.
+
+**Model and hardware.** `nvidia/Qwen3.8-27B-NVFP4` (NVFP4 weights of
+Qwen3.8-27B). It was served on an RTX PRO 6000 and, in an earlier session, on
+a B200 (both Blackwell). Start-up took about 3.5 minutes; a single stream
+with reasoning on ran at about 63 tokens/s, so a turn with tool calls can take
+tens of seconds.
+
+**vLLM.** On nodes with an NVIDIA driver but no CUDA toolkit, a pip-installed
+vLLM failed at start-up (FlashInfer compiles kernels and needs `nvcc`). The
+vLLM OpenAI container image, which bundles the toolkit, run with Apptainer
+(`apptainer exec --nv <image>.sif vllm serve ...`) worked. Inside the job:
+
+```bash
+export VLLM_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+vllm serve nvidia/Qwen3.8-27B-NVFP4 \
+  --port 8000 \
+  --max-model-len 65536 \
+  --kv-cache-dtype fp8_e4m3 \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder \
+  --reasoning-parser qwen3
+```
+
+| Flag | Why |
+|---|---|
+| `--enable-auto-tool-choice --tool-call-parser qwen3_coder` | Qwen3.8's chat template writes tool calls as `<function=...>` blocks (the qwen3_coder format, not `<tool_call>{json}`); the parser returns them as OpenAI `tool_calls` with object arguments, which the agent loop needs. |
+| `--reasoning-parser qwen3` | Returns the thinking block in a separate reasoning field, so the answer text the agent parses has no `<think>` block in it. |
+| `--kv-cache-dtype fp8_e4m3` | FP8 KV cache: about half the KV memory of 16-bit, so the long context fits beside the weights. |
+| `--max-model-len 65536` | Room for loaded `SKILL.md` bodies and many tool results in one conversation. |
+
+**Access token.** vLLM listens on all interfaces by default, so on a shared
+cluster anyone who can reach the node can reach the port. With
+`VLLM_API_KEY` set, vLLM answers `/v1` requests only with
+`Authorization: Bearer <token>`. Generate the token inside the job, keep it
+out of the repository, logs and chat, and pass it to the agent as
+`LLM_API_KEY`.
+
+**SSH tunnel.** Forward a laptop port to the compute node through the
+cluster's login host (placeholders in angle brackets):
+
+```bash
+ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
+  -L 8000:<compute-node>:8000 <user>@<login-host>
+```
+
+The login host closed the first tunnel mid-session; wrapping the command in a
+loop that reconnects (`while true; do ssh ...; sleep 5; done`) fixed it.
+
+**Point the agent at it.**
+
+```bash
+export LLM_ENDPOINT=http://localhost:8000/v1
+export LLM_MODEL=nvidia/Qwen3.8-27B-NVFP4
+export LLM_API_KEY=<the token from VLLM_API_KEY>
+curl -s -H "Authorization: Bearer $LLM_API_KEY" "$LLM_ENDPOINT/models"   # lists the model
+make bridge        # web UI on the default "local" backend; or: make agent Q="..."
+```
+
+Known gaps: the web UI's "local model is not up" hint probes `/v1/models`
+without the key, so with a key set it can show although the model answers.
+When the cluster job's time runs out the model disappears mid-conversation:
+plan a session inside the job's window, and release the GPU when done.
+
 ## References
 
 - GGUF model card: <https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF>
 - Base model: <https://huggingface.co/Qwen/Qwen3.6-35B-A3B>
 - llama.cpp server: <https://github.com/ggml-org/llama.cpp>
+- NVFP4 model card: <https://huggingface.co/nvidia/Qwen3.8-27B-NVFP4>
+- vLLM tool calling and reasoning parsers: <https://docs.vllm.ai/>
 - Canonical facts: [`docs/CANON.md`](CANON.md)

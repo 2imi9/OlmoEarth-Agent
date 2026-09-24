@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Async OpenAI-compatible client for the vLLM-served Qwen3.6 backbone.
+"""Async OpenAI-compatible client for the agent's LLM backbone.
+
+The local default is llama.cpp serving Qwen3.6 (4-bit GGUF); vLLM on a GPU
+cluster also works (``docs/serving.md``).
 
 The client is intentionally small: build a payload, dispatch via the
 ``openai`` SDK, parse the completion. Everything agent-specific
@@ -233,7 +236,7 @@ def _tool_to_openai(tool: ToolSpec) -> dict[str, Any]:
 
 
 class OlmoEarthLLM:
-    """Async client for the OlmoEarth Agent's vLLM-served LLM backbone.
+    """Async client for the OlmoEarth Agent's OpenAI-compatible LLM backbone.
 
     Pinned to ``unsloth/Qwen3.6-35B-A3B-GGUF`` defaults: ``thinking_general``
     sampling, ``preserve_thinking=True`` for multi-turn runs, and the
