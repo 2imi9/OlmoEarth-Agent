@@ -66,7 +66,7 @@ The full rules are in [`CONTRIBUTING.md`](CONTRIBUTING.md); the ones agents most
 - **DCO sign-off** names a human; AI tools do not certify the DCO ([§4](CONTRIBUTING.md#4-commit-conventions)).
 - **No AI co-author trailers in commits** ([§8](CONTRIBUTING.md#8-ai-assisted-contributions)).
 - **`pre-commit` and `uv run pytest` must pass** before review. There is no CI to run them for you.
-- **Operational rules in [`PLAN.md`](PLAN.md) §3 are not suggestions.** A change that breaks one must update the rule and, where one exists, its test; rule tests live beside the tool they guard (e.g. `tests/tools/test_negative_sampler_tool.py` for §3.1). Many §3 rules have no code behind them yet.
+- **Operational rules in [`PLAN.md`](PLAN.md) §3 are not suggestions.** A change that breaks one must update the rule and, where one exists, its test; rule tests live beside the tool they guard (e.g. `tests/tools/test_compare_results.py::test_no_mode_returns_a_coordinate` for §3.1). Many §3 rules have no code behind them yet.
 
 ---
 
