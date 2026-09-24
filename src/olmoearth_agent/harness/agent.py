@@ -6,7 +6,9 @@ A single-agent ReAct-style loop (DeerFlow v2's lead-agent shape, minus
 subagents for now). Each turn the LLM sees the registry's core tool specs
 plus the deferred groups this run has loaded (``ToolRegistry.active_specs``);
 each emitted tool call is dispatched and its result fed back, until the model
-returns a plain-text answer or the turn budget is exhausted.
+returns a plain-text answer or the turn budget is exhausted. When the last
+turn still asks for tools, one more call, with no tools, asks the model to
+answer from what it has, so a run never ends without an answer.
 """
 
 from __future__ import annotations
@@ -46,6 +48,26 @@ LOCAL_BUDGET_CLAUSE = (
     "wants more; never dump exhaustive lists or large tables. Plain text only - "
     "no emoji or decorative pictographs (use the plain markers above)."
 )
+
+
+#: The harness's message to the model when the turn cap is reached with the
+#: model still asking for tools; the answer call that follows offers none.
+TURN_CAP_PROMPT = (
+    "Harness note: this run has reached its turn cap, and no more tools can be "
+    "called. Answer the request now from the tool results above. Say plainly "
+    "what you could not do or find out, and why (for example a tool's limit or "
+    "an error that repeated). State only what the tools returned."
+)
+
+
+def turn_cap_fallback(max_turns: int) -> str:
+    """The answer when the model writes no text even when offered no tools."""
+    return (
+        f"No answer was written: the run reached its turn cap of {max_turns} "
+        "turns while still calling tools, and the model returned no text when "
+        "asked to answer without them. The tool calls and their results are in "
+        "the run's trace."
+    )
 
 
 def _forced_skill_clause(skill: str) -> str:
@@ -170,15 +192,20 @@ class LeadAgent:
         - ``thinking``    : the model's reasoning for a turn (``text``).
         - ``tool_call``   : a dispatched call (``name``, ``arguments``, ``id``).
         - ``tool_result`` : its outcome (``name``, ``ok``, ``result``, ``id``).
-        - ``final``       : the plain-text answer (``content``).
-        - ``max_turns``   : the cap was hit with no answer (``turns``).
+        - ``final``       : the plain-text answer (``content``), with
+          ``forced_by_turn_cap`` true when the turn cap forced it.
+        - ``max_turns``   : the cap was hit with the model still asking for
+          tools (``turns``); a ``final`` follows, from one more call that
+          offers no tools (``final_answer_forced``).
 
         Parameters
         ----------
         brief
             The user's natural-language request.
         max_turns
-            Hard cap on LLM round-trips, to bound cost and stop loops.
+            Hard cap on tool-calling LLM round-trips, to bound cost and stop
+            loops. Reaching it costs one more round-trip, without tools, for
+            the answer.
         history
             Prior conversation turns (user/assistant messages) to seed before
             the new ``brief``, so multi-turn follow-ups have context. Inserted
@@ -202,7 +229,12 @@ class LeadAgent:
                 yield {"type": "thinking", "turn": turn, "text": response.thinking}
 
             if not response.tool_calls:
-                yield {"type": "final", "turn": turn, "content": response.content}
+                yield {
+                    "type": "final",
+                    "turn": turn,
+                    "content": response.content,
+                    "forced_by_turn_cap": False,
+                }
                 return
 
             messages.append(
@@ -245,7 +277,24 @@ class LeadAgent:
                     )
                 )
 
-        yield {"type": "max_turns", "turns": max_turns}
+        # The last turn still asked for tools. One more call, with no tools,
+        # asks for the answer, so the run never ends without one (exp86 round
+        # 1: three runs ended at the cap with nothing to show). Any tool call
+        # the model still emits is not run.
+        yield {"type": "max_turns", "turns": max_turns, "final_answer_forced": True}
+        turn = max_turns + 1
+        self.state.turn_count = turn
+        messages.append(Message(role="user", content=TURN_CAP_PROMPT))
+        response = await self.llm.chat(messages, tools=None)
+        if response.thinking:
+            yield {"type": "thinking", "turn": turn, "text": response.thinking}
+        content = response.content if (response.content or "").strip() else None
+        yield {
+            "type": "final",
+            "turn": turn,
+            "content": content or turn_cap_fallback(max_turns),
+            "forced_by_turn_cap": True,
+        }
 
     async def run(
         self,
@@ -254,7 +303,7 @@ class LeadAgent:
         max_turns: int = 8,
         history: list[Message] | None = None,
     ) -> AgentResult:
-        """Run the agent loop until it answers or hits ``max_turns``.
+        """Run the agent loop until it answers (at ``max_turns``, without tools).
 
         Thin collector over :meth:`run_stream`: drains the streamed events
         and assembles an :class:`AgentResult`.
@@ -272,7 +321,8 @@ class LeadAgent:
         Returns
         -------
         AgentResult
-            Final text (``None`` if the cap was hit), turn count, and the
+            Final text, turn count (``max_turns + 1`` when the cap forced the
+            answer; ``hit_max_turns`` then says so), and the
             ``(tool_name, ok)`` trace of every dispatched call.
         """
         final_content: str | None = None

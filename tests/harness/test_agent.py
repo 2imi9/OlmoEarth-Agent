@@ -137,22 +137,25 @@ async def test_agent_records_provenance() -> None:
 
 
 @pytest.mark.asyncio
-async def test_agent_hits_max_turns() -> None:
-    # Always returns a tool call -> never terminates on its own.
+async def test_agent_hits_max_turns_and_still_answers() -> None:
+    # Returns a tool call on every turn that offers tools -> never stops on its
+    # own; the call after the cap offers none, and the model answers.
     loop_response = ChatResponse(
         content=None,
         tool_calls=[ToolCall(id="c", name="echo", arguments={})],
         finish_reason="tool_calls",
     )
+    answer = ChatResponse(content="partial answer", tool_calls=[], finish_reason="stop")
+    llm = _FakeLLM([loop_response] * 3 + [answer])
     agent = LeadAgent(
-        _FakeLLM([loop_response] * 5),  # type: ignore[arg-type]
+        llm,  # type: ignore[arg-type]
         _registry_with_echo(),
         studio=None,  # type: ignore[arg-type]
     )
     result = await agent.run("loop forever", max_turns=3)
     assert result.hit_max_turns is True
-    assert result.final_content is None
-    assert result.turns == 3
+    assert result.final_content == "partial answer"
+    assert result.turns == 4 and llm.turns == 4
     assert len(result.tool_calls) == 3
 
 

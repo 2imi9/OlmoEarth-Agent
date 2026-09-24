@@ -70,6 +70,54 @@ def test_messages_to_anthropic_tool_use_and_merged_results() -> None:
     assert results[1]["tool_use_id"] == "t2"
 
 
+def test_tool_turns_become_text_when_no_tools_are_sent() -> None:
+    """The harness's answer call after the turn cap sends no tools; Anthropic
+    refuses tool_use / tool_result blocks in a request that defines none."""
+    out = _messages_to_anthropic(
+        [
+            Message(role="user", content="run it"),
+            Message(
+                role="assistant",
+                content="ok",
+                tool_calls=[ToolCall(id="t1", name="search", arguments={"q": "x"})],
+            ),
+            Message(role="tool", tool_call_id="t1", name="search", content="r1"),
+            Message(role="user", content="answer now"),
+        ],
+        tool_blocks=False,
+    )
+    blocks = [b for m in out if isinstance(m["content"], list) for b in m["content"]]
+    assert all(b["type"] == "text" for b in blocks)
+    text = str(out)
+    assert "search" in text and '"q": "x"' in text and "r1" in text
+
+
+@pytest.mark.asyncio
+async def test_chat_without_tools_sends_no_tool_blocks() -> None:
+    llm = AnthropicLLM(model="claude-x", api_key="sk-test")
+    captured: dict[str, Any] = {}
+    llm._client = _FakeClient(captured)  # type: ignore[assignment]
+    await llm.chat(
+        [
+            Message(role="user", content="hi"),
+            Message(
+                role="assistant",
+                tool_calls=[ToolCall(id="t1", name="search", arguments={})],
+            ),
+            Message(role="tool", tool_call_id="t1", name="search", content="r1"),
+        ],
+        tools=None,
+    )
+    assert "tools" not in captured
+    kinds = {
+        b["type"]
+        for m in captured["messages"]
+        if isinstance(m["content"], list)
+        for b in m["content"]
+    }
+    assert kinds == {"text"}
+
+
 def test_assistant_with_no_content_still_valid() -> None:
     out = _messages_to_anthropic([Message(role="assistant")])
     assert out[0]["content"] == [{"type": "text", "text": ""}]

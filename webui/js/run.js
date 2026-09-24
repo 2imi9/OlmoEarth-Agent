@@ -276,7 +276,14 @@ export function handleRunEvent(body, ev, staticRender) {
     }
   } else if (ev.type === 'max_turns') {
     workflowOnFail(body, null);
-    body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+    // The harness now asks for an answer without tools at the cap (a `final`
+    // follows, forced_by_turn_cap); the same note goes to the CLI's stderr.
+    // An older saved chat has no such final, so it keeps the old message.
+    if (ev.final_answer_forced) {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">Reached the turn cap (' + escapeHtml(String(ev.turns)) + '): the answer below was written from what the tools returned, without further tool calls.</div>');
+    } else {
+      body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+    }
   } else if (ev.type === 'error') {
     workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');

@@ -104,6 +104,13 @@ def main(argv: list[str] | None = None) -> int:
     if result.final_content is None:
         print("(no answer, hit the turn cap)", file=sys.stderr)
         return 1
+    if result.hit_max_turns:
+        # The web UI shows the same note above the answer (webui/js/run.js).
+        print(
+            f"(reached the turn cap ({args.max_turns}): the answer was written "
+            "from what the tools returned, without further tool calls)",
+            file=sys.stderr,
+        )
     print(result.final_content)
     return 0
 
