@@ -336,7 +336,9 @@ def main() -> None:
             }
         )
 
-    rng = random.Random(42)
+    # Seeded so the committed split can be regenerated exactly; a split needs
+    # reproducibility, not unpredictability.
+    rng = random.Random(42)  # noqa: S311
     rng.shuffle(items)
     n = len(items)
     n_train, n_val = 14, 9

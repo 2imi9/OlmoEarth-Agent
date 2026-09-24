@@ -154,8 +154,10 @@ def run_batch(
                     r = json.loads(line)
                     done_ids.add(str(r["id"]))
                     existing.append(r)
-                except Exception:  # noqa: BLE001
-                    pass
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    # A torn last line (an interrupted run) or a record without
+                    # an id: skip it, so that task runs again.
+                    continue
 
     pending = [it for it in items if str(it["id"]) not in done_ids]
     if not pending:

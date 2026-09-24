@@ -6,16 +6,16 @@ os.environ["SKILLOPT_OPENAI_COMPAT_EXTRA_BODY"] = (
     '{"chat_template_kwargs": {"enable_thinking": false}}'
 )
 
-from skillopt.model.backend_config import set_target_backend, set_optimizer_backend
 from skillopt.model import (
+    chat_optimizer,
+    chat_target,
     configure_azure_openai,
     configure_qwen_chat,
-    set_target_deployment,
     set_optimizer_deployment,
     set_reasoning_effort,
-    chat_target,
-    chat_optimizer,
+    set_target_deployment,
 )
+from skillopt.model.backend_config import set_optimizer_backend, set_target_backend
 
 MODEL = "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
 ENDPOINT = "http://localhost:8000/v1"

@@ -343,7 +343,9 @@ def main() -> None:
     # cycle ~ 50% train / 20% val / 30% test, offset per preset so the first
     # (default) variant doesn't always land in train.
     cycle = ["train", "val", "test", "train", "test", "train", "val", "test"]
-    rng = random.Random(42)
+    # Seeded so the committed split can be regenerated exactly; a split needs
+    # reproducibility, not unpredictability.
+    rng = random.Random(42)  # noqa: S311
     buckets: dict[str, list[dict]] = {"train": [], "val": [], "test": []}
     for offset, key in enumerate(sorted(by_preset)):
         group = by_preset[key]

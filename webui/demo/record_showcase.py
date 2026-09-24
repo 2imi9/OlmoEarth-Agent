@@ -176,9 +176,10 @@ def _record() -> tuple[Path, dict]:
         )
         page = ctx.new_page()
         t0 = time.monotonic()
-        mark = lambda name: marks.setdefault(
-            name, round(time.monotonic() - t0, 2)
-        )  # noqa: E731
+
+        def mark(name: str) -> None:
+            """Record the first time ``name`` is reached, in seconds from start."""
+            marks.setdefault(name, round(time.monotonic() - t0, 2))
 
         page.goto(f"http://127.0.0.1:{PORT}/index.html")
         page.wait_for_selector("#promptForm", timeout=15000)
