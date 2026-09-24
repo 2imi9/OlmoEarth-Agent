@@ -110,6 +110,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - mypy skips numpy's stubs (3.12 syntax) and the untyped companion package.
 
 ### Fixed
+- `pyyaml` is a declared dependency: without it `olmoearth_rslearn_compose`
+  returned no YAML.
 - **No-data entered the statistics of every grid sampler.** Studio's
   pixel-value returns no-data as a value (`raw_value: -1.0` beside
   `regression: {min_value: 0.0, max_value: 1.0}`), and only `None` was

@@ -927,6 +927,7 @@ source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "openai" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -967,6 +968,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-httpx", marker = "extra == 'dev'", specifier = ">=0.30" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "uvicorn", marker = "extra == 'serve'", specifier = ">=0.29" },
 ]
