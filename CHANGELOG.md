@@ -70,6 +70,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
 
 ### Changed
+- **One comparison tool.** `olmoearth_compare_results` takes 2-8
+  `result_ids` and a `mode`: `pair`, `group`, `series` (one model, ordered by
+  date) or `ensemble`; the default `auto` picks pair, series or group from the
+  results' models and dates. It replaces `olmoearth_compare_group`,
+  `olmoearth_trace_shifts` and `olmoearth_ensemble_uncertainty` and keeps their
+  statistics. Breaking: `result_id_a`/`result_id_b` inputs are now
+  `result_ids`; hotspots are grid `(row, col)` and index, and
+  `shared_extent_bbox` is gone (rule 3.1).
 - `olmoearth_load_context` pages projects (`limit`, `offset`, `total`) and
   replaces `olmoearth_search_projects`; `olmoearth_litsearch` takes an
   `identifier` and replaces `olmoearth_litsearch_resolve`;

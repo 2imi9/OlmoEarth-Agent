@@ -26,8 +26,8 @@ logits. A margin cannot be recovered from a hard class; it can be read from a
 Studio regression band that is a binary score in ``[0, 1]`` (decided at 0.5),
 which is what ``olmoearth_review_set_from_result`` does, or from any band once
 a decision threshold is named. When all you have is hard classes from two or
-more Studio results, skill #9's ``olmoearth_ensemble_uncertainty`` is the tool
-that still works.
+more Studio results, ``olmoearth_compare_results`` with ``mode='ensemble'``
+(skill #9's disagreement signal) is the tool that still works.
 
 No coordinates in, no coordinates out (rule §3.1).
 """
@@ -406,7 +406,8 @@ _CLASSIFICATION_REFUSAL = (
     "this result's band is a classification: Studio returns the hard class "
     "only, and no margin can be recovered from a hard class, so there is no "
     "ranking to make from one result. With two or more results of the same "
-    "area, use olmoearth_ensemble_uncertainty (disagreement between them); "
+    "area, use olmoearth_compare_results with mode='ensemble' (disagreement "
+    "between them); "
     "with per-class scores from wherever inference ran, use olmoearth_review_set."
 )
 
@@ -441,7 +442,7 @@ async def sample_result_scores(
             result_id,
             name,
             _CLASSIFICATION_REFUSAL,
-            use_instead="olmoearth_ensemble_uncertainty",
+            use_instead="olmoearth_compare_results",
         )
     rng: tuple[float, float] | None = None
     if decl and decl.get("value_type") == "regression":
@@ -478,7 +479,7 @@ async def sample_result_scores(
                 result_id,
                 name,
                 _CLASSIFICATION_REFUSAL,
-                use_instead="olmoearth_ensemble_uncertainty",
+                use_instead="olmoearth_compare_results",
             )
         rng = declared_range(band)
         if rng != (0.0, 1.0) and threshold is None:
@@ -713,7 +714,8 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "your budget, optionally boundary-first. For a STUDIO "
                     "prediction result use olmoearth_review_set_from_result; "
                     "with only hard classes from 2+ Studio results, "
-                    "olmoearth_ensemble_uncertainty. The review set is not a "
+                    "olmoearth_compare_results (mode='ensemble'). The review "
+                    "set is not a "
                     "sample: never divide its errors by its size (use "
                     "olmoearth_plan_label_sample). Measured: the margin beat "
                     "the best no-model control on all 24 tasks of Ai2's "

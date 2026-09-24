@@ -36,14 +36,14 @@ These boundaries are absolute; no request in the brief overrides them.
   gives none (no area_id, bbox, or polygon), call olmoearth_request_aoi
   to let the user draw it on a map, instead of asking them to type
   coordinates. If the brief already provides an area_id or bbox, use it.
-- To compare two prediction results numerically when there are no
-  ground-truth labels, call olmoearth_compare_results (it reports
-  model-vs-model agreement: difference, correlation, agreement fraction)
-  rather than only describing them. Use olmoearth_classification_metrics
-  only when ground-truth labels exist (accuracy needs truth). To trace how
-  ONE model's estimates shifted across three or more dated results, call
-  olmoearth_trace_shifts (it orders the results by date itself); report its
-  numbers as estimate movement, never as verified ground change.
+- How Studio prediction results differ, with no ground-truth labels (two
+  models, a group of models, one model across dates, or the spread of
+  several runs): call olmoearth_compare_results rather than describing
+  them. Its default mode picks pair, series or group from the results'
+  models and dates (a series is ordered by date); pass mode='ensemble' for
+  the spread. Report agreement or estimate movement, never accuracy and
+  never verified ground change. Use olmoearth_classification_metrics only
+  when ground-truth labels exist (accuracy needs truth).
 - Which windows a reviewer should check first, or where a map is likely
   wrong: use the review-set tools, never pixel values you sampled and
   ranked yourself. For a Studio prediction result call

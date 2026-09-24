@@ -211,7 +211,8 @@ async def test_a_classification_band_is_refused_before_sampling(
         out = await _tool().handler({"result_id": "lc"}, ctx)
     assert out["ranked"] is False
     assert "no margin can be recovered from a hard class" in out["reason"]
-    assert out["use_instead"] == "olmoearth_ensemble_uncertainty"
+    assert out["use_instead"] == "olmoearth_compare_results"
+    assert "mode='ensemble'" in out["reason"]
     assert not any("pixel-value" in str(r.url) for r in httpx_mock.get_requests())
 
 

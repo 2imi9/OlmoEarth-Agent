@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Unit tests for the olmoearth_trace_shifts tool (tools/trace_shifts.py)."""
+"""olmoearth_compare_results in series mode (formerly olmoearth_trace_shifts).
+
+Every test of the former tool, ported to the merged tool with
+``mode="series"``; the auto-mode test at the end shows the same results reach
+series mode without naming it.
+"""
 
 from __future__ import annotations
 
@@ -14,8 +19,8 @@ from pytest_httpx import HTTPXMock
 
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
+from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
-from olmoearth_agent.tools.trace_shifts import build_trace_shift_tools
 
 BASE = "http://mock-studio/api/v1"
 
@@ -32,8 +37,13 @@ _PREDICTIONS = {
 
 
 def _tool() -> RegisteredTool:
-    (tool,) = build_trace_shift_tools()
+    (tool,) = build_compare_tools()
     return tool
+
+
+def _series(args: dict[str, Any]) -> dict[str, Any]:
+    """The arguments with ``mode="series"``, as the former tool implied."""
+    return {**args, "mode": "series"}
 
 
 def _result_body(rid: str) -> dict[str, Any]:
@@ -115,12 +125,14 @@ async def test_trace_orders_by_date_and_traces_shifts(
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
         out = await _tool().handler(
-            {
-                "result_ids": ["rb", "rc", "ra"],
-                "grid": 3,
-                "tolerance": 0.05,
-                "value_range": [0.0, 1.0],
-            },
+            _series(
+                {
+                    "result_ids": ["rb", "rc", "ra"],
+                    "grid": 3,
+                    "tolerance": 0.05,
+                    "value_range": [0.0, 1.0],
+                }
+            ),
             ctx,
         )
     assert out["comparable"] is True
@@ -145,7 +157,10 @@ async def test_trace_orders_by_date_and_traces_shifts(
     assert out["calibration"]["source"] == "supplied"
     assert trajectory["mean_total_change_fraction_of_range"] == 0.2
     top = trajectory["top_shift_points"][0]
-    assert "lon" in top and "lat" in top
+    # Rule 3.1: a hotspot is a grid window (row, col), never a lon/lat.
+    assert "lon" not in top and "lat" not in top
+    assert top["window_index"] == top["row"] * 3 + top["col"]
+    assert "shared_extent_bbox" not in out
     assert top["largest_step_to_date"] == _PREDICTIONS["rc"][1]
     assert "net increase" in out["narration"]["headline"]
     assert "not verified ground change" in out["method"]
@@ -175,7 +190,9 @@ async def test_trace_falls_back_to_given_order_without_dates(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx)
+        out = await _tool().handler(
+            _series({"result_ids": ["rb", "rc", "ra"], "grid": 2}), ctx
+        )
     assert out["comparable"] is True
     assert out["ordering"] == "given-order"
     assert out["result_ids"] == ["rb", "rc", "ra"]  # untouched input order
@@ -186,10 +203,12 @@ async def test_trace_falls_back_to_given_order_without_dates(
 @pytest.mark.asyncio
 async def test_trace_validates_result_count() -> None:
     ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
-    too_few = await _tool().handler({"result_ids": ["ra", "ra", "rb"]}, ctx)
+    too_few = await _tool().handler(_series({"result_ids": ["ra", "ra", "rb"]}), ctx)
     assert too_few["comparable"] is False
-    assert "olmoearth_compare_results" in too_few["reason"]
-    too_many = await _tool().handler({"result_ids": [f"r{i}" for i in range(9)]}, ctx)
+    assert "mode='pair'" in too_few["reason"]
+    too_many = await _tool().handler(
+        _series({"result_ids": [f"r{i}" for i in range(9)]}), ctx
+    )
     assert too_many["comparable"] is False
     assert "too many results" in too_many["reason"]
 
@@ -216,7 +235,9 @@ async def test_trace_sorts_mixed_aware_and_naive_dates(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx)
+        out = await _tool().handler(
+            _series({"result_ids": ["rb", "rc", "ra"], "grid": 2}), ctx
+        )
     assert out["comparable"] is True
     assert out["ordering"] == "chronological"
     assert out["result_ids"] == ["ra", "rb", "rc"]
@@ -236,10 +257,10 @@ async def test_trace_refuses_mixed_models(httpx_mock: HTTPXMock) -> None:
         )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"]}, ctx)
+        out = await _tool().handler(_series({"result_ids": ["rb", "rc", "ra"]}), ctx)
     assert out["comparable"] is False
     assert "multiple models" in out["reason"]
-    assert "olmoearth_compare_group" in out["reason"]
+    assert "mode='group'" in out["reason"]
 
 
 @pytest.mark.asyncio
@@ -255,10 +276,10 @@ async def test_trace_refuses_duplicate_dates(httpx_mock: HTTPXMock) -> None:
         )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"]}, ctx)
+        out = await _tool().handler(_series({"result_ids": ["rb", "rc", "ra"]}), ctx)
     assert out["comparable"] is False
     assert "distinct dates" in out["reason"]
-    assert "olmoearth_ensemble_uncertainty" in out["reason"]
+    assert "mode='ensemble'" in out["reason"]
 
 
 def _mock_metadata_only(httpx_mock: HTTPXMock, rids: list[str]) -> None:
@@ -307,7 +328,9 @@ async def test_trace_refuses_mixed_band_types(httpx_mock: HTTPXMock) -> None:
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx)
+        out = await _tool().handler(
+            _series({"result_ids": ["rb", "rc", "ra"], "grid": 2}), ctx
+        )
     assert out["comparable"] is False
     assert "mix numeric and categorical" in out["reason"]
 
@@ -320,7 +343,9 @@ async def test_trace_invalid_value_range_is_flagged_not_silent(
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
         out = await _tool().handler(
-            {"result_ids": ["rb", "rc", "ra"], "grid": 2, "value_range": [1.0, 0.0]},
+            _series(
+                {"result_ids": ["rb", "rc", "ra"], "grid": 2, "value_range": [1.0, 0.0]}
+            ),
             ctx,
         )
     assert out["comparable"] is True
@@ -349,7 +374,9 @@ async def test_trace_skips_empty_bands_when_picking_first(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx)
+        out = await _tool().handler(
+            _series({"result_ids": ["rb", "rc", "ra"], "grid": 2}), ctx
+        )
     assert out["comparable"] is True
     assert out["value_type"] == "regression"
     assert out["property_name"] == "sample_score"
@@ -367,6 +394,21 @@ async def test_trace_reports_missing_overlap(httpx_mock: HTTPXMock) -> None:
         httpx_mock.add_response(url=f"{BASE}/prediction-results/{rid}", json=body)
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"]}, ctx)
+        out = await _tool().handler(_series({"result_ids": ["rb", "rc", "ra"]}), ctx)
     assert out["comparable"] is False
-    assert "common overlapping extent" in out["reason"]
+    assert "common extent" in out["reason"]
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_reaches_series_for_one_model_on_three_dates(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The trial's model picked the wrong tool; auto mode needs no choice."""
+    _mock_studio(httpx_mock, ["rb", "rc", "ra"])
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler({"result_ids": ["rb", "rc", "ra"], "grid": 2}, ctx)
+    assert out["comparable"] is True
+    assert out["mode"] == "series"
+    assert out["ordering"] == "chronological"
+    assert out["result_ids"] == ["ra", "rb", "rc"]

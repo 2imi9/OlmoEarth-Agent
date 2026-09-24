@@ -22,6 +22,7 @@ from olmoearth_agent.tools.automate import build_automate_tools
 from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
+from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
@@ -38,7 +39,6 @@ from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.system import build_system_tools
-from olmoearth_agent.tools.trace_shifts import build_trace_shift_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
@@ -120,8 +120,8 @@ SKILLS: list[SkillSpec] = [
         "implemented",
         "Run loop: search predictions (find model_id), submit, poll, "
         "fetch results (tile URLs), sample the model output at a point, and "
-        "compare results quantitatively (grid-sampled model-vs-model "
-        "agreement, no ground truth) -- two-way or a 2-6 result group "
+        "compare results quantitatively with one tool (grid-sampled, no "
+        "ground truth): a pair of results, or a group of 2-6 models "
         "(pairwise matrix + ensemble consensus).",
         [
             "olmoearth_search_predictions",
@@ -131,7 +131,6 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_get_prediction_result",
             "olmoearth_pixel_value",
             "olmoearth_compare_results",
-            "olmoearth_compare_group",
         ],
     ),
     # #5 unifies change-detect + the JEPA latent-change skill: both are change
@@ -147,9 +146,9 @@ SKILLS: list[SkillSpec] = [
         "Change detection, two engines: in-process Studio multi-date (>=3) "
         "trajectory diff (refuses naive 2-date) plus date-ordered, "
         "legend-calibrated shift tracing across dated results "
-        "(olmoearth_trace_shifts), and an out-of-process JEPA "
-        "latent-prediction residual detector (separate torch repo).",
-        ["olmoearth_change_detect", "olmoearth_trace_shifts"],
+        "(olmoearth_compare_results, mode='series'), and an out-of-process "
+        "JEPA latent-prediction residual detector (separate torch repo).",
+        ["olmoearth_change_detect", "olmoearth_compare_results"],
     ),
     SkillSpec(
         6,
@@ -188,11 +187,12 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-uncertainty",
         "Analyze",
         "implemented",
-        "Ensemble-disagreement confidence (across distinct results) + "
-        "Meyer-Pebesma Area-of-Applicability OOD flag. The signals that "
-        "work when Studio gives you hard classes only; when per-class "
-        "scores exist, #18 ranks errors better (measured).",
-        ["olmoearth_area_of_applicability", "olmoearth_ensemble_uncertainty"],
+        "Ensemble-disagreement confidence (across distinct results: "
+        "olmoearth_compare_results, mode='ensemble') + Meyer-Pebesma "
+        "Area-of-Applicability OOD flag. The signals that work when Studio "
+        "gives you hard classes only; when per-class scores exist, #18 ranks "
+        "errors better (measured).",
+        ["olmoearth_area_of_applicability", "olmoearth_compare_results"],
     ),
     SkillSpec(
         10,
@@ -336,10 +336,10 @@ def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
+    # How Studio results differ (#4, #5 series, #9 ensemble): one tool.
+    registry.register_all(build_compare_tools())
     registry.register_all(build_baseline_compare_tools())
     registry.register_all(build_change_detect_tools())
-    # Timeseries shift tracing (skill #5 family): one model across dated results.
-    registry.register_all(build_trace_shift_tools())
     registry.register_all(build_cloud_mask_audit_tools())
     registry.register_all(build_evaluate_tools())
     registry.register_all(build_uncertainty_tools())

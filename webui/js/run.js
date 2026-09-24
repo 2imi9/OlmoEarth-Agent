@@ -31,7 +31,7 @@ const SCENARIOS = {
   compare: {
     reasoning: "Two runs over the same area with no ground-truth labels, so I compare them to each other (agreement), not accuracy. That needs to sample both rasters - which requires your Studio key.",
     tool: 'olmoearth_compare_results',
-    args: '{\n  "result_id_a": "<first result>",\n  "result_id_b": "<second result>"\n}',
+    args: '{\n  "result_ids": ["<first result>", "<second result>"]\n}',
     result: [['note', 'demo mode: connect a Studio key to sample the real rasters']],
     answer: "This is the demo, so I can't sample your real rasters here. Connect your **Studio key** (top bar), then either drag two prediction results into the chat or ask me to compare two runs. I'll report model-vs-model **agreement** (correlation, mean difference, agreement %) and scan a live **difference map** - blue where one run scores higher, pink where the other does. No ground-truth labels are needed; that would be *accuracy*, which is a different tool.",
   },

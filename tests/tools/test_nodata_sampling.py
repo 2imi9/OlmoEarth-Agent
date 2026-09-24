@@ -4,7 +4,7 @@
 
 The regression fixture is the live trial of 24 September 2026: KarstBinary
 against KarstNumber over Pennsylvania, on the 6x6 grid
-``olmoearth_compare_results`` samples. Studio returned the no-data sentinel
+``olmoearth_compare_results`` samples for a pair. Studio returned the no-data sentinel
 ``-1.0`` as a value at 11 of the 36 points, in both maps, and the tool
 reported a correlation of 0.946 ("karst in largely the same places") where
 the 25 valid points give -0.017. Values only; no coordinates were kept.
@@ -27,10 +27,9 @@ from olmoearth_agent.analysis.raster_compare import (
 )
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
+from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
-from olmoearth_agent.tools.trace_shifts import build_trace_shift_tools
-from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 BASE = "http://mock-studio/api/v1"
 
@@ -126,6 +125,13 @@ def _predict_tool(name: str) -> RegisteredTool:
     return next(t for t in build_predict_tools() if t.spec.name == name)
 
 
+async def _compare(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Call olmoearth_compare_results (every grid-sampling mode lives there)."""
+    (tool,) = build_compare_tools()
+    result: dict[str, Any] = await tool.handler(args, ctx)
+    return result
+
+
 def _nodata_filtered(pairs: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """The pairs the shared rule keeps, with the trial's band metadata."""
     return [
@@ -175,9 +181,7 @@ async def test_compare_results_drops_the_sentinel_on_the_trial_grid(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _predict_tool("olmoearth_compare_results").handler(
-            {"result_id_a": "a1", "result_id_b": "b1", "grid": 6}, ctx
-        )
+        out = await _compare({"result_ids": ["a1", "b1"], "grid": 6}, ctx)
     assert out["comparable"] is True
     assert out["n_nodata_dropped"] == 11
     assert out["n_failed_dropped"] == 0
@@ -201,9 +205,7 @@ async def test_compare_results_refuses_different_properties_before_sampling(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _predict_tool("olmoearth_compare_results").handler(
-            {"result_id_a": "a1", "result_id_b": "b1", "grid": 6}, ctx
-        )
+        out = await _compare({"result_ids": ["a1", "b1"], "grid": 6}, ctx)
     assert out["comparable"] is False
     assert out["property_a"]["property_name"] == "sample_karst_score"
     assert out["property_b"]["property_name"] == "sample_number"
@@ -235,10 +237,9 @@ async def test_compare_results_allows_different_properties_with_a_warning(
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _predict_tool("olmoearth_compare_results").handler(
+        out = await _compare(
             {
-                "result_id_a": "a1",
-                "result_id_b": "b1",
+                "result_ids": ["a1", "b1"],
                 "grid": 6,
                 "allow_different_properties": True,
             },
@@ -289,9 +290,7 @@ async def test_the_models_nodata_value_is_dropped_too(httpx_mock: HTTPXMock) -> 
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _predict_tool("olmoearth_compare_results").handler(
-            {"result_id_a": "a1", "result_id_b": "b1", "grid": 3}, ctx
-        )
+        out = await _compare({"result_ids": ["a1", "b1"], "grid": 3}, ctx)
     assert out["n_nodata_dropped"] == 3
     assert out["stats"]["n_samples"] == 6
     assert out["stats"]["max_abs_diff"] == 0.0
@@ -317,9 +316,7 @@ async def test_compare_group_counts_and_drops_nodata(httpx_mock: HTTPXMock) -> N
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _predict_tool("olmoearth_compare_group").handler(
-            {"result_ids": ids, "grid": 3}, ctx
-        )
+        out = await _compare({"result_ids": ids, "grid": 3, "mode": "group"}, ctx)
     assert out["n_nodata_dropped"] == 9  # 3 sentinel points x 3 results
     assert out["nodata_by_result"] == {"g1": 3, "g2": 3, "g3": 3}
     assert out["ensemble"]["n_points_used"] == 6
@@ -338,14 +335,11 @@ async def test_ensemble_uncertainty_drops_nodata_draws(httpx_mock: HTTPXMock) ->
     httpx_mock.add_callback(
         callback, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
     )
-    tool = next(
-        t
-        for t in build_uncertainty_tools()
-        if t.spec.name == "olmoearth_ensemble_uncertainty"
-    )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await tool.handler({"result_ids": ["e1", "e2"], "grid": 3}, ctx)
+        out = await _compare(
+            {"result_ids": ["e1", "e2"], "grid": 3, "mode": "ensemble"}, ctx
+        )
     assert out["comparable"] is True
     assert out["n_nodata_dropped"] == 6
     assert out["n_points_dropped"] == 3
@@ -361,16 +355,12 @@ async def test_ensemble_uncertainty_refuses_different_properties(
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/e2", json=_result("e2", "sample_number")
     )
-    tool = next(
-        t
-        for t in build_uncertainty_tools()
-        if t.spec.name == "olmoearth_ensemble_uncertainty"
-    )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await tool.handler({"result_ids": ["e1", "e2"]}, ctx)
+        out = await _compare({"result_ids": ["e1", "e2"], "mode": "ensemble"}, ctx)
     assert out["comparable"] is False
     assert "different properties" in out["reason"]
+    assert not any("pixel-value" in str(r.url) for r in httpx_mock.get_requests())
 
 
 @pytest.mark.asyncio
@@ -396,10 +386,11 @@ async def test_trace_shifts_drops_nodata(httpx_mock: HTTPXMock) -> None:
     httpx_mock.add_callback(
         callback, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
     )
-    (tool,) = build_trace_shift_tools()
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await tool.handler({"result_ids": list(dates), "grid": 3}, ctx)
+        out = await _compare(
+            {"result_ids": list(dates), "grid": 3, "mode": "series"}, ctx
+        )
     assert out["comparable"] is True
     assert out["n_nodata_dropped"] == 9
     # Identical valid values at every date: no shift once no-data is out.
@@ -498,9 +489,7 @@ async def test_studio_class_objects_compare_by_label(httpx_mock: HTTPXMock) -> N
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        out = await _predict_tool("olmoearth_compare_results").handler(
-            {"result_id_a": "c1", "result_id_b": "c2", "grid": 2}, ctx
-        )
+        out = await _compare({"result_ids": ["c1", "c2"], "grid": 2}, ctx)
     assert out["value_type"] == "classification"
     assert out["n_nodata_dropped"] == 1
     assert out["stats"] == {

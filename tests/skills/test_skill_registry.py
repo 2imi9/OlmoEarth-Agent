@@ -69,7 +69,6 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_cv_inflation_check",
         "olmoearth_classification_metrics",
         "olmoearth_area_of_applicability",
-        "olmoearth_ensemble_uncertainty",
         "olmoearth_similarity_search",
         "olmoearth_case_narrative",
         "olmoearth_export_data",
@@ -91,11 +90,17 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
 
 
 def test_merged_and_removed_tools_are_gone() -> None:
-    """search_projects and litsearch_resolve merged; list_skills removed."""
+    """One comparison tool; search_projects, litsearch_resolve, list_skills merged."""
     names = set(build_default_registry().names())
     for gone in (
+        "olmoearth_compare_group",
+        "olmoearth_trace_shifts",
+        "olmoearth_ensemble_uncertainty",
         "olmoearth_search_projects",
         "olmoearth_litsearch_resolve",
         "olmoearth_list_skills",
     ):
         assert gone not in names
+    for skill in SKILLS:
+        for gone in ("olmoearth_compare_group", "olmoearth_trace_shifts"):
+            assert gone not in skill.tools, f"#{skill.number} lists {gone}"

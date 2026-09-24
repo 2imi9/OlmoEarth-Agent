@@ -344,7 +344,7 @@ def compare_group_numeric(
     :func:`compare_numeric`. The ensemble half treats the >=2 valid values at
     each point as ensemble members: a point is *consensus* when its spread
     (max - min) is within ``tolerance``, and the most-divergent points are
-    surfaced (by index; the caller maps indices to coordinates).
+    surfaced (by index; the caller maps an index to its grid window).
     """
     pairwise = _pair_entries(
         series, lambda pairs: compare_numeric(pairs, tolerance=tolerance)

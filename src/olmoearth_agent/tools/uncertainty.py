@@ -1,74 +1,47 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-uncertainty`` tool bundle (skill #9).
+"""The ``olmoearth-uncertainty`` tool bundle (skill #9): the OOD half.
 
-Two tools:
+``olmoearth_area_of_applicability`` is the Meyer-Pebesma Area-of-Applicability
+OOD flag over caller-supplied feature vectors; it returns summary statistics
+only (rule §3.1).
 
-- ``olmoearth_area_of_applicability`` -- the Meyer-Pebesma Area-of-Applicability
-  OOD flag over caller-supplied feature vectors.
-- ``olmoearth_ensemble_uncertainty`` -- epistemic (ensemble-disagreement)
-  confidence: samples two or more prediction *results* on a shared-extent grid
-  (Studio pixel-value) and treats the per-point values as ensemble members, so
-  the variance is real (distinct results), never a fake re-read of one
-  deterministic result.
+The skill's other half, ensemble disagreement across two or more distinct
+Studio results, is ``olmoearth_compare_results`` with ``mode='ensemble'``
+(:mod:`olmoearth_agent.tools.compare`), which shares the grid sampler and the
+no-data rule with every other comparison.
 
-Both return summary statistics only (rule §3.1).
-
-Scope boundary with skill #18 (``olmoearth-review-set``). These two tools
+Scope boundary with skill #18 (``olmoearth-review-set``). These signals
 answer *is this prediction in a regime I should trust* -- self-consistency
 across distinct results, and distance from the training distribution. They
 do **not** rank which windows are wrong: upstream
 (`2imi9/olmoearth_inferenceX <https://github.com/2imi9/olmoearth_inferenceX>`_)
 measured ensemble disagreement and feature-space typicality against the
 model's own top-1-minus-top-2 margin on seven expert-labelled testbeds and
-neither ranked errors better than the margin. That is not a defect in these
-tools: Studio's ``pixel-value`` returns only ``raw_value`` and
-``classification`` -- never probabilities or logits -- so with hard-class
-Studio results the margin is not computable and ensemble disagreement is the
-only uncertainty signal reachable. When per-class scores *do* exist (rslearn
-predict, an embeddings+probe pass, any exported softmax), route the
-"which windows are wrong" question to ``olmoearth_review_set``; for a Studio
+neither ranked errors better than the margin. When per-class scores exist,
+route "which windows are wrong" to ``olmoearth_review_set``; for a Studio
 result whose band is a binary score in ``[0, 1]``, to
 ``olmoearth_review_set_from_result``.
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from olmoearth_agent.analysis.raster_compare import (
-    grid_points,
-    intersect_bbox,
-    result_bbox,
-)
-from olmoearth_agent.analysis.uncertainty import (
-    area_of_applicability,
-    prediction_confidence,
-)
+from olmoearth_agent.analysis.uncertainty import area_of_applicability
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
-from olmoearth_agent.tools.sampling import (
-    NODATA,
-    OK,
-    SAMPLE_CONCURRENCY,
-    default_property,
-    read_sample,
-    result_nodata_context,
-)
 
 _VECTORS_SCHEMA = {
     "type": "array",
     "items": {"type": "array", "items": {"type": "number"}},
 }
 
-#: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
-_SAMPLE_CONCURRENCY = SAMPLE_CONCURRENCY
-
 
 async def _area_of_applicability(
     args: dict[str, Any], _ctx: ToolContext
 ) -> dict[str, Any]:
+    """Handler for ``olmoearth_area_of_applicability``."""
     weights = args.get("weights")
     return area_of_applicability(
         [[float(x) for x in v] for v in args["train_features"]],
@@ -77,127 +50,8 @@ async def _area_of_applicability(
     )
 
 
-async def _ensemble_uncertainty(
-    args: dict[str, Any], ctx: ToolContext
-) -> dict[str, Any]:
-    """Handler for ``olmoearth_ensemble_uncertainty``."""
-    # Distinct results only: a duplicate id would re-read ONE deterministic
-    # result and fake zero disagreement -- the exact thing this tool promises
-    # it never does. Dedupe preserving order, then require >= 2 remain.
-    result_ids = list(dict.fromkeys(args["result_ids"]))
-    if len(result_ids) < 2:
-        return {
-            "comparable": False,
-            "reason": "need >= 2 DISTINCT result_ids; duplicate ids re-read one "
-            "deterministic result and fake zero disagreement",
-        }
-    grid = max(2, min(10, int(args.get("grid", 4))))
-    prop = args.get("property_name")
-
-    records = await asyncio.gather(
-        *[ctx.studio.get_prediction_result(r) for r in result_ids]
-    )
-    # Ensemble members must estimate the same quantity: a binary score and a
-    # count are not two draws of one thing (the trial paired exactly those).
-    names = {n for rec in records if (n := default_property(rec, prop))}
-    if len(names) > 1:
-        return {
-            "comparable": False,
-            "reason": "the results measure different properties "
-            f"({sorted(names)}); their spread would mix quantities, not "
-            "measure disagreement. Pass results of one property.",
-        }
-    bboxes = [result_bbox(rec) for rec in records]
-    if any(b is None for b in bboxes):
-        return {"comparable": False, "reason": "a result is missing geometry/extent"}
-    shared = bboxes[0]
-    for b in bboxes[1:]:
-        shared = intersect_bbox(shared, b)
-    if shared is None:
-        return {"comparable": False, "reason": "results do not share a common extent"}
-
-    points = grid_points(shared, grid)
-    cache: dict[str, dict[str, Any] | None] = {}
-    nodata = [await result_nodata_context(ctx, rec, cache=cache) for rec in records]
-    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
-
-    async def sample(rid: str, lon: float, lat: float) -> Any:
-        """One bounded pixel-value call; a failure drops the draw."""
-        async with sem:
-            try:
-                return await ctx.studio.pixel_value(rid, lon, lat)
-            except Exception:  # off-raster / transient -> drop the draw
-                return None
-
-    flat = await asyncio.gather(
-        *[sample(rid, lon, lat) for (lon, lat) in points for rid in result_ids]
-    )
-
-    n_res = len(result_ids)
-    samples: list[list[Any]] = []
-    detected_categorical: bool | None = None
-    n_dropped = 0
-    n_nodata = 0
-    for pi in range(len(points)):
-        vals: list[Any] = []
-        for ri in range(n_res):
-            value, is_cat, status = read_sample(flat[pi * n_res + ri], prop, nodata[ri])
-            if status == NODATA:
-                n_nodata += 1
-            if status != OK:
-                continue
-            if detected_categorical is None:
-                detected_categorical = is_cat
-            vals.append(value)
-        # An ensemble needs >= 2 members at a point to measure disagreement.
-        if len(vals) >= 2:
-            samples.append(vals)
-        else:
-            n_dropped += 1
-
-    if not samples:
-        return {
-            "comparable": False,
-            "reason": "no grid point had >= 2 overlapping valid samples across "
-            "the ensemble",
-        }
-    value_type = args.get("value_type") or (
-        "categorical" if detected_categorical else "regression"
-    )
-    try:
-        out = prediction_confidence(samples, value_type=value_type)
-    except (ValueError, TypeError):
-        # A regression value_type over non-numeric labels (results disagree on
-        # band type) -> a clean answer, not an opaque float() traceback.
-        return {
-            "comparable": False,
-            "reason": f"sampled values are not consistent with value_type "
-            f"'{value_type}' (the results may disagree on band type); pass "
-            "value_type explicitly to disambiguate",
-        }
-    out.update(
-        {
-            "comparable": True,
-            "n_results": n_res,
-            "grid": f"{grid}x{grid}",
-            "property_name": prop,
-            "shared_extent_bbox": [round(v, 5) for v in shared],
-            "n_points_dropped": n_dropped,
-            "n_nodata_dropped": n_nodata,
-            "method": "each result sampled pointwise (pixel-value) on a grid "
-            "over the shared extent; no-data draws (a missing value, the "
-            "model's nodata_value, or a value outside the band's declared "
-            "range) are dropped first; the >=2 values at a point are treated as "
-            "ensemble members, so the spread is real disagreement between "
-            "distinct results -- epistemic uncertainty, not accuracy. Slow: "
-            "pixel-value is ~tens of seconds per point per result.",
-        }
-    )
-    return out
-
-
 def build_uncertainty_tools() -> list[RegisteredTool]:
-    """Return the ``olmoearth-uncertainty`` tool bundle."""
+    """Return the ``olmoearth-uncertainty`` tool bundle (the AOA flag)."""
     return [
         RegisteredTool(
             spec=ToolSpec(
@@ -239,60 +93,5 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_area_of_applicability,
-        ),
-        RegisteredTool(
-            spec=ToolSpec(
-                name="olmoearth_ensemble_uncertainty",
-                description=(
-                    "Epistemic (ensemble-disagreement) uncertainty across TWO "
-                    "OR MORE prediction results of the SAME property over their "
-                    "shared extent: samples each on a common grid (pixel-value) "
-                    "and treats the values at a point as ensemble members "
-                    "(no-data dropped and counted in n_nodata_dropped). "
-                    "Regression: mean/std/CV/range; categorical: majority "
-                    "class, vote fractions, entropy, margin; folded into a "
-                    "confidence in [0,1]. Model self-consistency, NOT a "
-                    "probability of correctness; results of different "
-                    "properties are refused. It does not rank which windows to "
-                    "review: for a Studio result with a [0, 1] score use "
-                    "olmoearth_review_set_from_result, with per-class scores "
-                    "olmoearth_review_set (the margin ranked errors better than "
-                    "ensemble disagreement on seven expert-labelled testbeds). "
-                    "Use this for hard-class Studio results. Slow: grid^2 calls "
-                    "per result; keep grid small."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "result_ids": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 2,
-                            "description": "Two or more prediction-result ids to "
-                            "treat as an ensemble; sampled over their shared "
-                            "(intersected) extent.",
-                        },
-                        "property_name": {
-                            "type": "string",
-                            "description": "Band/property to sample; defaults to "
-                            "the first band.",
-                        },
-                        "grid": {
-                            "type": "integer",
-                            "default": 4,
-                            "description": "Grid size N (N*N sample points; "
-                            "2-10). Small because pixel-value is slow.",
-                        },
-                        "value_type": {
-                            "type": "string",
-                            "enum": ["regression", "categorical"],
-                            "description": "How to interpret sampled values; "
-                            "auto-detected from the first band if omitted.",
-                        },
-                    },
-                    "required": ["result_ids"],
-                },
-            ),
-            handler=_ensemble_uncertainty,
         ),
     ]

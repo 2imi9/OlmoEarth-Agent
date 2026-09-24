@@ -10,6 +10,7 @@ import pytest
 
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
@@ -165,8 +166,12 @@ async def test_review_set_carries_the_evidence_block_into_the_tool_result() -> N
 
 
 def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
-    """#9 owns self-consistency and OOD; #18 owns which windows are wrong."""
-    for tool in build_uncertainty_tools():
+    """#9 owns self-consistency and OOD; #18 owns which windows are wrong.
+
+    #9's disagreement signal is the comparison tool's ensemble mode, so that
+    tool routes the question to #18 too.
+    """
+    for tool in [*build_uncertainty_tools(), *build_compare_tools()]:
         assert "olmoearth_review_set" in tool.spec.description
 
 
@@ -174,7 +179,7 @@ def test_skill_18_routes_the_ood_question_back_to_skill_9() -> None:
     """The routing is mutual, so neither skill silently answers the other's question."""
     review = {t.spec.name: t for t in build_review_set_tools()}["olmoearth_review_set"]
     assert "olmoearth_area_of_applicability" in review.spec.description
-    assert "olmoearth_ensemble_uncertainty" in review.spec.description
+    assert "olmoearth_compare_results (mode='ensemble')" in review.spec.description
 
 
 def test_skill_9_and_18_signals_are_comparable_on_identical_windows() -> None:
