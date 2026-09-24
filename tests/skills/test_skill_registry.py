@@ -130,6 +130,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools() -> 
         "olmoearth_compare_review",
         "olmoearth_review_set",
         "olmoearth_review_set_from_result",
+        "olmoearth_scores_from_file",
         "olmoearth_plan_label_sample",
         "olmoearth_estimate_map_error",
         "olmoearth_certify_zone",

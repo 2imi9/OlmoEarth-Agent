@@ -143,6 +143,8 @@ def population_from_rows(
     score_kind: str = "class_scores",
     source: dict[str, Any] | None = None,
     centres: list[Any] | None = None,
+    p1: list[Any] | None = None,
+    map_class: list[Any] | None = None,
 ) -> Population:
     """Build a :class:`Population` from per-window score rows.
 
@@ -150,7 +152,10 @@ def population_from_rows(
     no-data windows were left out; otherwise row ``i`` is window ``i``.
     ``margin`` is top-1 minus top-2, ``p1`` the top-1 probability (softmax
     of logits), ``map_class`` the arg-max, as ``olmoearth_review_set`` reads
-    the same rows.
+    the same rows. A scores file that carries its own ``p1`` and
+    ``map_class`` per row (``olmoearth_scores_from_file``: the pooled top-1
+    probability of the model's pixels and the window's majority class) is
+    read as it says, since its rows hold one confidence and zeros.
     """
     matrix = [[float(v) for v in row] for row in rows]
     if not matrix:
@@ -163,7 +168,15 @@ def population_from_rows(
     kind = detect_score_type(matrix)
     marg = margins(matrix)
     cls = predicted_classes(matrix)
-    p1 = [max(r) if kind == "probability" else _softmax_top(r) for r in matrix]
+    top1 = [max(r) if kind == "probability" else _softmax_top(r) for r in matrix]
+    if p1 is not None:
+        top1 = [float(v) for v in p1]
+        if len(top1) != len(matrix) or not all(0.0 <= v <= 1.0 for v in top1):
+            raise ValueError("the scores file's p1 needs one probability per row")
+    if map_class is not None:
+        cls = [int(c) for c in map_class]
+        if len(cls) != len(matrix):
+            raise ValueError("the scores file's map_class needs one class per row")
     if windows is not None:
         if grid is None:
             raise ValueError("a scores file with 'windows' needs its 'grid'")
@@ -188,7 +201,7 @@ def population_from_rows(
     )
     for local, w in enumerate(index):
         pop.margin[w] = marg[local]
-        pop.p1[w] = p1[local]
+        pop.p1[w] = top1[local]
         pop.map_class[w] = cls[local]
     if centres is not None and len(centres) == len(index):
         pop.centres = {w: (float(c[0]), float(c[1])) for w, c in zip(index, centres)}
@@ -227,10 +240,13 @@ async def _population(
         path = str(args["scores_path"])
         loaded = load_scores_file(path)
         meta = loaded.meta
-        source = {"scores_path": path}
+        source: dict[str, Any] = {"scores_path": path}
         for key in ("result_id", "property_name", "threshold", "assumption"):
             if meta.get(key) is not None:
                 source[key] = meta[key]
+        if isinstance(meta.get("provenance"), str):
+            source["provenance"] = meta["provenance"]
+            source["model"] = meta.get("model")
         return population_from_rows(
             loaded.scores,
             grid=loaded.grid,
@@ -238,6 +254,8 @@ async def _population(
             score_kind=str(meta.get("score_kind") or "class_scores"),
             source=source,
             centres=meta.get("centres_lon_lat"),
+            p1=meta.get("p1"),
+            map_class=meta.get("map_class"),
         )
     if args.get("result_id"):
         grid = max(
@@ -385,7 +403,12 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
                     ": for a Studio result, the grid's sampled points, so the "
                     "rate describes the map at those points"
                     if pop.source.get("result_id")
-                    else ""
+                    else (
+                        ": every valid window of the model run's map, each "
+                        "graded on its majority class (map_class)"
+                        if pop.score_kind == "window_confidence"
+                        else ""
+                    )
                 )
             ),
         },
@@ -557,6 +580,8 @@ def _rows_args(args: dict[str, Any]) -> dict[str, Any]:
                 "scores_path": str(args["scores_path"]),
                 "result_id": loaded.meta.get("result_id"),
             },
+            "p1": loaded.meta.get("p1"),
+            "map_class": loaded.meta.get("map_class"),
         }
     raise ValueError(
         "window_indices need the scores they index: pass scores or scores_path"
@@ -640,8 +665,8 @@ def build_estimation_tools() -> list[RegisteredTool]:
         "scores": _SCORES_SCHEMA,
         "scores_path": {
             "type": "string",
-            "description": "Scores .json under OLMOEARTH_SCORES_ROOT (e.g. from "
-            "olmoearth_review_set_from_result).",
+            "description": "Scores .json under OLMOEARTH_SCORES_ROOT (from "
+            "olmoearth_scores_from_file or olmoearth_review_set_from_result).",
         },
         "result_id": {
             "type": "string",
@@ -664,8 +689,9 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "windows to label for an honest error rate "
                     "(olmoearth-inferencex design: 'confidence' by default, "
                     "'random' when a certified zone is wanted) from scores "
-                    "inline, a scores file (e.g. from "
-                    "olmoearth_review_set_from_result) or a Studio result_id; "
+                    "inline, a scores file (from olmoearth_scores_from_file "
+                    "or olmoearth_review_set_from_result) or a Studio "
+                    "result_id; "
                     "saves the design and lists windows by index and (row, "
                     "col). Do not design your own mix or promise an interval: a "
                     "targeted review set is not a sample (its error rate is "
@@ -686,7 +712,7 @@ def build_estimation_tools() -> list[RegisteredTool]:
                             "type": "string",
                             "enum": list(DESIGNS),
                             "default": "confidence",
-                            "description": "'random' if a certified zone " "is wanted.",
+                            "description": "'random' if a certified zone is wanted.",
                         },
                         "seed": {"type": "integer", "default": 0},
                         "max_listed": {

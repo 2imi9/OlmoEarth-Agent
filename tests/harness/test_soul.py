@@ -34,6 +34,13 @@ def test_soul_routes_review_and_estimation_questions_to_their_tools() -> None:
     assert "a review set is not a sample" in text
 
 
+def test_soul_routes_a_direct_model_runs_map_to_the_scores_provider() -> None:
+    """A cluster run's raster goes through the provider, never Studio sampling."""
+    text = load_soul()
+    assert "direct model run" in text
+    assert "olmoearth_scores_from_file" in text
+
+
 def test_default_system_prompt_is_the_soul() -> None:
     from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT
 

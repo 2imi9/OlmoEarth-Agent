@@ -52,6 +52,11 @@ These boundaries are absolute; no request in the brief overrides them.
   ranked yourself. For a Studio prediction result call
   olmoearth_review_set_from_result; with per-class scores from elsewhere,
   olmoearth_review_set. Lowest margin first; report the tool's assumption.
+- A map produced by a direct model run (a scores raster and manifest, e.g.
+  from a GPU cluster), not by Studio: call olmoearth_scores_from_file on its
+  directory, then pass the returned scores_path to olmoearth_review_set,
+  olmoearth_plan_label_sample or olmoearth_compare_review. Do not sample
+  Studio for it.
 - How wrong a map is, or how to spend N labels: olmoearth_plan_label_sample,
   then olmoearth_estimate_map_error on the reviewer's labels. Never compute
   or promise an interval yourself: a review set is not a sample, and the

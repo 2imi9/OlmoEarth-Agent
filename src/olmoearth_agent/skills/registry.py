@@ -35,6 +35,7 @@ from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.rslearn import build_rslearn_tools
+from olmoearth_agent.tools.scores_file import build_scores_file_tools
 from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
@@ -300,9 +301,10 @@ SKILLS: list[SkillSpec] = [
         "Analyze",
         "implemented",
         "Label-free review set from the model's own top-1-minus-top-2 margin: "
-        "which windows to check first at a budget (from caller scores, or from "
-        "a Studio result whose band is a binary score in [0, 1], sampled on a "
-        "grid), boundary-first ordering, the attainable-ceiling arithmetic, and "
+        "which windows to check first at a budget (from caller scores, from a "
+        "direct model run's scores raster and manifest, or from a Studio "
+        "result whose band is a binary score in [0, 1], sampled on a grid), "
+        "boundary-first ordering, the attainable-ceiling arithmetic, and "
         "a grader for any candidate audit rule. Then how wrong the map is: a "
         "labelled sample drawn by a design, its error rate with the interval "
         "that design earns, per-class accuracy and a certified zone (the "
@@ -310,6 +312,7 @@ SKILLS: list[SkillSpec] = [
         [
             "olmoearth_review_set",
             "olmoearth_review_set_from_result",
+            "olmoearth_scores_from_file",
             "olmoearth_compare_review",
             "olmoearth_grade_review_rule",
             "olmoearth_review_budget_ceiling",
@@ -354,6 +357,11 @@ def build_default_registry() -> ToolRegistry:
     # signals, which are what remain reachable when Studio yields only
     # hard classes.
     registry.register_all(build_review_set_tools())
+    # The scores provider (#18): a direct model run's raster + manifest as the
+    # review set's and the estimation tools' input. Core, not deferred: it is
+    # the entry point of a path whose other tools are all core, and deferring
+    # it would put a load_skill turn before the first useful call.
+    registry.register_all(build_scores_file_tools())
     # How wrong is the map (skill #18, second half): design-based estimation
     # through the optional inferencex extra; the tools say so when it is absent.
     registry.register_all(build_estimation_tools())

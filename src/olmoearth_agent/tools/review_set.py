@@ -27,7 +27,10 @@ Studio regression band that is a binary score in ``[0, 1]`` (decided at 0.5),
 which is what ``olmoearth_review_set_from_result`` does, or from any band once
 a decision threshold is named. When all you have is hard classes from two or
 more Studio results, ``olmoearth_compare_results`` with ``mode='ensemble'``
-(skill #9's disagreement signal) is the tool that still works.
+(skill #9's disagreement signal) is the tool that still works. A model run's
+own raster (every pixel's scores, e.g. from a GPU cluster) goes through
+``olmoearth_scores_from_file`` (:mod:`olmoearth_agent.tools.scores_file`), whose
+scores file these tools read.
 
 No coordinates in, no coordinates out (rule §3.1).
 """
@@ -196,16 +199,48 @@ def _place_rows(
             row["row"], row["col"] = divmod(idx, cols)
 
 
+def _file_classes(meta: dict[str, Any], n_rows: int) -> list[int] | None:
+    """A scores file's own per-row classes (``map_class``), checked, or ``None``.
+
+    A file from ``olmoearth_scores_from_file`` carries each window's majority
+    class beside its row, because a row whose margin is exactly 0 cannot say
+    which class won.
+    """
+    classes = meta.get("map_class")
+    if classes is None:
+        return None
+    if not isinstance(classes, list) or len(classes) != n_rows:
+        msg = f"the scores file's map_class does not have one class per row ({n_rows})"
+        raise ValueError(msg)
+    return [int(c) for c in classes]
+
+
+def _annotate_from_file(out: dict[str, Any], meta: dict[str, Any], n_rows: int) -> None:
+    """Carry a scores file's signal, provenance, classes and class names into a ranking."""
+    if isinstance(meta.get("signal"), str):
+        out["signal"] = meta["signal"]
+    if isinstance(meta.get("provenance"), str):
+        out["provenance"] = meta["provenance"]
+    names = meta.get("classes") if isinstance(meta.get("classes"), dict) else None
+    classes = _file_classes(meta, n_rows)
+    for row in out.get("review", []):
+        if classes is not None:
+            row["predicted_class"] = classes[int(row["window_index"])]
+        if names is not None:
+            row["class_name"] = names.get(str(row["predicted_class"]))
+
+
 async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_review_set``."""
     grid = args.get("grid")
     scores = args.get("scores")
     windows: list[int] | None = None
+    meta: dict[str, Any] = {}
     if scores is None and args.get("scores_path"):
         # Scores usually live in a file where inference ran; a model cannot relay
         # hundreds of rows inline, and asking it to would test transcription.
         loaded = load_scores_file(str(args["scores_path"]))
-        scores, windows = loaded.scores, loaded.windows
+        scores, windows, meta = loaded.scores, loaded.windows, loaded.meta
         if grid is None and loaded.grid is not None:
             grid = list(loaded.grid)
     if scores is None:
@@ -218,6 +253,9 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             "its no-data windows out; use order='confidence'"
         )
         raise ValueError(msg)
+    # A file that says what its rows are (logits or probabilities) is believed
+    # over detection: a provider's rows are one confidence and zeros.
+    file_type = meta.get("score_type")
     out = review_set(
         scores,
         budget=float(args.get("budget", 0.05)),
@@ -225,12 +263,15 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         # A grid whose no-data windows were left out has no full neighbourhood.
         grid=(int(grid[0]), int(grid[1])) if grid and windows is None else None,
         order=order,
-        score_type=args.get("score_type"),
+        score_type=args.get("score_type")
+        or (file_type if file_type in ("logit", "probability") else None),
         error_rate=(
             float(args["error_rate"]) if args.get("error_rate") is not None else None
         ),
         max_listed=int(args.get("max_listed", DEFAULT_MAX_LISTED)),
     )
+    if meta:
+        _annotate_from_file(out, meta, len(scores))
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
     _place_rows(
         out.get("review", []), "window_index", windows, int(grid[1]) if grid else None
@@ -713,6 +754,8 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "the model's top-1-minus-top-2 margin, low margin first, at "
                     "your budget, optionally boundary-first. For a STUDIO "
                     "prediction result use olmoearth_review_set_from_result; "
+                    "for a model run's raster, olmoearth_scores_from_file "
+                    "first; "
                     "with only hard classes from 2+ Studio results, "
                     "olmoearth_compare_results (mode='ensemble'). The review "
                     "set is not a "
@@ -736,9 +779,10 @@ def build_review_set_tools() -> list[RegisteredTool]:
                                 "Instead of 'scores': path to a .json file holding "
                                 "the rows, or an object {'grid': [rows, cols], "
                                 "'scores': rows}. Must sit under "
-                                "OLMOEARTH_SCORES_ROOT. Use this when the scores "
-                                "were written by an inference run; do not retype "
-                                "them."
+                                "OLMOEARTH_SCORES_ROOT (e.g. from "
+                                "olmoearth_scores_from_file). Use this when the "
+                                "scores were written by an inference run; do not "
+                                "retype them."
                             ),
                         },
                         "budget": {
