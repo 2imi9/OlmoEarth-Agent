@@ -100,3 +100,20 @@ def test_packages_match_the_catalog_rows(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
     catalog = {s.name for s in skills_by_status("vendored")}
     assert catalog == {s.name for s in SkillLoader().discover()}
+
+
+def test_rslearn_skill_matches_the_python_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rslearn skill must not describe a preloaded, import-free sandbox.
+
+    ``olmoearth_run_python`` runs each snippet in a fresh ``python -I``
+    subprocess with nothing preloaded, so a snippet needs its own imports.
+    """
+    monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
+    body = SkillLoader().load("olmoearth-rslearn")
+    assert "are preloaded" not in body
+    assert "without `import`" not in body
+    assert "bans `import`" not in body
+    assert "from rslearn.dataset import Dataset" in body
+    assert "OLMOEARTH_RUN_PYTHON" in body

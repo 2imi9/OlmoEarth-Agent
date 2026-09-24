@@ -22,6 +22,10 @@ rest of the agent is under the OlmoEarth Artifact License (the repository's root
 Changes since the move:
 
 - `scripts/*.py`: an SPDX header (`MIT`) added to each script.
+- `olmoearth-rslearn/SKILL.md`: the section on running Python described a sandbox with `rslearn`
+  preloaded and `import` banned. It now describes `olmoearth_run_python` as it works
+  (`src/olmoearth_agent/tools/system.py`): opt-in, a fresh isolated subprocess per call, normal
+  imports, nothing preloaded.
 
 The scripts are standalone command-line helpers for a user's own machine; the agent does not run
 them. They are excluded from the repository's black, ruff and mypy hooks.

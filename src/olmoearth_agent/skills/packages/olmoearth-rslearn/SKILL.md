@@ -22,12 +22,13 @@ short of running anything:
   a *materialized* rslearn dataset.
 
 > **Execution reality.** rslearn's heavy stages (`ingest`, `materialize`,
-> `model fit`) are minutes-to-hours and network/GPU-bound, and the full GDAL +
-> torch stack is **not** in this agent's default venv. So: use the
-> `olmoearth_run_python` tool only for **light orchestration/inspection** (write
-> a config, open a `Dataset`, tag a split, count windows). **Surface** the long
-> CLI commands for the user to run — do not try to run `ingest`/`materialize`/`fit`
-> inside the agent loop (they will block and time out).
+> `model fit`) are minutes-to-hours and network/GPU-bound, and rslearn, GDAL and
+> torch are **not** dependencies of this agent. So: use the
+> `olmoearth_run_python` tool, when it is enabled, only for **light
+> orchestration/inspection** (write a config, open a `Dataset`, tag a split,
+> count windows). **Surface** the long CLI commands for the user to run — do not
+> try to run `ingest`/`materialize`/`fit` inside the agent loop (they will time
+> out).
 
 ## When to use
 
@@ -112,13 +113,30 @@ Both stage their windows with the same `prepare/ingest/materialize` steps, then
 `RslearnWriter` writes predictions back as a dataset layer. These are long/GPU
 jobs — **surface them for the user**, don't run them in the agent loop.
 
-## Light Python you CAN run (import-free; preloaded names)
+## Light Python you CAN run (`olmoearth_run_python`)
 
-In the agent sandbox, `rslearn`, `Dataset`, and `UPath` are preloaded — write
-snippets **without `import`** (the harness bans `import`). Use `olmoearth_run_python`
-for quick inspection/orchestration like tagging a split:
+How the tool works, so a snippet runs the first time:
+
+- It exists only when the operator started the agent with
+  `OLMOEARTH_RUN_PYTHON=1`. If it is not in your tool list, give the snippet to
+  the user to run instead.
+- Each call runs the snippet in a **fresh, isolated subprocess** (`python -I -c`)
+  of the agent's own interpreter, in a throwaway temporary directory. Nothing is
+  preloaded and **no state carries over** between calls: write normal `import`
+  statements and use absolute paths.
+- `rslearn` and `upath` import only if the user installed them in the agent's
+  environment; an `ImportError` means they are absent, so surface the snippet.
+- There is a wall-clock limit (30 s by default, `OLMOEARTH_RUN_PYTHON_TIMEOUT`)
+  and stdout/stderr are truncated at 8,000 characters each; `print()` what you
+  need back. Known credential variables are removed from its environment, but
+  the subprocess is not network-isolated.
+
+Tagging a split, for example:
 
 ```python
+from rslearn.dataset import Dataset
+from upath import UPath
+
 ds = Dataset(UPath("/path/to/dataset/"))
 windows = ds.load_windows(workers=32)
 for w in windows:
