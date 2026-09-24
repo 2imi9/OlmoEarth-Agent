@@ -329,6 +329,10 @@ def _pair(
         "kind": kind,
         "value_type": value_type,
         "narration": narration,
+        # Cells, not samples: a pair samples each cell twice (exp86 round 1
+        # read the 72 samples of a 6x6 grid as 72 cells).
+        "n_cells_compared": stats.get("n_samples", 0),
+        "n_cells_dropped": s.n_points - stats.get("n_samples", 0),
         "n_nodata_dropped": n_nodata,
         "n_failed_dropped": n_failed,
         "stats": stats,
@@ -730,10 +734,35 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         "result_ids": ids,
         **out,
         "grid": f"{grid}x{grid}",
+        "n_cells": s.n_points,
         "samples_requested": s.n_points * len(ids),
+        "sampling_note": _sampling_note(s, out, mode),
         "shared_extent_km2": _extent_km2(bbox),
         "nodata_rule": NODATA_RULE,
     }
+
+
+def _sampling_note(s: _Sampled, out: dict[str, Any], mode: str) -> str:
+    """Cells against samples, stated, so neither count is read as the other."""
+    n_results = len(s.ids)
+    note = (
+        f"the {s.grid}x{s.grid} grid has {s.n_points} cells; each of the "
+        f"{n_results} results was sampled once per cell, so "
+        f"{s.n_points * n_results} samples were requested"
+    )
+    if mode == "pair":
+        return note + (
+            f"; {out['n_cells_compared']} compared, {out['n_cells_dropped']} "
+            "dropped (no-data or failed in either map; n_nodata_dropped and "
+            "n_failed_dropped count those cells)"
+        )
+    note += "; n_nodata_dropped counts samples, not cells"
+    if mode == "ensemble":
+        note += (
+            f"; {out.get('n_points_dropped', 0)} cells were dropped for holding "
+            "fewer than two valid values"
+        )
+    return note
 
 
 def build_compare_tools() -> list[RegisteredTool]:

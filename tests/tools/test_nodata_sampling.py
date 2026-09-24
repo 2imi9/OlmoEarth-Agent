@@ -193,6 +193,41 @@ async def test_compare_results_drops_the_sentinel_on_the_trial_grid(
 
 
 @pytest.mark.asyncio
+async def test_compare_results_counts_cells_not_only_samples(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """exp86 round 1 (brief 3, Studio run 2) on this very grid: the answer read
+    samples_requested (72, one sample per map per cell) as the cell count and
+    wrote "25 of 72 grid cells, 47 dropped"; it is 25 of 36, 11 dropped."""
+    prop = "sample_karst_score"
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/a1", json=_result("a1", prop)
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/b1", json=_result("b1", prop)
+    )
+    callback = _pixel_callback(
+        {
+            "a1": (prop, [a for a, _ in KARST_PAIRS]),
+            "b1": (prop, [b for _, b in KARST_PAIRS]),
+        },
+        6,
+    )
+    httpx_mock.add_callback(
+        callback, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _compare({"result_ids": ["a1", "b1"], "grid": 6}, ctx)
+    assert out["grid"] == "6x6"
+    assert out["n_cells"] == 36
+    assert out["n_cells_compared"] == 25 and out["n_cells_dropped"] == 11
+    assert out["samples_requested"] == 72
+    note = out["sampling_note"]
+    assert "36 cells" in note and "72" in note and "25 compared" in note
+
+
+@pytest.mark.asyncio
 async def test_compare_results_refuses_different_properties_before_sampling(
     httpx_mock: HTTPXMock,
 ) -> None:
