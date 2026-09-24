@@ -9,7 +9,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
+      # Two trailing spaces are a Markdown hard line break, and a diff's blank
+      # context line is a single space: keep both.
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        exclude: \.patch$
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
