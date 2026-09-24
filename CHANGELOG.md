@@ -124,6 +124,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   reads as its label, so categorical agreement and vote counts no longer
   depend on an unhashable object.
 - mypy skips numpy's stubs (3.12 syntax) and the untyped companion package.
+- **Repository reorganised.** The four instruction skills (#1-#3, #17) ship
+  inside the package under `src/olmoearth_agent/skills/packages/` (moved from
+  the frozen `2imi9/OlmoEarth-Skills`) and the `vendor/olmoearth-skills`
+  submodule is removed; five research notes and the web UI design notes move
+  to `docs/archive/`; nine unused dataclasses are removed from `types.py`;
+  `docs/serving.md` documents the vLLM cluster setup.
 
 ### Fixed
 - `pyyaml` is a declared dependency: without it `olmoearth_rslearn_compose`
