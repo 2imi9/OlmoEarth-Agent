@@ -7,7 +7,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+import httpx
 import pytest
+from pytest_httpx import HTTPXMock
 
 pytest.importorskip("fastapi")
 
@@ -336,7 +338,7 @@ def test_health_reports_claude_available() -> None:
 
 
 def test_health_reports_local_llm_up(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _up(_endpoint: str) -> bool:
+    async def _up(_endpoint: str, _api_key: str | None = None) -> bool:
         return True
 
     monkeypatch.setattr(serve, "_local_llm_up", _up)
@@ -346,7 +348,7 @@ def test_health_reports_local_llm_up(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_health_reports_local_llm_down(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _down(_endpoint: str) -> bool:
+    async def _down(_endpoint: str, _api_key: str | None = None) -> bool:
         return False
 
     monkeypatch.setattr(serve, "_local_llm_up", _down)
@@ -361,6 +363,43 @@ def test_local_llm_probe_false_when_unreachable() -> None:
     import asyncio
 
     assert asyncio.run(serve._local_llm_up("http://127.0.0.1:1/v1")) is False
+
+
+def test_local_llm_probe_sends_the_api_key(httpx_mock: HTTPXMock) -> None:
+    # A vLLM server started with an access token answers /models only with the
+    # key; without it the probe read "local model is not up" while the model
+    # served the agent (24 September trial).
+    import asyncio
+
+    def _requires_token(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("authorization") == "Bearer tok-123":
+            return httpx.Response(200, json={"data": [{"id": "m"}]})
+        return httpx.Response(401, json={"error": "Unauthorized"})
+
+    httpx_mock.add_callback(
+        _requires_token, url="http://gpu-node:8000/v1/models", is_reusable=True
+    )
+    endpoint = "http://gpu-node:8000/v1"
+    assert asyncio.run(serve._local_llm_up(endpoint, "tok-123")) is True
+    assert asyncio.run(serve._local_llm_up(endpoint, "wrong")) is False
+    assert asyncio.run(serve._local_llm_up(endpoint)) is False
+
+
+def test_health_probes_with_the_configured_llm_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str | None] = []
+
+    async def _probe(_endpoint: str, api_key: str | None = None) -> bool:
+        seen.append(api_key)
+        return True
+
+    monkeypatch.setenv("LLM_API_KEY", "tok-123")
+    monkeypatch.setattr(serve, "_local_llm_up", _probe)
+    with TestClient(serve.app) as client:
+        body = client.get("/api/health").json()
+    assert body["llm_local_up"] is True
+    assert seen == ["tok-123"]
 
 
 def test_run_claude_backend_requires_key() -> None:

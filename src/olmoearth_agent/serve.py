@@ -460,7 +460,7 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     return _filter_models(backend, ids)
 
 
-async def _local_llm_up(endpoint: str) -> bool:
+async def _local_llm_up(endpoint: str, api_key: str | None = None) -> bool:
     """Best-effort check that the configured local LLM endpoint answers.
 
     Used only so the web UI can nudge the user when the default (local)
@@ -468,11 +468,28 @@ async def _local_llm_up(endpoint: str) -> bool:
     cloud provider). A localhost model probe must never traverse a proxy, so
     ``trust_env=False``. Any failure -> ``False``; bounded by a short timeout
     and never raises.
+
+    Parameters
+    ----------
+    endpoint : str
+        The OpenAI-compatible base URL (``LLM_ENDPOINT``); ``/models`` is
+        appended.
+    api_key : str or None, optional
+        The key the chat client sends (``LLM_API_KEY``). When set, the probe
+        sends it as ``Authorization: Bearer <api_key>``, as the OpenAI client
+        does, so a server started with an access token (vLLM or llama.cpp
+        ``--api-key``) is not reported down while it serves the agent.
+
+    Returns
+    -------
+    bool
+        ``True`` only when ``GET /models`` answers 200.
     """
     url = endpoint.rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         async with httpx.AsyncClient(timeout=2.0, trust_env=False) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=headers)
         return resp.status_code == 200
     except Exception:
         return False
@@ -492,7 +509,9 @@ async def api_health() -> dict[str, Any]:
         "mode": "live",
         "llm_endpoint": llm.config.endpoint,
         "llm_model": llm.config.model,
-        "llm_local_up": await _local_llm_up(llm.config.endpoint),
+        "llm_local_up": await _local_llm_up(
+            llm.config.endpoint, llm.config.api_key
+        ),
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
     }
