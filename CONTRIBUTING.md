@@ -14,7 +14,8 @@ Contributor behavior follows the [Contributor Covenant v2.1](https://www.contrib
 git clone https://github.com/2imi9/OlmoEarth-Agent.git
 cd OlmoEarth-Agent
 # Preferred package manager: uv (https://docs.astral.sh/uv/)
-uv sync
+git submodule update --init   # one test still reads the old skills submodule
+uv sync --all-extras          # dev tools + the serve/claude extras the tests import
 uv run pre-commit install
 ```
 
@@ -64,21 +65,21 @@ gh pr create --base main --title "..." --body "..."
 
 ## 5. Code style
 
-Configured in `pyproject.toml`:
+Configured in `pyproject.toml` and run by the hooks in `.pre-commit-config.yaml`. This section is the one place these rules are written down; `AGENTS.md` links here.
 
-- **Formatter:** [Black](https://black.readthedocs.io/) (default settings, 88-char line length).
+- **Formatter:** [Black](https://black.readthedocs.io/) (88-char line length). It is the only formatter hook.
 - **Linter / import sorter:** [Ruff](https://docs.astral.sh/ruff/) with `["E", "F", "S", "I", "PERF"]` selected; `E501` (line length) deferred to Black.
 - **Type checker:** [mypy](https://mypy-lang.org/): `disallow_untyped_defs = true`; type hints required on all public functions.
-- **Docstrings:** [NumPy style](https://numpydoc.readthedocs.io/en/latest/format.html): enforced by [interrogate](https://interrogate.readthedocs.io/) at `fail-under = 90`.
-- **Syntax level:** Python 3.11+, PEP 604 `|` over `Union` / `Optional`, enforced by pyupgrade.
-- **License headers:** every source file carries the OlmoEarth Artifact License SPDX identifier (`LicenseRef-OlmoEarth-Artifact-License`).
+- **Docstrings:** [NumPy style](https://numpydoc.readthedocs.io/en/latest/format.html), checked by [interrogate](https://interrogate.readthedocs.io/) at `fail-under = 81` (`[tool.interrogate]` in `pyproject.toml`).
+- **Syntax level:** Python 3.11+, PEP 604 `|` over `Union` / `Optional`. No hook checks this; reviewers do.
+- **License headers:** every source file carries the OlmoEarth Artifact License SPDX identifier (`LicenseRef-OlmoEarth-Artifact-License`). The exception is the skill packages under `src/olmoearth_agent/skills/packages/`, which are MIT (their `README.md` and `LICENSE`); their scripts are skipped by the Black, Ruff and mypy hooks.
 
 ---
 
 ## 6. Tests
 
 - **Framework:** [pytest](https://docs.pytest.org/).
-- **Coverage gate:** 90%, same as [earth2studio's testing guide](https://nvidia.github.io/earth2studio/userguide/developer/testing.html). CI fails below this.
+- **Coverage:** `fail_under = 90` (`[tool.coverage.report]` in `pyproject.toml`) applies when you run `uv run pytest --cov`. There is no CI: nothing runs the tests, the coverage check or pre-commit for you, so run them before opening a PR.
 - **Integration vs unit:** integration tests that hit the live OlmoEarth Studio API are tagged `@pytest.mark.integration` and require `OLMOEARTH_API_KEY` in the environment; unit tests must not.
 - **Operational-rule tests:** every rule in `PLAN.md` §3 should have a corresponding test, placed beside the tool that enforces it (e.g. `tests/tools/test_negative_sampler_tool.py` covers §3.1). Adding a new rule? Add its test in the same PR.
 
@@ -110,7 +111,7 @@ Repeated disregard for these rules is grounds for closing the PR. Adapted from [
 
 - One maintainer approval is required to merge.
 - Reviewers may post advisory feedback from an automated review bot (e.g. Greptile). Addressing every comment is not required: use judgment.
-- Once approved and CI is green, squash-merge with the PR title as the merge commit subject.
+- Once approved, squash-merge with the PR title as the merge commit subject.
 
 ---
 
