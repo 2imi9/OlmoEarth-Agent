@@ -33,11 +33,13 @@ serve = [
 claude = [
     "anthropic>=0.40",  # native Claude backend (olmoearth_agent.llm.anthropic_client)
 ]
-# Design-based error estimation (tools/estimation.py): the companion package
-# brings numpy, so it stays optional; the core package has no numpy. Its own
-# requires-python stops below 3.14, hence the marker.
+# Design-based error estimation (tools/estimation.py) and the scores provider
+# (tools/scores_file.py): the companion package brings numpy, so it stays
+# optional; the core package has no numpy. Its `geo` extra brings rasterio,
+# which reading a model run's scores GeoTIFF needs. Its own requires-python
+# stops below 3.14, hence the marker.
 inferencex = [
-    "olmoearth-inferencex>=1.3.0; python_version < '3.14'",
+    "olmoearth-inferencex[geo]>=1.3.0; python_version < '3.14'",
 ]
 dev = [
     "pytest>=8.0",
@@ -105,12 +107,13 @@ exclude = ["^src/olmoearth_agent/skills/packages/"]
 module = ["fastapi.*", "uvicorn.*", "starlette.*"]
 ignore_missing_imports = true
 
-# The `inferencex` extra (olmoearth-inferencex, which brings numpy) is optional
-# and untyped. The core never imports numpy, but openai's typing shims do under
-# TYPE_CHECKING, and numpy >= 2.4's stubs use 3.12-only syntax this 3.11 target
-# cannot parse: skip following them rather than fail on an installed extra.
+# The `inferencex` extra (olmoearth-inferencex, which brings numpy, and rasterio
+# through its geo extra) is optional and untyped. The core never imports numpy,
+# but openai's typing shims do under TYPE_CHECKING, and numpy >= 2.4's stubs use
+# 3.12-only syntax this 3.11 target cannot parse: skip following them rather
+# than fail on an installed extra.
 [[tool.mypy.overrides]]
-module = ["oe_inferencex", "oe_inferencex.*"]
+module = ["oe_inferencex", "oe_inferencex.*", "rasterio", "rasterio.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
