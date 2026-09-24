@@ -10,6 +10,38 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **`olmoearth_scores_from_file`: a direct model run's map as review-set
+  input (the cluster scores provider).** Studio's API gives map tiles and a
+  point lookup, never per-class scores. A run outside Studio (the companion
+  repository's `scripts/score_area.py`, Ai2's fine-tuned AWF model on a GPU
+  cluster) writes a georeferenced `(C, H, W)` float32 `scores.tif` of logits
+  or probabilities with NaN no-data, and a `manifest.json`. The tool reads
+  such a directory under `OLMOEARTH_SCORES_ROOT` (the scores files' path
+  rule; a symlink or a manifest naming a file outside the directory is
+  refused, and the raster's sha256 must be the manifest's), pools it with
+  `oe_inferencex.assess.assess_prediction` as `oe-inferencex assess` does
+  (`is_logit` from the manifest, `patch` 4 by default), and writes one scores
+  file: each valid window's row holds the package's window confidence at its
+  majority class and 0 elsewhere (exp64's mapping), with its pooled top-1
+  probability and class beside it. `olmoearth_review_set` on it is the
+  package's review set, `olmoearth_plan_label_sample` draws what
+  `oe-inferencex sample` draws, and two runs go to `olmoearth_compare_review`.
+  A channel the manifest marks as the label fill value (`nodata_value_<c>`;
+  AWF's channel 9, never a training target) is left out of the margin and the
+  class vote unless `include_fill_class` is set. For probabilities the
+  confidence is the package's, the top-1 probability. The result gives the
+  scores file, the window grid, valid and no-data windows, the classes, the
+  model and revision, the date window and the provenance (full model output,
+  not Studio point samples); never the area. Core, not deferred: it opens a
+  path whose other tools are all core (a default turn now carries about 7,700
+  spec tokens). On the first real run (AWF, 512 x 512 px, 16,384 windows of
+  4 px) the 5% review set is `oe-inferencex assess --logits`'s, the same 819
+  windows in the same order; leaving channel 9 out changes none of them,
+  since it is the lowest channel at every pixel. The soul routes a map from a
+  direct model run to it.
+- `olmoearth_review_set` reads a scores file's own `score_type`, `signal`,
+  per-window class and class names; the estimation tools read its `p1` and
+  `map_class`.
 - **`olmoearth_review_set_from_result`: which windows of a Studio prediction to
   check first.** A live trial (Qwen3.8-27B-NVFP4, 24 September 2026) asked
   which windows a reviewer should open first; with no tool turning a Studio
@@ -70,6 +102,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
 
 ### Changed
+- The `inferencex` extra is `olmoearth-inferencex[geo]` (>= 1.3.0): reading a
+  scores GeoTIFF needs rasterio, and the package's `geo` extra brings it, with
+  geopandas, shapely, pystac-client, planetary-computer, matplotlib and scipy.
+  The core install is unchanged and numpy-free.
 - **One comparison tool.** `olmoearth_compare_results` takes 2-8
   `result_ids` and a `mode`: `pair`, `group`, `series` (one model, ordered by
   date) or `ensemble`; the default `auto` picks pair, series or group from the
