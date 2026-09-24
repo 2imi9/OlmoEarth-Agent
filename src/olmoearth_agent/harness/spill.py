@@ -24,7 +24,6 @@ import logging
 import os
 import re
 import uuid
-from pathlib import Path
 from typing import Any
 
 from olmoearth_agent.security.paths import workspace_root
@@ -76,7 +75,9 @@ def compact_result_for_llm(tool_name: str, result: Any) -> str:
         path.write_text(text, encoding="utf-8")
         saved = str(path)
     except OSError:  # disk trouble must not break the agent turn
-        logger.warning("could not spill %s result to %s", tool_name, path, exc_info=True)
+        logger.warning(
+            "could not spill %s result to %s", tool_name, path, exc_info=True
+        )
 
     envelope: dict[str, Any] = {
         "ok": result.get("ok") if isinstance(result, dict) else None,
@@ -97,11 +98,6 @@ def compact_result_for_llm(tool_name: str, result: Any) -> str:
         ),
     }
     return json.dumps(envelope)
-
-
-def _spill_dir_hint() -> Path:
-    """Where spilled results land (exposed for tests and docs)."""
-    return workspace_root() / "tool_results"
 
 
 def _shape(value: Any, depth: int = 0) -> Any:
