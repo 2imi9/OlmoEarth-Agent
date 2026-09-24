@@ -166,8 +166,50 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   submodule is removed; five research notes and the web UI design notes move
   to `docs/archive/`; nine unused dataclasses are removed from `types.py`;
   `docs/serving.md` documents the vLLM cluster setup.
+- **The turn cap no longer ends a run without an answer.** When the last
+  allowed turn still asks for tools, `LeadAgent.run_stream` yields
+  `max_turns` (`final_answer_forced`), tells the model the cap is reached,
+  and makes one more call with no tools; its text is the `final` event,
+  marked `forced_by_turn_cap` (a model that writes nothing gets a harness
+  answer naming the cap). The CLI prints it with a note on stderr and the
+  web UI shows the same note above it; the Claude backend writes tool turns
+  as text in a request without tools. exp86 round 1's brief 4 on a Studio
+  result ended all three runs at the cap with no answer.
+- The soul asks for numbers exactly as the tools returned them, no ratio,
+  difference or percentage of the model's own, and no figure quoted from a
+  tool's description as a finding (exp86 round 1).
 
 ### Fixed
+- **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
+  - `olmoearth_plan_label_sample` held a Studio result's grid to 16 in
+    silence (20, 30 and 40 all gave the same 173 valid windows) and crashed
+    on the `[rows, cols]` form its schema advertised. The grid is N or
+    `[N, N]`, 2-16, stated in the schema, and the result's `sampling` gives
+    the grid used, the grid asked for and whether it was capped
+    (`olmoearth_review_set_from_result` states its cap the same way).
+  - Its budget error said "a finer grid" at the cap. It now states the
+    ceiling ("a Studio result sampled at 16x16 = 256 points has 173 valid
+    windows here, so at most 173 labels can be planned from it") and offers
+    only what works: a smaller budget, a finer grid only below 16 and only
+    when 256 points can reach the budget, or a direct model run through
+    `olmoearth_scores_from_file`.
+  - The second failure of a tool with the same error in a run (numbers
+    aside) replaces the generic hint with: stop retrying, tell the user the
+    limit, answer with what you have (`same_error_count`).
+  - Measured figures left the tool descriptions, which reach every model
+    call: `olmoearth_compare_review`'s "51-70%" (quoted as a finding in a run
+    that never called it; its `caveats` keep it), `olmoearth_review_set`'s
+    "all 24 tasks", `olmoearth_review_budget_ceiling`'s worked example and
+    `olmoearth_area_of_applicability`'s "13/27 scenes, sign p=1.00" (now in
+    its output's `error_ranking`). A test fails any description that states
+    one.
+  - `olmoearth_compare_results` reports `n_cells` beside `samples_requested`,
+    a pair's `n_cells_compared` and `n_cells_dropped`, and a `sampling_note`
+    (the answer had read 72 samples of a 6x6 grid as 72 cells).
+  - `olmoearth_certify_zone` gives a `verdict` and says that a level whose
+    `upper_bound` is below alpha is not thereby certified: certification is
+    the package's exact test under the rule (every brief 6 answer claimed
+    zones at alpha 0.10-0.15 where the package certifies none).
 - `pyyaml` is a declared dependency: without it `olmoearth_rslearn_compose`
   returned no YAML.
 - **No-data entered the statistics of every grid sampler.** Studio's
