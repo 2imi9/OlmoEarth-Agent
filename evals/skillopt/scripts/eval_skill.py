@@ -7,6 +7,7 @@ breakdown. Used for the smoke test, the baseline, and the final comparison.
 
     python olmoearth_local/eval_skill.py --skill <path.md> --split test [--limit N]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,11 @@ def setup(temperature: float = 0.0) -> None:
     set_target_backend("qwen_chat")
     configure_azure_openai(endpoint=ENDPOINT, auth_mode="openai_compatible")
     configure_qwen_chat(
-        base_url=ENDPOINT, max_tokens=2048, enable_thinking=False,
-        temperature=temperature, timeout_seconds=300,
+        base_url=ENDPOINT,
+        max_tokens=2048,
+        enable_thinking=False,
+        temperature=temperature,
+        timeout_seconds=300,
     )
     set_target_deployment(MODEL)
     set_optimizer_deployment(MODEL)
@@ -73,8 +77,12 @@ def main() -> None:
     os.makedirs(out, exist_ok=True)
 
     res = run_batch(
-        items=items, out_root=out, skill_content=skill,
-        workers=a.workers, exec_timeout=240, max_completion_tokens=2048,
+        items=items,
+        out_root=out,
+        skill_content=skill,
+        workers=a.workers,
+        exec_timeout=240,
+        max_completion_tokens=2048,
     )
     n = len(res)
     hard = sum(r["hard"] for r in res) / n if n else 0.0
@@ -93,8 +101,14 @@ def main() -> None:
     for k, (c, t) in sorted(fc.items()):
         print(f"  {k:24s} {c}/{t}")
 
-    summary = {"split": a.split, "skill": a.skill, "n": n, "hard": hard, "soft": soft,
-               "per_field": {k: {"correct": c, "total": t} for k, (c, t) in fc.items()}}
+    summary = {
+        "split": a.split,
+        "skill": a.skill,
+        "n": n,
+        "hard": hard,
+        "soft": soft,
+        "per_field": {k: {"correct": c, "total": t} for k, (c, t) in fc.items()},
+    }
     with open(os.path.join(out, "summary.json"), "w", encoding="utf-8") as f:
         json.dump({**summary, "results": res}, f, ensure_ascii=False, indent=2)
     print(f"summary -> {os.path.join(out, 'summary.json')}")

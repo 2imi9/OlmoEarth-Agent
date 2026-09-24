@@ -10,6 +10,7 @@ pitfall area, so the benchmark exercises it.
 
 Writes split_dir/{train,val,test}/items.json.
 """
+
 from __future__ import annotations
 
 import copy
@@ -22,8 +23,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SKILLOPT_ROOT = os.path.dirname(HERE)
 RECOMMEND_PATH = os.path.abspath(
     os.path.join(
-        SKILLOPT_ROOT, "..", "OlmoEarth Agent", "src", "olmoearth_agent",
-        "skills", "packages", "olmoearth-studio-job-config", "scripts",
+        SKILLOPT_ROOT,
+        "..",
+        "OlmoEarth Agent",
+        "src",
+        "olmoearth_agent",
+        "skills",
+        "packages",
+        "olmoearth-studio-job-config",
+        "scripts",
         "recommend.py",
     )
 )
@@ -59,56 +67,241 @@ def expected_for(preset_key: str, num_classes=None, num_samples=None) -> dict:
 # foundation_model field is the weakest in the baseline, so it is sampled hard.
 SPECS: list[tuple[str, str, int | None, int | None]] = [
     # crop_type (default tiny; flips to base on <2K samples or >5 classes)
-    ("crop_type", "Map which crop is growing in each field across the Nile Delta for the 2024 growing season using Sentinel-2 time series.", None, None),
-    ("crop_type", "We have about 1,500 labeled field polygons and want per-field crop classification across six crop types in Punjab.", 6, 1500),
-    ("crop_type", "Per-pixel crop-type mapping for a smallholder region; eight crop classes, roughly 900 labeled parcels.", 8, 900),
-    ("crop_type", "Crop-type segmentation over an irrigation district with a large archive — about 50,000 labeled fields, 4 crop classes.", 4, 50000),
+    (
+        "crop_type",
+        "Map which crop is growing in each field across the Nile Delta for the 2024 growing season using Sentinel-2 time series.",
+        None,
+        None,
+    ),
+    (
+        "crop_type",
+        "We have about 1,500 labeled field polygons and want per-field crop classification across six crop types in Punjab.",
+        6,
+        1500,
+    ),
+    (
+        "crop_type",
+        "Per-pixel crop-type mapping for a smallholder region; eight crop classes, roughly 900 labeled parcels.",
+        8,
+        900,
+    ),
+    (
+        "crop_type",
+        "Crop-type segmentation over an irrigation district with a large archive — about 50,000 labeled fields, 4 crop classes.",
+        4,
+        50000,
+    ),
     # mangrove (binary; tiny unless data is tiny)
-    ("mangrove", "Delineate mangrove versus non-mangrove extent along the coast of Indonesia from optical imagery.", None, None),
-    ("mangrove", "Produce an annual mangrove cover mask for a tidal estuary — a binary per-pixel classification.", None, None),
-    ("mangrove", "Mangrove vs non-mangrove segmentation in a data-scarce delta; only ~600 labeled patches so far.", 2, 600),
+    (
+        "mangrove",
+        "Delineate mangrove versus non-mangrove extent along the coast of Indonesia from optical imagery.",
+        None,
+        None,
+    ),
+    (
+        "mangrove",
+        "Produce an annual mangrove cover mask for a tidal estuary — a binary per-pixel classification.",
+        None,
+        None,
+    ),
+    (
+        "mangrove",
+        "Mangrove vs non-mangrove segmentation in a data-scarce delta; only ~600 labeled patches so far.",
+        2,
+        600,
+    ),
     # land_cover (default base; flips to tiny on >20K samples)
-    ("land_cover", "Produce an annual land-cover map (urban, water, forest, cropland, bare soil, grassland) for a large watershed.", 6, None),
-    ("land_cover", "Continental-scale land-cover classification from Sentinel-2 with around 40,000 labeled samples.", 7, 40000),
-    ("land_cover", "Six-class land cover for a province; very large training set, roughly 60,000 labeled pixels-blocks.", 6, 60000),
+    (
+        "land_cover",
+        "Produce an annual land-cover map (urban, water, forest, cropland, bare soil, grassland) for a large watershed.",
+        6,
+        None,
+    ),
+    (
+        "land_cover",
+        "Continental-scale land-cover classification from Sentinel-2 with around 40,000 labeled samples.",
+        7,
+        40000,
+    ),
+    (
+        "land_cover",
+        "Six-class land cover for a province; very large training set, roughly 60,000 labeled pixels-blocks.",
+        6,
+        60000,
+    ),
     # soil_moisture (per-pixel regression, before-context; tiny default)
-    ("soil_moisture", "Estimate surface soil moisture as a continuous percentage per pixel for an agricultural region, using the months leading up to each observation.", None, None),
-    ("soil_moisture", "Per-pixel soil-moisture regression for a drought-prone basin; radar plus optical.", None, None),
-    ("soil_moisture", "Soil-moisture regression where we only have ~800 in-situ probe samples to train on.", None, 800),
+    (
+        "soil_moisture",
+        "Estimate surface soil moisture as a continuous percentage per pixel for an agricultural region, using the months leading up to each observation.",
+        None,
+        None,
+    ),
+    (
+        "soil_moisture",
+        "Per-pixel soil-moisture regression for a drought-prone basin; radar plus optical.",
+        None,
+        None,
+    ),
+    (
+        "soil_moisture",
+        "Soil-moisture regression where we only have ~800 in-situ probe samples to train on.",
+        None,
+        800,
+    ),
     # tree_height (per-pixel regression; default base; flips tiny on >20K)
-    ("tree_height", "Predict canopy height in metres per pixel over a temperate forest.", None, None),
-    ("tree_height", "Estimate tree height across a managed plantation; we have roughly 35,000 lidar-derived samples.", None, 35000),
+    (
+        "tree_height",
+        "Predict canopy height in metres per pixel over a temperate forest.",
+        None,
+        None,
+    ),
+    (
+        "tree_height",
+        "Estimate tree height across a managed plantation; we have roughly 35,000 lidar-derived samples.",
+        None,
+        35000,
+    ),
     # biomass (window regression; default base; flips tiny on >20K)
-    ("biomass", "Estimate average above-ground biomass per 640 m region for a forest-carbon project.", None, None),
-    ("biomass", "Regional mean biomass estimation with about 30,000 plot samples.", None, 30000),
+    (
+        "biomass",
+        "Estimate average above-ground biomass per 640 m region for a forest-carbon project.",
+        None,
+        None,
+    ),
+    (
+        "biomass",
+        "Regional mean biomass estimation with about 30,000 plot samples.",
+        None,
+        30000,
+    ),
     # ecosystem_type (window classification; tiny default; flips base on <2K or >5 classes)
-    ("ecosystem_type", "Classify the dominant ecosystem type for each tile across a national park.", None, None),
-    ("ecosystem_type", "One ecosystem label per 640 m tile; only about 1,200 labeled tiles available.", None, 1200),
-    ("ecosystem_type", "Per-tile ecosystem classification with seven ecosystem classes across a basin.", 7, None),
+    (
+        "ecosystem_type",
+        "Classify the dominant ecosystem type for each tile across a national park.",
+        None,
+        None,
+    ),
+    (
+        "ecosystem_type",
+        "One ecosystem label per 640 m tile; only about 1,200 labeled tiles available.",
+        None,
+        1200,
+    ),
+    (
+        "ecosystem_type",
+        "Per-tile ecosystem classification with seven ecosystem classes across a basin.",
+        7,
+        None,
+    ),
     # vessel_detection (single_moment; tiny; flips base on <2K)
-    ("vessel_detection", "Detect ships at sea in a scene, combining radar and optical for night and day.", None, None),
-    ("vessel_detection", "Locate individual vessels as points in a busy harbor approach.", None, None),
-    ("vessel_detection", "Vessel detection where labeled examples are scarce — about 1,100 annotated ships.", None, 1100),
+    (
+        "vessel_detection",
+        "Detect ships at sea in a scene, combining radar and optical for night and day.",
+        None,
+        None,
+    ),
+    (
+        "vessel_detection",
+        "Locate individual vessels as points in a busy harbor approach.",
+        None,
+        None,
+    ),
+    (
+        "vessel_detection",
+        "Vessel detection where labeled examples are scarce — about 1,100 annotated ships.",
+        None,
+        1100,
+    ),
     # solar_array_detection (detection + period, stationary; default base)
-    ("solar_array_detection", "Find and localize solar farms across a state from imagery over the year.", None, None),
-    ("solar_array_detection", "Detect utility and rooftop solar arrays — stationary objects — across a region.", None, None),
+    (
+        "solar_array_detection",
+        "Find and localize solar farms across a state from imagery over the year.",
+        None,
+        None,
+    ),
+    (
+        "solar_array_detection",
+        "Detect utility and rooftop solar arrays — stationary objects — across a region.",
+        None,
+        None,
+    ),
     # oil_slick (single_moment; S1 primary; tiny)
-    ("oil_slick", "Detect oil slicks on the sea surface from a single radar-primary scene.", None, None),
-    ("oil_slick", "Localize oil spills as discrete objects, using Sentinel-1 as the main sensor.", None, None),
+    (
+        "oil_slick",
+        "Detect oil slicks on the sea surface from a single radar-primary scene.",
+        None,
+        None,
+    ),
+    (
+        "oil_slick",
+        "Localize oil spills as discrete objects, using Sentinel-1 as the main sensor.",
+        None,
+        None,
+    ),
     # flood (single_moment_with_context before+after; base; flips tiny on >20K)
-    ("flood", "Map flood extent after a hurricane using before-and-after imagery; radar is essential under storm clouds.", None, None),
-    ("flood", "Per-pixel flooded / not-flooded classification for a single storm event with surrounding context.", None, None),
-    ("flood", "Flood mapping with a very large multi-event archive of about 45,000 labeled scenes.", 2, 45000),
+    (
+        "flood",
+        "Map flood extent after a hurricane using before-and-after imagery; radar is essential under storm clouds.",
+        None,
+        None,
+    ),
+    (
+        "flood",
+        "Per-pixel flooded / not-flooded classification for a single storm event with surrounding context.",
+        None,
+        None,
+    ),
+    (
+        "flood",
+        "Flood mapping with a very large multi-event archive of about 45,000 labeled scenes.",
+        2,
+        45000,
+    ),
     # drought (single_moment_with_context before only; tiny)
-    ("drought", "Produce a per-pixel drought index using the preceding six months as context.", None, None),
-    ("drought", "Continuous drought-severity regression for a rangeland from optical vegetation signals.", None, None),
+    (
+        "drought",
+        "Produce a per-pixel drought index using the preceding six months as context.",
+        None,
+        None,
+    ),
+    (
+        "drought",
+        "Continuous drought-severity regression for a rangeland from optical vegetation signals.",
+        None,
+        None,
+    ),
     # burn_scar (single_moment_with_context before+after; tiny)
-    ("burn_scar", "Map burned area after a wildfire using before-and-after Sentinel-2.", None, None),
-    ("burn_scar", "Per-pixel burn-scar segmentation for a single fire event.", None, None),
-    ("burn_scar", "Burn-scar mapping in a fire-prone region with a small label set — roughly 700 annotated scenes.", 2, 700),
+    (
+        "burn_scar",
+        "Map burned area after a wildfire using before-and-after Sentinel-2.",
+        None,
+        None,
+    ),
+    (
+        "burn_scar",
+        "Per-pixel burn-scar segmentation for a single fire event.",
+        None,
+        None,
+    ),
+    (
+        "burn_scar",
+        "Burn-scar mapping in a fire-prone region with a small label set — roughly 700 annotated scenes.",
+        2,
+        700,
+    ),
     # embeddings (no label; tiny; S2 only)
-    ("embeddings", "Generate general-purpose feature vectors over an AOI for downstream clustering and similarity search.", None, None),
-    ("embeddings", "Extract unsupervised OlmoEarth embeddings for a region so we can cluster land types later — no labels yet.", None, None),
+    (
+        "embeddings",
+        "Generate general-purpose feature vectors over an AOI for downstream clustering and similarity search.",
+        None,
+        None,
+    ),
+    (
+        "embeddings",
+        "Extract unsupervised OlmoEarth embeddings for a region so we can cluster land types later — no labels yet.",
+        None,
+        None,
+    ),
 ]
 
 

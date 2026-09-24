@@ -51,13 +51,11 @@ def test_inflation_diagnostic_flags_clustered_data() -> None:
     # across folds (tiny test-to-train distance); spatial CV holds out a
     # whole cluster (large distance) -> high inflation ratio.
     clusters = [(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]
-    points = [
-        (cx + 0.02 * k, cy + 0.02 * k) for cx, cy in clusters for k in range(5)
-    ]
+    points = [(cx + 0.02 * k, cy + 0.02 * k) for cx, cy in clusters for k in range(5)]
     result = cv_inflation_diagnostic(points, n_folds=3, block_deg=0.5)
-    assert result["mean_test_to_train_km_spatial"] > result[
-        "mean_test_to_train_km_random"
-    ]
+    assert (
+        result["mean_test_to_train_km_spatial"] > result["mean_test_to_train_km_random"]
+    )
     assert result["spatial_to_random_ratio"] >= 1.5
     assert result["inflation_risk"] in ("moderate", "high")
 

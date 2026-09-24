@@ -46,11 +46,22 @@ from typing import Any
 EMBEDDING_SIZES: dict[str, int] = {"nano": 128, "tiny": 192, "base": 768, "large": 1024}
 
 #: Dataset query knobs (rslearn/config/dataset.py).
-SPACE_MODES = ["CONTAINS", "INTERSECTS", "MOSAIC", "PER_PERIOD_MOSAIC", "SINGLE_COMPOSITE"]
+SPACE_MODES = [
+    "CONTAINS",
+    "INTERSECTS",
+    "MOSAIC",
+    "PER_PERIOD_MOSAIC",
+    "SINGLE_COMPOSITE",
+]
 TIME_MODES = ["WITHIN", "NEAREST", "BEFORE", "AFTER"]
 COMPOSITING_METHODS = [
-    "FIRST_VALID", "MEAN", "MEDIAN", "SPATIAL_MOSAIC_TEMPORAL_STACK",
-    "TEMPORAL_MEAN", "TEMPORAL_MAX", "TEMPORAL_MIN",
+    "FIRST_VALID",
+    "MEAN",
+    "MEDIAN",
+    "SPATIAL_MOSAIC_TEMPORAL_STACK",
+    "TEMPORAL_MEAN",
+    "TEMPORAL_MAX",
+    "TEMPORAL_MIN",
 ]
 DTYPES = ["uint8", "uint16", "uint32", "int32", "float32"]
 LAYER_TYPES = ["raster", "vector"]
@@ -128,11 +139,69 @@ TASKS: dict[str, dict[str, Any]] = {
 
 #: Keyword -> task routing for the plain-language path.
 _TASK_KEYWORDS: list[tuple[str, list[str]]] = [
-    ("detection", ["detect", "bounding box", "count ", "locate", "find objects", "wind turbine", "vessel", "ship"]),
-    ("per_pixel_regression", ["per-pixel regress", "per pixel regress", "continuous map", "biomass", "moisture", "height map", "canopy", "value at each pixel", "regress.*pixel"]),
-    ("segmentation", ["segment", "land cover", "land-cover", "per-pixel class", "classify each pixel", "mask", "flood map", "crop type", "burn"]),
-    ("regression", ["regress", "predict the length", "single value", "window-level value", "estimate the"]),
-    ("classification", ["classify", "classification", "scene", "whole image", "window-level", "label the image", "what type"]),
+    (
+        "detection",
+        [
+            "detect",
+            "bounding box",
+            "count ",
+            "locate",
+            "find objects",
+            "wind turbine",
+            "vessel",
+            "ship",
+        ],
+    ),
+    (
+        "per_pixel_regression",
+        [
+            "per-pixel regress",
+            "per pixel regress",
+            "continuous map",
+            "biomass",
+            "moisture",
+            "height map",
+            "canopy",
+            "value at each pixel",
+            "regress.*pixel",
+        ],
+    ),
+    (
+        "segmentation",
+        [
+            "segment",
+            "land cover",
+            "land-cover",
+            "per-pixel class",
+            "classify each pixel",
+            "mask",
+            "flood map",
+            "crop type",
+            "burn",
+        ],
+    ),
+    (
+        "regression",
+        [
+            "regress",
+            "predict the length",
+            "single value",
+            "window-level value",
+            "estimate the",
+        ],
+    ),
+    (
+        "classification",
+        [
+            "classify",
+            "classification",
+            "scene",
+            "whole image",
+            "window-level",
+            "label the image",
+            "what type",
+        ],
+    ),
 ]
 
 
@@ -160,10 +229,19 @@ def _encoder_block(model_size: str) -> dict[str, Any]:
 def _compositing_advice(cloudy: bool | None, temporal: str | None) -> dict[str, str]:
     """Pick a compositing method from cloud prevalence + temporal scope."""
     if temporal in {"seasonal", "annual", "multi-month"}:
-        return {"method": "TEMPORAL_MEAN", "why": "averaging over the season smooths noise and gaps for a stable multi-month signal."}
+        return {
+            "method": "TEMPORAL_MEAN",
+            "why": "averaging over the season smooths noise and gaps for a stable multi-month signal.",
+        }
     if cloudy:
-        return {"method": "FIRST_VALID", "why": "FIRST_VALID keeps the least-cloudy valid pixel per window (pair with sort_by=cloud_cover); add a cloud-aware compositor if clouds dominate."}
-    return {"method": "FIRST_VALID", "why": "the safe default: the first valid (least-cloudy) scene per window."}
+        return {
+            "method": "FIRST_VALID",
+            "why": "FIRST_VALID keeps the least-cloudy valid pixel per window (pair with sort_by=cloud_cover); add a cloud-aware compositor if clouds dominate.",
+        }
+    return {
+        "method": "FIRST_VALID",
+        "why": "the safe default: the first valid (least-cloudy) scene per window.",
+    }
 
 
 def recommend(
@@ -210,7 +288,9 @@ def recommend(
     # Decoder/head, with the shape contract spelled out.
     out_channels = None
     if t["needs_num_classes"] and num_classes:
-        out_channels = (num_classes + 1) if t.get("reserves_background") else num_classes
+        out_channels = (
+            (num_classes + 1) if t.get("reserves_background") else num_classes
+        )
     model = {
         "framework": "SingleTaskModel",
         "encoder": enc,
@@ -221,10 +301,18 @@ def recommend(
         "why": (
             f"{chosen} consumes {t['feature']} from the encoder, so use "
             f"{' -> '.join(p.rsplit('.', 1)[-1] for p in t['decoder'])}"
-            + (f" -> {t['head'].rsplit('.', 1)[-1]}" if t["head"] else " (Faster R-CNN is the predictor)")
+            + (
+                f" -> {t['head'].rsplit('.', 1)[-1]}"
+                if t["head"]
+                else " (Faster R-CNN is the predictor)"
+            )
             + (
                 f". Set the decoder's out_channels to {out_channels}"
-                + (" (num_classes + 1: Faster R-CNN reserves class 0 for background)" if t.get("reserves_background") else " (= num_classes)")
+                + (
+                    " (num_classes + 1: Faster R-CNN reserves class 0 for background)"
+                    if t.get("reserves_background")
+                    else " (= num_classes)"
+                )
                 + "."
                 if out_channels is not None
                 else "."
@@ -255,7 +343,9 @@ def recommend(
             "they're masked out of the loss — otherwise the model trains on garbage there."
         )
     if chosen == "detection":
-        notes.append("box_size is required for Point-geometry labels (a fixed box per point).")
+        notes.append(
+            "box_size is required for Point-geometry labels (a fixed box per point)."
+        )
 
     # Data layout.
     src_key = "sentinel2_pc"
@@ -275,18 +365,39 @@ def recommend(
         "compositing_method": comp["method"],
         "label_layer_type": t["label_type"],
         "why": f"{comp['why']} Labels are a '{t['label_type']}' layer because {chosen} "
-        + ("reads class IDs / values from a raster." if t["label_type"] == "raster" else "reads category/value from vector features."),
+        + (
+            "reads class IDs / values from a raster."
+            if t["label_type"] == "raster"
+            else "reads category/value from vector features."
+        ),
     }
 
     # Fine-tune schedule.
     fine_tune = {
         "strategy": "MultiStageFineTuning",
-        "stages": [
-            {"freeze_encoder": True, "epochs": 10, "why": "stage 1: train the head on frozen OlmoEarth features (fast, stable)."},
-            {"freeze_encoder": False, "unfreeze_lr_factor": 10, "epochs": 20, "why": "stage 2: unfreeze with a smaller encoder LR to adapt without forgetting."},
-        ] if (num_samples or 0) >= 200 else [
-            {"freeze_encoder": True, "epochs": 20, "why": "few labels: keep the encoder frozen and only train the head to avoid overfitting (consider the embeddings path via olmoearth-embeddings)."},
-        ],
+        "stages": (
+            [
+                {
+                    "freeze_encoder": True,
+                    "epochs": 10,
+                    "why": "stage 1: train the head on frozen OlmoEarth features (fast, stable).",
+                },
+                {
+                    "freeze_encoder": False,
+                    "unfreeze_lr_factor": 10,
+                    "epochs": 20,
+                    "why": "stage 2: unfreeze with a smaller encoder LR to adapt without forgetting.",
+                },
+            ]
+            if (num_samples or 0) >= 200
+            else [
+                {
+                    "freeze_encoder": True,
+                    "epochs": 20,
+                    "why": "few labels: keep the encoder frozen and only train the head to avoid overfitting (consider the embeddings path via olmoearth-embeddings).",
+                },
+            ]
+        ),
     }
 
     fusion = None
@@ -306,7 +417,11 @@ def recommend(
         "ask_for": ask_for,
         "next": "Pass the assembled config.json + model.yaml to olmoearth_rslearn_validate before training, "
         "then run it with the olmoearth-rslearn skill (add_windows -> prepare -> ingest -> materialize -> model fit)."
-        + (" For multi-source fusion, compose with olmoearth_rslearn_compose(modalities=..., fusion=...)." if fusion else ""),
+        + (
+            " For multi-source fusion, compose with olmoearth_rslearn_compose(modalities=..., fusion=...)."
+            if fusion
+            else ""
+        ),
     }
 
 
@@ -361,28 +476,48 @@ def validate_config(
                 continue
             ltype = lcfg.get("type")
             if ltype and ltype not in LAYER_TYPES:
-                errors.append(f"layer '{lname}': type {ltype!r} is not one of {LAYER_TYPES}.")
+                errors.append(
+                    f"layer '{lname}': type {ltype!r} is not one of {LAYER_TYPES}."
+                )
             bands: set[str] = set()
             for bs in lcfg.get("band_sets") or []:
                 if isinstance(bs, dict):
                     dt = bs.get("dtype")
                     if dt and dt not in DTYPES:
-                        errors.append(f"layer '{lname}' band_set dtype {dt!r} is not one of {DTYPES}.")
+                        errors.append(
+                            f"layer '{lname}' band_set dtype {dt!r} is not one of {DTYPES}."
+                        )
                     for b in bs.get("bands") or []:
                         bands.add(str(b))
             layer_bands[lname] = bands
-            src = (lcfg.get("data_source") or {}) if isinstance(lcfg.get("data_source"), dict) else {}
+            src = (
+                (lcfg.get("data_source") or {})
+                if isinstance(lcfg.get("data_source"), dict)
+                else {}
+            )
             cp = src.get("class_path")
             if cp and not cp.startswith("rslearn.data_sources."):
-                warnings.append(f"layer '{lname}' data_source class_path {cp!r} doesn't look like an rslearn.data_sources.* path.")
-            init = (src.get("init_args") or {}) if isinstance(src.get("init_args"), dict) else {}
+                warnings.append(
+                    f"layer '{lname}' data_source class_path {cp!r} doesn't look like an rslearn.data_sources.* path."
+                )
+            init = (
+                (src.get("init_args") or {})
+                if isinstance(src.get("init_args"), dict)
+                else {}
+            )
             sb = init.get("sort_by")
             if sb and sb not in SORT_BY_KEYS:
-                warnings.append(f"layer '{lname}' sort_by={sb!r} is unusual (typo? expected one of {sorted(SORT_BY_KEYS)}); a bad key silently fails at ingest.")
+                warnings.append(
+                    f"layer '{lname}' sort_by={sb!r} is unusual (typo? expected one of {sorted(SORT_BY_KEYS)}); a bad key silently fails at ingest."
+                )
 
     # ---- model: framework / encoder->decoder->head shapes ----
     model = (mc.get("model") or {}) if isinstance(mc, dict) else {}
-    init = (model.get("init_args") or {}) if isinstance(model.get("init_args"), dict) else {}
+    init = (
+        (model.get("init_args") or {})
+        if isinstance(model.get("init_args"), dict)
+        else {}
+    )
     encoder = init.get("encoder") or []
     decoder = init.get("decoder") or []
     enc_dim: int | None = None
@@ -418,9 +553,15 @@ def validate_config(
         if want_label and target_types and want_label not in target_types:
             errors.append(
                 f"{tname} needs a {want_label} target layer, but the target layer(s) are {sorted(t for t in target_types if t)}. "
-                + ("Segmentation/per-pixel tasks read a raster label." if want_label == "raster" else "Classification/detection/regression read vector labels.")
+                + (
+                    "Segmentation/per-pixel tasks read a raster label."
+                    if want_label == "raster"
+                    else "Classification/detection/regression read vector labels."
+                )
             )
-        num_classes = targs.get("num_classes") or (len(targs["classes"]) if isinstance(targs.get("classes"), list) else None)
+        num_classes = targs.get("num_classes") or (
+            len(targs["classes"]) if isinstance(targs.get("classes"), list) else None
+        )
         # out_channels of the decoder before the head must equal num_classes
         if num_classes:
             for comp in decoder:
@@ -449,7 +590,9 @@ def validate_config(
                 continue
             for lyr in icfg.get("layers") or []:
                 if lyr not in layer_bands:
-                    errors.append(f"model input '{iname}' references layer '{lyr}' that is not in the dataset config.")
+                    errors.append(
+                        f"model input '{iname}' references layer '{lyr}' that is not in the dataset config."
+                    )
                 else:
                     errors.extend(
                         f"model input '{iname}' band '{b}' does not exist in dataset layer '{lyr}' "
@@ -459,7 +602,9 @@ def validate_config(
                     )
 
     if not checks:
-        warnings.append("Nothing to validate: pass dataset_config (config.json) and/or model_config (model.yaml) as parsed objects.")
+        warnings.append(
+            "Nothing to validate: pass dataset_config (config.json) and/or model_config (model.yaml) as parsed objects."
+        )
 
     return {
         "ok": not errors,
@@ -480,13 +625,32 @@ def validate_config(
 
 #: model_size -> rslearn ModelID (rslearn/models/olmoearth_pretrain/model.py).
 _MODEL_ID = {
-    "nano": "OLMOEARTH_V1_NANO", "tiny": "OLMOEARTH_V1_TINY",
-    "base": "OLMOEARTH_V1_BASE", "large": "OLMOEARTH_V1_LARGE",
+    "nano": "OLMOEARTH_V1_NANO",
+    "tiny": "OLMOEARTH_V1_TINY",
+    "base": "OLMOEARTH_V1_BASE",
+    "large": "OLMOEARTH_V1_LARGE",
 }
 #: Default Sentinel-2 L2A 12-band stack (matches olmoearth-data-prep's template).
-_S2_BANDS = ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-_DECODER_KEY = {"segmentation": "segment", "per_pixel_regression": "regress",
-                "classification": "classify", "regression": "regress"}
+_S2_BANDS = [
+    "B02",
+    "B03",
+    "B04",
+    "B08",
+    "B05",
+    "B06",
+    "B07",
+    "B8A",
+    "B11",
+    "B12",
+    "B01",
+    "B09",
+]
+_DECODER_KEY = {
+    "segmentation": "segment",
+    "per_pixel_regression": "regress",
+    "classification": "classify",
+    "regression": "regress",
+}
 
 # --------------------------------------------------------------------------- #
 # Multi-source fusion (pre / mid / post), grounded in rslearn's multi-input API
@@ -504,33 +668,39 @@ _DECODER_KEY = {"segmentation": "segment", "per_pixel_regression": "regress",
 #: defaults to confirm against your own dataset config.
 FUSION_MODALITIES: dict[str, dict[str, Any]] = {
     "sentinel2_l2a": {
-        "bands": _S2_BANDS, "native": True,
+        "bands": _S2_BANDS,
+        "native": True,
         "data_source": "rslearn.data_sources.planetary_computer.Sentinel2",
         "what": "optical, 12-band Sentinel-2 L2A",
     },
     "sentinel1": {
-        "bands": ["vv", "vh"], "native": True,
+        "bands": ["vv", "vh"],
+        "native": True,
         "data_source": "rslearn.data_sources.planetary_computer.Sentinel1",
         "what": "SAR backscatter (sees through cloud and at night)",
     },
     "worldcover": {
-        "bands": ["B1"], "native": True,
+        "bands": ["B1"],
+        "native": True,
         "data_source": "rslearn.data_sources.worldcover.WorldCover",
         "what": "ESA WorldCover 10 m land-cover prior (static)",
     },
     "openstreetmap_raster": {
-        "bands": ["B1"], "native": True,
+        "bands": ["B1"],
+        "native": True,
         "data_source": "rslearn.data_sources.openstreetmap.OpenStreetMap",
         "what": "rasterized OpenStreetMap features (roads / buildings)",
     },
     "landsat": {
-        "bands": ["B2", "B3", "B4", "B5", "B6", "B7"], "native": True,
+        "bands": ["B2", "B3", "B4", "B5", "B6", "B7"],
+        "native": True,
         "data_source": "rslearn.data_sources.planetary_computer.LandsatC2L2",
         "what": "optical, Landsat (longer historical archive than S2)",
     },
     # Not an OlmoEarth pretrain modality -> needs its own encoder path.
     "dem": {
-        "bands": ["B1"], "native": False,
+        "bands": ["B1"],
+        "native": False,
         "data_source": "rslearn.data_sources.planetary_computer.CopDemGlo30",
         "what": "Copernicus DEM elevation (static; not an OlmoEarth pretrain modality)",
     },
@@ -538,13 +708,25 @@ FUSION_MODALITIES: dict[str, dict[str, Any]] = {
 
 #: Common aliases -> canonical modality key.
 _MODALITY_ALIASES = {
-    "s2": "sentinel2_l2a", "sentinel2": "sentinel2_l2a", "sentinel-2": "sentinel2_l2a",
-    "sentinel2_l2a": "sentinel2_l2a", "optical": "sentinel2_l2a",
-    "s1": "sentinel1", "sentinel-1": "sentinel1", "sar": "sentinel1", "sentinel1": "sentinel1",
-    "worldcover": "worldcover", "landcover": "worldcover", "land_cover": "worldcover",
-    "osm": "openstreetmap_raster", "openstreetmap": "openstreetmap_raster",
+    "s2": "sentinel2_l2a",
+    "sentinel2": "sentinel2_l2a",
+    "sentinel-2": "sentinel2_l2a",
+    "sentinel2_l2a": "sentinel2_l2a",
+    "optical": "sentinel2_l2a",
+    "s1": "sentinel1",
+    "sentinel-1": "sentinel1",
+    "sar": "sentinel1",
+    "sentinel1": "sentinel1",
+    "worldcover": "worldcover",
+    "landcover": "worldcover",
+    "land_cover": "worldcover",
+    "osm": "openstreetmap_raster",
+    "openstreetmap": "openstreetmap_raster",
     "openstreetmap_raster": "openstreetmap_raster",
-    "landsat": "landsat", "dem": "dem", "elevation": "dem", "srtm": "dem",
+    "landsat": "landsat",
+    "dem": "dem",
+    "elevation": "dem",
+    "srtm": "dem",
 }
 
 #: The OlmoEarth-native modalities (the shared encoder fuses these internally).
@@ -640,7 +822,11 @@ def recommend_fusion(
     }
     notes = [
         f"primary modality: {primary} "
-        + ("(Sentinel-2 is the natural query stream)" if primary == "sentinel2_l2a" else ""),
+        + (
+            "(Sentinel-2 is the natural query stream)"
+            if primary == "sentinel2_l2a"
+            else ""
+        ),
     ]
     if any(
         "temporal" in str(task or "").lower() or m in {"sentinel1", "sentinel2_l2a"}
@@ -676,9 +862,14 @@ def _modality_inputs(
     layer of the same short name; ``s2_bands`` overrides the Sentinel-2 band list.
     """
     inputs: dict[str, dict[str, Any]] = {}
-    layer_name = {"sentinel2_l2a": "sentinel2", "sentinel1": "sentinel1",
-                  "worldcover": "worldcover", "openstreetmap_raster": "openstreetmap",
-                  "landsat": "landsat", "dem": "dem"}
+    layer_name = {
+        "sentinel2_l2a": "sentinel2",
+        "sentinel1": "sentinel1",
+        "worldcover": "worldcover",
+        "openstreetmap_raster": "openstreetmap",
+        "landsat": "landsat",
+        "dem": "dem",
+    }
     for m in modalities:
         spec = FUSION_MODALITIES[m]
         bands = (s2_bands or spec["bands"]) if m == "sentinel2_l2a" else spec["bands"]
@@ -694,11 +885,21 @@ def _modality_inputs(
 
 #: Fusion-strategy aliases -> canonical {mid, cross_attention, pre, post}.
 _FUSION_ALIASES = {
-    "mid": "mid", "shared": "mid", "shared_encoder": "mid", "feature": "mid",
-    "cross_attention": "cross_attention", "xatt": "cross_attention",
-    "cross-attention": "cross_attention", "late": "cross_attention",
-    "pre": "pre", "early": "pre", "concat": "pre", "input": "pre",
-    "post": "post", "ensemble": "post", "decision": "post",
+    "mid": "mid",
+    "shared": "mid",
+    "shared_encoder": "mid",
+    "feature": "mid",
+    "cross_attention": "cross_attention",
+    "xatt": "cross_attention",
+    "cross-attention": "cross_attention",
+    "late": "cross_attention",
+    "pre": "pre",
+    "early": "pre",
+    "concat": "pre",
+    "input": "pre",
+    "post": "post",
+    "ensemble": "post",
+    "decision": "post",
 }
 
 
@@ -728,9 +929,16 @@ def _fusion_guidance(
     primary = rec["primary"]
     others = [m for m in modalities if m != primary]
     base: dict[str, Any] = {
-        "ok": True, "task": task, "model_size": size, "strategy": strategy,
-        "modalities": modalities, "why": rec["why"], "yaml": None, "config": None,
-        "alternatives": rec["alternatives"], "unknown_modalities": unknown,
+        "ok": True,
+        "task": task,
+        "model_size": size,
+        "strategy": strategy,
+        "modalities": modalities,
+        "why": rec["why"],
+        "yaml": None,
+        "config": None,
+        "alternatives": rec["alternatives"],
+        "unknown_modalities": unknown,
     }
     if strategy == "cross_attention":
         base["guidance"] = {
@@ -767,7 +975,9 @@ def _fusion_guidance(
             "EXTENSIONS of one sensor. For genuinely different sensors prefer 'mid' "
             "(shared encoder): compose(..., fusion='mid').",
         }
-        base["note"] = "pre-fusion is rarely best with a pretrained multi-modal encoder; see caveat."
+        base["note"] = (
+            "pre-fusion is rarely best with a pretrained multi-modal encoder; see caveat."
+        )
     else:  # post
         base["guidance"] = {
             "steps": [
@@ -780,28 +990,48 @@ def _fusion_guidance(
             "best_when": "you need robustness to a modality being missing at inference and "
             "each modality is individually informative.",
         }
-        base["note"] = "post/decision fusion is N independent trainings, not one config."
+        base["note"] = (
+            "post/decision fusion is N independent trainings, not one config."
+        )
     if unknown:
         base["notes"] = [f"unrecognized modalities ignored: {unknown}"]
     return base
 
 
-def _decoder_chain(task: str, emb_dim: int, out_channels: int, patch_size: int) -> list[dict[str, Any]]:
+def _decoder_chain(
+    task: str, emb_dim: int, out_channels: int, patch_size: int
+) -> list[dict[str, Any]]:
     """The OlmoEarth decoder chain for a task (mirrors olmoearth-data-prep)."""
     head = TASKS[task]["head"]
     if task in {"segmentation", "per_pixel_regression"}:
         # dense output: upsample the patch features to pixels, then a 1x1 Conv -> head
         return [
-            {"class_path": "rslearn.models.upsample.Upsample", "init_args": {"scale_factor": patch_size}},
-            {"class_path": "rslearn.models.conv.Conv", "init_args": {
-                "in_channels": emb_dim, "out_channels": out_channels, "kernel_size": 1,
-                "activation": {"class_path": "torch.nn.Identity"}}},
+            {
+                "class_path": "rslearn.models.upsample.Upsample",
+                "init_args": {"scale_factor": patch_size},
+            },
+            {
+                "class_path": "rslearn.models.conv.Conv",
+                "init_args": {
+                    "in_channels": emb_dim,
+                    "out_channels": out_channels,
+                    "kernel_size": 1,
+                    "activation": {"class_path": "torch.nn.Identity"},
+                },
+            },
             {"class_path": head},
         ]
     # window-level: pool to a vector, then head
     return [
-        {"class_path": "rslearn.models.pooling_decoder.PoolingDecoder", "init_args": {
-            "in_channels": emb_dim, "out_channels": out_channels, "num_conv_layers": 1, "num_fc_layers": 1}},
+        {
+            "class_path": "rslearn.models.pooling_decoder.PoolingDecoder",
+            "init_args": {
+                "in_channels": emb_dim,
+                "out_channels": out_channels,
+                "num_conv_layers": 1,
+                "num_fc_layers": 1,
+            },
+        },
         {"class_path": head},
     ]
 
@@ -842,9 +1072,12 @@ def compose(
     """
     chosen = (task or "").strip().lower() or _route_task(goal or "")
     if chosen not in TASKS:
-        return {"ok": False, "task": None,
-                "ask_for": ["task (or a clearer goal): " + ", ".join(TASKS)],
-                "note": "Pick the rslearn task to compose a config for."}
+        return {
+            "ok": False,
+            "task": None,
+            "ask_for": ["task (or a clearer goal): " + ", ".join(TASKS)],
+            "note": "Pick the rslearn task to compose a config for.",
+        }
     size = model_size.strip().lower()
     if size not in EMBEDDING_SIZES:
         size = "base"
@@ -854,7 +1087,8 @@ def compose(
 
     if chosen == "detection":
         return {
-            "ok": False, "task": "detection",
+            "ok": False,
+            "task": "detection",
             "note": "Detection (Faster R-CNN) needs FPN downsample_factors + anchor_sizes tuned to your "
             "object scale, so it isn't auto-emitted. Use olmoearth_rslearn_recommend for the shape, and the "
             "rslearn DetectionTask example (Fpn -> FasterRCNN with num_classes = real classes + 1 for "
@@ -867,17 +1101,26 @@ def compose(
     fusion_block: dict[str, Any] | None = None
     emit_modalities = ["sentinel2_l2a"]
     if len(canon) >= 2:
-        strategy = _normalize_fusion(fusion) or recommend_fusion(
-            canon, task=chosen, robust_to_missing=(fusion or "").strip().lower() in {"post", "ensemble"}
-        )["strategy"]
-        rec = recommend_fusion(canon, task=chosen, robust_to_missing=(strategy == "post"))
+        strategy = (
+            _normalize_fusion(fusion)
+            or recommend_fusion(
+                canon,
+                task=chosen,
+                robust_to_missing=(fusion or "").strip().lower()
+                in {"post", "ensemble"},
+            )["strategy"]
+        )
+        rec = recommend_fusion(
+            canon, task=chosen, robust_to_missing=(strategy == "post")
+        )
         non_native = [m for m in canon if not FUSION_MODALITIES[m]["native"]]
         # A non-native modality can't ride the shared OlmoEarth encoder -> steer to cross_attention.
         if strategy == "mid" and non_native:
             strategy = "cross_attention"
             rec["why"] = (
                 f"{', '.join(non_native)} is not an OlmoEarth pretrain modality, so 'mid' "
-                "(shared encoder) can't include it; using cross_attention instead. " + rec["why"]
+                "(shared encoder) can't include it; using cross_attention instead. "
+                + rec["why"]
             )
         if strategy != "mid":
             return _fusion_guidance(
@@ -885,7 +1128,9 @@ def compose(
             )
         emit_modalities = canon
         fusion_block = {
-            "strategy": "mid", "modalities": canon, "why": rec["why"],
+            "strategy": "mid",
+            "modalities": canon,
+            "why": rec["why"],
             "mechanism": "one OlmoEarth encoder fed all modality inputs; it fuses them "
             "internally via cross-modal attention (no extra fusion module).",
             "alternatives": rec["alternatives"],
@@ -897,7 +1142,9 @@ def compose(
 
     if not any(FUSION_MODALITIES[m]["native"] for m in emit_modalities):
         return {
-            "ok": False, "task": chosen, "modalities": emit_modalities,
+            "ok": False,
+            "task": chosen,
+            "modalities": emit_modalities,
             "note": "OlmoEarth's shared encoder needs at least one pretrain modality "
             f"({', '.join(_NATIVE_MODALITIES)}); {emit_modalities} alone can't be encoded "
             "by it. Add Sentinel-2, or use cross_attention with a separate encoder path.",
@@ -910,37 +1157,61 @@ def compose(
     if t["needs_num_classes"]:
         if not num_classes:
             ask_for.append("num_classes")
-            num_classes = 2  # placeholder so the YAML is well-formed (flagged in ask_for)
+            num_classes = (
+                2  # placeholder so the YAML is well-formed (flagged in ask_for)
+            )
         out_channels = num_classes
     key = _DECODER_KEY[chosen]
 
     task_init: dict[str, Any] = {}
     if chosen == "segmentation":
-        task_init = {"num_classes": num_classes, "zero_is_invalid": False, "nodata_value": nodata_value}
+        task_init = {
+            "num_classes": num_classes,
+            "zero_is_invalid": False,
+            "nodata_value": nodata_value,
+        }
     elif chosen == "per_pixel_regression":
         if scale_factor is None:
             ask_for.append("scale_factor (or a label_range via recommend to derive it)")
-        task_init = {"scale_factor": scale_factor if scale_factor is not None else 1.0,
-                     "metrics": ["mse", "r2"], "nodata_value": nodata_value}
+        task_init = {
+            "scale_factor": scale_factor if scale_factor is not None else 1.0,
+            "metrics": ["mse", "r2"],
+            "nodata_value": nodata_value,
+        }
     elif chosen == "classification":
-        task_init = {"property_name": property_name,
-                     "classes": class_names or [f"class_{i}" for i in range(num_classes or 2)]}
+        task_init = {
+            "property_name": property_name,
+            "classes": class_names or [f"class_{i}" for i in range(num_classes or 2)],
+        }
         if not class_names:
-            notes.append("Replace the placeholder class names with your real category names.")
+            notes.append(
+                "Replace the placeholder class names with your real category names."
+            )
     elif chosen == "regression":
         if scale_factor is None:
             ask_for.append("scale_factor (or a label_range via recommend to derive it)")
-        task_init = {"property_name": property_name,
-                     "scale_factor": scale_factor if scale_factor is not None else 1.0, "metrics": ["mse"]}
+        task_init = {
+            "property_name": property_name,
+            "scale_factor": scale_factor if scale_factor is not None else 1.0,
+            "metrics": ["mse"],
+        }
 
     if raster:
-        label_input = {"data_type": "raster", "layers": ["label"],
-                       "bands": ["category"] if chosen == "segmentation" else ["value"],
-                       "is_target": True, "dtype": "INT32" if chosen == "segmentation" else "FLOAT32"}
+        label_input = {
+            "data_type": "raster",
+            "layers": ["label"],
+            "bands": ["category"] if chosen == "segmentation" else ["value"],
+            "is_target": True,
+            "dtype": "INT32" if chosen == "segmentation" else "FLOAT32",
+        }
     else:
         label_input = {"data_type": "vector", "layers": ["label"], "is_target": True}
 
-    monitor = f"val_{key}/accuracy" if chosen in {"segmentation", "classification"} else f"val_{key}/loss"
+    monitor = (
+        f"val_{key}/accuracy"
+        if chosen in {"segmentation", "classification"}
+        else f"val_{key}/loss"
+    )
     mode = "max" if monitor.endswith("accuracy") else "min"
 
     config = {
@@ -950,40 +1221,71 @@ def compose(
                 "model": {
                     "class_path": "rslearn.models.multitask.MultiTaskModel",
                     "init_args": {
-                        "encoder": [{
-                            "class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth",
-                            "init_args": {"model_id": _MODEL_ID[size], "patch_size": patch_size},
-                        }],
-                        "decoders": {key: _decoder_chain(chosen, emb, out_channels, patch_size)},
+                        "encoder": [
+                            {
+                                "class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth",
+                                "init_args": {
+                                    "model_id": _MODEL_ID[size],
+                                    "patch_size": patch_size,
+                                },
+                            }
+                        ],
+                        "decoders": {
+                            key: _decoder_chain(chosen, emb, out_channels, patch_size)
+                        },
                     },
                 },
-                "lr": 0.0001, "plateau": True, "plateau_factor": 0.2, "plateau_patience": 2,
+                "lr": 0.0001,
+                "plateau": True,
+                "plateau_factor": 0.2,
+                "plateau_patience": 2,
             },
         },
         "data": {
             "class_path": "rslearn.train.data_module.RslearnDataModule",
             "init_args": {
                 "path": dataset_path,
-                "inputs": {**_modality_inputs(emit_modalities, bands), "label": label_input},
+                "inputs": {
+                    **_modality_inputs(emit_modalities, bands),
+                    "label": label_input,
+                },
                 "task": {
                     "class_path": "rslearn.train.tasks.multi_task.MultiTask",
                     "init_args": {
-                        "tasks": {key: {"class_path": t["task_class"], "init_args": task_init}},
+                        "tasks": {
+                            key: {"class_path": t["task_class"], "init_args": task_init}
+                        },
                         "input_mapping": {key: {"label": "targets"}},
                     },
                 },
-                "batch_size": 4, "num_workers": 4,
+                "batch_size": 4,
+                "num_workers": 4,
             },
         },
         "trainer": {
-            "max_epochs": total_epochs, "accelerator": "gpu", "devices": 1, "log_every_n_steps": 10,
+            "max_epochs": total_epochs,
+            "accelerator": "gpu",
+            "devices": 1,
+            "log_every_n_steps": 10,
             "callbacks": [
-                {"class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
-                 "init_args": {"dirpath": "checkpoints", "save_top_k": 1, "save_last": True,
-                               "monitor": monitor, "mode": mode}},
-                {"class_path": "rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze",
-                 "init_args": {"module_selector": ["model", "encoder", 0],
-                               "unfreeze_at_epoch": freeze_epochs, "unfreeze_lr_factor": 10}},
+                {
+                    "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
+                    "init_args": {
+                        "dirpath": "checkpoints",
+                        "save_top_k": 1,
+                        "save_last": True,
+                        "monitor": monitor,
+                        "mode": mode,
+                    },
+                },
+                {
+                    "class_path": "rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze",
+                    "init_args": {
+                        "module_selector": ["model", "encoder", 0],
+                        "unfreeze_at_epoch": freeze_epochs,
+                        "unfreeze_lr_factor": 10,
+                    },
+                },
             ],
         },
     }
@@ -1003,16 +1305,25 @@ def compose(
     text: str | None
     try:
         import yaml  # type: ignore[import-untyped]
+
         text = yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
     except Exception:  # noqa: BLE001 - YAML is best-effort; the dict is always returned
         text = None
         notes.append("PyYAML unavailable; returning the config as a dict only.")
 
-    return {"ok": True, "task": chosen, "model_size": size, "yaml": text, "config": config,
-            "modalities": emit_modalities, "fusion": fusion_block,
-            "notes": notes, "ask_for": ask_for,
-            "next": "Run olmoearth_rslearn_validate on this model.yaml + your dataset config.json, then "
-            "`rslearn model fit --config model.yaml` (a long GPU job — see the olmoearth-rslearn skill)."}
+    return {
+        "ok": True,
+        "task": chosen,
+        "model_size": size,
+        "yaml": text,
+        "config": config,
+        "modalities": emit_modalities,
+        "fusion": fusion_block,
+        "notes": notes,
+        "ask_for": ask_for,
+        "next": "Run olmoearth_rslearn_validate on this model.yaml + your dataset config.json, then "
+        "`rslearn model fit --config model.yaml` (a long GPU job — see the olmoearth-rslearn skill).",
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -1033,15 +1344,30 @@ def diagnose(summary: Any = None, log_text: str | None = None) -> dict[str, Any]
 
     def _scan(d: Any) -> None:
         if isinstance(d, dict):
-            prep, rej, fail = d.get("windows_prepared"), d.get("windows_rejected"), d.get("windows_failed")
+            prep, rej, fail = (
+                d.get("windows_prepared"),
+                d.get("windows_rejected"),
+                d.get("windows_failed"),
+            )
             if prep == 0:
                 diagnosis.append("0 windows prepared for a layer.")
-                fixes.append("Widen --start/--end (the time range likely has no source scenes), or check the "
-                             "AOI box / --src_crs — `prepare` found no scenes intersecting the windows.")
-            if isinstance(rej, int) and isinstance(prep, int) and rej > prep > -1 and rej > 0:
-                diagnosis.append(f"More windows rejected ({rej}) than prepared ({prep}).")
-                fixes.append("min_matches may be too high or cloud filtering too strict — lower min_matches, "
-                             "widen the time range, or confirm sort_by=cloud_cover.")
+                fixes.append(
+                    "Widen --start/--end (the time range likely has no source scenes), or check the "
+                    "AOI box / --src_crs — `prepare` found no scenes intersecting the windows."
+                )
+            if (
+                isinstance(rej, int)
+                and isinstance(prep, int)
+                and rej > prep > -1
+                and rej > 0
+            ):
+                diagnosis.append(
+                    f"More windows rejected ({rej}) than prepared ({prep})."
+                )
+                fixes.append(
+                    "min_matches may be too high or cloud filtering too strict — lower min_matches, "
+                    "widen the time range, or confirm sort_by=cloud_cover."
+                )
             if isinstance(fail, int) and fail > 0:
                 diagnosis.append(f"{fail} windows failed (see error_messages).")
             for v in d.values():
@@ -1053,30 +1379,46 @@ def diagnose(summary: Any = None, log_text: str | None = None) -> dict[str, Any]
     if summary is not None:
         _scan(summary)
 
-    blob = (log_text or "")
+    blob = log_text or ""
     if isinstance(summary, (dict, list)):
         blob += " " + json.dumps(summary)
     low = blob.lower()
     if "no scenes" in low or "no items" in low or "0 scenes" in low:
         diagnosis.append("'no scenes found' in the output.")
-        fixes.append("Widen --start/--end by 2+ weeks, or verify the AOI is within the data source's coverage.")
+        fixes.append(
+            "Widen --start/--end by 2+ weeks, or verify the AOI is within the data source's coverage."
+        )
     if "crs" in low or "epsg" in low or " utm" in low:
         diagnosis.append("a CRS/EPSG mismatch is mentioned.")
-        fixes.append("Set --src_crs to your box's CRS (the box is W,S,E,N lon/lat for EPSG:4326); a wrong CRS "
-                     "lands the windows off-target (often in the ocean).")
+        fixes.append(
+            "Set --src_crs to your box's CRS (the box is W,S,E,N lon/lat for EPSG:4326); a wrong CRS "
+            "lands the windows off-target (often in the ocean)."
+        )
     if "out of memory" in low or "oom" in low or ("cuda" in low and "memory" in low):
         diagnosis.append("an out-of-memory error is mentioned.")
-        fixes.append("Lower batch_size / num_workers or grid_size, or use a smaller OlmoEarth model_id.")
+        fixes.append(
+            "Lower batch_size / num_workers or grid_size, or use a smaller OlmoEarth model_id."
+        )
     if "no space" in low or "disk" in low:
         diagnosis.append("a disk-space error is mentioned.")
-        fixes.append("`materialize` needs room for cropped tiles — free disk or point --root at a larger volume.")
+        fixes.append(
+            "`materialize` needs room for cropped tiles — free disk or point --root at a larger volume."
+        )
     if "401" in low or "403" in low or "unauthorized" in low or "credential" in low:
         diagnosis.append("an auth/credential error is mentioned.")
-        fixes.append("Check the data-source credentials / Studio key; `ingest` is idempotent, so rerun after fixing.")
+        fixes.append(
+            "Check the data-source credentials / Studio key; `ingest` is idempotent, so rerun after fixing."
+        )
 
     if not diagnosis:
         diagnosis.append("No known failure pattern detected.")
-        fixes.append("Paste the rslearn prepare/ingest/materialize summary JSON or the error lines for a targeted read.")
+        fixes.append(
+            "Paste the rslearn prepare/ingest/materialize summary JSON or the error lines for a targeted read."
+        )
 
-    ok = not any(k in d for d in diagnosis for k in ("0 windows", "no scenes", "failed", "error", "memory", "disk", "auth"))
+    ok = not any(
+        k in d
+        for d in diagnosis
+        for k in ("0 windows", "no scenes", "failed", "error", "memory", "disk", "auth")
+    )
     return {"ok": ok, "diagnosis": diagnosis, "fixes": fixes}

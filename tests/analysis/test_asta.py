@@ -33,15 +33,20 @@ _PAYLOAD: dict[str, Any] = {
             "title": "Highly relevant cloud-mask study",
             "abstract": "We evaluate cloud masking...",
             "year": 2024,
-            "authors": [{"name": "B. Author", "id": "2"}, {"name": "C. Author", "id": "3"}],
+            "authors": [
+                {"name": "B. Author", "id": "2"},
+                {"name": "C. Author", "id": "3"},
+            ],
             "venue": "TGRS",
             "url": None,
             "citationCount": 42,
             "relevanceScore": 0.97,
             "relevanceJudgement": {"relevanceSummary": "directly on topic"},
             "snippets": [
-                {"text": "Our cloud mask improves F1 by 0.12. " + "x" * 500,
-                 "sectionTitle": "Results"},
+                {
+                    "text": "Our cloud mask improves F1 by 0.12. " + "x" * 500,
+                    "sectionTitle": "Results",
+                },
                 {"text": "second snippet", "sectionTitle": "Methods"},
                 {"text": "third snippet", "sectionTitle": "Methods"},
                 {"text": "fourth snippet is dropped", "sectionTitle": "Appendix"},
@@ -79,7 +84,9 @@ def test_parse_ranks_caps_and_maps_records() -> None:
 def test_parse_tolerates_malformed_payload() -> None:
     assert asta.parse_asta_results({}, max_results=5, include_abstract=False) == []
     assert (
-        asta.parse_asta_results({"results": "nope"}, max_results=5, include_abstract=False)
+        asta.parse_asta_results(
+            {"results": "nope"}, max_results=5, include_abstract=False
+        )
         == []
     )
 

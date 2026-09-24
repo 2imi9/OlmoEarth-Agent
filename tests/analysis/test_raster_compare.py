@@ -75,7 +75,11 @@ def test_narration_cross_model_regression_frames_agreement() -> None:
     stats = {"n_samples": 9, "agreement_fraction": 0.78, "mean_diff_b_minus_a": 0.05}
     nar = compare_narration(stats, kind="cross_model", value_type="regression")
     assert nar["kind"] == "cross_model"
-    assert nar["labels"] == {"a": "model A", "b": "model B", "diff": "difference (B - A)"}
+    assert nar["labels"] == {
+        "a": "model A",
+        "b": "model B",
+        "diff": "difference (B - A)",
+    }
     assert "two models agree" in nar["headline"]
     assert "78% of 9 cells" in nar["headline"]
     assert "model-vs-model agreement" in nar["framing"]
@@ -84,7 +88,8 @@ def test_narration_cross_model_regression_frames_agreement() -> None:
 
 def test_narration_cross_model_classification() -> None:
     nar = compare_narration(
-        {"n_samples": 4, "agreement_fraction": 0.5}, kind="cross_model",
+        {"n_samples": 4, "agreement_fraction": 0.5},
+        kind="cross_model",
         value_type="classification",
     )
     assert nar["headline"] == "the two models agree on 50% of 4 cells"
@@ -94,7 +99,9 @@ def test_narration_temporal_regression_increase() -> None:
     stats = {"n_samples": 9, "agreement_fraction": 1.0, "mean_diff_b_minus_a": 0.05}
     nar = compare_narration(stats, kind="temporal", value_type="regression")
     assert nar["labels"] == {
-        "a": "earlier", "b": "later", "diff": "change (later - earlier)"
+        "a": "earlier",
+        "b": "later",
+        "diff": "change (later - earlier)",
     }
     assert nar["headline"] == "net increase of 0.05 (later - earlier) across 9 cells"
     assert "change over time" in nar["framing"]
@@ -103,7 +110,8 @@ def test_narration_temporal_regression_increase() -> None:
 
 def test_narration_temporal_regression_decrease_uses_magnitude() -> None:
     nar = compare_narration(
-        {"n_samples": 9, "mean_diff_b_minus_a": -0.2}, kind="temporal",
+        {"n_samples": 9, "mean_diff_b_minus_a": -0.2},
+        kind="temporal",
         value_type="regression",
     )
     # sign is conveyed by the word, magnitude is positive
@@ -112,7 +120,8 @@ def test_narration_temporal_regression_decrease_uses_magnitude() -> None:
 
 def test_narration_temporal_regression_no_change() -> None:
     nar = compare_narration(
-        {"n_samples": 9, "mean_diff_b_minus_a": 0.0}, kind="temporal",
+        {"n_samples": 9, "mean_diff_b_minus_a": 0.0},
+        kind="temporal",
         value_type="regression",
     )
     assert nar["headline"] == "no net change (later - earlier) across 9 cells"
@@ -120,7 +129,8 @@ def test_narration_temporal_regression_no_change() -> None:
 
 def test_narration_temporal_classification_frames_change() -> None:
     nar = compare_narration(
-        {"n_samples": 9, "agreement_fraction": 0.9}, kind="temporal",
+        {"n_samples": 9, "agreement_fraction": 0.9},
+        kind="temporal",
         value_type="classification",
     )
     assert nar["headline"] == "class unchanged in 90% of 9 cells"
@@ -128,7 +138,8 @@ def test_narration_temporal_classification_frames_change() -> None:
 
 def test_narration_unknown_kind_falls_back_to_cross_model() -> None:
     nar = compare_narration(
-        {"n_samples": 1, "agreement_fraction": 1.0}, kind="bogus",
+        {"n_samples": 1, "agreement_fraction": 1.0},
+        kind="bogus",
         value_type="regression",
     )
     assert nar["kind"] == "cross_model"
@@ -142,9 +153,12 @@ def test_narration_unknown_kind_falls_back_to_cross_model() -> None:
 def test_intersect_bboxes_folds_and_rejects_disjoint() -> None:
     from olmoearth_agent.analysis.raster_compare import intersect_bboxes
 
-    assert intersect_bboxes(
-        [[0, 0, 10, 10], [5, 5, 20, 20], [0, 0, 8, 8]]
-    ) == [5, 5, 8, 8]
+    assert intersect_bboxes([[0, 0, 10, 10], [5, 5, 20, 20], [0, 0, 8, 8]]) == [
+        5,
+        5,
+        8,
+        8,
+    ]
     assert intersect_bboxes([[0, 0, 1, 1], [2, 2, 3, 3], [0, 0, 9, 9]]) is None
     assert intersect_bboxes([[0, 0, 1, 1], None]) is None
     assert intersect_bboxes([]) is None
@@ -173,7 +187,10 @@ def test_compare_group_numeric_pairwise_and_consensus() -> None:
     spots = ens["top_disagreement_points"]
     assert spots and all(s["spread"] == 0.5 and s["n_models"] == 3 for s in spots)
     # the most divergent pair must involve C (index 2)
-    assert 2 in (out["most_divergent_pair"]["a_index"], out["most_divergent_pair"]["b_index"])
+    assert 2 in (
+        out["most_divergent_pair"]["a_index"],
+        out["most_divergent_pair"]["b_index"],
+    )
 
 
 def test_compare_group_numeric_full_consensus_and_nones() -> None:

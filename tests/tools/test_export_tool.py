@@ -52,8 +52,13 @@ async def test_export_by_project(tmp_path: Path) -> None:
     studio = _FakeStudio(
         projects=[{"id": "p1", "name": "Proj One", "creation_time": "t"}],
         predictions=[
-            {"id": "r1", "name": "pred", "status": "completed",
-             "project_id": "p1", "model_id": "m1"}
+            {
+                "id": "r1",
+                "name": "pred",
+                "status": "completed",
+                "project_id": "p1",
+                "model_id": "m1",
+            }
         ],
     )
     tool = build_export_tools()[0]

@@ -42,7 +42,9 @@ _ALWAYS = frozenset({"context", "report"})
 
 #: When a skill submits a prediction, the whole run pipeline applies (you can't
 #: submit without an AOI, poll without a submit, etc.).
-_RUN_PIPELINE = frozenset({"context", "aoi", "model", "submit", "poll", "fetch", "report"})
+_RUN_PIPELINE = frozenset(
+    {"context", "aoi", "model", "submit", "poll", "fetch", "report"}
+)
 
 
 def stage_for_tool(tool_name: str) -> str | None:

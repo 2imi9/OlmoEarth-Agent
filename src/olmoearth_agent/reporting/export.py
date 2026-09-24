@@ -21,7 +21,9 @@ def slugify(name: str | None) -> str:
     return slug or "untitled"
 
 
-def group_items(items: list[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+def group_items(
+    items: list[dict[str, Any]], key: str
+) -> dict[str, list[dict[str, Any]]]:
     """Group a list of records by ``record[key]`` (stringified; missing -> 'unknown')."""
     grouped: dict[str, list[dict[str, Any]]] = {}
     for item in items:

@@ -148,7 +148,9 @@ async (cellMs) => {
 
 
 def _serve() -> socketserver.TCPServer:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(WEBUI))
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler, directory=str(WEBUI)
+    )
     socketserver.TCPServer.allow_reuse_address = True
     httpd = socketserver.TCPServer(("127.0.0.1", PORT), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
@@ -174,17 +176,23 @@ def _record() -> tuple[Path, dict]:
         )
         page = ctx.new_page()
         t0 = time.monotonic()
-        mark = lambda name: marks.setdefault(name, round(time.monotonic() - t0, 2))  # noqa: E731
+        mark = lambda name: marks.setdefault(
+            name, round(time.monotonic() - t0, 2)
+        )  # noqa: E731
 
         page.goto(f"http://127.0.0.1:{PORT}/index.html")
         page.wait_for_selector("#promptForm", timeout=15000)
         time.sleep(1.0)
 
         # 1) Connect a demo Studio key (the real first step).
-        page.click("#topKeyBtn"); time.sleep(0.6)
-        page.fill("#keyInput", "sk_pro_demo_key_2026"); time.sleep(0.4)
-        page.click("#keyForm button[type=submit]"); time.sleep(0.8)
-        page.keyboard.press("Escape"); time.sleep(0.5)
+        page.click("#topKeyBtn")
+        time.sleep(0.6)
+        page.fill("#keyInput", "sk_pro_demo_key_2026")
+        time.sleep(0.4)
+        page.click("#keyForm button[type=submit]")
+        time.sleep(0.8)
+        page.keyboard.press("Escape")
+        time.sleep(0.5)
 
         # 2) Skill slash-command + loading + result block: type "/" to open the
         #    skill menu, filter it live, select a skill (Enter -> the composer
@@ -212,7 +220,8 @@ def _record() -> tuple[Path, dict]:
         mark("slash_end")
 
         # 3) Fresh thread, then the complex pipeline run (workflow rail + result).
-        page.click(".btn-new"); time.sleep(0.8)
+        page.click(".btn-new")
+        time.sleep(0.8)
         mark("workflow")
         page.evaluate(JS_COMPLEX_RUN, 700)  # pace (ms) between events
         time.sleep(2.4)
@@ -241,20 +250,59 @@ def _convert(webm: Path, gif_start: float, gif_secs: float) -> tuple[Path, Path]
     palette = DEMO / "_palette.png"
     # Full walkthrough MP4 (skip the brief blank page-load head).
     subprocess.run(  # noqa: S603
-        [ff, "-y", "-ss", "0.6", "-i", str(webm), "-movflags", "+faststart",
-         "-pix_fmt", "yuv420p", "-vf", f"scale={W}:-2", str(mp4)],
+        [
+            ff,
+            "-y",
+            "-ss",
+            "0.6",
+            "-i",
+            str(webm),
+            "-movflags",
+            "+faststart",
+            "-pix_fmt",
+            "yuv420p",
+            "-vf",
+            f"scale={W}:-2",
+            str(mp4),
+        ],
         check=True,
     )
     # Short highlight GIF over [gif_start, gif_start+gif_secs].
     common = f"fps={GIF_FPS},scale={GIF_W}:-1:flags=lanczos"
     subprocess.run(  # noqa: S603
-        [ff, "-y", "-ss", str(gif_start), "-t", str(gif_secs), "-i", str(webm),
-         "-vf", f"{common},palettegen=reserve_transparent=0", str(palette)],
+        [
+            ff,
+            "-y",
+            "-ss",
+            str(gif_start),
+            "-t",
+            str(gif_secs),
+            "-i",
+            str(webm),
+            "-vf",
+            f"{common},palettegen=reserve_transparent=0",
+            str(palette),
+        ],
         check=True,
     )
     subprocess.run(  # noqa: S603
-        [ff, "-y", "-ss", str(gif_start), "-t", str(gif_secs), "-i", str(webm), "-i", str(palette),
-         "-lavfi", f"{common}[x];[x][1:v]paletteuse", "-gifflags", "-transdiff", str(gif)],
+        [
+            ff,
+            "-y",
+            "-ss",
+            str(gif_start),
+            "-t",
+            str(gif_secs),
+            "-i",
+            str(webm),
+            "-i",
+            str(palette),
+            "-lavfi",
+            f"{common}[x];[x][1:v]paletteuse",
+            "-gifflags",
+            "-transdiff",
+            str(gif),
+        ],
         check=True,
     )
     palette.unlink(missing_ok=True)

@@ -50,9 +50,7 @@ async def test_run_brief_with_injected_deps() -> None:
     async def echo(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         return args
 
-    registry.register(
-        RegisteredTool(ToolSpec("echo", "echo", _EMPTY), echo)
-    )
+    registry.register(RegisteredTool(ToolSpec("echo", "echo", _EMPTY), echo))
     llm = _FakeLLM(
         [
             ChatResponse(

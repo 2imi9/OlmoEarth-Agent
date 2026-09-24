@@ -52,8 +52,15 @@ def test_recommend_classification_uses_pooling_and_feature_vector() -> None:
 
 
 def test_recommend_model_size_scales_with_samples() -> None:
-    assert recommend(goal="segment crops", num_classes=4, num_samples=50)["model"]["encoder"]["model_size"] == "tiny"
-    big = recommend(goal="segment crops", num_classes=4, num_samples=5000)["model"]["encoder"]
+    assert (
+        recommend(goal="segment crops", num_classes=4, num_samples=50)["model"][
+            "encoder"
+        ]["model_size"]
+        == "tiny"
+    )
+    big = recommend(goal="segment crops", num_classes=4, num_samples=5000)["model"][
+        "encoder"
+    ]
     assert big["model_size"] == "base"
     assert big["embedding_dim"] == EMBEDDING_SIZES["base"]
 
@@ -94,19 +101,35 @@ def _good_dataset() -> dict:
     }
 
 
-def _model(in_channels: int = 128, out_channels: int = 10, num_classes: int = 10) -> dict:
+def _model(
+    in_channels: int = 128, out_channels: int = 10, num_classes: int = 10
+) -> dict:
     return {
         "model": {
             "init_args": {
                 "encoder": [
-                    {"class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth", "init_args": {"model_id": "OLMOEARTH_V1_NANO"}}
+                    {
+                        "class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth",
+                        "init_args": {"model_id": "OLMOEARTH_V1_NANO"},
+                    }
                 ],
                 "decoder": [
-                    {"class_path": "rslearn.models.unet.UNetDecoder", "init_args": {"in_channels": in_channels, "out_channels": out_channels}},
+                    {
+                        "class_path": "rslearn.models.unet.UNetDecoder",
+                        "init_args": {
+                            "in_channels": in_channels,
+                            "out_channels": out_channels,
+                        },
+                    },
                     {"class_path": "rslearn.train.tasks.segmentation.SegmentationHead"},
                 ],
-                "task": {"class_path": "rslearn.train.tasks.segmentation.SegmentationTask", "init_args": {"num_classes": num_classes}},
-                "inputs": {"image": {"layers": ["sentinel2"], "bands": ["B04", "B03", "B02"]}},
+                "task": {
+                    "class_path": "rslearn.train.tasks.segmentation.SegmentationTask",
+                    "init_args": {"num_classes": num_classes},
+                },
+                "inputs": {
+                    "image": {"layers": ["sentinel2"], "bands": ["B04", "B03", "B02"]}
+                },
             }
         }
     }
@@ -142,7 +165,11 @@ def test_validate_catches_task_label_type_mismatch() -> None:
 
 def test_validate_catches_band_not_in_layer() -> None:
     m = _model()
-    m["model"]["init_args"]["inputs"]["image"]["bands"] = ["R", "G", "B"]  # not in sentinel2
+    m["model"]["init_args"]["inputs"]["image"]["bands"] = [
+        "R",
+        "G",
+        "B",
+    ]  # not in sentinel2
     res = validate_config(_good_dataset(), m)
     assert res["ok"] is False
     assert any("does not exist in dataset layer" in e for e in res["errors"])
@@ -150,14 +177,18 @@ def test_validate_catches_band_not_in_layer() -> None:
 
 def test_validate_warns_on_sort_by_typo() -> None:
     ds = _good_dataset()
-    ds["layers"]["sentinel2"]["data_source"]["init_args"]["sort_by"] = "cloudcover"  # typo
+    ds["layers"]["sentinel2"]["data_source"]["init_args"][
+        "sort_by"
+    ] = "cloudcover"  # typo
     res = validate_config(ds, _model())
     assert any("sort_by" in w for w in res["warnings"])
 
 
 def test_validate_detection_background_class_warning() -> None:
     m = _model(out_channels=3, num_classes=3)
-    m["model"]["init_args"]["task"]["class_path"] = "rslearn.train.tasks.detection.DetectionTask"
+    m["model"]["init_args"]["task"][
+        "class_path"
+    ] = "rslearn.train.tasks.detection.DetectionTask"
     # detection labels are vector
     ds = _good_dataset()
     ds["layers"]["label"]["type"] = "vector"
@@ -190,7 +221,9 @@ def test_compose_segmentation_emits_valid_yaml() -> None:
     conv = next(d for d in decs if d["class_path"].endswith("Conv"))
     assert conv["init_args"]["in_channels"] == EMBEDDING_SIZES["base"]
     assert conv["init_args"]["out_channels"] == 7  # = num_classes
-    assert cfg["data"]["init_args"]["task"]["init_args"]["tasks"]["segment"]["class_path"].endswith("SegmentationTask")
+    assert cfg["data"]["init_args"]["task"]["init_args"]["tasks"]["segment"][
+        "class_path"
+    ].endswith("SegmentationTask")
 
 
 def test_compose_classification_pools_and_uses_vector_label() -> None:
@@ -252,8 +285,9 @@ def test_compose_default_is_unchanged_single_s2_input() -> None:
 
 
 def test_compose_mid_fusion_emits_valid_multi_input_config() -> None:
-    res = compose(task="segmentation", num_classes=3,
-                  modalities=["sentinel2", "s1", "worldcover"])
+    res = compose(
+        task="segmentation", num_classes=3, modalities=["sentinel2", "s1", "worldcover"]
+    )
     assert res["ok"] is True
     assert res["fusion"]["strategy"] == "mid"
     inputs = res["config"]["data"]["init_args"]["inputs"]
@@ -265,12 +299,29 @@ def test_compose_mid_fusion_emits_valid_multi_input_config() -> None:
     enc = res["config"]["model"]["init_args"]["model"]["init_args"]["encoder"]
     assert len(enc) == 1 and enc[0]["class_path"].endswith("OlmoEarth")
     # and the emitted config passes the validator against a matching dataset config
-    ds = {"layers": {
-        "sentinel2": {"type": "raster", "band_sets": [{"dtype": "uint16", "bands": inputs["sentinel2_l2a"]["bands"]}]},
-        "sentinel1": {"type": "raster", "band_sets": [{"dtype": "float32", "bands": ["vv", "vh"]}]},
-        "worldcover": {"type": "raster", "band_sets": [{"dtype": "uint8", "bands": ["B1"]}]},
-        "label": {"type": "raster", "is_target": True, "band_sets": [{"dtype": "int32", "bands": ["category"]}]},
-    }}
+    ds = {
+        "layers": {
+            "sentinel2": {
+                "type": "raster",
+                "band_sets": [
+                    {"dtype": "uint16", "bands": inputs["sentinel2_l2a"]["bands"]}
+                ],
+            },
+            "sentinel1": {
+                "type": "raster",
+                "band_sets": [{"dtype": "float32", "bands": ["vv", "vh"]}],
+            },
+            "worldcover": {
+                "type": "raster",
+                "band_sets": [{"dtype": "uint8", "bands": ["B1"]}],
+            },
+            "label": {
+                "type": "raster",
+                "is_target": True,
+                "band_sets": [{"dtype": "int32", "bands": ["category"]}],
+            },
+        }
+    }
     v = validate_config(dataset_config=ds, model_config=res["config"])
     assert v["ok"] is True, v["errors"]
 
@@ -287,23 +338,35 @@ def test_compose_cross_attention_returns_grounded_skeleton_not_yaml() -> None:
 
 def test_compose_mid_with_non_native_modality_is_steered_to_cross_attention() -> None:
     # forcing mid with a non-native modality must not emit an invalid shared-encoder config
-    res = compose(task="segmentation", num_classes=3,
-                  modalities=["sentinel2", "dem"], fusion="mid")
+    res = compose(
+        task="segmentation",
+        num_classes=3,
+        modalities=["sentinel2", "dem"],
+        fusion="mid",
+    )
     assert res["strategy"] == "cross_attention"
     assert res["yaml"] is None
 
 
 def test_compose_post_fusion_is_ensemble_guidance() -> None:
-    res = compose(task="classification", num_classes=4,
-                  modalities=["sentinel2", "sentinel1"], fusion="post")
+    res = compose(
+        task="classification",
+        num_classes=4,
+        modalities=["sentinel2", "sentinel1"],
+        fusion="post",
+    )
     assert res["strategy"] == "post"
     assert res["yaml"] is None
     assert any("compose()" in s for s in res["guidance"]["steps"])
 
 
 def test_compose_pre_fusion_warns_about_lost_pretrained_embeddings() -> None:
-    res = compose(task="segmentation", num_classes=3,
-                  modalities=["sentinel2", "sentinel1"], fusion="pre")
+    res = compose(
+        task="segmentation",
+        num_classes=3,
+        modalities=["sentinel2", "sentinel1"],
+        fusion="pre",
+    )
     assert res["strategy"] == "pre"
     assert "pretrained embeddings" in res["guidance"]["caveat"]
 
@@ -328,19 +391,27 @@ def test_recommend_includes_fusion_block_for_multiple_modalities() -> None:
 
 
 def test_diagnose_zero_windows() -> None:
-    res = diagnose(summary={"layers": {"sentinel2": {"windows_prepared": 0, "windows_rejected": 0}}})
+    res = diagnose(
+        summary={
+            "layers": {"sentinel2": {"windows_prepared": 0, "windows_rejected": 0}}
+        }
+    )
     assert res["ok"] is False
     assert any("0 windows" in d for d in res["diagnosis"])
     assert any("--start" in f or "time range" in f for f in res["fixes"])
 
 
 def test_diagnose_no_scenes_from_log() -> None:
-    res = diagnose(log_text="ERROR: no scenes found for window seattle in 2024-06..2024-06")
+    res = diagnose(
+        log_text="ERROR: no scenes found for window seattle in 2024-06..2024-06"
+    )
     assert any("no scenes" in d.lower() for d in res["diagnosis"])
 
 
 def test_diagnose_crs_hint() -> None:
-    res = diagnose(log_text="windows materialized off-target; EPSG:4326 vs UTM zone mismatch")
+    res = diagnose(
+        log_text="windows materialized off-target; EPSG:4326 vs UTM zone mismatch"
+    )
     assert any("CRS" in d or "crs" in d.lower() for d in res["diagnosis"])
     assert any("src_crs" in f for f in res["fixes"])
 

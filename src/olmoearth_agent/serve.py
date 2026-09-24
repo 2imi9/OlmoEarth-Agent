@@ -509,9 +509,7 @@ async def api_health() -> dict[str, Any]:
         "mode": "live",
         "llm_endpoint": llm.config.endpoint,
         "llm_model": llm.config.model,
-        "llm_local_up": await _local_llm_up(
-            llm.config.endpoint, llm.config.api_key
-        ),
+        "llm_local_up": await _local_llm_up(llm.config.endpoint, llm.config.api_key),
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
     }

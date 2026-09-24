@@ -16,6 +16,7 @@ Runs are temperature-0/deterministic, so the default epsilon is 0: any drop
 in ``hard`` or ``soft`` fails the gate. Exit codes: 0 = no regression,
 1 = regression, 2 = usage/IO error.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,7 +31,11 @@ def compare(new: dict, baseline: dict, epsilon: float) -> tuple[bool, list[str]]
     """Diff shared metrics; returns (passed, report_lines)."""
     lines: list[str] = []
     passed = True
-    if new.get("n") is not None and baseline.get("n") is not None and new["n"] != baseline["n"]:
+    if (
+        new.get("n") is not None
+        and baseline.get("n") is not None
+        and new["n"] != baseline["n"]
+    ):
         lines.append(
             f"WARNING: item counts differ (baseline n={baseline['n']}, new n={new['n']}) — "
             "scores may not be comparable; regenerate on the full split."
@@ -40,13 +45,21 @@ def compare(new: dict, baseline: dict, epsilon: float) -> tuple[bool, list[str]]
             continue
         old_v, new_v = float(baseline[metric]), float(new[metric])
         delta = new_v - old_v
-        verdict = "REGRESSION" if delta < -epsilon else ("improved" if delta > 0 else "unchanged")
+        verdict = (
+            "REGRESSION"
+            if delta < -epsilon
+            else ("improved" if delta > 0 else "unchanged")
+        )
         if delta < -epsilon:
             passed = False
-        lines.append(f"{metric:6s} {old_v:.3f} -> {new_v:.3f}  ({delta:+.3f})  {verdict}")
+        lines.append(
+            f"{metric:6s} {old_v:.3f} -> {new_v:.3f}  ({delta:+.3f})  {verdict}"
+        )
     if not any(m in new and m in baseline for m in METRICS):
         passed = False
-        lines.append("ERROR: no shared metrics between the new summary and the baseline.")
+        lines.append(
+            "ERROR: no shared metrics between the new summary and the baseline."
+        )
     return passed, lines
 
 
@@ -55,10 +68,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--new", required=True, help="summary.json from eval_skill.py")
     ap.add_argument("--baseline", required=True, help="committed baseline json")
-    ap.add_argument("--epsilon", type=float, default=0.0,
-                    help="tolerated drop before failing (default 0: any drop fails)")
-    ap.add_argument("--update-baseline", action="store_true",
-                    help="write the new scores into the baseline file after comparing")
+    ap.add_argument(
+        "--epsilon",
+        type=float,
+        default=0.0,
+        help="tolerated drop before failing (default 0: any drop fails)",
+    )
+    ap.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="write the new scores into the baseline file after comparing",
+    )
     a = ap.parse_args()
 
     try:
@@ -74,7 +94,11 @@ def main() -> int:
     print(f"=== regression gate: {a.new} vs {a.baseline} (epsilon={a.epsilon}) ===")
     for line in lines:
         print(line)
-    print("PASS" if passed else "FAIL: score regressed — do not ship this skill/model change.")
+    print(
+        "PASS"
+        if passed
+        else "FAIL: score regressed — do not ship this skill/model change."
+    )
 
     if a.update_baseline and passed:
         updated = {

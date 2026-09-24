@@ -128,20 +128,32 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                             "type": "string",
                             "description": "What the labels look like, e.g. 'polygons', 'points', 'a class raster', 'a value raster'.",
                         },
-                        "num_classes": {"type": "integer", "description": "Number of label classes (for classification/segmentation/detection)."},
+                        "num_classes": {
+                            "type": "integer",
+                            "description": "Number of label classes (for classification/segmentation/detection).",
+                        },
                         "label_range": {
                             "type": "array",
                             "items": {"type": "number"},
                             "description": "[min, max] of the value being predicted (regression tasks), used to suggest scale_factor.",
                         },
-                        "sensor": {"type": "string", "description": "Imagery, e.g. 'Sentinel-2', 'Sentinel-1/SAR', 'Landsat', 'NAIP'."},
-                        "cloudy": {"type": "boolean", "description": "Is the region/season cloud-prone? Affects compositing."},
+                        "sensor": {
+                            "type": "string",
+                            "description": "Imagery, e.g. 'Sentinel-2', 'Sentinel-1/SAR', 'Landsat', 'NAIP'.",
+                        },
+                        "cloudy": {
+                            "type": "boolean",
+                            "description": "Is the region/season cloud-prone? Affects compositing.",
+                        },
                         "temporal": {
                             "type": "string",
                             "enum": ["single", "multi-month", "seasonal", "annual"],
                             "description": "Temporal scope of the imagery.",
                         },
-                        "num_samples": {"type": "integer", "description": "Labeled sample count (drives encoder size + freeze schedule)."},
+                        "num_samples": {
+                            "type": "integer",
+                            "description": "Labeled sample count (drives encoder size + freeze schedule).",
+                        },
                         "model_size": {
                             "type": "string",
                             "enum": list(EMBEDDING_SIZES),
@@ -218,18 +230,58 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 parameters={
                     "type": "object",
                     "properties": {
-                        "task": {"type": "string", "enum": list(TASKS), "description": "rslearn task (or pass `goal` to infer)."},
-                        "goal": {"type": "string", "description": "Plain-language goal, if task isn't given."},
-                        "model_size": {"type": "string", "enum": list(EMBEDDING_SIZES), "description": "OlmoEarth encoder size (default base)."},
-                        "num_classes": {"type": "integer", "description": "Class count (segmentation/classification)."},
-                        "class_names": {"type": "array", "items": {"type": "string"}, "description": "Class names (classification)."},
-                        "property_name": {"type": "string", "description": "Vector property holding the label (classification/regression; default 'category')."},
-                        "scale_factor": {"type": "number", "description": "Label scale factor (regression tasks)."},
-                        "dataset_path": {"type": "string", "description": "Path to the rslearn dataset dir (default data/dataset)."},
-                        "bands": {"type": "array", "items": {"type": "string"}, "description": "Input bands (default the 12-band S2 L2A stack)."},
-                        "freeze_epochs": {"type": "integer", "description": "Epochs with the encoder frozen before unfreezing (default 10)."},
-                        "total_epochs": {"type": "integer", "description": "Total training epochs (default 40)."},
-                        "nodata_value": {"type": "integer", "description": "NODATA value to mask out of the loss (raster tasks)."},
+                        "task": {
+                            "type": "string",
+                            "enum": list(TASKS),
+                            "description": "rslearn task (or pass `goal` to infer).",
+                        },
+                        "goal": {
+                            "type": "string",
+                            "description": "Plain-language goal, if task isn't given.",
+                        },
+                        "model_size": {
+                            "type": "string",
+                            "enum": list(EMBEDDING_SIZES),
+                            "description": "OlmoEarth encoder size (default base).",
+                        },
+                        "num_classes": {
+                            "type": "integer",
+                            "description": "Class count (segmentation/classification).",
+                        },
+                        "class_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Class names (classification).",
+                        },
+                        "property_name": {
+                            "type": "string",
+                            "description": "Vector property holding the label (classification/regression; default 'category').",
+                        },
+                        "scale_factor": {
+                            "type": "number",
+                            "description": "Label scale factor (regression tasks).",
+                        },
+                        "dataset_path": {
+                            "type": "string",
+                            "description": "Path to the rslearn dataset dir (default data/dataset).",
+                        },
+                        "bands": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Input bands (default the 12-band S2 L2A stack).",
+                        },
+                        "freeze_epochs": {
+                            "type": "integer",
+                            "description": "Epochs with the encoder frozen before unfreezing (default 10).",
+                        },
+                        "total_epochs": {
+                            "type": "integer",
+                            "description": "Total training epochs (default 40).",
+                        },
+                        "nodata_value": {
+                            "type": "integer",
+                            "description": "NODATA value to mask out of the loss (raster tasks).",
+                        },
                         "modalities": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -264,8 +316,14 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 parameters={
                     "type": "object",
                     "properties": {
-                        "summary": {"type": "object", "description": "Parsed rslearn stage summary (per-layer counts + error_messages)."},
-                        "log_text": {"type": "string", "description": "Raw rslearn CLI output / error text."},
+                        "summary": {
+                            "type": "object",
+                            "description": "Parsed rslearn stage summary (per-layer counts + error_messages).",
+                        },
+                        "log_text": {
+                            "type": "string",
+                            "description": "Raw rslearn CLI output / error text.",
+                        },
                     },
                     "required": [],
                 },

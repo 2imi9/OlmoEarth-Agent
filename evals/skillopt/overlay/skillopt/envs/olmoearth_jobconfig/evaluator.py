@@ -11,6 +11,7 @@ verified preset (the skill's own ``recommend.py`` oracle).
     mode-specific time sub-fields — a smoother signal so the optimizer still
     sees progress when only some fields are right.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -50,22 +51,43 @@ def _norm_sources(value: Any) -> tuple[str, ...]:
     return tuple(sorted(_norm_str(s) for s in (value or []) if _norm_str(s)))
 
 
-def _time_subfield_checks(pred_tf: dict, exp_tf: dict, mode: str) -> list[tuple[str, bool]]:
+def _time_subfield_checks(
+    pred_tf: dict, exp_tf: dict, mode: str
+) -> list[tuple[str, bool]]:
     """Mode-specific time_frame sub-field checks (partial-credit signal)."""
     if mode == "period":
         return [
-            ("period_months", _to_int(pred_tf.get("period_months")) == _to_int(exp_tf.get("period_months"))),
-            ("start_months", set(pred_tf.get("start_months") or []) == set(exp_tf.get("start_months") or [])),
+            (
+                "period_months",
+                _to_int(pred_tf.get("period_months"))
+                == _to_int(exp_tf.get("period_months")),
+            ),
+            (
+                "start_months",
+                set(pred_tf.get("start_months") or [])
+                == set(exp_tf.get("start_months") or []),
+            ),
         ]
     if mode == "single_moment_with_context":
         return [
-            ("before_months", (_to_int(pred_tf.get("before_months")) or 0) == (_to_int(exp_tf.get("before_months")) or 0)),
-            ("after_months", (_to_int(pred_tf.get("after_months")) or 0) == (_to_int(exp_tf.get("after_months")) or 0)),
+            (
+                "before_months",
+                (_to_int(pred_tf.get("before_months")) or 0)
+                == (_to_int(exp_tf.get("before_months")) or 0),
+            ),
+            (
+                "after_months",
+                (_to_int(pred_tf.get("after_months")) or 0)
+                == (_to_int(exp_tf.get("after_months")) or 0),
+            ),
         ]
     if mode == "single_moment":
         return [
-            ("observation_window_hours",
-             _to_num(pred_tf.get("observation_window_hours")) == _to_num(exp_tf.get("observation_window_hours"))),
+            (
+                "observation_window_hours",
+                _to_num(pred_tf.get("observation_window_hours"))
+                == _to_num(exp_tf.get("observation_window_hours")),
+            ),
         ]
     return []
 
@@ -83,11 +105,15 @@ def evaluate(prediction_text: str, expected: dict) -> dict:
     pred_mode = _norm_str(pred_tf.get("mode"))
 
     core = {
-        "output_type": _norm_str(pred.get("output_type")) == _norm_str(expected.get("output_type")),
-        "foundation_model": _norm_str(pred.get("foundation_model")) == _norm_str(expected.get("foundation_model")),
+        "output_type": _norm_str(pred.get("output_type"))
+        == _norm_str(expected.get("output_type")),
+        "foundation_model": _norm_str(pred.get("foundation_model"))
+        == _norm_str(expected.get("foundation_model")),
         "time_frame_mode": pred_mode == exp_mode and bool(exp_mode),
-        "patch_size_m": _to_int(pred.get("patch_size_m")) == _to_int(expected.get("patch_size_m")),
-        "imagery_sources": _norm_sources(pred.get("imagery_sources")) == _norm_sources(expected.get("imagery_sources")),
+        "patch_size_m": _to_int(pred.get("patch_size_m"))
+        == _to_int(expected.get("patch_size_m")),
+        "imagery_sources": _norm_sources(pred.get("imagery_sources"))
+        == _norm_sources(expected.get("imagery_sources")),
     }
 
     # Time sub-fields only count when the expected mode is known. They are
@@ -97,7 +123,10 @@ def evaluate(prediction_text: str, expected: dict) -> dict:
         if pred_mode == exp_mode:
             sub = _time_subfield_checks(pred_tf, exp_tf, exp_mode)
         else:
-            sub = [(name, False) for name, _ in _time_subfield_checks(exp_tf, exp_tf, exp_mode)]
+            sub = [
+                (name, False)
+                for name, _ in _time_subfield_checks(exp_tf, exp_tf, exp_mode)
+            ]
 
     all_checks = list(core.items()) + sub
     soft = sum(1 for _, ok in all_checks if ok) / len(all_checks) if all_checks else 0.0
@@ -116,6 +145,9 @@ def evaluate(prediction_text: str, expected: dict) -> dict:
         "soft": round(soft, 4),
         "parsed_ok": parsed_ok,
         "predicted": pred,
-        "field_results": {**{k: bool(v) for k, v in core.items()}, **{n: bool(ok) for n, ok in sub}},
+        "field_results": {
+            **{k: bool(v) for k, v in core.items()},
+            **{n: bool(ok) for n, ok in sub},
+        },
         "fail_reason": fail_reason,
     }
