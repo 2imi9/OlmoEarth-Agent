@@ -1,17 +1,21 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Progressive-disclosure loader for vendored agentskills.io packages.
+"""Progressive-disclosure loader for the agent's agentskills.io packages.
 
-The upstream skills (#1-#4) live in ``2imi9/OlmoEarth-Skills``, vendored
-here as a git submodule at ``vendor/olmoearth-skills``. Each is a
-``SKILL.md`` instruction package (not a Python tool bundle), so the
-harness consumes them the agentskills.io way: the LLM sees each skill's
-``name`` + ``description`` up front (the index), and pulls the full
+The four instruction skills (catalog #1-#3 and #17: data-prep,
+studio-job-config, embeddings, rslearn) ship inside this package, under
+``olmoearth_agent/skills/packages/``, so a wheel install carries them. They
+were moved here from ``2imi9/OlmoEarth-Skills`` (now frozen); that
+directory's ``LICENSE`` and ``README.md`` keep the licence and attribution.
+
+Each is a ``SKILL.md`` instruction package (not a Python tool bundle), so
+the harness consumes them the agentskills.io way: the LLM sees each
+skill's ``name`` + ``description`` up front (the index), and pulls the full
 ``SKILL.md`` body into context only when a task matches (via the
 ``olmoearth_load_skill`` tool).
 
-Gracefully returns an empty index if the submodule is not initialized
-(e.g. a clone without ``--recurse-submodules``).
+An explicit ``root`` or ``OLMOEARTH_SKILLS_DIR`` that does not exist gives
+an empty index rather than an error.
 """
 
 from __future__ import annotations
@@ -21,11 +25,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-#: Default location of the vendored skills, relative to the repo root.
-#: ``loader.py`` is at ``src/olmoearth_agent/skills/`` -> parents[3] = repo root.
-DEFAULT_SKILLS_DIR = (
-    Path(__file__).resolve().parents[3] / "vendor" / "olmoearth-skills" / "skills"
-)
+#: Default location of the skill packages: beside this module, inside the
+#: installed package (so it resolves the same from a checkout or a wheel).
+DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "packages"
 
 _KEY_RE = re.compile(r"^([A-Za-z_][\w-]*):\s?(.*)$")
 
@@ -62,7 +64,11 @@ def _parse_frontmatter(text: str) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class VendoredSkill:
-    """One discovered ``SKILL.md`` package."""
+    """One discovered ``SKILL.md`` package.
+
+    The name predates the move of the packages into this repository; it is
+    kept because it is part of the public ``olmoearth_agent.skills`` API.
+    """
 
     name: str
     description: str
@@ -70,7 +76,7 @@ class VendoredSkill:
 
 
 class SkillLoader:
-    """Discovers and loads vendored ``SKILL.md`` packages.
+    """Discovers and loads the ``SKILL.md`` packages.
 
     Resolution order for the skills directory: explicit ``root`` arg →
     ``OLMOEARTH_SKILLS_DIR`` env → :data:`DEFAULT_SKILLS_DIR`.
@@ -126,10 +132,10 @@ class SkillLoader:
         Raises
         ------
         KeyError
-            If no vendored skill has that name.
+            If no skill package has that name.
         """
         for skill in self.discover():
             if skill.name == name:
                 return skill.path.read_text(encoding="utf-8")
-        msg = f"no vendored skill named {name!r}"
+        msg = f"no skill package named {name!r}"
         raise KeyError(msg)
