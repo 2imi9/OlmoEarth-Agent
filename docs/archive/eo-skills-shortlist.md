@@ -125,4 +125,4 @@ al. 2012, [doi:10.1111/j.2041-210X.2011.00172.x](https://doi.org/10.1111/j.2041-
 - LandCoverNet (label/imagery temporal correspondence): <https://arxiv.org/abs/2012.03111>
 - Reduced Focal Loss (class imbalance): <https://arxiv.org/abs/1903.01347> | "Fine-tune Smarter, Not Harder" (layer-wise LR for EO foundation models): <https://arxiv.org/abs/2504.17397>
 - Karasiak et al., spatial leakage in CV (ML 2021): <https://doi.org/10.1007/s10994-021-05972-1>
-- In-repo: [`SKILLS.md`](../SKILLS.md), [`PLAN.md`](../PLAN.md), vendored `olmoearth-data-prep` (`vendor/olmoearth-skills/`), issue #59 (downloadable export artifacts).
+- In-repo: [`SKILLS.md`](../../SKILLS.md), [`PLAN.md`](../../PLAN.md), vendored `olmoearth-data-prep` (`vendor/olmoearth-skills/`), issue #59 (downloadable export artifacts).

@@ -3,7 +3,7 @@
 Which self-improving techniques (Stanford [CS329A](https://cs329a.stanford.edu/))
 to adopt first in the OlmoEarth Agent, mapped onto the actual harness. Scope is
 **inference-time only** (no weight updates); train-time RL stays parked per
-[`PLAN.md`](../PLAN.md) section 7.2.
+[`PLAN.md`](../../PLAN.md) section 7.2.
 
 > **Sources.** CS329A (self-improving / self-evolving agents) plus the underlying
 > papers cited inline; the GDM methodology in
@@ -235,7 +235,7 @@ shows up as two manifest entries sharing a request hash.
 
 ## 4. Why train-time RL stays parked
 
-Per [`PLAN.md`](../PLAN.md) section 7.2, train-time RL (STaR / SWiRL / GRPO /
+Per [`PLAN.md`](../../PLAN.md) section 7.2, train-time RL (STaR / SWiRL / GRPO /
 DAPO) re-activates *only* when "trace volume justifies." Two grounded reasons it
 does not yet:
 
@@ -262,4 +262,4 @@ empirically capped by what prompting + verification can reach. Neither holds tod
 - "Let's Verify Step by Step" (process/checkpoint supervision): <https://arxiv.org/abs/2305.20050>
 - MemGPT: <https://arxiv.org/abs/2310.08560>
 - Course: Stanford CS329A <https://cs329a.stanford.edu/>
-- In-repo: [`docs/science-skills-assessment.md`](science-skills-assessment.md) (GDM 3-tier + autorater), [`evals/skillopt/README.md`](../evals/skillopt/README.md), [`PLAN.md`](../PLAN.md) section 7.2.
+- In-repo: [`docs/science-skills-assessment.md`](science-skills-assessment.md) (GDM 3-tier + autorater), [`evals/skillopt/README.md`](../../evals/skillopt/README.md), [`PLAN.md`](../../PLAN.md) section 7.2.

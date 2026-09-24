@@ -80,26 +80,26 @@ Two distinct kinds of "skill":
 
 - **(a) Vendored `SKILL.md` guidance** (#1-#4) in the
   `vendor/olmoearth-skills` submodule. Loaded by
-  [`SkillLoader`](../src/olmoearth_agent/skills/loader.py): frontmatter
+  [`SkillLoader`](../../src/olmoearth_agent/skills/loader.py): frontmatter
   (`name`, `description`) -> `index()` injects a name + first-sentence list into
   the `LeadAgent` system prompt; the full body is pulled on demand via
   `olmoearth_list_skills` / `olmoearth_load_skill`
-  ([`skill_tools.py`](../src/olmoearth_agent/tools/skill_tools.py)).
+  ([`skill_tools.py`](../../src/olmoearth_agent/tools/skill_tools.py)).
   **Guidance only -- no bundled scripts.** This is structurally identical to a
   GDM skill (same agentskills.io anatomy, same progressive disclosure).
 - **(b) Implemented Python tool bundles** (#5-#18) in
-  [`src/olmoearth_agent/tools/`](../src/olmoearth_agent/tools/): each a
+  [`src/olmoearth_agent/tools/`](../../src/olmoearth_agent/tools/): each a
   `build_*_tools()` factory returning `RegisteredTool(spec=ToolSpec, handler=async fn)`,
   with heavy logic in a parallel `analysis/` / `reporting/` module.
 
-The harness ([`LeadAgent`](../src/olmoearth_agent/harness/agent.py)) is a
+The harness ([`LeadAgent`](../../src/olmoearth_agent/harness/agent.py)) is a
 single-agent ReAct loop: system prompt + injected skill index -> the LLM emits a
-`tool_call` -> [`ToolRegistry.dispatch`](../src/olmoearth_agent/tools/registry.py)
+`tool_call` -> [`ToolRegistry.dispatch`](../../src/olmoearth_agent/tools/registry.py)
 awaits the async handler **in-process** -> the JSON result is fed straight back,
 until a plain-text answer or `max_turns`. Two differentiators over GDM:
 `ToolRegistry.dispatch` **never raises** (returns `{ok: false, error}` so the
 model self-recovers), and **every call is logged to a provenance manifest**
-([`provenance/log.py`](../src/olmoearth_agent/provenance/log.py): sha256 of args
+([`provenance/log.py`](../../src/olmoearth_agent/provenance/log.py): sha256 of args
 + an id-only summary, never raw geometry) with a runnable replay skeleton.
 
 ## 4. Side-by-side
@@ -170,11 +170,11 @@ vendored as uv-run scripts and not importing `scienceskillscommon`:
 - Repo: <https://github.com/google-deepmind/science-skills>
 - Report PDF: *Science Skills for Antigravity* (GDM, 2026-05-19).
 - Agent Skills standard: <https://agentskills.io>
-- Our skill placement: [`skills/loader.py`](../src/olmoearth_agent/skills/loader.py),
-  [`tools/skill_tools.py`](../src/olmoearth_agent/tools/skill_tools.py),
-  [`skills/registry.py`](../src/olmoearth_agent/skills/registry.py).
-- Our harness: [`harness/agent.py`](../src/olmoearth_agent/harness/agent.py),
-  [`tools/registry.py`](../src/olmoearth_agent/tools/registry.py),
-  [`provenance/log.py`](../src/olmoearth_agent/provenance/log.py).
+- Our skill placement: [`skills/loader.py`](../../src/olmoearth_agent/skills/loader.py),
+  [`tools/skill_tools.py`](../../src/olmoearth_agent/tools/skill_tools.py),
+  [`skills/registry.py`](../../src/olmoearth_agent/skills/registry.py).
+- Our harness: [`harness/agent.py`](../../src/olmoearth_agent/harness/agent.py),
+  [`tools/registry.py`](../../src/olmoearth_agent/tools/registry.py),
+  [`provenance/log.py`](../../src/olmoearth_agent/provenance/log.py).
 - Related: `PLAN.md` §7 (parked multimodal/self-improvement tracks),
   `evals/skillopt/` (skill benchmarking vs local Qwen3.6).

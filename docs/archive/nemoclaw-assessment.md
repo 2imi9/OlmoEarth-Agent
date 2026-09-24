@@ -111,11 +111,11 @@ primitives -- not the capabilities -- are candidates for transfer.
 ## 3. How the OlmoEarth Agent differs
 
 - **In-process, not containerised.** Tools are `async` Python handlers dispatched
-  inside one process ([`harness/agent.py`](../src/olmoearth_agent/harness/agent.py),
-  [`tools/registry.py`](../src/olmoearth_agent/tools/registry.py)). There is no
+  inside one process ([`harness/agent.py`](../../src/olmoearth_agent/harness/agent.py),
+  [`tools/registry.py`](../../src/olmoearth_agent/tools/registry.py)). There is no
   OS boundary to attach seccomp / capabilities / a DNS proxy to. The single
   code-exec path is the **opt-in** `olmoearth_run_python` subprocess
-  ([`tools/system.py`](../src/olmoearth_agent/tools/system.py)).
+  ([`tools/system.py`](../../src/olmoearth_agent/tools/system.py)).
 - **Trusted, single-user.** The operator runs the agent on their own machine with
   their own keys. The threat model is not "a hostile agent we must cage" but
   "don't let a malicious *input* (a typo'd or attacker-supplied endpoint, a
@@ -129,7 +129,7 @@ primitives -- not the capabilities -- are candidates for transfer.
   (`datasets-server.huggingface.co`). That small set is exactly what makes a
   static allowlist tractable for us where NemoClaw needs a dynamic policy engine.
 - **We already have a provenance manifest** the agent run owns
-  ([`provenance/log.py`](../src/olmoearth_agent/provenance/log.py)) -- a natural
+  ([`provenance/log.py`](../../src/olmoearth_agent/provenance/log.py)) -- a natural
   place to record an egress audit trail that NemoClaw lists as an open limitation.
 
 ## 4. Side-by-side
@@ -140,7 +140,7 @@ primitives -- not the capabilities -- are candidates for transfer.
 | **Enforcement layer** | OS / network (seccomp, caps, DNS proxy, gateway broker) | Application code (httpx call sites, subprocess env) | We can only enforce where *our* code builds a URL or spawns a child. |
 | **Egress control** | Dynamic per-integration policy presets, enforce/audit | Static per-capability host allowlist, enforce/audit | Port the **model** (allowlist + enforce/audit + loopback exception), right-sized to a fixed host set. |
 | **SSRF guard** | `ssrf.ts`: scheme + name + post-DNS IP checks + DNS pinning | scheme + name + IP-range checks (no DNS resolution) | Port the checks via stdlib `ipaddress`; **skip DNS pinning** -- a per-call interactive agent should not block on lookups, and the allowlist is the primary control. |
-| **Credentials** | Central resolver + a CI guard against direct env reads | Per-request keys, never stored ([`serve.py`](../src/olmoearth_agent/serve.py)) | Already close; the env-read CI guard is a cheap future borrow (see below). |
+| **Credentials** | Central resolver + a CI guard against direct env reads | Per-request keys, never stored ([`serve.py`](../../src/olmoearth_agent/serve.py)) | Already close; the env-read CI guard is a cheap future borrow (see below). |
 | **Code exec** | seccomp + caps + process limits in-container | Opt-in subprocess, `python -I`, throwaway cwd, timeout | We cannot seccomp ourselves on Windows; **scrub secrets from the child env** is the portable analog. |
 | **Provenance / audit** | Operator-approval logs; reproducibility an open limitation | First-class per-run manifest + replay | We are ahead; egress decisions slot straight into the manifest. |
 | **Distribution** | Container blueprint + signed skill bundles (`skill.oms.sig`) | One Python package | Signing/fleet machinery is off-scale. |
@@ -228,10 +228,10 @@ posture that we can actually enforce, and nothing more.
   `scripts/checks/direct-credential-env.ts`.
 - OWASP SSRF prevention (private-range blocking, no-follow internal redirects):
   <https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html>
-- Our code: [`security/egress.py`](../src/olmoearth_agent/security/egress.py),
-  [`provenance/log.py`](../src/olmoearth_agent/provenance/log.py),
-  [`tools/system.py`](../src/olmoearth_agent/tools/system.py),
-  [`studio/client.py`](../src/olmoearth_agent/studio/client.py),
-  [`serve.py`](../src/olmoearth_agent/serve.py).
+- Our code: [`security/egress.py`](../../src/olmoearth_agent/security/egress.py),
+  [`provenance/log.py`](../../src/olmoearth_agent/provenance/log.py),
+  [`tools/system.py`](../../src/olmoearth_agent/tools/system.py),
+  [`studio/client.py`](../../src/olmoearth_agent/studio/client.py),
+  [`serve.py`](../../src/olmoearth_agent/serve.py).
 - Related assessments: [`science-skills-assessment.md`](science-skills-assessment.md),
   [`eo-skills-shortlist.md`](eo-skills-shortlist.md); issue #54 (sandbox spec).
