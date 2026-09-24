@@ -18,7 +18,7 @@ BRIDGE_PORT := 8088
 
 help: ## List the available targets.
 	@echo "OlmoEarth Agent make targets:"
-	@echo "  make setup   - init submodules (vendored skills #1-#4) + uv sync --all-extras"
+	@echo "  make setup   - uv sync --all-extras (+ git submodule init, still read by one test)"
 	@echo "  make up      - LOCAL one-command bring-up: setup + serve the LLM + live UI"
 	@echo "  make serve   - start the llama.cpp LLM and wait for it to be healthy"
 	@echo "  make down    - stop the LLM"
@@ -33,7 +33,7 @@ help: ## List the available targets.
 	@echo ""
 	@echo "Default brief (make agent): $(Q)"
 
-setup: ## Init vendored skills + sync the Python env.
+setup: ## Sync the Python env (+ the submodule one test still reads).
 	git submodule update --init
 	uv sync --all-extras
 

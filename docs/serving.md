@@ -20,7 +20,7 @@ The agent's reasoning backbone can be a hosted **Claude**, **ChatGPT**, or
 no download** - just the web UI bridge:
 
 ```bash
-make setup      # init vendored skills + uv sync --all-extras
+make setup      # uv sync --all-extras
 make bridge     # live UI on http://localhost:8088 (no `make serve`)
 ```
 
