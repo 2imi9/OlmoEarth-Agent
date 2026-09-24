@@ -42,8 +42,12 @@ def _result_with_geom(rid: str) -> dict:
 @pytest.mark.asyncio
 async def test_compare_results_quantifies_divergence(httpx_mock: HTTPXMock) -> None:
     # Both results share the same 0..10 extent.
-    httpx_mock.add_response(url=f"{BASE}/prediction-results/a1", json=_result_with_geom("a1"))
-    httpx_mock.add_response(url=f"{BASE}/prediction-results/b1", json=_result_with_geom("b1"))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/a1", json=_result_with_geom("a1")
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/b1", json=_result_with_geom("b1")
+    )
 
     # pixel-value: value = lon for A, lon + 0.05 for B (varies by point, B offset).
     def pixel(request: httpx.Request) -> httpx.Response:
@@ -96,8 +100,12 @@ async def test_compare_results_temporal_frames_change_over_time(
 ) -> None:
     # Same model, two dates: A = earlier, B = later. B is uniformly +0.05, so
     # the narration should report a net *increase* over time, not "model agree".
-    httpx_mock.add_response(url=f"{BASE}/prediction-results/a1", json=_result_with_geom("a1"))
-    httpx_mock.add_response(url=f"{BASE}/prediction-results/b1", json=_result_with_geom("b1"))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/a1", json=_result_with_geom("a1")
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/b1", json=_result_with_geom("b1")
+    )
 
     def pixel(request: httpx.Request) -> httpx.Response:
         q = parse_qs(urlparse(str(request.url)).query)
@@ -121,7 +129,9 @@ async def test_compare_results_temporal_frames_change_over_time(
             },
         )
 
-    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
 
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
@@ -135,7 +145,9 @@ async def test_compare_results_temporal_frames_change_over_time(
     assert out["value_type"] == "regression"
     nar = out["narration"]
     assert nar["labels"] == {
-        "a": "earlier", "b": "later", "diff": "change (later - earlier)"
+        "a": "earlier",
+        "b": "later",
+        "diff": "change (later - earlier)",
     }
     assert "net increase of 0.05" in nar["headline"]
     assert "change over time" in nar["framing"]
@@ -150,7 +162,15 @@ async def test_compare_results_no_overlap(httpx_mock: HTTPXMock) -> None:
         url=f"{BASE}/prediction-results/a1",
         json={
             "records": [
-                {"id": "a1", "result_metadata": {"geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}}}
+                {
+                    "id": "a1",
+                    "result_metadata": {
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+                        }
+                    },
+                }
             ]
         },
     )
@@ -158,7 +178,15 @@ async def test_compare_results_no_overlap(httpx_mock: HTTPXMock) -> None:
         url=f"{BASE}/prediction-results/b1",
         json={
             "records": [
-                {"id": "b1", "result_metadata": {"geometry": {"type": "Polygon", "coordinates": [[[5, 5], [6, 5], [6, 6], [5, 6], [5, 5]]]}}}
+                {
+                    "id": "b1",
+                    "result_metadata": {
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[5, 5], [6, 5], [6, 6], [5, 6], [5, 5]]],
+                        }
+                    },
+                }
             ]
         },
     )
@@ -210,7 +238,9 @@ async def test_compare_group_pairwise_and_ensemble(httpx_mock: HTTPXMock) -> Non
             },
         )
 
-    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
 
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
@@ -279,7 +309,8 @@ async def test_compare_group_requires_shared_extent(httpx_mock: HTTPXMock) -> No
 async def test_compare_group_validates_id_count() -> None:
     ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
     too_few = await _tool("olmoearth_compare_group").handler(
-        {"result_ids": ["only", "only"]}, ctx  # dedup -> 1 distinct id
+        {"result_ids": ["only", "only"]},
+        ctx,  # dedup -> 1 distinct id
     )
     assert too_few["comparable"] is False
     too_many = await _tool("olmoearth_compare_group").handler(

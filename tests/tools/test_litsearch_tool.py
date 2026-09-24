@@ -104,8 +104,13 @@ async def test_asta_source_routes_to_asta_backend(
 
     async def fake_asta(**kwargs: Any) -> dict[str, Any]:
         seen.update(kwargs)
-        return {"count": 1, "papers": [{"id": "CorpusId:1"}], "sources": ["asta"],
-                "warnings": [], "saved_to": "x.json"}
+        return {
+            "count": 1,
+            "papers": [{"id": "CorpusId:1"}],
+            "sources": ["asta"],
+            "warnings": [],
+            "saved_to": "x.json",
+        }
 
     monkeypatch.setattr(asta_mod, "asta_available", lambda: True)
     monkeypatch.setattr(asta_mod, "search_asta", fake_asta)

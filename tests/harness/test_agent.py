@@ -87,10 +87,16 @@ async def test_agent_answers_without_tools() -> None:
 def test_local_flag_appends_budget_clause() -> None:
     reg = _registry_with_echo()
     local_agent = LeadAgent(
-        _FakeLLM([]), reg, studio=None, local=True  # type: ignore[arg-type]
+        _FakeLLM([]),
+        reg,
+        studio=None,
+        local=True,  # type: ignore[arg-type]
     )
     cloud_agent = LeadAgent(
-        _FakeLLM([]), reg, studio=None, local=False  # type: ignore[arg-type]
+        _FakeLLM([]),
+        reg,
+        studio=None,
+        local=False,  # type: ignore[arg-type]
     )
     assert LOCAL_BUDGET_CLAUSE in local_agent.system_prompt
     assert "limited output budget" in local_agent.system_prompt

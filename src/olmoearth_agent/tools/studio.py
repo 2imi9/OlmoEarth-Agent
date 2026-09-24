@@ -35,8 +35,11 @@ async def _search_projects(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     return {
         "total": env.total,
         "projects": [
-            {"id": r.get("id"), "name": r.get("name"),
-             "creation_time": r.get("creation_time")}
+            {
+                "id": r.get("id"),
+                "name": r.get("name"),
+                "creation_time": r.get("creation_time"),
+            }
             for r in env.records
         ],
     }

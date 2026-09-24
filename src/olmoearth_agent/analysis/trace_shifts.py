@@ -259,8 +259,7 @@ def trace_categorical(series: list[list[Any]]) -> dict[str, Any]:
         "n_points": n_points,
         "steps": steps,
         "transitions": [
-            {"from": a, "to": b, "count": c}
-            for (a, b), c in transitions.most_common(8)
+            {"from": a, "to": b, "count": c} for (a, b), c in transitions.most_common(8)
         ],
         "trajectory": trajectory,
     }

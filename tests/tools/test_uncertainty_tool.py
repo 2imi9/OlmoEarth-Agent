@@ -33,8 +33,12 @@ def _tool(name: str) -> RegisteredTool:
 def _result_with_geom(rid: str, coords: list) -> dict:
     return {
         "records": [
-            {"id": rid, "result_metadata": {"geometry": {"type": "Polygon",
-             "coordinates": coords}}}
+            {
+                "id": rid,
+                "result_metadata": {
+                    "geometry": {"type": "Polygon", "coordinates": coords}
+                },
+            }
         ]
     }
 
@@ -96,11 +100,24 @@ async def test_ensemble_uncertainty_regression_disagreement(
         offset = 2.0 if "/b1/" in str(request.url) else 0.0
         return httpx.Response(
             200,
-            json={"records": [{"bands": [{"property_name": "score",
-                   "raw_value": round(lon + offset, 6), "classification": None}]}]},
+            json={
+                "records": [
+                    {
+                        "bands": [
+                            {
+                                "property_name": "score",
+                                "raw_value": round(lon + offset, 6),
+                                "classification": None,
+                            }
+                        ]
+                    }
+                ]
+            },
         )
 
-    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
 
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
@@ -133,11 +150,24 @@ async def test_ensemble_uncertainty_categorical_auto_detect(
         cls = "wetland" if "/b1/" in str(request.url) else "forest"
         return httpx.Response(
             200,
-            json={"records": [{"bands": [{"property_name": "landcover",
-                   "raw_value": None, "classification": cls}]}]},
+            json={
+                "records": [
+                    {
+                        "bands": [
+                            {
+                                "property_name": "landcover",
+                                "raw_value": None,
+                                "classification": cls,
+                            }
+                        ]
+                    }
+                ]
+            },
         )
 
-    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
 
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
@@ -187,13 +217,14 @@ async def test_ensemble_uncertainty_mixed_band_types_clean_answer(
 
     def pixel(request: httpx.Request) -> httpx.Response:
         if "/b1/" in str(request.url):
-            band = {"property_name": "x", "raw_value": None,
-                    "classification": "forest"}
+            band = {"property_name": "x", "raw_value": None, "classification": "forest"}
         else:
             band = {"property_name": "x", "raw_value": 1.0, "classification": None}
         return httpx.Response(200, json={"records": [{"bands": [band]}]})
 
-    httpx_mock.add_callback(pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True)
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
 
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())

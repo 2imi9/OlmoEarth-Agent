@@ -70,9 +70,7 @@ class ToolRegistry:
         """All tool specs, to hand to the LLM."""
         return [t.spec for t in self._tools.values()]
 
-    async def dispatch(
-        self, call: ToolCall, ctx: ToolContext
-    ) -> dict[str, Any]:
+    async def dispatch(self, call: ToolCall, ctx: ToolContext) -> dict[str, Any]:
         """Execute one tool call, returning a JSON-able result envelope.
 
         Never raises: an unknown tool, malformed arguments, or a handler
@@ -97,8 +95,7 @@ class ToolRegistry:
         if problems:
             return {
                 "ok": False,
-                "error": f"invalid arguments for {call.name}: "
-                + "; ".join(problems),
+                "error": f"invalid arguments for {call.name}: " + "; ".join(problems),
                 "expected_arguments": schema_summary(tool.spec.parameters),
                 "hint": "Fix the named arguments to match "
                 "'expected_arguments' and call the tool again.",
