@@ -1,0 +1,275 @@
+# SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
+# Copyright (c) 2026 OlmoEarth Agent contributors
+"""olmoearth_review_set_from_result: a Studio result as review windows (mocked Studio).
+
+The trial's brief 2 asked which windows of a KarstBinary prediction a reviewer
+should check first. The model sampled pixels by hand and put the 0.97 and 0.99
+cells first, the reverse of the margin ranking it claimed to follow. This tool
+samples the result itself and ranks by the margin, so the least decided
+windows lead and the most confident come last.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+import pytest
+from pytest_httpx import HTTPXMock
+
+from olmoearth_agent.analysis.raster_compare import grid_windows
+from olmoearth_agent.harness.state import ThreadState
+from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.studio.client import StudioClient, StudioConfig
+from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
+from olmoearth_agent.tools.review_set import build_review_set_tools
+
+BASE = "http://mock-studio/api/v1"
+_BBOX = [0.0, 0.0, 8.0, 4.0]
+_BOX = [[[0, 0], [8, 0], [8, 4], [0, 4], [0, 0]]]
+
+#: A 4x4 grid of KarstBinary-like scores, row-major from the north-west;
+#: -1 is Studio's no-data sentinel.
+_GRID = [
+    [0.97, 0.52, -1.0, 0.03],
+    [0.31, 0.99, 0.05, 0.47],
+    [-1.0, 0.60, 0.10, 0.88],
+    [0.02, 0.45, 0.93, -1.0],
+]
+
+_BANNED_KEYS = {"lon", "lat", "bbox", "coordinates", "geometry", "centres_lon_lat"}
+
+
+def _keys(obj: Any) -> set[str]:
+    """Every dict key anywhere inside ``obj``."""
+    if isinstance(obj, dict):
+        out = set(obj)
+        for v in obj.values():
+            out |= _keys(v)
+        return out
+    if isinstance(obj, list):
+        out = set()
+        for v in obj:
+            out |= _keys(v)
+        return out
+    return set()
+
+
+def _record(rid: str, meta: dict[str, Any], prop: str = "sample_karst_score") -> dict:
+    return {
+        "records": [
+            {
+                "id": rid,
+                "property_names": [prop],
+                "result_metadata": {
+                    "geometry": {"type": "Polygon", "coordinates": _BOX},
+                    **meta,
+                },
+            }
+        ]
+    }
+
+
+_BINARY_META = {
+    "regression_fields": [
+        {"property_name": "sample_karst_score", "min_value": 0.0, "max_value": 1.0}
+    ]
+}
+
+
+def _mock_pixels(
+    httpx_mock: HTTPXMock, values: list[list[float]], block: dict | None
+) -> None:
+    """Serve ``values[row][col]`` at each window centre of a 4x4 grid."""
+    cells = {(lo, la): (r, c) for r, c, lo, la in grid_windows(_BBOX, 4)}
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        q = parse_qs(urlparse(str(request.url)).query)
+        r, c = cells[(round(float(q["lon"][0]), 6), round(float(q["lat"][0]), 6))]
+        band: dict[str, Any] = {
+            "band_index": 1,
+            "property_name": "sample_karst_score",
+            "raw_value": values[r][c],
+            "classification": None,
+        }
+        if block is not None:
+            band["regression"] = block
+        return httpx.Response(200, json={"records": [{"bands": [band]}]})
+
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
+
+
+def _tool() -> Any:
+    return next(
+        t
+        for t in build_review_set_tools()
+        if t.spec.name == "olmoearth_review_set_from_result"
+    )
+
+
+@pytest.mark.asyncio
+async def test_binary_score_ranks_the_least_decided_windows_first(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler(
+            {"result_id": "kb", "grid": 4, "budgets": [0.25, 0.5]}, ctx
+        )
+    assert out["ranked"] is True
+    assert out["score_kind"] == "binary_score"
+    assert "P(positive)" in out["assumption"]
+    assert "not probabilities of error" in out["assumption"]
+    sampling = out["sampling"]
+    assert (sampling["n_windows_sampled"], sampling["n_valid"]) == (16, 13)
+    assert sampling["n_nodata_dropped"] == 3
+    assert "not every pixel" in sampling["what_a_window_is"]
+    assert [b["n_review"] for b in out["budgets"]] == [3, 6]
+
+    review = out["review"]
+    # 0.52, 0.47, 0.45, 0.60, 0.31 lead; the 0.97 / 0.99 / 0.02 cells never do.
+    assert [(r["row"], r["col"]) for r in review[:5]] == [
+        (0, 1),
+        (1, 3),
+        (3, 1),
+        (2, 1),
+        (1, 0),
+    ]
+    assert review[0]["window_index"] == 1 and review[0]["score"] == 0.52
+    assert review[0]["margin"] == pytest.approx(0.04)
+    assert [r["margin"] for r in review] == sorted(r["margin"] for r in review)
+    confident = {(0, 0), (1, 1), (3, 0)}
+    assert not confident & {(r["row"], r["col"]) for r in review}
+    assert review[0]["predicted_class"] == 1 and review[4]["predicted_class"] == 0
+    assert "never first" in out["signal"]
+    assert any("not a sample" in c for c in out["caveats"])
+
+    # Rule §3.1: windows by (row, col) and index only; locations stay in the file.
+    assert not _BANNED_KEYS & _keys(out)
+    saved = json.loads(Path(out["scores_path"]).read_text())
+    assert saved["grid"] == [4, 4] and len(saved["windows"]) == 13
+    assert saved["scores"][0] == pytest.approx([0.03, 0.97])
+    assert len(saved["centres_lon_lat"]) == 13
+    assert "olmoearth_plan_label_sample" in out["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_the_saved_scores_feed_olmoearth_review_set(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file keeps grid indices, so the generic tool names the same windows."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    tools = {t.spec.name: t for t in build_review_set_tools()}
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        first = await tools["olmoearth_review_set_from_result"].handler(
+            {"result_id": "kb", "grid": 4, "budgets": [0.25]}, ctx
+        )
+        again = await tools["olmoearth_review_set"].handler(
+            {"scores_path": first["scores_path"], "budget": 0.25}, ctx
+        )
+    assert [r["window_index"] for r in again["review"]] == [
+        r["window_index"] for r in first["review"][:3]
+    ]
+    assert again["review"][0]["row"] == 0 and again["review"][0]["col"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_classification_band_is_refused_before_sampling(
+    httpx_mock: HTTPXMock,
+) -> None:
+    meta = {
+        "classification_fields": [
+            {
+                "property_name": "landcover",
+                "allowed_values": [
+                    {"value": 1, "label": "water", "color": [0, 0, 255]}
+                ],
+            }
+        ]
+    }
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/lc", json=_record("lc", meta, prop="landcover")
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler({"result_id": "lc"}, ctx)
+    assert out["ranked"] is False
+    assert "no margin can be recovered from a hard class" in out["reason"]
+    assert out["use_instead"] == "olmoearth_ensemble_uncertainty"
+    assert not any("pixel-value" in str(r.url) for r in httpx_mock.get_requests())
+
+
+@pytest.mark.asyncio
+async def test_another_range_needs_a_threshold(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    meta = {
+        "regression_fields": [
+            {"property_name": "sample_karst_score", "min_value": 0.0, "max_value": 10.0}
+        ]
+    }
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/cnt",
+        json=_record("cnt", meta),
+        is_reusable=True,
+    )
+    counts = [[v * 10 if v >= 0 else -1.0 for v in row] for row in _GRID]
+    _mock_pixels(httpx_mock, counts, {"min_value": 0.0, "max_value": 10.0})
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        refused = await _tool().handler({"result_id": "cnt", "grid": 4}, ctx)
+        ranked = await _tool().handler(
+            {"result_id": "cnt", "grid": 4, "threshold": 5.0, "error_rate": 0.2}, ctx
+        )
+    assert refused["ranked"] is False
+    assert "needs a decision threshold" in refused["reason"]
+    assert refused["declared_range"] == [0.0, 10.0]
+    assert ranked["ranked"] is True
+    assert ranked["score_kind"] == "threshold_distance"
+    assert ranked["review"][0]["window_index"] == 1  # 5.2, nearest the threshold
+    assert ranked["review"][0]["margin"] == pytest.approx(0.02)
+    ceiling = ranked["budgets"][-1]["attainable_ceiling"]
+    assert ceiling == pytest.approx(min(1.0, 0.10 / 0.2))
+
+
+@pytest.mark.asyncio
+async def test_undeclared_metadata_is_read_from_the_sampled_band(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(url=f"{BASE}/prediction-results/u1", json=_record("u1", {}))
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    registry = ToolRegistry()
+    registry.register_all(build_review_set_tools())
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await registry.dispatch(
+            ToolCall(
+                id="1",
+                name="olmoearth_review_set_from_result",
+                arguments={"result_id": "u1", "grid": 4, "save_scores": False},
+            ),
+            ctx,
+        )
+    assert out["ok"] is True
+    result = out["result"]
+    assert result["sampling"]["n_nodata_dropped"] == 3
+    assert result["declared_range"] == [0.0, 1.0]
+    assert "scores_path" not in result

@@ -33,9 +33,10 @@ def _registry() -> ToolRegistry:
     return registry
 
 
-def test_bundle_exposes_the_four_catalogued_tools() -> None:
+def test_bundle_exposes_the_five_catalogued_tools() -> None:
     assert set(_tools()) == {
         "olmoearth_review_set",
+        "olmoearth_review_set_from_result",
         "olmoearth_compare_review",
         "olmoearth_grade_review_rule",
         "olmoearth_review_budget_ceiling",

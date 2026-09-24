@@ -23,11 +23,13 @@ measured ensemble disagreement and feature-space typicality against the
 model's own top-1-minus-top-2 margin on seven expert-labelled testbeds and
 neither ranked errors better than the margin. That is not a defect in these
 tools: Studio's ``pixel-value`` returns only ``raw_value`` and
-``classification`` -- never probabilities or logits -- so with Studio
-results alone the margin is not computable and ensemble disagreement is the
+``classification`` -- never probabilities or logits -- so with hard-class
+Studio results the margin is not computable and ensemble disagreement is the
 only uncertainty signal reachable. When per-class scores *do* exist (rslearn
 predict, an embeddings+probe pass, any exported softmax), route the
-"which windows are wrong" question to ``olmoearth_review_set``.
+"which windows are wrong" question to ``olmoearth_review_set``; for a Studio
+result whose band is a binary score in ``[0, 1]``, to
+``olmoearth_review_set_from_result``.
 """
 
 from __future__ import annotations
@@ -242,35 +244,22 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
             spec=ToolSpec(
                 name="olmoearth_ensemble_uncertainty",
                 description=(
-                    "Estimate epistemic (ensemble-disagreement) uncertainty "
-                    "across TWO OR MORE prediction results over their shared "
-                    "extent. Samples each result on a common grid (Studio "
-                    "pixel-value) and treats the >=2 values at each point as "
-                    "ensemble members, so the spread is REAL disagreement "
-                    "between distinct results -- not a fake re-read of one "
-                    "deterministic result. Returns per-point + aggregate "
-                    "dispersion -> a confidence in [0,1]: regression reports "
-                    "mean/std/coefficient-of-variation/range; categorical "
-                    "reports majority class, vote fractions, normalized Shannon "
-                    "entropy, and margin. This is model self-consistency, NOT a "
-                    "calibrated probability of correctness -- pair it with "
-                    "olmoearth_area_of_applicability for the OOD regime. "
-                    "PREFER olmoearth_review_set when you have per-class "
-                    "scores (logits/probabilities) for the windows: on seven "
-                    "expert-labelled testbeds the model's own top-1-minus-"
-                    "top-2 margin ranked errors better than ensemble "
-                    "DISAGREEMENT (mutual information), and on all 24 tasks "
-                    "of Ai2's own published embedding suite it beat the best "
-                    "no-model control, 24/24, p=6e-08. Note the honest "
-                    "exception: the margin only TIES ensemble predictive "
-                    "entropy, so if you already have an ensemble its entropy "
-                    "is a fair alternative. Use THIS tool when "
-                    "all you have is Studio results, whose pixel-value "
-                    "returns hard classes and no scores -- then ensemble "
-                    "disagreement is the only signal available, and it is "
-                    "also far more expensive (grid^2 slow calls per result). "
-                    "Read-only; summary stats only. Slow (pixel-value is ~tens "
-                    "of seconds per point per result) -- keep grid small."
+                    "Epistemic (ensemble-disagreement) uncertainty across TWO "
+                    "OR MORE prediction results of the SAME property over their "
+                    "shared extent: samples each on a common grid (pixel-value) "
+                    "and treats the values at a point as ensemble members "
+                    "(no-data dropped and counted in n_nodata_dropped). "
+                    "Regression: mean/std/CV/range; categorical: majority "
+                    "class, vote fractions, entropy, margin; folded into a "
+                    "confidence in [0,1]. Model self-consistency, NOT a "
+                    "probability of correctness; results of different "
+                    "properties are refused. It does not rank which windows to "
+                    "review: for a Studio result with a [0, 1] score use "
+                    "olmoearth_review_set_from_result, with per-class scores "
+                    "olmoearth_review_set (the margin ranked errors better than "
+                    "ensemble disagreement on seven expert-labelled testbeds). "
+                    "Use this for hard-class Studio results. Slow: grid^2 calls "
+                    "per result; keep grid small."
                 ),
                 parameters={
                     "type": "object",

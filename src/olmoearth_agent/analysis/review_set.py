@@ -31,7 +31,10 @@ no probabilities, no logits, no per-class scores (see
 cannot be recovered from a hard class label, so the scores must come from
 wherever inference actually ran (rslearn ``model predict``, an
 embeddings+probe pass, or any exported softmax). This mirrors skill #8,
-which likewise takes caller-supplied embeddings.
+which likewise takes caller-supplied embeddings. The one Studio output that
+does carry a margin is a regression band that is a binary score in
+``[0, 1]``: :func:`regression_scores` reads it as ``[1 - s, s]``, with the
+assumption stated in :data:`BINARY_SCORE_ASSUMPTION`.
 
 Coordinates are never accepted or returned: windows are addressed by index
 and by caller-supplied id, so a review set cannot leak geometry into chat
@@ -379,6 +382,78 @@ def sign_test_p(wins: int, decisive: int) -> float:
         return 1.0
     tail = sum(math.comb(decisive, i) for i in range(wins, decisive + 1))
     return tail / (2.0**decisive)
+
+
+# --------------------------------------------------------------------------- a Studio regression band as scores
+
+#: The assumption that makes a binary score in [0, 1] rankable, returned with
+#: every ranking built from one (upstream documents the same reading of a
+#: Studio ``per_pixel_regression`` output of a two-class task).
+BINARY_SCORE_ASSUMPTION = (
+    "The band is a score in [0, 1] decided at 0.5 and is treated as "
+    "P(positive) for ranking only: each window's scores are [1 - s, s], so "
+    "its margin is |2s - 1| and the least decided windows (s nearest 0.5) are "
+    "opened first; the most confident windows (s near 0 or 1) come last. "
+    "Ranking by distance from 0.5 needs no calibration, but these numbers are "
+    "not probabilities of error, and no recorded experiment grades this case."
+)
+
+
+def regression_scores(
+    values: Sequence[float],
+    *,
+    min_value: float | None,
+    max_value: float | None,
+    threshold: float | None = None,
+) -> tuple[list[list[float]], str, str]:
+    """Two-class scores for a regression band, so the margin ranking applies.
+
+    Returns ``(rows, score_kind, assumption)``. A band whose declared range
+    is ``[0, 1]`` read at 0.5 (``threshold`` omitted or 0.5) is a binary
+    score: rows are ``[1 - s, s]`` (``score_kind="binary_score"``). Any other
+    band needs a decision threshold, because a margin is a distance from a
+    decision: rows are ``[-d / 2, d / 2]`` with ``d = (v - t) / (max - min)``,
+    so the margin is ``|v - t|`` scaled by the declared range
+    (``score_kind="threshold_distance"``; unscaled when no range is declared).
+    Class 1 is "above the threshold" in both cases.
+
+    Raises
+    ------
+    ValueError
+        For a non-binary band without ``threshold``, or a non-finite value.
+    """
+    vals = [float(v) for v in values]
+    if any(math.isnan(v) or math.isinf(v) for v in vals):
+        raise ValueError("a sampled value is not finite; drop no-data first")
+    binary = min_value == 0.0 and max_value == 1.0
+    if binary and (threshold is None or threshold == 0.5):
+        return [[1.0 - v, v] for v in vals], "binary_score", BINARY_SCORE_ASSUMPTION
+    if threshold is None:
+        declared = (
+            f"[{min_value}, {max_value}]"
+            if min_value is not None and max_value is not None
+            else "not declared"
+        )
+        raise ValueError(
+            f"this regression band's range is {declared}, not [0, 1]: a margin "
+            "is a distance from a decision, so it needs a decision threshold. "
+            "Pass threshold (the value at which the map's decision flips)."
+        )
+    t = float(threshold)
+    span = 1.0
+    scaled = "unscaled (the band declares no range)"
+    if min_value is not None and max_value is not None and max_value > min_value:
+        span = float(max_value) - float(min_value)
+        scaled = f"divided by the declared range {span:g}"
+    rows = [[-(v - t) / span / 2.0, (v - t) / span / 2.0] for v in vals]
+    assumption = (
+        f"The band is read as a decision at the threshold {t:g}: a window's "
+        f"margin is |value - {t:g}| {scaled}, and the windows nearest the "
+        "threshold are opened first. This assumes the map's decision flips at "
+        "that threshold; the distance is not a probability of error, and no "
+        "recorded experiment grades this case."
+    )
+    return rows, "threshold_distance", assumption
 
 
 # --------------------------------------------------------------------------- the two public entry points

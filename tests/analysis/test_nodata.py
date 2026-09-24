@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The shared no-data rule, declared outputs and grid windows."""
+"""The shared no-data rule, declared outputs, grid windows and regression scores."""
 
 from __future__ import annotations
 
 import math
+
+import pytest
 
 from olmoearth_agent.analysis.raster_compare import (
     band_is_nodata,
@@ -12,6 +14,12 @@ from olmoearth_agent.analysis.raster_compare import (
     declared_range,
     grid_points,
     grid_windows,
+)
+from olmoearth_agent.analysis.review_set import (
+    BINARY_SCORE_ASSUMPTION,
+    margins,
+    predicted_classes,
+    regression_scores,
 )
 
 #: The band record Studio returned at a no-data point of the trial's KarstBinary result.
@@ -109,3 +117,33 @@ def test_grid_windows_are_row_major_from_the_north_west() -> None:
     assert windows[0][2] < windows[1][2]
     # The same cell centres grid_points samples, only reordered.
     assert {(lo, la) for _r, _c, lo, la in windows} == set(grid_points(bbox, 2))
+
+
+def test_binary_score_rows_rank_the_undecided_first() -> None:
+    values = [0.97, 0.52, 0.03, 0.31]
+    rows, kind, assumption = regression_scores(values, min_value=0.0, max_value=1.0)
+    assert kind == "binary_score"
+    assert assumption == BINARY_SCORE_ASSUMPTION
+    assert rows[0] == pytest.approx([0.03, 0.97])
+    marg = margins(rows)
+    assert marg == pytest.approx([abs(2 * v - 1) for v in values])
+    assert predicted_classes(rows) == [1, 1, 0, 0]
+    assert sorted(range(4), key=marg.__getitem__) == [1, 3, 0, 2]
+
+
+def test_other_ranges_need_a_threshold() -> None:
+    with pytest.raises(ValueError, match="needs a decision threshold"):
+        regression_scores([3.0], min_value=0.0, max_value=10.0)
+    rows, kind, assumption = regression_scores(
+        [3.0, 9.0, 5.5], min_value=0.0, max_value=10.0, threshold=5.0
+    )
+    assert kind == "threshold_distance"
+    assert margins(rows) == pytest.approx([0.2, 0.4, 0.05])
+    assert predicted_classes(rows) == [0, 1, 1]
+    assert "threshold 5" in assumption
+    # A [0, 1] band with a threshold other than 0.5 is read at that threshold.
+    rows, kind, _ = regression_scores(
+        [0.2], min_value=0.0, max_value=1.0, threshold=0.3
+    )
+    assert kind == "threshold_distance"
+    assert margins(rows) == pytest.approx([0.1])
