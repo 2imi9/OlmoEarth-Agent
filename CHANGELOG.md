@@ -10,6 +10,39 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **`olmoearth_review_set_from_result`: which windows of a Studio prediction to
+  check first.** A live trial (Qwen3.8-27B-NVFP4, 24 September 2026) asked
+  which windows a reviewer should open first; with no tool turning a Studio
+  result into review-set input, the model ranked hand-sampled pixels and put
+  the most confident cells (0.97, 0.99) first. The new tool samples the
+  result's band on a grid (one pixel-value per window, 2-16 per side, bounded
+  concurrency, no-data dropped and counted), reads a `[0, 1]` score `s` as
+  `[1 - s, s]` and ranks with `analysis.review_set.review_set`, least decided
+  first, stating the assumption (the score is P(positive) for ranking only;
+  not a probability of error). Other regression ranges need a `threshold`;
+  classification bands are refused. Windows are `(row, col)` and index; the
+  scores and window locations go to a file under `OLMOEARTH_SCORES_ROOT` that
+  `olmoearth_review_set` and the estimation tools read.
+- **How wrong is the map: `olmoearth_plan_label_sample`,
+  `olmoearth_estimate_map_error`, `olmoearth_certify_zone`.** Wrap
+  `oe_inferencex.estimate` from `olmoearth-inferencex` >= 1.3.0, a new
+  optional extra (`pip install 'olmoearth-agent[inferencex]'`; the core stays
+  numpy-free, and without the extra the tools answer `available: false` with
+  the install line). The trial's model had proposed a pooled stratified and
+  near-threshold sample with a simple-random-sample interval; the tools draw
+  the package's design (confidence strata by default, random for a certified
+  zone), save it with a labelling sheet, return the error rate with the
+  interval that design earns and its `method`, per-class accuracy, and the
+  certified zone, and refuse a review set offered as a sample.
+- `olmoearth_compare_review` takes `date_a`, `date_b` and `labels_date`; with
+  the extra it attaches `oe_inferencex.compare.dates_reading` and, across
+  different dates, declines to grade which side is right; without it, it says
+  the dates were not assessed.
+- `olmoearth_search_predictions` returns a `models` map (name, `model_type`,
+  `prediction_type` from the model record's `wizard_answers`) and says the
+  listing is this account's models only; `olmoearth_fetch_results` and
+  `olmoearth_get_prediction_result` return each output's declared regression
+  range or classes from `result_metadata`.
 - **Skill #18 `olmoearth-review-set` — label-free error ranking.** Answers the
   question nothing in the catalog answered: *which windows should a human open
   first, and how much of the error do they catch at that budget?*
@@ -56,6 +89,42 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `build_default_registry()`.
 - Ruff `per-file-ignores` for `tests/**` now also allows `S311`: seeded PRNG
   fixtures must be reproducible, not unguessable.
+- **`olmoearth_compare_results` refuses two results of different properties**
+  (`comparable: false`, both property names and declared ranges) unless
+  `allow_different_properties=true`, which returns only the correlation as
+  meaningful, with a warning (the web UI's compare card then shows the warning
+  instead of a difference map); the trial had narrated a binary score and a
+  count as one quantity. `olmoearth_ensemble_uncertainty` refuses the same.
+- The harness soul routes "which windows to check" to the review-set tools and
+  "how wrong is the map" to the estimation tools, and describes a model by its
+  `prediction_type`. `olmoearth_compare_group` routes dated series to
+  `olmoearth_trace_shifts`. Skill #18's catalog row lists all eight of its
+  tools. The review-set and ensemble descriptions were shortened (the
+  evidence stays in the results).
+- `olmoearth_get_prediction_result` returns `result_metadata` without its
+  `geometry` (rule §3.1).
+- Shared grid sampling (`tools/sampling.py`) replaces four copies of the
+  pixel-value loop and two band readers; a Studio class (`{label, color}`)
+  reads as its label, so categorical agreement and vote counts no longer
+  depend on an unhashable object.
+- mypy skips numpy's stubs (3.12 syntax) and the untyped companion package.
+
+### Fixed
+- **No-data entered the statistics of every grid sampler.** Studio's
+  pixel-value returns no-data as a value (`raw_value: -1.0` beside
+  `regression: {min_value: 0.0, max_value: 1.0}`), and only `None` was
+  dropped. In the trial, 11 of 36 points were `-1` in both maps and
+  `olmoearth_compare_results` reported correlation 0.946 ("karst in largely the
+  same places") where the valid points give -0.017 (agreement 0.306 -> 0.0).
+  One helper, `analysis.raster_compare.band_is_nodata`, now decides no-data (a
+  missing or NaN value, the model's `wizard_answers.nodata_value`, a value
+  outside the band's declared range, a classification band with no class) in
+  `olmoearth_compare_results`, `olmoearth_compare_group`,
+  `olmoearth_ensemble_uncertainty`, `olmoearth_trace_shifts`,
+  `olmoearth_review_set_from_result`, `olmoearth_pixel_value` and the web UI's
+  difference scan (`/api/pixel-value` returns `value: null, nodata: true`);
+  every sampling result reports `n_nodata_dropped`. The trial's 36 value pairs
+  are a regression test that keeps both numbers reproducible.
 
 ## [1.4.0] - 2026-08-14
 

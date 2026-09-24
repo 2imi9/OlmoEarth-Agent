@@ -25,6 +25,15 @@ def test_packaged_soul_exists_and_loads() -> None:
     assert "Never invent project, area, dataset, model, or prediction IDs" in text
 
 
+def test_soul_routes_review_and_estimation_questions_to_their_tools() -> None:
+    """The trial's model ranked hand-sampled pixels and invented an interval."""
+    text = load_soul()
+    assert "olmoearth_review_set_from_result" in text
+    assert "olmoearth_plan_label_sample" in text
+    assert "olmoearth_estimate_map_error" in text
+    assert "a review set is not a sample" in text
+
+
 def test_default_system_prompt_is_the_soul() -> None:
     from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT
 

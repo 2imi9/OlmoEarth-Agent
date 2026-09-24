@@ -90,7 +90,7 @@ const SKILL_TOOLS = {
   15: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
   16: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
   17: `olmoearth_load_skill (run the 4-stage pipeline + fit/predict) · olmoearth_rslearn_recommend (goal → explained setup) · olmoearth_rslearn_validate (shape / label-type / band checks) · olmoearth_rslearn_compose (emit the finetune model.yaml) · olmoearth_rslearn_diagnose (failed run → fixes)`,
-  18: `olmoearth_review_set (scores → the ordered review set at a budget) · olmoearth_grade_review_rule (candidate vs margin vs no-model control, per-group sign test) · olmoearth_review_budget_ceiling (min(1, budget/error_rate) and the share of it reached) · analysis.review_set - pure-Python ports of oe_inferencex.metrics, verified against the numpy originals to < 1e-9`,
+  18: `olmoearth_review_set (scores → the ordered review set at a budget) · olmoearth_review_set_from_result (a Studio result's [0, 1] score → the same margin ranking) · olmoearth_compare_review · olmoearth_grade_review_rule (candidate vs margin vs no-model control, per-group sign test) · olmoearth_review_budget_ceiling (min(1, budget/error_rate) and the share of it reached) · olmoearth_plan_label_sample → olmoearth_estimate_map_error / olmoearth_certify_zone (design-based error rate; optional inferencex extra)`,
 };
 
 // What each skill takes in and gives back, for the full-spec detail page.
@@ -113,7 +113,7 @@ const SKILL_IO = {
   15: { in: 'A free-text query, or a single DOI / arXiv id.', out: 'Curated paper records (title, authors, year, venue, url, citations), deduped across arXiv + OpenAlex.' },
   16: { in: 'A presence-only labels GeoJSON path (one positive class).', out: 'A combined GeoJSON with a buffered, spatially-thinned negative class that passes the data-prep audit.' },
   17: { in: 'A plain-language research goal (+ labels / sensor / classes / range), or a dataset config.json + model.yaml.', out: 'A complete, explained rslearn setup (task + data + model + training), or a validation report catching shape / label-type / band errors before a training run.' },
-  18: { in: 'Per-window model scores (n_windows x n_classes logits or probabilities), a review budget, optionally a [rows, cols] grid; for grading, a candidate signal + a 0/1 error indicator.', out: 'The ordered review set with margins and boundary counts, the attainable-ceiling arithmetic, and the measured evidence + honest caveats; for grading, per-arm E-AURC / AUROC / capture with a head-to-head verdict and a per-group sign test.' },
+  18: { in: 'Per-window model scores (n_windows x n_classes logits or probabilities) or a Studio result whose band is a [0, 1] score, a review budget, optionally a [rows, cols] grid; for grading, a candidate signal + a 0/1 error indicator; for estimation, a label budget, then the reviewer\'s 0/1 labels.', out: 'The ordered review set with margins and boundary counts, the attainable-ceiling arithmetic, and the measured evidence + honest caveats; for grading, per-arm E-AURC / AUROC / capture with a head-to-head verdict and a per-group sign test; for estimation, the error rate with the interval its design earns (a review set is not a sample).' },
 };
 
 export function renderCards() {
