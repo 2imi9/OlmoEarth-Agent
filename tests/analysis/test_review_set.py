@@ -347,3 +347,17 @@ def test_a_monotone_reparametrisation_of_the_baseline_ties_exactly() -> None:
     base = [random.random() for _ in range(120)]
     out = grade_rule([3.0 * b + 7.0 for b in base], errors, baseline=base)
     assert out["verdict"]["excess_aurc_delta"] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_ties_are_broken_as_the_companion_package_breaks_them() -> None:
+    """Exact ties go to the higher window index first, as olmoearth-inferencex's
+    ``assess.review_order`` does (an ascending stable sort, reversed); the agent broke
+    them the other way until 2026-09-24, so a tied map gave a different review set."""
+    scores = [[0.6, 0.4], [0.6, 0.4], [0.9, 0.1], [0.6, 0.4]]
+    out = review_set(scores, budget=0.75, error_rate=None, max_listed=4)
+    assert [w["window_index"] for w in out["review"]] == [3, 1, 0]
+    np = pytest.importorskip("numpy")
+    assess = pytest.importorskip("oe_inferencex.assess")
+    margin = np.array([abs(r[0] - r[1]) for r in scores])
+    package = [int(i) for i in assess.review_order(-margin)][:3]
+    assert package == [3, 1, 0]

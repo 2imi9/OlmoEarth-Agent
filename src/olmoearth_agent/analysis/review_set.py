@@ -538,14 +538,17 @@ def review_set(
         touches = [b > 0 for b in (bnd or [])]
 
         def rank_key(i: int) -> tuple[float, ...]:
-            """Boundary windows first, ascending margin within each block."""
-            return (0.0 if touches[i] else 1.0, marg[i])
+            """Boundary windows first, ascending margin within each block; ties by
+            descending window index, as olmoearth-inferencex's ``review_order``."""
+            return (0.0 if touches[i] else 1.0, marg[i], -i)
 
     else:
 
         def rank_key(i: int) -> tuple[float, ...]:
-            """Ascending margin: the least confident window is opened first."""
-            return (marg[i],)
+            """Ascending margin: the least confident window is opened first; ties by
+            descending window index, as olmoearth-inferencex's ``review_order``, so the
+            two produce the same review set on a tied map."""
+            return (marg[i], -i)
 
     ranked = sorted(range(n), key=rank_key)
 
