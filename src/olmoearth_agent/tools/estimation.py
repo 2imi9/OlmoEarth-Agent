@@ -699,11 +699,36 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 ),
             },
         )
-    out["meaning"] = (
-        "The zone is the n_zone most confident windows of the design's "
-        f"population; its error rate is at most alpha={alpha:g}, a statement "
-        f"that fails on at most delta={delta:g} of random draws. Nothing "
-        "outside the zone is certified."
+    if out["certified"]:
+        out["verdict"] = (
+            f"certified: the {zone['n_zone']} most confident windows (coverage "
+            f"{zone['coverage']:g} of the population) under rule '{rule}' at "
+            f"alpha={alpha:g}, delta={delta:g}"
+        )
+        out["meaning"] = (
+            "The zone is the n_zone most confident windows of the design's "
+            f"population; its error rate is at most alpha={alpha:g}, a statement "
+            f"that fails on at most delta={delta:g} of random draws. Nothing "
+            "outside the zone is certified."
+        )
+    else:
+        out["verdict"] = (
+            f"No zone is certified at alpha={alpha:g}, delta={delta:g} under "
+            f"rule '{rule}': no share of the map is shown to be wrong at most "
+            f"alpha={alpha:g} of the time."
+        )
+    # exp86 round 1 (brief 6): with nothing certified at 0.05, every answer
+    # read a level's upper_bound as a certification at a looser alpha.
+    out["reading_levels"] = (
+        "Each level's upper_bound is that zone's own bound at delta, before the "
+        "rule is applied. A level whose upper_bound is below alpha, this alpha "
+        "or any other, is not thereby certified: certification is the "
+        "package's exact test under the chosen rule ('prefix' accepts levels "
+        "from the smallest zone up and stops at the first that fails; "
+        "'bonferroni' tests every level at delta divided by the number of "
+        "levels), and which levels are tested depends on alpha. Only a level "
+        "marked accepted at this call's alpha is certified; whether another "
+        "alpha certifies a zone is known only by calling this tool with it."
     )
     return out
 

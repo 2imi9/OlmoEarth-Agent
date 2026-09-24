@@ -722,3 +722,43 @@ async def test_a_budget_above_inline_scores_states_the_ceiling() -> None:
     assert out["ok"] is False
     assert "40 valid windows" in out["error"] and "at most 40 labels" in out["error"]
     assert "finer grid" not in out["error"]
+
+
+# --------------------------------------------------------------------------- reading a zone's levels
+
+
+@pytest.mark.asyncio
+async def test_certify_zone_says_a_bound_below_alpha_is_not_a_certification() -> None:
+    """exp86 round 1 (brief 6): with nothing certified at alpha 0.05, all three
+    answers read the per-level upper_bound as a certification at a looser
+    alpha ("alpha ~ 0.14 would certify the top 15-25%"); the package certifies
+    no zone at 0.10, 0.14 or 0.15 there. A level's own bound is not the test."""
+    scores, truth = _map(2000, seed=11)
+    plan = (
+        await _call(
+            "olmoearth_plan_label_sample",
+            {"scores": scores, "budget": 300, "design": "random"},
+        )
+    )["result"]
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    wrong = [truth[i] for i in idx]
+
+    async def zone(alpha: float, rule: str) -> dict[str, Any]:
+        args = {"design_path": plan["design_path"], "wrong": wrong, "alpha": alpha}
+        return (await _call("olmoearth_certify_zone", {**args, "rule": rule}))["result"]
+
+    none = await zone(0.05, "prefix")
+    assert none["certified"] is False
+    assert "No zone is certified at alpha=0.05" in none["verdict"]
+    assert "not thereby certified" in none["reading_levels"]
+    assert "exact test" in none["reading_levels"]
+    # Nothing outside a certified zone is claimed when there is no zone.
+    assert "at most alpha" not in none.get("meaning", "")
+
+    # The trap itself, at one alpha: a level whose own bound is below alpha,
+    # which the rule does not accept.
+    some = await zone(0.1, "bonferroni")
+    assert some["certified"] is True
+    assert any(lv["upper_bound"] < 0.1 and not lv["accepted"] for lv in some["levels"])
+    assert "not thereby certified" in some["reading_levels"]
+    assert f"the {some['n_zone']} most confident windows" in some["verdict"]
