@@ -193,3 +193,76 @@ async def test_dispatching_a_deferred_tool_runs_it_and_loads_its_group() -> None
         ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
     )
     assert again["ok"] is True
+
+
+def _plan_like_registry() -> ToolRegistry:
+    """A tool that refuses every budget above a ceiling, whatever the grid."""
+
+    async def plan(args: dict[str, Any], _ctx: ToolContext) -> None:
+        if int(args.get("budget", 0)) > 173:
+            raise ValueError(
+                f"budget {args['budget']} is more than the 173 valid windows "
+                f"(grid {args.get('grid')} was capped at 16)"
+            )
+        raise KeyError("something else")
+
+    async def other(_args: dict[str, Any], _ctx: ToolContext) -> None:
+        raise ValueError("budget 300 is more than the 173 valid windows")
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("plan"), handler=plan))
+    registry.register(RegisteredTool(spec=_spec("other"), handler=other))
+    return registry
+
+
+@pytest.mark.asyncio
+async def test_the_same_failure_twice_tells_the_model_to_stop_and_report() -> None:
+    """exp86 round 1: the model retried the same refused plan five times, told
+    only "do not retry with identical arguments", and never answered."""
+    from olmoearth_agent.harness.state import ThreadState
+
+    registry = _plan_like_registry()
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+
+    async def call(name: str, **args: Any) -> dict[str, Any]:
+        return await registry.dispatch(ToolCall(id="c", name=name, arguments=args), ctx)
+
+    first = await call("plan", budget=300, grid=20)
+    assert first["ok"] is False
+    assert "stop" not in first["hint"].lower()
+    # New arguments, the same wall (numbers aside): stop and report it.
+    second = await call("plan", budget=300, grid=30)
+    assert "Stop retrying" in second["hint"]
+    assert "tell the user" in second["hint"]
+    assert second["same_error_count"] == 2
+    third = await call("plan", budget=250, grid=40)
+    assert third["same_error_count"] == 3 and "Stop retrying" in third["hint"]
+    # A different error, or the same error from another tool, starts afresh.
+    different = await call("plan", budget=1)
+    assert "Stop retrying" not in different["hint"]
+    assert "Stop retrying" not in (await call("other"))["hint"]
+    # A new run (a new state) starts afresh too.
+    fresh = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    again = await registry.dispatch(
+        ToolCall(id="c", name="plan", arguments={"budget": 300}), fresh
+    )
+    assert "Stop retrying" not in again["hint"]
+
+
+@pytest.mark.asyncio
+async def test_repeated_invalid_arguments_also_say_stop() -> None:
+    from olmoearth_agent.harness.state import ThreadState
+
+    async def needs_x(_args: dict[str, Any], _ctx: ToolContext) -> None:
+        return None
+
+    schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(ToolSpec("t", "t", schema), needs_x))
+    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
+    for expected in (False, True):
+        out = await registry.dispatch(
+            ToolCall(id="c", name="t", arguments={"x": "one"}), ctx
+        )
+        assert out["ok"] is False
+        assert ("Stop retrying" in out["hint"]) is expected

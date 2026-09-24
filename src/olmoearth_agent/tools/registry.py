@@ -19,6 +19,7 @@ the next turn on.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -42,6 +43,35 @@ class ToolContext:
 #: A tool handler: receives parsed arguments + context, returns any
 #: JSON-serializable result.
 Handler = Callable[[dict[str, Any], ToolContext], Awaitable[Any]]
+
+
+#: The hint on a tool's failure the second time in a run it fails the same way.
+STOP_RETRYING_HINT = (
+    "This tool has now failed {count} times in this run with this same error "
+    "(numbers aside). Stop retrying it: tell the user what the error says the "
+    "limit or problem is, and answer with what you have."
+)
+
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _record_failure(envelope: dict[str, Any], name: str, ctx: ToolContext) -> None:
+    """Count this failure in the run; from the second alike, tell the model to stop.
+
+    "Alike" is the same tool with the same error once its numbers are masked:
+    in exp86 round 1 the model met one refusal ("budget 300 ... 173 valid
+    windows") five times, with a new grid each time, and never answered.
+    The counts live on the run's state, so a new run starts afresh.
+    """
+    failures = getattr(getattr(ctx, "state", None), "tool_failures", None)
+    if not isinstance(failures, dict):
+        return
+    key = (name, _NUMBER.sub("N", str(envelope.get("error", ""))))
+    count = failures.get(key, 0) + 1
+    failures[key] = count
+    if count >= 2:
+        envelope["same_error_count"] = count
+        envelope["hint"] = STOP_RETRYING_HINT.format(count=count)
 
 
 @dataclass
@@ -122,6 +152,10 @@ class ToolRegistry:
         so a missing/mistyped argument comes back as a self-documenting
         rejection naming the argument and the expected shape — not as a bare
         ``KeyError`` from handler internals.
+
+        The second time in a run a tool fails with the same error (numbers
+        aside), the envelope's ``hint`` tells the model to stop retrying and
+        report the limit to the user, and ``same_error_count`` counts it.
         """
         tool = self._tools.get(call.name)
         if tool is None:
@@ -140,17 +174,19 @@ class ToolRegistry:
             loaded.add(group)
         problems = validate_arguments(call.arguments, tool.spec.parameters)
         if problems:
-            return {
+            invalid: dict[str, Any] = {
                 "ok": False,
                 "error": f"invalid arguments for {call.name}: " + "; ".join(problems),
                 "expected_arguments": schema_summary(tool.spec.parameters),
                 "hint": "Fix the named arguments to match "
                 "'expected_arguments' and call the tool again.",
             }
+            _record_failure(invalid, call.name, ctx)
+            return invalid
         try:
             result = await tool.handler(call.arguments, ctx)
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
-            return {
+            failed: dict[str, Any] = {
                 "ok": False,
                 "error": f"{type(exc).__name__}: {exc}",
                 "tool": call.name,
@@ -159,4 +195,6 @@ class ToolRegistry:
                 "argument values are valid; do not retry with identical "
                 "arguments.",
             }
+            _record_failure(failed, call.name, ctx)
+            return failed
         return {"ok": True, "result": result}
