@@ -112,10 +112,9 @@ class SkillLoader:
 
         ``brief`` (default) truncates each description to its first
         sentence (≤160 chars) so the index fits a small context window
-        when injected into a system prompt. The full descriptions remain
-        available via the ``olmoearth_list_skills`` tool, and the full
-        instructions via ``olmoearth_load_skill``. Pass ``brief=False``
-        for the complete descriptions (large-context models).
+        when injected into a system prompt. The full instructions come
+        from ``olmoearth_load_skill``. Pass ``brief=False`` for the complete
+        descriptions (large-context models).
         """
         lines = []
         for skill in self.discover():

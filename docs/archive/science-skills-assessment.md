@@ -5,6 +5,13 @@ and its technical report, mapped onto how the OlmoEarth Agent **places** skills
 and how the **harness manages** them -- with a fit verdict and the patterns worth
 adopting.
 
+> **Historical.** Written before the September 2026 changes. Since then
+> `olmoearth_list_skills` has been removed (the skill index is in the system
+> prompt), `olmoearth_litsearch_resolve` has become `olmoearth_litsearch` with
+> an `identifier`, and the `vendor/olmoearth-skills` submodule is gone: the
+> `SKILL.md` packages ship in `src/olmoearth_agent/skills/packages/`. Skill
+> numbers and counts below are those of the time.
+
 > **Sources.** Repo `google-deepmind/science-skills` (Apache-2.0, ~37 skill
 > directories, tag v1.0.3) and the report *"Science Skills for Antigravity:
 > Towards Efficient and Reliable Scientific Workflows"* (Google DeepMind,

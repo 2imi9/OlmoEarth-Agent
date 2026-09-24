@@ -10,6 +10,8 @@ The OlmoEarth Agent ships **17 skills** that drive the OlmoEarth Studio platform
 > uv run python scripts/generate_showcase.py > docs/SHOWCASE.md
 > ```
 
+> **Captured before the September 2026 tool changes.** Tool names are as they were at capture. Transcripts #1 and #3 call `olmoearth_list_skills`, which has since been removed: the skill index is in the system prompt, and `olmoearth_load_skill` is unchanged. Skills #17 and #18 postdate the captures. The current catalog is [`SKILLS.md`](../SKILLS.md); regenerating this page replaces this note.
+
 Skills #4 and #12 are captured against the **live Studio API** (#4 read-only: the write half is never exercised); #1-#3 load the real vendored `SKILL.md` bodies through `olmoearth_load_skill`.
 
 ---
