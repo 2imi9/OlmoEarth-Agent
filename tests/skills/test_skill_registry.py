@@ -54,7 +54,6 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
     names = registry.names()
     for tool in (
         "olmoearth_load_context",
-        "olmoearth_search_projects",
         "olmoearth_create_project",
         "olmoearth_request_aoi",
         "olmoearth_get_prediction",
@@ -77,17 +76,26 @@ def test_default_registry_exposes_foundational_and_provenance_tools() -> None:
         "olmoearth_qgis_bridge",
         "olmoearth_provenance_summary",
         "olmoearth_litsearch",
-        "olmoearth_litsearch_resolve",
         "olmoearth_automate",
         "olmoearth_rslearn_recommend",
         "olmoearth_rslearn_validate",
         "olmoearth_rslearn_compose",
         "olmoearth_rslearn_diagnose",
         "olmoearth_negative_sampler",
-        "olmoearth_list_skills",
         "olmoearth_load_skill",
     ):
         assert tool in names
     # every registered tool has a JSON-schema spec
     for spec in registry.specs():
         assert spec.parameters["type"] == "object"
+
+
+def test_merged_and_removed_tools_are_gone() -> None:
+    """search_projects and litsearch_resolve merged; list_skills removed."""
+    names = set(build_default_registry().names())
+    for gone in (
+        "olmoearth_search_projects",
+        "olmoearth_litsearch_resolve",
+        "olmoearth_list_skills",
+    ):
+        assert gone not in names

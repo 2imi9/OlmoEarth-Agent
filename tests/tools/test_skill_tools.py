@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Tests for the skill-loading tools (list / load)."""
+"""Tests for the skill-loading tool (olmoearth_load_skill)."""
 
 from __future__ import annotations
 
@@ -27,13 +27,10 @@ def _tool(tools: list[RegisteredTool], name: str) -> RegisteredTool:
     return next(t for t in tools if t.spec.name == name)
 
 
-@pytest.mark.asyncio
-async def test_list_skills_tool(tmp_path: Path) -> None:
-    _make_skill(tmp_path, "alpha")
+def test_there_is_no_listing_tool(tmp_path: Path) -> None:
+    """The skill index is in the system prompt; load_skill's error lists names."""
     tools = build_skill_tools(SkillLoader(root=tmp_path))
-    ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
-    result = await _tool(tools, "olmoearth_list_skills").handler({}, ctx)
-    assert result["skills"] == [{"name": "alpha", "description": "desc for alpha"}]
+    assert [t.spec.name for t in tools] == ["olmoearth_load_skill"]
 
 
 @pytest.mark.asyncio

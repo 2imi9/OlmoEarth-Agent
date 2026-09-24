@@ -338,7 +338,7 @@ The original spec follows for reference:
 **Why.** The catalog already *cites* a body of EO literature (spatial CV, cloud masking, OlmoEarth / AlphaEarth embeddings, WorldCereal), but before this skill the agent could only lean on world-knowledge or hallucinate links -- the exact failure mode Google DeepMind's Science Skills report documents and that its own arXiv/OpenAlex skills fix. This grounds the case-narrative / research workflow in real, citable sources. **No fabrication:** never invents DOIs / ids / titles, reports empty results as empty, and returns a real `url` to cite for every record.
 
 **Tools composed.**
-- `olmoearth_litsearch` (unified arXiv + OpenAlex search; `source="asta"` for the optional full-text backend) + `olmoearth_litsearch_resolve` (DOI / arXiv-id -> one record).
+- `olmoearth_litsearch` (unified arXiv + OpenAlex search; `source="asta"` for the optional full-text backend; given an `identifier` instead of a `query`, it resolves one DOI / arXiv id to one record).
 - Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}; optional Asta subprocess adapter in `analysis/asta.py` (credential-scrubbed env, `ASTA_*` passthrough).
 
 ---

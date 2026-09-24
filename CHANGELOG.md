@@ -70,6 +70,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
 
 ### Changed
+- `olmoearth_load_context` pages projects (`limit`, `offset`, `total`) and
+  replaces `olmoearth_search_projects`; `olmoearth_litsearch` takes an
+  `identifier` and replaces `olmoearth_litsearch_resolve`;
+  `olmoearth_list_skills` is removed (the index is in the system prompt).
 - **Skill #9 `olmoearth-uncertainty` now routes the error-ranking question to
   #18** instead of silently answering it. Both its tool descriptions and its
   `SKILLS.md` section state the split: #9 owns self-consistency and the

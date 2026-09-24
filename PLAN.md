@@ -19,7 +19,7 @@ The agent exposes the following functions. Code below the table renders the same
 | `system` | Tool | `python` | `code: str` | `ExecutionResult` | Run Python for light glue between calls. **Opt-in** (`OLMOEARTH_RUN_PYTHON=1`; off by default): an isolated subprocess (`python -I`) with a wall-clock timeout + output cap, in a throwaway dir. **State does not persist across calls; use normal `import`s; the heavy geospatial/rslearn/GDAL stack is not guaranteed installed.** Surface long `rslearn` jobs to the user. *(A preloaded, import-free, state-persistent in-process interpreter is the original design target -- see `src/olmoearth_agent/tools/system.py`.)* |
 | `system` | Tool | `search` | `queries: list[str]` | `SearchResponse` | Web search for external references (docs, papers, code examples). |
 | `system` | Tool | `fetch` | `url: str`, `headers: dict = None` | `FetchResponse` | HTTP GET on documented endpoints (OlmoEarth Studio, Planetary Computer, NLDI, Earthdata). |
-| `olmoearth` | Function | `load_context` | None | `StudioContext` | Returns the user's active Studio project, areas, datasets, recent predictions. |
+| `olmoearth` | Function | `load_context` | `limit: int = 50`, `offset: int = 0` | `StudioContext` | Returns the user's identity, organization and one page of projects (id, name, creation time) with the total count; `offset` pages. (Areas, datasets and recent predictions are the design target, not yet returned.) |
 | `olmoearth` | Function | `resolve_to_aoi` | `locations: list[str]` (max 30) | `AOIWrapper` | Place names, watershed IDs (HUC-8/10/12), county FIPS, or free text -> polygon geometries. |
 | `olmoearth` | Function | `search_dataset_spec` | `query: str` | `DatasetRetrievalSpecs` | Searches Studio catalog + Planetary Computer STAC for datasets matching the query. Returns both analyzable rasters and visual-only layers. |
 | `olmoearth` | Function | `get_data_in_locations` | `spec: DataRetrievalSpec`, `aoi: AOIWrapper`, `time_range: TimeRange` | `DataBundle` | Fetches EO data per spec, filtered to AOIs and time range. |
@@ -58,7 +58,7 @@ Module,Type,Name,Arguments,Return Type,Description
 system,Tool,python,code (str),ExecutionResult,Opt-in (OLMOEARTH_RUN_PYTHON=1) light-Python glue; isolated subprocess (python -I) with timeout + output cap; state does NOT persist across calls; normal imports allowed; heavy geospatial stack not guaranteed installed.
 system,Tool,search,queries (list[str]),SearchResponse,Web search for external references.
 system,Tool,fetch,url (str) | headers (dict),FetchResponse,HTTP GET on documented endpoints.
-olmoearth,Function,load_context,(none),StudioContext,Returns the user's active Studio project/areas/datasets/recent predictions.
+olmoearth,Function,load_context,limit (int = 50) | offset (int = 0),StudioContext,Returns identity/organization and one page of projects with the total count (areas/datasets/recent predictions: design target).
 olmoearth,Function,resolve_to_aoi,locations (list[str] max 30),AOIWrapper,Place names / watershed IDs / county FIPS / free text -> polygon geometries.
 olmoearth,Function,search_dataset_spec,query (str),DatasetRetrievalSpecs,Searches Studio catalog + Planetary Computer STAC; returns analyzable rasters + visual-only layers.
 olmoearth,Function,get_data_in_locations,spec (DataRetrievalSpec) | aoi (AOIWrapper) | time_range (TimeRange),DataBundle,Fetches EO data per spec filtered to AOIs and time range.

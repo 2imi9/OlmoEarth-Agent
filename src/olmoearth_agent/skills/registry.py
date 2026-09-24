@@ -70,7 +70,6 @@ SKILLS: list[SkillSpec] = [
         "Base Studio API tools every Run/Analyze skill builds on.",
         [
             "olmoearth_load_context",
-            "olmoearth_search_projects",
             "olmoearth_create_project",
             "olmoearth_request_aoi",
             "olmoearth_get_prediction",
@@ -247,7 +246,7 @@ SKILLS: list[SkillSpec] = [
         "implemented",
         "arXiv + OpenAlex literature search + DOI/arXiv-id resolution to "
         "ground citations (key-free; deduped across sources).",
-        ["olmoearth_litsearch", "olmoearth_litsearch_resolve"],
+        ["olmoearth_litsearch"],
     ),
     SkillSpec(
         16,

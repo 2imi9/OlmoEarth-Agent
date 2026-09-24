@@ -87,7 +87,7 @@ const SKILL_TOOLS = {
   12: `olmoearth_export_data (reads projects + predictions, curated)`,
   13: `olmoearth_provenance_summary · ProvenanceLog on ThreadState · replay_script`,
   14: `olmoearth_case_narrative · build_narrative (reads provenance + results)`,
-  15: `olmoearth_litsearch · olmoearth_litsearch_resolve (arXiv + OpenAlex, deduped)`,
+  15: `olmoearth_litsearch (search by query, or resolve a DOI / arXiv id; arXiv + OpenAlex, deduped)`,
   16: `olmoearth_negative_sampler · analysis.negative_sampler sample_negatives (buffer + farthest-point / embedding-dissimilarity, reuses spatial_cv.haversine_km)`,
   17: `olmoearth_load_skill (run the 4-stage pipeline + fit/predict) · olmoearth_rslearn_recommend (goal → explained setup) · olmoearth_rslearn_validate (shape / label-type / band checks) · olmoearth_rslearn_compose (emit the finetune model.yaml) · olmoearth_rslearn_diagnose (failed run → fixes)`,
   18: `olmoearth_review_set (scores → the ordered review set at a budget) · olmoearth_review_set_from_result (a Studio result's [0, 1] score → the same margin ranking) · olmoearth_compare_review · olmoearth_grade_review_rule (candidate vs margin vs no-model control, per-group sign test) · olmoearth_review_budget_ceiling (min(1, budget/error_rate) and the share of it reached) · olmoearth_plan_label_sample → olmoearth_estimate_map_error / olmoearth_certify_zone (design-based error rate; optional inferencex extra)`,
