@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "OlmoEarth Agent contributors" }]
 keywords = ["olmoearth", "earth-observation", "agent", "geospatial", "vlm"]
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -64,15 +64,21 @@ olmoearth-agent-serve = "olmoearth_agent.serve:main"
 packages = ["src/olmoearth_agent"]
 
 # --- Formatter / linter / type checker ---
+# The skill packages' scripts (src/olmoearth_agent/skills/packages/) are
+# standalone MIT-licensed helpers shipped as package data, maintained as moved
+# from 2imi9/OlmoEarth-Skills; black, ruff, mypy and interrogate skip them here
+# as the pre-commit hooks do, so a direct run agrees with the hooks.
 
 [tool.black]
 line-length = 88
 target-version = ["py311"]
+extend-exclude = "^/src/olmoearth_agent/skills/packages/"
 
 [tool.ruff]
 line-length = 88
 target-version = "py311"
 src = ["src", "tests"]
+extend-exclude = ["src/olmoearth_agent/skills/packages/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "S", "I", "PERF"]
@@ -91,6 +97,7 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 files = ["src/olmoearth_agent"]
+exclude = ["^src/olmoearth_agent/skills/packages/"]
 
 # The `serve` extra (FastAPI/uvicorn) is optional; don't fail type-checking
 # for contributors who haven't installed it.
@@ -117,7 +124,7 @@ follow_imports_for_stubs = true
 # with hooks installed. Ratchet upward as serve.py helpers gain docstrings.
 fail-under = 81
 verbose = 2
-exclude = ["tests", "build", "docs"]
+exclude = ["tests", "build", "docs", "src/olmoearth_agent/skills/packages"]
 
 # --- Tests / coverage ---
 
