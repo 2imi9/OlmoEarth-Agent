@@ -1,5 +1,9 @@
-# Probe: confirm SkillOpt's target (qwen) + optimizer (openai-compatible) paths
-# both return non-empty content against the local llama.cpp Qwen3.6 server.
+"""Probe the local Qwen server through SkillOpt's two model paths.
+
+Confirms that the target (qwen) and optimizer (OpenAI-compatible) paths both
+return non-empty content from the local llama.cpp Qwen3.6 server.
+"""
+
 import os
 
 os.environ["SKILLOPT_OPENAI_COMPAT_EXTRA_BODY"] = (

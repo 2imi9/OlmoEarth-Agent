@@ -43,6 +43,23 @@ spec.loader.exec_module(rec)
 
 
 def expected_for(preset_key: str, num_classes=None, num_samples=None) -> dict:
+    """Compute an item's expected wizard answers from the skill's own oracle.
+
+    Parameters
+    ----------
+    preset_key : str
+        Key into the packaged ``recommend.py``'s ``PRESETS``.
+    num_classes, num_samples : int or None, optional
+        Signals passed to ``adjust_for_signals``, which may change the
+        recommended model size.
+
+    Returns
+    -------
+    dict
+        ``output_type``, ``foundation_model``, ``time_frame``,
+        ``imagery_sources`` and ``patch_size_m``. Validation problems other
+        than the known stationary-object warning are printed, not raised.
+    """
     cfg = copy.deepcopy(rec.PRESETS[preset_key])
     cfg["__preset_key"] = preset_key
     cfg = rec.adjust_for_signals(cfg, num_classes, num_samples)
@@ -306,6 +323,15 @@ SPECS: list[tuple[str, str, int | None, int | None]] = [
 
 
 def build_items() -> list[dict]:
+    """Turn :data:`SPECS` into benchmark items.
+
+    Returns
+    -------
+    list of dict
+        One item per spec: ``id`` (``<preset>_<nn>``, numbered per preset),
+        ``task_description``, ``task_type`` (the expected output type),
+        ``preset_key`` and ``expected`` (from :func:`expected_for`).
+    """
     items: list[dict] = []
     seen: dict[str, int] = {}
     for preset_key, desc, n_cls, n_smp in SPECS:
@@ -325,6 +351,15 @@ def build_items() -> list[dict]:
 
 
 def write_split(name: str, items: list[dict]) -> None:
+    """Write one split to ``<OUT_DIR>/<name>/items.json``.
+
+    Parameters
+    ----------
+    name : str
+        Split name (``train``, ``val`` or ``test``).
+    items : list of dict
+        The split's items, written as indented UTF-8 JSON.
+    """
     path = os.path.join(OUT_DIR, name)
     os.makedirs(path, exist_ok=True)
     with open(os.path.join(path, "items.json"), "w", encoding="utf-8") as f:
@@ -332,6 +367,14 @@ def write_split(name: str, items: list[dict]) -> None:
 
 
 def main() -> None:
+    """Build the items, split them and write the three splits.
+
+    The split is stratified by preset: each preset's items are shuffled and
+    dealt round-robin (about 50% train, 20% val, 30% test, offset per preset),
+    val is topped up from test to at least six items, and every split is
+    shuffled, all from one seeded generator, so a rerun reproduces the
+    committed files.
+    """
     items = build_items()
     # Deterministic, preset-stratified round-robin so train/val/test each span
     # varied output types AND share the hard (signal-flip / context-mode)

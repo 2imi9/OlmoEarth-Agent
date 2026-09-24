@@ -311,6 +311,14 @@ def _convert(webm: Path, gif_start: float, gif_secs: float) -> tuple[Path, Path]
 
 
 def main() -> None:
+    """Record the walkthrough and write the MP4 and the GIF highlight.
+
+    Serves ``webui/`` on a local port, records the scripted session in
+    Chromium, then converts the recording with ffmpeg: the full walkthrough as
+    MP4, and a 5 to 8.5 s GIF of the slash-command flow cut between the
+    ``slash`` and ``loading`` marks. The WebM is kept for re-conversion, and
+    the server is shut down either way.
+    """
     httpd = _serve()
     try:
         webm, marks = _record()

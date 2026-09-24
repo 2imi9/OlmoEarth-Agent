@@ -37,6 +37,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def setup(temperature: float = 0.0) -> None:
+    """Point SkillOpt's target and optimizer at the local Qwen server.
+
+    Both roles use :data:`MODEL` at :data:`ENDPOINT` (OpenAI-compatible); the
+    target runs with thinking off, 2,048 output tokens and a 300 s timeout.
+
+    Parameters
+    ----------
+    temperature : float, default 0.0
+        Sampling temperature for the target model.
+    """
     set_optimizer_backend("openai_chat")
     set_target_backend("qwen_chat")
     configure_azure_openai(endpoint=ENDPOINT, auth_mode="openai_compatible")
@@ -53,6 +63,13 @@ def setup(temperature: float = 0.0) -> None:
 
 
 def main() -> None:
+    """Score one skill file on one split and write ``summary.json``.
+
+    Reads ``--skill`` and the split's ``items.json``, runs the env's
+    ``run_batch`` rollout, prints hard (exact config) and soft (field-average)
+    accuracy with a per-field count, and writes the summary and per-item
+    results under ``--out`` (default ``outputs/eval_<split>_<skill>_n<N>``).
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--env", default="olmoearth_jobconfig")
     ap.add_argument("--skill", required=True)

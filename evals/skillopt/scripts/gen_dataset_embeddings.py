@@ -314,6 +314,13 @@ TASKS: list[tuple] = [
 
 
 def main() -> None:
+    """Label each task with the oracle's decision and write the three splits.
+
+    The expected answer is the packaged ``recommend.py``'s ``decide()`` on the
+    task's samples, classes, compute and goal; a seeded shuffle then assigns
+    14 items to train, 9 to val and the rest to test under
+    ``data/olmoearth_embeddings_split/``.
+    """
     items = []
     for id_, desc, ns, nc, comp, goal in TASKS:
         d = mod.decide(ns, nc, comp, goal)

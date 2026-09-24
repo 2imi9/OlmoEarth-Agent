@@ -176,6 +176,12 @@ TASKS = [
 
 
 def main() -> None:
+    """Build the pitfall-diagnosis items and write the three splits.
+
+    Each task becomes an item whose expected answer is its pitfall id and
+    action family; a seeded shuffle then assigns 10 items to train, 7 to val
+    and the rest to test under ``data/olmoearth_dataprep_split/``.
+    """
     items = [
         {
             "id": id_,
