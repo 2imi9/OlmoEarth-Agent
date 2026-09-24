@@ -49,6 +49,17 @@ repos:
         args: [--config-file=pyproject.toml]
         files: ^src/
         exclude: ^src/olmoearth_agent/skills/packages/
+        # The hook runs in its own environment: without the typed libraries
+        # the package imports, mypy reports them missing and reads their
+        # values as Any. Same lower bounds as pyproject.toml: the core
+        # dependencies, the `claude` extra (anthropic) and the `serve` extra
+        # (fastapi, uvicorn). The untyped inferencex extra stays out.
+        additional_dependencies:
+          - httpx>=0.27
+          - openai>=1.50
+          - anthropic>=0.40
+          - fastapi>=0.110
+          - uvicorn>=0.29
 
   - repo: https://github.com/econchick/interrogate
     rev: 1.7.0
