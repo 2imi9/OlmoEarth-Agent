@@ -16,7 +16,6 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 ```bash
 # Setup
-git submodule update --init   # one test still reads the old skills submodule
 uv sync --all-extras
 uv run pre-commit install
 

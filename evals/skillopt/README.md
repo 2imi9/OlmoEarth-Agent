@@ -7,10 +7,10 @@ against the **local Qwen3.6 backbone** the agent actually runs on.
 
 SkillOpt itself is a separate tool; we keep only our *overlay* here (benchmark
 envs, datasets, scripts, configs, results, and a small core patch) so the work
-is reproducible from this repo. The skill *content* edits land upstream in
-[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (the
-submodule at `vendor/olmoearth-skills`), and this repo picks them up by bumping
-the submodule pointer once those PRs merge.
+is reproducible from this repo. The skill *content* now lives in this
+repository, under `src/olmoearth_agent/skills/packages/` (moved from the frozen
+[`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills)); edits
+land here directly.
 
 ## What each benchmark measures
 
@@ -41,8 +41,8 @@ Ai2-compute framing) and the jobconfig dataset was regenerated from the
 updated oracle — the table row above is the historical run. On the
 regenerated test split: pre-rewrite skill 0.357 hard / 0.806 soft (old 320 m
 default; patch 5/14) vs the rewritten `SKILL.md` **0.714 hard / 0.906 soft**
-(patch 13/14). The current skill content is the vendored
-`vendor/olmoearth-skills/.../olmoearth-studio-job-config/SKILL.md` itself.
+(patch 13/14). The current skill content is
+`src/olmoearth_agent/skills/packages/olmoearth-studio-job-config/SKILL.md` itself.
 
 Full breakdown + the SkillOpt-on-Qwen vs Claude-as-optimizer comparison is in
 [`RESULTS.md`](RESULTS.md).
@@ -125,7 +125,7 @@ embeddings 0.833/0.806, data-prep 1.0). Rerun the suite — and the gate —
 whenever a vendored `SKILL.md`, the target model, or a dataset oracle changes.
 
 `gen_dataset*.py` import the vendored skills' `recommend.py` from
-`../OlmoEarth Agent/vendor/olmoearth-skills/...`; adjust the path in those
+`../OlmoEarth Agent/src/olmoearth_agent/skills/packages/...`; adjust the path in those
 scripts if your checkout layout differs.
 
 ## Notes

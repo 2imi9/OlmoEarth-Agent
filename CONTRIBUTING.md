@@ -14,8 +14,7 @@ Contributor behavior follows the [Contributor Covenant v2.1](https://www.contrib
 git clone https://github.com/2imi9/OlmoEarth-Agent.git
 cd OlmoEarth-Agent
 # Preferred package manager: uv (https://docs.astral.sh/uv/)
-git submodule update --init   # one test still reads the old skills submodule
-uv sync --all-extras          # dev tools + the serve/claude extras the tests import
+uv sync --all-extras   # dev tools + the serve/claude extras the tests import
 uv run pre-commit install
 ```
 

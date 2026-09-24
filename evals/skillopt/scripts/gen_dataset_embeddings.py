@@ -17,7 +17,7 @@ import random
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENT = os.path.join(os.path.dirname(ROOT), "OlmoEarth Agent")
 ORACLE = os.path.join(
-    AGENT, "vendor", "olmoearth-skills", "skills",
+    AGENT, "src", "olmoearth_agent", "skills", "packages",
     "olmoearth-embeddings", "scripts", "recommend.py",
 )
 

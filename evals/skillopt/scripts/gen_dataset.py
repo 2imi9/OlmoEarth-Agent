@@ -22,8 +22,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SKILLOPT_ROOT = os.path.dirname(HERE)
 RECOMMEND_PATH = os.path.abspath(
     os.path.join(
-        SKILLOPT_ROOT, "..", "OlmoEarth Agent", "vendor", "olmoearth-skills",
-        "skills", "olmoearth-studio-job-config", "scripts", "recommend.py",
+        SKILLOPT_ROOT, "..", "OlmoEarth Agent", "src", "olmoearth_agent",
+        "skills", "packages", "olmoearth-studio-job-config", "scripts",
+        "recommend.py",
     )
 )
 OUT_DIR = os.path.join(SKILLOPT_ROOT, "data", "olmoearth_jobconfig_split")
