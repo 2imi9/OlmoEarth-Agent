@@ -48,6 +48,7 @@ from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 from olmoearth_agent.tools.review_set import (
     FROM_RESULT_DEFAULT_GRID,
     FROM_RESULT_GRID_RANGE,
+    FROM_RESULT_MAX_GRID,
     SampledScores,
     load_json_file,
     load_scores_file,
@@ -308,6 +309,67 @@ def _write_csv(name: str, pop: Population, to_label: list[dict[str, Any]]) -> st
     return str(target)
 
 
+def _budget_refusal(budget: int, pop: Population) -> str:
+    """Why ``budget`` cannot be planned from ``pop``, with only the options that work.
+
+    For a Studio result the ceiling is the grid's valid points, and the grid
+    stops at 16: a finer grid is offered only while one can still reach the
+    budget, and the full raster is a direct model run read through
+    ``olmoearth_scores_from_file``. exp86 round 1's model was told "a finer
+    grid" at the cap and retried grids until the turn cap.
+    """
+    n_valid = pop.n_valid
+    if budget < 1:
+        return f"budget {budget} must be at least 1"
+    if not (pop.source.get("result_id") and pop.grid):
+        return (
+            f"budget {budget} is more than the {n_valid} valid windows of these "
+            f"scores, so at most {n_valid} labels can be planned from them; plan "
+            f"a budget of at most {n_valid}"
+        )
+    side = pop.grid[0]
+    n_points = pop.grid[0] * pop.grid[1]
+    most = FROM_RESULT_MAX_GRID * FROM_RESULT_MAX_GRID
+    sampling = pop.source.get("sampling") or {}
+    head = ""
+    if sampling.get("grid_capped"):
+        head = (
+            f"grid {sampling.get('grid_requested')} was capped at {side} (a "
+            f"Studio result takes {FROM_RESULT_GRID_RANGE}); "
+        )
+    works = [f"a budget of at most {n_valid}"]
+    if side < FROM_RESULT_MAX_GRID and budget <= most:
+        works.append(
+            f"a finer grid, up to {FROM_RESULT_MAX_GRID} ({FROM_RESULT_MAX_GRID}x"
+            f"{FROM_RESULT_MAX_GRID} = {most} points at most, fewer once no-data "
+            "is dropped)"
+        )
+    works.append(
+        "for the whole map, a direct model run's scores raster read through "
+        "olmoearth_scores_from_file (every window of the raster is then in the "
+        "population)"
+    )
+    if side >= FROM_RESULT_MAX_GRID:
+        limit = f" {side}x{side} is the most a Studio result allows."
+    elif budget > most:
+        limit = (
+            f" No grid reaches {budget} labels: {FROM_RESULT_MAX_GRID}x"
+            f"{FROM_RESULT_MAX_GRID} = {most} points is the most a Studio result "
+            "allows."
+        )
+    else:
+        limit = ""
+    rest = " (the rest were no-data or failed)" if n_valid < n_points else ""
+    return (
+        f"{head}budget {budget} is more than the {n_valid} valid windows: a "
+        f"Studio result sampled at {side}x{side} = {n_points} points has "
+        f"{n_valid} valid windows here{rest}, so at most {n_valid} labels can be "
+        f"planned from it.{limit} What works: "
+        + "; ".join(works[:-1])
+        + f"; or, {works[-1]}."
+    )
+
+
 async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_plan_label_sample``."""
     try:
@@ -325,11 +387,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         return pop
     n_valid = pop.n_valid
     if not 0 < budget <= n_valid:
-        raise ValueError(
-            f"budget {budget} must be between 1 and the {n_valid} valid windows; "
-            "label fewer windows, or build a larger population (a finer grid, "
-            "or scores for more windows)"
-        )
+        raise ValueError(_budget_refusal(budget, pop))
     sample = estimate.sample_for_estimation(
         pop.margin,
         budget,

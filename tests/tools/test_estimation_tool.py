@@ -661,3 +661,64 @@ async def test_the_review_set_from_a_result_states_a_capped_grid(
     sampling = out["result"]["sampling"]
     assert sampling["grid"] == "16x16" and sampling["grid_capped"] is True
     assert sampling["grid_requested"] == 40
+
+
+# --------------------------------------------------------------------------- the budget error
+
+
+@pytest.mark.asyncio
+async def test_a_budget_above_a_capped_studio_grid_names_the_real_ceiling(
+    httpx_mock: HTTPXMock,
+) -> None:
+    _mock_kb(httpx_mock)
+    n16 = _kb_valid(16)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "grid": 30, "budget": 300},
+            ctx,
+        )
+    assert out["ok"] is False
+    error = out["error"]
+    assert "16x16 = 256 points" in error
+    assert f"{n16} valid windows" in error
+    assert f"at most {n16} labels" in error
+    assert "grid 30 was capped at 16" in error
+    assert "olmoearth_scores_from_file" in error
+    assert "finer grid" not in error
+
+
+@pytest.mark.asyncio
+async def test_a_budget_error_offers_a_finer_grid_only_when_one_can_help(
+    httpx_mock: HTTPXMock,
+) -> None:
+    _mock_kb(httpx_mock)
+    n10 = _kb_valid(10)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        reachable = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "budget": n10 + 1},
+            ctx,
+        )
+        unreachable = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "kb", "budget": 300},
+            ctx,
+        )
+    # The default grid, 10: a finer grid, up to 16, can still help a budget <= 256.
+    assert "10x10 = 100 points" in reachable["error"]
+    assert "a finer grid, up to 16" in reachable["error"]
+    # 300 labels exceed even 16 x 16 = 256 points: no grid reaches them.
+    assert "finer grid" not in unreachable["error"]
+    assert "olmoearth_scores_from_file" in unreachable["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_budget_above_inline_scores_states_the_ceiling() -> None:
+    scores, _truth = _map(40)
+    out = await _call("olmoearth_plan_label_sample", {"scores": scores, "budget": 50})
+    assert out["ok"] is False
+    assert "40 valid windows" in out["error"] and "at most 40 labels" in out["error"]
+    assert "finer grid" not in out["error"]
