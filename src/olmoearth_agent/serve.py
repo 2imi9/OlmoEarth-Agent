@@ -48,6 +48,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
+from olmoearth_agent.analysis.raster_compare import band_is_nodata
 from olmoearth_agent.harness import LeadAgent, ThreadState
 from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.workflow import WORKFLOW_STAGES, skill_workflow_stages
@@ -59,6 +60,7 @@ from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
+from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
 _MAX_TURNS_CEILING = 12
@@ -962,12 +964,17 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
         (b for b in bands if b.get("property_name") == prop), bands[0] if bands else {}
     )
     cls = band.get("classification")
+    # Studio returns no-data as a value (e.g. -1 on a [0, 1] band); the scan
+    # must skip that cell, not paint the sentinel as a model output.
+    nodata = band_is_nodata(band)
     out = {
         "ok": True,
-        "value": cls if cls is not None else band.get("raw_value"),
+        "value": None if nodata else band_value({"bands": [band]}, None),
         "property": band.get("property_name"),
         "categorical": cls is not None,
     }
+    if nodata:
+        out["nodata"] = True
     _cache_put(_PV_CACHE, ckey, out)
     return out
 

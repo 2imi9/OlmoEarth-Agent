@@ -81,6 +81,17 @@ def _pixel(request: httpx.Request) -> httpx.Response:
     )
 
 
+@pytest.fixture(autouse=True)
+def _model_record(httpx_mock: HTTPXMock) -> None:
+    """The one model behind these results; it declares no nodata_value."""
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1",
+        json={"records": [{"id": "m1", "wizard_answers": {}}]},
+        is_optional=True,
+        is_reusable=True,
+    )
+
+
 def _mock_studio(httpx_mock: HTTPXMock, rids: list[str]) -> None:
     for rid in rids:
         httpx_mock.add_response(

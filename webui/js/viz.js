@@ -496,7 +496,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   endProgress();
 
   const m = absd.length;
-  if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return null; }
+  // Cells where either map had no value: off-raster, or Studio's no-data
+  // sentinel, which the bridge (serve.py api_pixel_value) returns as null.
+  const skipped = total - m;
+  if (!m) { status.textContent = 'No overlapping valid pixels to difference (' + skipped + ' no-data cells skipped).'; return null; }
   const tol = opts.tolerance || 0.1;
   const diffs = cells.filter((c) => c.diff != null).map((c) => c.diff);
   const meanAbs = absd.reduce((p, q) => p + q, 0) / m;
@@ -520,7 +523,8 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     v.mapTitle + ' over ' + m + ' sampled cells · mean |' + v.diffWord + '| <strong>' + meanAbs.toFixed(3) +
     '</strong>' + (v.kind === 'temporal' ? ' · net <strong>' + meanDiff.toFixed(3) + '</strong>' : '') +
     ' · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
-    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + '). ' + legendHtml(v.kind);
+    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + ')' +
+    (skipped ? ' · ' + skipped + ' no-data cells skipped' : '') + '. ' + legendHtml(v.kind);
 
   // Captured straight from the live scan (real values), so a saved comparison
   // is never fabricated. Offer to store it in the Results panel.
@@ -579,6 +583,15 @@ function renderCompareCard(container, inner) {
   const v = compareVocab(kind);
   container.appendChild(statChips(s, v.statCaption));
   container.appendChild(abLabel(inner.result_id_a, inner.result_id_b, kind));
+  if (inner.warning) {
+    // Two different properties (allow_different_properties): a B - A
+    // difference map would subtract two different quantities, so no scan.
+    const warn = document.createElement('div');
+    warn.className = 'viz-cap';
+    warn.textContent = inner.warning;
+    container.appendChild(warn);
+    return;
+  }
   if (inner.result_id_a && inner.result_id_b) {
     const out = document.createElement('div');
     out.className = 'viz-diff';

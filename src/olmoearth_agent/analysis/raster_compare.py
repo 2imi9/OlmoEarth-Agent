@@ -17,10 +17,158 @@ labeled as such.
 
 from __future__ import annotations
 
-from math import sqrt
+from math import isfinite, isnan, sqrt
 from typing import Any
 
 from olmoearth_agent.analysis.aoi import geometry_bbox
+
+#: Cap on class labels listed per declared classification field (a 60-class
+#: legend would bloat every tool result that describes a result's outputs).
+_MAX_CLASSES_LISTED = 20
+
+
+def _is_number(value: Any) -> bool:
+    """True for an int or float that is not a bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _as_range(lo: Any, hi: Any) -> tuple[float, float] | None:
+    """A finite ``(min, max)`` pair with ``max >= min``, or ``None``."""
+    if not (_is_number(lo) and _is_number(hi)):
+        return None
+    flo, fhi = float(lo), float(hi)
+    if not (isfinite(flo) and isfinite(fhi)) or fhi < flo:
+        return None
+    return flo, fhi
+
+
+def declared_fields(record: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """What a prediction result declares about each output property.
+
+    Reads ``result_metadata.regression_fields`` (``property_name``,
+    ``min_value``, ``max_value``) and ``result_metadata.classification_fields``
+    (``property_name``, ``allowed_values``, an optional confidence band) from a
+    Studio prediction-result record. Returns ``{property_name: {"value_type":
+    "regression", "min_value", "max_value"}}`` or ``{"value_type":
+    "classification", "n_classes", "classes", ...}``; an empty dict when the
+    record declares nothing. No geometry is read or returned.
+    """
+    meta = record.get("result_metadata") or {}
+    out: dict[str, dict[str, Any]] = {}
+    for field in meta.get("regression_fields") or []:
+        if not isinstance(field, dict) or not isinstance(
+            field.get("property_name"), str
+        ):
+            continue
+        entry: dict[str, Any] = {"value_type": "regression"}
+        rng = _as_range(field.get("min_value"), field.get("max_value"))
+        if rng is not None:
+            entry["min_value"], entry["max_value"] = rng
+        out[field["property_name"]] = entry
+    for field in meta.get("classification_fields") or []:
+        if not isinstance(field, dict) or not isinstance(
+            field.get("property_name"), str
+        ):
+            continue
+        values = [v for v in field.get("allowed_values") or [] if isinstance(v, dict)]
+        labels = [str(v.get("label", v.get("value"))) for v in values]
+        entry = {
+            "value_type": "classification",
+            "n_classes": len(values),
+            "classes": labels[:_MAX_CLASSES_LISTED],
+        }
+        confidence = field.get("confidence_property_name")
+        if confidence or field.get("confidence_band_index") is not None:
+            entry["confidence_property_name"] = confidence
+        out.setdefault(field["property_name"], entry)
+    return out
+
+
+def declared_range(
+    band: dict[str, Any] | None, declared: dict[str, Any] | None = None
+) -> tuple[float, float] | None:
+    """The ``(min, max)`` a regression band declares, or ``None``.
+
+    The pixel-value band's own ``regression`` block wins; the result's
+    ``regression_fields`` entry for the property (``declared``, from
+    :func:`declared_fields`) is the fallback.
+    """
+    reg = (band or {}).get("regression")
+    if isinstance(reg, dict):
+        rng = _as_range(reg.get("min_value"), reg.get("max_value"))
+        if rng is not None:
+            return rng
+    if declared and declared.get("value_type") == "regression":
+        return _as_range(declared.get("min_value"), declared.get("max_value"))
+    return None
+
+
+def band_is_nodata(
+    band: dict[str, Any] | None,
+    *,
+    nodata_value: float | None = None,
+    declared: dict[str, Any] | None = None,
+) -> bool:
+    """Decide whether one sampled pixel-value band carries no usable value.
+
+    Studio's pixel-value returns no-data as a *value*, not as a missing
+    record: a regression band at a no-data pixel reads e.g. ``raw_value:
+    -1.0`` beside ``regression: {min_value: 0.0, max_value: 1.0}``. A sample
+    is no-data when any of these holds:
+
+    - the band is missing, or its value is ``None`` or NaN;
+    - ``nodata_value`` (the model's ``wizard_answers.nodata_value``) is set
+      and the raw value equals it;
+    - the band is a regression band with a declared range (its own
+      ``regression`` block, else ``declared``) and the raw value lies outside
+      ``[min_value, max_value]``;
+    - the property is declared as a classification field but the band carries
+      no class (the raw value is not in the legend).
+
+    Every tool that samples pixel-value on a grid routes each sample through
+    this one function, so a sentinel can never enter a statistic.
+    """
+    if not band:
+        return True
+    cls = band.get("classification")
+    raw: Any = band.get("raw_value")
+    if cls is None and raw is None:
+        return True
+    if _is_number(raw):
+        value = float(raw)
+        if isnan(value):
+            return True
+        if nodata_value is not None and _is_number(nodata_value):
+            if value == float(nodata_value):
+                return True
+    if cls is not None:
+        return False
+    if declared and declared.get("value_type") == "classification":
+        return True
+    rng = declared_range(band, declared)
+    if rng is not None and _is_number(raw):
+        lo, hi = rng
+        eps = 1e-6 * max(1.0, hi - lo)
+        return not (lo - eps <= float(raw) <= hi + eps)
+    return False
+
+
+def grid_windows(bbox: list[float], n: int) -> list[tuple[int, int, float, float]]:
+    """The same ``n`` x ``n`` cell centres as :func:`grid_points`, row-major.
+
+    Returns ``(row, col, lon, lat)`` with row 0 the northernmost row and col 0
+    the westernmost column, so window ``row * n + col`` reads like an image.
+    Coordinates are for the Studio calls and for files only; a tool result
+    addresses windows by ``(row, col)`` and index (rule §3.1).
+    """
+    minx, miny, maxx, maxy = bbox
+    out: list[tuple[int, int, float, float]] = []
+    for row in range(n):
+        lat = miny + (maxy - miny) * (n - 1 - row + 0.5) / n
+        for col in range(n):
+            lon = minx + (maxx - minx) * (col + 0.5) / n
+            out.append((row, col, round(lon, 6), round(lat, 6)))
+    return out
 
 
 def result_bbox(record: dict[str, Any]) -> list[float] | None:

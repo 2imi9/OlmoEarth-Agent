@@ -38,11 +38,20 @@ from olmoearth_agent.analysis.trace_shifts import (
     trace_numeric,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.predict import _band_value, _is_categorical, _select_band
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.sampling import (
+    NODATA,
+    OK,
+    SAMPLE_CONCURRENCY,
+    model_summary,
+    read_sample,
+    result_nodata_context,
+    sample_records,
+    select_band,
+)
 
 #: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
-_SAMPLE_CONCURRENCY = 8
+_SAMPLE_CONCURRENCY = SAMPLE_CONCURRENCY
 
 #: Trace bounds. 8 results x 3x3 grid = 72 pixel-value calls, on par with one
 #: default two-result compare (grid 6 -> 72); the grid caps lower than the
@@ -86,6 +95,7 @@ def _sort_instant(parsed: datetime) -> datetime:
 
 
 async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_trace_shifts``."""
     raw_ids = args.get("result_ids") or []
     ids = list(dict.fromkeys(str(r).strip() for r in raw_ids if str(r).strip()))
     if len(ids) < MIN_RESULTS:
@@ -164,35 +174,46 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
     dates = [dates[i] for i in order]
 
     points = grid_points(bbox, grid)
-    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
-
-    async def sample(result_id: str, lon: float, lat: float) -> Any:
-        async with sem:
-            try:
-                return await ctx.studio.pixel_value(result_id, lon, lat)
-            except Exception:  # off-raster / nodata / transient -> drop the point
-                return None
-
-    sampled: list[list[Any]] = [  # sequential across results, concurrent within one
-        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points]) for rid in ids
+    # One model (checked above), so one model lookup gives its nodata_value.
+    records = [records[i] for i in order]
+    model_ids = [m[1] for m in metas]
+    cache: dict[str, dict[str, Any] | None] = {}
+    known_id = next((m for m in model_ids if m), None)
+    model = await model_summary(ctx, known_id, cache) if known_id else None
+    nodata = [
+        await result_nodata_context(ctx, rec, model=model, lookup_model=False)
+        for rec in records
     ]
+    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
+    sampled: list[list[Any]] = [  # sequential across results, concurrent within one
+        await sample_records(ctx, rid, points, sem) for rid in ids
+    ]
+    reads = [
+        [read_sample(r, prop, nd) for r in row] for row, nd in zip(sampled, nodata)
+    ]
+    n_nodata = sum(1 for row in reads for _v, _c, st in row if st == NODATA)
 
     # First USABLE sample (a record can be truthy yet carry empty/None bands,
-    # e.g. a nodata pixel) — it decides categorical-vs-regression and names
+    # e.g. a nodata pixel) -- it decides categorical-vs-regression and names
     # the traced band, so it must actually have a value.
-    first = next(
-        (r for row in sampled for r in row if r and _band_value(r, prop) is not None),
+    first_index = next(
+        (
+            (ri, pi)
+            for ri, row in enumerate(reads)
+            for pi, read in enumerate(row)
+            if read[2] == OK
+        ),
         None,
     )
-    if first is None:
+    if first_index is None:
         return {
             "comparable": False,
-            "reason": "no grid point returned a usable sample from any result",
+            "reason": "no grid point returned a usable sample from any result "
+            f"({n_nodata} no-data samples dropped)",
         }
-    categorical = _is_categorical(first, prop)
-    series: list[list[Any]] = [
-        [(_band_value(r, prop) if r else None) for r in row] for row in sampled
-    ]
+    first = sampled[first_index[0]][first_index[1]]
+    categorical = reads[first_index[0]][first_index[1]][1]
+    series: list[list[Any]] = [[v for v, _c, _st in row] for row in reads]
     if not categorical and any(
         v is not None and not isinstance(v, (int, float)) for row in series for v in row
     ):
@@ -236,7 +257,7 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         for row in sampled
         for r in row
         if r
-        for name in [(_select_band(r, prop) or {}).get("property_name")]
+        for name in [(select_band(r, prop) or {}).get("property_name")]
         if isinstance(name, str)
     }
     envelope: dict[str, Any] = {
@@ -245,16 +266,18 @@ async def _trace_shifts(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         "dates": dates,
         "ordering": ordering,
         "model_check": model_check,
-        "property_name": prop or (_select_band(first, prop) or {}).get("property_name"),
+        "property_name": prop or (select_band(first, prop) or {}).get("property_name"),
         "value_type": value_type,
         "narration": narration,
         "grid": f"{grid}x{grid}",
         "samples_requested": len(points) * len(ids),
+        "n_nodata_dropped": n_nodata,
         "shared_extent_bbox": [round(v, 5) for v in bbox],
         "steps": trace["steps"],
         "trajectory": trace["trajectory"],
         "method": "each dated result sampled pointwise (pixel-value) on the "
         "same grid over the shared extent (an estimate, not every pixel); "
+        "no-data samples are dropped before any statistic; "
         + narration["framing"]
         + ".",
     }

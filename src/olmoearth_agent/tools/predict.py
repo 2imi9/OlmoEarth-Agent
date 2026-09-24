@@ -15,12 +15,14 @@ import asyncio
 from typing import Any
 
 from olmoearth_agent.analysis.raster_compare import (
+    band_is_nodata,
     compare_categorical,
     compare_group_categorical,
     compare_group_narration,
     compare_group_numeric,
     compare_narration,
     compare_numeric,
+    declared_range,
     grid_points,
     intersect_bbox,
     intersect_bboxes,
@@ -29,47 +31,86 @@ from olmoearth_agent.analysis.raster_compare import (
 )
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.sampling import (
+    FAILED,
+    NODATA,
+    OK,
+    SAMPLE_CONCURRENCY,
+    ResultNodata,
+    band_value,
+    default_property,
+    is_categorical,
+    read_sample,
+    result_nodata_context,
+    sample_records,
+    select_band,
+)
 
 #: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
-_SAMPLE_CONCURRENCY = 8
+_SAMPLE_CONCURRENCY = SAMPLE_CONCURRENCY
+
+#: Kept for importers of the pre-``sampling`` helper names.
+_select_band = select_band
+_band_value = band_value
+_is_categorical = is_categorical
+
+#: How a sampled value is judged no-data, stated in every sampling result.
+NODATA_RULE = (
+    "a sample is no-data, and never enters a statistic, when its band is "
+    "missing or NaN, equals the model's nodata_value, lies outside the band's "
+    "declared regression range, or carries no class on a classification band"
+)
 
 
-def _select_band(
-    record: dict[str, Any], property_name: str | None
-) -> dict[str, Any] | None:
-    """Pick the pixel-value band to read: the named property, else the first."""
-    bands: list[dict[str, Any]] = record.get("bands") or []
-    if not bands:
-        return None
-    if property_name:
-        return next(
-            (b for b in bands if b.get("property_name") == property_name), bands[0]
-        )
-    return bands[0]
+def _property_summary(name: str | None, nodata: ResultNodata) -> dict[str, Any]:
+    """A property's name and what its result declares about it (no geometry)."""
+    out: dict[str, Any] = {"property_name": name}
+    out.update(nodata.declared.get(str(name), {}))
+    return out
 
 
-def _band_value(record: dict[str, Any], property_name: str | None) -> Any:
-    """Extract a pixel-value band's value: ``classification`` if set, else
-    ``raw_value``. Picks the named property, or the first band."""
-    band = _select_band(record, property_name)
-    if band is None:
-        return None
-    cls = band.get("classification")
-    return cls if cls is not None else band.get("raw_value")
+def _sampled_property(
+    reads: list[tuple[Any, bool, str]], recs: list[Any], prop: str | None
+) -> str | None:
+    """The property name the sampled bands actually carried (first usable one)."""
+    for rec, (_value, _cat, status) in zip(recs, reads):
+        if rec is not None and status != FAILED:
+            band = select_band(rec, prop)
+            if band is not None and isinstance(band.get("property_name"), str):
+                return str(band["property_name"])
+    return None
 
 
-def _is_categorical(record: dict[str, Any], property_name: str | None) -> bool:
-    band = _select_band(record, property_name)
-    return band is not None and band.get("classification") is not None
+def _different_properties(
+    a_id: str, b_id: str, prop_a: dict[str, Any], prop_b: dict[str, Any]
+) -> dict[str, Any]:
+    """The refusal for two results that measure different properties."""
+    return {
+        "comparable": False,
+        "result_id_a": a_id,
+        "result_id_b": b_id,
+        "property_a": prop_a,
+        "property_b": prop_b,
+        "reason": (
+            f"the two results measure different properties "
+            f"({prop_a.get('property_name')!r} and {prop_b.get('property_name')!r}); "
+            "a difference, an RMSE or an agreement fraction between them "
+            "mixes two quantities. Compare results of the same property, or "
+            "pass allow_different_properties=true to read only whether they "
+            "rise and fall together (the correlation)."
+        ),
+    }
 
 
 async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_compare_results``."""
     a_id = args["result_id_a"]
     b_id = args["result_id_b"]
     prop = args.get("property_name")
     grid = max(2, min(12, int(args.get("grid", 6))))
     tol = float(args.get("tolerance", 0.1))
     kind = normalize_kind(args.get("kind"))
+    allow_different = bool(args.get("allow_different_properties", False))
 
     rec_a = await ctx.studio.get_prediction_result(a_id)
     rec_b = await ctx.studio.get_prediction_result(b_id)
@@ -79,27 +120,44 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
             "comparable": False,
             "reason": "the two results have no overlapping extent (or missing bounds)",
         }
+    cache: dict[str, dict[str, Any] | None] = {}
+    nd_a = await result_nodata_context(ctx, rec_a, cache=cache)
+    nd_b = await result_nodata_context(ctx, rec_b, cache=cache)
+
+    # Different properties are refused BEFORE any slow sampling, from what the
+    # two result records declare; the sampled bands re-check it below.
+    name_a, name_b = default_property(rec_a, prop), default_property(rec_b, prop)
+    if name_a and name_b and name_a != name_b and not allow_different:
+        return _different_properties(
+            a_id, b_id, _property_summary(name_a, nd_a), _property_summary(name_b, nd_b)
+        )
+
     points = grid_points(bbox, grid)
-
     sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
+    recs_a = await sample_records(ctx, a_id, points, sem)
+    recs_b = await sample_records(ctx, b_id, points, sem)
+    reads_a = [read_sample(r, prop, nd_a) for r in recs_a]
+    reads_b = [read_sample(r, prop, nd_b) for r in recs_b]
 
-    async def sample(result_id: str, lon: float, lat: float) -> Any:
-        async with sem:
-            try:
-                rec = await ctx.studio.pixel_value(result_id, lon, lat)
-                return rec
-            except Exception:  # off-raster / nodata / transient -> drop the point
-                return None
+    name_a = _sampled_property(reads_a, recs_a, prop) or name_a
+    name_b = _sampled_property(reads_b, recs_b, prop) or name_b
+    different = bool(name_a and name_b and name_a != name_b)
+    if different and not allow_different:
+        return _different_properties(
+            a_id, b_id, _property_summary(name_a, nd_a), _property_summary(name_b, nd_b)
+        )
 
-    recs_a = await asyncio.gather(*[sample(a_id, lo, la) for lo, la in points])
-    recs_b = await asyncio.gather(*[sample(b_id, lo, la) for lo, la in points])
-
-    # Detect categorical vs regression from the first valid sample.
-    first = next((r for r in recs_a if r), None)
-    categorical = bool(first and _is_categorical(first, prop))
-    vals_a = [(_band_value(r, prop) if r else None) for r in recs_a]
-    vals_b = [(_band_value(r, prop) if r else None) for r in recs_b]
-    pairs = list(zip(vals_a, vals_b))
+    pairs: list[tuple[Any, Any]] = []
+    n_nodata = n_failed = 0
+    for (va, _ca, sa), (vb, _cb, sb) in zip(reads_a, reads_b):
+        if sa == OK and sb == OK:
+            pairs.append((va, vb))
+        elif NODATA in (sa, sb):
+            n_nodata += 1
+        else:
+            n_failed += 1
+    first = next((r for r in reads_a + reads_b if r[2] == OK), None)
+    categorical = bool(first and first[1])
     stats = (
         compare_categorical(pairs)
         if categorical
@@ -107,24 +165,44 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     )
     value_type = "classification" if categorical else "regression"
     narration = compare_narration(stats, kind=kind, value_type=value_type)
-    return {
+    out: dict[str, Any] = {
         "comparable": True,
         "result_id_a": a_id,
         "result_id_b": b_id,
-        "property_name": prop
-        or (first.get("bands", [{}])[0].get("property_name") if first else None),
+        "property_name": prop or name_a,
+        "property_a": _property_summary(name_a, nd_a),
+        "property_b": _property_summary(name_b, nd_b),
         "kind": kind,
         "value_type": value_type,
         "narration": narration,
         "grid": f"{grid}x{grid}",
         "samples_requested": len(points),
+        "n_nodata_dropped": n_nodata,
+        "n_failed_dropped": n_failed,
+        "nodata_rule": NODATA_RULE,
         "shared_extent_bbox": [round(v, 5) for v in bbox],
         "stats": stats,
         "method": "pointwise pixel-value sampled on a grid over the shared "
-        "extent (an estimate, not every pixel); no ground truth, so this is "
+        "extent (an estimate, not every pixel); points where either map is "
+        "no-data are dropped before any statistic; no ground truth, so this is "
         + narration["framing"]
         + ".",
     }
+    if different:
+        out["warning"] = (
+            f"the two results measure different properties ({name_a!r} and "
+            f"{name_b!r}), so their values are different quantities: only the "
+            "correlation (whether they rise and fall together) is meaningful. "
+            "Do not read the mean difference, RMSE or agreement fraction as a "
+            "gap between them, and do not say one reads higher than the other."
+        )
+        r = stats.get("correlation")
+        narration["headline"] = (
+            f"different properties: correlation {r} across "
+            f"{stats.get('n_samples', 0)} cells; the other statistics compare "
+            "different quantities"
+        )
+    return out
 
 
 #: Group-compare bounds. Results are capped at 6 (15 pairs) and the default
@@ -136,6 +214,7 @@ _GROUP_MAX_GRID = 8
 
 
 async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_compare_group``."""
     raw_ids = args.get("result_ids") or []
     ids = [str(r) for r in raw_ids if str(r).strip()]
     # Order-preserving dedup: a repeated id would just re-sample the same raster.
@@ -164,22 +243,22 @@ async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
             "(or one is missing bounds)",
         }
     points = grid_points(bbox, grid)
+    cache: dict[str, dict[str, Any] | None] = {}
+    nodata = [await result_nodata_context(ctx, rec, cache=cache) for rec in records]
 
     sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
-
-    async def sample(result_id: str, lon: float, lat: float) -> Any:
-        async with sem:
-            try:
-                return await ctx.studio.pixel_value(result_id, lon, lat)
-            except Exception:  # off-raster / nodata / transient -> drop the point
-                return None
-
-    sampled = [
-        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points]) for rid in ids
+    sampled = [await sample_records(ctx, rid, points, sem) for rid in ids]
+    reads = [
+        [read_sample(r, prop, nd) for r in recs] for recs, nd in zip(sampled, nodata)
     ]
+    nodata_by_result = {
+        rid: sum(1 for _v, _c, st in row if st == NODATA)
+        for rid, row in zip(ids, reads)
+    }
+    first_ok = next((r for row in reads for r in row if r[2] == OK), None)
     first = next((r for recs in sampled for r in recs if r), None)
-    categorical = bool(first and _is_categorical(first, prop))
-    series = [[(_band_value(r, prop) if r else None) for r in recs] for recs in sampled]
+    categorical = bool(first_ok and first_ok[1])
+    series = [[v for v, _c, _st in row] for row in reads]
     group = (
         compare_group_categorical(series)
         if categorical
@@ -214,13 +293,17 @@ async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
         "narration": narration,
         "grid": f"{grid}x{grid}",
         "samples_requested": len(points) * len(ids),
+        "n_nodata_dropped": sum(nodata_by_result.values()),
+        "nodata_by_result": nodata_by_result,
+        "nodata_rule": NODATA_RULE,
         "shared_extent_bbox": [round(v, 5) for v in bbox],
         "pairwise": group["pairwise"],
         "ensemble": group["ensemble"],
         "most_divergent_pair": divergent,
         "method": "pointwise pixel-value sampled on a grid over the extent "
-        "shared by all results (an estimate, not every pixel); no ground "
-        "truth, so this is " + narration["framing"] + ".",
+        "shared by all results (an estimate, not every pixel); no-data "
+        "samples are dropped before any statistic; no ground truth, so this "
+        "is " + narration["framing"] + ".",
     }
 
 
@@ -249,6 +332,7 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
 
 
 async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_submit_prediction``."""
     record = await ctx.studio.submit_prediction(
         name=args["name"],
         project_id=args["project_id"],
@@ -327,26 +411,36 @@ async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
         }
     value = _band_value(record, prop)
     categorical = _is_categorical(record, prop)
+    rng = declared_range(band)
+    nodata = value is not None and band_is_nodata(band)
     out: dict[str, Any] = {
         "result_id": result_id,
         "queried_point": point,
-        "available": value is not None,
+        "available": value is not None and not nodata,
         "property_name": band.get("property_name") or prop,
         "value_type": "classification" if categorical else "regression",
-        "value": value,
+        "value": None if nodata else value,
         "bands": [
             {
                 "property_name": b.get("property_name"),
-                "value": (
-                    b.get("classification")
-                    if b.get("classification") is not None
-                    else b.get("raw_value")
-                ),
+                "value": band_value({"bands": [b]}, None),
             }
             for b in (record.get("bands") or [])
         ],
     }
-    if value is None:
+    if rng is not None:
+        out["declared_range"] = list(rng)
+    if nodata:
+        # Studio returns no-data as a value (e.g. -1.0 on a [0, 1] band);
+        # reporting it as the model's output would be a fabricated reading.
+        out["nodata"] = True
+        out["raw_value"] = band.get("raw_value")
+        out["reason"] = (
+            "no-data at this point: the raw value lies outside the band's "
+            "declared range or is not a number (Studio's no-data sentinel), "
+            "so it is not a model output"
+        )
+    elif value is None:
         # Band exists but carries no value here -- report it like the other
         # unavailable paths instead of a bare available=false.
         out["reason"] = "band present but no value at this point (nodata)"
@@ -457,7 +551,9 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "lon/lat point (the Studio /pixel-value endpoint). Returns "
                     "the value (raw_value for a regression layer, the class for "
                     "a categorical layer), the value_type, and every band's "
-                    "value at that point. If the point is off-raster or nodata, "
+                    "value at that point. If the point is off-raster or nodata "
+                    "(including Studio's no-data sentinel, a value outside the "
+                    "band's declared range such as -1 on a [0, 1] score), "
                     "returns available=false with a reason. Use this to answer "
                     "'what does the model predict at this exact location?'; to "
                     "compare TWO results over an area use olmoearth_compare_results."
@@ -484,19 +580,19 @@ def build_predict_tools() -> list[RegisteredTool]:
                 name="olmoearth_compare_results",
                 description=(
                     "Quantitatively compare TWO prediction results over their "
-                    "shared area, with no ground truth. Samples both rasters on "
-                    "a grid (pointwise pixel-value) and returns mean difference, "
+                    "shared area, with no ground truth: samples both rasters on "
+                    "a grid (pixel-value) and returns mean difference, "
                     "mean-absolute difference, RMSE, correlation, and an "
                     "agreement fraction (regression) or class agreement "
-                    "(classification). Set kind='cross_model' (default) to "
-                    "compare TWO different models over the same area (how much "
-                    "they agree -- divergence, not accuracy); set kind='temporal' "
-                    "to compare ONE model's output at an earlier (A) vs a later "
-                    "(B) date (net change over time, later minus earlier). The "
-                    "returned narration adapts to the kind. Use this for a "
-                    "numeric comparison instead of only a visual / metadata one; "
-                    "for accuracy against labels use "
-                    "olmoearth_classification_metrics."
+                    "(classification). kind='cross_model' (default): two "
+                    "models, same area (divergence, not accuracy); "
+                    "kind='temporal': one model, earlier (A) vs later (B) date. "
+                    "Points where either map is no-data (e.g. -1 on a [0, 1] "
+                    "score) are dropped and counted in n_nodata_dropped; report "
+                    "it. Results of DIFFERENT properties are refused with both "
+                    "declared ranges unless allow_different_properties=true, "
+                    "and then only the correlation is meaningful. For accuracy "
+                    "against labels use olmoearth_classification_metrics."
                 ),
                 parameters={
                     "type": "object",
@@ -527,6 +623,13 @@ def build_predict_tools() -> list[RegisteredTool]:
                             "description": "Regression: |a-b| <= tolerance counts "
                             "as agreement.",
                         },
+                        "allow_different_properties": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Compare two results whose properties "
+                            "differ anyway; only their correlation is then "
+                            "meaningful, and the result carries a warning.",
+                        },
                     },
                     "required": ["result_id_a", "result_id_b"],
                 },
@@ -550,9 +653,10 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "diverges. For exactly TWO results prefer "
                     "olmoearth_compare_results (richer two-way stats + temporal "
                     "mode); for ONE model across MULTIPLE DATES use "
-                    "olmoearth_change_detect (trajectory over time). Each "
-                    "result adds grid^2 slow Studio pixel-value calls, so keep "
-                    "the grid small (default 3x3)."
+                    "olmoearth_trace_shifts (trajectory over time). No-data "
+                    "samples are dropped before any statistic and counted in "
+                    "n_nodata_dropped. Each result adds grid^2 slow Studio "
+                    "pixel-value calls, so keep the grid small (default 3x3)."
                 ),
                 parameters={
                     "type": "object",

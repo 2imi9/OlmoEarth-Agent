@@ -46,6 +46,14 @@ from olmoearth_agent.analysis.uncertainty import (
 )
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.sampling import (
+    NODATA,
+    OK,
+    SAMPLE_CONCURRENCY,
+    default_property,
+    read_sample,
+    result_nodata_context,
+)
 
 _VECTORS_SCHEMA = {
     "type": "array",
@@ -53,7 +61,7 @@ _VECTORS_SCHEMA = {
 }
 
 #: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
-_SAMPLE_CONCURRENCY = 8
+_SAMPLE_CONCURRENCY = SAMPLE_CONCURRENCY
 
 
 async def _area_of_applicability(
@@ -67,25 +75,10 @@ async def _area_of_applicability(
     )
 
 
-def _band_val(record: dict[str, Any], prop: str | None) -> tuple[Any, bool]:
-    """One pixel-value: ``(value, is_categorical)``; ``(None, False)`` if absent."""
-    bands = record.get("bands") or []
-    if not bands:
-        return None, False
-    band = (
-        next((b for b in bands if b.get("property_name") == prop), bands[0])
-        if prop
-        else bands[0]
-    )
-    cls = band.get("classification")
-    if cls is not None:
-        return cls, True
-    return band.get("raw_value"), False
-
-
 async def _ensemble_uncertainty(
     args: dict[str, Any], ctx: ToolContext
 ) -> dict[str, Any]:
+    """Handler for ``olmoearth_ensemble_uncertainty``."""
     # Distinct results only: a duplicate id would re-read ONE deterministic
     # result and fake zero disagreement -- the exact thing this tool promises
     # it never does. Dedupe preserving order, then require >= 2 remain.
@@ -102,6 +95,16 @@ async def _ensemble_uncertainty(
     records = await asyncio.gather(
         *[ctx.studio.get_prediction_result(r) for r in result_ids]
     )
+    # Ensemble members must estimate the same quantity: a binary score and a
+    # count are not two draws of one thing (the trial paired exactly those).
+    names = {n for rec in records if (n := default_property(rec, prop))}
+    if len(names) > 1:
+        return {
+            "comparable": False,
+            "reason": "the results measure different properties "
+            f"({sorted(names)}); their spread would mix quantities, not "
+            "measure disagreement. Pass results of one property.",
+        }
     bboxes = [result_bbox(rec) for rec in records]
     if any(b is None for b in bboxes):
         return {"comparable": False, "reason": "a result is missing geometry/extent"}
@@ -112,13 +115,16 @@ async def _ensemble_uncertainty(
         return {"comparable": False, "reason": "results do not share a common extent"}
 
     points = grid_points(shared, grid)
+    cache: dict[str, dict[str, Any] | None] = {}
+    nodata = [await result_nodata_context(ctx, rec, cache=cache) for rec in records]
     sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
 
     async def sample(rid: str, lon: float, lat: float) -> Any:
+        """One bounded pixel-value call; a failure drops the draw."""
         async with sem:
             try:
                 return await ctx.studio.pixel_value(rid, lon, lat)
-            except Exception:  # off-raster / nodata / transient -> drop the draw
+            except Exception:  # off-raster / transient -> drop the draw
                 return None
 
     flat = await asyncio.gather(
@@ -129,14 +135,14 @@ async def _ensemble_uncertainty(
     samples: list[list[Any]] = []
     detected_categorical: bool | None = None
     n_dropped = 0
+    n_nodata = 0
     for pi in range(len(points)):
         vals: list[Any] = []
         for ri in range(n_res):
-            rec = flat[pi * n_res + ri]
-            if rec is None:
-                continue
-            value, is_cat = _band_val(rec, prop)
-            if value is None:
+            value, is_cat, status = read_sample(flat[pi * n_res + ri], prop, nodata[ri])
+            if status == NODATA:
+                n_nodata += 1
+            if status != OK:
                 continue
             if detected_categorical is None:
                 detected_categorical = is_cat
@@ -175,8 +181,11 @@ async def _ensemble_uncertainty(
             "property_name": prop,
             "shared_extent_bbox": [round(v, 5) for v in shared],
             "n_points_dropped": n_dropped,
+            "n_nodata_dropped": n_nodata,
             "method": "each result sampled pointwise (pixel-value) on a grid "
-            "over the shared extent; the >=2 values at a point are treated as "
+            "over the shared extent; no-data draws (a missing value, the "
+            "model's nodata_value, or a value outside the band's declared "
+            "range) are dropped first; the >=2 values at a point are treated as "
             "ensemble members, so the spread is real disagreement between "
             "distinct results -- epistemic uncertainty, not accuracy. Slow: "
             "pixel-value is ~tens of seconds per point per result.",

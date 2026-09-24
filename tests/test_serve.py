@@ -810,6 +810,44 @@ def test_pixel_value_proxy_extracts_band(monkeypatch: pytest.MonkeyPatch) -> Non
     assert body["categorical"] is False
 
 
+def test_pixel_value_proxy_blanks_the_nodata_sentinel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Studio returns no-data as a value (-1 on a [0, 1] band); the difference
+    scan must skip that cell, not paint the sentinel as a model output."""
+
+    class _PV(_FakeStudio):
+        async def pixel_value(
+            self, result_id: str, lon: float, lat: float
+        ) -> dict[str, Any]:
+            return {
+                "bands": [
+                    {
+                        "band_index": 1,
+                        "property_name": "sample_karst_score",
+                        "raw_value": -1.0,
+                        "classification": None,
+                        "regression": {
+                            "min_value": 0.0,
+                            "max_value": 1.0,
+                            "colormap_name": "viridis",
+                        },
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(serve, "StudioClient", _PV)
+    with TestClient(serve.app) as client:
+        resp = client.get(
+            "/api/pixel-value?result_id=nd1&lon=-77.6&lat=40.8",
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    body = resp.json()
+    assert body["value"] is None
+    assert body["nodata"] is True
+    assert body["property"] == "sample_karst_score"
+
+
 def test_pixel_value_proxy_caches(monkeypatch: pytest.MonkeyPatch) -> None:
     serve._PV_CACHE.clear()
     calls = {"n": 0}
