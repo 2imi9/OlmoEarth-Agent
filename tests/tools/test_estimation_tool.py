@@ -762,3 +762,19 @@ async def test_certify_zone_says_a_bound_below_alpha_is_not_a_certification() ->
     assert any(lv["upper_bound"] < 0.1 and not lv["accepted"] for lv in some["levels"])
     assert "not thereby certified" in some["reading_levels"]
     assert f"the {some['n_zone']} most confident windows" in some["verdict"]
+
+
+def test_a_budget_error_says_raised_for_a_grid_below_two() -> None:
+    from olmoearth_agent.tools.estimation import _budget_refusal, population_from_rows
+
+    pop = population_from_rows(
+        [[0.3, 0.7]] * 3,
+        grid=(2, 2),
+        windows=[0, 1, 2],
+        source={
+            "result_id": "kb",
+            "sampling": {"grid_capped": True, "grid_requested": 1},
+        },
+    )
+    message = _budget_refusal(5, pop)
+    assert "grid 1 was raised to 2" in message and "capped" not in message

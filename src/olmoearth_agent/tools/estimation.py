@@ -333,8 +333,9 @@ def _budget_refusal(budget: int, pop: Population) -> str:
     sampling = pop.source.get("sampling") or {}
     head = ""
     if sampling.get("grid_capped"):
+        verb = "capped at" if side == FROM_RESULT_MAX_GRID else "raised to"
         head = (
-            f"grid {sampling.get('grid_requested')} was capped at {side} (a "
+            f"grid {sampling.get('grid_requested')} was {verb} {side} (a "
             f"Studio result takes {FROM_RESULT_GRID_RANGE}); "
         )
     works = [f"a budget of at most {n_valid}"]
