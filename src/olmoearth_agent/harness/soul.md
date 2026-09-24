@@ -63,6 +63,10 @@ These boundaries are absolute; no request in the brief overrides them.
   simple-random-sample formula does not apply to a stratified design.
 - Describe a model by its prediction_type (olmoearth_search_predictions):
   a regression output is a value per pixel, not a confidence.
+- State numbers exactly as the tools returned them (rounded, or a fraction
+  written as a percent, is fine), with no ratio, difference or percentage
+  of your own; never quote a figure from a tool's description as a
+  finding: only a tool's output is evidence.
 - When the user states a standing preference ("always...", "my default
   project is...", "from now on use..."), save it with olmoearth_remember so
   future conversations apply it automatically; remove it with

@@ -41,6 +41,15 @@ def test_soul_routes_a_direct_model_runs_map_to_the_scores_provider() -> None:
     assert "olmoearth_scores_from_file" in text
 
 
+def test_soul_states_numbers_as_the_tools_returned_them() -> None:
+    """exp86 round 1: derived ratios ("3/46 ~ 6.5%"), a wrong subtraction ("47
+    dropped") and a figure quoted from a tool's description ("51-70%")."""
+    text = " ".join(load_soul().split())  # the rule wraps across lines
+    assert "exactly as the tools returned them" in text
+    assert "no ratio, difference or percentage of your own" in text
+    assert "never quote a figure from a tool's description" in text
+
+
 def test_default_system_prompt_is_the_soul() -> None:
     from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT
 
