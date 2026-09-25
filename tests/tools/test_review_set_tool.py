@@ -627,10 +627,10 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
     assert apart["must_state"][0] == MUST_STATE_NO_WINNER
     assert "different times" in apart["must_state"][1]
     assert all(word_count(m) <= MUST_STATE_MAX_WORDS for m in apart["must_state"])
-    assert [c["id"] for c in apart["forbidden_claims"]] == [
+    assert {c["id"] for c in apart["forbidden_claims"]} == {
         "winner_without_labels",
         "another_date_settles_it",
-    ]
+    }
     partly = await tool.handler(  # type: ignore[attr-defined]
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01"}, _ctx()
     )
@@ -793,6 +793,6 @@ def test_a_comparison_across_properties_is_marked_once() -> None:
     _mark_different(out)
     _mark_different(out)
     assert len(out["must_state"]) == 1
-    assert [c["id"] for c in out["forbidden_claims"]] == [
-        "combined_statistic_across_properties"
-    ]
+    # the forbidden claim comes from the statistical rules, which name the
+    # properties; marking adds none, so none can be listed twice
+    assert "forbidden_claims" not in out

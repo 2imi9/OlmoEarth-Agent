@@ -46,8 +46,10 @@ async def _result(
     return out["result"]
 
 
-def _ids(out: dict[str, Any]) -> list[str]:
-    return [c["id"] for c in out.get("forbidden_claims", [])]
+def _ids(out: dict[str, Any]) -> set[str]:
+    """The forbidden ids a result carries; the tools and the estimation rules
+    each add theirs, so the order is not part of the contract."""
+    return {c["id"] for c in out.get("forbidden_claims", [])}
 
 
 def _why(out: dict[str, Any], claim_id: str) -> str:
@@ -71,7 +73,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         date_a="2022-01-01/2022-12-31", date_b="2023-01-01/2023-12-31"
     )
     assert apart["dates"]["status"] == "different_time"
-    assert _ids(apart) == [rules.ANOTHER_DATE_SETTLES_IT, rules.WINNER_WITHOUT_LABELS]
+    assert _ids(apart) == {rules.ANOTHER_DATE_SETTLES_IT, rules.WINNER_WITHOUT_LABELS}
     another = _why(apart, rules.ANOTHER_DATE_SETTLES_IT)
     assert "(2022-01-01/2022-12-31 and 2023-01-01/2023-12-31)" in another
     assert "cannot tell which" in another
@@ -83,10 +85,10 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         labels_date="2022-07-01",
     )
     assert overlap["dates"]["status"] == "overlapping_time"
-    assert _ids(overlap) == [
+    assert _ids(overlap) == {
         rules.ANOTHER_DATE_SETTLES_IT,
         rules.WINNER_WITHOUT_LABELS,
-    ]
+    }
     # The reason covers the overlapping periods, not only disjoint ones.
     assert "different or overlapping periods" in _why(
         overlap, rules.ANOTHER_DATE_SETTLES_IT
@@ -98,7 +100,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         await compare(date_a="2024-03-01", date_b="2024-03-01"),
         await compare(),
     ):
-        assert _ids(same) == [rules.WINNER_WITHOUT_LABELS]
+        assert _ids(same) == {rules.WINNER_WITHOUT_LABELS}
         assert "more confident side" in _why(same, rules.WINNER_WITHOUT_LABELS)
     # The counts the parity check reads are untouched.
     assert apart["n_differing"] == 1 and apart["share_differing"] == pytest.approx(
@@ -184,16 +186,16 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
             ctx,
         )
     assert refused["comparable"] is False
-    assert _ids(refused) == [
+    assert _ids(refused) == {
         rules.COMBINED_STATISTIC_ACROSS_PROPERTIES,
         rules.WINNER_WITHOUT_LABELS,
-    ]
+    }
     assert allowed["comparable"] is True
-    assert _ids(allowed) == [
+    assert _ids(allowed) == {
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
         rules.COMBINED_STATISTIC_ACROSS_PROPERTIES,
         rules.WINNER_WITHOUT_LABELS,
-    ]
+    }
     no_rate = _why(allowed, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION)
     assert no_rate.startswith("'sample_number' (declared range [0.2, 1.2])")
     assert "sample_karst_score" not in no_rate  # a [0, 1] score is decided at 0.5
@@ -223,10 +225,10 @@ async def test_a_group_of_two_properties_refused_carries_the_claims(
             ctx,
         )
     assert refused["comparable"] is False and refused["mode"] == "group"
-    assert _ids(refused) == [
+    assert _ids(refused) == {
         rules.COMBINED_STATISTIC_ACROSS_PROPERTIES,
         rules.WINNER_WITHOUT_LABELS,
-    ]
+    }
 
 
 @pytest.mark.asyncio
@@ -242,7 +244,7 @@ async def test_two_unit_scores_of_one_property_name_no_winner(
             "olmoearth_compare_results", {"result_ids": ["a1", "b1"], "grid": 3}, ctx
         )
     assert out["comparable"] is True and out["value_type"] == "regression"
-    assert _ids(out) == [rules.WINNER_WITHOUT_LABELS]
+    assert _ids(out) == {rules.WINNER_WITHOUT_LABELS}
     assert "no labels were used" in _why(out, rules.WINNER_WITHOUT_LABELS)
 
 
@@ -256,10 +258,10 @@ async def test_one_unthresholded_property_has_no_error_rate(
         out = await _result(
             "olmoearth_compare_results", {"result_ids": ["a1", "b1"], "grid": 3}, ctx
         )
-    assert _ids(out) == [
+    assert _ids(out) == {
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
         rules.WINNER_WITHOUT_LABELS,
-    ]
+    }
     # one property, named once
     assert (
         _why(out, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION).count("sample_number")

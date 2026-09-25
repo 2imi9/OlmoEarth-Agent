@@ -32,6 +32,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
+
 # --------------------------------------------------------------------------- the contract's fixed ids
 
 POST_HOC_ALPHA = "post_hoc_alpha"
@@ -87,14 +89,14 @@ def add_contract(
     new_facts = list(facts)
     if new_facts:
         out.setdefault("facts", []).extend(new_facts)
-    for sentence in must_state:
-        stated = out.setdefault("must_state", [])
-        if sentence not in stated:
-            stated.append(sentence)
-    for claim in forbidden_claims:
-        listed = out.setdefault("forbidden_claims", [])
-        if all(c.get("id") != claim["id"] for c in listed):
-            listed.append(claim)
+    # the contract's own helpers: must_state keeps its limits (at most 3
+    # sentences of at most 25 words) and each forbidden id is listed once
+    sentences = list(must_state)
+    if sentences:
+        add_must_state(out, sentences)
+    claims = list(forbidden_claims)
+    if claims:
+        add_forbidden(out, claims)
     return out
 
 

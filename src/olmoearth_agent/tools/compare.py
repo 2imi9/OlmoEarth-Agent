@@ -45,7 +45,7 @@ from math import cos, radians
 from typing import Any
 
 from olmoearth_agent.analysis.change_detect import _try_parse
-from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
+from olmoearth_agent.analysis.output_contract import add_must_state
 from olmoearth_agent.analysis.raster_compare import (
     COMPARISON_KINDS,
     compare_categorical,
@@ -330,20 +330,14 @@ DIFFERENT_PROPERTIES_MUST_STATE = (
     "together (the correlation) is meaningful between them."
 )
 
-#: Forbidden with a comparison of two different properties.
-COMBINED_STATISTIC_FORBIDDEN = {
-    "id": "combined_statistic_across_properties",
-    "why": "a difference, an RMSE, an agreement fraction, an ensemble spread, or "
-    "'one reads higher than the other' between two properties mixes two "
-    "quantities; none is computed, so none may be worked out or stated",
-}
-
 
 def _mark_different(out: dict[str, Any]) -> None:
     """The output contract of a comparison across properties: what to state, what
     not to claim; each once, however often a result is marked."""
     add_must_state(out, [DIFFERENT_PROPERTIES_MUST_STATE])
-    add_forbidden(out, [COMBINED_STATISTIC_FORBIDDEN])
+    # The forbidden claim itself comes from the statistical rules, which name
+    # the two properties (rules.different_properties); listing a generic one
+    # here first would shadow it.
 
 
 def _pair(

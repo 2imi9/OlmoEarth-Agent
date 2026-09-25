@@ -48,13 +48,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
+from olmoearth_agent.analysis.output_contract import add_must_state
 from olmoearth_agent.analysis.raster_compare import (
     declared_range,
     grid_windows,
     result_bbox,
 )
 from olmoearth_agent.analysis.review_set import (
+    COMPARISON_FORBIDDEN,
     DEFAULT_BUDGETS,
     DEFAULT_MAX_LISTED,
     MUST_STATE_MULTICLASS_LOGIT,
@@ -539,13 +540,6 @@ PARTLY_DATED_MUST_STATE = (
     "on the ground."
 )
 
-#: Forbidden with a comparison of maps of different or overlapping times.
-ANOTHER_DATE_FORBIDDEN = {
-    "id": "another_date_settles_it",
-    "why": "a map of a third date describes a third time: it cannot say which of "
-    "these two was right at its own date; only a reference dated to each map can",
-}
-
 
 def _file_names(metas: list[dict[str, Any]]) -> dict[str, str] | None:
     """The class names both scores files give, when they give the same ones."""
@@ -672,6 +666,11 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         class_names=_file_names(metas),
     )
     rows = out.pop("differing")
+    # compare_scores' generic winner_without_labels gives way to the statistical
+    # rules' reasons below, which name the dates and the labels' date.
+    out["forbidden_claims"] = [
+        c for c in out.get("forbidden_claims", []) if c not in COMPARISON_FORBIDDEN
+    ]
     asked = int(args.get("max_listed", COMPARE_INLINE_LISTED))
     inline = max(0, min(COMPARE_INLINE_LISTED, asked))
     path = _save_differing(rows, grid, args) if rows else None
@@ -701,7 +700,6 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 )
             )
             add_must_state(out, [DIFFERENT_TIMES_MUST_STATE])
-            add_forbidden(out, [ANOTHER_DATE_FORBIDDEN])
         elif dates.get("status") == "partly_stated":
             out["which_side_is_right"] = (
                 "not graded: only one map's date was given, so an error cannot be "
@@ -709,6 +707,8 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
             )
             add_must_state(out, [PARTLY_DATED_MUST_STATE])
     # No labels are taken here, whatever the dates (listed once with the above).
+    # No labels are taken here, whatever the dates; kept once when the dates
+    # block has already listed it with the labels' date.
     winner = rules.winner_without_labels(rules.MORE_CONFIDENT_IS_NOT_RIGHT)
     rules.add_contract(out, forbidden_claims=[winner])
     out["evidence_detail_path"] = evidence_detail_path()

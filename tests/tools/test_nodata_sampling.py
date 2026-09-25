@@ -301,9 +301,10 @@ async def test_compare_results_allows_different_properties_with_a_warning(
         "The results measure different properties: only whether they rise and "
         "fall together (the correlation) is meaningful between them."
     ]
-    assert [c["id"] for c in out["forbidden_claims"]] == [
-        "combined_statistic_across_properties"
-    ]
+    assert {c["id"] for c in out["forbidden_claims"]} == {
+        "combined_statistic_across_properties",
+        "winner_without_labels",
+    }
 
 
 @pytest.mark.asyncio
