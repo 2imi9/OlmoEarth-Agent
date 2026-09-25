@@ -114,9 +114,16 @@ def test_a_derived_complement_is_reported() -> None:
         # A fraction read as a percent.
         ("15% coverage", [{"coverage": 0.15}]),
         ("100% of windows", [{"share_valid": 1.0}]),
-        # An integer in [0, 1] is a fraction only under a share key.
+        # Any value in [0, 1], of any numeric type and under any key, as at
+        # 43ca1f8: 0% and 100% are the ends of every share.
         ("100% of windows", [{"valid_share": 1}]),
         ("0% agreement", [{"agreement_fraction": 0}]),
+        ("100% of windows", [{"n_valid": 1}]),
+        ("100% of windows", [{"coverage": 1.0}]),
+        ("0% agreement", [{"n_nodata": 0}]),
+        ("0.0% agreement", [{"agreement": 0.0}]),
+        ("0% agreement", ["agreement 0 of 16,384"]),
+        ("50% of labels", [{"note": "a share of 0.5"}]),
         # A percent written in a string, as written.
         ("on 42.2% of them", [{"note": "A is more confident on 42.2% of them"}]),
         ("150% of the budget", ["the plan uses 150% of the budget"]),
@@ -135,10 +142,11 @@ def test_a_percent_a_share_supports_is_not_reported(
 @pytest.mark.parametrize(
     ("answer", "pool"),
     [
-        ("100% of windows", [{"n_valid": 1}]),  # a count of 1 is not a share
-        ("0% agreement", [{"n_nodata": 0}]),
+        ("100% of windows", [{"n_valid": 100}]),  # a count above 1
         ("23% wrong", [{"n_windows": 23.0}]),  # a float count, not a share
+        ("23% wrong", [{"n_wrong_inside": 23}]),
         ("50% of labels", [{"separate": 50}]),  # "separate" is not "rate"
+        ("50% of labels", ["50 labels were drawn"]),  # a count in a string
     ],
 )
 def test_a_percent_nothing_but_a_count_matches_is_reported(

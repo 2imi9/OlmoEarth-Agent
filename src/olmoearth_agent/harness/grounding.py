@@ -34,15 +34,15 @@ sources, so an id or a date splits into the same numbers on both sides:
   decimal, as written or as a percent of a fraction (``23.0`` against
   0.2298; ``-0.017`` against -0.0172). A suffixed number is compared in its
   unit at the same rounding (``6.4M`` against 6,412,345), or as written.
-- A percent is supported at the same rounding only by a share: a fraction
-  (a value in [0, 1] that is not an integer, or any value in [0, 1] under a
-  share key) read as a percent (``23%`` against 0.2298), a percent written
-  in a source string (``42.2%``), or a value above 1 under a key that names
-  a percent, share or rate (``error_pct: 23.2``; the key's words include
-  ``percent``, ``pct``, ``share``, ``rate``, ``fraction`` or
-  ``proportion``). An integer count elsewhere never supports it: exp86's
-  "~23%" (69/300, derived) passed against an unrelated ``n_wrong_inside`` of
-  23 in rounds 1 to 6.
+- A percent is supported at the same rounding only by a share: any value
+  in [0, 1], of any numeric type and in any string, read as a percent
+  (``23%`` against 0.2298, ``0%`` against 0, ``100%`` against 1.0), a
+  percent written in a source string (``42.2%``), or a value above 1 under a
+  key that names a percent, share or rate (``error_pct: 23.2``; the key's
+  words include ``percent``, ``pct``, ``share``, ``rate``, ``fraction`` or
+  ``proportion``). A count above 1 under any other key never supports it:
+  exp86's "~23%" (69/300, derived) passed against an unrelated
+  ``n_wrong_inside`` of 23 in rounds 1 to 6.
 - A thousands-separated integer written in brackets is also supported when
   each of its parts is (a window written "(24,108)"). Unbracketed, it is one
   number: "1,000" is a thousand, never the parts 1 and 0 (exp86 round 5: "e.g.
@@ -86,8 +86,8 @@ _RANGE_RE = re.compile(r"\s*(?:[-\u2013\u2014]|to)\s*")
 _ELLIPSES = ("...", "\u2026")
 _EPS = 1e-9
 
-#: Words of a field's key that name a share: a value under it supports a
-#: percent (a fraction read as a percent, or a value above 1 as written).
+#: Words of a field's key that name a share: a value above 1 under it
+#: supports a percent as written (any value in [0, 1] supports one anyway).
 SHARE_KEY_WORDS = frozenset(
     {
         "share",
@@ -273,7 +273,7 @@ class NumberPool:
             v = abs(float(obj))
             if math.isfinite(v):
                 values.add(v)
-                if v <= 1 and (share_key or not v.is_integer()):
+                if v <= 1:
                     fractions.add(v)
                 elif share_key:
                     percents.add(v)
@@ -288,8 +288,10 @@ class NumberPool:
                     values.add(tok.value / 100)
                     fractions.add(tok.value / 100)
                     percents.add(tok.value)
-                elif value <= 1 and (share_key or not value.is_integer()):
+                elif value <= 1:
                     fractions.add(value)
+                elif share_key:
+                    percents.add(value)
                 values.update(float(p) for p in tok.parts)
             return
         if isinstance(obj, dict | list | tuple | set | frozenset):
@@ -367,5 +369,7 @@ def unsupported_numbers(answer: str, sources: Iterable[Any]) -> list[str]:
     []
     >>> unsupported_numbers("about 23% wrong", [{"n_wrong_inside": 23}])
     ['23%']
+    >>> unsupported_numbers("0% of them", [{"n_nodata": 0}])
+    []
     """
     return NumberPool(sources).unsupported(answer)
