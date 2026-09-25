@@ -16,17 +16,22 @@ themselves. Besides numbers, they read three keys a tool's result may carry
 
 - ``facts``: ``[{"id", "sentence", ...fields}]``, a fact the answer may
   repeat. The direction check knows ``dominant_change`` (``from_class``,
-  ``to_class``, ``n``, ``share``; map A's class to map B's),
-  ``more_confident_side`` (``side`` "A" or "B", ``share``),
-  ``concentration`` (``where``, ``share``, ``top_band_share``, and optionally
-  ``bottom_band_share``, ``left_band_share``, ``right_band_share``, ``grid``
-  and ``n_differing``), ``margin_ratio`` (``low``, ``high``, ``versus``) and
-  ``unused_labels`` (``n``, ``requested``, ``planned``). Other ids are shown,
-  never checked.
-- ``must_state``: short sentences the answer must convey whenever it reports
-  that result.
+  ``to_class``, ``n``, ``share``, ``reverse_n``, ``reverse_share``,
+  ``tied_with_reverse``; map A's class to map B's), ``more_confident_side``
+  (``side`` "A", "B" or "neither", ``share_a``, ``share_b``,
+  ``share_equal``), ``concentration`` (``grid`` ``[rows, cols]``,
+  ``n_differing``, ``top_band_share``, the share of the differing windows in
+  the northmost of four row bands, and ``max_band`` ``{axis, band, of_grid,
+  share}``), ``margin_ratio`` (``listed_low``, ``listed_high``,
+  ``review_set_low``, ``review_set_high``, ``versus``) and ``unused_labels``
+  (``requested``, ``planned``, ``n``). ``whole_map_estimate`` and any other
+  id are shown, never checked.
+- ``must_state``: at most :data:`MUST_STATE_MAX` short sentences (at most
+  :data:`MUST_STATE_MAX_WORDS` words each) the answer must convey whenever
+  it reports that result.
 - ``forbidden_claims``: ``[{"id", "why"}]``, claims the answer must not make
-  about that result; :data:`FORBIDDEN_DETECTORS` holds a detector per id.
+  about that result; :data:`FORBIDDEN_DETECTORS` holds a detector per id,
+  and an id without one is ignored.
 
 The detectors are regular expressions over one sentence at a time, and they
 are conservative on purpose: a false alarm costs a rewrite and, when it
@@ -34,18 +39,22 @@ persists, a marked sentence, so a sentence that negates, hedges or offers an
 example is left alone, and a rule fires only on the wording exp86's audits
 found. What a check cannot read (a paraphrase, a claim spread over two
 sentences) it misses; ``scripts/validate_answer_checks.py`` measures both
-kinds of error on exp86's recorded answers.
+kinds of error on exp86's recorded answers. Each sentence is read once into
+its brackets, clauses and word spans (:class:`_Parse`), so the checks take
+time linear in its length, a listing of hundreds of windows in one line
+included.
 """
 
 from __future__ import annotations
 
+import bisect
 import logging
 import math
 import os
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import cached_property, partial
+from functools import cached_property, lru_cache, partial
 from typing import Any
 
 from olmoearth_agent.harness.grounding import NumberPool, tokenize
@@ -79,6 +88,10 @@ BAND_SHARE_MAX = 0.10
 RATIO_SLACK = 1.5
 #: The share of a ``must_state`` sentence's key terms the answer must hold.
 MUST_STATE_MIN_OVERLAP = 0.5
+#: The ``must_state`` sentences read per result, and the longest read: the
+#: contract's limits; a longer sentence is scope detail, not a limit to state.
+MUST_STATE_MAX = 3
+MUST_STATE_MAX_WORDS = 25
 
 
 # --------------------------------------------------------------------------
@@ -87,11 +100,16 @@ MUST_STATE_MIN_OVERLAP = 0.5
 
 @dataclass(frozen=True)
 class ToolRecord:
-    """One dispatched tool call: its name, arguments and full result envelope."""
+    """One dispatched tool call: its name, arguments and full result envelope.
+
+    ``spilled_to`` is the file the harness wrote the full result to when it
+    was too large for the model's context (``harness/spill.py``), or None.
+    """
 
     name: str
     arguments: Mapping[str, Any]
     envelope: Any
+    spilled_to: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -112,16 +130,32 @@ class RunEvidence:
 
     ``user_messages`` are the brief and the user's turns of the history,
     never the system prompt, the saved preferences or an assistant message.
+    ``assistant_messages`` are the assistant's earlier turns of the history:
+    on the ``"web"`` surface they were checked when first shown, so a number
+    they state may be restated; on ``"cli"`` they are no source.
     """
 
     tools: list[ToolRecord] = field(default_factory=list)
     user_messages: list[str] = field(default_factory=list)
     surface: str = "cli"
+    assistant_messages: list[str] = field(default_factory=list)
 
     @cached_property
     def pool(self) -> NumberPool:
-        """The numbers of the tool results and the user's messages."""
-        return NumberPool([*(t.envelope for t in self.tools), *self.user_messages])
+        """The numbers of the tool results and the user's messages.
+
+        Also the paths the harness spilled results to (the model is told
+        them), and, on the ``"web"`` surface, the earlier assistant turns.
+        """
+        earlier = self.assistant_messages if self.surface == "web" else []
+        return NumberPool(
+            [
+                *(t.envelope for t in self.tools),
+                *(t.spilled_to for t in self.tools if t.spilled_to),
+                *self.user_messages,
+                *earlier,
+            ]
+        )
 
     def contract(self, key: str) -> Iterator[tuple[ToolRecord, Any]]:
         """Every item of the list a successful tool result holds under ``key``."""
@@ -157,26 +191,66 @@ class RunEvidence:
 
     @cached_property
     def written_files(self) -> list[tuple[str, str]]:
-        """``(key, path)`` of every file path a tool reported and was not given.
+        """``(key, path)`` of every file a tool's result reports writing.
 
-        A path in a tool's result that is not among its call's arguments is
-        one the tool produced (``scores_path``, ``labels_csv_path``); a path
-        it only echoes (``estimate``'s ``design_path``) is an input.
+        A file path in a tool's result is one the tool wrote (``scores_path``,
+        ``labels_csv_path``), unless it echoes an input: the same path under
+        the same key in the call's arguments (``estimate``'s ``design_path``).
+        A key that names an output (``out_path``, ``saved_to``) reports a
+        write even when the caller chose the path, and so does a path under
+        another key than the argument's (``folds_path`` for ``output_path``).
+        The harness's own spill of a result too large for the model's context
+        (``saved_to``) is a written file too.
         """
         out: list[tuple[str, str]] = []
+
+        def add(key: str, value: str) -> None:
+            if all(value != p for _, p in out):
+                out.append((key, value))
+
         for record in self.tools:
+            if record.spilled_to:
+                add("saved_to", record.spilled_to)
             if not record.ok:
                 continue
-            given = {value for _, value in _strings(record.arguments)}
+            given: dict[str, set[str]] = {}
+            for key, value in _strings(record.arguments):
+                given.setdefault(value, set()).add(key)
             for key, value in _strings(record.result):
-                if (
-                    value not in given
-                    and "://" not in value  # a URL (a tile, a page) is no file
-                    and _FILE_RE.search(value)
-                    and all(value != p for _, p in out)
-                ):
-                    out.append((key, value))
+                if "://" in value or not _FILE_RE.search(value):
+                    continue  # a URL (a tile, a page) is no file
+                echoed = key in given.get(value, ()) and not _names_output(key)
+                if not echoed:
+                    add(key, value)
         return out
+
+
+#: Words of a result's key that say the path under it was written.
+_OUTPUT_KEY_WORDS = frozenset(
+    {
+        "out",
+        "output",
+        "outputs",
+        "saved",
+        "save",
+        "written",
+        "write",
+        "wrote",
+        "export",
+        "exported",
+        "exports",
+        "dest",
+        "destination",
+        "spill",
+        "spilled",
+    }
+)
+
+
+def _names_output(key: str) -> bool:
+    """Whether a result's key says its path was written (``out_path``, ``saved_to``)."""
+    words = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", key)
+    return any(w.lower() in _OUTPUT_KEY_WORDS for w in words)
 
 
 def _strings(obj: Any, key: str = "", depth: int = 0) -> Iterator[tuple[str, str]]:
@@ -283,10 +357,13 @@ _EXAMPLE_RE = re.compile(
 #: Where a clause ends: a semicolon, a colon, a bracket, a dash between
 #: spaces, or a contrasting conjunction after a comma.
 _CLAUSE_BREAK_RE = re.compile(
-    r"[;:]|\s[-\u2013\u2014]\s|\u2014"
+    r"[;:]|\s[-–—]\s|—"
     r"|,\s*(?:but|although|though|while|whereas|yet|so|and\s+so)\b|\bbut\b",
     re.I,
 )
+#: Every clause break, overlapping ones included (", but" and its "but"), so
+#: a break found once serves every lookup.
+_CLAUSE_BREAK_AT_RE = re.compile(rf"(?=({_CLAUSE_BREAK_RE.pattern}))", re.I)
 _BRACKETS = {"(": ")", "[": "]"}
 
 
@@ -308,6 +385,189 @@ def _brackets(s: str) -> list[tuple[int, int]]:
     return spans
 
 
+def _blank(text: str, spans: Iterable[tuple[int, int]]) -> str:
+    """``text`` with each ``(open, close)`` span replaced by spaces."""
+    pieces: list[str] = []
+    at = 0
+    for a, b in spans:
+        pieces += [text[at:a], " " * (b + 1 - a)]
+        at = b + 1
+    return "".join(pieces) + text[at:]
+
+
+def _breaks(text: str, lo: int, hi: int) -> tuple[list[int], list[int]]:
+    """The starts and the (sorted) ends of the clause breaks of ``text[lo:hi]``."""
+    found = [(m.start(1), m.end(1)) for m in _CLAUSE_BREAK_AT_RE.finditer(text, lo, hi)]
+    return [a for a, _ in found], sorted(b for _, b in found)
+
+
+class _Parse:
+    """One sentence, read once: its brackets, clause breaks and word spans.
+
+    Every lookup a detector makes per match (the clause around it, a word in
+    that clause, an example cue before it) is a bisection over what is read
+    here, so a sentence is checked in time linear in its length: exp86's
+    answers list hundreds of windows in one line.
+
+    Outside brackets the clauses are read on ``masked``, the sentence with its
+    outermost brackets blanked; inside one, on the sentence itself, bounded
+    by that bracket.
+    """
+
+    def __init__(self, s: str) -> None:
+        self.s = s
+        self.brackets = _brackets(s)
+        self._opens = [a for a, _ in self.brackets]
+        self.masked = _blank(s, self.brackets)
+        self._breaks = _breaks(self.masked, 0, len(s))
+        self._inner: dict[int, tuple[list[int], list[int]]] = {}
+        self._found: dict[tuple[re.Pattern[str], bool], list[tuple[int, int]]] = {}
+        cues = [(m.start(), m.end()) for m in _EXAMPLE_RE.finditer(s)]
+        self._cue_starts = [a for a, _ in cues]
+        self._cue_ends = [b for _, b in cues]
+        self._semicolons = [i for i, ch in enumerate(s) if ch == ";"]
+
+    def bracket_at(self, start: int, end: int) -> tuple[int, int] | None:
+        """The outermost bracket ``(open, close)`` that holds ``s[start:end]``."""
+        i = bisect.bisect_left(self._opens, start) - 1
+        if i >= 0:
+            a, b = self.brackets[i]
+            if start <= b and end <= b + 1:
+                return a, b
+        return None
+
+    def span(self, start: int, end: int) -> tuple[int, int]:
+        """The span of the clause around ``s[start:end]`` (see :func:`_clause_span`)."""
+        inside = self.bracket_at(start, end)
+        if inside:
+            a, b = inside
+            if a not in self._inner:
+                self._inner[a] = _breaks(self.s, a + 1, b)
+            (starts, ends), lo, hi = self._inner[a], a + 1, b
+        else:
+            (starts, ends), lo, hi = self._breaks, 0, len(self.s)
+        i = bisect.bisect_right(ends, start) - 1
+        if i >= 0:
+            lo = max(lo, ends[i])
+        j = bisect.bisect_left(starts, end)
+        if j < len(starts):
+            hi = min(hi, starts[j])
+        return lo, hi
+
+    def region(self, start: int, end: int) -> tuple[int, int, tuple[int, int] | None]:
+        """The clause around ``s[start:end]``, read with the bracket it is in.
+
+        A claim inside a bracket belongs to the clause the bracket elaborates
+        ("dominated by a strip in the north edge (row 0, cols 3-48)"): the
+        span of the clause around that bracket, read on ``masked``, and the
+        bracket, read on the sentence (None outside brackets).
+        """
+        inside = self.bracket_at(start, end)
+        if inside is None:
+            return (*self.span(start, end), None)
+        return (*self.span(inside[0], inside[1] + 1), inside)
+
+    def clause(self, start: int, end: int) -> str:
+        """The clause around ``s[start:end]``, its other brackets blanked."""
+        lo, hi = self.span(start, end)
+        if self.bracket_at(start, end) is None:
+            return self.masked[lo:hi]
+        text = self.s[lo:hi]
+        return _blank(
+            text, [(a, b) for a, b in _brackets(text) if not a <= start - lo <= b]
+        )
+
+    def _spans(self, pattern: re.Pattern[str], masked: bool) -> list[tuple[int, int]]:
+        key = (pattern, masked)
+        if key not in self._found:
+            text = self.masked if masked else self.s
+            self._found[key] = [(m.start(), m.end()) for m in pattern.finditer(text)]
+        return self._found[key]
+
+    def find(
+        self,
+        pattern: re.Pattern[str],
+        lo: int,
+        hi: int,
+        *,
+        masked: bool = True,
+        skip: tuple[int, int] | None = None,
+    ) -> tuple[int, int] | None:
+        """The first match of ``pattern`` within ``[lo, hi)`` that does not
+        overlap ``skip``, read on ``masked`` or on the sentence."""
+        spans = self._spans(pattern, masked)
+        i = bisect.bisect_left(spans, (lo, -1))
+        while i < len(spans) and spans[i][0] < hi:
+            a, b = spans[i]
+            if b <= hi and not (skip and a < skip[1] and b > skip[0]):
+                return a, b
+            i += 1
+        return None
+
+    def in_clause(
+        self, pattern: re.Pattern[str], start: int, end: int, *, own: bool = False
+    ) -> bool:
+        """Whether ``pattern`` matches in the clause around ``s[start:end]``.
+
+        The clause is the bracket's when ``own`` (as :meth:`span` reads it),
+        else the one the bracket elaborates (:meth:`region`); a match that
+        overlaps ``s[start:end]`` does not count.
+        """
+        skip = (start, end)
+        if own:
+            lo, hi = self.span(start, end)
+            masked = self.bracket_at(start, end) is None
+            return self.find(pattern, lo, hi, masked=masked, skip=skip) is not None
+        lo, hi, inside = self.region(start, end)
+        if self.find(pattern, lo, hi, skip=skip):
+            return True
+        # The bracket is blank on ``masked``: read it on the sentence.
+        return bool(
+            inside
+            and self.find(pattern, inside[0], inside[1] + 1, masked=False, skip=skip)
+        )
+
+    def in_clause_or_label(
+        self, pattern: re.Pattern[str], start: int, end: int
+    ) -> bool:
+        """:meth:`in_clause`, or in the label a colon ends just before that clause.
+
+        "**The main change:** water -> not water" states its cue in a label.
+        """
+        if self.in_clause(pattern, start, end):
+            return True
+        at, _, _ = self.region(start, end)
+        at -= 1
+        while at >= 0 and self.masked[at].isspace():
+            at -= 1
+        if at < 0 or self.masked[at] != ":":
+            return False
+        label_lo, _ = self.span(at, at + 1)
+        return self.find(pattern, label_lo, at) is not None
+
+    def negated(self, start: int, end: int) -> bool:
+        """Whether the clause of ``s[start:end]`` negates it (:func:`_negated_at`)."""
+        return self.in_clause(_NEGATION_RE, start, end, own=True)
+
+    def example_before(self, start: int) -> bool:
+        """Whether ``s[start:]`` is part of an example (:func:`_example_before`)."""
+        i = bisect.bisect_right(self._cue_ends, start) - 1
+        if i < 0:
+            return False
+        cue = self._cue_starts[i]
+        j = bisect.bisect_left(self._semicolons, cue)
+        if j < len(self._semicolons) and self._semicolons[j] < start:
+            return False
+        k = bisect.bisect_left(self._opens, cue) - 1
+        return not (k >= 0 and cue < self.brackets[k][1] < start)
+
+
+@lru_cache(maxsize=256)
+def _parse(s: str) -> _Parse:
+    """The sentence ``s`` read once; the checks look it up by its text."""
+    return _Parse(s)
+
+
 def _clause_span(s: str, start: int, end: int) -> tuple[int, int]:
     """The span of the clause of ``s`` around ``s[start:end]``.
 
@@ -315,27 +575,12 @@ def _clause_span(s: str, start: int, end: int) -> tuple[int, int]:
     a claim outside one reads past it ("A looser alpha (e.g. 0.15) would
     certify ..., but ..." is one clause up to the "but").
     """
-    lo, hi = 0, len(s)
-    masked = s
-    for a, b in _brackets(s):
-        if a < start and end <= b + 1:
-            lo, hi = a + 1, b  # the claim is inside this bracket
-        elif not (a < start < b):
-            masked = masked[:a] + " " * (b + 1 - a) + masked[b + 1 :]
-    for m in _CLAUSE_BREAK_RE.finditer(masked, lo, start):
-        lo = m.end()
-    after = _CLAUSE_BREAK_RE.search(masked, end, hi)
-    return lo, after.start() if after else hi
+    return _parse(s).span(start, end)
 
 
 def _clause(s: str, start: int, end: int) -> str:
     """The clause of ``s`` around ``s[start:end]``, its other brackets blanked."""
-    lo, hi = _clause_span(s, start, end)
-    text = s[lo:hi]
-    for a, b in _brackets(text):
-        if not (a <= start - lo < b + 1):
-            text = text[:a] + " " * (b + 1 - a) + text[b + 1 :]
-    return text
+    return _parse(s).clause(start, end)
 
 
 def _negated_at(s: str, m: re.Match[str]) -> bool:
@@ -345,10 +590,7 @@ def _negated_at(s: str, m: re.Match[str]) -> bool:
     a winner") leaves the claim standing, and so does a negation inside the
     claim's own words (the class "not water").
     """
-    lo, _ = _clause_span(s, m.start(), m.end())
-    clause = _clause(s, m.start(), m.end())
-    at, to = m.start() - lo, m.end() - lo
-    return _negated(clause[:at] + " " + clause[to:])
+    return _parse(s).negated(m.start(), m.end())
 
 
 def _example_before(s: str, start: int) -> bool:
@@ -357,13 +599,7 @@ def _example_before(s: str, start: int) -> bool:
     An example runs from its cue to the end of the sentence or a semicolon,
     or to the end of the bracket the cue opens in.
     """
-    cues = list(_EXAMPLE_RE.finditer(s, 0, start))
-    if not cues:
-        return False
-    cue = cues[-1].start()
-    if ";" in s[cue:start]:
-        return False
-    return not any(a < cue < b < start for a, b in _brackets(s))
+    return _parse(s).example_before(start)
 
 
 # --------------------------------------------------------------------------
@@ -407,7 +643,32 @@ _DOMINANT_PAIR_RE = re.compile(
     r"largest|biggest|main|primary|principal)\b",
     re.I,
 )
-_UNDIRECTED = r"\s*(?:vs\.?|versus|↔|<->|<=>|/|\s+and\s+|\s+or\s+)\s*"
+#: A pair ranked after the dominant one ("the second largest change").
+_SECONDARY_RE = re.compile(
+    r"\b(?:second|third|fourth|fifth|next)[\s-]+(?:most\s+)?(?:largest|biggest|"
+    r"main|dominant|primary|common|frequent)\b",
+    re.I,
+)
+#: A sentence about change between the maps, not about what they are made of
+#: ("both maps are dominated by X and Y" is composition).
+_CHANGE_RE = re.compile(
+    r"\b(?:flip\w*|chang\w*|turn(?:s|ed|ing)?|becom\w*|became|convert\w*|"
+    r"switch\w*|transition\w*|contrast\w*|swap\w*)\b|" + _ARROW,
+    re.I,
+)
+_CHANGE_VERB = (
+    r"(?:flip(?:s|ped|ping)?|chang(?:e|es|ed|ing)|turn(?:s|ed|ing)?|"
+    r"switch(?:es|ed|ing)?|convert(?:s|ed|ing)?|shift(?:s|ed|ing)?|go(?:es)?|"
+    r"went|mov(?:e|es|ed|ing))"
+)
+#: What joins two class names into a pair: "X vs Y", "X/Y", "X and Y",
+#: "X -> Y", "X to Y".
+_PAIR_JOIN_RE = re.compile(
+    rf"\s*(?:vs\.?|versus|↔|<->|<=>|/|&|and|or|to|into|\W{{0,3}}{_ARROW}\W{{0,3}})\s*",
+    re.I,
+)
+#: A fact's sentence that says the top count is tied.
+_TIE_RE = re.compile(r"\b(?:tie|ties|tied|equal(?:ly)?)\b", re.I)
 
 
 def _is_int_class(value: Any) -> bool:
@@ -443,17 +704,23 @@ def _name_pattern(name: str, others: Sequence[str]) -> str:
     return rf"{lookbehinds}(?<![A-Za-z0-9])(?:{'|'.join(alts)})(?![A-Za-z0-9])"
 
 
+def _digit(c: int) -> str:
+    """Class ``c`` written as digits: not inside a longer number ("0.5", "10")."""
+    return rf"(?<![\w.,]){c}(?![\w%]|[.,]\d)"
+
+
 def _class_pattern(value: Any, names: Mapping[str, str]) -> str:
-    """A regex for a class as an answer writes it: its name, or ``class 1``."""
+    """A regex for a class as an answer names it: its name, or ``class 1``.
+
+    A bare digit is never read as a class ("2 to 4 rows" is no change from
+    class 2 to class 4); a digit is one after ``class`` or a side's label
+    (``A=1``).
+    """
     alts: list[str] = []
     others = list(names.values())
     if _is_int_class(value):
         c = int(value)
-        # Not inside a longer number: "0.5", "10", "1,570".
-        alts.append(
-            rf"(?:class(?:es)?\s+)?(?:\b[AB]\s*[=:]\s*)?(?<![\w.,]){c}"
-            r"(?![\w%]|[.,]\d)"
-        )
+        alts.append(rf"(?:\bclass(?:es)?\s+#?|\b[AB]\s*[=:]\s*){_digit(c)}")
         name = names.get(str(c))
         if name:
             alts.append(_name_pattern(name, others))
@@ -462,13 +729,59 @@ def _class_pattern(value: Any, names: Mapping[str, str]) -> str:
     return "(?:" + "|".join(alts) + ")" if alts else r"(?!)"
 
 
-def _directed(x: str, y: str) -> re.Pattern[str]:
-    """A change from ``x`` to ``y`` written with an arrow or "from ... to"."""
+@lru_cache(maxsize=256)
+def _directed(
+    src: Any, dst: Any, names: tuple[tuple[str, str], ...]
+) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """A change from class ``src`` to ``dst``: written unambiguously, and as "X to Y".
+
+    The first pattern is an arrow, "from X to Y", a change verb ("X flips to
+    Y") or "X becomes Y"; with "class" once for both ends ("class 1 -> 0").
+    The second is a bare "X to Y" or "X into Y", a change only in a clause
+    that speaks of one.
+    """
+    table = dict(names)
+    x, y = _class_pattern(src, table), _class_pattern(dst, table)
+    alts = [
+        rf"{x}\W{{0,3}}\s*{_ARROW}\s*\W{{0,3}}{y}",
+        rf"\bfrom\s+{x}\s+(?:to|into)\s+{y}",
+        rf"{x}\s+{_CHANGE_VERB}\s+(?:to|into)\s+{y}",
+        rf"{x}\s+(?:becomes?|became|becoming)\s+{y}",
+    ]
+    if _is_int_class(src) and _is_int_class(dst):
+        a, b = _digit(int(src)), _digit(int(dst))
+        alts += [
+            rf"\bclass(?:es)?\s+#?{a}\s*{_ARROW}\s*{b}",
+            rf"\bfrom\s+class(?:es)?\s+#?{a}\s+(?:to|into)\s+{b}",
+        ]
+    return (
+        re.compile("|".join(alts), re.I),
+        re.compile(rf"{x}\s+(?:to|into)\s+{y}", re.I),
+    )
+
+
+def _change(
+    p: _Parse, patterns: tuple[re.Pattern[str], re.Pattern[str]]
+) -> tuple[int, int] | None:
+    """Where the sentence states the change ``patterns`` read (see :func:`_directed`)."""
+    strong, weak = patterns
+    if m := strong.search(p.s):
+        return m.start(), m.end()
+    for m in weak.finditer(p.s):
+        if p.in_clause(_CHANGE_RE, m.start(), m.end()):
+            return m.start(), m.end()
+    return None
+
+
+@lru_cache(maxsize=64)
+def _mention_re(names: tuple[tuple[str, str], ...]) -> re.Pattern[str]:
+    """One regex for every class name, a group ``c<i>`` per class."""
+    others = [n for _, n in names]
     return re.compile(
-        rf"{x}\W{{0,3}}\s*{_ARROW}\s*\W{{0,3}}{y}"
-        rf"|\bfrom\s+{x}\s+(?:to|into)\s+{y}"
-        rf"|{x}\s+(?:flips?|flipped|changes?|changed|turns?|turned|"
-        rf"switch(?:es|ed)?)\s+(?:to|into)\s+{y}",
+        "|".join(
+            rf"(?P<c{i}>{_name_pattern(name, others)})"
+            for i, (_, name) in enumerate(names)
+        ),
         re.I,
     )
 
@@ -478,40 +791,86 @@ def _fact_sentence(record: ToolRecord, fact: Mapping[str, Any]) -> str:
     return f"{record.name}: {sentence}" if isinstance(sentence, str) else ""
 
 
+def _class_key(value: Any, names: Mapping[str, str]) -> str:
+    if _is_int_class(value):
+        return str(int(value))
+    for key, name in names.items():
+        if isinstance(value, str) and name.strip().lower() == value.strip().lower():
+            return key
+    return str(value)
+
+
 def _dominant_change(
     s: str, *, record: ToolRecord, fact: Mapping[str, Any], names: Mapping[str, str]
 ) -> str | None:
+    """The dominant change stated backwards, or another pair named the dominant one.
+
+    Only a sentence about change between the maps is read: an arrow, "from X
+    to Y", a change verb, or a pair in a clause that speaks of flips,
+    changes, transitions or contrasts. What the maps are made of ("both maps
+    are dominated by X and Y") is not a change, and a change placed in a
+    region ("in the south") is not the whole comparison's. A reverse
+    direction tied with the top count (``tied_with_reverse``) is no
+    contradiction, nor is another pair when the fact's sentence says the
+    top count is tied.
+    """
     src, dst = fact.get("from_class"), fact.get("to_class")
-    if src is None or dst is None:
+    if not all(
+        isinstance(c, int | str) and not isinstance(c, bool) for c in (src, dst)
+    ):
         return None
-    local = dict(names)
-    for key, cls in (("from_name", src), ("to_name", dst)):
-        if isinstance(fact.get(key), str) and _is_int_class(cls):
-            local[str(int(cls))] = fact[key]
-    x, y = _class_pattern(src, local), _class_pattern(dst, local)
-    forward, reverse = _directed(x, y).search(s), _directed(y, x).search(s)
+    p = _parse(s)
+    table = tuple(sorted(names.items()))
     about = _fact_sentence(record, fact) or "the tool counts it from map A to map B"
+    forward = _change(p, _directed(src, dst, table))
+    reverse = _change(p, _directed(dst, src, table))
+    n, reverse_n = fact.get("n"), fact.get("reverse_n")
+    tied = fact.get("tied_with_reverse") is True or (
+        isinstance(n, int | float)
+        and isinstance(reverse_n, int | float)
+        and n == reverse_n
+    )
     if (
         reverse
         and not forward
-        and _DOMINANT_RE.search(s)
-        and not _negated_at(s, reverse)
+        and not tied
+        and p.in_clause_or_label(_DOMINANT_RE, *reverse)
+        and not p.negated(*reverse)
+        and not p.example_before(reverse[0])
+        and not p.in_clause(_REGION_RE, *reverse)
     ):
         return f"states the dominant change in the opposite direction; {about}"
-    if forward or reverse or not local or not _DOMINANT_PAIR_RE.search(s):
+    if forward or reverse or not names or not _DOMINANT_PAIR_RE.search(s):
         return None
+    if _TIE_RE.search(str(fact.get("sentence") or "")):
+        return None
+    x, y = _class_pattern(src, names), _class_pattern(dst, names)
     if re.search(x, s, re.I) and re.search(y, s, re.I):
         return None
-    # A class pair named the dominant one that is not the dominant pair, by
-    # name only (bare digits joined by "/" or "and" are too often not classes).
-    others = list(local.values())
-    pats = {k: _name_pattern(v, others) for k, v in local.items()}
-    for a, pa in pats.items():
-        for b, pb in pats.items():
-            if a < b and re.search(
-                rf"{pa}{_UNDIRECTED}{pb}|{pb}{_UNDIRECTED}{pa}", s, re.I
-            ):
-                return f"names {local[a]} / {local[b]} the dominant change; {about}"
+    # Another pair of classes, by name (a bare digit is never a class), named
+    # the dominant change.
+    keys = [key for key, _ in table]
+    top = {_class_key(src, names), _class_key(dst, names)}
+    mentions = [
+        (m.start(), m.end(), keys[int((m.lastgroup or "c0")[1:])])
+        for m in _mention_re(table).finditer(s)
+    ]
+    for (a0, a1, ka), (b0, b1, kb) in zip(mentions, mentions[1:], strict=False):
+        gap = s[a1:b0]
+        if ka == kb or {ka, kb} == top or not _PAIR_JOIN_RE.fullmatch(gap):
+            continue
+        if p.example_before(a0) or p.negated(a0, b1) or p.in_clause(_REGION_RE, a0, b1):
+            continue
+        joined_by_change = bool(re.search(_ARROW, gap)) or gap.strip().lower() in (
+            "to",
+            "into",
+        )
+        if (
+            p.in_clause_or_label(_DOMINANT_PAIR_RE, a0, b1)
+            and not p.in_clause(_SECONDARY_RE, a0, b1)
+            and (joined_by_change or p.in_clause(_CHANGE_RE, a0, b1))
+        ):
+            return f"names {names[ka]} / {names[kb]} the dominant change; {about}"
     return None
 
 
@@ -527,6 +886,22 @@ _MAJORITY_RE = re.compile(
     re.I,
 )
 _MEAN_RE = re.compile(r"\b(?:mean|average|on\s+average|median)\b", re.I)
+#: A share under half: "more confident on 42.2% of them" is the minority.
+_MINORITY_PCT_RE = re.compile(
+    r"(?<![\d.,])(?:[1-4]?\d)(?:\.\d+)?\s*(?:%|percent\b|per\s?cent\b|pct\b)", re.I
+)
+#: A place: "more confident in the north" is about a region, not the side.
+_REGION_RE = re.compile(
+    r"\b(?:along|near|around|beside)\s+(?:the\s+|a\s+|its\s+)?\w"
+    r"|\b(?:in|at|on|inside|towards?|for)\s+"
+    r"(?:the\s+|a\s+|its\s+|some\s+|this\s+|that\s+)?(?:(?:far|extreme)\s+)?"
+    r"(?:north|south|east|west|northern|southern|eastern|western|"
+    r"north-?east|north-?west|south-?east|south-?west|top|bottom|left|right|"
+    r"upper|lower|edges?|cent(?:re|er)|middle|corners?|borders?|margins\s+of|"
+    r"rows?|columns?|cols?|bands?|strips?|regions?|areas?|zones?|parts?|"
+    r"halves|half|clusters?|blocks?|patch(?:es)?|quadrants?)\b",
+    re.I,
+)
 _PATH_WORDS = frozenset(
     {"json", "csv", "tif", "scores", "score", "run", "file", "path", "workspace"}
 )
@@ -585,10 +960,18 @@ def _alias(label: str) -> str:
 def _more_confident_side(
     s: str, *, run: RunEvidence, record: ToolRecord, fact: Mapping[str, Any]
 ) -> str | None:
+    """The side the tool did not find more confident, named the more confident.
+
+    Read as a claim about the whole comparison: a clause that negates it,
+    gives it a minority share ("on 42.2% of them"), rests on a mean without a
+    majority word, or places it in a region ("A is more confident in the
+    north") is not one. With ``side`` "neither" (the two sides more confident
+    on as many windows), either side named is flagged.
+    """
     side = str(fact.get("side", "")).strip().upper()
-    if side not in ("A", "B"):
+    if side not in ("A", "B", "NEITHER"):
         return None
-    other = "B" if side == "A" else "A"
+    p = _parse(s)
     labels = _side_labels(run, record, fact)
     alias = {k: "(?:" + "|".join(_alias(v) for v in labels[k]) + ")" for k in labels}
 
@@ -600,46 +983,109 @@ def _more_confident_side(
             rf"(?:map\s+|side\s+)?{alias[k]}",
         ):
             for m in re.finditer(pattern, s):
-                clause = _clause(s, m.start(), m.end())
-                # Not a negated clause, nor a minority share ("more confident
-                # on 42.2% of them"), nor a mean without a majority word.
+                at = (m.start(), m.end())
+
+                def has(rx: re.Pattern[str], at: tuple[int, int] = at) -> bool:
+                    return p.in_clause(rx, *at, own=True)
+
                 if not (
-                    _negated(clause)
-                    or any(t.percent and t.value < 50 for t in tokenize(clause))
-                    or (_MEAN_RE.search(clause) and not _MAJORITY_RE.search(clause))
+                    has(_NEGATION_RE)
+                    or has(_MINORITY_PCT_RE)
+                    or (has(_MEAN_RE) and not has(_MAJORITY_RE))
+                    or has(_REGION_RE)
                 ):
                     yield m
 
+    about = _fact_sentence(record, fact)
+    if side == "NEITHER":
+        for k in ("A", "B"):
+            if next(claims(k), None) is not None:
+                return f"names side {k} the more confident; " + (
+                    about or "the tool finds neither side more confident"
+                )
+        return None
+    other = "B" if side == "A" else "A"
     if next(claims(side), None) is not None or next(claims(other), None) is None:
         return None
-    about = _fact_sentence(record, fact) or f"the tool finds side {side} more confident"
-    return f"names side {other} the more confident; {about}"
+    return f"names side {other} the more confident; " + (
+        about or f"the tool finds side {side} more confident"
+    )
 
 
-_PLACES = {
-    "top": r"north(?:ern)?(?:\s+(?:edge|rows?|strip|part|side|border|margin|end|"
-    r"half|band))?|top\s+(?:rows?|edge|band|of\s+the\s+(?:grid|map|area|image|"
-    r"scene))|upper\s+(?:rows?|edge|part|half|band)|first\s+rows",
-    "bottom": r"south(?:ern)?(?:\s+(?:edge|rows?|strip|part|side|border|margin|end|"
-    r"half|band))?|bottom\s+(?:rows?|edge|band|of\s+the\s+(?:grid|map|area|image|"
-    r"scene))|lower\s+(?:rows?|edge|part|half|band)|last\s+rows",
-    "left": r"west(?:ern)?\s+(?:edge|columns?|strip|part|side|border|margin|half|"
-    r"band)|left\s+(?:edge|columns?|side|band)",
-    "right": r"east(?:ern)?\s+(?:edge|columns?|strip|part|side|border|margin|half|"
-    r"band)|right\s+(?:edge|columns?|side|band)",
+#: A place a claim may put the differences, by the band of four it names:
+#: ``(axis, band)``. A half ("the north", "the northern part") is none.
+_PLACES: dict[str, tuple[str, int, str]] = {
+    "top": (
+        "rows",
+        0,
+        r"north(?:ern|ernmost|most)?\s+(?:edge|rows?|strip|border|margin|end|band|"
+        r"boundary)|top\s+(?:rows?|edge|band|strip|of\s+the\s+(?:grid|map|area|"
+        r"image|scene))|upper\s+(?:rows?|edge|band|strip)|first\s+(?:few\s+)?rows",
+    ),
+    "bottom": (
+        "rows",
+        3,
+        r"south(?:ern|ernmost|most)?\s+(?:edge|rows?|strip|border|margin|end|band|"
+        r"boundary)|bottom\s+(?:rows?|edge|band|strip|of\s+the\s+(?:grid|map|area|"
+        r"image|scene))|lower\s+(?:rows?|edge|band|strip)|last\s+(?:few\s+)?rows",
+    ),
+    "left": (
+        "cols",
+        0,
+        r"west(?:ern|ernmost|most)?\s+(?:edge|columns?|cols|strip|border|margin|"
+        r"band|boundary)|left\s+(?:edge|columns?|cols|band|strip)",
+    ),
+    "right": (
+        "cols",
+        3,
+        r"east(?:ern|ernmost|most)?\s+(?:edge|columns?|cols|strip|border|margin|"
+        r"band|boundary)|right\s+(?:edge|columns?|cols|band|strip)",
+    ),
 }
-#: A claim that most of the differences are somewhere (not "a cluster at").
-_CONCENTRATION_RE = re.compile(
-    r"\b(?:mostly|most\s+of|most\s+(?:[\w-]+\s+){0,2}?(?:differ\w*|changes?|flips?|"
-    r"windows|disagree\w*|cells|pixels)|most\s+[\w-]+\s+(?:zone|area|region|part|"
-    r"strip|block|band|cluster)|concentrat\w*|dominat\w*|mainly|largely|primarily|"
-    r"majority|bulk|predominant\w*)\b",
+_PLACE_RES = {
+    band: re.compile(rf"\b(?:{pattern})\b", re.I)
+    for band, (_, _, pattern) in _PLACES.items()
+}
+#: A clause that places the bulk of the differences: "mostly", "most of",
+#: "most differing windows", "concentrated", "clustered", "dominated", a
+#: strip, "along". "The most suspect" (a superlative) is none.
+_BULK_RE = re.compile(
+    r"\b(?:mostly|(?<!the\s)most\s+of|(?<!the\s)most\s+(?:[\w-]+\s+){0,2}?"
+    r"(?:differ\w*|changes?|flips?|windows|disagree\w*|cells|pixels)|"
+    r"most\s+[\w-]+\s+(?:zone|area|region|part|strip|block|band)|concentrat\w*|"
+    r"clustered|dominat\w*|mainly|largely|primarily|majority|bulk|"
+    r"predominant\w*|strip|along)\b",
     re.I,
+)
+#: A clause about a minor part: "a small cluster", "only", "under 50%".
+_MINOR_RE = re.compile(
+    r"\b(?:only|few|small|tight|single|isolated|occasional|minor|handful)\b"
+    r"|\b(?:a|one)\s+(?:cluster|group|patch|block)\b"
+    r"|(?<![\d.,])(?:[1-4]?\d)(?:\.\d+)?\s*%",
+    re.I,
+)
+#: A count of some of them: "51 of the 3,807", "51 of them".
+_COUNT_OF_RE = re.compile(
+    r"(?<![\d.,])(?P<n>\d[\d,]*)\s+of\s+(?:the\s+|all\s+)?"
+    r"(?:(?P<m>\d[\d,]*)(?![\d.,]\d)|them\b|these\b|those\b)",
+    re.I,
+)
+#: A clause about one window ("the highest-ranked window is at row 12").
+_ONE_WINDOW_RE = re.compile(r"\bwindow\b", re.I)
+_MANY_RE = re.compile(
+    r"\b(?:windows|differences|flips|changes|disagreements|cells|pixels)\b", re.I
 )
 _ROWS_RE = re.compile(
-    r"\brows?\s*~?(?P<r0>\d+)(?:\s*(?:[-–—]|to|and)\s*~?(?P<r1>\d+))?" r"(?!\d|[.,]\d)",
+    r"\brows?\s*~?(?P<r0>\d+)(?:\s*(?:[-–—]|to|and)\s*~?(?P<r1>\d+))?"
+    r"(?![\d%]|[.,]\d|\s*%|\s*(?:[-–—]|to)\s*~?\d)",
     re.I,
 )
+#: A window's coordinates: "row 12, col 40", not a strip ("row 0, cols 3-48").
+_ONE_COLUMN_RE = re.compile(
+    r"\s*,?\s*(?:col(?:umn)?|c)\s*~?\d+(?!\d|\s*(?:[-–—]|to)\s*~?\d)", re.I
+)
+_LEGEND_BEFORE_RE = re.compile(r"[=:]\s*$")
+_LEGEND_AFTER_RE = re.compile(r"\s*=")
 
 
 def _as_grid(value: Any) -> tuple[int, int] | None:
@@ -652,62 +1098,94 @@ def _as_grid(value: Any) -> tuple[int, int] | None:
     return None
 
 
-def _grid(
-    run: RunEvidence, record: ToolRecord, fact: Mapping[str, Any]
-) -> tuple[int, int] | None:
-    """The window grid ``(rows, cols)`` of the fact, its result, or the run.
+def _minor_count(p: _Parse, start: int, end: int, n_differing: Any) -> bool:
+    """Whether the clause counts under half of the differing windows ("51 of them")."""
+    lo, hi, inside = p.region(start, end)
+    spans = [(lo, hi, True)] + ([(inside[0], inside[1] + 1, False)] if inside else [])
+    for a, b, masked in spans:
+        text = p.masked if masked else p.s
+        at = a
+        while found := p.find(_COUNT_OF_RE, at, b, masked=masked):
+            m = _COUNT_OF_RE.match(text, found[0])
+            at = found[1]
+            if m is None:
+                continue
+            n = float(m.group("n").replace(",", ""))
+            total = n_differing if isinstance(n_differing, int | float) else None
+            if total is None and m.group("m"):
+                total = float(m.group("m").replace(",", ""))
+            if total and n < 0.5 * total:
+                return True
+    return False
 
-    From the run, only a grid whose size is the result's ``n_windows`` (or,
-    without one, the run's only grid).
+
+def _bulk_place(p: _Parse, start: int, end: int, n_differing: Any = None) -> bool:
+    """Whether ``s[start:end]``, a place, is where a clause puts the bulk.
+
+    The clause (the one a bracket elaborates, for a place in brackets) must
+    place the bulk (:data:`_BULK_RE`), and not be a negation, an example, a
+    legend ("row 0 = north"), a minor part (a count under half of the
+    ``n_differing`` windows among them) or one window.
     """
-    result = record.result if isinstance(record.result, Mapping) else {}
-    for value in (fact.get("grid"), result.get("grid")):
-        if grid := _as_grid(value):
-            return grid
-    grids = {
-        grid
-        for other in run.tools
-        if isinstance(other.result, Mapping)
-        and (grid := _as_grid(other.result.get("grid")))
-    }
-    n = result.get("n_windows")
-    if isinstance(n, int):
-        grids = {g for g in grids if g[0] * g[1] == n}
-    return grids.pop() if len(grids) == 1 else None
+    s = p.s
+    if (
+        p.example_before(start)
+        or p.negated(start, end)
+        or _LEGEND_BEFORE_RE.search(s[max(0, start - 3) : start])
+        or _LEGEND_AFTER_RE.match(s, end)
+    ):
+        return False
+    if not p.in_clause(_BULK_RE, start, end) or p.in_clause(_MINOR_RE, start, end):
+        return False
+    if _minor_count(p, start, end, n_differing):
+        return False
+    return not (
+        p.in_clause(_ONE_WINDOW_RE, start, end)
+        and not p.in_clause(_MANY_RE, start, end)
+    )
 
 
 def _concentration(
     s: str, *, run: RunEvidence, record: ToolRecord, fact: Mapping[str, Any]
 ) -> str | None:
-    if not _CONCENTRATION_RE.search(s):
-        return None
-    about = (
-        _fact_sentence(record, fact) or f"the tool finds them at {fact.get('where')}"
-    )
-    for band, pattern in _PLACES.items():
-        share = fact.get(f"{band}_band_share")
-        if not isinstance(share, int | float) or share >= BAND_SHARE_MAX:
-            continue
-        for m in re.finditer(rf"\b(?:{pattern})\b", s, re.I):
-            if not _example_before(s, m.start()) and not _negated_at(s, m):
-                return (
-                    f"places the differences at the {band} ({m.group()}), which "
-                    f"holds {share:.1%} of them; {about}"
-                )
+    """A clause that puts most differences where the ``concentration`` fact says
+    they are not.
+
+    At the north edge or the top rows when the northmost band holds under
+    :data:`BAND_SHARE_MAX` of them (``top_band_share``); at another edge when
+    the band holding the most (``max_band``) is another band on that axis;
+    in rows too few to hold half of them (``grid`` and ``n_differing``). A
+    window's own coordinates ("the highest-ranked window is at row 12, col
+    40") are no such claim.
+    """
+    p = _parse(s)
+    about = _fact_sentence(record, fact) or "the tool counts where they are"
+    top = fact.get("top_band_share")
+    band_fact = fact.get("max_band")
+    max_band: Mapping[str, Any] = band_fact if isinstance(band_fact, Mapping) else {}
+    for place, (axis, band, _) in _PLACES.items():
+        if place == "top":
+            if not isinstance(top, int | float) or top >= BAND_SHARE_MAX:
+                continue
+            why = f"where the northmost band holds {top:.1%} of them"
+        else:
+            if max_band.get("axis") != axis or max_band.get("band") in (band, None):
+                continue
+            where = max_band.get("of_grid") or f"band {max_band.get('band')}"
+            why = f"while most of them are in the {axis} {where}"
+        for m in _PLACE_RES[place].finditer(s):
+            if _bulk_place(p, m.start(), m.end(), fact.get("n_differing")):
+                return f"places the differences at the {place} ({m.group()}), {why}; {about}"
     # A strip of rows too narrow to hold most of the differing windows.
-    grid = _grid(run, record, fact)
-    result = record.result if isinstance(record.result, Mapping) else {}
-    n = fact.get("n_differing", result.get("n_differing"))
+    grid = _as_grid(fact.get("grid"))
+    n = fact.get("n_differing")
     if not grid or not isinstance(n, int | float) or n <= 0:
         return None
     strips = [
         m
         for m in _ROWS_RE.finditer(s)
-        if not (
-            _example_before(s, m.start())
-            or _negated_at(s, m)
-            or re.match(r"\s*=", s[m.end() :])  # a legend: "row 0 = north"
-        )
+        if not _ONE_COLUMN_RE.match(s, m.end())
+        and _bulk_place(p, m.start(), m.end(), n)
     ]
     if not strips:
         return None
@@ -725,9 +1203,26 @@ def _concentration(
     return None
 
 
-_MAGNITUDE_CONTEXT_RE = re.compile(
-    r"\b(?:margin\w*|confiden\w*|uncertain\w*|certain\w*|decisive\w*|median|"
-    r"typical\w*|sure)\b",
+_CONFIDENCE_RE = re.compile(
+    r"\b(?:margin\w*|confiden\w*|uncertain\w*|certain\w*|decisive\w*|sure|"
+    r"separation)\b",
+    re.I,
+)
+#: A comparison with the typical window: "than typical windows", "below the
+#: median".
+_VERSUS_TYPICAL_RE = re.compile(
+    r"\b(?:than|below|under|beneath|above|vs\.?|versus|relative\s+to|"
+    r"compared\s+(?:to|with))\s+(?:the\s+|a\s+|an\s+|all\s+)?(?:median|typical|"
+    r"average|usual|ordinary|other|remaining|rest)\b",
+    re.I,
+)
+#: Right after a magnitude, a comparison of confidence: "20x less confident",
+#: "orders of magnitude more uncertain", "10x below the median".
+_RATIO_OF_CONFIDENCE_RE = re.compile(
+    r"\s*(?:(?:more|less|smaller|lower|larger|higher|greater|further|closer)\s+"
+    r"(?:[\w-]+\s+){0,2}?(?:confiden\w*|certain\w*|uncertain\w*|margins?|"
+    r"decisive\w*|sure)|(?:below|under|beneath|above|(?:smaller|lower|larger|"
+    r"higher)\s+than)\s+(?:the\s+|a\s+)?(?:median|typical|average|usual))",
     re.I,
 )
 _ORDERS_RE = re.compile(
@@ -743,29 +1238,47 @@ _TIMES_RE = re.compile(
 
 
 def _margin_ratio(s: str, *, record: ToolRecord, fact: Mapping[str, Any]) -> str | None:
-    low, high = fact.get("low"), fact.get("high")
-    if not isinstance(low, int | float) or not isinstance(high, int | float):
+    """A magnitude of the review windows' confidence against the typical
+    window's outside the tool's ratio.
+
+    Only a magnitude that compares confidence ("20x less confident", "orders
+    of magnitude more uncertain than typical windows") is read, never any
+    "N times" of a sentence that mentions confidence. The range is the
+    listed windows' and the whole review set's together.
+    """
+    bounds = [
+        v
+        for k in ("listed_low", "listed_high", "review_set_low", "review_set_high")
+        if isinstance(v := fact.get(k), int | float) and not isinstance(v, bool)
+    ]
+    if not bounds:
         return None
-    if not _MAGNITUDE_CONTEXT_RE.search(s):
-        return None
-    stated: list[tuple[float, float, str]] = []
+    low, high = min(bounds), max(bounds)
+    p = _parse(s)
+    stated: list[tuple[float, float, re.Match[str]]] = []
     for m in _ORDERS_RE.finditer(s):
         if m.group("bare"):
-            stated.append((100.0, math.inf, m.group()))
+            stated.append((100.0, math.inf, m))
         elif m.group("one"):
-            stated.append((10.0, 10.0, m.group()))
+            stated.append((10.0, 10.0, m))
         else:
             o0 = float(m.group("o0"))
-            stated.append((10**o0, 10 ** float(m.group("o1") or o0), m.group()))
+            stated.append((10**o0, 10 ** float(m.group("o1") or o0), m))
     for m in _TIMES_RE.finditer(s):
         t0 = float(m.group("t0"))
-        stated.append((t0, float(m.group("t1") or t0), m.group()))
-    for lo, hi, text in stated:
+        stated.append((t0, float(m.group("t1") or t0), m))
+    for lo, hi, m in stated:
+        about_confidence = _RATIO_OF_CONFIDENCE_RE.match(s, m.end()) or (
+            p.in_clause(_CONFIDENCE_RE, m.start(), m.end(), own=True)
+            and p.in_clause(_VERSUS_TYPICAL_RE, m.start(), m.end(), own=True)
+        )
+        if not about_confidence or p.negated(m.start(), m.end()):
+            continue
         if lo > high * RATIO_SLACK or hi < low / RATIO_SLACK:
             versus = fact.get("versus", "median")
             return (
-                f"states a magnitude of {text.strip()}; the tool's ratio to the "
-                f"{versus} is {low:g} to {high:g}"
+                f"states a magnitude of {m.group().strip()}; the tool's ratio to "
+                f"the {versus} is {low:g} to {high:g}"
             )
     return None
 
@@ -810,10 +1323,10 @@ def check_direction(answer: str, run: RunEvidence) -> list[Violation]:
 
     A dominant change stated in the opposite direction (or another class
     pair named the dominant one), the other side named the more confident, a
-    place of concentration where the facts put under
-    :data:`BAND_SHARE_MAX` of the differences (or a strip of rows too narrow
-    to hold most of them), a magnitude outside a ``margin_ratio``'s range,
-    and a count of unused labels other than the tool's.
+    place of concentration the bands contradict (or a strip of rows too
+    narrow to hold most of the differences), a magnitude of confidence
+    outside a ``margin_ratio``'s range, and a count of unused labels other
+    than the tool's.
     """
     rules: list[Callable[[str], str | None]] = []
     for record, fact in run.facts("dominant_change"):
@@ -886,10 +1399,17 @@ _LIST_FILE_WORDS = frozenset(
         "sample",
     }
 )
+#: A claim that items are listed above or below: "listed above", "the table
+#: below", "shown the first few above", "the windows shown below". "As shown
+#: above" or "see above" points at prose, and is none.
 _LISTED_RE = re.compile(
-    r"\b(?:listed|shown|given|included|displayed|see)\s+(?:only\s+)?"
-    r"(?:the\s+first\s+(?:few|\w+)\s+|in\s+the\s+(?:list|table)\s+)?"
+    r"\b(?:listed|included|enumerated|tabulated)\s+(?:only\s+)?"
+    r"(?:the\s+first\s+(?:few|\w+)\s+(?:\w+\s+)?|in\s+the\s+(?:list|table)\s+)?"
     r"(?:above|below)\b"
+    r"|\b(?:shown|given|displayed)\s+(?:only\s+)?(?:the\s+first\s+(?:few|\w+)\s+"
+    r"(?:\w+\s+)?|in\s+the\s+(?:list|table)\s+)(?:above|below)\b"
+    r"|\b(?:windows|rows|items|entries|pairs|labels|cells|ones)\s+(?:are\s+|is\s+)?"
+    r"(?:shown|given|displayed)\s+(?:above|below)\b"
     r"|\b(?:the\s+)?(?:list|table)\s+(?:above|below)\b",
     re.I,
 )
@@ -966,13 +1486,23 @@ def _save_violation(s: str, text: str, run: RunEvidence) -> str | None:
     return f"says something was saved; no tool of this run reported writing {what}"
 
 
-def _listing_violation(s: str, lines: list[str], line_no: int) -> str | None:
+def _listing_violation(
+    s: str, lines: list[str], line_no: int, surface: str
+) -> str | None:
+    """A claim that items are listed, against the list items of the answer.
+
+    On the ``"web"`` surface the tool results are shown above the answer, so
+    a claim of items "above" may point at them and is not checked; a claim of
+    items "below", or of the first N listed with no side named, still is.
+    """
     first = _FIRST_N_RE.search(s)
     claim = first or _LISTED_RE.search(s)
     if claim is None or _negated_at(s, claim) or re.search(r"\btool", s, re.I):
         return None  # "listed in the tool output" is about the tool, not the answer
     words = claim.group().lower()
     where = "above" if "above" in words else "below" if "below" in words else ""
+    if surface == "web" and where == "above":
+        return None
     above, below = lines[:line_no], lines[line_no + 1 :]
     have = _items({"above": above, "below": below}.get(where, above + below))
     need = int(first.group("n")) if first else 1
@@ -991,15 +1521,17 @@ def check_actions(answer: str, run: RunEvidence) -> list[Violation]:
     list (by its key or name, or a CSV). A claim that items are listed above
     or below, or that the first N are, is backed by that many list items in
     the answer on that side of it; on the ``"web"`` surface, where tool
-    results are shown beside the answer, it is not checked.
+    results are shown above the answer, a claim of items above is not
+    checked.
     """
     out: list[Violation] = []
     lines = answer.split("\n")
     for sent in sentences(answer):
         s = _plain(sent.text)
         detail = _save_violation(s, sent.text, run)
-        if detail is None and run.surface == "cli":
-            detail = _listing_violation(s, lines, answer.count("\n", 0, sent.start))
+        if detail is None:
+            line_no = answer.count("\n", 0, sent.start)
+            detail = _listing_violation(s, lines, line_no, run.surface)
         if detail:
             out.append({"check": ACTIONS, "text": sent.text, "detail": detail})
     return out
@@ -1030,6 +1562,13 @@ def _unnegated(pattern: str, s: str, flags: int = re.I) -> Iterator[re.Match[str
             yield m
 
 
+#: An alpha as written: "alpha = 0.05", "α of 5%", "alpha (e.g. 0.15)".
+_ALPHA_VALUE = (
+    rf"{_ALPHA_WORD}\s*(?:\(\s*(?:e\.g\.|say)\s*)?(?:=|of|at|to|:|≈|is)?\s*"
+    r"(?P<v>0?\.\d+|\d+(?:\.\d+)?\s*%)"
+)
+
+
 def _alpha_used(record: ToolRecord) -> float | None:
     for source in (record.arguments, record.result):
         if isinstance(source, Mapping) and isinstance(source.get("alpha"), int | float):
@@ -1037,29 +1576,80 @@ def _alpha_used(record: ToolRecord) -> float | None:
     return None
 
 
-def _post_hoc_alpha(s: str, record: ToolRecord) -> bool:
+def _alpha_value(raw: str) -> tuple[float, float]:
+    """An alpha as written, and half a unit of its last decimal."""
+    raw = raw.replace(" ", "")
+    percent = raw.endswith("%")
+    digits = raw[:-1] if percent else raw
+    tol = 0.5 * 10.0 ** -len(digits.partition(".")[2])
+    return (float(digits) / 100, tol / 100) if percent else (float(digits), tol)
+
+
+def _alphas_asked(run: RunEvidence) -> list[float]:
+    """The alphas the user's messages name ("certify at alpha 0.1")."""
+    return [
+        _alpha_value(m.group("v"))[0]
+        for text in run.user_messages
+        for m in re.finditer(_ALPHA_VALUE, text, re.I)
+    ]
+
+
+#: A sentence about an alpha split over levels (Bonferroni's per-level alpha).
+_PER_LEVEL_RE = re.compile(
+    r"\b(?:bonferroni|holm|per[\s-]level|each|per|split|divided|levels?)\b|/", re.I
+)
+
+
+def _allowed_alpha(
+    value: float, tol: float, alphas: Iterable[float], per_level: bool
+) -> bool:
+    """Whether ``value`` is an alpha in force, or, ``per_level``, one split over k.
+
+    ``alpha / k`` for a whole k of at least 2, at the precision written, in a
+    sentence about levels, is the per-level alpha of a Bonferroni rule (0.01
+    for 0.05 over 5 levels): an explanation of the rule in force, not
+    another alpha.
+    """
+    for alpha in alphas:
+        if abs(value - alpha) <= tol + 1e-12:
+            return True
+        if per_level and 0 < value < alpha:
+            k = round(alpha / value)
+            if any(
+                j >= 2 and abs(alpha / j - value) <= tol + 1e-12
+                for j in (k - 1, k, k + 1)
+            ):
+                return True
+    return False
+
+
+def _post_hoc_alpha(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """Another alpha offered or applied after the bounds were seen.
+
+    The alpha the tool ran at and the alphas the user asked for are allowed,
+    and so is either split over k levels (a Bonferroni explanation); an
+    alpha said to be fixed in advance is the rule, not a choice.
+    """
     if not (_OFFER_RE.search(s) or re.search(r"\bcertif\w*", s, re.I)):
         return False
     used = _alpha_used(record)
+    alphas = ([] if used is None else [used]) + _alphas_asked(run)
     for m in _unnegated(
         r"\b(?:looser|different|another|higher|larger|relaxed|less\s+strict|laxer|"
-        rf"other|new|bigger)\s+{_ALPHA_WORD}"
-        rf"|{_ALPHA_WORD}\s*(?:\(\s*(?:e\.g\.|say)\s*)?(?:=|of|at|to|:|≈)?\s*"
-        r"(?P<v>0?\.\d+|\d+(?:\.\d+)?\s*%)",
+        rf"other|new|bigger)\s+{_ALPHA_WORD}|{_ALPHA_VALUE}",
         s,
     ):
         if _IN_ADVANCE_RE.search(_clause(s, m.start(), m.end())):
             continue
-        if m.group("v"):
-            raw = m.group("v").replace(" ", "")
-            value = float(raw[:-1]) / 100 if raw.endswith("%") else float(raw)
-            if used is not None and abs(value - used) < 1e-9:
-                continue
+        if m.group("v") and _allowed_alpha(
+            *_alpha_value(m.group("v")), alphas, bool(_PER_LEVEL_RE.search(s))
+        ):
+            continue
         return True
     return False
 
 
-def _rule_switch(s: str, record: ToolRecord) -> bool:
+def _rule_switch(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     rules = (
         r"(?:bonferroni|holm|fixed[\s-]sequence|prefix|another\s+rule|"
         r"a\s+different\s+rule|other\s+rules?|stricter\s+rule|looser\s+rule)"
@@ -1073,13 +1663,25 @@ def _rule_switch(s: str, record: ToolRecord) -> bool:
     )
 
 
-def _certify_nonrandom(s: str, record: ToolRecord) -> bool:
-    if re.search(r"\brandom\b", s, re.I) or not _OFFER_RE.search(s):
+#: Advice to draw a probability sample, which is what a certified zone needs.
+_PROBABILITY_SAMPLE_RE = re.compile(
+    r"\brandom(?:ly)?\b|\bprobability[\s-]+(?:based\s+)?(?:samples?|sampling|design)\b",
+    re.I,
+)
+
+
+def _certify_nonrandom(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """An offer to certify a zone from labels of a design that is not random.
+
+    Advice to draw a random or probability sample ("a simple random
+    sample", "a probability sample") for it is the correct advice.
+    """
+    if _PROBABILITY_SAMPLE_RE.search(s) or not _OFFER_RE.search(s):
         return False
     return any(_unnegated(r"\bcertif\w*", s))
 
 
-def _error_rate_without_labels(s: str, record: ToolRecord) -> bool:
+def _error_rate_without_labels(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     if _negated(s) or re.search(
         r"\b(?:would|if|once|after|need|needs|requires?|estimate|overstate\w*|"
         r"can|could|will|label\w*)\b",
@@ -1103,7 +1705,7 @@ def _error_rate_without_labels(s: str, record: ToolRecord) -> bool:
     )
 
 
-def _error_rate_regression(s: str, record: ToolRecord) -> bool:
+def _error_rate_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     if re.search(r"\bthreshold", s, re.I) or not re.search(
         r"\b(?:i\s+can|i'll|i\s+will|then|would|could|to\s+estimate|estimate|"
         r"score|compute|show|run|measure)\b",
@@ -1121,7 +1723,7 @@ def _error_rate_regression(s: str, record: ToolRecord) -> bool:
     )
 
 
-def _subset_sufficient(s: str, record: ToolRecord) -> bool:
+def _subset_sufficient(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     return any(
         _unnegated(
             r"\b(?:first|top|only|just)\s+(?:the\s+)?(?:\d+|few|some|handful)\b"
@@ -1140,7 +1742,7 @@ _WINNER_SUBJECT = (
 )
 
 
-def _winner(s: str, record: ToolRecord) -> bool:
+def _winner(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     if _negated(s) or re.search(
         r"\b(?:if|would|once|after|with\s+labels|only|rate|often|half|times|"
         r"whether|which)\b|%",
@@ -1159,7 +1761,7 @@ def _winner(s: str, record: ToolRecord) -> bool:
     )
 
 
-def _combined_statistic(s: str, record: ToolRecord) -> bool:
+def _combined_statistic(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     if not re.search(r"\d", s) or re.search(
         r"\b(?:meaningful|left\s+out|omitted)\b", s, re.I
     ):
@@ -1173,7 +1775,19 @@ def _combined_statistic(s: str, record: ToolRecord) -> bool:
     )
 
 
-def _another_date(s: str, record: ToolRecord) -> bool:
+#: "the earlier map", "the later image": map A or B, not another date.
+_THE_MAPS_BEFORE_RE = re.compile(
+    r"\b(?:the|this|that|each|either|both|its|their|same|your|these|those)\s+$",
+    re.I,
+)
+
+
+def _another_date(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """Another date offered as what settles which map is right.
+
+    "The earlier map" or "the later image" names map A or B, not a new date;
+    a reference at the maps' own dates is what does settle it.
+    """
     if not re.search(
         r"\b(?:settle\w*|check\w*|trajectory|show|tell|resolve\w*|decide|which|"
         r"verdict|confirm\w*|reversal\w*|separate|disambiguat\w*)\b",
@@ -1190,8 +1804,12 @@ def _another_date(s: str, record: ToolRecord) -> bool:
             s[m.end() :],
             re.I,
         )
+        and not (
+            m.group(1).lower() in ("later", "earlier")
+            and _THE_MAPS_BEFORE_RE.search(s[max(0, m.start() - 12) : m.start()])
+        )
         for m in _unnegated(
-            r"\b(?:third|another|additional|extra|later|earlier|intermediate)\s+"
+            r"\b(third|another|additional|extra|later|earlier|intermediate)\s+"
             r"(?:dated\s+)?(?:date|map|image|acquisition|scene|time\s*(?:point|step)|"
             r"snapshot|epoch)s?\b",
             s,
@@ -1199,8 +1817,12 @@ def _another_date(s: str, record: ToolRecord) -> bool:
     )
 
 
-#: A detector per ``forbidden_claims`` id: does one sentence make that claim?
-FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord], bool]] = {
+#: A detector per ``forbidden_claims`` id: does one sentence make that claim
+#: about the result of that tool, in this run? An id without one (the
+#: contract's ``simple_random_interval_for_stratified_design``: the package's
+#: own interval is a Wilson interval on the design's effective sample size,
+#: which no wording tells from a naive one) is ignored.
+FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] = {
     "post_hoc_alpha": _post_hoc_alpha,
     "rule_switch_after_failure": _rule_switch,
     "certify_from_nonrandom_design": _certify_nonrandom,
@@ -1229,7 +1851,7 @@ def check_forbidden_claims(answer: str, run: RunEvidence) -> list[Violation]:
     for sent in sentences(answer) if wanted else []:
         s = _plain(sent.text)
         for record, claim_id, why in wanted:
-            if FORBIDDEN_DETECTORS[claim_id](s, record):
+            if FORBIDDEN_DETECTORS[claim_id](s, record, run):
                 detail = f"{claim_id} ({record.name})" + (f": {why}" if why else "")
                 out.append({"check": FORBIDDEN, "text": sent.text, "detail": detail})
                 break
@@ -1273,14 +1895,29 @@ def check_must_state(answer: str, run: RunEvidence) -> list[Violation]:
 
     Conveyed means the answer holds at least :data:`MUST_STATE_MIN_OVERLAP`
     of the sentence's key terms (words other than stopwords, compared on
-    their first five letters, and its numbers).
+    their first five letters, and its numbers). Per result, the first
+    :data:`MUST_STATE_MAX` sentences are read, and one longer than
+    :data:`MUST_STATE_MAX_WORDS` words is not (the contract keeps scope detail
+    out of ``must_state``; it is logged).
     """
     out: list[Violation] = []
     have = _terms(answer)
     seen: set[str] = set()
+    read: dict[int, int] = {}
     for record, item in run.contract("must_state"):
         sentence = item.get("sentence") if isinstance(item, Mapping) else item
-        if not isinstance(sentence, str) or not sentence.strip() or sentence in seen:
+        if not isinstance(sentence, str) or not sentence.strip():
+            continue
+        if len(sentence.split()) > MUST_STATE_MAX_WORDS:
+            logger.warning(
+                "%s: a must_state sentence of %d words is not checked (at most %d)",
+                record.name,
+                len(sentence.split()),
+                MUST_STATE_MAX_WORDS,
+            )
+            continue
+        read[id(record)] = read.get(id(record), 0) + 1
+        if read[id(record)] > MUST_STATE_MAX or sentence in seen:
             continue
         seen.add(sentence)
         terms = _terms(sentence)
