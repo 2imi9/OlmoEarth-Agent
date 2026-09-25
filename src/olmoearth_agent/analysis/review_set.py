@@ -567,7 +567,6 @@ def review_set(
             row["boundary_neighbours"] = bnd[i]
         rows.append(row)
 
-    ordered_margins = sorted(marg)
     out: dict[str, Any] = {
         "n_windows": n,
         "n_classes": len(matrix[0]),
@@ -580,12 +579,7 @@ def review_set(
         "score_type_detected": detected,
         "review": rows,
         "n_review_listed": len(rows),
-        "margin_summary": {
-            "min": round(ordered_margins[0], 6),
-            "median": round(ordered_margins[n // 2], 6),
-            "max": round(ordered_margins[-1], 6),
-            "cut_at_budget": round(sorted(marg)[min(k, n) - 1], 6),
-        },
+        "margin_summary": margin_summary(marg, ranked, k, len(rows)),
         "evidence": EVIDENCE,
         "caveats": list(EVIDENCE_LIMITS),
     }
@@ -610,6 +604,70 @@ def review_set(
             "when you have them."
         ]
     return out
+
+
+def _margin_range(values: list[float]) -> list[float] | None:
+    """``[lowest, highest]`` of some margins, rounded, or ``None`` for none."""
+    return [round(min(values), 6), round(max(values), 6)] if values else None
+
+
+def margin_summary(
+    marg: Sequence[float], ranked: Sequence[int], k: int, n_listed: int
+) -> dict[str, Any]:
+    """The margins of all windows, of the listed ones and of the rest, labelled.
+
+    exp86 round 2 (brief 2, run 3) read the summary's median as the lower end
+    of the unlisted windows' range ("scores ranged from ~0.96 to ~0.99 ...
+    (median margin 0.965)") where the lowest unlisted margin was 0.786. Every
+    field now says what it is, and the unlisted windows get their own range.
+
+    Parameters
+    ----------
+    marg
+        Every window's margin.
+    ranked
+        Window indices in review order.
+    k
+        Windows in the review set at the budget.
+    n_listed
+        Review rows listed inline (the first ``n_listed`` of ``ranked``).
+
+    Returns
+    -------
+    dict
+        ``n_windows``, ``lowest_margin``, ``median_margin``,
+        ``highest_margin``, ``margin_at_budget_cut``, ``listed`` and
+        ``not_listed`` (each ``{n, margin_range}``) and a ``reading``.
+    """
+    n = len(marg)
+    ordered = sorted(marg)
+    listed = [marg[i] for i in ranked[:n_listed]]
+    rest = [marg[i] for i in ranked[n_listed:]]
+    not_listed = _margin_range(rest)
+    reading = (
+        f"Over all {n} windows: lowest_margin is the smallest margin (the most "
+        "suspect window) and highest_margin the largest; median_margin is the "
+        "middle value (half the windows lie below it), not a lower end. "
+        f"margin_at_budget_cut is the {min(k, n)}-th lowest margin (n_review at "
+        "the budget). "
+    )
+    if not_listed is None:
+        reading += "Every window is listed, so not_listed has no range."
+    else:
+        reading += (
+            f"The {len(rest)} windows not listed (not_listed) have margins from "
+            f"{not_listed[0]:g} to {not_listed[1]:g}."
+        )
+    return {
+        "n_windows": n,
+        "lowest_margin": round(ordered[0], 6),
+        "median_margin": round(ordered[n // 2], 6),
+        "highest_margin": round(ordered[-1], 6),
+        "margin_at_budget_cut": round(ordered[min(k, n) - 1], 6),
+        "listed": {"n": len(listed), "margin_range": _margin_range(listed)},
+        "not_listed": {"n": len(rest), "margin_range": not_listed},
+        "reading": reading,
+    }
 
 
 def grade_rule(

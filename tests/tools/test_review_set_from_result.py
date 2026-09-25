@@ -333,3 +333,52 @@ async def test_compare_review_maps_windows_back_to_the_grid(
         ctx,
     )
     assert boundary["ok"] is False and "no-data windows" in boundary["error"]
+
+
+@pytest.mark.asyncio
+async def test_margin_summary_labels_its_fields_and_gives_the_unlisted_range(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 2 (brief 2, Studio run 3): "all other windows' scores ranged
+    from ~0.96 to ~0.99 ... (median margin 0.965)": the median read as the
+    lower end, where the lowest margin outside the listed windows was 0.786."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler(
+            {"result_id": "kb", "grid": 4, "budgets": [0.25], "max_listed": 3}, ctx
+        )
+    ms = out["margin_summary"]
+    # The 13 valid windows' margins |2s - 1|, ascending:
+    # 0.04 0.06 0.10 | 0.20 0.38 0.76 0.80 0.86 0.90 0.94 0.94 0.96 0.98
+    assert not {"min", "median", "max"} & set(ms)
+    assert ms["n_windows"] == 13
+    assert ms["lowest_margin"] == pytest.approx(0.04)
+    assert ms["median_margin"] == pytest.approx(0.8)
+    assert ms["highest_margin"] == pytest.approx(0.98)
+    assert ms["listed"]["n"] == 3
+    assert ms["listed"]["margin_range"] == pytest.approx([0.04, 0.1])
+    assert ms["not_listed"]["n"] == 10
+    assert ms["not_listed"]["margin_range"] == pytest.approx([0.2, 0.98])
+    assert "not a lower end" in ms["reading"]
+    assert "not_listed" in ms["reading"]
+
+
+@pytest.mark.asyncio
+async def test_margin_summary_of_a_fully_listed_review_set() -> None:
+    """The same summary on olmoearth_review_set; nothing unlisted, no range."""
+    tool = next(
+        t for t in build_review_set_tools() if t.spec.name == "olmoearth_review_set"
+    )
+    out = await tool.handler(
+        {"scores": [[0.9, 0.1], [0.4, 0.6], [0.55, 0.45]], "budget": 1.0},
+        ToolContext(studio=None, state=ThreadState()),  # type: ignore[arg-type]
+    )
+    ms = out["margin_summary"]
+    assert ms["listed"]["n"] == 3 and ms["not_listed"] == {"n": 0, "margin_range": None}
+    assert ms["lowest_margin"] == pytest.approx(0.1)
+    assert ms["median_margin"] == pytest.approx(0.2)
