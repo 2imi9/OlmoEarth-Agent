@@ -15,6 +15,7 @@ package's. The comparisons' claims are in ``test_comparison_rules.py``.
 
 from __future__ import annotations
 
+import csv
 import json
 import random
 from pathlib import Path
@@ -25,11 +26,11 @@ from pytest_httpx import HTTPXMock
 
 from olmoearth_agent.analysis.review_set import margins
 from olmoearth_agent.harness.state import ThreadState
-from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.llm.types import ToolCall, ToolSpec
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import _jsonable, build_estimation_tools
-from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
+from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 
 estimate = pytest.importorskip("oe_inferencex.estimate")
@@ -84,6 +85,30 @@ def _fact(out: dict[str, Any], fact_id: str) -> dict[str, Any]:
     return entry
 
 
+#: The output contract's fixed forbidden-claim ids, as the contract lists them.
+CONTRACT_IDS = {
+    "post_hoc_alpha",
+    "rule_switch_after_failure",
+    "certify_from_nonrandom_design",
+    "error_rate_without_labels",
+    "error_rate_for_unthresholded_regression",
+    "subset_labelling_sufficient",
+    "winner_without_labels",
+    "combined_statistic_across_properties",
+    "another_date_settles_it",
+    "simple_random_interval_for_stratified_design",
+}
+
+
+def _holds_to_the_contract(out: dict[str, Any]) -> None:
+    """At most 3 must_state sentences of at most 25 words; fixed, distinct ids."""
+    stated = out.get("must_state", [])
+    assert len(stated) <= 3, stated
+    assert all(len(sentence.split()) <= 25 for sentence in stated), stated
+    ids = _ids(out)
+    assert len(ids) == len(set(ids)) and set(ids) <= CONTRACT_IDS, ids
+
+
 @pytest.fixture(autouse=True)
 def _scores_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
@@ -126,6 +151,51 @@ def test_add_contract_appends_and_repeats_no_claim() -> None:
     assert empty == {}  # no key without an entry
 
 
+def test_every_forbidden_id_is_one_of_the_contracts_fixed_ids() -> None:
+    assert set(rules.FIXED_IDS) == CONTRACT_IDS
+    assert len(rules.FIXED_IDS) == len(CONTRACT_IDS)
+    assert (
+        rules.SIMPLE_RANDOM_INTERVAL == "simple_random_interval_for_stratified_design"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_keeps_its_error_and_carries_the_contract_keys() -> None:
+    """A refusal raised as an error stays the same error (text, ok, the
+    repeated-failure count) and states its facts on the failed envelope."""
+
+    async def refuse(_args: dict[str, Any], _ctx: ToolContext) -> Any:
+        raise rules.refusal(
+            "budget 50 is more than the 40 valid windows",
+            facts=[rules.fact("unused_labels", "s", n=10)],
+        )
+
+    async def plain(_args: dict[str, Any], _ctx: ToolContext) -> Any:
+        err = ValueError("no")
+        err.contract = {"ok": True, "facts": [{"id": "x"}]}  # type: ignore[attr-defined]
+        raise err
+
+    registry = ToolRegistry()
+    for name, handler in (("refuse", refuse), ("plain", plain)):
+        registry.register(
+            RegisteredTool(
+                ToolSpec(name=name, description="t", parameters={"type": "object"}),
+                handler,
+            )
+        )
+    ctx = _ctx()
+    first = await registry.dispatch(ToolCall(id="1", name="refuse", arguments={}), ctx)
+    assert first["ok"] is False
+    assert first["error"] == "ValueError: budget 50 is more than the 40 valid windows"
+    assert first["facts"] == [{"id": "unused_labels", "sentence": "s", "n": 10}]
+    assert "must_state" not in first and "forbidden_claims" not in first
+    again = await registry.dispatch(ToolCall(id="2", name="refuse", arguments={}), ctx)
+    assert again["same_error_count"] == 2 and again["facts"] == first["facts"]
+    # Only the contract's keys are taken: a refusal cannot turn itself into ok.
+    other = await registry.dispatch(ToolCall(id="3", name="plain", arguments={}), ctx)
+    assert other["ok"] is False and other["facts"] == [{"id": "x"}]
+
+
 def test_percent_keeps_small_rates_readable() -> None:
     assert rules.percent(0.23) == "23.0%"
     assert rules.percent(0.19376942845246936) == "19.4%"
@@ -145,6 +215,24 @@ def test_the_rule_switch_reason_gives_the_p_values_both_rules_need() -> None:
     assert "smallest p_value of the 3 levels tested is 0.554" in why
     assert "delta = 0.1" in why and "delta/3 = 0.0333" in why
     assert why.endswith("so no level passes under either rule")
+    # The prefix rule as the package applies it: from the smallest zone up,
+    # while p_value <= delta, stopping at the first failure.
+    assert (
+        "prefix accepts levels from the smallest zone upward while p_value <= "
+        "delta = 0.1 and stops at the first failure (the smallest zone's "
+        "p_value is 0.554)" in why
+    )
+    assert "bonferroni accepts any level with p_value <= delta/3 = 0.0333" in why
+    # A p_value under delta at a larger zone passes neither rule here: prefix
+    # stopped at the smallest zone (0.3), and 0.05 is above delta/3.
+    stopped = rules.rule_switch_after_failure(
+        certified=False,
+        levels=[{"p_value": 0.3}, {"p_value": 0.05}, {"p_value": 0.9}],
+        delta=0.1,
+        rule="prefix",
+    )["why"]
+    assert "(the smallest zone's p_value is 0.3)" in stopped
+    assert stopped.endswith("so no level passes under either rule")
     # A p_value under delta: the other rule's outcome is not claimed.
     close = rules.rule_switch_after_failure(
         certified=False,
@@ -180,21 +268,118 @@ async def test_a_plan_states_its_next_steps_by_design() -> None:
     assert "not a certification" in steps and "design='random'" in steps
     assert "fixed now" not in steps
     for plan in (random_plan, stratified):
-        assert _ids(plan) == [
-            rules.ERROR_RATE_WITHOUT_LABELS,
-            rules.SUBSET_LABELLING_SUFFICIENT,
-        ]
-        why = _why(plan, rules.SUBSET_LABELLING_SUFFICIENT)
-        assert why.startswith(
-            "label every window in the sheet; labelling only the first rows "
-            "biases the estimate"
-        )
         # The budget fits: no labels are left over, and inline scores have no
         # sampled-grid scope to state.
-        assert "facts" not in plan and "must_state" not in plan
+        assert "must_state" not in plan
         assert plan["budget"] == plan["budget_requested"] == 300
-    assert "stratum by stratum" in _why(stratified, rules.SUBSET_LABELLING_SUFFICIENT)
-    assert "stratum" not in _why(random_plan, rules.SUBSET_LABELLING_SUFFICIENT)
+        _holds_to_the_contract(plan)
+    assert _ids(stratified) == [
+        rules.ERROR_RATE_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
+    ]
+    assert "facts" not in stratified
+    # A random sheet's first rows are a smaller random sample: no subset claim.
+    assert _ids(random_plan) == [rules.ERROR_RATE_WITHOUT_LABELS]
+    assert [f["id"] for f in random_plan["facts"]] == ["prefix_is_random_sample"]
+
+
+def _sheet(plan: dict[str, Any]) -> list[dict[str, str]]:
+    with open(plan["labels_csv_path"], encoding="utf-8", newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+@pytest.mark.asyncio
+async def test_a_stratified_sheet_lists_its_strata_least_confident_first() -> None:
+    """The reason the subset claim gives, checked on the plan's own sheet: the
+    rows follow the package's draw, stratum 0 (the least confident) first."""
+    for design in ("confidence", "proportional"):
+        plan = await _plan(design)
+        rows = _sheet(plan)
+        drawn = json.loads(Path(plan["design_path"]).read_text())
+        assert [int(r["window_index"]) for r in rows] == drawn["sample"]["indices"]
+        strata = [int(r["stratum"]) for r in rows]
+        assert strata == sorted(strata) and strata[0] == 0
+        first = plan["allocation"][0]
+        assert set(strata[:first]) == {0}  # the first rows are one stratum
+        margin = drawn["population"]["margin"]
+        head = [margin[int(r["window_index"])] for r in rows[:first]]
+        rest = [margin[int(r["window_index"])] for r in rows[first:]]
+        assert max(head) <= min(rest)  # and the least confident windows
+        why = _why(plan, rules.SUBSET_LABELLING_SUFFICIENT)
+        assert why.startswith(
+            "label every window in the sheet; labelling only its first rows "
+            "biases the estimate"
+        )
+        assert f"this {design} design's strata in turn" in why
+        assert "the least confident (stratum 0) first" in why
+        assert "the strata after them get no labels" in why
+
+
+@pytest.mark.asyncio
+async def test_a_random_sheets_first_rows_are_a_smaller_random_sample() -> None:
+    """exp87 build review: a random design's sheet is in the package's random
+    draw order, so its first k rows are a simple random sample of size k; the
+    plan states that fact instead of forbidding a prefix, and the route it
+    names estimates one."""
+    plan = await _plan("random")
+    rows = _sheet(plan)
+    drawn = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    order = [int(r["window_index"]) for r in rows]
+    assert order == drawn and order != sorted(order)
+    prefix = _fact(plan, "prefix_is_random_sample")
+    assert prefix["n_rows"] == 300
+    assert prefix["estimate_prefix_with"] == "window_indices and scores"
+    sentence = prefix["sentence"]
+    assert "labelling only its first k rows" in sentence
+    assert "with k fixed before any label is seen" in sentence
+    assert "the estimate stays unbiased and its interval widens" in sentence
+    assert "window_indices with the same scores" in sentence
+    assert "with design_path it needs every row labelled" in sentence
+    # The route works: the first 100 rows, estimated as a random sample.
+    scores, truth = _map(2000, seed=11)
+    first = order[:100]
+    out = await _result(
+        "olmoearth_estimate_map_error",
+        {
+            "window_indices": first,
+            "wrong": [truth[i] for i in first],
+            "scores": scores,
+        },
+    )
+    assert out["n_labelled"] == 100
+    assert out["estimate"] == pytest.approx(sum(truth[i] for i in first) / 100)
+    full = await _result(
+        "olmoearth_estimate_map_error",
+        {"design_path": plan["design_path"], "wrong": _labels_of(plan)},
+    )
+    assert out["high"] - out["low"] > full["high"] - full["low"]  # it widens
+
+
+@pytest.mark.asyncio
+async def test_a_single_stratum_design_is_a_random_draw_in_effect() -> None:
+    """A margin too flat to stratify puts every window in one stratum: the
+    package says the draw is random in effect, so its sheet's prefix is too."""
+    out = await _result(
+        "olmoearth_plan_label_sample",
+        {"scores": [[0.3, 0.7]] * 200, "budget": 40, "design": "confidence"},
+    )
+    assert "random sample in effect" in out["note"]
+    assert _ids(out) == [rules.ERROR_RATE_WITHOUT_LABELS]
+    assert _fact(out, "prefix_is_random_sample")["n_rows"] == 40
+
+
+@pytest.mark.asyncio
+async def test_a_plan_from_a_scores_file_names_the_file_route(tmp_path: Path) -> None:
+    scores, _truth = _map(400, seed=3)
+    path = tmp_path / "scores.json"
+    path.write_text(json.dumps({"scores": scores}))
+    plan = await _result(
+        "olmoearth_plan_label_sample",
+        {"scores_path": str(path), "budget": 50, "design": "random"},
+    )
+    prefix = _fact(plan, "prefix_is_random_sample")
+    assert prefix["estimate_prefix_with"] == "window_indices and scores_path"
+    assert "window_indices with the same scores_path" in prefix["sentence"]
 
 
 @pytest.mark.asyncio
@@ -251,9 +436,13 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
         {"design_path": plan["design_path"], "wrong": _labels_of(plan)},
     )
     whole = _fact(out, "whole_map_estimate")
-    for key in ("estimate", "low", "high", "method", "n_labelled", "n_population"):
+    # The output contract's fields, and no others.
+    assert set(whole) == {"id", "sentence", "estimate", "low", "high", "design"}
+    for key in ("estimate", "low", "high"):
         assert whole[key] == out[key], key
     assert whole["design"] == "confidence"
+    assert "warning" not in out and "warns" not in whole["sentence"]
+    _holds_to_the_contract(out)
     assert (
         f"estimated at {rules.percent(out['estimate'])} (95% interval "
         f"{rules.percent(out['low'])} to {rules.percent(out['high'])}) from 300 "
@@ -278,6 +467,21 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
     assert "forbidden_claims" not in srs
     assert "olmoearth_certify_zone" in " ".join(srs["next_steps"])
     assert "the map's use requires" in " ".join(srs["next_steps"])
+
+
+@pytest.mark.asyncio
+async def test_the_whole_map_estimate_carries_the_packages_warning() -> None:
+    """No labelled window wrong: the package warns that the stratified
+    interval falls back to the simple-random bound; the fact says so."""
+    plan = await _plan("confidence")
+    out = await _result(
+        "olmoearth_estimate_map_error",
+        {"design_path": plan["design_path"], "wrong": [0] * 300},
+    )
+    assert out["warning"].startswith("no labelled window was wrong")
+    sentence = _fact(out, "whole_map_estimate")["sentence"]
+    assert f"The package warns: {out['warning'].rstrip('.')}." in sentence
+    assert sentence.index("method:") < sentence.index("The package warns")
 
 
 @pytest.mark.asyncio
@@ -338,7 +542,9 @@ async def test_nothing_certified_says_what_follows_and_what_does_not() -> None:
     smallest = min(lv["p_value"] for lv in levels)
     assert f"is {smallest:.3g}" in switch
     assert f"delta/{len(levels)}" in switch
-    assert ("no level passes under either rule" in switch) == (smallest > 0.1)
+    neither = levels[0]["p_value"] > 0.1 and smallest > 0.1 / len(levels)
+    assert ("no level passes under either rule" in switch) == neither
+    _holds_to_the_contract(out)
     # The whole-map estimate is the package's, on the same labels.
     whole = _fact(out, "whole_map_estimate")
     direct = estimate.estimate_error_rate(
@@ -375,6 +581,50 @@ async def test_a_certified_zone_states_that_nothing_outside_it_is() -> None:
     assert "Nothing outside the zone is certified" in out["next_steps"][1]
     assert _ids(out) == [rules.POST_HOC_ALPHA, rules.RULE_SWITCH_AFTER_FAILURE]
     assert "to get a larger zone" in _why(out, rules.RULE_SWITCH_AFTER_FAILURE)
+    _holds_to_the_contract(out)
+
+
+@pytest.mark.asyncio
+async def test_a_certification_over_a_studio_grid_states_its_scope(
+    tmp_path: Path,
+) -> None:
+    """A zone and a rate over a Studio result's grid points carry the scope a
+    plan and an estimate of that grid carry, as the same sentence."""
+    scores, truth = _map(256, seed=5)
+    rows = [[1 - s, s] for s in (min(max(r[0] / 8 + 0.5, 0.0), 1.0) for r in scores)]
+    (tmp_path / "grid.json").write_text(
+        json.dumps(
+            {
+                "result_id": "kb",
+                "grid": [16, 16],
+                "scores": rows,
+                "score_kind": "binary_score",
+            }
+        )
+    )
+    plan = await _result(
+        "olmoearth_plan_label_sample",
+        {"scores_path": str(tmp_path / "grid.json"), "budget": 120, "design": "random"},
+    )
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    scope = (
+        "The rate describes the map at the 256 sampled grid points of a Studio "
+        "result (one pixel each), not every pixel of the map."
+    )
+    assert plan["must_state"] == [scope]
+    for alpha, rule in ((0.05, "prefix"), (0.5, "bonferroni")):
+        out = await _result(
+            "olmoearth_certify_zone",
+            {
+                "design_path": plan["design_path"],
+                "wrong": [truth[i] for i in idx],
+                "alpha": alpha,
+                "rule": rule,
+            },
+        )
+        assert out["must_state"][-1] == scope
+        assert len(out["must_state"]) == (2 if out["certified"] else 1)
+        _holds_to_the_contract(out)
 
 
 @pytest.mark.asyncio

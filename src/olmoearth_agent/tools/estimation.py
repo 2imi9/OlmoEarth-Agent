@@ -327,14 +327,14 @@ def _write_csv(name: str, pop: Population, to_label: list[dict[str, Any]]) -> st
 def _budget_refusal(budget: int, pop: Population) -> str:
     """Why ``budget`` cannot be planned from ``pop``, with only the options that work.
 
-    For a Studio result the ceiling is the grid's valid points, and the grid
-    stops at 16: a finer grid is offered only while one can still reach the
-    budget, and the full raster is a direct model run read through
-    ``olmoearth_scores_from_file``. exp86 round 1's model was told "a finer
-    grid" at the cap and retried grids until the turn cap. At the largest grid
-    the plan tool no longer refuses: it plans every valid window and states the
-    labels left over (:func:`_at_studio_ceiling`), so below it the refusal says
-    to keep the budget at grid 16.
+    Reached for a budget below 1, for inline or file scores (the whole map)
+    given a budget above their valid windows, and for a Studio result sampled
+    below the largest grid: at grid 16 the plan takes every valid window and
+    states the labels left over instead (:func:`_at_studio_ceiling`). Below
+    it a finer grid is offered only while one can still reach the budget, or
+    else grid 16 with the same budget, and the full raster is a direct model
+    run read through ``olmoearth_scores_from_file``. exp86 round 1's model was
+    told "a finer grid" at the cap and retried grids until the turn cap.
     """
     n_valid = pop.n_valid
     if budget < 1:
@@ -352,13 +352,14 @@ def _budget_refusal(budget: int, pop: Population) -> str:
     sampling = pop.source.get("sampling") or {}
     head = ""
     if sampling.get("grid_capped"):
-        verb = "capped at" if side == FROM_RESULT_MAX_GRID else "raised to"
+        # Below the largest grid a grid is capped only by raising one below 2;
+        # a grid capped at 16 is planned at its ceiling and never refused.
         head = (
-            f"grid {sampling.get('grid_requested')} was {verb} {side} (a "
+            f"grid {sampling.get('grid_requested')} was raised to {side} (a "
             f"Studio result takes {FROM_RESULT_GRID_RANGE}); "
         )
     works = [f"a budget of at most {n_valid}"]
-    if side < FROM_RESULT_MAX_GRID and budget <= most:
+    if budget <= most:
         works.append(
             f"a finer grid, up to {FROM_RESULT_MAX_GRID} ({FROM_RESULT_MAX_GRID}x"
             f"{FROM_RESULT_MAX_GRID} = {most} points at most, fewer once no-data "
@@ -366,7 +367,8 @@ def _budget_refusal(budget: int, pop: Population) -> str:
             "a budget above the valid windows is planned at all of them, and "
             "the labels left over are stated"
         )
-    elif side < FROM_RESULT_MAX_GRID:
+        limit = ""
+    else:
         # No grid reaches the budget, but grid 16 plans at its ceiling and
         # states the labels left over (the unused_labels fact), so the model
         # keeps the user's budget and never works the difference out.
@@ -376,21 +378,16 @@ def _budget_refusal(budget: int, pop: Population) -> str:
             f"{FROM_RESULT_MAX_GRID} grid and states how many of the {budget} "
             "labels go unused"
         )
-    works.append(
-        "for the whole map, a direct model run's scores raster read through "
-        "olmoearth_scores_from_file (every window of the raster is then in the "
-        "population)"
-    )
-    if side >= FROM_RESULT_MAX_GRID:
-        limit = f" {side}x{side} is the most a Studio result allows."
-    elif budget > most:
         limit = (
             f" No grid reaches {budget} labels: {FROM_RESULT_MAX_GRID}x"
             f"{FROM_RESULT_MAX_GRID} = {most} points is the most a Studio result "
             "allows."
         )
-    else:
-        limit = ""
+    works.append(
+        "for the whole map, a direct model run's scores raster read through "
+        "olmoearth_scores_from_file (every window of the raster is then in the "
+        "population)"
+    )
     rest = " (the rest were no-data or failed)" if n_valid < n_points else ""
     return (
         f"{head}budget {budget} is more than the {n_valid} valid windows: a "
@@ -399,6 +396,24 @@ def _budget_refusal(budget: int, pop: Population) -> str:
         f"planned from it.{limit} What works: "
         + "; ".join(works[:-1])
         + f"; or, {works[-1]}."
+    )
+
+
+def _budget_error(budget: int, pop: Population) -> ValueError:
+    """The budget refusal as an error, with the labels left over where they are known.
+
+    Inline or file scores are the whole map, so a budget above their valid
+    windows leaves a known number of labels with no window: the error carries
+    the ``unused_labels`` fact (the registry puts it on the failed envelope).
+    Below the largest Studio grid a finer grid holds more windows, so the
+    count is not known there, and a budget below 1 has none.
+    """
+    message = _budget_refusal(budget, pop)
+    studio = bool(pop.source.get("result_id") and pop.grid)
+    if budget < 1 or studio:
+        return ValueError(message)
+    return rules.refusal(
+        message, facts=[_unused_labels(budget, pop.n_valid, pop, refused=True)]
     )
 
 
@@ -425,9 +440,26 @@ def _studio_scope(pop_source: dict[str, Any], n_windows: Any) -> list[str]:
     ]
 
 
-def _unused_labels(requested: int, planned: int, pop: Population) -> dict[str, Any]:
-    """The ``unused_labels`` fact: the labels a plan at the grid's ceiling leaves over."""
+def _unused_labels(
+    requested: int, planned: int, pop: Population, *, refused: bool = False
+) -> dict[str, Any]:
+    """The ``unused_labels`` fact: the labels a budget leaves with no window.
+
+    ``planned`` is the plan's size: every valid window of a Studio result at
+    the grid's ceiling, or, with ``refused``, the most a refused budget over
+    inline or file scores could have planned (their valid windows).
+    """
     n = requested - planned
+    if refused:
+        sentence = (
+            f"Of the {requested} labels requested, at most {planned} can be "
+            f"planned: these scores hold {planned} valid windows, so {n} labels "
+            "would have no window to go to; the call was refused and no plan "
+            "was written."
+        )
+        return rules.fact(
+            "unused_labels", sentence, n=n, requested=requested, planned=planned
+        )
     side = pop.grid[0] if pop.grid else FROM_RESULT_MAX_GRID
     sentence = (
         f"Of the {requested} labels requested, {planned} are planned: a Studio "
@@ -475,7 +507,13 @@ def _plan_next_steps(
 def _whole_map_estimate(
     est: dict[str, Any], *, certify: bool = False
 ) -> dict[str, Any]:
-    """The ``whole_map_estimate`` fact from the package's error-rate estimate."""
+    """The ``whole_map_estimate`` fact from the package's error-rate estimate.
+
+    Fields ``estimate``, ``low``, ``high`` and ``design`` (the output
+    contract's); the sentence also names the labelled count, the population,
+    the method and, when the package gives one, its warning (a stratified
+    design with starved strata, or with no or every labelled window wrong).
+    """
     cov = est.get("nominal_coverage")
     level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
     sentence = (
@@ -485,21 +523,14 @@ def _whole_map_estimate(
         f"labelled windows of a population of {est.get('n_population')}; "
         f"method: {est.get('method')}."
     )
+    if est.get("warning"):
+        sentence += f" The package warns: {str(est['warning']).rstrip('.')}."
     if certify:
         sentence += (
             " It is the estimate for the whole population from the same labels, "
             "not a certification."
         )
-    fields = (
-        "design",
-        "estimate",
-        "low",
-        "high",
-        "nominal_coverage",
-        "n_labelled",
-        "n_population",
-        "method",
-    )
+    fields = ("estimate", "low", "high", "design")
     return rules.fact("whole_map_estimate", sentence, **{k: est.get(k) for k in fields})
 
 
@@ -548,7 +579,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     # labels have nowhere to go", 300 - 173 worked out by the model); any
     # other budget above them is refused, with the options that work.
     if budget < 1 or (budget > n_valid and not _at_studio_ceiling(pop)):
-        raise ValueError(_budget_refusal(budget, pop))
+        raise _budget_error(budget, pop)
     requested, budget = budget, min(budget, n_valid)
     sample = estimate.sample_for_estimation(
         pop.margin,
@@ -659,20 +690,40 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         out["note"] = sample["note"]
     unused = requested - budget
     out["next_steps"] = _plan_next_steps(design, csv_path, budget, pop, unused)
+    facts = [_unused_labels(requested, budget, pop)] if unused else []
+    claims = [rules.error_rate_without_labels()]
+    # The sheet keeps the package's draw order: a random draw's order is
+    # random, so its first rows are a smaller random sample; a stratified
+    # draw lists the strata in turn, least confident first, so its first rows
+    # are one stratum (a single non-empty stratum is a random draw in effect).
+    if design == "random" or sum(1 for n in sample.get("sizes", []) if n) < 2:
+        facts.append(rules.prefix_is_random_sample(budget, _scores_route(pop)))
+    else:
+        claims.append(rules.subset_labelling_sufficient(design))
     return rules.add_contract(
         out,
-        facts=[_unused_labels(requested, budget, pop)] if unused else [],
+        facts=facts,
         must_state=(
             [f"The plan holds {budget} windows, not the {requested} requested."]
             if unused
             else []
         )
         + _studio_scope(pop.source, n_valid),
-        forbidden_claims=[
-            rules.error_rate_without_labels(),
-            rules.subset_labelling_sufficient(design),
-        ],
+        forbidden_claims=claims,
     )
+
+
+def _scores_route(pop: Population) -> str | None:
+    """The argument olmoearth_estimate_map_error takes this population's scores by.
+
+    ``window_indices`` need the scores they index: the inline rows again, or
+    the same scores file. A Studio result sampled by the plan itself has none.
+    """
+    if pop.source.get("scores_path"):
+        return "scores_path"
+    if pop.source.get("input") == "inline scores":
+        return "scores"
+    return None
 
 
 def _load_design(path: str) -> dict[str, Any]:
@@ -998,7 +1049,8 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             ]
             if out["certified"]
             else []
-        ),
+        )
+        + _studio_scope(design["population"].get("source") or {}, out["n_population"]),
         forbidden_claims=[
             rules.post_hoc_alpha(alpha),
             rules.rule_switch_after_failure(

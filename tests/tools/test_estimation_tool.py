@@ -731,6 +731,8 @@ async def test_a_budget_error_offers_a_finer_grid_only_when_one_can_help(
     assert "finer grid" not in unreachable["error"]
     assert "grid=16 with the same budget of 300" in unreachable["error"]
     assert "olmoearth_scores_from_file" in unreachable["error"]
+    # Below grid 16 a finer grid holds more windows: no count of unused labels.
+    assert "facts" not in reachable and "facts" not in unreachable
 
 
 @pytest.mark.asyncio
@@ -742,6 +744,19 @@ async def test_a_budget_above_inline_scores_states_the_ceiling() -> None:
     # The labels left over are stated, so the answer does not work out 50 - 40.
     assert "10 of the 50 would have no window" in out["error"]
     assert "finer grid" not in out["error"]
+    # ... and as the unused_labels fact, on the refusal's envelope.
+    (unused,) = out["facts"]
+    assert unused["id"] == "unused_labels"
+    assert (unused["requested"], unused["planned"], unused["n"]) == (50, 40, 10)
+    assert unused["sentence"] == (
+        "Of the 50 labels requested, at most 40 can be planned: these scores hold "
+        "40 valid windows, so 10 labels would have no window to go to; the call "
+        "was refused and no plan was written."
+    )
+    assert out["error"].startswith("ValueError: budget 50 is more than the 40")
+    # A budget below 1 leaves no count to state.
+    zero = await _call("olmoearth_plan_label_sample", {"scores": scores, "budget": 0})
+    assert zero["ok"] is False and "facts" not in zero
 
 
 # --------------------------------------------------------------------------- reading a zone's levels

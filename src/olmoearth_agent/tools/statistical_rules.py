@@ -16,8 +16,11 @@ against them:
 - ``must_state``: short sentences the answer must convey whenever it reports
   the result (a scope limit);
 - ``forbidden_claims``: ``[{"id", "why"}]``, claims the answer must not make
-  about the result. The ids below are the contract's fixed ids, except
-  :data:`SIMPLE_RANDOM_INTERVAL`, which only the answer's reader displays.
+  about the result, each id at most once per result. Every id is one of the
+  contract's fixed ids (:data:`FIXED_IDS`).
+
+A result carries them as top-level keys; a refusal raised as an error
+(:func:`refusal`) carries them on the registry's failed envelope.
 
 The builders here are shared by the estimation tools
 (:mod:`olmoearth_agent.tools.estimation`) and the comparisons
@@ -40,10 +43,22 @@ SUBSET_LABELLING_SUFFICIENT = "subset_labelling_sufficient"
 WINNER_WITHOUT_LABELS = "winner_without_labels"
 COMBINED_STATISTIC_ACROSS_PROPERTIES = "combined_statistic_across_properties"
 ANOTHER_DATE_SETTLES_IT = "another_date_settles_it"
-
-#: Not one of the contract's fixed ids (none covers it): the simple-random
-#: interval put in place of a stratified design's own.
+#: The simple-random interval put in place of a stratified design's own.
 SIMPLE_RANDOM_INTERVAL = "simple_random_interval_for_stratified_design"
+
+#: The contract's fixed ids: every forbidden claim a tool emits is one of them.
+FIXED_IDS = (
+    POST_HOC_ALPHA,
+    RULE_SWITCH_AFTER_FAILURE,
+    CERTIFY_FROM_NONRANDOM_DESIGN,
+    ERROR_RATE_WITHOUT_LABELS,
+    ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
+    SUBSET_LABELLING_SUFFICIENT,
+    WINNER_WITHOUT_LABELS,
+    COMBINED_STATISTIC_ACROSS_PROPERTIES,
+    ANOTHER_DATE_SETTLES_IT,
+    SIMPLE_RANDOM_INTERVAL,
+)
 
 
 def forbidden(claim_id: str, why: str) -> dict[str, str]:
@@ -83,6 +98,27 @@ def add_contract(
     return out
 
 
+def refusal(
+    message: str,
+    *,
+    facts: Iterable[dict[str, Any]] = (),
+    must_state: Iterable[str] = (),
+    forbidden_claims: Iterable[dict[str, str]] = (),
+) -> ValueError:
+    """A tool's refusal as a ``ValueError`` that also carries contract keys.
+
+    Raised from a handler it stays an error (``ok`` False, the same
+    ``error`` text, the same repeated-failure count), and the registry puts
+    its ``facts``, ``must_state`` and ``forbidden_claims`` on the failed
+    envelope beside the error (:meth:`ToolRegistry.dispatch`).
+    """
+    err = ValueError(message)
+    err.contract = add_contract(  # type: ignore[attr-defined]
+        {}, facts=facts, must_state=must_state, forbidden_claims=forbidden_claims
+    )
+    return err
+
+
 def percent(value: float | None) -> str:
     """A fraction as a percent: one decimal from 1%, two significant figures below."""
     if value is None:
@@ -108,18 +144,59 @@ def error_rate_without_labels() -> dict[str, str]:
 
 
 def subset_labelling_sufficient(design: str) -> dict[str, str]:
-    """Labelling only part of a plan's sheet is not the plan."""
-    order = (
-        "the sheet lists a stratified plan stratum by stratum, least confident "
-        "first, so its first rows are one stratum"
-        if design != "random"
-        else "the design is every drawn window, not its first rows"
-    )
+    """Only a stratified sheet's full set of rows is its design.
+
+    The package draws a stratified sample stratum by stratum, the least
+    confident (stratum 0) first, and the sheet keeps that order, so its first
+    rows are the least confident windows only. Emitted only for a design with
+    at least two strata: a random design's sheet is in random order, and a
+    prefix of it is a smaller random sample (:func:`prefix_is_random_sample`).
+    """
     return forbidden(
         SUBSET_LABELLING_SUFFICIENT,
-        "label every window in the sheet; labelling only the first rows biases "
-        f"the estimate ({order}), and olmoearth_estimate_map_error refuses a "
-        "design with any window unlabelled",
+        "label every window in the sheet; labelling only its first rows biases "
+        f"the estimate: the sheet lists this {design} design's strata in turn, "
+        "the least confident (stratum 0) first, each stratum's windows in random "
+        "order, so its first rows are the least confident windows only, a rate "
+        "over them describes those windows and not the map, and the strata "
+        "after them get no labels; olmoearth_estimate_map_error refuses a design "
+        "with any window unlabelled",
+    )
+
+
+def prefix_is_random_sample(n_rows: int, route: str | None) -> dict[str, Any]:
+    """The ``prefix_is_random_sample`` fact: a random sheet's first rows are a random sample.
+
+    The package draws a random design without replacement in a random order
+    (``Generator.choice``, shuffled) and the sheet keeps that order, so its
+    first ``k`` rows, ``k`` fixed before any label is seen, are a simple
+    random sample of size ``k``: the estimate stays unbiased and its interval
+    widens. ``route`` is the scores argument (``"scores"`` or
+    ``"scores_path"``) that olmoearth_estimate_map_error takes with those rows
+    as ``window_indices``; with ``design_path`` it needs every row labelled,
+    and a Studio result sampled by the plan itself has no scores to pass.
+    """
+    sentence = (
+        f"The sheet's {n_rows} rows are in the package's random draw order, so "
+        "labelling only its first k rows, with k fixed before any label is seen, "
+        "is a smaller random sample: the estimate stays unbiased and its "
+        "interval widens."
+    )
+    if route:
+        sentence += (
+            " olmoearth_estimate_map_error takes those rows as window_indices "
+            f"with the same {route}; with design_path it needs every row labelled."
+        )
+    else:
+        sentence += (
+            " olmoearth_estimate_map_error with design_path needs every row "
+            "labelled, so these tools estimate only the full sheet."
+        )
+    return fact(
+        "prefix_is_random_sample",
+        sentence,
+        n_rows=n_rows,
+        estimate_prefix_with=f"window_indices and {route}" if route else None,
     )
 
 
@@ -169,10 +246,13 @@ def rule_switch_after_failure(
 ) -> dict[str, str]:
     """The rule is fixed with alpha; a second rule after the first is a second look.
 
-    With the levels tested, the reason gives their smallest ``p_value`` and
-    what each rule needs of it (prefix: ``delta``; bonferroni: ``delta`` over
-    the number of levels), so the other rule's outcome is not guessed: when
-    the smallest p_value is above ``delta``, no level passes under either.
+    With the levels tested (the package lists them smallest zone first), the
+    reason says how each rule reads their ``p_value``: prefix accepts levels
+    from the smallest zone upward while ``p_value <= delta`` and stops at the
+    first failure, so the smallest zone's p_value decides whether it accepts
+    any; bonferroni accepts any level with ``p_value <= delta / J``, ``J`` the
+    number of levels, so the smallest p_value decides. When neither accepts a
+    level the reason says so, and the other rule's outcome is never guessed.
     """
     if certified:
         second = "re-running certification under another rule to get a larger zone"
@@ -195,15 +275,17 @@ def rule_switch_after_failure(
     ]
     if levels is not None and not levels:
         tail = "; no level was tested, so no rule can certify with these labels"
-    elif pvals and delta is not None:
-        n = len(levels or [])
-        smallest = min(pvals)
+    elif pvals and delta is not None and len(pvals) == len(levels or []):
+        n = len(pvals)
+        first, smallest = pvals[0], min(pvals)
         tail = (
-            f"; the smallest p_value of the {n} levels tested is {smallest:.3g}, "
-            f"and prefix accepts a level at p_value <= delta = {delta:g}, "
-            f"bonferroni at <= delta/{n} = {delta / n:.3g}"
+            "; prefix accepts levels from the smallest zone upward while "
+            f"p_value <= delta = {delta:g} and stops at the first failure (the "
+            f"smallest zone's p_value is {first:.3g}); bonferroni accepts any "
+            f"level with p_value <= delta/{n} = {delta / n:.3g} (the smallest "
+            f"p_value of the {n} levels tested is {smallest:.3g})"
         )
-        if smallest > delta:
+        if first > delta and smallest > delta / n:
             tail += ", so no level passes under either rule"
     else:
         tail = ""

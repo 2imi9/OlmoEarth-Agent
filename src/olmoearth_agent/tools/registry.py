@@ -54,6 +54,9 @@ STOP_RETRYING_HINT = (
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
+#: The output contract's keys a refusal may carry onto its failed envelope.
+_CONTRACT_KEYS = ("facts", "must_state", "forbidden_claims")
+
 
 def _record_failure(envelope: dict[str, Any], name: str, ctx: ToolContext) -> None:
     """Count this failure in the run; from the second alike, tell the model to stop.
@@ -195,6 +198,14 @@ class ToolRegistry:
                 "argument values are valid; do not retry with identical "
                 "arguments.",
             }
+            # A refusal can carry the output contract's keys (e.g. the labels
+            # a budget leaves over; statistical_rules.refusal): stated beside
+            # the error, which is unchanged.
+            contract = getattr(exc, "contract", None)
+            if isinstance(contract, dict):
+                failed.update(
+                    {k: v for k, v in contract.items() if k in _CONTRACT_KEYS}
+                )
             _record_failure(failed, call.name, ctx)
             return failed
         return {"ok": True, "result": result}
