@@ -331,6 +331,54 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   labels. The builders live in `olmoearth_agent.tools.statistical_rules`. No
   number, draw or ranking changes: the six fixed-input parity calls of exp86
   round 7, replayed, keep every key and value and pass against the package.
+- **The answer is checked against the run, not only its numbers** (the exp86
+  round 6 and 7 audits, for exp87). The blind audit found a false or
+  unsupported statement in 23 of 30 answers of each round; the number check
+  reads numbers only, and passed "~23%" (69/300, derived) against an
+  unrelated count of 23 in six rounds. The post-answer checks are now a list
+  in `harness/checks.py`, each taking the answer and the run's evidence and
+  returning violations (`{check, text, detail}`, `text` the sentence):
+  `numbers`; `direction`, which reads the tools' `facts` (a
+  `dominant_change` stated backwards or another pair named the dominant one,
+  the other side named the more confident, a place of concentration the
+  bands or the grid rule out, a magnitude outside `margin_ratio`, a wrong
+  count of unused labels); `actions` (a file said to be saved that no tool
+  of the run wrote, a list said to be saved in a file that is not one, items
+  said to be listed above or below that the answer does not hold; not
+  checked for "listed above" on the web, where tool results are shown);
+  `forbidden_claims`, a detector per id a tool names (`post_hoc_alpha`,
+  `rule_switch_after_failure`, `certify_from_nonrandom_design`, the error
+  rate without labels or for an unthresholded regression, a subset said to
+  suffice, a winner without labels, a statistic across properties, another
+  date said to settle it); and `must_state`, the statements a reported
+  result requires. The detectors read one sentence at a time and hold back
+  on a negated clause, a hedge or an example. When any check fires, one
+  rewrite call (no tools; the `thinking_coding` sampling, `REVISION_MODE`,
+  with no presence penalty) lists every violation; the checks run again, and
+  each sentence still flagged is shown with `[unverified: <check>]` after
+  it, never deleted (a required statement still missing is added at the
+  end). Each check that fires yields a `check` event (`action` `revise`,
+  with the `draft`, then `marked`); the number check keeps its
+  `grounding_check`. The number check's sources are now the tool results,
+  the brief and the user's turns only, never the saved preferences or an
+  earlier assistant message, and a percent is supported only by a share (a
+  fraction, a percent written in a string, or a value under a key naming a
+  percent, share or rate). `LeadAgent` takes `surface` (`"cli"`, the
+  default, or `"web"`, which the bridge passes) and `check_answer`
+  (`OLMOEARTH_CHECK_ANSWER=0` switches every check but the numbers off);
+  `AgentResult` carries `revised`, `checks` and `marked`, the CLI and the
+  web UI name the checks. The LLM client reads a server's reasoning from
+  `reasoning`, then `reasoning_content` (round 7 recorded no thinking), for
+  the `thinking` event only. `scripts/validate_answer_checks.py` runs the
+  checks over recorded answers; with the tools' keys simulated from exp86's
+  recorded results, rounds 6 and 7 get 27 flags in 21 of 60 answers: 22 on
+  sentences the blind audit confirmed false (every confirmed E3 action
+  claim, 2 of 3 E2 directions, 4 of 10 E1 listing readings), 2 on sentences
+  its verifiers added, 2 on the same claims the audit confirmed in sibling
+  answers, and 1 required statement the answer omits. The percent rule adds
+  13 flags over the 207 answers of rounds 1 to 7, all derived (11 of them
+  "~23%"), and removes none. The `inferencex` extra requires
+  olmoearth-inferencex 1.3.1.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
