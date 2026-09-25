@@ -75,6 +75,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
     another = _why(apart, rules.ANOTHER_DATE_SETTLES_IT)
     assert "(2022-01-01/2022-12-31 and 2023-01-01/2023-12-31)" in another
     assert "cannot tell which" in another
+    assert "different or overlapping periods" in another
     assert "more confident side" in _why(apart, rules.WINNER_WITHOUT_LABELS)
     overlap = await compare(
         date_a="2022-01-01/2022-12-31",
@@ -82,12 +83,23 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         labels_date="2022-07-01",
     )
     assert overlap["dates"]["status"] == "overlapping_time"
+    assert _ids(overlap) == [
+        rules.ANOTHER_DATE_SETTLES_IT,
+        rules.WINNER_WITHOUT_LABELS,
+    ]
+    # The reason covers the overlapping periods, not only disjoint ones.
+    assert "different or overlapping periods" in _why(
+        overlap, rules.ANOTHER_DATE_SETTLES_IT
+    )
     assert "labels dated 2022-07-01" in _why(overlap, rules.WINNER_WITHOUT_LABELS)
+    # No labels are taken at any dates: the same time, or none given, still
+    # names no winner (and another date is not at issue there).
     for same in (
         await compare(date_a="2024-03-01", date_b="2024-03-01"),
         await compare(),
     ):
-        assert "forbidden_claims" not in same
+        assert _ids(same) == [rules.WINNER_WITHOUT_LABELS]
+        assert "more confident side" in _why(same, rules.WINNER_WITHOUT_LABELS)
     # The counts the parity check reads are untouched.
     assert apart["n_differing"] == 1 and apart["share_differing"] == pytest.approx(
         1 / 3
@@ -187,6 +199,8 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
     assert "sample_karst_score" not in no_rate  # a [0, 1] score is decided at 0.5
     combined = _why(allowed, rules.COMBINED_STATISTIC_ACROSS_PROPERTIES)
     assert "['sample_karst_score', 'sample_number']" in combined
+    # One winner claim, the one that says what the correlation does say.
+    assert "rise and fall together" in _why(allowed, rules.WINNER_WITHOUT_LABELS)
     # The statistics are the ones returned before the rules were added.
     assert set(allowed["stats"]) == {"n_samples", "mean_a", "mean_b", "correlation"}
 
@@ -216,9 +230,11 @@ async def test_a_group_of_two_properties_refused_carries_the_claims(
 
 
 @pytest.mark.asyncio
-async def test_two_unit_scores_of_one_property_carry_no_claim(
+async def test_two_unit_scores_of_one_property_name_no_winner(
     httpx_mock: HTTPXMock,
 ) -> None:
+    """No labels are ever given to a comparison: one property's two maps
+    carry the winner claim too, and nothing else ([0, 1] scores)."""
     _mock_pair(httpx_mock, {"a1": "sample_karst_score", "b1": "sample_karst_score"}, 3)
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
@@ -226,7 +242,8 @@ async def test_two_unit_scores_of_one_property_carry_no_claim(
             "olmoearth_compare_results", {"result_ids": ["a1", "b1"], "grid": 3}, ctx
         )
     assert out["comparable"] is True and out["value_type"] == "regression"
-    assert "forbidden_claims" not in out
+    assert _ids(out) == [rules.WINNER_WITHOUT_LABELS]
+    assert "no labels were used" in _why(out, rules.WINNER_WITHOUT_LABELS)
 
 
 @pytest.mark.asyncio
@@ -239,7 +256,10 @@ async def test_one_unthresholded_property_has_no_error_rate(
         out = await _result(
             "olmoearth_compare_results", {"result_ids": ["a1", "b1"], "grid": 3}, ctx
         )
-    assert _ids(out) == [rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION]
+    assert _ids(out) == [
+        rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
+        rules.WINNER_WITHOUT_LABELS,
+    ]
     # one property, named once
     assert (
         _why(out, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION).count("sample_number")

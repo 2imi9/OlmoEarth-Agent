@@ -708,6 +708,9 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 "told from a change on the ground"
             )
             add_must_state(out, [PARTLY_DATED_MUST_STATE])
+    # No labels are taken here, whatever the dates (listed once with the above).
+    winner = rules.winner_without_labels(rules.MORE_CONFIDENT_IS_NOT_RIGHT)
+    rules.add_contract(out, forbidden_claims=[winner])
     out["evidence_detail_path"] = evidence_detail_path()
     return out
 

@@ -325,36 +325,55 @@ def different_properties(names: Iterable[str | None]) -> list[dict[str, str]]:
             "neither reads higher or lower than the other; only each map's own "
             "mean and the correlation are returned",
         ),
-        forbidden(
-            WINNER_WITHOUT_LABELS,
-            "no labels were used: nothing here says which map is right, more "
-            "accurate or better; the correlation says only whether the two "
-            "rise and fall together",
+        winner_without_labels(
+            "the correlation says only whether the two rise and fall together"
         ),
     ]
 
 
+def winner_without_labels(detail: str | None = None) -> dict[str, str]:
+    """No labels are used by a comparison, so no map is shown right or better.
+
+    The comparisons take no labels at all (``olmoearth_compare_results`` and
+    ``olmoearth_compare_review``), so this is emitted on every comparison
+    they return, whatever the dates or properties; ``detail`` adds what the
+    comparison does say.
+    """
+    return forbidden(
+        WINNER_WITHOUT_LABELS,
+        "no labels were used: nothing here says which map is right, more "
+        "accurate or better" + (f"; {detail}" if detail else ""),
+    )
+
+
+#: What a review comparison's differing windows do not say.
+MORE_CONFIDENT_IS_NOT_RIGHT = (
+    "neither map is shown right where they differ, and the more confident side "
+    "is not thereby the right one"
+)
+
+
 def across_dates(dates: dict[str, Any]) -> list[dict[str, str]]:
-    """Two maps of different times: another date settles nothing; no side wins."""
+    """Maps of different or overlapping periods: another date settles nothing; no side wins."""
     a, b = dates.get("a"), dates.get("b")
     when = f" ({a} and {b})" if a and b else ""
     labels = dates.get("labels")
     return [
         forbidden(
             ANOTHER_DATE_SETTLES_IT,
-            f"the maps describe different times{when}: a window where they "
-            "differ either changed on the ground or is wrong in one map, and "
-            "another unlabelled map, of any date, cannot tell which; only a "
-            "reference dated to each map can",
+            f"the maps describe different or overlapping periods{when}: a window "
+            "where they differ either changed on the ground or is wrong in one "
+            "map, and another unlabelled map, of any date, cannot tell which; "
+            "only a reference dated to each map can",
         ),
-        forbidden(
-            WINNER_WITHOUT_LABELS,
-            "no labels were used: neither map is shown right where they "
-            "differ, and the more confident side is not thereby the right one"
+        winner_without_labels(
+            MORE_CONFIDENT_IS_NOT_RIGHT
             + (
-                f"; labels dated {labels} could grade only a map of that date"
+                f"; labels dated {labels} would measure which map matches the "
+                "ground at that date, counting the other wrong wherever the "
+                "ground changed"
                 if labels
                 else ""
-            ),
+            )
         ),
     ]

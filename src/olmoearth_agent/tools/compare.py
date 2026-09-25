@@ -810,6 +810,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         claims.append(rules.unthresholded_regression(unthresholded))
     if different:
         claims += rules.different_properties(names)
+    claims.append(rules.winner_without_labels())  # no labels here; listed once
     return rules.add_contract(
         {
             "comparable": True,
