@@ -61,7 +61,60 @@ def test_large_result_is_spilled_to_workspace(tmp_path: Path) -> None:
     assert json.loads(saved.read_text(encoding="utf-8")) == result
     # The sketch tells the model how many records exist without inlining them.
     assert envelope["shape"]["result"]["records"]["list_length"] == 1000
-    assert envelope["preview"]
+    # No summary field to preview: the raw JSON prefix stands in.
+    assert envelope["preview"] == json.dumps(result)[:1500]
+
+
+def test_the_preview_is_the_results_summary_and_the_contract_travels_whole() -> None:
+    """exp86: the preview was the first 1,500 characters of the JSON, whatever
+    they held. It is now the aggregate fields, and the output contract (facts,
+    must_state, forbidden_claims, evidence_scope) is copied whole."""
+    rows = [{"window_index": i, "class_a": 0, "class_b": 1} for i in range(2000)]
+    body = {
+        "differing": rows,
+        "n_windows": 16384,
+        "n_differing": 3807,
+        "share_differing": 0.232361,
+        "listing_order": "the first differing windows in window order",
+        "long_text": "x" * 5000,
+        "margin_summary": {"median_margin": 4.47, "lowest_margin": 0.1},
+        "class_changes": [{"class_a": 4, "class_b": 2, "n": 1409}],
+        "facts": [{"id": "dominant_change", "sentence": "4 -> 2: 1,409 of 3,807"}],
+        "must_state": ["No side is right without labels."],
+        "forbidden_claims": [{"id": "winner_without_labels", "why": "no labels"}],
+        "evidence_scope": "exp58 measured it elsewhere.",
+    }
+    envelope = json.loads(
+        compact_result_for_llm("olmoearth_compare_review", {"ok": True, "result": body})
+    )
+    preview = envelope["preview"]
+    assert preview["n_differing"] == 3807 and preview["share_differing"] == 0.232361
+    assert preview["margin_summary"] == body["margin_summary"]
+    assert "long_text" not in preview and "differing" not in preview
+    for key in ("facts", "must_state", "forbidden_claims", "evidence_scope"):
+        assert envelope[key] == body[key]
+        assert key not in preview
+
+
+def test_the_spill_note_does_not_ask_for_the_path_in_the_answer() -> None:
+    """exp86 round 7: an answer cited a saved file for a list it did not hold.
+    The path is for the user who asks for the file, not for the answer."""
+    result = {"ok": True, "result": {"blob": "x" * 50_000, "n": 1}}
+    envelope = json.loads(compact_result_for_llm("echo", result))
+    note = envelope["note"]
+    assert "reference that path in your answer" not in note
+    assert "only if the user asks for the file" in note
+    assert envelope["preview"] == {"n": 1}
+
+
+def test_a_failed_tool_envelope_previews_its_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(SPILL_BYTES_ENV, "50")
+    result = {"ok": False, "error": "ValueError: bad", "hint": "fix it"}
+    envelope = json.loads(compact_result_for_llm("echo", result))
+    assert envelope["preview"]["error"] == "ValueError: bad"
+    assert envelope["ok"] is False
 
 
 def test_zero_threshold_disables_spilling(monkeypatch: pytest.MonkeyPatch) -> None:
