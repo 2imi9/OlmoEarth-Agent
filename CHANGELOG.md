@@ -210,6 +210,30 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     `upper_bound` is below alpha is not thereby certified: certification is
     the package's exact test under the rule (every brief 6 answer claimed
     zones at alpha 0.10-0.15 where the package certifies none).
+- **exp86 round 2's tool faults** (the trial's diagnosis, 25 September 2026):
+  - `olmoearth_certify_zone` gives `levels_tested`: the number of levels and
+    their coverages, the per-level delta of each rule over them (bonferroni's
+    written out, e.g. "delta/18 = 0.1/18"), how many were accepted, whether
+    any certifies, and why these levels (`min_labels_to_certify`, `c_min`).
+    Every output, refusals included, says certification needs
+    `design='random'`. Round 2's only model number was a "delta/18" the model
+    counted itself, and one answer recommended a confidence design for
+    certification. The smallest alpha that would certify is not given: the
+    levels tested, and bonferroni's divisor, change with alpha.
+  - `olmoearth_compare_review`'s `date_a`, `date_b` and `labels_date` state
+    "YYYY-MM-DD, or a YYYY-MM-DD/YYYY-MM-DD period; not a bare year or
+    month", as `oe_inferencex.compare.dates_reading` reads a string; a bare
+    year or month is refused with the interval that means it. Every brief 3
+    cluster run had passed `'2023'` first.
+  - `margin_summary` (`olmoearth_review_set`,
+    `olmoearth_review_set_from_result`) labels its fields (`lowest_margin`,
+    `median_margin`, `highest_margin`, `margin_at_budget_cut`), gives the
+    listed and unlisted windows' margin ranges, and says the median is not a
+    lower end; an answer had read the median as the unlisted windows' floor.
+    Breaking: `min`, `median`, `max` and `cut_at_budget` are gone.
+  - A test drives the round-1 harness fixes end to end (the stop-retrying
+    hint and the forced answer at the turn cap) through the loop, the CLI and
+    the web bridge; round 2 never triggered them.
 - `pyyaml` is a declared dependency: without it `olmoearth_rslearn_compose`
   returned no YAML.
 - **No-data entered the statistics of every grid sampler.** Studio's
