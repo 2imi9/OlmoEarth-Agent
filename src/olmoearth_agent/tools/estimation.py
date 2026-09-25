@@ -69,6 +69,14 @@ ZONE_RULES = ("prefix", "bonferroni")
 #: Format tag of a design file written by olmoearth_plan_label_sample.
 DESIGN_FORMAT = "olmoearth-agent/label-design@1"
 
+#: Stated with every certify_zone output: exp86 round 2's model recommended a
+#: confidence design for certification, which the tool refuses.
+DESIGN_REQUIREMENT = (
+    "Certification needs design='random' (a simple random sample of the map); "
+    "olmoearth_certify_zone refuses a 'confidence' or 'proportional' design, so "
+    "recommend only a random design for a certified zone."
+)
+
 #: Stated with every plan and estimate, because the trial's model broke both.
 INTERVAL_RULES = (
     "A targeted review set (e.g. the windows olmoearth_review_set lists) is "
@@ -668,6 +676,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 "random sample of that zone, which a stratified design is not. "
                 "Plan one with olmoearth_plan_label_sample(design='random')."
             ),
+            "design_requirement": DESIGN_REQUIREMENT,
         }
     rule = str(args.get("rule", "prefix"))
     if rule not in ZONE_RULES:
@@ -718,20 +727,85 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             f"rule '{rule}': no share of the map is shown to be wrong at most "
             f"alpha={alpha:g} of the time."
         )
+    out["levels_tested"] = _levels_tested(out, alpha, delta, rule)
     # exp86 round 1 (brief 6): with nothing certified at 0.05, every answer
     # read a level's upper_bound as a certification at a looser alpha.
     out["reading_levels"] = (
         "Each level's upper_bound is that zone's own bound at delta, before the "
         "rule is applied. A level whose upper_bound is below alpha, this alpha "
         "or any other, is not thereby certified: certification is the "
-        "package's exact test under the chosen rule ('prefix' accepts levels "
-        "from the smallest zone up and stops at the first that fails; "
-        "'bonferroni' tests every level at delta divided by the number of "
-        "levels), and which levels are tested depends on alpha. Only a level "
-        "marked accepted at this call's alpha is certified; whether another "
-        "alpha certifies a zone is known only by calling this tool with it."
+        "package's exact test under the chosen rule (levels_tested says how "
+        "this rule tested which levels), and which levels are tested depends "
+        "on alpha. Only a level marked accepted at this call's alpha is "
+        "certified. Another alpha tests other levels, so this output says "
+        "nothing about it; and the guarantee holds for an alpha fixed before "
+        "the labels were seen, so trying looser alphas until one certifies is "
+        "not covered by it."
     )
+    out["design_requirement"] = DESIGN_REQUIREMENT
     return out
+
+
+def _levels_tested(
+    out: dict[str, Any], alpha: float, delta: float, rule: str
+) -> dict[str, Any]:
+    """Which levels the rule tested, at what per-level delta, and whether any passed.
+
+    exp86 round 2 (brief 6, run 3): the model wrote "bonferroni tests every
+    level at delta/18", counting the listed levels itself. The count and the
+    per-level delta are the package's (``apply_zone_rule`` divides delta by
+    the number of levels tested), stated here so no number is the model's.
+    """
+    levels = out.get("levels") or []
+    n_levels = len(levels)
+    n_accepted = sum(1 for lv in levels if lv.get("accepted"))
+    by_rule: dict[str, float | None] = {"prefix": None, "bonferroni": None}
+    if n_levels == 0:
+        how = (
+            "no level was tested: even a zone with no error among its labels "
+            "would need more labels than the design holds (the package's note "
+            "says how many)"
+        )
+    else:
+        # The levels tested depend on alpha, delta and the labels, not on the
+        # rule, so both rules' per-level delta over these levels is exact.
+        by_rule = {"prefix": delta, "bonferroni": delta / n_levels}
+        bonferroni = (
+            f"each of the {n_levels} levels at delta/{n_levels} = "
+            f"{delta:g}/{n_levels} = {delta / n_levels:.6g}"
+        )
+        prefix = (
+            f"the {n_levels} levels at delta = {delta:g} each, from the smallest "
+            "zone up, stopping at the first whose p_value is above it"
+        )
+        if rule == "bonferroni":
+            how = (
+                f"bonferroni tests {bonferroni}: a level is accepted when its "
+                "p_value is at most that, whatever the other levels do (prefix "
+                f"would test {prefix})"
+            )
+        else:
+            how = (
+                f"prefix tests {prefix}; the levels after that one are not "
+                f"accepted (bonferroni would test {bonferroni})"
+            )
+    return {
+        "n_levels": n_levels,
+        "coverages": [lv.get("coverage") for lv in levels],
+        "per_level_delta": by_rule.get(rule),
+        "per_level_delta_by_rule": by_rule,
+        "how_the_rule_tests_them": how,
+        "n_accepted": n_accepted,
+        "any_level_certifies": n_accepted > 0,
+        "why_these_levels": (
+            "a zone must hold at least "
+            f"{out.get('min_labels_to_certify')} labels to be certified at "
+            f"alpha={alpha:g}, delta={delta:g} (min_labels_to_certify), so with "
+            f"{out.get('n_labelled')} labels no zone below coverage c_min = "
+            f"{float(out.get('c_min') or 0.0):.6g} is tested; another alpha "
+            "tests other levels"
+        ),
+    }
 
 
 _DESIGN_PATH = {"type": "string", "description": "From olmoearth_plan_label_sample."}

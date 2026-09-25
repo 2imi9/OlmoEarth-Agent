@@ -778,3 +778,102 @@ def test_a_budget_error_says_raised_for_a_grid_below_two() -> None:
     )
     message = _budget_refusal(5, pop)
     assert "grid 1 was raised to 2" in message and "capped" not in message
+
+
+# --------------------------------------------------------------------------- exp86 round 2: the levels tested
+
+
+async def _random_zone_inputs(budget: int = 300) -> tuple[str, list[int]]:
+    scores, truth = _map(2000, seed=11)
+    plan = (
+        await _call(
+            "olmoearth_plan_label_sample",
+            {"scores": scores, "budget": budget, "design": "random"},
+        )
+    )["result"]
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    return plan["design_path"], [truth[i] for i in idx]
+
+
+@pytest.mark.asyncio
+async def test_certify_zone_states_the_levels_and_bonferronis_per_level_delta() -> None:
+    """exp86 round 2 (brief 6, run 3): the model wrote "bonferroni tests every
+    level at delta/18", a count of the listed levels it made itself."""
+    design_path, wrong = await _random_zone_inputs()
+    args = {"design_path": design_path, "wrong": wrong, "alpha": 0.1}
+    bonf = (await _call("olmoearth_certify_zone", {**args, "rule": "bonferroni"}))[
+        "result"
+    ]
+    tested = bonf["levels_tested"]
+    n = len(bonf["levels"])
+    assert tested["n_levels"] == n > 0
+    assert tested["coverages"] == [lv["coverage"] for lv in bonf["levels"]]
+    assert tested["per_level_delta"] == pytest.approx(0.1 / n)
+    assert f"delta/{n} = 0.1/{n}" in tested["how_the_rule_tests_them"]
+    assert tested["n_accepted"] == sum(lv["accepted"] for lv in bonf["levels"])
+    assert tested["any_level_certifies"] is True is bonf["certified"]
+    assert str(estimate.min_labels_to_certify(0.1, 0.1)) in tested["why_these_levels"]
+
+    prefix = (
+        await _call(
+            "olmoearth_certify_zone",
+            {"design_path": design_path, "wrong": wrong, "alpha": 0.05},
+        )
+    )["result"]
+    assert prefix["levels_tested"]["per_level_delta"] == 0.1
+    n05 = prefix["levels_tested"]["n_levels"]
+    assert prefix["levels_tested"]["per_level_delta_by_rule"] == {
+        "prefix": 0.1,
+        "bonferroni": pytest.approx(0.1 / n05),
+    }
+    how = prefix["levels_tested"]["how_the_rule_tests_them"]
+    # Run 3's call was prefix and its answer spoke of bonferroni: both are given.
+    assert "smallest zone up" in how and f"0.1/{n05}" in how
+    assert prefix["levels_tested"]["any_level_certifies"] is False
+    assert prefix["levels_tested"]["n_accepted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_certify_zone_with_too_few_labels_tests_no_level() -> None:
+    design_path, wrong = await _random_zone_inputs(budget=20)
+    out = (
+        await _call(
+            "olmoearth_certify_zone",
+            {"design_path": design_path, "wrong": wrong, "alpha": 0.05},
+        )
+    )["result"]
+    tested = out["levels_tested"]
+    assert tested["n_levels"] == 0 and tested["per_level_delta"] is None
+    assert tested["any_level_certifies"] is False
+    assert "no level" in tested["how_the_rule_tests_them"]
+
+
+@pytest.mark.asyncio
+async def test_every_certify_output_repeats_that_it_needs_a_random_design() -> None:
+    """exp86 round 2 (brief 6, run 3) recommended a confidence design for
+    certification, which this tool refuses."""
+    design_path, wrong = await _random_zone_inputs()
+    certified = (
+        await _call(
+            "olmoearth_certify_zone",
+            {"design_path": design_path, "wrong": wrong, "alpha": 0.05},
+        )
+    )["result"]
+    assert "design='random'" in certified["design_requirement"]
+    assert "confidence" in certified["design_requirement"]
+    scores, _truth = _map(2000, seed=11)
+    stratified = (
+        await _call("olmoearth_plan_label_sample", {"scores": scores, "budget": 300})
+    )["result"]
+    refused = (
+        await _call(
+            "olmoearth_certify_zone",
+            {
+                "design_path": stratified["design_path"],
+                "wrong": [0] * 300,
+                "alpha": 0.05,
+            },
+        )
+    )["result"]
+    assert refused["certified"] is False
+    assert "design='random'" in refused["design_requirement"]
