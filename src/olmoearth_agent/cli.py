@@ -101,6 +101,13 @@ def main(argv: list[str] | None = None) -> int:
                     f"  [numbers] in no tool result, rewrite asked: {listed}",
                     file=sys.stderr,
                 )
+        for check in result.checks:
+            if check.get("action") == "revise" and check.get("check") != "numbers":
+                n = len(check.get("violations", []))
+                print(
+                    f"  [{check.get('check')}] {n} sentence(s) flagged, rewrite asked",
+                    file=sys.stderr,
+                )
         if result.state is not None:
             print(
                 f"  ({result.turns} turn(s), "
@@ -125,6 +132,15 @@ def main(argv: list[str] | None = None) -> int:
                 "(numbers in the answer that no tool returned: "
                 + ", ".join(check.get("unsupported", []))
                 + ")",
+                file=sys.stderr,
+            )
+    for check in result.checks:
+        if check.get("action") == "marked" and check.get("check") != "numbers":
+            # The answer carries "[unverified: <check>]" after each sentence.
+            print(
+                f"(the {check.get('check')} check still flags "
+                f"{len(check.get('violations', []))} statement(s) of the answer; "
+                "each is marked [unverified])",
                 file=sys.stderr,
             )
     print(result.final_content)

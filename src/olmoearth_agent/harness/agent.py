@@ -10,12 +10,16 @@ returns a plain-text answer or the turn budget is exhausted. When the last
 turn still asks for tools, one more call, with no tools, asks the model to
 answer from what it has, so a run never ends without an answer.
 
-Before the answer is shown, its numbers are checked against the run's tool
-results and the user's messages (:mod:`olmoearth_agent.harness.grounding`).
-When one is found in none of them, one more call, with no tools, asks the
-model to rewrite the answer without it. The rewrite is checked but never sent
-back: it is shown whatever it states, and an event names what it still
-states.
+Before the answer is shown, it is checked against the run
+(:mod:`olmoearth_agent.harness.checks`): its numbers against the tool results
+and the user's messages (:mod:`olmoearth_agent.harness.grounding`), its
+directions, places and magnitudes against the facts the tools computed, its
+claims of files saved or items listed against what the run did, and the
+claims and statements the tools forbid or require. When any check finds a
+violation, one more call, with no tools, asks the model to rewrite the answer
+with every violation listed. The rewrite is checked again but never sent
+back: each sentence a check still flags is shown with ``[unverified:
+<check>]`` after it, and nothing is deleted.
 """
 
 from __future__ import annotations
@@ -26,17 +30,41 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from olmoearth_agent.harness.grounding import NumberPool
+from olmoearth_agent.harness.checks import (
+    CHECKS,
+    NUMBERS,
+    SURFACES,
+    RunEvidence,
+    ToolRecord,
+    grounding_prompt,
+    mark_answer,
+    revision_prompt,
+    run_checks,
+    unsupported_of,
+)
 from olmoearth_agent.harness.soul import load_soul
 from olmoearth_agent.harness.spill import compact_result_for_llm
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
+from olmoearth_agent.llm.presets import REVISION_MODE
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
 from olmoearth_agent.studio.client import StudioClient
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "CHECK_ANSWER_ENV",
+    "CHECK_NUMBERS_ENV",
+    "DEFAULT_SYSTEM_PROMPT",
+    "TURN_CAP_PROMPT",
+    "AgentResult",
+    "LeadAgent",
+    "grounding_prompt",
+    "revision_prompt",
+    "turn_cap_fallback",
+]
 
 #: The agent's soul (persona + guardrails + workflow), loaded from the
 #: versioned ``soul.md`` artifact next to this module — or the operator's
@@ -72,19 +100,14 @@ TURN_CAP_PROMPT = (
 #: Set to ``0`` (or ``false``, ``no``, ``off``) to switch the answer's number
 #: check off; ``LeadAgent(check_numbers=False)`` does the same for one agent.
 CHECK_NUMBERS_ENV = "OLMOEARTH_CHECK_NUMBERS"
+#: The same for the answer's other checks (direction, actions, forbidden
+#: claims, required statements); ``LeadAgent(check_answer=False)``.
+CHECK_ANSWER_ENV = "OLMOEARTH_CHECK_ANSWER"
 _FALSY = {"0", "false", "no", "off"}
 
 
-def grounding_prompt(unsupported: list[str]) -> str:
-    """The harness's request to rewrite an answer without ``unsupported``."""
-    return (
-        "Harness note: these numbers in your answer are in no tool result of "
-        f"this run and no user message: {', '.join(unsupported)}. Every number "
-        "in the answer must be one a tool returned, as the tool returned it "
-        "(rounding is fine). Rewrite the answer: remove each listed number, or "
-        "replace it with the figure a tool returned. Call no tools, and do not "
-        "mention this note."
-    )
+def _env_on(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() not in _FALSY
 
 
 def turn_cap_fallback(max_turns: int) -> str:
@@ -130,6 +153,12 @@ class AgentResult:
     grounding_revised: bool = False
     #: The run's ``grounding_check`` events (see :meth:`LeadAgent.run_stream`).
     grounding_checks: list[dict[str, Any]] = field(default_factory=list)
+    #: The answer is the model's rewrite after any check.
+    revised: bool = False
+    #: The run's ``check`` events, one per check that fired and pass.
+    checks: list[dict[str, Any]] = field(default_factory=list)
+    #: The checks whose sentences the answer shows marked ``[unverified: ...]``.
+    marked: list[str] = field(default_factory=list)
 
 
 class LeadAgent:
@@ -159,20 +188,25 @@ class LeadAgent:
         memory_block: str = "",
         local: bool = False,
         check_numbers: bool = True,
+        check_answer: bool = True,
+        surface: str = "cli",
     ) -> None:
+        if surface not in SURFACES:
+            raise ValueError(f"surface must be one of {SURFACES}, not {surface!r}")
         self.llm = llm
         self.registry = registry
         self.studio = studio
         self.state = state or ThreadState()
         self.forced_skill = forced_skill
         self.system_prompt = system_prompt
-        # Check the answer's numbers against the tool results before it is
-        # shown, unless switched off here or by OLMOEARTH_CHECK_NUMBERS=0.
-        env = os.environ.get(CHECK_NUMBERS_ENV, "").strip().lower()
-        self.check_numbers = check_numbers and env not in _FALSY
-        # The user's saved preferences are their own words, so a number in
-        # them is a source for the check; the rest of the prompt is not.
-        self._memory_block = memory_block
+        # Check the answer against the run before it is shown, unless
+        # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers) and
+        # OLMOEARTH_CHECK_ANSWER=0 (the other checks).
+        self.check_numbers = check_numbers and _env_on(CHECK_NUMBERS_ENV)
+        self.check_answer = check_answer and _env_on(CHECK_ANSWER_ENV)
+        # Where the answer is shown: on the web the tool results are shown
+        # beside it, so "listed above" may point at them (harness/checks.py).
+        self.surface = surface
         if skill_index:
             # Progressive disclosure: list the vendored SKILL.md skills so the
             # model knows to call olmoearth_load_skill when a task matches.
@@ -195,6 +229,14 @@ class LeadAgent:
             # The local model needs an explicit output-budget + brevity reminder
             # (a hosted model does not), or long answers truncate mid-sentence.
             self.system_prompt += LOCAL_BUDGET_CLAUSE
+
+    def _checks(self) -> list[str]:
+        """The answer checks this agent runs, in order."""
+        return [
+            name
+            for name in CHECKS
+            if (self.check_numbers if name == NUMBERS else self.check_answer)
+        ]
 
     def _record_external_endpoints(self) -> None:
         """Note the external Studio endpoint this run uses in the manifest.
@@ -232,9 +274,11 @@ class LeadAgent:
         - ``tool_call``   : a dispatched call (``name``, ``arguments``, ``id``).
         - ``tool_result`` : its outcome (``name``, ``ok``, ``result``, ``id``).
         - ``final``       : the plain-text answer (``content``), with
-          ``forced_by_turn_cap`` true when the turn cap forced it and
-          ``grounding_revised`` true when it is the model's rewrite after the
-          number check. Exactly one per run, always last.
+          ``forced_by_turn_cap`` true when the turn cap forced it,
+          ``revised`` true when it is the model's rewrite after the answer
+          checks (``grounding_revised`` when the number check was among
+          them), and ``marked`` naming the checks whose sentences it shows
+          marked. Exactly one per run, always last.
         - ``max_turns``   : the cap was hit with the model still asking for
           tools (``turns``); a ``final`` follows, from one more call that
           offers no tools (``final_answer_forced``).
@@ -247,6 +291,21 @@ class LeadAgent:
           event carries the answer it replaces (``draft``). At most one of
           each per run, before the ``final``; ``turn`` is the answer's turn.
           Off with ``check_numbers=False`` or ``OLMOEARTH_CHECK_NUMBERS=0``.
+        - ``check``       : one per check that found violations in the
+          answer (``check``: ``numbers``, ``direction``, ``actions``,
+          ``forbidden_claims`` or ``must_state``; ``violations``: each
+          ``{check, text, detail}``, ``text`` the sentence). ``action`` is
+          ``"revise"`` on the draft (which the event carries as ``draft``):
+          one call, with no tools and the rewrite sampling
+          (``REVISION_MODE``), asks for a rewrite that fixes every
+          violation of every check. It is ``"marked"`` on the answer about to
+          be shown (the rewrite, or the draft if the rewrite was empty),
+          where each sentence still flagged is followed by
+          ``[unverified: <check>]``, and a required statement the answer
+          still lacks is added at its end after its marker. The number check
+          yields its ``grounding_check`` beside its ``check`` event. Off
+          with ``check_answer=False`` or ``OLMOEARTH_CHECK_ANSWER=0``
+          (every check but the numbers).
 
         Parameters
         ----------
@@ -267,9 +326,9 @@ class LeadAgent:
         messages.append(Message(role="user", content=brief))
         ctx = ToolContext(studio=self.studio, state=self.state)
         self._record_external_endpoints()
-        # The full result of every call, for the number check (the model saw
+        # The full result of every call, for the answer checks (the model saw
         # compacted ones; a spilled result's numbers are still the tool's).
-        tool_results: list[dict[str, Any]] = []
+        tool_records: list[ToolRecord] = []
         answer: str | None = None
         forced = True
 
@@ -303,7 +362,7 @@ class LeadAgent:
                     "arguments": call.arguments,
                 }
                 result = await self.registry.dispatch(call, ctx)
-                tool_results.append(result)
+                tool_records.append(ToolRecord(call.name, call.arguments, result))
                 self.state.provenance.record_tool_call(
                     call.name, call.arguments, result
                 )
@@ -342,44 +401,71 @@ class LeadAgent:
                 yield {"type": "thinking", "turn": turn, "text": response.thinking}
             answer = response.content if (response.content or "").strip() else None
 
-        # The number check (exp86: in each of three rounds the only genuine
-        # fault was a number no tool had returned). Once per run: a rewrite
-        # that still states such a number is shown, and the event says so.
-        # The harness's own turn-cap fallback is not checked.
-        grounding_revised = False
-        if self.check_numbers and answer and answer.strip():
-            pool = NumberPool(
-                [*tool_results, brief, self._memory_block]
-                + [m.content for m in history or () if m.content]
+        # The answer checks (exp86: in each of three rounds the only genuine
+        # fault was a number no tool had returned; the round 6 and 7 audits
+        # found directions, places and actions no tool supported). Once per
+        # run: one rewrite for every violation, then each sentence still
+        # flagged is shown marked. The harness's turn-cap fallback is not
+        # checked.
+        revised, first_found, marked = False, False, []
+        checks = self._checks()
+        if checks and answer and answer.strip():
+            evidence = RunEvidence(
+                tools=tool_records,
+                # The user's own words; never the saved preferences or an
+                # earlier assistant message (a derived number is not a source).
+                user_messages=[brief]
+                + [m.content for m in history or () if m.role == "user" and m.content],
+                surface=self.surface,
             )
-            unsupported = pool.unsupported(answer)
-            if unsupported:
-                yield {
-                    "type": "grounding_check",
-                    "turn": turn,
-                    "unsupported": unsupported,
-                    "action": "revise",
-                    # The answer the rewrite replaces, so a trace shows what
-                    # the check removed (exp86 round 4 could not tell).
-                    "draft": answer,
-                }
-                messages.append(Message(role="assistant", content=answer))
-                messages.append(
-                    Message(role="user", content=grounding_prompt(unsupported))
-                )
-                response = await self.llm.chat(messages, tools=None)
-                if response.thinking:
-                    yield {"type": "thinking", "turn": turn, "text": response.thinking}
-                if (response.content or "").strip():
-                    answer, grounding_revised = response.content, True
-                    unsupported = pool.unsupported(answer or "")
-                if unsupported:
+            found = run_checks(answer, evidence, checks)
+            first_found = NUMBERS in found
+            if found:
+                for name, violations in found.items():
+                    yield {
+                        "type": "check",
+                        "turn": turn,
+                        "check": name,
+                        "violations": violations,
+                        "action": "revise",
+                        "draft": answer,
+                    }
+                if NUMBERS in found:
                     yield {
                         "type": "grounding_check",
                         "turn": turn,
-                        "unsupported": unsupported,
+                        "unsupported": unsupported_of(found[NUMBERS]),
+                        "action": "revise",
+                        # The answer the rewrite replaces, so a trace shows
+                        # what the check removed (exp86 round 4 could not tell).
+                        "draft": answer,
+                    }
+                messages.append(Message(role="assistant", content=answer))
+                messages.append(Message(role="user", content=revision_prompt(found)))
+                response = await self.llm.chat(messages, tools=None, mode=REVISION_MODE)
+                if response.thinking:
+                    yield {"type": "thinking", "turn": turn, "text": response.thinking}
+                if (response.content or "").strip():
+                    answer, revised = response.content, True
+                found = run_checks(answer or "", evidence, checks)
+                for name, violations in found.items():
+                    yield {
+                        "type": "check",
+                        "turn": turn,
+                        "check": name,
+                        "violations": violations,
+                        "action": "marked",
+                    }
+                if NUMBERS in found:
+                    yield {
+                        "type": "grounding_check",
+                        "turn": turn,
+                        "unsupported": unsupported_of(found[NUMBERS]),
                         "action": "shown",
                     }
+                if found:
+                    # Fail closed by marking: nothing is deleted.
+                    answer, marked = mark_answer(answer or "", found), list(found)
 
         if forced and answer is None:
             answer = turn_cap_fallback(max_turns)
@@ -388,7 +474,9 @@ class LeadAgent:
             "turn": turn,
             "content": answer,
             "forced_by_turn_cap": forced,
-            "grounding_revised": grounding_revised,
+            "grounding_revised": revised and first_found,
+            "revised": revised,
+            "marked": marked,
         }
 
     async def run(
@@ -424,8 +512,10 @@ class LeadAgent:
         turns = 0
         calls: list[tuple[str, bool]] = []
         hit_max_turns = False
-        grounding_revised = False
+        grounding_revised = revised = False
+        grounding_checks: list[dict[str, Any]] = []
         checks: list[dict[str, Any]] = []
+        marked: list[str] = []
 
         async for event in self.run_stream(brief, max_turns=max_turns, history=history):
             kind = event["type"]
@@ -435,10 +525,14 @@ class LeadAgent:
                 final_content = event["content"]
                 turns = event["turn"]
                 grounding_revised = bool(event.get("grounding_revised"))
+                revised = bool(event.get("revised"))
+                marked = list(event.get("marked") or [])
             elif kind == "max_turns":
                 hit_max_turns = True
                 turns = event["turns"]
             elif kind == "grounding_check":
+                grounding_checks.append(event)
+            elif kind == "check":
                 checks.append(event)
 
         return AgentResult(
@@ -448,5 +542,8 @@ class LeadAgent:
             hit_max_turns=hit_max_turns,
             state=self.state,
             grounding_revised=grounding_revised,
-            grounding_checks=checks,
+            grounding_checks=grounding_checks,
+            revised=revised,
+            checks=checks,
+            marked=marked,
         )

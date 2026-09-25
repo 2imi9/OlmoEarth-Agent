@@ -299,6 +299,22 @@ export function handleRunEvent(body, ev, staticRender) {
       stepsBody(body).appendChild(row);
       bumpStepsCount(body);
     }
+  } else if (ev.type === 'check' && ev.check !== 'numbers') {
+    // An answer check other than the numbers (harness/checks.py; the number
+    // check has its grounding_check above). 'revise': a rewrite was asked,
+    // noted in the steps; 'marked': the answer below carries
+    // "[unverified: <check>]" after each sentence still flagged.
+    const n = (ev.violations || []).length;
+    const name = String(ev.check || 'answer');
+    if (ev.action === 'marked') {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">The ' + escapeHtml(name) + ' check still flags ' + n + ' statement(s) of the answer below; each is marked [unverified: ' + escapeHtml(name) + '].</div>');
+    } else {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = 'Answer check (' + name + '): ' + n + ' sentence(s) flagged; asked for a rewrite.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    }
   } else if (ev.type === 'error') {
     workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');

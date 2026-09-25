@@ -46,3 +46,10 @@ PRESETS: dict[SamplingMode, dict[str, Any]] = {
 }
 
 DEFAULT_AGENT_MODE: SamplingMode = "thinking_general"
+
+#: The sampling of the harness's rewrite after the answer checks
+#: (``LeadAgent.run_stream``): no presence penalty, which pushes a model to
+#: new words when the task is to keep most of a draft and change a few
+#: sentences, and a lower temperature. The tool-calling loop keeps
+#: :data:`DEFAULT_AGENT_MODE`.
+REVISION_MODE: SamplingMode = "thinking_coding"
