@@ -32,6 +32,7 @@ from typing import Any
 
 from olmoearth_agent.harness.checks import (
     CHECKS,
+    MUST_STATE,
     NUMBERS,
     SURFACES,
     RunEvidence,
@@ -431,7 +432,21 @@ class LeadAgent:
             )
             found = run_checks(answer, evidence, checks)
             first_found = NUMBERS in found
-            if found:
+            if found and set(found) == {MUST_STATE}:
+                # A required statement the answer only paraphrased or left out
+                # costs no rewrite: the harness appends it as the tool states it
+                # (replayed on exp86 rounds 6-7, the key-term test flagged four
+                # correct declines worded differently).
+                for name, violations in found.items():
+                    yield {
+                        "type": "check",
+                        "turn": turn,
+                        "check": name,
+                        "violations": violations,
+                        "action": "appended",
+                    }
+                answer, marked = mark_answer(answer, found), list(found)
+            elif found:
                 for name, violations in found.items():
                     yield {
                         "type": "check",

@@ -1030,6 +1030,6 @@ def test_marking_keeps_every_sentence_and_marks_the_flagged_ones() -> None:
         "|---|---|\n"
         "| 5,565 | x [unverified: numbers] |\n"
         "\n"
-        f"[unverified: must_state] A tool also states: {_DATES}"
+        f"Note from the tool: {_DATES}"
     )
     assert mark_answer(answer, {}) == answer

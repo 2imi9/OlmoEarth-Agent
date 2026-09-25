@@ -88,6 +88,8 @@ BAND_SHARE_MAX = 0.10
 RATIO_SLACK = 1.5
 #: The share of a ``must_state`` sentence's key terms the answer must hold.
 MUST_STATE_MIN_OVERLAP = 0.5
+#: How a required statement the answer lacks is appended to it.
+TOOL_NOTE = "Note from the tool:"
 #: The ``must_state`` sentences read per result, and the longest read: the
 #: contract's limits; a longer sentence is scope detail, not a limit to state.
 MUST_STATE_MAX = 3
@@ -2057,7 +2059,8 @@ def mark_answer(answer: str, found: Mapping[str, list[Violation]]) -> str:
     """The answer with ``[unverified: <check>]`` after each sentence still flagged.
 
     Nothing is deleted. A ``must_state`` sentence the answer lacks is added at
-    the end, after its marker, as the tool states it.
+    the end as the tool states it, as a note from the tool (it is a limit the
+    tool states, not an unverified claim of the answer).
     """
     by_text: dict[str, list[str]] = {}
     missing: list[str] = []
@@ -2084,9 +2087,7 @@ def mark_answer(answer: str, found: Mapping[str, list[Violation]]) -> str:
         for text, names in by_text.items()
         if text not in placed
     ]
-    tail += [
-        f"{MARK.format(check=MUST_STATE)} A tool also states: {t}" for t in missing
-    ]
+    tail += [f"{TOOL_NOTE} {t}" for t in missing]
     if tail:
         out = out.rstrip() + "\n\n" + "\n".join(tail)
     return out

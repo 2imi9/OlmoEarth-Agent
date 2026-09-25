@@ -363,3 +363,30 @@ def test_the_web_bridge_streams_the_checks_on_the_web_surface(
     assert final["content"] == (
         f"{_BACKWARDS} [unverified: direction] The first 30 windows are listed above."
     )
+
+
+@pytest.mark.asyncio
+async def test_a_required_statement_alone_is_appended_without_a_rewrite() -> None:
+    """Replayed on exp86 rounds 6-7, the key-term test flagged four correct
+    declines worded differently: a missing must_state sentence alone costs no
+    rewrite, and the harness appends it as a note from the tool."""
+    limit = "No recorded experiment grades which of these two maps is right."
+    result = {"n_differing": 1570, "must_state": [limit]}
+
+    async def compare(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        return result
+
+    registry = ToolRegistry()
+    registry.register(
+        RegisteredTool(ToolSpec("compare", "compare two maps", _EMPTY_SCHEMA), compare)
+    )
+    answer = "The two maps differ on 1,570 windows."
+    llm = _Scripted([_compare_call(), _answer(answer)])
+    agent = LeadAgent(llm, registry, studio=None)  # type: ignore[arg-type]
+    events = await _events(agent)
+    assert len(llm.calls) == 2  # the tool call and the answer: no rewrite
+    assert _check_events(events) == [("must_state", "appended", 1)]
+    final = events[-1]
+    assert final["content"].startswith(answer)
+    assert final["content"].rstrip().endswith(f"Note from the tool: {limit}")
+    assert final["revised"] is False and final["marked"] == ["must_state"]
