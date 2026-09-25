@@ -102,6 +102,32 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
 
 ### Changed
+- **The lead-agent loop is a middleware chain with LangChain 1.x's hook
+  interface** (`harness/middleware.py`; the owner chose on 25 September 2026
+  to build the layer rather than migrate, so that a later migration is a
+  mechanical replacement). `AgentMiddleware` has LangChain's async hooks
+  (`abefore_agent`, `abefore_model`, `awrap_model_call`, `aafter_model`,
+  `awrap_tool_call`, `aafter_agent`), its order (`before_*` in list order,
+  `after_*` in reverse, wraps nested with the first outermost), node hooks
+  that return state updates or `{"jump_to": "model" | "tools" | "end"}`, and
+  `@hook_config(can_jump_to=[...])`; an undeclared jump raises.
+  `ModelRequest` (messages, system message, tools, tool choice,
+  `model_settings` = `OlmoEarthLLM.chat`'s keyword arguments, state,
+  runtime) and `ToolCallRequest` have `.override()`; `ModelResponse` wraps our
+  `ChatResponse`. The runtime's `emit(event)` publishes an event, and
+  `run_stream` yields it in order as it is emitted, even from inside a model
+  or tool call. The loop's behaviours are ported onto three middlewares:
+  `TurnCapMiddleware` (the forced answer without tools at the cap, and
+  `max_turns`), `RetryHintMiddleware` (the stop-retrying hint, moved from
+  `ToolRegistry.dispatch`, whose `retry_hint=True` default still applies it to
+  direct calls) and `AnswerChecksMiddleware` (the checks, the one rewrite in
+  `REVISION_MODE`, the marking and the appended required statements, with
+  their `check` and `grounding_check` events). `LeadAgent(middleware=[...])`
+  replaces them; the default chain runs as the loop did: the existing tests
+  pass unchanged, and 3,000 random scripted runs give the same events, model
+  calls and state as the loop before it. A chain that would start a turn past
+  `max_turns + 1`, or enter the model step more than 10 times in one turn,
+  raises `MiddlewareError`.
 - The `inferencex` extra is `olmoearth-inferencex[geo]` (>= 1.3.0): reading a
   scores GeoTIFF needs rasterio, and the package's `geo` extra brings it, with
   geopandas, shapely, pystac-client, planetary-computer, matplotlib and scipy.

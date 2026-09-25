@@ -80,7 +80,7 @@ Formatter, linter, type checker, docstring threshold and licence headers: [`CONT
 
 When choosing how to structure a change, defer to:
 
-- The harness is a single-agent tool-calling loop (`harness/agent.py`), shaped after [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow)'s lead agent without its subagents or LangGraph.
+- The harness is a single-agent tool-calling loop (`harness/agent.py`), shaped after [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow)'s lead agent without its subagents or LangGraph. Its behaviours (turn cap, retry hint, answer checks) are middleware with LangChain 1.x's hook interface (`harness/middleware.py`); add one as an `AgentMiddleware`, not as code in the loop.
 - [agentskills.io](https://agentskills.io) / [NVIDIA AI-Q Agent Skills](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) for `SKILL.md` packaging.
 - [OlmoEarth Studio OpenAPI](https://olmoearth.allenai.org/api/v1/openapi.json) as the reference for API endpoints; `studio/client.py` is a hand-written client checked against it and live probes.
 - [`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`) served via llama.cpp is the default local LLM; any OpenAI-compatible server works (see [`docs/serving.md`](docs/serving.md)). Canonical facts in [`docs/CANON.md`](docs/CANON.md); keep docs aligned with it. (Multimodal/Prismatic is parked, `PLAN.md` §7.)
