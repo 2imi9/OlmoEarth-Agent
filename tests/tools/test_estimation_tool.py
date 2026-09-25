@@ -877,3 +877,57 @@ async def test_every_certify_output_repeats_that_it_needs_a_random_design() -> N
     )["result"]
     assert refused["certified"] is False
     assert "design='random'" in refused["design_requirement"]
+
+
+# --------------------------------------------------------------------------- exp86 round 2: dates
+
+
+def test_compare_review_schema_states_the_date_forms() -> None:
+    """exp86 round 2 (brief 3, cluster): all three runs first passed '2023',
+    which the schema's "ISO date" allowed (ISO 8601 has reduced precision) and
+    olmoearth-inferencex's dates_reading refuses as a string."""
+    spec = next(
+        t.spec
+        for t in build_review_set_tools()
+        if t.spec.name == "olmoearth_compare_review"
+    )
+    props = spec.parameters["properties"]
+    for key in ("date_a", "date_b", "labels_date"):
+        text = props[key]["description"]
+        assert "YYYY-MM-DD" in text and "YYYY-MM-DD/YYYY-MM-DD" in text, key
+        assert "not a bare year" in text, key
+    assert "2023-01-01/2023-12-31" in props["date_a"]["description"]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_dates_follow_the_package() -> None:
+    """The package reads a string date as YYYY-MM-DD or a start/end interval and
+    refuses '2023'; a year map is its whole-year interval."""
+    compare = pytest.importorskip("oe_inferencex.compare")
+    with pytest.raises(ValueError, match="not an ISO date"):
+        compare.dates_reading("2023", "2022-01-01/2022-12-31")
+    a = [[0.2, 0.8], [0.7, 0.3]]
+    year = await _call(
+        "olmoearth_compare_review",
+        {"scores_a": a, "scores_b": a, "date_a": "2023", "date_b": "2022"},
+    )
+    assert year["ok"] is False
+    assert "'2023-01-01/2023-12-31'" in year["error"]
+    month = await _call(
+        "olmoearth_compare_review",
+        {"scores_a": a, "scores_b": a, "date_a": "2023-06", "date_b": "2022"},
+    )
+    assert month["ok"] is False and "'2023-06-01/2023-06-30'" in month["error"]
+    whole = (
+        await _call(
+            "olmoearth_compare_review",
+            {
+                "scores_a": a,
+                "scores_b": a,
+                "date_a": "2023-01-01/2023-12-31",
+                "date_b": "2022-01-01/2022-12-31",
+            },
+        )
+    )["result"]
+    assert whole["dates"]["a"] == "2023-01-01/2023-12-31"
+    assert whole["dates"]["status"] == "different_time"

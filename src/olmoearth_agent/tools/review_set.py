@@ -38,6 +38,7 @@ No coordinates in, no coordinates out (rule §3.1).
 from __future__ import annotations
 
 import asyncio
+import calendar
 import json
 import os
 import re
@@ -322,15 +323,58 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     return out
 
 
+#: The date forms ``olmoearth_compare_review`` takes, as the package's
+#: ``compare.dates_reading`` reads a string: a day or a start/end interval.
+DATE_FORMS = "YYYY-MM-DD, or a YYYY-MM-DD/YYYY-MM-DD period; not a bare year or month"
+
+_BARE_YEAR = re.compile(r"(\d{4})")
+_BARE_MONTH = re.compile(r"(\d{4})-(\d{2})")
+
+
+def _check_date_form(value: Any, name: str) -> None:
+    """Refuse a bare year or month, naming the interval that means it.
+
+    ``oe_inferencex.compare.dates_reading`` reads a string as an ISO day or a
+    start/end interval and refuses ``'2023'``; the schema says so (exp86 round
+    2: every brief-3 cluster run passed ``'2023'`` first). The refusal names the
+    whole-period interval, as the package reads a year or month ``datetime64``.
+    """
+    if not isinstance(value, str):
+        return
+    text = value.strip()
+    if _BARE_YEAR.fullmatch(text):
+        period = f"{text}-01-01/{text}-12-31"
+        what = "a year"
+    elif (month := _BARE_MONTH.fullmatch(text)) and 1 <= int(month[2]) <= 12:
+        year, mm = int(month[1]), int(month[2])
+        last = calendar.monthrange(year, mm)[1]
+        period = f"{text}-01/{text}-{last:02d}"
+        what = "a month"
+    else:
+        return
+    msg = (
+        f"{name}: {value!r} is {what}, not a date; a map of that whole {what[2:]} "
+        f"is the interval {period!r} (dates are {DATE_FORMS})"
+    )
+    raise ValueError(msg)
+
+
 def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
     """The package's reading of what a difference means at the maps' dates.
 
     With the ``inferencex`` extra: ``oe_inferencex.compare.dates_reading`` of
     ``date_a``, ``date_b`` and ``labels_date`` (``status`` "unstated" when none
-    was given). Without it: a statement that the dates were not assessed.
+    was given). Without it: a statement that the dates were not assessed. A
+    bare year or month is refused first, with the interval that means it.
     """
     date_a, date_b = args.get("date_a"), args.get("date_b")
     labels_date = args.get("labels_date")
+    for name, value in (
+        ("date_a", date_a),
+        ("date_b", date_b),
+        ("labels_date", labels_date),
+    ):
+        _check_date_form(value, name)
     try:
         compare = inferencex.load("compare")
     except inferencex.InferencexMissingError:
@@ -1023,18 +1067,20 @@ def build_review_set_tools() -> list[RegisteredTool]:
                         },
                         "date_a": {
                             "type": "string",
-                            "description": "ISO date or period (start/end) map A "
-                            "describes.",
+                            "description": "The date or period map A describes: "
+                            f"{DATE_FORMS} (a map of 2023 is "
+                            "2023-01-01/2023-12-31).",
                         },
                         "date_b": {
                             "type": "string",
-                            "description": "ISO date or period map B describes.",
+                            "description": "The date or period map B describes: "
+                            f"{DATE_FORMS}.",
                         },
                         "labels_date": {
                             "type": "string",
-                            "description": "ISO date or period any labels "
-                            "describe; required before grading maps of "
-                            "different dates.",
+                            "description": "The date or period any labels "
+                            f"describe: {DATE_FORMS}; required before grading "
+                            "maps of different dates.",
                         },
                     },
                     "required": [],
