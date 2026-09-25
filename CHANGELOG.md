@@ -243,30 +243,48 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `b_more_confident_share_of_differing`, and class names when both scores
   files give them; it lists only the first 10 differing windows inline and
   saves every one to `differing_path` (`n_differing_total`, `listing_order`).
-  A result now carries `facts` (one-sentence statements computed by code:
-  `dominant_change` with its reverse, `more_confident_side`, `concentration`
-  with `top_band_share`, and `margin_ratio` from the review set),
-  `must_state` and `forbidden_claims` (`winner_without_labels`,
-  `another_date_settles_it` across dates, `error_rate_without_labels`,
-  `combined_statistic_across_properties` in `olmoearth_compare_results`).
-  The inline `evidence` and `caveats` blocks are replaced by one
-  `evidence_scope` sentence: Ai2's 24-task embedding suite, window level,
-  OlmoEarth family, and whether that covers this case ("no recorded
-  experiment grades a regression score read as a probability" for a Studio
-  band; "only in part" for multi-class logits, exp76); it goes to
-  `must_state` when the case is not covered, and the full text is saved to
-  `evidence_detail_path`. The old caveat that the measured evidence is for
-  the logit margin is dropped: on the suite the probability margin beat the
-  logit margin on all 16 multi-class tasks. A ranking of a scores file
-  states the file's warnings (the provider now writes its
-  `package_warnings` into the file). `olmoearth_scores_from_file` adds
-  `model_and_raster` ("model ... at revision a347b15; raster sha256
-  a7c40be9 ...": a hash was given as a revision), a ranking with a grid adds
-  `boundary_neighbours_means` (neighbours of a different PREDICTED class, not
-  true boundaries, not error), and a comparison adds `boundary_means`. A
-  spilled tool result previews its summary fields and copies the contract
-  whole, and its note no longer asks for the saved path in the answer. No
-  number, ranking or parity-checked field changes.
+  A result now carries the shared output contract: `facts` (one-sentence
+  statements computed by code), `must_state` (at most 3 sentences of at most
+  25 words, each a limit the answer must convey) and `forbidden_claims`
+  (`winner_without_labels`, `another_date_settles_it` across dates,
+  `error_rate_without_labels`, `combined_statistic_across_properties` in
+  `olmoearth_compare_results`; each id once per result). The facts:
+  `dominant_change` (`from_class` -> `to_class` from map A to map B, with
+  `reverse_n`, `reverse_share` and `tied_with_reverse`; a tie with any other
+  direction is named in the sentence), `more_confident_side` (`side` A, B or
+  `neither`, decided on counts; `share_a`, `share_b`, `share_equal`),
+  `concentration` (`grid`, `n_differing`, `top_band_share` = the northmost
+  row band's share of the differing windows, and `max_band`, the band of
+  either axis holding the most, with its `axis`, `band` from 0, `of_grid`
+  and `share`), and `margin_ratio` (the median margin over the listed
+  windows' margins and over all windows in the review set:
+  `listed_low`/`listed_high`, `review_set_low`/`review_set_high`; the margin
+  summary adds the review set's range). The inline `evidence` and `caveats`
+  blocks are replaced by one `evidence_scope` sentence: Ai2's 24-task
+  embedding suite, window level, OlmoEarth family, and whether that covers
+  this case; when it does not, `must_state` gets a short sentence stating the
+  limit ("No recorded experiment grades a regression score read as a
+  probability." for a Studio band; "This ranking uses the logit margin; on
+  Ai2's suite one minus the top probability ranked errors better on 14 of 16
+  multi-class tasks." for multi-class logits, exp76), and the full text is
+  saved to `evidence_detail_path`. The old caveat that the measured evidence
+  is for the logit margin is dropped: on the suite the probability margin
+  beat the logit margin on all 16 multi-class tasks. A ranking of a scores
+  file carries the file's warnings whole in `scores_file_warnings` (the
+  provider now writes its `package_warnings` into the file) and the limit a
+  known one states in `must_state`, never the provider's "pass form='top1'",
+  an argument no agent tool takes. A scores file's rows are placed on the
+  file's own grid, never on a grid the model passed (`grid_note` says when
+  one was set aside; two files naming different grids are refused).
+  `olmoearth_scores_from_file` adds `model_and_raster` ("model ... at
+  revision a347b15; raster sha256 a7c40be9 ...": a hash was given as a
+  revision), a ranking with a grid adds `boundary_neighbours_means`
+  (neighbours of a different PREDICTED class, not true boundaries, not
+  error), and a comparison adds `boundary_means`. A spilled tool result
+  previews its summary fields and copies the contract whole (a result that
+  is not a dict keeps the raw JSON prefix), and its note no longer asks for
+  the saved path in the answer and says not to describe the file beyond the
+  preview. No number, ranking or parity-checked field changes.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
