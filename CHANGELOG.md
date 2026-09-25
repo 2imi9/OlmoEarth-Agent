@@ -338,47 +338,91 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   unrelated count of 23 in six rounds. The post-answer checks are now a list
   in `harness/checks.py`, each taking the answer and the run's evidence and
   returning violations (`{check, text, detail}`, `text` the sentence):
-  `numbers`; `direction`, which reads the tools' `facts` (a
-  `dominant_change` stated backwards or another pair named the dominant one,
-  the other side named the more confident, a place of concentration the
-  bands or the grid rule out, a magnitude outside `margin_ratio`, a wrong
-  count of unused labels); `actions` (a file said to be saved that no tool
-  of the run wrote, a list said to be saved in a file that is not one, items
-  said to be listed above or below that the answer does not hold; not
-  checked for "listed above" on the web, where tool results are shown);
-  `forbidden_claims`, a detector per id a tool names (`post_hoc_alpha`,
-  `rule_switch_after_failure`, `certify_from_nonrandom_design`, the error
-  rate without labels or for an unthresholded regression, a subset said to
-  suffice, a winner without labels, a statistic across properties, another
-  date said to settle it); and `must_state`, the statements a reported
-  result requires. The detectors read one sentence at a time and hold back
-  on a negated clause, a hedge or an example. When any check fires, one
-  rewrite call (no tools; the `thinking_coding` sampling, `REVISION_MODE`,
-  with no presence penalty) lists every violation; the checks run again, and
-  each sentence still flagged is shown with `[unverified: <check>]` after
-  it, never deleted (a required statement still missing is added at the
-  end). Each check that fires yields a `check` event (`action` `revise`,
-  with the `draft`, then `marked`); the number check keeps its
-  `grounding_check`. The number check's sources are now the tool results,
-  the brief and the user's turns only, never the saved preferences or an
-  earlier assistant message, and a percent is supported only by a share (a
-  fraction, a percent written in a string, or a value under a key naming a
-  percent, share or rate). `LeadAgent` takes `surface` (`"cli"`, the
-  default, or `"web"`, which the bridge passes) and `check_answer`
-  (`OLMOEARTH_CHECK_ANSWER=0` switches every check but the numbers off);
-  `AgentResult` carries `revised`, `checks` and `marked`, the CLI and the
-  web UI name the checks. The LLM client reads a server's reasoning from
-  `reasoning`, then `reasoning_content` (round 7 recorded no thinking), for
-  the `thinking` event only. `scripts/validate_answer_checks.py` runs the
-  checks over recorded answers; with the tools' keys simulated from exp86's
-  recorded results, rounds 6 and 7 get 27 flags in 21 of 60 answers: 22 on
-  sentences the blind audit confirmed false (every confirmed E3 action
-  claim, 2 of 3 E2 directions, 4 of 10 E1 listing readings), 2 on sentences
-  its verifiers added, 2 on the same claims the audit confirmed in sibling
-  answers, and 1 required statement the answer omits. The percent rule adds
-  13 flags over the 207 answers of rounds 1 to 7, all derived (11 of them
-  "~23%"), and removes none. The `inferencex` extra requires
-  olmoearth-inferencex 1.3.1.
+  `numbers`; `direction`, which reads the tools' `facts` under the contract
+  the tools and the harness share (`dominant_change` with `reverse_n`,
+  `reverse_share` and `tied_with_reverse`; `more_confident_side` with `side`
+  A, B or neither and `share_a`, `share_b`, `share_equal`; `concentration`
+  with `grid`, `n_differing`, `top_band_share` of the northmost row band and
+  `max_band`; `margin_ratio` with the listed windows' and the whole review
+  set's range; `unused_labels`; `whole_map_estimate` and unknown ids are
+  shown, never checked): a dominant change stated backwards, or another
+  pair named the dominant change, read only in a sentence about change
+  between the maps (an arrow, "from X to Y", a change verb, a transition or
+  contrast; never what the maps are made of) and only for classes written
+  by name or as `class N` (a bare digit is never a class, so "2 to 4 rows"
+  is none), and no contradiction when the reverse ties the top count; the
+  other side named the more confident, unless the clause places it in a
+  region ("in the north"); a clause that puts the bulk of the differences
+  (mostly, most, concentrated, clustered, dominated, a strip, along) at the
+  north edge or the top rows when the northmost band holds under 10% of
+  them, at another edge when `max_band` is another band on that axis, or
+  in rows too few to hold half of them, never a window's own coordinates
+  ("the highest-ranked window is at row 12, col 40") or a count of a minor
+  part; a magnitude that compares the review windows' confidence with the
+  typical window's ("20x less confident", "orders of magnitude more
+  uncertain than typical windows") outside `margin_ratio`, not any "N
+  times" near a confidence word; a wrong count of unused labels. `actions`:
+  a file said to be saved that no tool of the run reports writing (a path
+  under the same key as the argument it echoes is an input; a key that
+  names an output, such as `out_path`, or another key, reports a write
+  though the caller chose the path; the harness's own spill file of a
+  result too large for the context is written too), a list said to be
+  saved in a file that is not one, items said to be listed above or below,
+  or the first N said to be listed, that the answer does not hold ("as
+  shown above" or "see above" points at prose and is none; on the web,
+  where the tool results are shown above the answer, only "above" is not
+  checked). `forbidden_claims`, a detector per id a tool names
+  (`post_hoc_alpha`, which allows the alpha the tool ran at, the alpha the
+  user asked for, and either split over k levels in a sentence about
+  levels; `rule_switch_after_failure`; `certify_from_nonrandom_design`,
+  which takes advice to draw a random or probability sample as correct;
+  the error rate without labels or for an unthresholded regression; a
+  subset said to suffice; a winner without labels; a statistic across
+  properties; another date said to settle it, where "the earlier map" or
+  "the later image" is map A or B, not a new date);
+  `simple_random_interval_for_stratified_design` has no detector (the
+  package's own interval is a Wilson interval on the design's effective
+  sample size, which no wording tells from a naive one) and is ignored like
+  any unknown id. And `must_state`, the statements a reported result
+  requires: the first three per result, of at most 25 words each. The
+  detectors hold back on a negated clause, a hedge or an example, and read
+  each sentence once into its brackets, clauses and word spans, so a 12 KB
+  listing written as one sentence is checked in milliseconds (about 2 s
+  before). When any check fires, one rewrite call (no tools; the
+  `thinking_coding` sampling, `REVISION_MODE`, with no presence penalty)
+  lists every violation; the checks run again, and each sentence still
+  flagged is shown with `[unverified: <check>]` after it, never deleted (a
+  required statement still missing is added at the end). Each check that
+  fires yields a `check` event (`action` `revise`, with the `draft`, then
+  `marked`); the number check keeps its `grounding_check`. The number
+  check's sources are the tool results, the paths the harness spilled
+  results to, the brief and the user's turns, never the saved preferences;
+  an earlier assistant turn is a source on the web only, where it was
+  checked when it was shown. A percent is supported only by a share: any
+  value in [0, 1] (so 0% and 100% pass against 0 and 1, as before), a
+  percent written in a string, or a value under a key naming a percent,
+  share or rate; a count above 1 under another key never. `LeadAgent` takes
+  `surface` (`"cli"`, the default, or `"web"`, which the bridge passes) and
+  `check_answer` (`OLMOEARTH_CHECK_ANSWER=0` switches every check but the
+  numbers off); `AgentResult` carries `revised`, `checks` and `marked`, the
+  CLI and the web UI name the checks. The LLM client reads a server's
+  reasoning from `reasoning`, then `reasoning_content` (round 7 recorded no
+  thinking), for the `thinking` event only.
+  `scripts/validate_answer_checks.py` runs the checks over recorded
+  answers; with the tools' keys simulated from exp86's recorded results
+  under the contract, rounds 6 and 7 get 27 flags in 21 of 60 answers: 22
+  on sentences the blind audit confirmed false (every confirmed E3 action
+  claim, 2 of 3 E2 directions, 4 of 10 E1 listing readings, 1 of 20 E5, 2
+  of 16 E6, 2 of 5 E4, 8 of 45 others), 2 on sentences its verifiers added,
+  2 on the same claims the audit confirmed in sibling answers, and 1
+  required statement the answer omits (the same flags as before these
+  fixes). On the unaudited rounds 1 to 5 the
+  fixed detectors add 4 flags, each the row 0 strip read off the head of an
+  index-ordered listing that the audit confirmed false in rounds 6 and 7
+  (two of the four scope it to the listing, "visible" or "the top of the
+  list"). The percent rule adds 13 flags over the 207 answers of rounds 1
+  to 7, all derived (11 of them "~23%"), and removes none. The `inferencex`
+  extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
