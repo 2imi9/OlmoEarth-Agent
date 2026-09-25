@@ -104,7 +104,26 @@ def test_the_spill_note_does_not_ask_for_the_path_in_the_answer() -> None:
     note = envelope["note"]
     assert "reference that path in your answer" not in note
     assert "only if the user asks for the file" in note
+    assert "do not describe its contents beyond what this preview shows" in note
     assert envelope["preview"] == {"n": 1}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        [{"id": i, "geom": "x" * 50} for i in range(1000)],
+        "x" * 50_000,
+    ],
+    ids=["list", "string"],
+)
+def test_a_result_that_is_not_a_dict_previews_the_raw_json_prefix(body: Any) -> None:
+    """exp87 review: a tool whose result is a list (or a string) got the
+    dispatch envelope's ``ok`` as its whole preview. Its preview is the raw
+    JSON prefix, as before the summary preview."""
+    result = {"ok": True, "result": body}
+    envelope = json.loads(compact_result_for_llm("echo", result))
+    assert envelope["preview"] == json.dumps(result)[:1500]
+    assert "facts" not in envelope and "must_state" not in envelope
 
 
 def test_a_failed_tool_envelope_previews_its_error(

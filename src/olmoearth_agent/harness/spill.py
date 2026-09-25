@@ -14,7 +14,8 @@ The preview is the result's summary, not its first characters: its scalar
 fields (counts, shares, ids) and its summary blocks, within a budget, and the
 output contract whole (``facts``, ``must_state``, ``forbidden_claims``,
 ``evidence_scope``), so a spilled result still says what an answer must state.
-The raw JSON prefix is the preview only when the result has no such fields.
+The raw JSON prefix is the preview when the tool's result is not a dict (a
+list, say) or has no such fields.
 The note says the full result is saved and that the path is for the user who
 asks for the file; it does not ask the model to put the path in its answer,
 where a saved file is a claim about what was done (exp86 round 7, brief 8:
@@ -68,8 +69,8 @@ SAVED_NOTE = (
     "fields and 'shape' its structure; any facts, must_state, forbidden_claims "
     "and evidence_scope are copied whole. The full result is saved to a file "
     "('saved_to'): mention that path only if the user asks for the file, and do "
-    "not say it holds anything this preview does not show. Do not repeat the "
-    "call expecting the full payload inline."
+    "not describe its contents beyond what this preview shows. Do not repeat "
+    "the call expecting the full payload inline."
 )
 
 #: The note on a spilled result that could not be saved.
@@ -137,11 +138,19 @@ def compact_result_for_llm(tool_name: str, result: Any) -> str:
 
 
 def _body(result: Any) -> dict[str, Any] | None:
-    """The tool's own result: the dispatch envelope's ``result``, or the dict itself."""
-    if isinstance(result, dict):
-        inner = result.get("result")
-        return inner if isinstance(inner, dict) else result
-    return None
+    """The tool's own result when it is a dict: the dispatch envelope's
+    ``result``, or a dict passed bare (a failed call's envelope, say).
+
+    ``None`` when the tool's result is not a dict (a list, a string): its
+    preview is then the raw JSON prefix, as before, not the envelope's
+    ``ok`` alone.
+    """
+    if not isinstance(result, dict):
+        return None
+    if "result" in result:
+        inner = result["result"]
+        return inner if isinstance(inner, dict) else None
+    return result
 
 
 def _short(value: Any) -> bool:
