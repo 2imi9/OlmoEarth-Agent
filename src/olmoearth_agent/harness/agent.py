@@ -43,7 +43,7 @@ from olmoearth_agent.harness.checks import (
     unsupported_of,
 )
 from olmoearth_agent.harness.soul import load_soul
-from olmoearth_agent.harness.spill import compact_result_for_llm
+from olmoearth_agent.harness.spill import spill_result_for_llm
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.presets import REVISION_MODE
@@ -362,7 +362,15 @@ class LeadAgent:
                     "arguments": call.arguments,
                 }
                 result = await self.registry.dispatch(call, ctx)
-                tool_records.append(ToolRecord(call.name, call.arguments, result))
+                # Oversized results are spilled to a workspace file and
+                # replaced by a compact envelope so one big payload can't eat
+                # the context window. The UI event below and the provenance
+                # record keep the full result; the spill file is one this run
+                # wrote, which the answer may name.
+                content, spilled_to = spill_result_for_llm(call.name, result)
+                tool_records.append(
+                    ToolRecord(call.name, call.arguments, result, spilled_to)
+                )
                 self.state.provenance.record_tool_call(
                     call.name, call.arguments, result
                 )
@@ -379,11 +387,7 @@ class LeadAgent:
                         role="tool",
                         tool_call_id=call.id,
                         name=call.name,
-                        # Oversized results are spilled to a workspace file and
-                        # replaced by a compact envelope so one big payload
-                        # can't eat the context window. The UI event above and
-                        # the provenance record keep the full result.
-                        content=compact_result_for_llm(call.name, result),
+                        content=content,
                     )
                 )
 
@@ -412,11 +416,18 @@ class LeadAgent:
         if checks and answer and answer.strip():
             evidence = RunEvidence(
                 tools=tool_records,
-                # The user's own words; never the saved preferences or an
-                # earlier assistant message (a derived number is not a source).
+                # The user's own words; never the saved preferences. An
+                # earlier assistant message is a source on the web only, where
+                # it was checked when it was shown (a derived number is not a
+                # source on the command line).
                 user_messages=[brief]
                 + [m.content for m in history or () if m.role == "user" and m.content],
                 surface=self.surface,
+                assistant_messages=[
+                    m.content
+                    for m in history or ()
+                    if m.role == "assistant" and m.content
+                ],
             )
             found = run_checks(answer, evidence, checks)
             first_found = NUMBERS in found

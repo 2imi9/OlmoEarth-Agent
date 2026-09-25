@@ -16,6 +16,7 @@ from olmoearth_agent.harness.spill import (
     DEFAULT_SPILL_BYTES,
     SPILL_BYTES_ENV,
     compact_result_for_llm,
+    spill_result_for_llm,
     spill_threshold,
 )
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
@@ -134,6 +135,15 @@ def test_a_failed_tool_envelope_previews_its_error(
     envelope = json.loads(compact_result_for_llm("echo", result))
     assert envelope["preview"]["error"] == "ValueError: bad"
     assert envelope["ok"] is False
+
+
+def test_the_spill_returns_the_file_it_wrote() -> None:
+    small = {"ok": True, "result": {"x": 1}}
+    assert spill_result_for_llm("echo", small) == (json.dumps(small), None)
+    big = {"ok": True, "result": {"blob": "x" * 100_000}}
+    text, saved = spill_result_for_llm("echo", big)
+    assert saved is not None and json.loads(text)["saved_to"] == saved
+    assert json.loads(Path(saved).read_text(encoding="utf-8")) == big
 
 
 def test_zero_threshold_disables_spilling(monkeypatch: pytest.MonkeyPatch) -> None:

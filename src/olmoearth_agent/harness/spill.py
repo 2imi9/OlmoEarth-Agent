@@ -101,10 +101,19 @@ def compact_result_for_llm(tool_name: str, result: Any) -> str:
     recovery guidance — is returned instead. Never raises: if the write fails,
     the envelope simply carries no path (still bounded).
     """
+    return spill_result_for_llm(tool_name, result)[0]
+
+
+def spill_result_for_llm(tool_name: str, result: Any) -> tuple[str, str | None]:
+    """:func:`compact_result_for_llm`, and the file it spilled to (or None).
+
+    The harness keeps the path: the answer may say the full result was
+    saved there, and the answer checks count it as a file this run wrote.
+    """
     text = json.dumps(result)
     limit = spill_threshold()
     if limit <= 0 or len(text) <= limit:
-        return text
+        return text, None
 
     saved: str | None = None
     stem = _SANITIZE.sub("_", tool_name)[:60] or "tool"
@@ -134,7 +143,7 @@ def compact_result_for_llm(tool_name: str, result: Any) -> str:
         for key in CONTRACT_KEYS:
             if key in body:
                 envelope[key] = body[key]
-    return json.dumps(envelope)
+    return json.dumps(envelope), saved
 
 
 def _body(result: Any) -> dict[str, Any] | None:

@@ -200,6 +200,57 @@ async def test_the_listing_claim_depends_on_the_surface() -> None:
     assert _check_events(events) == [] and events[-1]["content"] == claim
 
 
+@pytest.mark.asyncio
+async def test_on_the_web_an_earlier_answer_is_a_source_for_its_numbers() -> None:
+    """A figure shown and checked in an earlier turn may be restated on the web;
+    on the command line only the tool results and the user's words count."""
+    history = [
+        Message(role="user", content="compare A and B"),
+        Message(role="assistant", content="About 1,111 windows sit together."),
+    ]
+    answer = "As before, about 1,111 windows sit together."
+    llm = _Scripted([_compare_call(), _answer(answer)])
+    events = [
+        e
+        async for e in _agent(llm, surface="web").run_stream(
+            "and now?", history=history
+        )
+    ]
+    assert _check_events(events) == [] and events[-1]["content"] == answer
+
+    llm = _Scripted([_compare_call(), _answer(answer), _answer(answer)])
+    events = [e async for e in _agent(llm).run_stream("and now?", history=history)]
+    assert _check_events(events) == [("numbers", "revise", 1), ("numbers", "marked", 1)]
+
+
+class _NamesTheSpill(_Scripted):
+    """Answers with the path the harness spilled the tool's result to."""
+
+    async def chat(
+        self, messages: list[Message], *, tools: Any = None, **kw: Any
+    ) -> ChatResponse:
+        if messages[-1].role == "tool":
+            saved = json.loads(messages[-1].content or "{}").get("saved_to")
+            self.responses = [_answer(f"The full result was saved to `{saved}`.")]
+        return await super().chat(messages, tools=tools, **kw)
+
+
+@pytest.mark.asyncio
+async def test_the_spill_file_the_answer_names_is_a_file_this_run_wrote(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    from olmoearth_agent.harness.spill import SPILL_BYTES_ENV
+    from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
+
+    monkeypatch.setenv(OUTPUT_ROOT_ENV, str(tmp_path))
+    monkeypatch.setenv(SPILL_BYTES_ENV, "50")
+    llm = _NamesTheSpill([_compare_call()])
+    events = await _events(_agent(llm))
+    final = events[-1]["content"]
+    assert "tool_results/compare_" in final
+    assert _check_events(events) == [] and events[-1]["marked"] == []
+
+
 def test_the_surface_is_cli_or_web() -> None:
     with pytest.raises(ValueError, match="surface"):
         _agent(_Scripted([]), surface="tty")

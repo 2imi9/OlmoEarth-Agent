@@ -9,9 +9,11 @@ although the soul says to state numbers exactly as the tools returned them.
 
 The sources are the run's full tool results and the user's messages (the
 brief and the user's turns of any history), never the system prompt, the
-saved preferences, the tool descriptions or an earlier assistant message: a
-figure quoted from a description, or one the model derived in an earlier
-answer, is not evidence.
+saved preferences or the tool descriptions: a figure quoted from a
+description is not evidence. An earlier assistant message is a source only
+on the web, where it was checked when it was shown; on the command line a
+figure the model derived in an earlier answer is not evidence
+(``checks.RunEvidence``).
 
 Reading rules. The same tokenizer reads the answer and every string in the
 sources, so an id or a date splits into the same numbers on both sides:
