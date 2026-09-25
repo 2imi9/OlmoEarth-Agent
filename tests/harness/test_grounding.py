@@ -15,6 +15,7 @@ import pytest
 
 from olmoearth_agent.harness.grounding import (
     NumberPool,
+    is_share_key,
     tokenize,
     unsupported_numbers,
 )
@@ -84,6 +85,86 @@ def test_a_round_thousand_is_one_number_not_its_parts() -> None:
     assert unsupported_numbers("e.g. 1,000+ labels", pool) == ["1,000"]
     assert unsupported_numbers("2,000 more labels", pool) == ["2,000"]
     assert unsupported_numbers("window (1,000)", [{"row": 1, "col": 0}]) == []
+
+
+def test_a_percent_is_not_supported_by_a_count_with_its_digits() -> None:
+    """exp86 rounds 1-6, B6/files: "~23%" is 69/300, derived; it passed
+    against ``n_wrong_inside`` = 23 at coverage 0.7 (the round 6 audit)."""
+    pool = [
+        {
+            "n_labels": 300,
+            "levels": [{"coverage": 0.7, "n_inside": 210, "n_wrong_inside": 23}],
+        }
+    ]
+    assert unsupported_numbers("The whole-map error rate (~23%)", pool) == ["23%"]
+    # The count itself is still a number the tool returned.
+    assert unsupported_numbers("23 wrong inside the zone", pool) == []
+
+
+def test_a_derived_complement_is_reported() -> None:
+    """Round 7, B3/cluster run 3: "57.8%" is 1 - 0.421592."""
+    pool = [{"a_more_confident_share_of_differing": 0.421592, "n_differing": 3807}]
+    assert unsupported_numbers("C2 is more confident on 57.8%", pool) == ["57.8%"]
+    assert unsupported_numbers("C1 is more confident on 42.2%", pool) == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "pool"),
+    [
+        # A fraction read as a percent.
+        ("15% coverage", [{"coverage": 0.15}]),
+        ("100% of windows", [{"share_valid": 1.0}]),
+        # An integer in [0, 1] is a fraction only under a share key.
+        ("100% of windows", [{"valid_share": 1}]),
+        ("0% agreement", [{"agreement_fraction": 0}]),
+        # A percent written in a string, as written.
+        ("on 42.2% of them", [{"note": "A is more confident on 42.2% of them"}]),
+        ("150% of the budget", ["the plan uses 150% of the budget"]),
+        # A value above 1 under a key that names a percent, share or rate.
+        ("23% wrong", [{"error_pct": 23.2}]),
+        ("37% of the changes", [{"pairs": [{"share_percent": 37.01}]}]),
+        ("12.5% of labels", [{"rates": [12.5, 30.0]}]),
+    ],
+)
+def test_a_percent_a_share_supports_is_not_reported(
+    answer: str, pool: list[Any]
+) -> None:
+    assert unsupported_numbers(answer, pool) == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "pool"),
+    [
+        ("100% of windows", [{"n_valid": 1}]),  # a count of 1 is not a share
+        ("0% agreement", [{"n_nodata": 0}]),
+        ("23% wrong", [{"n_windows": 23.0}]),  # a float count, not a share
+        ("50% of labels", [{"separate": 50}]),  # "separate" is not "rate"
+    ],
+)
+def test_a_percent_nothing_but_a_count_matches_is_reported(
+    answer: str, pool: list[Any]
+) -> None:
+    assert unsupported_numbers(answer, pool) == [answer.split()[0]]
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("error_rate", True),
+        ("share_differing", True),
+        ("a_more_confident_share_of_differing", True),
+        ("agreementPct", True),
+        ("percent_valid", True),
+        ("boundary_fraction", True),
+        ("n_wrong_inside", False),
+        ("separate", False),
+        ("accurate", False),
+        ("generated", False),
+        (3, False),
+    ],
+)
+def test_share_keys_are_read_by_their_words(key: Any, expected: bool) -> None:
+    assert is_share_key(key) is expected
 
 
 def test_each_number_is_reported_once_in_order() -> None:

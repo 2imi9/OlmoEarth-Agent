@@ -8,8 +8,10 @@ the model stated that no tool had returned ("delta/18", "5,565+ windows"),
 although the soul says to state numbers exactly as the tools returned them.
 
 The sources are the run's full tool results and the user's messages (the
-brief and any history), never the system prompt or the tool descriptions: a
-figure quoted from a description is not evidence.
+brief and the user's turns of any history), never the system prompt, the
+saved preferences, the tool descriptions or an earlier assistant message: a
+figure quoted from a description, or one the model derived in an earlier
+answer, is not evidence.
 
 Reading rules. The same tokenizer reads the answer and every string in the
 sources, so an id or a date splits into the same numbers on both sides:
@@ -28,11 +30,19 @@ sources, so an id or a date splits into the same numbers on both sides:
   that is not an integer and rounds to it (``10,091`` from 10091.4); a count
   off by one is not supported. Failing that, it is tried as a percent of a
   fraction, exactly (``85`` against 0.85).
-- A decimal or a percent is supported by a source value within half a unit of
-  its last decimal, as written or as a percent of a fraction (``23%`` or
-  ``23.0`` against 0.2298; ``-0.017`` against -0.0172). A suffixed number is
-  compared in its unit at the same rounding (``6.4M`` against 6,412,345), or
-  as written.
+- A decimal is supported by a source value within half a unit of its last
+  decimal, as written or as a percent of a fraction (``23.0`` against
+  0.2298; ``-0.017`` against -0.0172). A suffixed number is compared in its
+  unit at the same rounding (``6.4M`` against 6,412,345), or as written.
+- A percent is supported at the same rounding only by a share: a fraction
+  (a value in [0, 1] that is not an integer, or any value in [0, 1] under a
+  share key) read as a percent (``23%`` against 0.2298), a percent written
+  in a source string (``42.2%``), or a value above 1 under a key that names
+  a percent, share or rate (``error_pct: 23.2``; the key's words include
+  ``percent``, ``pct``, ``share``, ``rate``, ``fraction`` or
+  ``proportion``). An integer count elsewhere never supports it: exp86's
+  "~23%" (69/300, derived) passed against an unrelated ``n_wrong_inside`` of
+  23 in rounds 1 to 6.
 - A thousands-separated integer written in brackets is also supported when
   each of its parts is (a window written "(24,108)"). Unbracketed, it is one
   number: "1,000" is a thousand, never the parts 1 and 0 (exp86 round 5: "e.g.
@@ -75,6 +85,31 @@ _SUFFIXES = {"k": 1e3, "K": 1e3, "M": 1e6}
 _RANGE_RE = re.compile(r"\s*(?:[-\u2013\u2014]|to)\s*")
 _ELLIPSES = ("...", "\u2026")
 _EPS = 1e-9
+
+#: Words of a field's key that name a share: a value under it supports a
+#: percent (a fraction read as a percent, or a value above 1 as written).
+SHARE_KEY_WORDS = frozenset(
+    {
+        "share",
+        "shares",
+        "percent",
+        "percentage",
+        "pct",
+        "rate",
+        "rates",
+        "fraction",
+        "frac",
+        "proportion",
+    }
+)
+_KEY_WORD_RE = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|[0-9]+")
+
+
+def is_share_key(key: Any) -> bool:
+    """Whether a field's key names a share, percent or rate (``error_pct``)."""
+    if not isinstance(key, str):
+        return False
+    return any(w.lower() in SHARE_KEY_WORDS for w in _KEY_WORD_RE.findall(key))
 
 
 def _is_word_char(ch: str) -> bool:
@@ -206,43 +241,68 @@ class NumberPool:
     ``sources`` are walked recursively: dict keys and values, list, tuple and
     set items, numbers (booleans excluded), and every string, read by
     :func:`tokenize` (a string's percent adds its fraction, and a
-    thousands-separated number's parts are added beside its value).
+    thousands-separated number's parts are added beside its value). The
+    shares a percent may be read against are kept apart (see the module
+    docstring): fractions, and percents written or keyed as such.
     """
 
     def __init__(self, sources: Iterable[Any]) -> None:
         values: set[float] = set()
+        fractions: set[float] = set()
+        percents: set[float] = set()
         self._texts: list[str] = []
-        self._walk(list(sources), values, set())
+        self._walk(list(sources), values, (fractions, percents), set(), False)
         self._values = sorted(values)
         self._ints = {int(v) for v in values if v.is_integer()}
         self._fractional = [v for v in self._values if not v.is_integer()]
+        self._fractions = sorted(fractions)
+        self._percents = sorted(percents)
 
-    def _walk(self, obj: Any, values: set[float], seen: set[int]) -> None:
+    def _walk(
+        self,
+        obj: Any,
+        values: set[float],
+        shares: tuple[set[float], set[float]],
+        seen: set[int],
+        share_key: bool,
+    ) -> None:
+        fractions, percents = shares
         if isinstance(obj, bool) or obj is None:
             return
         if isinstance(obj, int | float):
             v = abs(float(obj))
             if math.isfinite(v):
                 values.add(v)
+                if v <= 1 and (share_key or not v.is_integer()):
+                    fractions.add(v)
+                elif share_key:
+                    percents.add(v)
             return
         if isinstance(obj, str):
             if obj:
                 self._texts.append(obj.lower())
             for tok in tokenize(obj, skip_urls=False):
-                values.add(tok.value * tok.scale * 10.0**tok.exponent)
+                value = tok.value * tok.scale * 10.0**tok.exponent
+                values.add(value)
                 if tok.percent:
                     values.add(tok.value / 100)
+                    fractions.add(tok.value / 100)
+                    percents.add(tok.value)
+                elif value <= 1 and (share_key or not value.is_integer()):
+                    fractions.add(value)
                 values.update(float(p) for p in tok.parts)
             return
         if isinstance(obj, dict | list | tuple | set | frozenset):
             if id(obj) in seen:
                 return
             seen.add(id(obj))
-            children = (
-                [x for kv in obj.items() for x in kv] if isinstance(obj, dict) else obj
-            )
-            for child in children:
-                self._walk(child, values, seen)
+            if isinstance(obj, dict):
+                for key, child in obj.items():
+                    self._walk(key, values, shares, seen, False)
+                    self._walk(child, values, shares, seen, is_share_key(key))
+                return
+            for child in obj:
+                self._walk(child, values, shares, seen, share_key)
 
     @staticmethod
     def _within(values: list[float], x: float, tol: float) -> bool:
@@ -274,7 +334,13 @@ class NumberPool:
             return self._near(x * 10.0**tok.exponent, tol * 10.0**tok.exponent)
         if tok.scale != 1.0:
             return self._near(x * tok.scale, tol * tok.scale) or self._near(x, tol)
-        # A decimal or a percent: as written, or as a percent of a fraction.
+        if tok.percent:
+            # A percent: only a share supports it, never a count that happens
+            # to have its digits.
+            return self._within(self._fractions, x / 100, tol / 100) or self._within(
+                self._percents, x, tol
+            )
+        # A decimal: as written, or as a percent of a fraction.
         return self._near(x, tol) or self._near(x / 100, tol / 100)
 
     def unsupported(self, answer: str) -> list[str]:
@@ -290,7 +356,8 @@ def unsupported_numbers(answer: str, sources: Iterable[Any]) -> list[str]:
     """The numbers of ``answer``, as written, that no source supports.
 
     ``sources`` are the run's full tool results and the user's messages (the
-    brief and the history); see the module docstring for the reading rules.
+    brief and the user's turns of the history); see the module docstring for
+    the reading rules.
 
     Examples
     --------
@@ -298,5 +365,7 @@ def unsupported_numbers(answer: str, sources: Iterable[Any]) -> list[str]:
     ['5,565']
     >>> unsupported_numbers("about 23% wrong", [{"error_rate": 0.2298}])
     []
+    >>> unsupported_numbers("about 23% wrong", [{"n_wrong_inside": 23}])
+    ['23%']
     """
     return NumberPool(sources).unsupported(answer)
