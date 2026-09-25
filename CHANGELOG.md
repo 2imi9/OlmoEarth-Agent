@@ -204,6 +204,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   found ("51-70%" from a description, "47 dropped", "> 90%", "6.5%",
   "delta/18", "5,565+"), and none of the other 3,053. The soul says the
   harness checks.
+- **A comparison of different properties returns only what its warning allows**
+  (exp86 round 4's fix, 25 September 2026). With `allow_different_properties`,
+  `olmoearth_compare_results` used to return the mean difference, the mean and
+  maximum absolute difference, the RMSE and the agreement fraction between the
+  two quantities, beside a warning not to read them; two of round 4's three
+  answers put them in a table as findings. A pair of different properties now
+  keeps `n_samples`, each map's own mean and the correlation, and names the
+  rest in `statistics_left_out`. In a group, a pair of one property keeps its
+  statistics, a pair of two keeps only those, and the ensemble and the
+  most-divergent pair are not computed. The number check's `revise` event
+  carries the answer it replaces (`draft`), so a trace shows what was removed.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
