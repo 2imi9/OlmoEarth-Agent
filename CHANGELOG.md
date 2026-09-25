@@ -222,6 +222,18 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   Only a number standing alone in brackets is split now. Over the 147
   answers of exp86's five rounds the reader reports the same seven answers
   as the trial's scorer, and no other.
+- **A comparison of two inferences counts every class change, not only the
+  listed ones** (the exp86 round 6 audit). `olmoearth_compare_review` listed
+  the first differing windows in window order (the top rows of the grid) and
+  gave no breakdown, and answers read a direction and a place off that
+  listing: "most differing windows flip class 1 -> 0" when 1,247 of 1,570
+  flipped 0 -> 1, "a long strip along the north edge" for 1.3% of the
+  differences, a "dominant contrast" of 11.7% where another pair held 37%.
+  The output now carries `class_changes` (each (class A, class B) pair with
+  its count and share of the differing windows, largest first, up to ten),
+  `n_class_changes`, `a_more_confident_share_of_differing`, and
+  `listing_order`, which says the list is the first windows in order, not a
+  sample.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
