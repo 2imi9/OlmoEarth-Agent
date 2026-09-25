@@ -52,6 +52,8 @@ DEFAULT_BUDGETS: tuple[float, ...] = (0.01, 0.05, 0.10)
 
 #: Default cap on how many review rows are returned inline.
 DEFAULT_MAX_LISTED = 50
+#: Class pairs (A's class, B's class) listed by count in a comparison's class_changes.
+CLASS_CHANGES_LISTED = 10
 
 #: Largest grid this tool will accept (keeps a pure-Python sort honest).
 MAX_WINDOWS = 200_000
@@ -884,6 +886,27 @@ def compare_scores(
             and out["boundary_share_of_differing"] > out["boundary_share_overall"]
             else "spread across the scene"
         )
+    # What the differences are, over all of them: the listing below is the first
+    # few in window order (the top rows of the grid), and exp86 round 6's answers
+    # read patterns off it that the full set contradicts ("most flip 1 -> 0" when
+    # 1,247 of 1,570 flip 0 -> 1; "a strip along the north edge" for 1.3%).
+    pairs: dict[tuple[Any, Any], int] = {}
+    for i in diff:
+        pairs[(ca[i], cb[i])] = pairs.get((ca[i], cb[i]), 0) + 1
+    ranked = sorted(pairs.items(), key=lambda kv: (-kv[1], str(kv[0])))
+    out["class_changes"] = [
+        {
+            "class_a": pa,
+            "class_b": pb,
+            "n": n,
+            "share_of_differing": round(n / len(diff), 6),
+        }
+        for (pa, pb), n in ranked[:CLASS_CHANGES_LISTED]
+    ]
+    out["n_class_changes"] = len(pairs)
+    out["a_more_confident_share_of_differing"] = (
+        round(sum(ma[i] > mb[i] for i in diff) / len(diff), 6) if diff else None
+    )
     listed = []
     for i in diff[:max_listed]:
         row: dict[str, Any] = {
@@ -898,4 +921,9 @@ def compare_scores(
         listed.append(row)
     out["differing"] = listed
     out["n_differing_listed"] = len(listed)
+    out["listing_order"] = (
+        "the listed windows are the first differing windows in window order (from "
+        "the top rows of the grid), not a sample of them: read which classes change "
+        "and in which direction from class_changes and the shares, not from the list"
+    )
     return out

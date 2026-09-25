@@ -315,6 +315,38 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
 
 
 @pytest.mark.asyncio
+async def test_compare_review_counts_every_class_change_not_only_the_listed_ones() -> (
+    None
+):
+    """exp86 round 6: answers read a direction and a place off the first listed
+    windows ("most flip 1 -> 0", when 1,247 of 1,570 flipped 0 -> 1). The counts
+    over all differing windows are given, and the listing says what it is."""
+    n = 40
+    a = [[5.0, 0.1] for _ in range(n)]  # class 0 everywhere on side A
+    b = [list(r) for r in a]
+    for i in range(3):  # the first differing windows flip 0 -> 1 ...
+        b[i] = [0.1, 5.0]
+    a2 = [list(r) for r in a]
+    for i in range(3, 30):  # ... but most differences are 1 -> 0 further down
+        a2[i] = [0.1, 6.0]
+    tool = _tools()["olmoearth_compare_review"]
+    result = await tool.handler(
+        {"scores_a": a2, "scores_b": b, "grid": [5, 8], "max_listed": 3}, _ctx()
+    )  # type: ignore[attr-defined]
+    assert result["n_differing"] == 30
+    assert [(d["class_a"], d["class_b"]) for d in result["differing"]] == [(0, 1)] * 3
+    assert result["class_changes"][0] == {
+        "class_a": 1,
+        "class_b": 0,
+        "n": 27,
+        "share_of_differing": 0.9,
+    }
+    assert result["class_changes"][1]["n"] == 3 and result["n_class_changes"] == 2
+    assert result["a_more_confident_share_of_differing"] == 0.9
+    assert "not a sample" in result["listing_order"]
+
+
+@pytest.mark.asyncio
 async def test_compare_review_reads_both_sides_from_files(
     tmp_path, monkeypatch
 ) -> None:  # type: ignore[no-untyped-def]
