@@ -24,6 +24,12 @@ does not get the simple-random-sample formula. Three tools wrap
 
 Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
 locations a reviewer needs stay in the files.
+
+Every output also carries ``next_steps``, written by code from the design and
+the outcome, and the output contract's ``facts``, ``must_state`` and
+``forbidden_claims`` (:mod:`olmoearth_agent.tools.statistical_rules`): exp86's
+answers proposed a looser alpha or another rule after nothing certified,
+offered to certify from a stratified design, and worked out 69/300 by hand.
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ from olmoearth_agent.analysis.review_set import (
 )
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import inferencex
+from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 from olmoearth_agent.tools.review_set import (
     FROM_RESULT_DEFAULT_GRID,
@@ -324,7 +331,10 @@ def _budget_refusal(budget: int, pop: Population) -> str:
     stops at 16: a finer grid is offered only while one can still reach the
     budget, and the full raster is a direct model run read through
     ``olmoearth_scores_from_file``. exp86 round 1's model was told "a finer
-    grid" at the cap and retried grids until the turn cap.
+    grid" at the cap and retried grids until the turn cap. At the largest grid
+    the plan tool no longer refuses: it plans every valid window and states the
+    labels left over (:func:`_at_studio_ceiling`), so below it the refusal says
+    to keep the budget at grid 16.
     """
     n_valid = pop.n_valid
     if budget < 1:
@@ -332,8 +342,9 @@ def _budget_refusal(budget: int, pop: Population) -> str:
     if not (pop.source.get("result_id") and pop.grid):
         return (
             f"budget {budget} is more than the {n_valid} valid windows of these "
-            f"scores, so at most {n_valid} labels can be planned from them; plan "
-            f"a budget of at most {n_valid}"
+            f"scores, so at most {n_valid} labels can be planned from them "
+            f"({budget - n_valid} of the {budget} would have no window); plan a "
+            f"budget of at most {n_valid}"
         )
     side = pop.grid[0]
     n_points = pop.grid[0] * pop.grid[1]
@@ -351,7 +362,19 @@ def _budget_refusal(budget: int, pop: Population) -> str:
         works.append(
             f"a finer grid, up to {FROM_RESULT_MAX_GRID} ({FROM_RESULT_MAX_GRID}x"
             f"{FROM_RESULT_MAX_GRID} = {most} points at most, fewer once no-data "
-            "is dropped)"
+            f"is dropped), with the same budget: at grid {FROM_RESULT_MAX_GRID} "
+            "a budget above the valid windows is planned at all of them, and "
+            "the labels left over are stated"
+        )
+    elif side < FROM_RESULT_MAX_GRID:
+        # No grid reaches the budget, but grid 16 plans at its ceiling and
+        # states the labels left over (the unused_labels fact), so the model
+        # keeps the user's budget and never works the difference out.
+        works.append(
+            f"grid={FROM_RESULT_MAX_GRID} with the same budget of {budget}: the "
+            f"plan then takes every valid window of the {FROM_RESULT_MAX_GRID}x"
+            f"{FROM_RESULT_MAX_GRID} grid and states how many of the {budget} "
+            "labels go unused"
         )
     works.append(
         "for the whole map, a direct model run's scores raster read through "
@@ -379,6 +402,131 @@ def _budget_refusal(budget: int, pop: Population) -> str:
     )
 
 
+def _at_studio_ceiling(pop: Population) -> bool:
+    """True for a Studio result sampled on the largest grid: no call holds more windows.
+
+    There the ceiling is the tool's sampling cap, not the map, so a larger
+    budget is planned at every valid window and the rest stated as unused.
+    Below it a finer grid holds more, and inline or file scores are the whole
+    map; both keep the budget refusal (:func:`_budget_refusal`).
+    """
+    return bool(
+        pop.source.get("result_id") and pop.grid and pop.grid[0] >= FROM_RESULT_MAX_GRID
+    )
+
+
+def _studio_scope(pop_source: dict[str, Any], n_windows: Any) -> list[str]:
+    """The scope limit of a rate over a Studio result's sampled grid points."""
+    if not pop_source.get("result_id"):
+        return []
+    return [
+        f"The rate describes the map at the {n_windows} sampled grid points "
+        "of a Studio result (one pixel each), not every pixel of the map."
+    ]
+
+
+def _unused_labels(requested: int, planned: int, pop: Population) -> dict[str, Any]:
+    """The ``unused_labels`` fact: the labels a plan at the grid's ceiling leaves over."""
+    n = requested - planned
+    side = pop.grid[0] if pop.grid else FROM_RESULT_MAX_GRID
+    sentence = (
+        f"Of the {requested} labels requested, {planned} are planned: a Studio "
+        f"result sampled at {side}x{side} (the most it allows) has {planned} "
+        f"valid windows here, and the plan labels every one of them, so {n} "
+        "labels have no window to go to."
+    )
+    return rules.fact(
+        "unused_labels", sentence, n=n, requested=requested, planned=planned
+    )
+
+
+def _plan_next_steps(
+    design: str, csv_path: str, planned: int, pop: Population, unused: int
+) -> list[str]:
+    """What follows a plan, from its design (and a budget above the ceiling)."""
+    steps = [
+        f"Label every one of the {planned} windows in {csv_path} (wrong, and "
+        "reference_class for per-class accuracy); olmoearth_estimate_map_error "
+        "refuses a design with any window unlabelled.",
+        "Then olmoearth_estimate_map_error with design_path and the filled sheet "
+        "(labels_path) gives the error rate and the interval this design earns.",
+    ]
+    if design == "random":
+        steps.append(
+            "For a certified zone, olmoearth_certify_zone with the same "
+            "design_path and labels, at an alpha (and delta and rule) fixed now, "
+            "before any label is seen: the guarantee covers only that alpha."
+        )
+    else:
+        steps.append(
+            f"This {design} design gives an estimate, not a certification: "
+            "olmoearth_certify_zone refuses it. A certified zone needs a separate "
+            "plan with design='random', fixed before labelling."
+        )
+    if unused:
+        steps.append(
+            "For more windows than the grid holds, a direct model run's scores "
+            "raster read through olmoearth_scores_from_file puts every window "
+            "of the map in the population."
+        )
+    return steps
+
+
+def _whole_map_estimate(
+    est: dict[str, Any], *, certify: bool = False
+) -> dict[str, Any]:
+    """The ``whole_map_estimate`` fact from the package's error-rate estimate."""
+    cov = est.get("nominal_coverage")
+    level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
+    sentence = (
+        f"The map's error rate is estimated at {rules.percent(est.get('estimate'))} "
+        f"({level}interval {rules.percent(est.get('low'))} to "
+        f"{rules.percent(est.get('high'))}) from {est.get('n_labelled')} "
+        f"labelled windows of a population of {est.get('n_population')}; "
+        f"method: {est.get('method')}."
+    )
+    if certify:
+        sentence += (
+            " It is the estimate for the whole population from the same labels, "
+            "not a certification."
+        )
+    fields = (
+        "design",
+        "estimate",
+        "low",
+        "high",
+        "nominal_coverage",
+        "n_labelled",
+        "n_population",
+        "method",
+    )
+    return rules.fact("whole_map_estimate", sentence, **{k: est.get(k) for k in fields})
+
+
+def _refused_band(refusal: dict[str, Any]) -> dict[str, Any]:
+    """A Studio band the plan cannot use, with the rules for a regression one.
+
+    A regression band that is not a ``[0, 1]`` score and came with no
+    threshold (the refusal names its ``declared_range``) has no error rate:
+    exp86 round 7's answers offered one for such a band.
+    """
+    if "declared_range" not in refusal:
+        return refusal
+    rng = refusal.get("declared_range")
+    band = (
+        refusal.get("property_name"),
+        (float(rng[0]), float(rng[1])) if isinstance(rng, list) else None,
+    )
+    refusal["next_steps"] = [
+        "Pass threshold (the value at which the map's decision flips) to plan a "
+        "labelled sample of this band; without one it has no error rate to "
+        "estimate."
+    ]
+    return rules.add_contract(
+        refusal, forbidden_claims=[rules.unthresholded_regression([band])]
+    )
+
+
 async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_plan_label_sample``."""
     try:
@@ -393,10 +541,15 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     max_listed = int(args.get("max_listed", DEFAULT_MAX_LISTED))
     pop = await _population(args, ctx)
     if isinstance(pop, dict):
-        return pop
+        return _refused_band(pop)
     n_valid = pop.n_valid
-    if not 0 < budget <= n_valid:
+    # At the largest Studio grid a budget above the valid windows plans every
+    # one of them and states the labels left over (exp86: "your extra 127
+    # labels have nowhere to go", 300 - 173 worked out by the model); any
+    # other budget above them is refused, with the options that work.
+    if budget < 1 or (budget > n_valid and not _at_studio_ceiling(pop)):
         raise ValueError(_budget_refusal(budget, pop))
+    requested, budget = budget, min(budget, n_valid)
     sample = estimate.sample_for_estimation(
         pop.margin,
         budget,
@@ -429,6 +582,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         "package": {"name": inferencex.DISTRIBUTION, "version": inferencex.version()},
         "design": design,
         "budget": budget,
+        "budget_requested": requested,
         "seed": seed,
         "sample": _jsonable(sample),
         "population": {
@@ -448,6 +602,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         "available": True,
         "design": design,
         "budget": budget,
+        "budget_requested": requested,
         "n_population": int(sample["n_population"]),
         "seed": seed,
         "design_path": design_path,
@@ -502,7 +657,22 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         }
     if sample.get("note"):
         out["note"] = sample["note"]
-    return out
+    unused = requested - budget
+    out["next_steps"] = _plan_next_steps(design, csv_path, budget, pop, unused)
+    return rules.add_contract(
+        out,
+        facts=[_unused_labels(requested, budget, pop)] if unused else [],
+        must_state=(
+            [f"The plan holds {budget} windows, not the {requested} requested."]
+            if unused
+            else []
+        )
+        + _studio_scope(pop.source, n_valid),
+        forbidden_claims=[
+            rules.error_rate_without_labels(),
+            rules.subset_labelling_sufficient(design),
+        ],
+    )
 
 
 def _load_design(path: str) -> dict[str, Any]:
@@ -628,7 +798,58 @@ async def _estimate_map_error(
         )
         + "."
     )
-    return out
+    stratified = out.get("design") in ("confidence", "proportional")
+    out["next_steps"] = _estimate_next_steps(
+        str(out.get("design")), from_design=bool(args.get("design_path"))
+    )
+    return rules.add_contract(
+        out,
+        facts=[_whole_map_estimate(out)],
+        must_state=_studio_scope(
+            population.get("source") or {}, out.get("n_population")
+        ),
+        forbidden_claims=(
+            [
+                rules.simple_random_interval(out.get("method")),
+                rules.certify_from_nonrandom_design(out.get("design")),
+            ]
+            if stratified
+            else []
+        ),
+    )
+
+
+def _estimate_next_steps(design: str, *, from_design: bool) -> list[str]:
+    """What follows an estimate, from its design."""
+    steps = [
+        "Report the estimate with its interval and method as returned (the fact "
+        "whole_map_estimate states them); the rate is of the design's "
+        "population."
+    ]
+    if design in ("confidence", "proportional"):
+        steps.append(
+            f"No zone can be certified from this {design} design: "
+            "olmoearth_certify_zone needs design='random'. A certified zone "
+            "needs a new plan with design='random', every drawn window labelled, "
+            "and alpha, delta and rule fixed before labelling."
+        )
+    elif from_design:
+        steps.append(
+            "For a certified zone from these labels, olmoearth_certify_zone with "
+            "the same design_path and labels, at the alpha the map's use "
+            "requires, not one chosen from these results."
+        )
+    else:
+        steps.append(
+            "These windows were checked as a random sample and estimated as one; "
+            "a certified zone needs a design file: plan one with "
+            "olmoearth_plan_label_sample(design='random') before labelling."
+        )
+    steps.append(
+        "A narrower interval needs more labels under a new plan with a larger "
+        "budget, fixed before any of its labels is seen."
+    )
+    return steps
 
 
 def _rows_args(args: dict[str, Any]) -> dict[str, Any]:
@@ -666,7 +887,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
         return inferencex.missing_extra("Certifying a trusted zone")
     design = _load_design(str(args["design_path"]))
     if design.get("design") != "random":
-        return {
+        refused: dict[str, Any] = {
             "available": True,
             "certified": False,
             "design": design.get("design"),
@@ -677,7 +898,23 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 "Plan one with olmoearth_plan_label_sample(design='random')."
             ),
             "design_requirement": DESIGN_REQUIREMENT,
+            "next_steps": _certify_next_steps(None),
         }
+        alpha_asked = args.get("alpha")
+        return rules.add_contract(
+            refused,
+            forbidden_claims=[
+                rules.certify_from_nonrandom_design(design.get("design")),
+                rules.post_hoc_alpha(
+                    float(alpha_asked)
+                    if isinstance(alpha_asked, (int, float))
+                    else None
+                ),
+                rules.rule_switch_after_failure(
+                    certified=None, levels=None, delta=None, rule=None
+                ),
+            ],
+        )
     rule = str(args.get("rule", "prefix"))
     if rule not in ZONE_RULES:
         raise ValueError(f"rule must be one of {list(ZONE_RULES)}, got {rule!r}")
@@ -743,7 +980,75 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
         "not covered by it."
     )
     out["design_requirement"] = DESIGN_REQUIREMENT
-    return out
+    # exp86 round 6 (B6/files): the answers derived "~23%" (69/300) from the
+    # 100% level; the package's whole-map estimate on the same labels is given.
+    whole = _whole_map_estimate(
+        _jsonable(estimate.estimate_error_rate(design["sample"], wrong)),
+        certify=True,
+    )
+    out["next_steps"] = _certify_next_steps(out)
+    return rules.add_contract(
+        out,
+        facts=[whole],
+        must_state=(
+            [
+                f"Only the {zone['n_zone']} most confident windows (coverage "
+                f"{zone['coverage']:g}) are certified; nothing outside the zone "
+                "is."
+            ]
+            if out["certified"]
+            else []
+        ),
+        forbidden_claims=[
+            rules.post_hoc_alpha(alpha),
+            rules.rule_switch_after_failure(
+                certified=bool(out["certified"]),
+                levels=out.get("levels") or [],
+                delta=delta,
+                rule=rule,
+            ),
+        ],
+    )
+
+
+def _certify_next_steps(out: dict[str, Any] | None) -> list[str]:
+    """What follows a certification, from the design and the outcome.
+
+    ``out`` is ``None`` for a refused (stratified) design. Nothing certified
+    under a random design: label more windows under a NEW random design fixed
+    in advance, or report the whole-map estimate; never a looser alpha and
+    never another rule (exp86 rounds 1 to 7, brief 6).
+    """
+    if out is None:
+        return [
+            "Estimate the map's error rate from these labels: "
+            "olmoearth_estimate_map_error with this design_path and the same "
+            "labels gives the estimate and the interval this design earns.",
+            "A certified zone needs a new plan: olmoearth_plan_label_sample with "
+            "design='random', every drawn window labelled, and alpha, delta and "
+            "rule fixed before labelling.",
+        ]
+    estimate_step = (
+        "report the whole-map estimate and interval (the fact whole_map_estimate "
+        "states them)"
+    )
+    if out.get("certified"):
+        return [
+            f"Report the zone as returned ({out['verdict']}); its windows are "
+            "in zone_path.",
+            "Nothing outside the zone is certified; for the whole map, "
+            + estimate_step
+            + ".",
+        ]
+    return [
+        "Label more windows under a NEW random design fixed in advance: "
+        "olmoearth_plan_label_sample with design='random' and a larger budget, "
+        "with alpha, delta and rule set before any of its labels is seen.",
+        "Or " + estimate_step + ".",
+        "Not a looser alpha and not another rule on these labels: either is "
+        "chosen after seeing this result, which the guarantee does not cover "
+        "(forbidden_claims).",
+    ]
 
 
 def _levels_tested(

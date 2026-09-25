@@ -667,9 +667,12 @@ async def test_the_review_set_from_a_result_states_a_capped_grid(
 
 
 @pytest.mark.asyncio
-async def test_a_budget_above_a_capped_studio_grid_names_the_real_ceiling(
+async def test_a_budget_above_the_largest_studio_grid_plans_every_valid_window(
     httpx_mock: HTTPXMock,
 ) -> None:
+    """At 16 x 16 (here a grid of 30, capped) no grid holds more windows: the
+    plan takes every valid one and states the labels left over, which exp86's
+    answers worked out themselves ("your extra 127 labels", 300 - 173)."""
     _mock_kb(httpx_mock)
     n16 = _kb_valid(16)
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
@@ -679,14 +682,26 @@ async def test_a_budget_above_a_capped_studio_grid_names_the_real_ceiling(
             {"result_id": "kb", "grid": 30, "budget": 300},
             ctx,
         )
-    assert out["ok"] is False
-    error = out["error"]
-    assert "16x16 = 256 points" in error
-    assert f"{n16} valid windows" in error
-    assert f"at most {n16} labels" in error
-    assert "grid 30 was capped at 16" in error
-    assert "olmoearth_scores_from_file" in error
-    assert "finer grid" not in error
+    assert out["ok"] is True, out
+    plan = out["result"]
+    assert plan["budget"] == n16 == plan["n_population"]
+    assert plan["budget_requested"] == 300
+    assert "grid 30 was capped at 16" in plan["sampling"]["grid_note"]
+    design = json.loads(Path(plan["design_path"]).read_text())
+    assert design["budget"] == n16 and len(design["sample"]["indices"]) == n16
+    assert design["budget_requested"] == 300
+    (unused,) = [f for f in plan["facts"] if f["id"] == "unused_labels"]
+    assert unused["requested"] == 300 and unused["planned"] == n16
+    assert unused["n"] == 300 - n16
+    assert f"Of the 300 labels requested, {n16} are planned" in unused["sentence"]
+    assert f"so {300 - n16} labels have no window" in unused["sentence"]
+    assert "16x16" in unused["sentence"]
+    assert any("olmoearth_scores_from_file" in step for step in plan["next_steps"])
+    assert plan["must_state"] == [
+        f"The plan holds {n16} windows, not the 300 requested.",
+        f"The rate describes the map at the {n16} sampled grid points of a "
+        "Studio result (one pixel each), not every pixel of the map.",
+    ]
 
 
 @pytest.mark.asyncio
@@ -710,8 +725,11 @@ async def test_a_budget_error_offers_a_finer_grid_only_when_one_can_help(
     # The default grid, 10: a finer grid, up to 16, can still help a budget <= 256.
     assert "10x10 = 100 points" in reachable["error"]
     assert "a finer grid, up to 16" in reachable["error"]
-    # 300 labels exceed even 16 x 16 = 256 points: no grid reaches them.
+    assert "with the same budget" in reachable["error"]
+    # 300 labels exceed even 16 x 16 = 256 points: no grid reaches them, and
+    # grid 16 with the same budget plans its ceiling and states the rest.
     assert "finer grid" not in unreachable["error"]
+    assert "grid=16 with the same budget of 300" in unreachable["error"]
     assert "olmoearth_scores_from_file" in unreachable["error"]
 
 
@@ -721,6 +739,8 @@ async def test_a_budget_above_inline_scores_states_the_ceiling() -> None:
     out = await _call("olmoearth_plan_label_sample", {"scores": scores, "budget": 50})
     assert out["ok"] is False
     assert "40 valid windows" in out["error"] and "at most 40 labels" in out["error"]
+    # The labels left over are stated, so the answer does not work out 50 - 40.
+    assert "10 of the 50 would have no window" in out["error"]
     assert "finer grid" not in out["error"]
 
 
