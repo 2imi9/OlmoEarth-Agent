@@ -28,7 +28,7 @@ from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
-from olmoearth_agent.tools.scores_file import build_scores_file_tools
+from olmoearth_agent.tools.scores_file import build_scores_file_tools, model_and_raster
 
 try:
     import numpy as np
@@ -455,6 +455,77 @@ async def test_two_runs_compare_on_identical_windows(_scores_root: Path) -> None
     assert cmp["n_windows"] == got_a["n_valid"]
     assert cmp["n_differing"] == int((klass[0] != klass[1]).sum())
     assert cmp["which_side_is_right"] == "not resolvable without labels"
+    # The files leave their no-data windows out: the spatial breakdown places
+    # every differing window by its grid index, and the classes carry names.
+    spatial = cmp["spatial"]
+    assert spatial["grid"] == [8, 8]
+    assert sum(b["n_differing"] for b in spatial["row_bands"]) == cmp["n_differing"]
+    assert sum(b["n_windows"] for b in spatial["col_bands"]) == got_a["n_valid"]
+    assert cmp["class_changes"][0]["class_name_a"] in NAMES
+    saved = json.loads(Path(cmp["differing_path"]).read_text(encoding="utf-8"))
+    assert len(saved["differing"]) == cmp["n_differing"]
+    assert {f["id"] for f in cmp["facts"]} >= {"dominant_change", "concentration"}
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_the_model_revision_and_the_raster_hash_are_told_apart(
+    _scores_root: Path,
+) -> None:
+    """exp86 round 7 gave the raster's sha256 prefix (also in the file's name)
+    as the model's revision. One sentence keeps them apart."""
+    valid = _valid(32, 32)
+    run = _write_run(
+        _scores_root,
+        "run_id",
+        _logits(8, 32, 32),
+        valid,
+        manifest_edit={
+            "model": {
+                "repo": "allenai/OlmoEarth-v1-FT-AWF-Base",
+                "revision": "a347b1546ab8",
+            }
+        },
+    )
+    got = await _ok("olmoearth_scores_from_file", {"run_dir": "run_id"})
+    digest = _sha256(run / "scores.tif")
+    sentence = got["model_and_raster"]
+    assert sentence.startswith(
+        f"model allenai/OlmoEarth-v1-FT-AWF-Base at revision a347b15; raster sha256 {digest[:8]}"
+    )
+    assert f"the {digest[:8]} in the scores file's name is that hash" in sentence
+    assert digest[:8] in got["scores_file"]
+    (fact,) = got["facts"]
+    assert fact["id"] == "model_and_raster" and fact["sentence"] == sentence
+    assert (fact["revision"], fact["raster_sha256"]) == ("a347b1546ab8", digest)
+    unrecorded = model_and_raster({"repo": "r/m", "revision": None}, "f" * 64, "x.json")
+    assert unrecorded == (
+        "model r/m at a revision the manifest does not record; raster sha256 "
+        "ffffffff (a hash of the scores raster, not of the model)."
+    )
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_the_providers_warnings_travel_with_its_file_to_the_ranking(
+    _scores_root: Path,
+) -> None:
+    """exp86 round 6: the provider's multi-class warning reached no answer. The
+    file carries it, and a ranking of the file states it."""
+    valid = _valid(32, 32)
+    _write_run(_scores_root, "run_warn", _logits(9, 32, 32), valid)
+    got = await _ok("olmoearth_scores_from_file", {"run_dir": "run_warn"})
+    saved = json.loads(Path(got["scores_path"]).read_text(encoding="utf-8"))
+    assert saved["package_warnings"] == got["package_warnings"]
+    assert got[
+        "package_warnings"
+    ], "a multi-class logit map draws the package's warning"
+    review = await _ok("olmoearth_review_set", {"scores_path": got["scores_path"]})
+    assert review["evidence_covers_this_case"] == "in part"
+    assert review["must_state"] == [review["evidence_scope"]] + [
+        "The scores provider (olmoearth-inferencex) warns: " + w
+        for w in got["package_warnings"]
+    ]
 
 
 # --------------------------------------------------------------------------- rule 3.1

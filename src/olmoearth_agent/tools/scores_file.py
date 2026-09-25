@@ -234,6 +234,31 @@ def _model_block(manifest: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def model_and_raster(model: dict[str, Any], digest: str, scores_file: str) -> str:
+    """One sentence that keeps the model's revision and the raster's hash apart.
+
+    exp86 round 7 (brief 4, cluster) gave the raster's sha256 prefix
+    ``a7c40be9``, which is also in the scores file's name, as the model's
+    revision ``a347b15``.
+    """
+    name = model.get("repo") or model.get("id") or "(unnamed)"
+    revision = model.get("revision")
+    at = (
+        f"at revision {str(revision)[:7]}"
+        if isinstance(revision, str) and revision
+        else "at a revision the manifest does not record"
+    )
+    in_name = (
+        f"; the {digest[:8]} in the scores file's name is that hash, not a revision"
+        if digest[:8] in scores_file
+        else ""
+    )
+    return (
+        f"model {name} {at}; raster sha256 {digest[:8]} (a hash of the scores "
+        f"raster, not of the model){in_name}."
+    )
+
+
 def _date_window(manifest: dict[str, Any]) -> dict[str, Any] | None:
     """The run's date window (start and end only), for olmoearth_compare_review."""
     window = manifest.get("date_window")
@@ -423,6 +448,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     model = _model_block(manifest)
     stem = slug(str(model.get("repo") or model.get("id") or "run").split("/")[-1], 32)
     tag = "_fill" if fill and include_fill else ""
+    package_warnings = [str(w) for w in out.get("warnings", [])]
     payload: dict[str, Any] = {
         "format": "olmoearth-agent/scores@1",
         "provenance": PROVENANCE,
@@ -446,6 +472,9 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
             "version": inferencex.version(),
             "call": f"assess_prediction(is_logit={is_logit}, patch={patch})",
         },
+        # Carried in the file so every ranking of it states them (exp86 round 6:
+        # the provider's multi-class warning never reached a brief-8 answer).
+        "package_warnings": package_warnings,
     }
     if n_valid < rows_n * cols_n:
         payload["windows"] = [int(i) for i in idx.tolist()]
@@ -454,6 +483,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         payload["centres_lon_lat"] = centres
     name = f"scores_run_{stem}_{digest[:8]}_p{patch}{tag}.json"
     scores_path = write_json_file(name, payload)
+    identity = model_and_raster(model, digest, name)
 
     result: dict[str, Any] = {
         "available": True,
@@ -477,9 +507,19 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
             "sha256": digest,
             "matches_manifest": True if recorded else None,
         },
+        "model_and_raster": identity,
         "signal": payload["signal"],
         "package": payload["package"],
-        "package_warnings": [str(w) for w in out.get("warnings", [])],
+        "package_warnings": package_warnings,
+        "facts": [
+            {
+                "id": "model_and_raster",
+                "sentence": identity,
+                "model": model.get("repo") or model.get("id"),
+                "revision": model.get("revision"),
+                "raster_sha256": digest,
+            }
+        ],
         "next_step": (
             "Pass scores_path to olmoearth_review_set (which windows to check "
             "first), to olmoearth_plan_label_sample (how wrong the map is), or, "
