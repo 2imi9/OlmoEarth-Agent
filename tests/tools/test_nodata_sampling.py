@@ -296,6 +296,14 @@ async def test_compare_results_allows_different_properties_with_a_warning(
         "rmse_between_models",
         "tolerance",
     ]
+    # The output contract: what to state, and the claim the answer must not make.
+    assert out["must_state"] == [
+        "The results measure different properties: only whether they rise and "
+        "fall together (the correlation) is meaningful between them."
+    ]
+    assert [c["id"] for c in out["forbidden_claims"]] == [
+        "combined_statistic_across_properties"
+    ]
 
 
 @pytest.mark.asyncio

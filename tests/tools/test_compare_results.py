@@ -507,6 +507,10 @@ async def test_group_of_different_properties_is_refused_then_allowed(
     assert allowed["most_divergent_pair"] is None
     assert "rmse_between_models" in allowed["statistics_left_out"]
     assert "ensemble" in allowed["statistics_left_out"]
+    assert [c["id"] for c in allowed["forbidden_claims"]] == [
+        "combined_statistic_across_properties"
+    ]
+    assert "different properties" in allowed["must_state"][0]
 
 
 def _keys(value: object) -> set[str]:

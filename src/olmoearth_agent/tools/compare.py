@@ -312,6 +312,27 @@ def _different_warning(names: list[str | None]) -> str:
     )
 
 
+#: Stated with a comparison of two different properties.
+DIFFERENT_PROPERTIES_MUST_STATE = (
+    "The results measure different properties: only whether they rise and fall "
+    "together (the correlation) is meaningful between them."
+)
+
+#: Forbidden with a comparison of two different properties.
+COMBINED_STATISTIC_FORBIDDEN = {
+    "id": "combined_statistic_across_properties",
+    "why": "a difference, an RMSE, an agreement fraction, an ensemble spread, or "
+    "'one reads higher than the other' between two properties mixes two "
+    "quantities; none is computed, so none may be worked out or stated",
+}
+
+
+def _mark_different(out: dict[str, Any]) -> None:
+    """The output contract of a comparison across properties: what to state, what not to claim."""
+    out.setdefault("must_state", []).append(DIFFERENT_PROPERTIES_MUST_STATE)
+    out.setdefault("forbidden_claims", []).append(dict(COMBINED_STATISTIC_FORBIDDEN))
+
+
 def _pair(
     s: _Sampled,
     *,
@@ -363,6 +384,7 @@ def _pair(
     if different:
         out["stats"], out["statistics_left_out"] = _without_mixed(stats)
         out["warning"] = _different_warning(s.names)
+        _mark_different(out)
         narration["headline"] = (
             f"different properties: correlation {stats.get('correlation')} "
             f"across {stats.get('n_samples', 0)} cells; no other statistic "
@@ -435,6 +457,7 @@ def _group(s: _Sampled, *, tolerance: float, different: bool) -> dict[str, Any]:
         out["most_divergent_pair"] = None
         out["statistics_left_out"] = sorted(left_out | {"ensemble"})
         out["warning"] = _different_warning(s.names)
+        _mark_different(out)
         narration["headline"] = (
             f"different properties across {len(s.ids)} results: pairwise "
             "correlations only between results of different properties"
