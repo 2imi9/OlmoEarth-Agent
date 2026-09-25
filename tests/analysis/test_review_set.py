@@ -8,10 +8,21 @@ import random
 
 import pytest
 
+from olmoearth_agent.analysis.output_contract import (
+    MUST_STATE_MAX,
+    MUST_STATE_MAX_WORDS,
+    add_forbidden,
+    add_must_state,
+    word_count,
+)
 from olmoearth_agent.analysis.review_set import (
     BOUNDARY_NEIGHBOURS_MEANS,
     EVIDENCE,
     EVIDENCE_LIMITS,
+    MUST_STATE_BINARY_SCORE,
+    MUST_STATE_MULTICLASS_LOGIT,
+    MUST_STATE_NO_WINNER,
+    MUST_STATE_UNNAMED_MODEL,
     attainable_ceiling,
     aurc_expected,
     auroc,
@@ -26,6 +37,7 @@ from olmoearth_agent.analysis.review_set import (
     margin_ratio_fact,
     margins,
     more_confident_fact,
+    must_state_other_model,
     oracle_aurc,
     predicted_classes,
     ranking_evidence_scope,
@@ -189,9 +201,10 @@ def test_review_set_states_its_evidence_in_one_scoped_sentence() -> None:
     assert "24-task embedding suite" in scope and "window level" in scope
     assert "OlmoEarth family" in scope
     assert scope.count(". ") == 0 and scope.endswith(".")
-    # Inline scores name no model, so coverage is not known and must be stated.
+    # Inline scores name no model, so coverage is not known and must be stated,
+    # in one short sentence: the scope itself stays in evidence_scope.
     assert out["evidence_covers_this_case"] == "not known"
-    assert out["must_state"] == [scope]
+    assert out["must_state"] == [MUST_STATE_UNNAMED_MODEL]
     assert [c["id"] for c in out["forbidden_claims"]] == ["error_rate_without_labels"]
 
 
@@ -229,6 +242,74 @@ def test_the_scope_sentence_says_whether_the_evidence_covers_the_case(
     assert scope["covers"] == covers
     assert phrase in scope["sentence"]
     assert scope["sentence"].startswith("Ai2's 24-task embedding suite")
+    # A limit goes to must_state as its own short sentence, never the scope.
+    if covers == "yes":
+        assert scope["must_state"] is None
+    else:
+        assert scope["must_state"] != scope["sentence"]
+        assert word_count(scope["must_state"]) <= MUST_STATE_MAX_WORDS
+
+
+def test_must_state_is_short_and_never_the_long_scope_sentence() -> None:
+    """exp87 review: must_state carried the 60-word evidence_scope sentence. The
+    contract holds a must_state sentence to 25 words; the scope stays whole in
+    evidence_scope (and the file)."""
+    cases = [
+        ("binary_score", 2, None),
+        ("threshold_distance", 2, None),
+        ("logit", 2, None),
+        ("logit", 2, "someone/Other-Model"),
+        ("logit", 9, "allenai/OlmoEarth-v1-FT-AWF-Base"),
+        ("window_confidence_logit", 9, "allenai/OlmoEarth-v1-FT-AWF-Base"),
+    ]
+    for kind, n_classes, model in cases:
+        rows = [[0.2 + 0.1 * i] + [0.0] * (n_classes - 1) for i in range(4)]
+        out = review_set(rows, budget=0.5, score_kind=kind, model=model)
+        assert 1 <= len(out["must_state"]) <= MUST_STATE_MAX
+        for sentence in out["must_state"]:
+            assert word_count(sentence) <= MUST_STATE_MAX_WORDS
+            assert sentence != out["evidence_scope"]
+            assert "form=" not in sentence and "pass " not in sentence.lower()
+        assert word_count(out["evidence_scope"]) > MUST_STATE_MAX_WORDS
+    band = review_set([[0.4, 0.6], [0.9, 0.1]], budget=1.0, score_kind="binary_score")
+    assert band["must_state"] == [MUST_STATE_BINARY_SCORE]
+    logits = review_set(
+        [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0]],
+        budget=1.0,
+        score_type="logit",
+        model="allenai/OlmoEarth-v1-FT-AWF-Base",
+    )
+    assert logits["must_state"] == [MUST_STATE_MULTICLASS_LOGIT]
+    # A model name that is not one word does not lengthen the sentence.
+    odd = must_state_other_model("a model with " + "many words " * 20)
+    assert word_count(odd) <= MUST_STATE_MAX_WORDS and "another model" in odd
+    assert "someone/Other-Model" in must_state_other_model("someone/Other-Model")
+
+
+def test_add_must_state_holds_the_contracts_limits() -> None:
+    out: dict = {}
+    add_must_state(out, ["One.", "Two.", "One."])
+    assert out["must_state"] == ["One.", "Two."]
+    add_must_state(out, ["Three.", "Four."])
+    assert out["must_state"] == ["One.", "Two.", "Three."]  # at most three
+    with pytest.raises(ValueError, match="words"):
+        add_must_state({}, [" ".join(["word"] * (MUST_STATE_MAX_WORDS + 1))])
+
+
+def test_add_forbidden_lists_each_id_once() -> None:
+    out = {"forbidden_claims": [{"id": "winner_without_labels", "why": "a"}]}
+    add_forbidden(
+        out,
+        [
+            {"id": "winner_without_labels", "why": "b"},
+            {"id": "another_date_settles_it", "why": "c"},
+            {"id": "another_date_settles_it", "why": "d"},
+        ],
+    )
+    assert [(c["id"], c["why"]) for c in out["forbidden_claims"]] == [
+        ("winner_without_labels", "a"),
+        ("another_date_settles_it", "c"),
+    ]
 
 
 def test_a_ranking_of_a_file_names_its_model_and_kind() -> None:
@@ -243,14 +324,14 @@ def test_a_ranking_of_a_file_names_its_model_and_kind() -> None:
         model="allenai/OlmoEarth-v1-FT-AWF-Base",
     )
     assert out["evidence_covers_this_case"] == "in part"
-    assert out["must_state"] == [out["evidence_scope"]]
+    assert out["must_state"] == [MUST_STATE_MULTICLASS_LOGIT]
     two = review_set(
         [[0.2, 0.8], [0.6, 0.4]], budget=1.0, model="allenai/OlmoEarth-v1-Base"
     )
     assert two["evidence_covers_this_case"] == "yes" and two["must_state"] == []
     band = review_set([[0.4, 0.6], [0.9, 0.1]], budget=1.0, score_kind="binary_score")
     assert band["evidence_covers_this_case"] == "no"
-    assert "regression score read as a probability" in band["must_state"][0]
+    assert band["must_state"] == [MUST_STATE_BINARY_SCORE]
 
 
 def test_margin_ratio_is_the_median_over_the_listed_margins() -> None:
@@ -261,10 +342,47 @@ def test_margin_ratio_is_the_median_over_the_listed_margins() -> None:
     ]
     out = review_set(scores, budget=0.3)
     (fact,) = out["facts"]
+    assert set(fact) == {
+        "id",
+        "listed_low",
+        "listed_high",
+        "review_set_low",
+        "review_set_high",
+        "versus",
+        "sentence",
+    }
     assert fact["id"] == "margin_ratio" and fact["versus"] == "median"
-    assert (fact["low"], fact["high"]) == (10.0, 40.0)
+    assert (fact["listed_low"], fact["listed_high"]) == (10.0, 40.0)
+    # Every window at the budget is listed: the two ranges are one.
+    assert (fact["review_set_low"], fact["review_set_high"]) == (10.0, 40.0)
     assert "10.00 to 40.00 times" in fact["sentence"]
-    assert "3 listed windows (0.1 to 0.4)" in fact["sentence"]
+    assert "all 3 windows in the review set, every one listed (0.1 to 0.4)" in (
+        fact["sentence"]
+    )
+
+
+def test_margin_ratio_gives_the_whole_review_sets_range_beside_the_listed() -> None:
+    """exp87 review: the listed range was the only one, so an answer about the
+    review set read the first few windows' range as the whole set's."""
+    scores = [
+        [1.0 + m, 1.0] for m in (0.1, 0.2, 0.4, 0.8, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0)
+    ]
+    out = review_set(scores, budget=0.4, max_listed=2)
+    assert out["margin_summary"]["review_set"] == {
+        "n": 4,
+        "margin_range": [0.1, 0.8],
+    }
+    (fact,) = out["facts"]
+    assert (fact["listed_low"], fact["listed_high"]) == (20.0, 40.0)
+    assert (fact["review_set_low"], fact["review_set_high"]) == (5.0, 40.0)
+    assert (
+        "20.00 to 40.00 times the margins of the 2 listed windows (0.1 to 0.2) and "
+        "5.00 to 40.00 times those of all 4 windows in the review set (0.1 to 0.8)"
+    ) in fact["sentence"]
+    none_listed = review_set(scores, budget=0.4, max_listed=0)
+    (fact,) = none_listed["facts"]
+    assert fact["listed_low"] is None and fact["listed_high"] is None
+    assert fact["review_set_low"] == 5.0 and "none is listed" in fact["sentence"]
 
 
 def test_margin_ratio_with_a_zero_margin_has_no_upper_ratio() -> None:
@@ -272,20 +390,26 @@ def test_margin_ratio_with_a_zero_margin_has_no_upper_ratio() -> None:
         "n_windows": 5,
         "median_margin": 2.0,
         "listed": {"n": 2, "margin_range": [0.0, 0.5]},
+        "review_set": {"n": 3, "margin_range": [0.0, 1.0]},
     }
     fact = margin_ratio_fact(summary)
-    assert fact is not None and fact["low"] == 4.0 and fact["high"] is None
-    assert "no upper ratio" in fact["sentence"]
+    assert fact is not None
+    assert (fact["listed_low"], fact["listed_high"]) == (4.0, None)
+    assert (fact["review_set_low"], fact["review_set_high"]) == (2.0, None)
+    assert "at least 4.00 times" in fact["sentence"]
+    assert "no ratio bounds it" in fact["sentence"]
     zero = margin_ratio_fact(
-        {**summary, "listed": {"n": 1, "margin_range": [0.0, 0.0]}}
+        {
+            **summary,
+            "listed": {"n": 1, "margin_range": [0.0, 0.0]},
+            "review_set": {"n": 1, "margin_range": [0.0, 0.0]},
+        }
     )
+    assert zero is not None and zero["listed_low"] is None
+    assert "no finite multiple of" in zero["sentence"]
     assert (
-        zero is not None
-        and zero["low"] is None
-        and "every listed margin is 0" in (zero["sentence"])
-    )
-    assert (
-        margin_ratio_fact({**summary, "listed": {"n": 0, "margin_range": None}}) is None
+        margin_ratio_fact({**summary, "review_set": {"n": 0, "margin_range": None}})
+        is None
     )
 
 
@@ -342,17 +466,30 @@ def test_the_comparison_facts_are_computed_by_code() -> None:
     out = compare_scores(a, b, class_names=names)
     facts = {f["id"]: f for f in out["facts"]}
     dominant = facts["dominant_change"]
+    assert set(dominant) == {
+        "id",
+        "from_class",
+        "to_class",
+        "n",
+        "share",
+        "reverse_n",
+        "reverse_share",
+        "tied_with_reverse",
+        "sentence",
+    }
     assert (dominant["from_class"], dominant["to_class"]) == (2, 1)
-    assert dominant["direction"] == "A->B"
     assert (dominant["n"], dominant["reverse_n"]) == (10, 2)
     assert dominant["share"] == pytest.approx(10 / 12, abs=1e-6)
+    assert dominant["tied_with_reverse"] is False
     assert (
         "class 2 (grass) in map A to class 1 (forest) in map B" in dominant["sentence"]
     )
     assert "the reverse" in dominant["sentence"]
     side = facts["more_confident_side"]
+    assert set(side) == {"id", "side", "share_a", "share_b", "share_equal", "sentence"}
     # A's margin is 3 and B's 2 on every differing window.
-    assert (side["side"], side["share"]) == ("A", 1.0)
+    assert (side["side"], side["share_a"], side["share_b"]) == ("A", 1.0, 0.0)
+    assert side["share_equal"] == 0.0
     assert "does not make A right" in side["sentence"]
     assert out["b_more_confident_share_of_differing"] == 0.0
     assert out["class_changes"][0]["class_name_a"] == "grass"
@@ -365,7 +502,7 @@ def test_the_comparison_scope_and_contract() -> None:
     assert "evidence" not in out and "caveats" not in out
     assert "51 to 70 percent" in out["evidence_scope"]
     assert out["evidence_covers_this_case"] == "no"
-    assert out["must_state"] == [out["evidence_scope"]]
+    assert out["must_state"] == [MUST_STATE_NO_WINNER]
     assert [c["id"] for c in out["forbidden_claims"]] == ["winner_without_labels"]
 
 
@@ -378,6 +515,7 @@ def test_spatial_breakdown_counts_every_differing_window_by_band() -> None:
     a, b = _flip(rows * cols, diff)
     out = compare_scores(a, b, grid=(rows, cols), max_listed=3)
     spatial = out["spatial"]
+    assert [band["band"] for band in spatial["row_bands"]] == [0, 1, 2, 3]
     assert [band["rows"] for band in spatial["row_bands"]] == [
         [0, 1],
         [2, 3],
@@ -389,17 +527,79 @@ def test_spatial_breakdown_counts_every_differing_window_by_band() -> None:
         12 / 14, abs=1e-6
     )
     assert spatial["row_bands"][2]["share_of_windows"] == 0.25
-    assert spatial["top_band"]["where"] == "rows 4-5"
-    assert spatial["top_band_share"] == spatial["row_bands"][2]["share_of_differing"]
-    fact = next(f for f in out["facts"] if f["id"] == "concentration")
-    assert fact["where"] == "rows 4-5" and fact["of_grid"] == "50-75%"
-    assert fact["share"] == fact["top_band_share"] == spatial["top_band_share"]
-    assert (
-        "Rows 4-5 (50-75% of the grid's 8 rows, from row 0) hold 85.7%"
-        in fact["sentence"]
-    )
+    assert spatial["max_band"]["axis"] == "rows" and spatial["max_band"]["band"] == 2
+    # top_band_share is the NORTHMOST row band's share, not the largest band's.
+    assert spatial["top_band_share"] == pytest.approx(2 / 14, abs=1e-6)
     assert out["n_differing_listed"] == 3  # the listing is still the first ones
     assert "boundary_means" in out and "PREDICTED" in out["boundary_means"]
+
+
+def test_the_concentration_fact_is_the_contracts() -> None:
+    """exp87 review: top_band_share was the largest band's share, so a claim
+    about the north edge was checked against the wrong band. It is row band 0's
+    (the northmost); the largest band is max_band, beside it."""
+    rows, cols = 8, 8
+    diff = [0, 1] + [r * cols + c for r in (4, 5) for c in range(6)]
+    a, b = _flip(rows * cols, diff)
+    out = compare_scores(a, b, grid=(rows, cols), max_listed=3)
+    fact = next(f for f in out["facts"] if f["id"] == "concentration")
+    assert set(fact) == {
+        "id",
+        "grid",
+        "n_differing",
+        "top_band_share",
+        "max_band",
+        "sentence",
+    }
+    assert fact["grid"] == [8, 8] and fact["n_differing"] == 14
+    assert fact["top_band_share"] == pytest.approx(2 / 14, abs=1e-6)
+    assert fact["max_band"] == {
+        "axis": "rows",
+        "band": 2,
+        "of_grid": "50-75%",
+        "share": pytest.approx(12 / 14, abs=1e-6),
+    }
+    assert fact["sentence"] == (
+        "Of the 14 differing windows, 14.3% lie in the northmost row band (rows "
+        "0-1, band 0 of 4), which holds 25.0% of all compared windows; the most in "
+        "any band, 85.7%, lie in rows 4-5 (50-75% of the grid's 8 rows, band 2), "
+        "which holds 25.0% of all compared windows."
+    )
+
+
+def test_the_concentration_fact_on_columns_on_the_north_band_and_on_a_tie() -> None:
+    rows, cols = 4, 4
+    # Column 3 holds three differing windows, row 0 one of them.
+    a, b = _flip(rows * cols, [3, 7, 11])
+    fact = next(
+        f
+        for f in compare_scores(a, b, grid=(rows, cols))["facts"]
+        if f["id"] == "concentration"
+    )
+    assert fact["max_band"]["axis"] == "cols" and fact["max_band"]["band"] == 3
+    assert fact["top_band_share"] == pytest.approx(1 / 3, abs=1e-6)
+    assert "lie in column 3 (75-100% of the grid's 4 columns, band 3)" in (
+        fact["sentence"]
+    )
+    # The northmost band holds the most, so the sentence says it is the most.
+    north = next(
+        f
+        for f in compare_scores(*_flip(16, [0, 1, 2]), grid=(4, 4))["facts"]
+        if f["id"] == "concentration"
+    )
+    assert north["top_band_share"] == 1.0
+    assert north["max_band"]["axis"] == "rows" and north["max_band"]["band"] == 0
+    assert "that is the most of any of the 4 row and 4 column bands." in (
+        north["sentence"]
+    )
+    # An even spread over the rows: the tie is counted, never read as a place.
+    even = next(
+        f
+        for f in compare_scores(*_flip(16, [0, 5, 10, 15]), grid=(4, 4))["facts"]
+        if f["id"] == "concentration"
+    )
+    assert even["max_band"]["band"] == 0 and even["top_band_share"] == 0.25
+    assert "(tied with 7 other bands)" in even["sentence"]
 
 
 def test_spatial_breakdown_places_windows_of_a_partial_grid() -> None:
@@ -408,10 +608,12 @@ def test_spatial_breakdown_places_windows_of_a_partial_grid() -> None:
     out = spatial_breakdown([5, 6, 7], [0, 1, 5, 6, 7, 15], (4, 4))
     assert [b["n_windows"] for b in out["row_bands"]] == [2, 3, 0, 1]
     assert [b["n_differing"] for b in out["row_bands"]] == [0, 3, 0, 0]
-    assert out["top_band"]["where"] == "row 1" and out["top_band_share"] == 1.0
+    assert out["max_band"]["rows"] == [1, 1] and out["max_band"]["share"] == 1.0
+    assert out["top_band_share"] == 0.0
     assert [b["n_differing"] for b in out["col_bands"]] == [0, 1, 1, 1]
     empty = spatial_breakdown([], [0, 1], (1, 2))
-    assert empty["top_band"] is None and empty["n_bands"] == [1, 2]
+    assert empty["max_band"] is None and empty["n_bands"] == [1, 2]
+    assert empty["top_band_share"] is None
 
 
 def test_compare_places_rows_of_a_partial_grid() -> None:
@@ -422,7 +624,8 @@ def test_compare_places_rows_of_a_partial_grid() -> None:
         (8, 2, 2),
     ]
     assert "boundary_share_overall" not in out  # needs every window
-    assert out["spatial"]["top_band_share"] == 0.5
+    assert out["spatial"]["top_band_share"] == 0.0  # row 0 holds none of them
+    assert out["spatial"]["max_band"]["share"] == 0.5
     with pytest.raises(ValueError, match="outside"):
         compare_scores(a, b, grid=(2, 2), windows=[0, 1, 9])
     with pytest.raises(ValueError, match="grid cells"):
@@ -622,20 +825,58 @@ def test_ties_are_broken_as_the_companion_package_breaks_them() -> None:
 
 
 def test_no_side_is_named_more_confident_on_a_tie() -> None:
-    assert more_confident_fact(0.5, 0.5, 10) is None
-    assert more_confident_fact(None, None, 0) is None
-    fact = more_confident_fact(0.3, 0.6, 10)
-    assert fact is not None and (fact["side"], fact["share"]) == ("B", 0.6)
+    """The side is decided on counts, and a tie is "neither", stated."""
+    assert more_confident_fact(0, 0, 0) is None
+    tie = more_confident_fact(4, 4, 10)
+    assert tie is not None and tie["side"] == "neither"
+    assert (tie["share_a"], tie["share_b"], tie["share_equal"]) == (0.4, 0.4, 0.2)
+    assert tie["sentence"].startswith("Neither map is more often the more confident")
+    assert "equal on 20.0%" in tie["sentence"]
+    fact = more_confident_fact(3, 6, 10)
+    assert fact is not None and fact["side"] == "B"
+    assert (fact["share_a"], fact["share_b"], fact["share_equal"]) == (0.3, 0.6, 0.1)
     assert "equal on 10.0%" in fact["sentence"]
 
 
-def test_a_tied_dominant_change_says_so() -> None:
-    changes = [
-        {"class_a": 0, "class_b": 1, "n": 5, "share_of_differing": 0.5},
-        {"class_a": 1, "class_b": 0, "n": 5, "share_of_differing": 0.5},
-    ]
-    fact = dominant_change_fact(changes, {(0, 1): 5, (1, 0): 5}, 10, None)
+def test_the_more_confident_side_is_decided_on_counts_not_rounded_shares() -> None:
+    """exp87 review: shares rounded to 6 decimals can be equal where the counts
+    are not (and were compared as floats)."""
+    n = 10_000_001
+    fact = more_confident_fact(5_000_001, 5_000_000, n)
     assert fact is not None
-    assert fact["sentence"].startswith("The most common change (tied with 1 other)")
+    assert fact["share_a"] == fact["share_b"]  # equal once rounded
+    assert fact["side"] == "A"
+
+
+def test_a_tied_dominant_change_says_so() -> None:
+    fact = dominant_change_fact({(0, 1): 5, (1, 0): 5}, 10, None)
+    assert fact is not None
+    assert fact["tied_with_reverse"] is True
+    assert (fact["from_class"], fact["to_class"]) == (0, 1)
     assert (fact["reverse_n"], fact["reverse_share"]) == (5, 0.5)
-    assert dominant_change_fact([], {}, 0, None) is None
+    assert fact["sentence"] == (
+        "The most common change is a tie between a direction and its reverse, 5 of "
+        "the 10 differing windows (50.0%) each: class 0 in map A to class 1 in map "
+        "B, and class 1 in map A to class 0 in map B."
+    )
+    assert dominant_change_fact({}, 0, None) is None
+
+
+def test_a_dominant_change_tied_with_another_direction_names_both() -> None:
+    """A tie beyond the ten listed class changes still counts: the fact reads
+    every direction, not the listing."""
+    pairs = {(0, 1): 4, (2, 3): 4, (1, 0): 1}
+    pairs.update({(10 + i, 20 + i): 1 for i in range(12)})
+    fact = dominant_change_fact(pairs, 21, None)
+    assert fact is not None and fact["tied_with_reverse"] is False
+    assert fact["sentence"] == (
+        "The most common change is a tie between 2 directions, 4 of the 21 "
+        "differing windows (19.0%) each: class 0 in map A to class 1 in map B, and "
+        "class 2 in map A to class 3 in map B; for the first, the reverse, class 1 "
+        "in map A to class 0 in map B, is 1 (4.8%)."
+    )
+    many = {(0, 1): 3, (1, 0): 3, (2, 0): 3}
+    fact = dominant_change_fact(many, 9, None)
+    assert fact is not None and fact["tied_with_reverse"] is True
+    assert "a tie between 3 directions" in fact["sentence"]
+    assert fact["sentence"].endswith("class 2 in map A to class 0 in map B.")

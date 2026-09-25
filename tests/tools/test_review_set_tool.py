@@ -9,6 +9,15 @@ from pathlib import Path
 
 import pytest
 
+from olmoearth_agent.analysis.output_contract import (
+    MUST_STATE_MAX,
+    MUST_STATE_MAX_WORDS,
+    word_count,
+)
+from olmoearth_agent.analysis.review_set import (
+    MUST_STATE_MULTICLASS_LOGIT,
+    MUST_STATE_NO_WINNER,
+)
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.tools.compare import build_compare_tools
@@ -203,8 +212,13 @@ async def test_review_set_states_the_warnings_its_scores_file_carries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """exp86 round 6: the provider's multi-class warning reached no brief-8
-    answer. A file's warnings go to must_state, with the scope sentence."""
-    warning = "multi-class logit margin: one minus the top probability ranked better"
+    answer. A file's warnings travel whole in scores_file_warnings, and the
+    limit a known one states goes to must_state."""
+    warning = (
+        "multi-class logit margin: on Ai2's suite one minus the top probability "
+        "ranked errors better on 14 of 16 multi-class tasks (exp76); pass form='top1'"
+    )
+    other = "3 pixels are not finite and were treated as no-data; pass nodata_mask"
     rows = [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0], [0.0, 0.0, 0.3], [0.9, 0.0, 0.0]]
     (tmp_path / "s.json").write_text(
         json.dumps(
@@ -217,7 +231,7 @@ async def test_review_set_states_the_warnings_its_scores_file_carries(
                     "repo": "allenai/OlmoEarth-v1-FT-AWF-Base",
                     "revision": "a347b15",
                 },
-                "package_warnings": [warning],
+                "package_warnings": [warning, other],
             }
         )
     )
@@ -226,11 +240,50 @@ async def test_review_set_states_the_warnings_its_scores_file_carries(
         {"scores_path": str(tmp_path / "s.json"), "budget": 0.5}, _ctx()
     )
     assert out["evidence_covers_this_case"] == "in part"
-    assert out["must_state"] == [
-        out["evidence_scope"],
+    assert out["scores_file_warnings"] == [
         "The scores provider (olmoearth-inferencex) warns: " + warning,
+        "The scores provider (olmoearth-inferencex) warns: " + other,
     ]
+    # The scope's limit and the warning's are one sentence, stated once.
+    assert out["must_state"] == [MUST_STATE_MULTICLASS_LOGIT]
     assert out["boundary_neighbours_means"].startswith("boundary_neighbours counts")
+
+
+@pytest.mark.asyncio
+async def test_must_state_never_carries_an_argument_no_agent_tool_takes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp87 review: the provider's multi-class warning ends "pass form='top1'",
+    and no agent tool takes a form argument. must_state states the fact and
+    what this ranking uses, in at most 25 words; the warning stays whole in
+    scores_file_warnings."""
+    warning = (
+        "multi-class logit margin: on Ai2's suite one minus the top probability "
+        "ranked errors better on 14 of 16 multi-class tasks (exp76); pass form='top1'"
+    )
+    rows = [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0], [0.0, 0.0, 0.3], [0.9, 0.0, 0.0]]
+    (tmp_path / "s.json").write_text(
+        json.dumps(
+            {
+                "scores": rows,
+                "score_kind": "window_confidence",
+                "score_type": "logit",
+                "model": {"repo": "someone/Other-Model"},
+                "package_warnings": [warning],
+            }
+        )
+    )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(tmp_path / "s.json"), "budget": 0.5}, _ctx()
+    )
+    assert len(out["must_state"]) == 2 <= MUST_STATE_MAX
+    assert "someone/Other-Model" in out["must_state"][0]
+    assert out["must_state"][1] == MUST_STATE_MULTICLASS_LOGIT
+    for sentence in out["must_state"]:
+        assert "form" not in sentence and "pass" not in sentence
+        assert word_count(sentence) <= MUST_STATE_MAX_WORDS
+    assert out["scores_file_warnings"][0].endswith("pass form='top1'")
 
 
 def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
@@ -379,7 +432,7 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
     assert {d["window_index"] for d in result["differing"]} == {1, 2}
     assert result["which_side_is_right"] == "not resolvable without labels"
     assert "51 to 70" in result["evidence_scope"]
-    assert result["must_state"] == [result["evidence_scope"]]
+    assert result["must_state"] == [MUST_STATE_NO_WINNER]
     assert [c["id"] for c in result["forbidden_claims"]] == ["winner_without_labels"]
     assert result["where"] in ("mostly on class boundaries", "spread across the scene")
 
@@ -410,6 +463,9 @@ async def test_compare_review_lists_ten_inline_and_saves_every_differing_window(
     ids = [f["id"] for f in out["facts"]]
     assert ids == ["dominant_change", "more_confident_side", "concentration"]
     assert out["spatial"]["top_band_share"] == 0.25  # every row band holds 8 of 32
+    concentration = out["facts"][2]
+    assert concentration["grid"] == [8, 8] and concentration["n_differing"] == 32
+    assert concentration["max_band"]["axis"] == "rows"
     fewer = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
         {"scores_a": a, "scores_b": b, "grid": [8, 8], "max_listed": 3}, _ctx()
     )
@@ -425,7 +481,7 @@ async def test_compare_review_with_no_difference_saves_no_listing() -> None:
         {"scores_a": _SCORES, "scores_b": _SCORES, "grid": [4, 4]}, _ctx()
     )
     assert out["n_differing"] == 0 and out["differing_path"] is None
-    assert out["facts"] == [] and out["spatial"]["top_band"] is None
+    assert out["facts"] == [] and out["spatial"]["max_band"] is None
     assert out["listing_order"].startswith("no window differs")
 
 
@@ -538,8 +594,9 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01", "date_b": "2024-09-01"},
         _ctx(),
     )
-    assert apart["must_state"][0] == apart["evidence_scope"]
+    assert apart["must_state"][0] == MUST_STATE_NO_WINNER
     assert "different times" in apart["must_state"][1]
+    assert all(word_count(m) <= MUST_STATE_MAX_WORDS for m in apart["must_state"])
     assert [c["id"] for c in apart["forbidden_claims"]] == [
         "winner_without_labels",
         "another_date_settles_it",
@@ -553,4 +610,48 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01", "date_b": "2024-03-01"},
         _ctx(),
     )
-    assert same["must_state"] == [same["evidence_scope"]]
+    assert same["must_state"] == [MUST_STATE_NO_WINNER]
+
+
+@pytest.mark.asyncio
+async def test_every_review_set_result_keeps_must_state_inside_the_contract() -> None:
+    """The contract: at most 3 must_state sentences of at most 25 words each,
+    and each forbidden id once, whatever the case adds (dates included)."""
+    pytest.importorskip("oe_inferencex.compare")
+    a = [[0.2, 0.8], [0.7, 0.3], [0.4, 0.6], [0.9, 0.1]]
+    b = [[0.2, 0.8], [0.3, 0.7], [0.4, 0.6], [0.1, 0.9]]
+    tools = _tools()
+    outs = [
+        await tools["olmoearth_review_set"].handler({"scores": a}, _ctx()),  # type: ignore[attr-defined]
+        await tools["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+            {"scores_a": a, "scores_b": b, "grid": [2, 2]}, _ctx()
+        ),
+        await tools["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+            {
+                "scores_a": a,
+                "scores_b": b,
+                "date_a": "2024-03-01",
+                "date_b": "2025-09-01",
+            },
+            _ctx(),
+        ),
+    ]
+    for out in outs:
+        assert 1 <= len(out["must_state"]) <= MUST_STATE_MAX
+        assert all(word_count(m) <= MUST_STATE_MAX_WORDS for m in out["must_state"])
+        ids = [c["id"] for c in out["forbidden_claims"]]
+        assert len(ids) == len(set(ids))
+
+
+def test_a_comparison_across_properties_is_marked_once() -> None:
+    """exp87 review: forbidden ids are deduplicated per result; marking a
+    comparison of different properties twice used to list each entry twice."""
+    from olmoearth_agent.tools.compare import _mark_different
+
+    out: dict = {}
+    _mark_different(out)
+    _mark_different(out)
+    assert len(out["must_state"]) == 1
+    assert [c["id"] for c in out["forbidden_claims"]] == [
+        "combined_statistic_across_properties"
+    ]

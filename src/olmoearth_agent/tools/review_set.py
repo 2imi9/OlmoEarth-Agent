@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
 from olmoearth_agent.analysis.raster_compare import (
     declared_range,
     grid_windows,
@@ -56,6 +57,7 @@ from olmoearth_agent.analysis.raster_compare import (
 from olmoearth_agent.analysis.review_set import (
     DEFAULT_BUDGETS,
     DEFAULT_MAX_LISTED,
+    MUST_STATE_MULTICLASS_LOGIT,
     attainable_ceiling,
     compare_scores,
     evidence_detail,
@@ -299,7 +301,7 @@ def file_model(meta: dict[str, Any]) -> str | None:
 
 def file_warnings(meta: dict[str, Any]) -> list[str]:
     """The warnings a scores file carries (the provider's ``package_warnings``,
-    and any ``warnings``), each stated as the provider's."""
+    and any ``warnings``), each stated as the provider's, whole."""
     out: list[str] = []
     for key, who in (
         ("package_warnings", "The scores provider (olmoearth-inferencex) warns: "),
@@ -314,12 +316,29 @@ def file_warnings(meta: dict[str, Any]) -> list[str]:
     return out
 
 
-def add_must_state(out: dict[str, Any], sentences: list[str]) -> None:
-    """Append sentences to ``out['must_state']``, once each."""
-    must = out.setdefault("must_state", [])
-    for sentence in sentences:
-        if sentence not in must:
-            must.append(sentence)
+#: A scores provider's warning, by its opening words, and the limit it states
+#: as a ``must_state`` sentence. The provider's own text can end in an
+#: instruction no agent tool can carry out (the multi-class warning's "pass
+#: form='top1'": no agent tool takes a ``form``), so it is never copied into
+#: ``must_state``; a warning not listed here is kept in ``scores_file_warnings``
+#: only.
+WARNING_LIMITS: tuple[tuple[str, str], ...] = (
+    ("multi-class logit margin", MUST_STATE_MULTICLASS_LOGIT),
+)
+
+
+def warning_limits(meta: dict[str, Any]) -> list[str]:
+    """The ``must_state`` sentences for the warnings a scores file carries."""
+    raw: list[str] = []
+    for key in ("package_warnings", "warnings"):
+        listed = meta.get(key)
+        if isinstance(listed, list):
+            raw.extend(w.strip().lower() for w in listed if isinstance(w, str))
+    return [
+        limit
+        for opening, limit in WARNING_LIMITS
+        if any(warning.startswith(opening) for warning in raw)
+    ]
 
 
 def evidence_detail_path() -> str | None:
@@ -386,10 +405,14 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     )
     if meta:
         _annotate_from_file(out, meta, len(scores))
-        # A warning the scores file carries is stated with every ranking of it
+        # A warning the scores file carries travels with every ranking of it
         # (exp86 round 6: no brief-8 answer passed the provider's multi-class
-        # warning on).
-        add_must_state(out, file_warnings(meta))
+        # warning on): whole in scores_file_warnings, and as the limit it
+        # states in must_state, never as the provider's instruction.
+        warnings = file_warnings(meta)
+        if warnings:
+            out["scores_file_warnings"] = warnings
+        add_must_state(out, warning_limits(meta))
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
     _place_rows(
         out.get("review", []), "window_index", windows, int(grid[1]) if grid else None
@@ -469,9 +492,8 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
 
 #: Stated with a comparison of maps of different or overlapping times.
 DIFFERENT_TIMES_MUST_STATE = (
-    "The two maps describe different times, so a window where they differ may "
-    "have changed on the ground: a difference is not by itself an error in "
-    "either map."
+    "The maps describe different times, so where they differ the ground may have "
+    "changed; a difference is not by itself an error."
 )
 
 #: Stated with a comparison where only one map's date was given.
@@ -603,7 +625,7 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 )
             )
             add_must_state(out, [DIFFERENT_TIMES_MUST_STATE])
-            out["forbidden_claims"].append(dict(ANOTHER_DATE_FORBIDDEN))
+            add_forbidden(out, [ANOTHER_DATE_FORBIDDEN])
         elif dates.get("status") == "partly_stated":
             out["which_side_is_right"] = (
                 "not graded: only one map's date was given, so an error cannot be "

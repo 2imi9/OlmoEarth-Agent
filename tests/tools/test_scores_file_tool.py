@@ -522,9 +522,16 @@ async def test_the_providers_warnings_travel_with_its_file_to_the_ranking(
     ], "a multi-class logit map draws the package's warning"
     review = await _ok("olmoearth_review_set", {"scores_path": got["scores_path"]})
     assert review["evidence_covers_this_case"] == "in part"
-    assert review["must_state"] == [review["evidence_scope"]] + [
+    assert review["scores_file_warnings"] == [
         "The scores provider (olmoearth-inferencex) warns: " + w
         for w in got["package_warnings"]
+    ]
+    # The package's own text ends in "pass form='top1'", an argument no agent
+    # tool takes; must_state states the limit instead, once.
+    assert any("form='top1'" in w for w in got["package_warnings"])
+    assert review["must_state"] == [
+        "This ranking uses the logit margin; on Ai2's suite one minus the top "
+        "probability ranked errors better on 14 of 16 multi-class tasks."
     ]
 
 

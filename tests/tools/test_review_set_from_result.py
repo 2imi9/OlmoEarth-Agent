@@ -219,7 +219,9 @@ async def test_a_studio_band_is_scoped_as_no_recorded_experiment_grades_it(
         "no recorded experiment grades a regression score read as a probability"
         in out["evidence_scope"]
     )
-    assert out["must_state"] == [out["evidence_scope"]]
+    assert out["must_state"] == [
+        "No recorded experiment grades a regression score read as a probability."
+    ]
     assert [f["id"] for f in out["facts"]] == ["margin_ratio"]
     assert [c["id"] for c in out["forbidden_claims"]] == ["error_rate_without_labels"]
     assert len(out["caveats"]) == 2

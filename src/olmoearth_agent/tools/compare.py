@@ -45,6 +45,7 @@ from math import cos, radians
 from typing import Any
 
 from olmoearth_agent.analysis.change_detect import _try_parse
+from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
 from olmoearth_agent.analysis.raster_compare import (
     COMPARISON_KINDS,
     compare_categorical,
@@ -328,9 +329,10 @@ COMBINED_STATISTIC_FORBIDDEN = {
 
 
 def _mark_different(out: dict[str, Any]) -> None:
-    """The output contract of a comparison across properties: what to state, what not to claim."""
-    out.setdefault("must_state", []).append(DIFFERENT_PROPERTIES_MUST_STATE)
-    out.setdefault("forbidden_claims", []).append(dict(COMBINED_STATISTIC_FORBIDDEN))
+    """The output contract of a comparison across properties: what to state, what
+    not to claim; each once, however often a result is marked."""
+    add_must_state(out, [DIFFERENT_PROPERTIES_MUST_STATE])
+    add_forbidden(out, [COMBINED_STATISTIC_FORBIDDEN])
 
 
 def _pair(
