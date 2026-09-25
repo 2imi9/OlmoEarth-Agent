@@ -341,6 +341,40 @@ def warning_limits(meta: dict[str, Any]) -> list[str]:
     ]
 
 
+def file_grid(
+    asked: Any, loaded: ScoresFile, *, name: str = "scores file"
+) -> tuple[list[int] | None, str | None]:
+    """The grid to place a scores file's rows on, and a note when the one asked is set aside.
+
+    A file that names its grid is placed on it, whatever grid the model
+    passed: a file that leaves its no-data windows out indexes its rows into
+    that grid, and a transposed grid of the same size would pass every
+    count check and place every window wrong (exp87 review). A file that
+    leaves windows out but names no grid gives no way to check the model's,
+    so no grid is used. A whole-grid file without one keeps the model's,
+    which the ranking checks against the row count.
+    """
+    asked_grid = [int(asked[0]), int(asked[1])] if asked else None
+    if loaded.grid is not None:
+        own = [int(loaded.grid[0]), int(loaded.grid[1])]
+        note = (
+            f"the grid passed ({asked_grid[0]}x{asked_grid[1]}) was set aside for "
+            f"the {name}'s own ({own[0]}x{own[1]})"
+            if asked_grid is not None and asked_grid != own
+            else None
+        )
+        return own, note
+    if loaded.windows is not None:
+        note = (
+            f"the grid passed ({asked_grid[0]}x{asked_grid[1]}) was not used: the "
+            f"{name} leaves windows out and names no grid to check it against"
+            if asked_grid is not None
+            else None
+        )
+        return None, note
+    return asked_grid, None
+
+
 def evidence_detail_path() -> str | None:
     """Save the full evidence text behind ``evidence_scope``; return its path.
 
@@ -365,13 +399,13 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     scores = args.get("scores")
     windows: list[int] | None = None
     meta: dict[str, Any] = {}
+    grid_note: str | None = None
     if scores is None and args.get("scores_path"):
         # Scores usually live in a file where inference ran; a model cannot relay
         # hundreds of rows inline, and asking it to would test transcription.
         loaded = load_scores_file(str(args["scores_path"]))
         scores, windows, meta = loaded.scores, loaded.windows, loaded.meta
-        if grid is None and loaded.grid is not None:
-            grid = list(loaded.grid)
+        grid, grid_note = file_grid(grid, loaded)
     if scores is None:
         msg = "pass 'scores' (rows inline) or 'scores_path' (a .json file of rows)"
         raise ValueError(msg)
@@ -413,6 +447,8 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         if warnings:
             out["scores_file_warnings"] = warnings
         add_must_state(out, warning_limits(meta))
+    if grid_note:
+        out["grid_note"] = grid_note
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
     _place_rows(
         out.get("review", []), "window_index", windows, int(grid[1]) if grid else None
@@ -564,10 +600,14 @@ def _listing_order(n_listed: int, n_total: int, path: str | None) -> str:
 
 async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_compare_review``."""
-    grid = args.get("grid")
+    asked = args.get("grid")
+    grid = [int(asked[0]), int(asked[1])] if asked else None
     sides = []
     side_windows: list[list[int] | None] = []
     metas: list[dict[str, Any]] = []
+    # Each loaded file's own grid (None where it names none) and the note on
+    # the grid asked, when it was set aside.
+    file_grids: list[tuple[list[int] | None, str | None]] = []
     for key in ("a", "b"):
         scores = args.get(f"scores_{key}")
         windows: list[int] | None = None
@@ -575,8 +615,9 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         if scores is None and args.get(f"scores_path_{key}"):
             loaded = load_scores_file(str(args[f"scores_path_{key}"]))
             scores, windows, meta = loaded.scores, loaded.windows, loaded.meta
-            if grid is None and loaded.grid is not None:
-                grid = list(loaded.grid)
+            file_grids.append(
+                file_grid(asked, loaded, name=f"scores file {key.upper()}")
+            )
         if scores is None:
             msg = f"pass 'scores_{key}' or 'scores_path_{key}' for both inferences"
             raise ValueError(msg)
@@ -590,6 +631,23 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         )
         raise ValueError(msg)
     windows = side_windows[0]
+    # A scores file is placed on its own grid, never on the model's (exp87
+    # review: a file that leaves windows out indexes its rows into its grid).
+    grid_note: str | None = None
+    if file_grids:
+        named = sorted({tuple(g) for g, _ in file_grids if g is not None})
+        if len(named) > 1:
+            msg = (
+                "the two scores files name different grids ("
+                + " and ".join(f"{r}x{c}" for r, c in named)
+                + "); compare inferences of the same windows"
+            )
+            raise ValueError(msg)
+        if named:
+            grid = list(named[0])
+        elif windows is not None:
+            grid = None
+        grid_note = next((note for _, note in file_grids if note), None)
     # Every differing window comes back; the inline listing is cut below and the
     # whole of it goes to a file.
     out = compare_scores(
@@ -609,6 +667,8 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
     out["n_differing_total"] = out["n_differing"]
     out["differing_path"] = path
     out["listing_order"] = _listing_order(out["n_differing_listed"], len(rows), path)
+    if grid_note:
+        out["grid_note"] = grid_note
     dates = _dates_block(args)
     out["dates"] = dates
     if dates.get("assessed"):

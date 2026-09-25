@@ -286,6 +286,36 @@ async def test_must_state_never_carries_an_argument_no_agent_tool_takes(
     assert out["scores_file_warnings"][0].endswith("pass form='top1'")
 
 
+@pytest.mark.asyncio
+async def test_review_set_places_a_files_rows_on_the_files_own_grid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp87 review: a model-passed grid placed a file's rows even where the
+    file names its own grid and leaves windows out; a transposed grid put
+    every window in the wrong row and column."""
+    rows = [[0.1, 0.2], [5.0, 0.1], [0.3, 0.2], [4.0, 0.1]]
+    (tmp_path / "s.json").write_text(
+        json.dumps({"grid": [2, 4], "windows": [1, 3, 5, 6], "scores": rows})
+    )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(tmp_path / "s.json"), "budget": 1.0, "grid": [4, 2]},
+        _ctx(),
+    )
+    placed = {r["window_index"]: (r["row"], r["col"]) for r in out["review"]}
+    assert placed == {1: (0, 1), 3: (0, 3), 5: (1, 1), 6: (1, 2)}
+    assert "set aside for the scores file's own (2x4)" in out["grid_note"]
+    (tmp_path / "n.json").write_text(
+        json.dumps({"windows": [1, 3], "scores": rows[:2]})
+    )
+    ungridded = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(tmp_path / "n.json"), "budget": 1.0, "grid": [4, 2]},
+        _ctx(),
+    )
+    assert all("row" not in r for r in ungridded["review"])
+    assert "names no grid" in ungridded["grid_note"]
+
+
 def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
     """#9 owns self-consistency and OOD; #18 owns which windows are wrong.
 
@@ -611,6 +641,78 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
         _ctx(),
     )
     assert same["must_state"] == [MUST_STATE_NO_WINNER]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_places_files_on_their_own_grid_not_the_models(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp87 review: with a model-passed grid, compare_review placed the rows of
+    files that leave windows out on that grid, not the files' own. A
+    transposed grid passes every count check and moves every window."""
+    rows_a = [[5.0, 0.1], [0.1, 5.0], [5.0, 0.1], [5.0, 0.1]]
+    rows_b = [[0.1, 5.0], [0.1, 5.0], [5.0, 0.1], [0.1, 5.0]]
+    windows = [0, 3, 5, 7]
+    for name, rows in (("a", rows_a), ("b", rows_b)):
+        (tmp_path / f"{name}.json").write_text(
+            json.dumps({"grid": [2, 4], "windows": windows, "scores": rows})
+        )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    args = {
+        "scores_path_a": str(tmp_path / "a.json"),
+        "scores_path_b": str(tmp_path / "b.json"),
+    }
+    tool = _tools()["olmoearth_compare_review"]
+    own = await tool.handler(args, _ctx())  # type: ignore[attr-defined]
+    asked = await tool.handler({**args, "grid": [4, 2]}, _ctx())  # type: ignore[attr-defined]
+    for key in ("differing", "spatial", "facts"):
+        assert asked[key] == own[key]
+    assert [(d["window_index"], d["row"], d["col"]) for d in asked["differing"]] == [
+        (0, 0, 0),
+        (7, 1, 3),
+    ]
+    assert asked["spatial"]["grid"] == [2, 4]
+    assert "set aside for the scores file A's own (2x4)" in asked["grid_note"]
+    assert "grid_note" not in own
+    # Two files that name different grids are refused.
+    (tmp_path / "c.json").write_text(
+        json.dumps({"grid": [4, 2], "windows": windows, "scores": rows_b})
+    )
+    result = await _registry().dispatch(
+        ToolCall(
+            id="g",
+            name="olmoearth_compare_review",
+            arguments={**args, "scores_path_b": str(tmp_path / "c.json")},
+        ),
+        _ctx(),
+    )
+    assert result["ok"] is False and "different grids" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_drops_the_models_grid_for_a_file_without_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file that leaves windows out and names no grid gives nothing to check
+    the model's grid against, so no grid is used."""
+    rows_a = [[5.0, 0.1], [0.1, 5.0]]
+    rows_b = [[0.1, 5.0], [0.1, 5.0]]
+    for name, rows in (("a", rows_a), ("b", rows_b)):
+        (tmp_path / f"{name}.json").write_text(
+            json.dumps({"windows": [2, 5], "scores": rows})
+        )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {
+            "scores_path_a": str(tmp_path / "a.json"),
+            "scores_path_b": str(tmp_path / "b.json"),
+            "grid": [3, 2],
+        },
+        _ctx(),
+    )
+    assert out["n_differing"] == 1 and out["differing"][0]["window_index"] == 2
+    assert "row" not in out["differing"][0] and "spatial" not in out
+    assert "names no grid" in out["grid_note"]
 
 
 @pytest.mark.asyncio
