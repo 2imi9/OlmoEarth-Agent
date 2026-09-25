@@ -33,8 +33,10 @@ sources, so an id or a date splits into the same numbers on both sides:
   ``23.0`` against 0.2298; ``-0.017`` against -0.0172). A suffixed number is
   compared in its unit at the same rounding (``6.4M`` against 6,412,345), or
   as written.
-- A thousands-separated integer is also supported when each of its parts is
-  (a window written "(24,108)").
+- A thousands-separated integer written in brackets is also supported when
+  each of its parts is (a window written "(24,108)"). Unbracketed, it is one
+  number: "1,000" is a thousand, never the parts 1 and 0 (exp86 round 5: "e.g.
+  1,000+ labels" passed that way).
 - A number inside a word of letters and digits of at least 4 characters (a
   shortened id, ``a7c40be9``, ``419c``), or inside any word of at least 3
   next to an ellipsis (``5aafb53d...704``), is supported when that word
@@ -89,7 +91,8 @@ class NumberToken:
     suffix's factor (1 without one); ``exponent`` the power of ten of a
     scientific form; ``parts`` the values between thousands separators;
     ``word`` the word around it to look up whole in the sources (a possible
-    id, see :func:`tokenize`), or ``""``.
+    id, see :func:`tokenize`), or ``""``; ``bracketed`` whether it stands
+    alone inside brackets, as a window "(24,108)" does.
     """
 
     text: str
@@ -100,6 +103,7 @@ class NumberToken:
     exponent: int = 0
     parts: tuple[int, ...] = ()
     word: str = ""
+    bracketed: bool = False
 
     @property
     def is_plain_integer(self) -> bool:
@@ -179,6 +183,9 @@ def tokenize(text: str, *, skip_urls: bool = True) -> list[NumberToken]:
                 exponent=exponent,
                 parts=parts,
                 word=_id_word(text, start, m.end("num")),
+                bracketed=start > 0
+                and text[start - 1] in "(["
+                and text[end : end + 1] in (")", "]"),
             )
         )
         spans.append((start, end))
@@ -258,7 +265,8 @@ class NumberPool:
                 int(x) in self._ints
                 or self._within(self._fractional, x, 0.5)
                 or self._near(x / 100, 0.0)
-                or bool(tok.parts)
+                or tok.bracketed
+                and bool(tok.parts)
                 and all(p <= SMALL_INT_EXEMPT or p in self._ints for p in tok.parts)
             )
         tol = 0.5 * 10.0 ** (-tok.decimals)

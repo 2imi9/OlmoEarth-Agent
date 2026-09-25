@@ -77,6 +77,15 @@ def test_a_figure_from_no_output_is_reported() -> None:
     assert unsupported_numbers(answer, pool) == ["51", "70%", "90%"]
 
 
+def test_a_round_thousand_is_one_number_not_its_parts() -> None:
+    """Round 5, B6/files run 3: "e.g. 1,000+ labels", in no tool output, passed
+    as the parts 1 and 0. Only a bracketed pair, a window, splits."""
+    pool = [{"n_labels": 300, "levels": [{"n_inside": 46, "n_wrong": 3}]}]
+    assert unsupported_numbers("e.g. 1,000+ labels", pool) == ["1,000"]
+    assert unsupported_numbers("2,000 more labels", pool) == ["2,000"]
+    assert unsupported_numbers("window (1,000)", [{"row": 1, "col": 0}]) == []
+
+
 def test_each_number_is_reported_once_in_order() -> None:
     assert unsupported_numbers("12 then 34 then 12", []) == ["12", "34"]
 
