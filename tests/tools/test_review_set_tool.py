@@ -672,7 +672,7 @@ async def test_compare_review_places_files_on_their_own_grid_not_the_models(
         (7, 1, 3),
     ]
     assert asked["spatial"]["grid"] == [2, 4]
-    assert "set aside for the scores file A's own (2x4)" in asked["grid_note"]
+    assert "set aside for the scores files' own (2x4)" in asked["grid_note"]
     assert "grid_note" not in own
     # Two files that name different grids are refused.
     (tmp_path / "c.json").write_text(
@@ -687,6 +687,45 @@ async def test_compare_review_places_files_on_their_own_grid_not_the_models(
         _ctx(),
     )
     assert result["ok"] is False and "different grids" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_counts_only_the_grids_the_files_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp87 re-review: a whole-grid file that names no grid made the model's
+    grid count as a file-named grid, so A (2x4) beside B (no grid) with a
+    passed 4x2 was refused as 'different grids', and a passed grid equal to
+    A's own was reported as not used."""
+    rows_a = [[5.0, 0.1]] * 4 + [[0.1, 5.0]] * 4
+    rows_b = [[0.1, 5.0]] * 8
+    (tmp_path / "a.json").write_text(json.dumps({"grid": [2, 4], "scores": rows_a}))
+    (tmp_path / "b.json").write_text(json.dumps({"scores": rows_b}))
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    tool = _tools()["olmoearth_compare_review"]
+    args = {
+        "scores_path_a": str(tmp_path / "a.json"),
+        "scores_path_b": str(tmp_path / "b.json"),
+    }
+    out = await tool.handler({**args, "grid": [4, 2]}, _ctx())  # type: ignore[attr-defined]
+    assert out["spatial"]["grid"] == [2, 4]
+    assert "set aside for the scores files' own (2x4)" in out["grid_note"]
+    same = await tool.handler({**args, "grid": [2, 4]}, _ctx())  # type: ignore[attr-defined]
+    assert same["spatial"]["grid"] == [2, 4] and "grid_note" not in same
+    # windows listed in both, the grid named by one only, the same grid passed
+    for name, rows, extra in (("c", rows_a, {"grid": [2, 4]}), ("d", rows_b, {})):
+        (tmp_path / f"{name}.json").write_text(
+            json.dumps({**extra, "windows": list(range(8)), "scores": rows})
+        )
+    both = await tool.handler(  # type: ignore[attr-defined]
+        {
+            "scores_path_a": str(tmp_path / "c.json"),
+            "scores_path_b": str(tmp_path / "d.json"),
+            "grid": [2, 4],
+        },
+        _ctx(),
+    )
+    assert both["spatial"]["grid"] == [2, 4] and "grid_note" not in both
 
 
 @pytest.mark.asyncio
@@ -712,7 +751,7 @@ async def test_compare_review_drops_the_models_grid_for_a_file_without_one(
     )
     assert out["n_differing"] == 1 and out["differing"][0]["window_index"] == 2
     assert "row" not in out["differing"][0] and "spatial" not in out
-    assert "names no grid" in out["grid_note"]
+    assert "name no grid" in out["grid_note"]
 
 
 @pytest.mark.asyncio

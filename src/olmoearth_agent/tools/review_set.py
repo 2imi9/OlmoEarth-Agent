@@ -605,9 +605,10 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
     sides = []
     side_windows: list[list[int] | None] = []
     metas: list[dict[str, Any]] = []
-    # Each loaded file's own grid (None where it names none) and the note on
-    # the grid asked, when it was set aside.
-    file_grids: list[tuple[list[int] | None, str | None]] = []
+    # The grids the loaded files name themselves (never the grid the model
+    # passed, which file_grid returns for a whole-grid file without one).
+    own_grids: list[list[int]] = []
+    loaded_any = False
     for key in ("a", "b"):
         scores = args.get(f"scores_{key}")
         windows: list[int] | None = None
@@ -615,9 +616,9 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         if scores is None and args.get(f"scores_path_{key}"):
             loaded = load_scores_file(str(args[f"scores_path_{key}"]))
             scores, windows, meta = loaded.scores, loaded.windows, loaded.meta
-            file_grids.append(
-                file_grid(asked, loaded, name=f"scores file {key.upper()}")
-            )
+            loaded_any = True
+            if loaded.grid is not None:
+                own_grids.append([int(loaded.grid[0]), int(loaded.grid[1])])
         if scores is None:
             msg = f"pass 'scores_{key}' or 'scores_path_{key}' for both inferences"
             raise ValueError(msg)
@@ -634,8 +635,8 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
     # A scores file is placed on its own grid, never on the model's (exp87
     # review: a file that leaves windows out indexes its rows into its grid).
     grid_note: str | None = None
-    if file_grids:
-        named = sorted({tuple(g) for g, _ in file_grids if g is not None})
+    if loaded_any:
+        named = sorted({tuple(g) for g in own_grids})
         if len(named) > 1:
             msg = (
                 "the two scores files name different grids ("
@@ -643,11 +644,22 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 + "); compare inferences of the same windows"
             )
             raise ValueError(msg)
+        passed = grid
         if named:
             grid = list(named[0])
+            if passed is not None and passed != grid:
+                grid_note = (
+                    f"the grid passed ({passed[0]}x{passed[1]}) was set aside for "
+                    f"the scores files' own ({grid[0]}x{grid[1]})"
+                )
         elif windows is not None:
             grid = None
-        grid_note = next((note for _, note in file_grids if note), None)
+            if passed is not None:
+                grid_note = (
+                    f"the grid passed ({passed[0]}x{passed[1]}) was not used: the "
+                    "scores files leave windows out and name no grid to check it "
+                    "against"
+                )
     # Every differing window comes back; the inline listing is cut below and the
     # whole of it goes to a file.
     out = compare_scores(
