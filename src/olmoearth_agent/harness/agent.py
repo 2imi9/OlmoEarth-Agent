@@ -243,7 +243,8 @@ class LeadAgent:
           supports. ``action`` is ``"revise"`` when one more call, with no
           tools, asks the model to rewrite the answer without them, and
           ``"shown"`` when the answer about to be shown (the rewrite, or the
-          draft if the rewrite was empty) still states some. At most one of
+          draft if the rewrite was empty) still states some. A ``"revise"``
+          event carries the answer it replaces (``draft``). At most one of
           each per run, before the ``final``; ``turn`` is the answer's turn.
           Off with ``check_numbers=False`` or ``OLMOEARTH_CHECK_NUMBERS=0``.
 
@@ -358,6 +359,9 @@ class LeadAgent:
                     "turn": turn,
                     "unsupported": unsupported,
                     "action": "revise",
+                    # The answer the rewrite replaces, so a trace shows what
+                    # the check removed (exp86 round 4 could not tell).
+                    "draft": answer,
                 }
                 messages.append(Message(role="assistant", content=answer))
                 messages.append(

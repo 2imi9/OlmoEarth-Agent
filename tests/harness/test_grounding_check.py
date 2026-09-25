@@ -142,6 +142,7 @@ async def test_an_ungrounded_draft_is_rewritten_once() -> None:
             "turn": 2,
             "unsupported": ["5,565"],
             "action": "revise",
+            "draft": _DRAFT,
         }
     ]
     assert events[3]["text"] == "drop it" and events[3]["turn"] == 2
