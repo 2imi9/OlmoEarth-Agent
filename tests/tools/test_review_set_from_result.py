@@ -105,6 +105,12 @@ def _mock_pixels(
     )
 
 
+@pytest.fixture(autouse=True)
+def _workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tool writes the evidence text to the workspace; keep it temporary."""
+    monkeypatch.setenv("OLMOEARTH_OUTPUT_ROOT", str(tmp_path / "workspace"))
+
+
 def _tool() -> Any:
     return next(
         t
@@ -187,6 +193,38 @@ async def test_the_saved_scores_feed_olmoearth_review_set(
         r["window_index"] for r in first["review"][:3]
     ]
     assert again["review"][0]["row"] == 0 and again["review"][0]["col"] == 1
+    # The file says what its rows are, so the generic tool scopes it the same way.
+    assert again["evidence_covers_this_case"] == "no"
+    assert again["must_state"] == first["must_state"]
+
+
+@pytest.mark.asyncio
+async def test_a_studio_band_is_scoped_as_no_recorded_experiment_grades_it(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 7: answers applied the suite's result to a regression band the
+    tool said no experiment grades. The one scope sentence says so and must be
+    stated; the full evidence text is in a file, not inline."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler({"result_id": "kb", "grid": 4}, ctx)
+    assert "evidence" not in out
+    assert out["evidence_covers_this_case"] == "no"
+    assert (
+        "no recorded experiment grades a regression score read as a probability"
+        in out["evidence_scope"]
+    )
+    assert out["must_state"] == [out["evidence_scope"]]
+    assert [f["id"] for f in out["facts"]] == ["margin_ratio"]
+    assert [c["id"] for c in out["forbidden_claims"]] == ["error_rate_without_labels"]
+    assert len(out["caveats"]) == 2
+    detail = json.loads(Path(out["evidence_detail_path"]).read_text())
+    assert "suite-margin-wins-every-task" in detail["ranking"]["claims"]
 
 
 @pytest.mark.asyncio

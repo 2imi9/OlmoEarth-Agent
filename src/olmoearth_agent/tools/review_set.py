@@ -39,7 +39,9 @@ from __future__ import annotations
 
 import asyncio
 import calendar
+import hashlib
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -56,6 +58,7 @@ from olmoearth_agent.analysis.review_set import (
     DEFAULT_MAX_LISTED,
     attainable_ceiling,
     compare_scores,
+    evidence_detail,
     grade_rule,
     regression_scores,
     review_set,
@@ -87,8 +90,19 @@ _SCORES_SCHEMA = {
 
 _SERIES = {"type": "array", "items": {"type": "number"}}
 
+logger = logging.getLogger(__name__)
+
 #: Env var naming the directory scores files are read from and written to.
 SCORES_ROOT_ENV = "OLMOEARTH_SCORES_ROOT"
+
+#: The file, under the write root, that holds the full evidence text a result's
+#: one-sentence ``evidence_scope`` stands for (named by ``evidence_detail_path``).
+EVIDENCE_FILE = "review_set_evidence.json"
+
+#: Differing windows a comparison lists inline; the file at ``differing_path``
+#: holds every one (exp86 rounds 6 and 7 read directions and places off an
+#: inline listing of 50).
+COMPARE_INLINE_LISTED = 10
 
 #: Grid bounds for sampling a Studio result into review windows: every window
 #: is one live pixel-value call, so the grid is capped (16 x 16 = 256 calls).
@@ -274,6 +288,58 @@ def _annotate_from_file(out: dict[str, Any], meta: dict[str, Any], n_rows: int) 
             row["class_name"] = names.get(str(row["predicted_class"]))
 
 
+def file_model(meta: dict[str, Any]) -> str | None:
+    """The model a scores file names (its manifest's repo or id), or ``None``."""
+    model = meta.get("model")
+    if isinstance(model, dict):
+        name = model.get("repo") or model.get("id")
+        return str(name) if name else None
+    return str(model) if isinstance(model, str) and model else None
+
+
+def file_warnings(meta: dict[str, Any]) -> list[str]:
+    """The warnings a scores file carries (the provider's ``package_warnings``,
+    and any ``warnings``), each stated as the provider's."""
+    out: list[str] = []
+    for key, who in (
+        ("package_warnings", "The scores provider (olmoearth-inferencex) warns: "),
+        ("warnings", "The scores file warns: "),
+    ):
+        raw = meta.get(key)
+        out.extend(
+            who + warning.strip()
+            for warning in (raw if isinstance(raw, list) else [])
+            if isinstance(warning, str) and warning.strip()
+        )
+    return out
+
+
+def add_must_state(out: dict[str, Any], sentences: list[str]) -> None:
+    """Append sentences to ``out['must_state']``, once each."""
+    must = out.setdefault("must_state", [])
+    for sentence in sentences:
+        if sentence not in must:
+            must.append(sentence)
+
+
+def evidence_detail_path() -> str | None:
+    """Save the full evidence text behind ``evidence_scope``; return its path.
+
+    The text is static, so the file is rewritten only when it differs. A
+    failure to write never fails the tool: the result then carries no path.
+    """
+    text = json.dumps(evidence_detail(), indent=1)
+    try:
+        target = safe_path(EVIDENCE_FILE, root=write_root())
+        if not target.is_file() or target.read_text(encoding="utf-8") != text:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+    except (OSError, ValueError):
+        logger.warning("could not save the review-set evidence file", exc_info=True)
+        return None
+    return str(target)
+
+
 async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_review_set``."""
     grid = args.get("grid")
@@ -313,13 +379,22 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             float(args["error_rate"]) if args.get("error_rate") is not None else None
         ),
         max_listed=int(args.get("max_listed", DEFAULT_MAX_LISTED)),
+        score_kind=(
+            meta.get("score_kind") if isinstance(meta.get("score_kind"), str) else None
+        ),
+        model=file_model(meta),
     )
     if meta:
         _annotate_from_file(out, meta, len(scores))
+        # A warning the scores file carries is stated with every ranking of it
+        # (exp86 round 6: no brief-8 answer passed the provider's multi-class
+        # warning on).
+        add_must_state(out, file_warnings(meta))
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
     _place_rows(
         out.get("review", []), "window_index", windows, int(grid[1]) if grid else None
     )
+    out["evidence_detail_path"] = evidence_detail_path()
     return out
 
 
@@ -392,17 +467,92 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
     return reading
 
 
+#: Stated with a comparison of maps of different or overlapping times.
+DIFFERENT_TIMES_MUST_STATE = (
+    "The two maps describe different times, so a window where they differ may "
+    "have changed on the ground: a difference is not by itself an error in "
+    "either map."
+)
+
+#: Stated with a comparison where only one map's date was given.
+PARTLY_DATED_MUST_STATE = (
+    "Only one map's date was given, so a difference cannot be told from a change "
+    "on the ground."
+)
+
+#: Forbidden with a comparison of maps of different or overlapping times.
+ANOTHER_DATE_FORBIDDEN = {
+    "id": "another_date_settles_it",
+    "why": "a map of a third date describes a third time: it cannot say which of "
+    "these two was right at its own date; only a reference dated to each map can",
+}
+
+
+def _file_names(metas: list[dict[str, Any]]) -> dict[str, str] | None:
+    """The class names both scores files give, when they give the same ones."""
+    first, second = (m.get("classes") for m in metas)
+    if isinstance(first, dict) and first and first == second:
+        return {str(k): str(v) for k, v in first.items()}
+    return None
+
+
+def _save_differing(
+    rows: list[dict[str, Any]], grid: Any, args: dict[str, Any]
+) -> str | None:
+    """Every differing window, in window order, to a file; its path, or ``None``.
+
+    Named by a digest of its rows, so the same comparison writes the same file.
+    A failure to write never fails the comparison.
+    """
+    body = json.dumps(rows, sort_keys=True)
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:10]
+    payload: dict[str, Any] = {
+        "format": "olmoearth-agent/differing@1",
+        "n_differing_total": len(rows),
+        "listing_order": "every differing window, in window order (row-major, "
+        "from row 0); not a sample",
+        "grid": [int(grid[0]), int(grid[1])] if grid else None,
+        "scores_path_a": args.get("scores_path_a"),
+        "scores_path_b": args.get("scores_path_b"),
+        "differing": rows,
+    }
+    try:
+        return write_json_file(f"compare_differing_{digest}.json", payload)
+    except (OSError, ValueError):
+        logger.warning("could not save the differing windows", exc_info=True)
+        return None
+
+
+def _listing_order(n_listed: int, n_total: int, path: str | None) -> str:
+    """What the inline listing is, where the rest is, and where to read patterns."""
+    if not n_total:
+        return "no window differs, so nothing is listed and no file is saved"
+    where = (
+        f"all {n_total:,} are in the file at differing_path, in the same order"
+        if path
+        else f"the full listing of {n_total:,} could not be saved"
+    )
+    return (
+        f"the {n_listed} listed windows are the first differing windows in window "
+        f"order (from row 0), not a sample of them; {where}. Read which classes "
+        "change, in which direction and where from class_changes, class_pairs, "
+        "spatial and facts, not from the list"
+    )
+
+
 async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_compare_review``."""
     grid = args.get("grid")
     sides = []
     side_windows: list[list[int] | None] = []
+    metas: list[dict[str, Any]] = []
     for key in ("a", "b"):
         scores = args.get(f"scores_{key}")
         windows: list[int] | None = None
+        meta: dict[str, Any] = {}
         if scores is None and args.get(f"scores_path_{key}"):
             loaded = load_scores_file(str(args[f"scores_path_{key}"]))
-            scores, windows = loaded.scores, loaded.windows
+            scores, windows, meta = loaded.scores, loaded.windows, loaded.meta
             if grid is None and loaded.grid is not None:
                 grid = list(loaded.grid)
         if scores is None:
@@ -410,6 +560,7 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
             raise ValueError(msg)
         sides.append(scores)
         side_windows.append(windows)
+        metas.append(meta)
     if side_windows[0] != side_windows[1]:
         msg = (
             "the two inferences cover different windows (their no-data windows "
@@ -417,22 +568,25 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         )
         raise ValueError(msg)
     windows = side_windows[0]
+    # Every differing window comes back; the inline listing is cut below and the
+    # whole of it goes to a file.
     out = compare_scores(
         sides[0],
         sides[1],
-        grid=(int(grid[0]), int(grid[1])) if grid and windows is None else None,
-        max_listed=int(args.get("max_listed", DEFAULT_MAX_LISTED)),
+        grid=(int(grid[0]), int(grid[1])) if grid else None,
+        max_listed=None,
+        windows=windows,
+        class_names=_file_names(metas),
     )
-    if windows is not None:
-        for row in out.get("differing", []):
-            row.pop("row", None)
-            row.pop("col", None)
-        _place_rows(
-            out.get("differing", []),
-            "window_index",
-            windows,
-            int(grid[1]) if grid else None,
-        )
+    rows = out.pop("differing")
+    asked = int(args.get("max_listed", COMPARE_INLINE_LISTED))
+    inline = max(0, min(COMPARE_INLINE_LISTED, asked))
+    path = _save_differing(rows, grid, args) if rows else None
+    out["differing"] = rows[:inline]
+    out["n_differing_listed"] = len(out["differing"])
+    out["n_differing_total"] = out["n_differing"]
+    out["differing_path"] = path
+    out["listing_order"] = _listing_order(out["n_differing_listed"], len(rows), path)
     dates = _dates_block(args)
     out["dates"] = dates
     if dates.get("assessed"):
@@ -448,11 +602,15 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                     "with labels"
                 )
             )
+            add_must_state(out, [DIFFERENT_TIMES_MUST_STATE])
+            out["forbidden_claims"].append(dict(ANOTHER_DATE_FORBIDDEN))
         elif dates.get("status") == "partly_stated":
             out["which_side_is_right"] = (
                 "not graded: only one map's date was given, so an error cannot be "
                 "told from a change on the ground"
             )
+            add_must_state(out, [PARTLY_DATED_MUST_STATE])
+    out["evidence_detail_path"] = evidence_detail_path()
     return out
 
 
@@ -721,7 +879,11 @@ async def _review_set_from_result(
         return sampled
 
     ranked = review_set(
-        sampled.scores, budget=budgets[-1], error_rate=None, max_listed=max_listed
+        sampled.scores,
+        budget=budgets[-1],
+        error_rate=None,
+        max_listed=max_listed,
+        score_kind=sampled.score_kind,
     )
     n_valid = len(sampled.windows)
     margins_sorted = sorted(abs(r[1] - r[0]) for r in sampled.scores)
@@ -781,15 +943,19 @@ async def _review_set_from_result(
         "review": review,
         "n_review_listed": len(review),
         "margin_summary": ranked["margin_summary"],
-        "evidence": ranked["evidence"],
-        "caveats": list(ranked["caveats"])
-        + [
+        "evidence_scope": ranked["evidence_scope"],
+        "evidence_covers_this_case": ranked["evidence_covers_this_case"],
+        "evidence_detail_path": evidence_detail_path(),
+        "caveats": [
             "Budgets are fractions of the valid sampled windows, not of the map's "
             "pixels.",
             "This review set is chosen to hold errors; it is not a sample. Its "
             "error rate overstates the map's (1.8 to 5.8 times upstream, exp78). "
             "To say how wrong the map is, use olmoearth_plan_label_sample.",
         ],
+        "facts": ranked["facts"],
+        "must_state": ranked["must_state"],
+        "forbidden_claims": ranked["forbidden_claims"],
     }
     if sampled.model:
         out["model"] = {k: v for k, v in sampled.model.items() if k != "nodata_value"}
@@ -870,9 +1036,10 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "olmoearth_compare_results (mode='ensemble'). The review "
                     "set is not a "
                     "sample: never divide its errors by its size (use "
-                    "olmoearth_plan_label_sample). The measured evidence for "
-                    "the margin is in the result's 'evidence' and 'caveats' "
-                    "blocks. Ranks relative suspicion, not a "
+                    "olmoearth_plan_label_sample). The result's "
+                    "'evidence_scope' says in one sentence what was measured "
+                    "and whether it covers this case. Ranks relative "
+                    "suspicion, not a "
                     "calibrated error probability; not OOD detection (that is "
                     "olmoearth_area_of_applicability, skill "
                     "olmoearth-uncertainty). Window indices and ids only, never "
@@ -1031,8 +1198,11 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "many windows differ, what share, whether on class "
                     "boundaries, and each side's margin there. It does NOT say "
                     "which side is right: without labels that is not resolvable "
-                    "(the result's 'caveats' give the measured reason), so "
-                    "decline and say why. Pass "
+                    "(the result's 'evidence_scope' gives the measured reason), "
+                    "so decline and say why. Class changes, where they "
+                    "concentrate and which side is more confident come as "
+                    "counts over every differing window; only the first few "
+                    "are listed inline, the rest in a file. Pass "
                     "date_a/date_b (and labels_date) when the maps describe "
                     "dates: across dates a difference can be real change, and "
                     "the 'dates' block says so (needs the inferencex extra; "
@@ -1062,8 +1232,10 @@ def build_review_set_tools() -> list[RegisteredTool]:
                         },
                         "max_listed": {
                             "type": "integer",
-                            "default": DEFAULT_MAX_LISTED,
-                            "description": "Cap on listed differing windows.",
+                            "default": COMPARE_INLINE_LISTED,
+                            "description": "Cap on differing windows listed "
+                            f"inline (at most {COMPARE_INLINE_LISTED}; the file "
+                            "at differing_path holds all).",
                         },
                         "date_a": {
                             "type": "string",

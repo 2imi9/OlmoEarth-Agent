@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +19,14 @@ from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 #: 4x4 grid, two classes. Column 0 is the minority class AND carries the low
 #: margin, so the same fixture exercises ranking and the boundary indicator.
 _SCORES = [[0.1, 0.2] if i % 4 == 0 else [5.0, 0.1] for i in range(16)]
+
+
+@pytest.fixture(autouse=True)
+def _workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The tools write files (the evidence text, a comparison's listing) to the
+    workspace; keep them in a temporary one."""
+    monkeypatch.setenv("OLMOEARTH_OUTPUT_ROOT", str(tmp_path / "workspace"))
+    return tmp_path / "workspace"
 
 
 def _ctx() -> ToolContext:
@@ -154,15 +163,74 @@ async def test_rule_3_1_no_coordinates_are_emitted() -> None:
 
 
 @pytest.mark.asyncio
-async def test_review_set_carries_the_evidence_block_into_the_tool_result() -> None:
+async def test_review_set_scopes_its_evidence_and_saves_the_full_text() -> None:
+    """One sentence inline; the blocks it stands for are in a file, by path."""
     result = await _registry().dispatch(
         ToolCall(id="4", name="olmoearth_review_set", arguments={"scores": _SCORES}),
         _ctx(),
     )
-    evidence = result["result"]["evidence"]
-    assert "suite-margin-wins-every-task" in evidence
-    assert "shrug-signals-rejected" in evidence
-    assert any("predictive entropy" in c.lower() for c in result["result"]["caveats"])
+    out = result["result"]
+    assert "evidence" not in out and "caveats" not in out
+    assert "24-task embedding suite" in out["evidence_scope"]
+    detail = json.loads(Path(out["evidence_detail_path"]).read_text())
+    assert "suite-margin-wins-every-task" in detail["ranking"]["claims"]
+    assert "shrug-signals-rejected" in detail["ranking"]["claims"]
+    assert any("predictive entropy" in c.lower() for c in detail["ranking"]["limits"])
+    assert [f["id"] for f in out["facts"]] == ["margin_ratio"]
+
+
+@pytest.mark.asyncio
+async def test_an_unwritable_workspace_leaves_no_evidence_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving the evidence text never fails the ranking."""
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory")
+    monkeypatch.setenv("OLMOEARTH_OUTPUT_ROOT", str(blocker))
+    out = await _tools()["olmoearth_review_set"].handler({"scores": _SCORES}, _ctx())  # type: ignore[attr-defined]
+    assert out["evidence_detail_path"] is None and out["n_review"] >= 1
+    other = [list(r) for r in _SCORES]
+    other[1] = [0.1, 5.0]
+    cmp = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {"scores_a": _SCORES, "scores_b": other}, _ctx()
+    )
+    assert cmp["n_differing"] == 1 and cmp["differing_path"] is None
+    assert "could not be saved" in cmp["listing_order"]
+
+
+@pytest.mark.asyncio
+async def test_review_set_states_the_warnings_its_scores_file_carries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 6: the provider's multi-class warning reached no brief-8
+    answer. A file's warnings go to must_state, with the scope sentence."""
+    warning = "multi-class logit margin: one minus the top probability ranked better"
+    rows = [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0], [0.0, 0.0, 0.3], [0.9, 0.0, 0.0]]
+    (tmp_path / "s.json").write_text(
+        json.dumps(
+            {
+                "grid": [2, 2],
+                "scores": rows,
+                "score_kind": "window_confidence",
+                "score_type": "logit",
+                "model": {
+                    "repo": "allenai/OlmoEarth-v1-FT-AWF-Base",
+                    "revision": "a347b15",
+                },
+                "package_warnings": [warning],
+            }
+        )
+    )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(tmp_path / "s.json"), "budget": 0.5}, _ctx()
+    )
+    assert out["evidence_covers_this_case"] == "in part"
+    assert out["must_state"] == [
+        out["evidence_scope"],
+        "The scores provider (olmoearth-inferencex) warns: " + warning,
+    ]
+    assert out["boundary_neighbours_means"].startswith("boundary_neighbours counts")
 
 
 def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
@@ -310,8 +378,86 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
     assert result["n_differing"] == 2
     assert {d["window_index"] for d in result["differing"]} == {1, 2}
     assert result["which_side_is_right"] == "not resolvable without labels"
-    assert any("51 to 70" in c for c in result["caveats"])
+    assert "51 to 70" in result["evidence_scope"]
+    assert result["must_state"] == [result["evidence_scope"]]
+    assert [c["id"] for c in result["forbidden_claims"]] == ["winner_without_labels"]
     assert result["where"] in ("mostly on class boundaries", "spread across the scene")
+
+
+@pytest.mark.asyncio
+async def test_compare_review_lists_ten_inline_and_saves_every_differing_window(
+    _workspace: Path,
+) -> None:
+    """exp86 rounds 6 and 7 read place and direction off an inline listing of 50.
+    Ten are listed; all of them are in a file, in the same order."""
+    n = 64
+    a = [[5.0, 0.1] for _ in range(n)]
+    b = [list(r) for r in a]
+    for i in range(0, n, 2):
+        b[i] = [0.1, 6.0]
+    out = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": b, "grid": [8, 8], "max_listed": 50}, _ctx()
+    )
+    assert out["n_differing"] == out["n_differing_total"] == 32
+    assert out["n_differing_listed"] == len(out["differing"]) == 10
+    saved = json.loads(Path(out["differing_path"]).read_text())
+    assert Path(out["differing_path"]).parent == _workspace
+    assert saved["n_differing_total"] == 32
+    assert [d["window_index"] for d in saved["differing"]] == list(range(0, n, 2))
+    assert saved["differing"][:10] == out["differing"]
+    assert "all 32 are in the file at differing_path" in out["listing_order"]
+    assert "not a sample" in out["listing_order"]
+    ids = [f["id"] for f in out["facts"]]
+    assert ids == ["dominant_change", "more_confident_side", "concentration"]
+    assert out["spatial"]["top_band_share"] == 0.25  # every row band holds 8 of 32
+    fewer = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": b, "grid": [8, 8], "max_listed": 3}, _ctx()
+    )
+    assert (
+        fewer["n_differing_listed"] == 3
+        and fewer["differing_path"] == out["differing_path"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_compare_review_with_no_difference_saves_no_listing() -> None:
+    out = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {"scores_a": _SCORES, "scores_b": _SCORES, "grid": [4, 4]}, _ctx()
+    )
+    assert out["n_differing"] == 0 and out["differing_path"] is None
+    assert out["facts"] == [] and out["spatial"]["top_band"] is None
+    assert out["listing_order"].startswith("no window differs")
+
+
+@pytest.mark.asyncio
+async def test_compare_review_names_classes_both_files_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names = {"0": "water", "1": "forest"}
+    other = [list(r) for r in _SCORES]
+    other[1] = [0.1, 5.0]
+    (tmp_path / "a.json").write_text(
+        json.dumps({"grid": [4, 4], "scores": _SCORES, "classes": names})
+    )
+    (tmp_path / "b.json").write_text(
+        json.dumps({"grid": [4, 4], "scores": other, "classes": names})
+    )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {
+            "scores_path_a": str(tmp_path / "a.json"),
+            "scores_path_b": str(tmp_path / "b.json"),
+        },
+        _ctx(),
+    )
+    assert out["class_changes"][0]["class_name_a"] == "water"
+    assert out["differing"][0]["class_name_b"] == "forest"
+    assert (
+        "class 0 (water) in map A to class 1 (forest) in map B"
+        in out["facts"][0]["sentence"]
+    )
+    saved = json.loads(Path(out["differing_path"]).read_text())
+    assert saved["scores_path_a"] == str(tmp_path / "a.json")
 
 
 @pytest.mark.asyncio
@@ -378,3 +524,33 @@ async def test_compare_review_rejects_mismatched_window_counts() -> None:
         _ctx(),
     )
     assert result["ok"] is False and "window counts" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_across_dates_states_the_scope_limit() -> None:
+    """Maps of different times: a difference may be change on the ground, and a
+    third date does not settle which map was right (exp86 round 7 offered one)."""
+    pytest.importorskip("oe_inferencex.compare")
+    a = [[0.2, 0.8], [0.7, 0.3], [0.4, 0.6]]
+    b = [[0.2, 0.8], [0.3, 0.7], [0.4, 0.6]]
+    tool = _tools()["olmoearth_compare_review"]
+    apart = await tool.handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": b, "date_a": "2024-03-01", "date_b": "2024-09-01"},
+        _ctx(),
+    )
+    assert apart["must_state"][0] == apart["evidence_scope"]
+    assert "different times" in apart["must_state"][1]
+    assert [c["id"] for c in apart["forbidden_claims"]] == [
+        "winner_without_labels",
+        "another_date_settles_it",
+    ]
+    partly = await tool.handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": b, "date_a": "2024-03-01"}, _ctx()
+    )
+    assert "Only one map's date" in partly["must_state"][1]
+    assert [c["id"] for c in partly["forbidden_claims"]] == ["winner_without_labels"]
+    same = await tool.handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": b, "date_a": "2024-03-01", "date_b": "2024-03-01"},
+        _ctx(),
+    )
+    assert same["must_state"] == [same["evidence_scope"]]

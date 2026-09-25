@@ -15,7 +15,18 @@ disagreement, cross-model disagreement, feature-space typicality /
 distance-to-training-data, two-view disagreement, flip-and-rotate
 consistency -- on seven expert-labelled testbeds, and none of them ranked
 errors better than the margin. Those verdicts are carried here as
-:data:`EVIDENCE` so a tool result can cite them instead of asserting them.
+:data:`EVIDENCE`. A result states them as ONE scoped sentence,
+``evidence_scope``: what was measured, on what, and whether that covers the
+case at hand (:func:`ranking_evidence_scope`, :func:`comparison_evidence_scope`);
+the full text stays in :func:`evidence_detail`, which the tools save to a file
+and name by path. exp86 rounds 6 and 7 found answers widening the inline
+blocks to cases no experiment grades (a regression band read as a
+probability; "every no-model control" for a suite with two).
+
+A result also carries the shared output contract the harness checks an
+answer against: ``facts`` (one-sentence statements computed by code, each
+with an ``id`` and its fields), ``must_state`` (what an answer reporting the
+result must convey) and ``forbidden_claims`` (claims it must not make).
 
 Scope, stated plainly because the neighbouring skill #9 owns the other
 half: this module ranks *relative* suspicion so a finite review budget is
@@ -54,6 +65,8 @@ DEFAULT_BUDGETS: tuple[float, ...] = (0.01, 0.05, 0.10)
 DEFAULT_MAX_LISTED = 50
 #: Class pairs (A's class, B's class) listed by count in a comparison's class_changes.
 CLASS_CHANGES_LISTED = 10
+#: Bands per axis in a comparison's spatial breakdown (rows, and columns).
+SPATIAL_BANDS = 4
 
 #: Largest grid this tool will accept (keeps a pure-Python sort honest).
 MAX_WINDOWS = 200_000
@@ -137,6 +150,194 @@ EVIDENCE_LIMITS: tuple[str, ...] = (
     "These numbers order a review well and are badly miscalibrated as "
     "probabilities: good for deciding what to look at first, poor for "
     "deciding what to trust at a threshold.",
+)
+
+#: The measured reason a comparison declines to pick a side (upstream exp58).
+COMPARISON_EVIDENCE = (
+    "The more confident side is right on 51 to 70 percent of differing windows "
+    "(exp58, upstream) and confidence does not order the set, so this comparison "
+    "does not identify a winner; declining to pick a side is the correct answer."
+)
+
+# --------------------------------------------------------------------------- evidence, scoped to the case
+
+#: What the ranking evidence measured and on what: the opening of every
+#: ranking's ``evidence_scope`` (claim ``suite-margin-wins-every-task``; the
+#: suite's margin is of the probe's probabilities, as exp70 computes it).
+SUITE_MEASURED = (
+    "Ai2's 24-task embedding suite (exp70: window level, OlmoEarth family) found "
+    "the top-1 minus top-2 probability margin ranked errors better than the best "
+    "no-model control on all 24 tasks"
+)
+
+#: What the comparison evidence measured and on what (claim
+#: ``tool-vs-diff-resolution``).
+COMPARISON_MEASURED = (
+    "On 15 pairs of Sen1Floods11 flood maps with expert labels (exp58: window "
+    "level; crop offsets, backbones, sensors, fine-tuning and encoders) the more "
+    "confident side was right on 51 to 70 percent of differing windows"
+)
+
+#: ``evidence_covers_this_case`` values; every value but ``"yes"`` puts the
+#: scoped sentence in ``must_state``.
+COVERS = ("yes", "in part", "no", "not known")
+
+
+def is_olmoearth(model: str | None) -> bool:
+    """Whether a model name (a repo such as ``allenai/OlmoEarth-v1-FT-AWF-Base``) is OlmoEarth's."""
+    return bool(model) and "olmoearth" in str(model).lower().replace("-", "").replace(
+        "_", ""
+    )
+
+
+def ranking_evidence_scope(
+    *, score_kind: str, n_classes: int, model: str | None = None
+) -> dict[str, str]:
+    """ONE sentence: what the ranking evidence measured, on what, and whether it covers this case.
+
+    Parameters
+    ----------
+    score_kind
+        What the rows are: ``"logit"`` or ``"probability"`` (class scores),
+        ``"window_confidence_logit"`` or ``"window_confidence_probability"``
+        (a scores provider's pooled confidence), ``"binary_score"`` (a
+        regression band in ``[0, 1]`` read as ``[1 - s, s]``) or
+        ``"threshold_distance"`` (a regression band's distance from a
+        threshold).
+    n_classes
+        Classes per row.
+    model
+        The model the scores came from, when the input names one.
+
+    Returns
+    -------
+    dict
+        ``sentence`` and ``covers`` (one of :data:`COVERS`).
+    """
+    if score_kind == "binary_score":
+        return {
+            "sentence": f"{SUITE_MEASURED}, which does not cover this case: no "
+            "recorded experiment grades a regression score read as a probability.",
+            "covers": "no",
+        }
+    if score_kind == "threshold_distance":
+        return {
+            "sentence": f"{SUITE_MEASURED}, which does not cover this case: no "
+            "recorded experiment grades a regression band's distance from a "
+            "decision threshold.",
+            "covers": "no",
+        }
+    if not is_olmoearth(model):
+        named = (
+            f"these scores come from {model}, not an OlmoEarth model"
+            if model
+            else "these scores do not name the model they came from"
+        )
+        return {
+            "sentence": f"{SUITE_MEASURED}, which may not cover this case: {named}.",
+            "covers": "not known",
+        }
+    if n_classes <= 2:
+        return {
+            "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
+            "OlmoEarth model's two-class margin) but not this map itself.",
+            "covers": "yes",
+        }
+    if score_kind == "window_confidence_probability":
+        return {
+            "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
+            f"OlmoEarth model's top-1 probability over {n_classes} classes, which "
+            "ranked errors slightly better than that margin on 14 of the suite's 16 "
+            "multi-class tasks, exp76) but not this map itself.",
+            "covers": "yes",
+        }
+    if score_kind == "probability":
+        return {
+            "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
+            f"OlmoEarth model's probability margin over {n_classes} classes) but not "
+            "this map itself; one minus the top probability ranked errors slightly "
+            "better on 14 of the suite's 16 multi-class tasks (exp76).",
+            "covers": "yes",
+        }
+    return {
+        "sentence": f"{SUITE_MEASURED}, which covers this case only in part: these "
+        f"are logits over {n_classes} classes, and the logit margin ranked errors "
+        "slightly worse than the probability margin on all 16 of the suite's "
+        "multi-class tasks (exp76).",
+        "covers": "in part",
+    }
+
+
+def comparison_evidence_scope() -> dict[str, str]:
+    """ONE sentence: what the side-picking evidence measured, and that it does not cover this pair."""
+    return {
+        "sentence": f"{COMPARISON_MEASURED}, which does not cover this pair: no "
+        "recorded experiment grades which of these two maps is right, and without "
+        "labels neither side can be picked.",
+        "covers": "no",
+    }
+
+
+def evidence_detail() -> dict[str, Any]:
+    """The full evidence text a result's ``evidence_scope`` stands for, for a file."""
+    return {
+        "format": "olmoearth-agent/review-evidence@1",
+        "source": "2imi9/olmoearth_inferenceX, docs/claims.yaml (claim ids below)",
+        "ranking": {
+            "measured": SUITE_MEASURED + ".",
+            "claims": dict(EVIDENCE),
+            "limits": list(EVIDENCE_LIMITS),
+            "multi_class": (
+                "On the suite's 16 multi-class tasks one minus the top probability "
+                "ranked errors better than the top-1 minus top-2 probability margin "
+                "on 14, by a small amount (claim top1-beats-the-margin-on-multiclass), "
+                "and the logit margin ranked errors worse than the probability "
+                "margin on all 16 (claim "
+                "no-whole-vector-score-beats-the-probability-forms); exp76."
+            ),
+        },
+        "comparison": {
+            "measured": COMPARISON_MEASURED + ".",
+            "reading": COMPARISON_EVIDENCE,
+        },
+    }
+
+
+def _scope_fields(scope: dict[str, str]) -> dict[str, Any]:
+    """``evidence_scope``, ``evidence_covers_this_case`` and the must_state it implies."""
+    return {
+        "evidence_scope": scope["sentence"],
+        "evidence_covers_this_case": scope["covers"],
+        "must_state": [] if scope["covers"] == "yes" else [scope["sentence"]],
+    }
+
+
+#: Stated with every ranking: the margin orders a review; it is not an error rate.
+RANKING_FORBIDDEN: tuple[dict[str, str], ...] = (
+    {
+        "id": "error_rate_without_labels",
+        "why": "the margin orders windows for review; it is not a probability of "
+        "error, and the review set is chosen to hold errors, not sampled, so no "
+        "error rate follows from it without labelling a designed sample "
+        "(olmoearth_plan_label_sample)",
+    },
+)
+
+#: Stated with every comparison: no side is right without labels.
+COMPARISON_FORBIDDEN: tuple[dict[str, str], ...] = (
+    {
+        "id": "winner_without_labels",
+        "why": "without labels neither map can be shown right where they differ; "
+        "the more confident side is not the right one (see evidence_scope)",
+    },
+)
+
+#: What ``boundary_neighbours`` counts, stated beside it (exp86 round 7 read it
+#: as "likely true class-boundary pixels" and as "edge cells").
+BOUNDARY_NEIGHBOURS_MEANS = (
+    "boundary_neighbours counts a window's 8 neighbours whose PREDICTED class "
+    "differs from its own (0 to 8): a boundary of the map, not a true class "
+    "boundary, and not a measure of error."
 )
 
 
@@ -471,6 +672,8 @@ def review_set(
     score_type: str | None = None,
     error_rate: float | None = None,
     max_listed: int = DEFAULT_MAX_LISTED,
+    score_kind: str | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """Rank windows by suspicion and return the ones to review first.
 
@@ -498,13 +701,24 @@ def review_set(
         attainable ceiling at this budget.
     max_listed
         Cap on inline review rows; the count is always reported in full.
+    score_kind
+        What the rows are when they are not class scores (see
+        :func:`ranking_evidence_scope`): ``"window_confidence"`` (a scores
+        provider's rows; read with ``score_type``), ``"binary_score"`` or
+        ``"threshold_distance"``. Only the evidence scope reads it.
+    model
+        The model the scores came from, when known; only the evidence scope
+        reads it (the measurement is on the OlmoEarth family).
 
     Returns
     -------
     dict
         ``review`` (the ordered rows), ``n_review``, the margin summary,
-        the ceiling arithmetic when ``error_rate`` is given, plus the
-        ``evidence`` and ``caveats`` blocks.
+        the ceiling arithmetic when ``error_rate`` is given, the one-sentence
+        ``evidence_scope`` (and ``evidence_covers_this_case``), and the output
+        contract: ``facts`` (``margin_ratio``), ``must_state`` (the scope
+        sentence when the evidence does not cover this case) and
+        ``forbidden_claims``.
 
     Notes
     -----
@@ -569,6 +783,16 @@ def review_set(
             row["boundary_neighbours"] = bnd[i]
         rows.append(row)
 
+    summary = margin_summary(marg, ranked, k, len(rows))
+    kind = score_kind or used_type
+    if kind == "window_confidence":
+        kind = f"window_confidence_{used_type}"
+    elif kind not in ("binary_score", "threshold_distance"):
+        kind = used_type
+    scope = ranking_evidence_scope(
+        score_kind=kind, n_classes=len(matrix[0]), model=model
+    )
+    ratio = margin_ratio_fact(summary)
     out: dict[str, Any] = {
         "n_windows": n,
         "n_classes": len(matrix[0]),
@@ -581,12 +805,14 @@ def review_set(
         "score_type_detected": detected,
         "review": rows,
         "n_review_listed": len(rows),
-        "margin_summary": margin_summary(marg, ranked, k, len(rows)),
-        "evidence": EVIDENCE,
-        "caveats": list(EVIDENCE_LIMITS),
+        "margin_summary": summary,
+        **_scope_fields(scope),
+        "facts": [ratio] if ratio else [],
+        "forbidden_claims": [dict(c) for c in RANKING_FORBIDDEN],
     }
     if bnd is not None:
         out["n_boundary_windows"] = sum(1 for b in bnd if b > 0)
+        out["boundary_neighbours_means"] = BOUNDARY_NEIGHBOURS_MEANS
     if error_rate is not None:
         ceiling = attainable_ceiling(budget, error_rate)
         out["ceiling"] = {
@@ -598,14 +824,66 @@ def review_set(
                 "this ceiling, not against 1.0."
             ),
         }
-    if used_type == "probability" and len(matrix[0]) > 2:
-        out["caveats"] = list(out["caveats"]) + [
-            "These look like probabilities over >2 classes. The measured "
-            "evidence is for the LOGIT margin; with more than two classes "
-            "the softmax margin can order windows differently. Pass logits "
-            "when you have them."
-        ]
     return out
+
+
+def _num(value: float) -> str:
+    """A number for a fact's sentence: at most 6 decimals, no trailing zeros."""
+    return f"{value:,.6f}".rstrip("0").rstrip(".")
+
+
+def _pct(share: float) -> str:
+    """A share as a percent with one decimal, for a fact's sentence."""
+    return f"{share * 100:.1f}%"
+
+
+def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``margin_ratio`` fact: the median margin over the listed windows' margins.
+
+    exp86 round 6 (brief 8) called the listed windows "3-4 orders of magnitude
+    more uncertain" where the median margin was 13 to 41 times theirs. ``low``
+    is the median over the highest listed margin and ``high`` the median over
+    the lowest; ``high`` is ``None`` when the lowest listed margin is 0.
+
+    Returns ``None`` when nothing is listed.
+    """
+    listed = summary["listed"]["margin_range"]
+    if not listed:
+        return None
+    lo, hi = float(listed[0]), float(listed[1])
+    median = float(summary["median_margin"])
+    n_listed, n = summary["listed"]["n"], summary["n_windows"]
+    what = (
+        f"the margin of the 1 listed window ({_num(lo)})"
+        if n_listed == 1
+        else f"the margins of the {n_listed:,} listed windows ({_num(lo)} to {_num(hi)})"
+    )
+    low = round(median / hi, 2) if hi > 0 else None
+    high = round(median / lo, 2) if lo > 0 else None
+    head = f"The median margin over all {n:,} windows ({_num(median)})"
+    if low is None:
+        sentence = (
+            f"{head} cannot be set against {what}: every listed margin is 0, a "
+            "tie between the window's top two classes."
+        )
+    elif high is None:
+        sentence = (
+            f"{head} is at least {low:,.2f} times {what}; the lowest listed margin "
+            "is 0, so there is no upper ratio."
+        )
+    elif low == high:
+        sentence = f"{head} is {low:,.2f} times {what}."
+    else:
+        sentence = f"{head} is {low:,.2f} to {high:,.2f} times {what}."
+    return {
+        "id": "margin_ratio",
+        "sentence": sentence,
+        "low": low,
+        "high": high,
+        "versus": "median",
+        "median_margin": summary["median_margin"],
+        "listed_margin_range": listed,
+    }
 
 
 def _margin_range(values: list[float]) -> list[float] | None:
@@ -829,11 +1107,281 @@ def grade_rule(
     return out
 
 
+def _class_label(k: Any, names: dict[str, str] | None) -> str:
+    """``class 4 (grassland_barren)`` when the class has a name, else ``class 4``."""
+    name = names.get(str(k)) if names else None
+    return f"class {k} ({name})" if name else f"class {k}"
+
+
+def _bands(size: int, n_bands: int) -> list[tuple[int, int]]:
+    """Contiguous ``(first, last)`` index ranges splitting ``0 .. size - 1`` into
+    ``n_bands`` near-equal bands (one per index when ``size`` is smaller)."""
+    n = max(1, min(n_bands, size))
+    edges = [size * k // n for k in range(n + 1)]
+    return [(edges[k], edges[k + 1] - 1) for k in range(n)]
+
+
+def _span(first: int, last: int) -> str:
+    """``32-63``, or ``5`` for a band of one index."""
+    return str(first) if first == last else f"{first}-{last}"
+
+
+def spatial_breakdown(
+    differing: Sequence[int],
+    present: Sequence[int],
+    grid: tuple[int, int],
+    n_bands: int = SPATIAL_BANDS,
+) -> dict[str, Any]:
+    """Where the differing windows sit: their share in each row band and each column band.
+
+    exp86 rounds 6 and 7 read place off the first listed windows ("a long
+    strip along the north edge" for 1.3% of the differences; blocks invented
+    from ten windows). This counts every differing window instead.
+
+    Parameters
+    ----------
+    differing
+        Row-major grid index of every differing window.
+    present
+        Row-major grid index of every compared window (the whole grid, or
+        the windows a scores file holds).
+    grid
+        ``(rows, cols)``.
+    n_bands
+        Bands per axis (fewer when the grid has fewer rows or columns).
+
+    Returns
+    -------
+    dict
+        ``row_bands`` and ``col_bands`` (each band's index range, windows,
+        differing windows, ``share_of_differing``, ``share_of_windows`` and
+        ``share_of_band_differing``), the ``top_band`` holding the most
+        differing windows, ``top_band_share`` and a ``reading``.
+    """
+    rows, cols = int(grid[0]), int(grid[1])
+    n_diff, n_present = len(differing), len(present)
+
+    def axis(size: int, coord: Any, label: str) -> list[dict[str, Any]]:
+        bands = _bands(size, n_bands)
+        band_of = [0] * size
+        for k, (first, last) in enumerate(bands):
+            for i in range(first, last + 1):
+                band_of[i] = k
+        n_w, n_d = [0] * len(bands), [0] * len(bands)
+        for w in present:
+            n_w[band_of[coord(w)]] += 1
+        for w in differing:
+            n_d[band_of[coord(w)]] += 1
+        return [
+            {
+                "band": k + 1,
+                label: [first, last],
+                "of_grid": (
+                    f"{round(100 * first / size, 1):g}-"
+                    f"{round(100 * (last + 1) / size, 1):g}%"
+                ),
+                "n_windows": n_w[k],
+                "n_differing": n_d[k],
+                "share_of_differing": round(n_d[k] / n_diff, 6) if n_diff else None,
+                "share_of_windows": round(n_w[k] / n_present, 6) if n_present else None,
+                "share_of_band_differing": (
+                    round(n_d[k] / n_w[k], 6) if n_w[k] else None
+                ),
+            }
+            for k, (first, last) in enumerate(bands)
+        ]
+
+    row_bands = axis(rows, lambda w: int(w) // cols, "rows")
+    col_bands = axis(cols, lambda w: int(w) % cols, "cols")
+    out: dict[str, Any] = {
+        "grid": [rows, cols],
+        "n_bands": [len(row_bands), len(col_bands)],
+        "row_bands": row_bands,
+        "col_bands": col_bands,
+        "top_band": None,
+        "top_band_share": None,
+        "reading": (
+            "Each band is a strip of whole rows (row_bands) or whole columns "
+            "(col_bands) of the window grid, counted from row 0 and column 0. "
+            "share_of_differing is the band's share of ALL differing windows; "
+            "share_of_windows is its share of all compared windows, the share an "
+            "even spread would give it; share_of_band_differing is the share of "
+            "the band's own windows that differ."
+        ),
+    }
+    if not n_diff:
+        return out
+    candidates = [("rows", b) for b in row_bands] + [("columns", b) for b in col_bands]
+    axis_name, top = max(
+        candidates,
+        key=lambda c: (c[1]["share_of_differing"], c[0] == "rows", -c[1]["band"]),
+    )
+    first, last = top["rows" if axis_name == "rows" else "cols"]
+    word = axis_name if first != last else axis_name[:-1]
+    out["top_band"] = {
+        "axis": axis_name,
+        "band": top["band"],
+        "where": f"{word} {_span(first, last)}",
+        "of_grid": top["of_grid"],
+        "share_of_differing": top["share_of_differing"],
+        "share_of_windows": top["share_of_windows"],
+    }
+    out["top_band_share"] = top["share_of_differing"]
+    return out
+
+
+def concentration_fact(
+    spatial: dict[str, Any], n_differing: int
+) -> dict[str, Any] | None:
+    """The ``concentration`` fact: the band holding the most differing windows, and its share."""
+    top = spatial.get("top_band")
+    if not top:
+        return None
+    rows, cols = spatial["grid"]
+    size = rows if top["axis"] == "rows" else cols
+    n_row_bands, n_col_bands = spatial["n_bands"]
+    n_present = sum(b["n_windows"] for b in spatial["row_bands"])
+    where = top["where"]
+    sentence = (
+        f"{where[0].upper()}{where[1:]} ({top['of_grid']} of the grid's {size:,} "
+        f"{top['axis']}, from {top['axis'][:-1]} 0) hold "
+        f"{_pct(top['share_of_differing'])} of the {n_differing:,} differing windows "
+        f"and {_pct(top['share_of_windows'])} of all {n_present:,} compared windows: "
+        f"the most of any of the {n_row_bands} row bands and {n_col_bands} column "
+        "bands."
+    )
+    return {
+        "id": "concentration",
+        "sentence": sentence,
+        "where": where,
+        "axis": top["axis"],
+        "of_grid": top["of_grid"],
+        "share": top["share_of_differing"],
+        "top_band_share": top["share_of_differing"],
+        "share_of_windows": top["share_of_windows"],
+    }
+
+
+def _class_pairs(
+    pairs: dict[tuple[Any, Any], int], n_diff: int, names: dict[str, str] | None
+) -> list[dict[str, Any]]:
+    """Class changes as unordered pairs, each with both directions' counts, largest first."""
+    merged: dict[tuple[Any, Any], dict[tuple[Any, Any], int]] = {}
+    for (pa, pb), n in pairs.items():
+        key = (pa, pb) if pa <= pb else (pb, pa)
+        merged.setdefault(key, {})[(pa, pb)] = n
+    out = []
+    for (x, y), dirs in merged.items():
+        total = sum(dirs.values())
+        directions = sorted(
+            (
+                {"class_a": pa, "class_b": pb, "n": dirs.get((pa, pb), 0)}
+                for pa, pb in ((x, y), (y, x))
+            ),
+            key=lambda d: -d["n"],
+        )
+        entry: dict[str, Any] = {
+            "pair": f"{x}<->{y}",
+            "classes": [x, y],
+            "n": total,
+            "share_of_differing": round(total / n_diff, 6),
+            "directions": directions,
+        }
+        if names:
+            entry["class_names"] = [names.get(str(x)), names.get(str(y))]
+        out.append(entry)
+    out.sort(key=lambda e: (-e["n"], str(e["classes"])))
+    return out
+
+
+def dominant_change_fact(
+    changes: list[dict[str, Any]],
+    pairs: dict[tuple[Any, Any], int],
+    n_diff: int,
+    names: dict[str, str] | None,
+) -> dict[str, Any] | None:
+    """The ``dominant_change`` fact: the largest directed class change A -> B, with its reverse."""
+    if not changes:
+        return None
+    top = changes[0]
+    pa, pb, n = top["class_a"], top["class_b"], top["n"]
+    tied = sum(1 for c in changes[1:] if c["n"] == n)
+    rev = pairs.get((pb, pa), 0)
+    head = (
+        "The most common change"
+        if not tied
+        else (
+            f"The most common change (tied with {tied} other)"
+            if tied == 1
+            else f"The most common change (tied with {tied} others)"
+        )
+    )
+    sentence = (
+        f"{head} is {_class_label(pa, names)} in map A to {_class_label(pb, names)} "
+        f"in map B: {n:,} of the {n_diff:,} differing windows ({_pct(n / n_diff)}); "
+        f"the reverse, {_class_label(pb, names)} in A to {_class_label(pa, names)} "
+        f"in B, is {rev:,} ({_pct(rev / n_diff)})."
+    )
+    fact: dict[str, Any] = {
+        "id": "dominant_change",
+        "sentence": sentence,
+        "from_class": pa,
+        "to_class": pb,
+        "direction": "A->B",
+        "n": n,
+        "share": round(n / n_diff, 6),
+        "reverse_n": rev,
+        "reverse_share": round(rev / n_diff, 6),
+    }
+    if names:
+        fact["from_name"], fact["to_name"] = names.get(str(pa)), names.get(str(pb))
+    return fact
+
+
+def more_confident_fact(
+    a_share: float | None, b_share: float | None, n_diff: int
+) -> dict[str, Any] | None:
+    """The ``more_confident_side`` fact, stated with why it does not pick a winner."""
+    if not n_diff or a_share is None or b_share is None or a_share == b_share:
+        return None
+    side, other = ("A", "B") if a_share > b_share else ("B", "A")
+    share, other_share = max(a_share, b_share), min(a_share, b_share)
+    ties = round(1.0 - a_share - b_share, 6)
+    tie_text = f", equal on {_pct(ties)}" if ties > 0 else ""
+    sentence = (
+        f"Map {side} has the larger margin on {_pct(share)} of the {n_diff:,} "
+        f"differing windows (map {other} on {_pct(other_share)}{tie_text}); this "
+        f"does not make {side} right there: upstream the more confident side was "
+        "right on 51 to 70 percent of differing windows (exp58)."
+    )
+    return {
+        "id": "more_confident_side",
+        "sentence": sentence,
+        "side": side,
+        "share": share,
+        "other_share": other_share,
+    }
+
+
+#: What a comparison's boundary shares count, stated beside them (exp86 round 6
+#: read a 78% boundary share as "boundary placement rather than whole-window
+#: flips").
+BOUNDARY_SHARE_MEANS = (
+    "boundary_share_overall and boundary_share_of_differing count windows with at "
+    "least one of their 8 neighbours of a different class in map A's PREDICTED "
+    "classes: a boundary of map A, not a true class boundary. Every differing "
+    "window is a change of that whole window's class, on a boundary or not."
+)
+
+
 def compare_scores(
     scores_a: Sequence[Sequence[float]],
     scores_b: Sequence[Sequence[float]],
     grid: tuple[int, int] | None = None,
-    max_listed: int = DEFAULT_MAX_LISTED,
+    max_listed: int | None = DEFAULT_MAX_LISTED,
+    *,
+    windows: Sequence[int] | None = None,
+    class_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Compare two inferences of the same windows: how much they differ and where.
 
@@ -841,19 +1389,63 @@ def compare_scores(
     upstream measured that the more confident side is right on 51 to 70 percent
     of differing windows and that confidence does not order the set (exp58), so
     the honest answer to "which one do I believe" is to decline and say why.
+
+    Parameters
+    ----------
+    scores_a, scores_b
+        The two inferences' rows, one per window, in the same order.
+    grid
+        ``(rows, cols)`` of the window grid. With ``windows`` omitted the rows
+        are the whole grid row-major, and the boundary reading is made.
+    max_listed
+        Differing windows listed, first in window order; ``None`` lists all.
+    windows
+        The row-major grid index of each row, when the rows leave windows out
+        (a scores file's no-data windows). With ``grid``, the spatial breakdown
+        and the listing place rows by it; the boundary reading, which needs
+        every window, is not made.
+    class_names
+        Class id (as a string) to name, when the scores name their classes;
+        used in ``class_changes``, ``class_pairs``, the listing and the facts.
+
+    Returns
+    -------
+    dict
+        The counts (``n_differing``, ``share_differing``), the directed
+        ``class_changes`` and undirected ``class_pairs``, each side's share of
+        the differing windows on which it is the more confident, the
+        ``spatial`` breakdown when a grid is known, the listing
+        (``differing``), the one-sentence ``evidence_scope`` and the output
+        contract (``facts``, ``must_state``, ``forbidden_claims``).
     """
     a = _as_matrix(scores_a)
     b = _as_matrix(scores_b)
     if len(a) != len(b):
         msg = f"the two inferences cover different window counts: {len(a)} and {len(b)}"
         raise ValueError(msg)
+    n = len(a)
+    if windows is not None:
+        windows = [int(w) for w in windows]
+        if len(windows) != n:
+            msg = f"windows names {len(windows)} grid cells for {n} rows"
+            raise ValueError(msg)
+    if grid is not None:
+        rows_, cols_ = int(grid[0]), int(grid[1])
+        if windows is None and rows_ * cols_ != n:
+            msg = f"grid {grid} does not match {n} windows"
+            raise ValueError(msg)
+        if windows is not None and any(not 0 <= w < rows_ * cols_ for w in windows):
+            msg = f"a window index lies outside the {rows_}x{cols_} grid"
+            raise ValueError(msg)
+    names = class_names or None
     ca, cb = predicted_classes(a), predicted_classes(b)
     ma, mb = margins(a), margins(b)
-    diff = [i for i in range(len(a)) if ca[i] != cb[i]]
+    diff = [i for i in range(n) if ca[i] != cb[i]]
+    scope = comparison_evidence_scope()
     out: dict[str, Any] = {
-        "n_windows": len(a),
+        "n_windows": n,
         "n_differing": len(diff),
-        "share_differing": round(len(diff) / len(a), 6) if a else 0.0,
+        "share_differing": round(len(diff) / n, 6) if a else 0.0,
         "mean_margin_a_on_differing": (
             round(sum(ma[i] for i in diff) / len(diff), 6) if diff else None
         ),
@@ -861,22 +1453,12 @@ def compare_scores(
             round(sum(mb[i] for i in diff) / len(diff), 6) if diff else None
         ),
         "which_side_is_right": "not resolvable without labels",
-        "evidence": EVIDENCE,
-        "caveats": list(EVIDENCE_LIMITS)
-        + [
-            "The more confident side is right on 51 to 70 percent of differing windows "
-            "(exp58, upstream) and confidence does not order the set, so this comparison "
-            "does not identify a winner; declining to pick a side is the correct answer."
-        ],
+        **_scope_fields(scope),
     }
-    if grid is not None:
-        rows_, cols_ = grid
-        if rows_ * cols_ != len(a):
-            msg = f"grid {grid} does not match {len(a)} windows"
-            raise ValueError(msg)
+    if grid is not None and windows is None:
         bcount = boundary_counts(ca, rows_, cols_)
-        on_boundary = [bcount[i] > 0 for i in range(len(a))]
-        out["boundary_share_overall"] = round(sum(on_boundary) / len(a), 6)
+        on_boundary = [bcount[i] > 0 for i in range(n)]
+        out["boundary_share_overall"] = round(sum(on_boundary) / n, 6)
         out["boundary_share_of_differing"] = (
             round(sum(on_boundary[i] for i in diff) / len(diff), 6) if diff else None
         )
@@ -886,6 +1468,7 @@ def compare_scores(
             and out["boundary_share_of_differing"] > out["boundary_share_overall"]
             else "spread across the scene"
         )
+        out["boundary_means"] = BOUNDARY_SHARE_MEANS
     # What the differences are, over all of them: the listing below is the first
     # few in window order (the top rows of the grid), and exp86 round 6's answers
     # read patterns off it that the full set contradicts ("most flip 1 -> 0" when
@@ -898,26 +1481,51 @@ def compare_scores(
         {
             "class_a": pa,
             "class_b": pb,
-            "n": n,
-            "share_of_differing": round(n / len(diff), 6),
+            "n": count,
+            "share_of_differing": round(count / len(diff), 6),
         }
-        for (pa, pb), n in ranked[:CLASS_CHANGES_LISTED]
+        for (pa, pb), count in ranked[:CLASS_CHANGES_LISTED]
     ]
+    if names:
+        for change in out["class_changes"]:
+            change["class_name_a"] = names.get(str(change["class_a"]))
+            change["class_name_b"] = names.get(str(change["class_b"]))
     out["n_class_changes"] = len(pairs)
-    out["a_more_confident_share_of_differing"] = (
-        round(sum(ma[i] > mb[i] for i in diff) / len(diff), 6) if diff else None
+    # The same changes with direction set aside ("A <-> B 37%" was read as both
+    # directions, exp86 round 7): each pair carries both directions' counts.
+    all_pairs = _class_pairs(pairs, len(diff), names)
+    out["class_pairs"] = all_pairs[:CLASS_CHANGES_LISTED]
+    out["n_class_pairs"] = len(all_pairs)
+    out["class_pairs_reading"] = (
+        "class_pairs counts, for each unordered pair of classes, the windows where "
+        "one map has one class and the other map the other, both directions "
+        "together; 'directions' splits that count by which map has which class, "
+        "as class_changes does."
     )
+    a_more = sum(ma[i] > mb[i] for i in diff)
+    b_more = sum(mb[i] > ma[i] for i in diff)
+    out["a_more_confident_share_of_differing"] = (
+        round(a_more / len(diff), 6) if diff else None
+    )
+    out["b_more_confident_share_of_differing"] = (
+        round(b_more / len(diff), 6) if diff else None
+    )
+    cols_of = int(grid[1]) if grid is not None else None
     listed = []
-    for i in diff[:max_listed]:
+    for i in diff if max_listed is None else diff[:max_listed]:
+        w = windows[i] if windows is not None else i
         row: dict[str, Any] = {
-            "window_index": i,
+            "window_index": w,
             "class_a": ca[i],
             "class_b": cb[i],
             "margin_a": round(ma[i], 6),
             "margin_b": round(mb[i], 6),
         }
-        if grid is not None:
-            row["row"], row["col"] = divmod(i, grid[1])
+        if names:
+            row["class_name_a"] = names.get(str(ca[i]))
+            row["class_name_b"] = names.get(str(cb[i]))
+        if cols_of:
+            row["row"], row["col"] = divmod(w, cols_of)
         listed.append(row)
     out["differing"] = listed
     out["n_differing_listed"] = len(listed)
@@ -926,4 +1534,24 @@ def compare_scores(
         "the top rows of the grid), not a sample of them: read which classes change "
         "and in which direction from class_changes and the shares, not from the list"
     )
+    facts: list[dict[str, Any]] = []
+    dominant = dominant_change_fact(out["class_changes"], pairs, len(diff), names)
+    if dominant:
+        facts.append(dominant)
+    confident = more_confident_fact(
+        out["a_more_confident_share_of_differing"],
+        out["b_more_confident_share_of_differing"],
+        len(diff),
+    )
+    if confident:
+        facts.append(confident)
+    if grid is not None:
+        present = windows if windows is not None else range(n)
+        where_diff = [windows[i] for i in diff] if windows is not None else diff
+        out["spatial"] = spatial_breakdown(where_diff, list(present), (rows_, cols_))
+        concentration = concentration_fact(out["spatial"], len(diff))
+        if concentration:
+            facts.append(concentration)
+    out["facts"] = facts
+    out["forbidden_claims"] = [dict(c) for c in COMPARISON_FORBIDDEN]
     return out
