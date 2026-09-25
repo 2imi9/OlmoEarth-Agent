@@ -17,17 +17,21 @@ The recorded tool results predate the tools' ``facts``, ``must_state`` and
 adds them to each result from what the result (or the run's workspace
 files) already holds, marked ``simulated``:
 
-- ``olmoearth_compare_review``: ``dominant_change`` and
-  ``more_confident_side`` from ``class_changes`` and
-  ``a_more_confident_share_of_differing`` (round 7), or from the agent's
-  own ``compare_scores`` on the run's recorded scores files (rounds 1-6);
-  ``concentration`` from the two files' classes (row quartiles, with the
-  grid and the count); forbidden ``winner_without_labels``, and
+- ``olmoearth_compare_review``: ``dominant_change`` (with the reverse
+  direction's count and whether it ties) and ``more_confident_side`` (the
+  sides' shares, from counts) from the run's recorded scores files, or,
+  without them, from ``class_changes`` and
+  ``a_more_confident_share_of_differing``; ``concentration`` from the two
+  files' classes (``top_band_share`` of the northmost of four row bands,
+  and ``max_band`` over four row and four column bands, with the grid and
+  the count); forbidden ``winner_without_labels``, and
   ``another_date_settles_it`` when the dates differ; must-state: the maps
   describe different times.
 - ``olmoearth_review_set`` and ``olmoearth_review_set_from_result``:
-  ``margin_ratio`` (the median margin over the listed margins); forbidden
-  ``error_rate_without_labels``; must-state: the set is not a sample.
+  ``margin_ratio`` (the median margin over the listed margins, and over the
+  whole review set's, from the lowest margin to the one at the budget cut);
+  forbidden ``error_rate_without_labels``; must-state: the set is not a
+  sample.
 - ``olmoearth_plan_label_sample``: ``unused_labels`` when the plan holds
   fewer labels than the run's first plan call asked for; forbidden
   ``certify_from_nonrandom_design`` for a non-random design and
@@ -41,8 +45,10 @@ files) already holds, marked ``simulated``:
   ``error_rate_for_unthresholded_regression``, and
   ``combined_statistic_across_properties`` when the properties differ.
 
-These are estimates of what the checks would catch once the tools emit the
-keys; the tools' own facts and sentences may differ.
+The facts follow the contract the tools and the harness share (field names
+as in ``harness/checks.py``). These are estimates of what the checks would
+catch once the tools emit the keys; the tools' own facts and sentences may
+differ.
 
 Usage::
 
@@ -64,7 +70,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from olmoearth_agent.analysis.review_set import compare_scores, predicted_classes
+from olmoearth_agent.analysis.review_set import margins, predicted_classes
 from olmoearth_agent.harness.checks import CHECKS, RunEvidence, ToolRecord, run_checks
 
 #: The audit's label for each round (its key).
@@ -128,16 +134,23 @@ def _scores_file(d: Path, path: str) -> dict[str, Any] | None:
     return None
 
 
-def _bands(indices: list[int], rows: int, cols: int) -> dict[str, float]:
+def _band_shares(indices: list[int], rows: int, cols: int) -> dict[str, Any]:
+    """``top_band_share`` and ``max_band`` over four row and four column bands."""
     n = len(indices) or 1
-    q_rows, q_cols = max(1, rows // 4), max(1, cols // 4)
-    r = [i // cols for i in indices]
-    c = [i % cols for i in indices]
+    counts = {("rows", k): 0 for k in range(4)} | {("cols", k): 0 for k in range(4)}
+    for i in indices:
+        r, c = divmod(i, cols)
+        counts[("rows", min(3, r * 4 // rows))] += 1
+        counts[("cols", min(3, c * 4 // cols))] += 1
+    (axis, band), top = max(counts.items(), key=lambda kv: kv[1])
     return {
-        "top_band_share": sum(x < q_rows for x in r) / n,
-        "bottom_band_share": sum(x >= rows - q_rows for x in r) / n,
-        "left_band_share": sum(x < q_cols for x in c) / n,
-        "right_band_share": sum(x >= cols - q_cols for x in c) / n,
+        "top_band_share": round(counts[("rows", 0)] / n, 6),
+        "max_band": {
+            "axis": axis,
+            "band": band,
+            "of_grid": f"{25 * band}-{25 * (band + 1)}%",
+            "share": round(top / n, 6),
+        },
     }
 
 
@@ -146,53 +159,84 @@ def _compare_contract(
 ) -> dict[str, list[Any]]:
     facts: list[dict[str, Any]] = []
     changes = result.get("class_changes")
-    share_a = result.get("a_more_confident_share_of_differing")
+    pairs: dict[tuple[Any, Any], int] = {}
+    n_differing = result.get("n_differing")
+    sides: tuple[int, int, int] | None = None
+    concentration = None
     a = _scores_file(d, str(record.arguments.get("scores_path_a", "")))
     b = _scores_file(d, str(record.arguments.get("scores_path_b", "")))
-    concentration = None
     if a and b and len(a["scores"]) == len(b["scores"]):
-        if changes is None or share_a is None:
-            full = compare_scores(a["scores"], b["scores"], max_listed=0)
-            changes = full.get("class_changes")
-            share_a = full.get("a_more_confident_share_of_differing")
         ca, cb = predicted_classes(a["scores"]), predicted_classes(b["scores"])
+        ma, mb = margins(a["scores"]), margins(b["scores"])
+        differing = [i for i in range(len(ca)) if ca[i] != cb[i]]
+        n_differing = len(differing)
+        for i in differing:
+            pairs[(ca[i], cb[i])] = pairs.get((ca[i], cb[i]), 0) + 1
+        more_a = sum(ma[i] > mb[i] for i in differing)
+        more_b = sum(mb[i] > ma[i] for i in differing)
+        sides = (more_a, more_b, len(differing) - more_a - more_b)
         windows = a.get("windows") or list(range(len(ca)))
-        diff = [int(windows[i]) for i in range(len(ca)) if ca[i] != cb[i]]
+        diff = [int(windows[i]) for i in differing]
         grid = a.get("grid")
         if diff and grid:
             rows, cols = int(grid[0]), int(grid[1])
+            bands = _band_shares(diff, rows, cols)
             concentration = {
                 "id": "concentration",
-                "where": "row quartiles",
                 "grid": [rows, cols],
                 "n_differing": len(diff),
-                **_bands(diff, rows, cols),
+                **bands,
+                "sentence": f"{bands['top_band_share']:.1%} of the {len(diff)} "
+                "differing windows are in the northmost quarter of the rows; the "
+                f"most are in the {bands['max_band']['axis']} "
+                f"{bands['max_band']['of_grid']} "
+                f"({bands['max_band']['share']:.1%})",
                 "simulated": True,
             }
-    if changes:
-        top = changes[0]
+    elif changes:
+        pairs = {(c["class_a"], c["class_b"]): c["n"] for c in changes}
+    if pairs and n_differing:
+        ranked = sorted(pairs.items(), key=lambda kv: (-kv[1], str(kv[0])))
+        (src, dst), n = ranked[0]
+        reverse_n = pairs.get((dst, src), 0)
+        ties = [p for p, k in ranked[1:] if k == n]
+        sentence = (
+            f"the largest class change is {src} -> {dst}, {n} of the "
+            f"{n_differing} differing windows ({n / n_differing:.1%})"
+        )
+        if ties:
+            sentence += "; tied with " + ", ".join(f"{x} -> {y}" for x, y in ties)
         facts.append(
             {
                 "id": "dominant_change",
-                "from_class": top["class_a"],
-                "to_class": top["class_b"],
-                "n": top["n"],
-                "share": top["share_of_differing"],
-                "sentence": f"the largest class change is {top['class_a']} -> "
-                f"{top['class_b']}, {top['share_of_differing']:.1%} of the differing "
-                "windows",
+                "from_class": src,
+                "to_class": dst,
+                "n": n,
+                "share": round(n / n_differing, 6),
+                "reverse_n": reverse_n,
+                "reverse_share": round(reverse_n / n_differing, 6),
+                "tied_with_reverse": reverse_n == n,
+                "sentence": sentence,
                 "simulated": True,
             }
         )
-    if isinstance(share_a, int | float) and share_a != 0.5:
-        side = "A" if share_a > 0.5 else "B"
+    share_a = result.get("a_more_confident_share_of_differing")
+    if sides is None and isinstance(share_a, int | float) and n_differing:
+        more_a = round(share_a * n_differing)
+        sides = (more_a, n_differing - more_a, 0)
+    if sides and sum(sides):
+        more_a, more_b, equal = sides
+        total = sum(sides)
+        side = "A" if more_a > more_b else "B" if more_b > more_a else "neither"
         facts.append(
             {
                 "id": "more_confident_side",
                 "side": side,
-                "share": max(share_a, 1 - share_a),
-                "sentence": f"side {side} is the more confident on "
-                f"{max(share_a, 1 - share_a):.1%} of the differing windows",
+                "share_a": round(more_a / total, 6),
+                "share_b": round(more_b / total, 6),
+                "share_equal": round(equal / total, 6),
+                "sentence": f"side A is the more confident on {more_a / total:.1%} "
+                f"of the differing windows and side B on {more_b / total:.1%}",
                 "simulated": True,
             }
         )
@@ -216,16 +260,24 @@ def _review_contract(result: dict[str, Any]) -> dict[str, list[Any]]:
     if isinstance(summary, dict):
         median = summary.get("median_margin")
         listed = (summary.get("listed") or {}).get("margin_range")
+        lowest, cut = summary.get("lowest_margin"), summary.get("margin_at_budget_cut")
         if isinstance(median, int | float) and listed and min(listed) > 0:
-            facts.append(
-                {
-                    "id": "margin_ratio",
-                    "low": round(median / max(listed), 2),
-                    "high": round(median / min(listed), 2),
-                    "versus": "median",
-                    "simulated": True,
-                }
+            fact = {
+                "id": "margin_ratio",
+                "listed_low": round(median / max(listed), 2),
+                "listed_high": round(median / min(listed), 2),
+                "versus": "median",
+                "simulated": True,
+            }
+            if isinstance(lowest, int | float) and isinstance(cut, int | float):
+                if lowest > 0 and cut > 0:
+                    fact["review_set_low"] = round(median / cut, 2)
+                    fact["review_set_high"] = round(median / lowest, 2)
+            fact["sentence"] = (
+                f"the median margin is {fact['listed_low']:g} to "
+                f"{fact['listed_high']:g} times the listed windows' margins"
             )
+            facts.append(fact)
     return {
         "facts": facts,
         "forbidden_claims": [{"id": "error_rate_without_labels"}],
@@ -269,12 +321,16 @@ def adapt(d: Path, records: list[ToolRecord]) -> list[ToolRecord]:
                 planned, int | float
             ):
                 if first_budget > planned:
+                    unused = int(first_budget - planned)
                     facts.append(
                         {
                             "id": "unused_labels",
-                            "n": int(first_budget - planned),
                             "requested": int(first_budget),
                             "planned": int(planned),
+                            "n": unused,
+                            "sentence": f"the plan places {int(planned)} of the "
+                            f"{int(first_budget)} labels asked for; {unused} are "
+                            "unused",
                             "simulated": True,
                         }
                     )
