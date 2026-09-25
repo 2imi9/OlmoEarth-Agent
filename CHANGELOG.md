@@ -285,6 +285,40 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   is not a dict keeps the raw JSON prefix), and its note no longer asks for
   the saved path in the answer and says not to describe the file beyond the
   preview. No number, ranking or parity-checked field changes.
+- **The estimation tools state the statistical rules as data: next steps,
+  facts and forbidden claims** (the exp86 rounds 6 and 7 blind audit). The
+  answers broke rules the tools had just applied: a looser alpha or a
+  Bonferroni re-run offered after the prefix rule certified nothing (every
+  p_value was at least 0.554), a zone offered from a confidence design, an
+  error rate offered for a regression declared 0.2 to 1.2 with no threshold,
+  "a third dated map" offered to settle which of two is right, and "~23%"
+  (69/300) and "127 unused labels" (300 - 173) worked out by hand. Every
+  output of `olmoearth_plan_label_sample`, `olmoearth_estimate_map_error` and
+  `olmoearth_certify_zone` now carries `next_steps`, written by code from the
+  design and the outcome (nothing certified under a random design: label
+  more windows under a new random design fixed in advance, or report the
+  whole-map estimate; never a looser alpha or another rule), and the output
+  contract's `forbidden_claims` (`post_hoc_alpha` and
+  `rule_switch_after_failure` on every certification, the latter with the
+  smallest p_value and the per-level delta of both rules;
+  `certify_from_nonrandom_design`; `error_rate_without_labels` and
+  `subset_labelling_sufficient` on a plan; a simple-random interval on a
+  stratified estimate). An estimate and a certification carry the fact
+  `whole_map_estimate` (the package's estimate and interval, one sentence);
+  a rate over a Studio result's grid, and a certified zone, carry a
+  `must_state` scope. At the largest Studio grid a budget above the valid
+  windows is planned at all of them with the fact `unused_labels` (requested,
+  planned, n) instead of refused; below it the refusal says to keep the
+  budget at grid 16, and inline or file scores still refuse, stating the
+  labels left over. `olmoearth_compare_results` names
+  `error_rate_for_unthresholded_regression` for a regression band that is not
+  a [0, 1] score, and `combined_statistic_across_properties` and
+  `winner_without_labels` for results of different properties (refused or
+  allowed); `olmoearth_compare_review` names `another_date_settles_it` and
+  `winner_without_labels` for maps of different or overlapping times. The
+  builders live in `olmoearth_agent.tools.statistical_rules`. No number, draw
+  or ranking changes: the six fixed-input parity calls of exp86 round 7,
+  replayed, keep every key and value and pass against the package.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
