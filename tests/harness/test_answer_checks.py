@@ -845,6 +845,53 @@ def test_the_alpha_the_user_asked_for_is_not_post_hoc() -> None:
     assert _flagged(check_forbidden_claims, "At alpha 0.03 it would certify.", run)
 
 
+def test_a_looser_alpha_is_flagged_though_written_with_one_decimal() -> None:
+    """exp87 re-review: a half-unit tolerance on "0.1" (0.05) let the canonical
+    looser-alpha offer through when the tool ran at 0.05."""
+    result = {"forbidden_claims": [{"id": "post_hoc_alpha", "why": "x"}]}
+    run = RunEvidence(tools=[_record("certify", result, alpha=0.05)], user_messages=[])
+    for sentence in (
+        "Want me to rerun at alpha 0.1?",
+        "Want me to re-test at \u03b1 = 0.1?",
+        "At alpha 0.1 the top zone would certify.",
+    ):
+        assert _flagged(check_forbidden_claims, sentence, run) == [sentence], sentence
+    assert check_forbidden_claims("At alpha 0.05 no zone certifies.", run) == []
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Both maps are dominated by montane_forest and woodland_forest, which change "
+        "little.",
+        "Most windows change little, and both maps are dominated by montane_forest "
+        "and woodland_forest.",
+        "The main classes are montane_forest and woodland_forest in both maps, and "
+        "few windows change.",
+        "The largest classes in map A are montane_forest and woodland_forest, and in "
+        "map B they switch order.",
+    ],
+)
+def test_composition_beside_a_change_word_is_no_dominant_change_claim(
+    sentence: str,
+) -> None:
+    assert check_direction(sentence, _awf(_DOMINANT)) == [], sentence
+
+
+def test_a_quantity_after_around_or_near_is_no_place() -> None:
+    """exp87 re-review: "around 60%" and "near the median" read as regions and
+    exempted wrong claims."""
+    flagged = "B is usually more confident, around 60% of the time."
+    assert _flagged(check_direction, flagged, _sides()) == [flagged]
+    for sentence in (
+        "Most differing windows flip class 1 -> 0, around 1,247 of them.",
+        "Most flips go water -> not water, near the median margin.",
+    ):
+        assert _flagged(check_direction, sentence, _flips()) == [sentence], sentence
+    fine = "A is more confident near the class boundaries."
+    assert check_direction(fine, _sides()) == []
+
+
 def test_a_claim_no_tool_forbade_is_not_checked() -> None:
     run = _run(_record("tool", {"forbidden_claims": [{"id": "not_a_known_id"}]}))
     assert check_forbidden_claims("A looser alpha would certify it.", run) == []

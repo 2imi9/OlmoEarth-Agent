@@ -649,6 +649,14 @@ _SECONDARY_RE = re.compile(
     r"main|dominant|primary|common|frequent)\b",
     re.I,
 )
+#: A dominance cue governing a change noun ("the dominant contrast", "the main
+#: transition"): a pair named so is a claim about change, not composition.
+_DOMINANT_CHANGE_NOUN_RE = re.compile(
+    r"\b(?:dominant|predominant|main|largest|biggest|primary|principal|"
+    r"most\s+common|most\s+frequent)\s+(?:\w+\s+)?(?:change|flip|transition|"
+    r"contrast|swap|disagreement|difference)s?\b",
+    re.I,
+)
 #: A sentence about change between the maps, not about what they are made of
 #: ("both maps are dominated by X and Y" is composition).
 _CHANGE_RE = re.compile(
@@ -868,7 +876,10 @@ def _dominant_change(
         if (
             p.in_clause_or_label(_DOMINANT_PAIR_RE, a0, b1)
             and not p.in_clause(_SECONDARY_RE, a0, b1)
-            and (joined_by_change or p.in_clause(_CHANGE_RE, a0, b1))
+            and (
+                joined_by_change
+                or p.in_clause_or_label(_DOMINANT_CHANGE_NOUN_RE, a0, b1)
+            )
         ):
             return f"names {names[ka]} / {names[kb]} the dominant change; {about}"
     return None
@@ -892,7 +903,10 @@ _MINORITY_PCT_RE = re.compile(
 )
 #: A place: "more confident in the north" is about a region, not the side.
 _REGION_RE = re.compile(
-    r"\b(?:along|near|around|beside)\s+(?:the\s+|a\s+|its\s+)?\w"
+    r"\b(?:along|near|around|beside)\s+(?:the\s+|a\s+|its\s+)?"
+    # the articles too: skipping the optional article must not make "the" a place
+    r"(?!(?:the|a|its|median|mean|average|typical|half|most|all|about|roughly|every)\b)"
+    r"[A-Za-z]"
     r"|\b(?:in|at|on|inside|towards?|for)\s+"
     r"(?:the\s+|a\s+|its\s+|some\s+|this\s+|that\s+)?(?:(?:far|extreme)\s+)?"
     r"(?:north|south|east|west|northern|southern|eastern|western|"
@@ -1611,7 +1625,9 @@ def _allowed_alpha(
     another alpha.
     """
     for alpha in alphas:
-        if abs(value - alpha) <= tol + 1e-12:
+        # an alpha in force matches exactly: at a written "0.1", half a unit of
+        # the last decimal (0.05) would pass the canonical looser alpha
+        if abs(value - alpha) <= 1e-9:
             return True
         if per_level and 0 < value < alpha:
             k = round(alpha / value)
