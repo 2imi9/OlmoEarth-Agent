@@ -178,6 +178,32 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 - The soul asks for numbers exactly as the tools returned them, no ratio,
   difference or percentage of the model's own, and no figure quoted from a
   tool's description as a finding (exp86 round 1).
+- **The answer's numbers are checked before it is shown** (exp86 round 3's
+  fix, 25 September 2026). In each of three rounds the only genuine fault was
+  a number no tool had returned (round 3: "5,565+ windows" between the budget
+  cut and the median; the scores give 7,373), and each tool fix only moved
+  the model to a new derived quantity. `LeadAgent.run_stream` now reads every
+  number of the final answer (`harness/grounding.py`: thousands separators,
+  a U+2212 minus, percents, `k`/`M` suffixes, digit runs inside ids and
+  dates, integers up to 8 exempt) and looks for it in the run's full tool
+  results, the brief, the history and the saved preferences, never in the
+  system prompt or a tool description. When one is found in none of them it
+  yields `grounding_check` (`action: "revise"`, the numbers as written),
+  sends the draft back with a harness note naming them and makes one more
+  call with no tools; the rewrite is the `final` (`grounding_revised`), or
+  the draft if the rewrite is empty. A rewrite that still states such a
+  number is shown as written, with a second `grounding_check`
+  (`action: "shown"`); nothing is asked twice. The answer forced at the turn
+  cap is checked too; the harness's own fallback text is not. `AgentResult`
+  carries `grounding_revised` and `grounding_checks`. The CLI names the
+  numbers still unsupported on stderr (the rewrite request under
+  `--show-trace`); the web UI notes them above the answer and puts the
+  request in the steps. Off with `LeadAgent(check_numbers=False)` or
+  `OLMOEARTH_CHECK_NUMBERS=0`. Over the 87 answers of rounds 1-3 the reader
+  reports seven numbers in six answers, each a fault the trial's diagnoses
+  found ("51-70%" from a description, "47 dropped", "> 90%", "6.5%",
+  "delta/18", "5,565+"), and none of the other 3,053. The soul says the
+  harness checks.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
