@@ -29,7 +29,8 @@ distinct dates, and a group otherwise.
 
 Results of different properties are refused before any sampling (a pair or
 a group may pass ``allow_different_properties``; then only correlations are
-meaningful). Windows are addressed by grid ``(row, col)`` and row-major
+meaningful, and only they are returned: a difference, an RMSE, an agreement
+fraction or an ensemble spread between two quantities is left out). Windows are addressed by grid ``(row, col)`` and row-major
 ``window_index``, row 0 the northernmost (rule §3.1): no coordinate and no
 extent is returned. Every sample is a live pixel-value call, so the grid is
 small by default and capped per mode.
@@ -282,15 +283,32 @@ def _property_refusal(
     )
 
 
+#: What a comparison of two different properties keeps: each map's own mean
+#: and whether the two rise and fall together. Every other statistic (a
+#: difference, an RMSE, an agreement fraction) mixes two quantities, so it is
+#: not returned (exp86 round 4: a warning not to read them was not enough; the
+#: answers put them in a table).
+_SINGLE_QUANTITY_STATS = ("n_samples", "mean_a", "mean_b", "correlation", "note")
+
+
+def _without_mixed(stats: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """``stats`` less every statistic that mixes the two quantities, and the
+    names of those left out."""
+    kept = {k: v for k, v in stats.items() if k in _SINGLE_QUANTITY_STATS}
+    return kept, sorted(k for k in stats if k not in _SINGLE_QUANTITY_STATS)
+
+
 def _different_warning(names: list[str | None]) -> str:
     """The warning carried by an allowed comparison of different properties."""
     distinct = sorted({n for n in names if n})
     return (
         f"the results measure different properties ({distinct}), so their "
         "values are different quantities: only the correlation (whether they "
-        "rise and fall together) is meaningful. Do not read the mean "
-        "difference, RMSE or agreement fraction as a gap between them, and do "
-        "not say one reads higher than the other."
+        "rise and fall together) is meaningful, and it is the only statistic "
+        "returned between them. A mean difference, an RMSE, an agreement "
+        "fraction or an ensemble spread would mix two quantities, so none is "
+        "computed; do not work one out, and do not say one reads higher than "
+        "the other."
     )
 
 
@@ -343,11 +361,16 @@ def _pair(
         + ".",
     }
     if different:
+        out["stats"], out["statistics_left_out"] = _without_mixed(stats)
         out["warning"] = _different_warning(s.names)
         narration["headline"] = (
             f"different properties: correlation {stats.get('correlation')} "
-            f"across {stats.get('n_samples', 0)} cells; the other statistics "
-            "compare different quantities"
+            f"across {stats.get('n_samples', 0)} cells; no other statistic "
+            "between them is returned"
+            if not categorical
+            else f"different properties: two class sets across "
+            f"{stats.get('n_samples', 0)} cells; no statistic between them is "
+            "returned"
         )
     return out
 
@@ -397,7 +420,25 @@ def _group(s: _Sampled, *, tolerance: float, different: bool) -> dict[str, Any]:
         "is " + narration["framing"] + ".",
     }
     if different:
+        # Pairs of one property keep their statistics; a pair of two
+        # properties keeps each map's mean and the correlation. An ensemble
+        # or a most-divergent pair across quantities means nothing.
+        left_out: set[str] = set()
+        name_of = dict(zip(s.ids, s.names))
+        for entry in out["pairwise"]:
+            if name_of[entry["result_id_a"]] != name_of[entry["result_id_b"]]:
+                entry["stats"], dropped = _without_mixed(entry["stats"])
+                left_out.update(dropped)
+        out["ensemble"] = {
+            "note": "not computed: the results measure different properties"
+        }
+        out["most_divergent_pair"] = None
+        out["statistics_left_out"] = sorted(left_out | {"ensemble"})
         out["warning"] = _different_warning(s.names)
+        narration["headline"] = (
+            f"different properties across {len(s.ids)} results: pairwise "
+            "correlations only between results of different properties"
+        )
     return out
 
 

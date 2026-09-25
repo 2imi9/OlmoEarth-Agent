@@ -494,6 +494,19 @@ async def test_group_of_different_properties_is_refused_then_allowed(
     ]
     assert allowed["comparable"] is True
     assert "only the correlation" in allowed["warning"]
+    # a pair of one property keeps its statistics; a pair of two properties
+    # keeps each map's mean and the correlation; no ensemble across quantities
+    by_pair = {
+        (p["result_id_a"], p["result_id_b"]): set(p["stats"])
+        for p in allowed["pairwise"]
+    }
+    assert "agreement_fraction" in by_pair[("a1", "b1")]
+    for pair in (("a1", "c1"), ("b1", "c1")):
+        assert by_pair[pair] <= {"n_samples", "mean_a", "mean_b", "correlation", "note"}
+    assert set(allowed["ensemble"]) == {"note"}
+    assert allowed["most_divergent_pair"] is None
+    assert "rmse_between_models" in allowed["statistics_left_out"]
+    assert "ensemble" in allowed["statistics_left_out"]
 
 
 def _keys(value: object) -> set[str]:

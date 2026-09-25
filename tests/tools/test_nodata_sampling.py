@@ -285,6 +285,17 @@ async def test_compare_results_allows_different_properties_with_a_warning(
     assert out["stats"]["correlation"] == pytest.approx(-0.0172)
     assert "only the correlation" in out["warning"]
     assert out["narration"]["headline"].startswith("different properties")
+    # exp86 round 4: statistics that mix the two quantities are not returned,
+    # so an answer cannot put them in a table
+    assert set(out["stats"]) == {"n_samples", "mean_a", "mean_b", "correlation"}
+    assert out["statistics_left_out"] == [
+        "agreement_fraction",
+        "max_abs_diff",
+        "mean_abs_diff",
+        "mean_diff_b_minus_a",
+        "rmse_between_models",
+        "tolerance",
+    ]
 
 
 @pytest.mark.asyncio
