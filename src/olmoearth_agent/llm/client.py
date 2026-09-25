@@ -149,6 +149,23 @@ def _extract_thinking(content: str | None) -> tuple[str | None, str | None]:
     return thinking, remainder or None
 
 
+#: The message fields a server puts its parsed reasoning in, tried in order.
+REASONING_FIELDS = ("reasoning", "reasoning_content")
+
+
+def _server_reasoning(message: Any) -> str | None:
+    """The reasoning a server split off the message's content, or ``None``.
+
+    Reads ``reasoning`` (current vLLM), then ``reasoning_content`` (older
+    vLLM, llama.cpp); the first non-empty string wins.
+    """
+    for name in REASONING_FIELDS:
+        value = getattr(message, name, None)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _coerce_arg(raw: str) -> Any:
     """Parse a text tool-call argument as JSON, falling back to the string."""
     text = raw.strip()
@@ -376,12 +393,14 @@ class OlmoEarthLLM:
         """Turn an OpenAI ``ChatCompletion`` into a :class:`ChatResponse`."""
         choice = completion.choices[0]
         message = choice.message
-        # When the server is started with `--reasoning-parser qwen3`, vLLM
-        # splits the <think> block into a `reasoning_content` field and
-        # leaves `content` clean. Otherwise the block is inline and we
-        # extract it ourselves. Handle both so the client works regardless
-        # of how the server was launched.
-        server_reasoning = getattr(message, "reasoning_content", None)
+        # When the server is started with a reasoning parser (vLLM's
+        # `--reasoning-parser qwen3`), it splits the <think> block into its
+        # own field and leaves `content` clean: `reasoning` in current vLLM
+        # (exp86 round 7 recorded no thinking because only the older name
+        # was read), `reasoning_content` in older vLLM and llama.cpp.
+        # Otherwise the block is inline and we extract it ourselves. The
+        # reasoning is for the trace only: it is never sent back to the model.
+        server_reasoning = _server_reasoning(message)
         if server_reasoning:
             thinking: str | None = server_reasoning
             content: str | None = message.content
