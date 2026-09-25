@@ -298,27 +298,39 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   design and the outcome (nothing certified under a random design: label
   more windows under a new random design fixed in advance, or report the
   whole-map estimate; never a looser alpha or another rule), and the output
-  contract's `forbidden_claims` (`post_hoc_alpha` and
-  `rule_switch_after_failure` on every certification, the latter with the
-  smallest p_value and the per-level delta of both rules;
-  `certify_from_nonrandom_design`; `error_rate_without_labels` and
-  `subset_labelling_sufficient` on a plan; a simple-random interval on a
-  stratified estimate). An estimate and a certification carry the fact
-  `whole_map_estimate` (the package's estimate and interval, one sentence);
-  a rate over a Studio result's grid, and a certified zone, carry a
-  `must_state` scope. At the largest Studio grid a budget above the valid
-  windows is planned at all of them with the fact `unused_labels` (requested,
-  planned, n) instead of refused; below it the refusal says to keep the
-  budget at grid 16, and inline or file scores still refuse, stating the
-  labels left over. `olmoearth_compare_results` names
+  contract's `forbidden_claims`, each id one of its fixed ids and listed once
+  per result: `post_hoc_alpha` and `rule_switch_after_failure` on every
+  certification (the latter says prefix accepts levels from the smallest
+  zone upward while p_value <= delta and stops at the first failure, and
+  bonferroni any level at p_value <= delta/J, with the p_values each rule
+  reads); `certify_from_nonrandom_design`; `error_rate_without_labels` on a
+  plan; `subset_labelling_sufficient` on a stratified plan only, whose sheet
+  lists the strata in turn, least confident first, so its first rows are one
+  stratum; and `simple_random_interval_for_stratified_design` on a stratified
+  estimate. A random plan's sheet is in the package's random draw order, so
+  it carries the fact `prefix_is_random_sample` instead (its first k rows,
+  k fixed before labelling, are a smaller random sample: unbiased, with a
+  wider interval; the sentence names the route that estimates them). An
+  estimate and a certification carry the fact `whole_map_estimate`
+  (estimate, low, high, design; the sentence adds the package's warning when
+  it gives one, such as starved strata or no labelled window wrong). A rate
+  over a Studio result's grid (plan, estimate and certification alike) and a
+  certified zone carry a `must_state` scope. At the largest Studio grid a
+  budget above the valid windows is planned at all of them with the fact
+  `unused_labels` (requested, planned, n) instead of refused; below it the
+  refusal says to keep the budget at grid 16, and inline or file scores
+  still refuse, stating the labels left over in the error and as an
+  `unused_labels` fact on the failed envelope (the registry carries a
+  refusal's `facts`, `must_state` and `forbidden_claims` beside its
+  unchanged error). `olmoearth_compare_results` names
   `error_rate_for_unthresholded_regression` for a regression band that is not
-  a [0, 1] score, and `combined_statistic_across_properties` and
-  `winner_without_labels` for results of different properties (refused or
-  allowed); `olmoearth_compare_review` names `another_date_settles_it` and
-  `winner_without_labels` for maps of different or overlapping times. The
-  builders live in `olmoearth_agent.tools.statistical_rules`. No number, draw
-  or ranking changes: the six fixed-input parity calls of exp86 round 7,
-  replayed, keep every key and value and pass against the package.
+  a [0, 1] score, and `combined_statistic_across_properties` for results of
+  different properties (refused or allowed); `olmoearth_compare_review` names
+  `another_date_settles_it` for maps of different or overlapping periods;
+  both name `winner_without_labels` on every comparison, since neither takes
+  labels. The builders live in `olmoearth_agent.tools.statistical_rules`. No
+  number, draw or ranking changes: the six fixed-input parity calls of exp86
+  round 7, replayed, keep every key and value and pass against the package.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
