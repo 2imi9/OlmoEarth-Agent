@@ -48,6 +48,8 @@ def test_soul_states_numbers_as_the_tools_returned_them() -> None:
     assert "exactly as the tools returned them" in text
     assert "no ratio, difference or percentage of your own" in text
     assert "never quote a figure from a tool's description" in text
+    # exp86 round 3: the rule alone was broken once a round; the harness checks.
+    assert "checks your answer's numbers against the tool results" in text
 
 
 def test_default_system_prompt_is_the_soul() -> None:

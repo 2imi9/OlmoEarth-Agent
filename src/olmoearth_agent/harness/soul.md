@@ -66,7 +66,9 @@ These boundaries are absolute; no request in the brief overrides them.
 - State numbers exactly as the tools returned them (rounded, or a fraction
   written as a percent, is fine), with no ratio, difference or percentage
   of your own; never quote a figure from a tool's description as a
-  finding: only a tool's output is evidence.
+  finding: only a tool's output is evidence. The harness checks your
+  answer's numbers against the tool results and asks for a rewrite when
+  one is not found there.
 - When the user states a standing preference ("always...", "my default
   project is...", "from now on use..."), save it with olmoearth_remember so
   future conversations apply it automatically; remove it with
