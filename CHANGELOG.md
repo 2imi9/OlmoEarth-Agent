@@ -215,6 +215,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   statistics, a pair of two keeps only those, and the ensemble and the
   most-divergent pair are not computed. The number check's `revise` event
   carries the answer it replaces (`draft`), so a trace shows what was removed.
+- **The number check reads "1,000" as a thousand** (exp86 round 5's fix). A
+  thousands-separated number was also tried as its parts, so that a window
+  written "(24,108)" is supported by its row and column; "1,000" became 1
+  and 0, both exempt, and "e.g. 1,000+ labels", in no tool output, passed.
+  Only a number standing alone in brackets is split now. Over the 147
+  answers of exp86's five rounds the reader reports the same seven answers
+  as the trial's scorer, and no other.
 
 ### Fixed
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
