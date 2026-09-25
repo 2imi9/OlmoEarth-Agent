@@ -284,6 +284,21 @@ export function handleRunEvent(body, ev, staticRender) {
     } else {
       body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
     }
+  } else if (ev.type === 'grounding_check') {
+    // The harness checked the answer's numbers against the run's tool results
+    // (harness/grounding.py). 'revise': it asked the model to rewrite without
+    // them, noted in the steps; 'shown': the answer below still states them
+    // (the CLI prints the same note to stderr). A `final` follows either way.
+    const nums = (ev.unsupported || []).join(', ');
+    if (ev.action === 'shown') {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">Numbers in the answer below that no tool returned: ' + escapeHtml(nums) + '.</div>');
+    } else {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = 'Number check: ' + nums + ' found in no tool result; asked for a rewrite without them.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    }
   } else if (ev.type === 'error') {
     workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');

@@ -94,6 +94,13 @@ def main(argv: list[str] | None = None) -> int:
         for name, ok in result.tool_calls:
             mark = "ok" if ok else "FAIL"
             print(f"  [{mark}] {name}", file=sys.stderr)
+        for check in result.grounding_checks:
+            if check.get("action") == "revise":
+                listed = ", ".join(check.get("unsupported", []))
+                print(
+                    f"  [numbers] in no tool result, rewrite asked: {listed}",
+                    file=sys.stderr,
+                )
         if result.state is not None:
             print(
                 f"  ({result.turns} turn(s), "
@@ -111,6 +118,15 @@ def main(argv: list[str] | None = None) -> int:
             "from what the tools returned, without further tool calls)",
             file=sys.stderr,
         )
+    for check in result.grounding_checks:
+        if check.get("action") == "shown":
+            # The web UI shows the same note above the answer (webui/js/run.js).
+            print(
+                "(numbers in the answer that no tool returned: "
+                + ", ".join(check.get("unsupported", []))
+                + ")",
+                file=sys.stderr,
+            )
     print(result.final_content)
     return 0
 

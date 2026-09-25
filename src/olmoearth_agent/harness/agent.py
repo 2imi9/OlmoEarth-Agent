@@ -9,15 +9,24 @@ each emitted tool call is dispatched and its result fed back, until the model
 returns a plain-text answer or the turn budget is exhausted. When the last
 turn still asks for tools, one more call, with no tools, asks the model to
 answer from what it has, so a run never ends without an answer.
+
+Before the answer is shown, its numbers are checked against the run's tool
+results and the user's messages (:mod:`olmoearth_agent.harness.grounding`).
+When one is found in none of them, one more call, with no tools, asks the
+model to rewrite the answer without it. The rewrite is checked but never sent
+back: it is shown whatever it states, and an event names what it still
+states.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from olmoearth_agent.harness.grounding import NumberPool
 from olmoearth_agent.harness.soul import load_soul
 from olmoearth_agent.harness.spill import compact_result_for_llm
 from olmoearth_agent.harness.state import ThreadState
@@ -60,6 +69,24 @@ TURN_CAP_PROMPT = (
 )
 
 
+#: Set to ``0`` (or ``false``, ``no``, ``off``) to switch the answer's number
+#: check off; ``LeadAgent(check_numbers=False)`` does the same for one agent.
+CHECK_NUMBERS_ENV = "OLMOEARTH_CHECK_NUMBERS"
+_FALSY = {"0", "false", "no", "off"}
+
+
+def grounding_prompt(unsupported: list[str]) -> str:
+    """The harness's request to rewrite an answer without ``unsupported``."""
+    return (
+        "Harness note: these numbers in your answer are in no tool result of "
+        f"this run and no user message: {', '.join(unsupported)}. Every number "
+        "in the answer must be one a tool returned, as the tool returned it "
+        "(rounding is fine). Rewrite the answer: remove each listed number, or "
+        "replace it with the figure a tool returned. Call no tools, and do not "
+        "mention this note."
+    )
+
+
 def turn_cap_fallback(max_turns: int) -> str:
     """The answer when the model writes no text even when offered no tools."""
     return (
@@ -99,6 +126,10 @@ class AgentResult:
     tool_calls: list[tuple[str, bool]] = field(default_factory=list)
     hit_max_turns: bool = False
     state: ThreadState | None = None
+    #: The answer is the model's rewrite after the number check.
+    grounding_revised: bool = False
+    #: The run's ``grounding_check`` events (see :meth:`LeadAgent.run_stream`).
+    grounding_checks: list[dict[str, Any]] = field(default_factory=list)
 
 
 class LeadAgent:
@@ -127,6 +158,7 @@ class LeadAgent:
         forced_skill: str = "",
         memory_block: str = "",
         local: bool = False,
+        check_numbers: bool = True,
     ) -> None:
         self.llm = llm
         self.registry = registry
@@ -134,6 +166,13 @@ class LeadAgent:
         self.state = state or ThreadState()
         self.forced_skill = forced_skill
         self.system_prompt = system_prompt
+        # Check the answer's numbers against the tool results before it is
+        # shown, unless switched off here or by OLMOEARTH_CHECK_NUMBERS=0.
+        env = os.environ.get(CHECK_NUMBERS_ENV, "").strip().lower()
+        self.check_numbers = check_numbers and env not in _FALSY
+        # The user's saved preferences are their own words, so a number in
+        # them is a source for the check; the rest of the prompt is not.
+        self._memory_block = memory_block
         if skill_index:
             # Progressive disclosure: list the vendored SKILL.md skills so the
             # model knows to call olmoearth_load_skill when a task matches.
@@ -193,10 +232,20 @@ class LeadAgent:
         - ``tool_call``   : a dispatched call (``name``, ``arguments``, ``id``).
         - ``tool_result`` : its outcome (``name``, ``ok``, ``result``, ``id``).
         - ``final``       : the plain-text answer (``content``), with
-          ``forced_by_turn_cap`` true when the turn cap forced it.
+          ``forced_by_turn_cap`` true when the turn cap forced it and
+          ``grounding_revised`` true when it is the model's rewrite after the
+          number check. Exactly one per run, always last.
         - ``max_turns``   : the cap was hit with the model still asking for
           tools (``turns``); a ``final`` follows, from one more call that
           offers no tools (``final_answer_forced``).
+        - ``grounding_check`` : the answer states numbers (``unsupported``, as
+          written) that no tool result of this run and no user message
+          supports. ``action`` is ``"revise"`` when one more call, with no
+          tools, asks the model to rewrite the answer without them, and
+          ``"shown"`` when the answer about to be shown (the rewrite, or the
+          draft if the rewrite was empty) still states some. At most one of
+          each per run, before the ``final``; ``turn`` is the answer's turn.
+          Off with ``check_numbers=False`` or ``OLMOEARTH_CHECK_NUMBERS=0``.
 
         Parameters
         ----------
@@ -217,6 +266,11 @@ class LeadAgent:
         messages.append(Message(role="user", content=brief))
         ctx = ToolContext(studio=self.studio, state=self.state)
         self._record_external_endpoints()
+        # The full result of every call, for the number check (the model saw
+        # compacted ones; a spilled result's numbers are still the tool's).
+        tool_results: list[dict[str, Any]] = []
+        answer: str | None = None
+        forced = True
 
         for turn in range(1, max_turns + 1):
             self.state.turn_count = turn
@@ -229,13 +283,8 @@ class LeadAgent:
                 yield {"type": "thinking", "turn": turn, "text": response.thinking}
 
             if not response.tool_calls:
-                yield {
-                    "type": "final",
-                    "turn": turn,
-                    "content": response.content,
-                    "forced_by_turn_cap": False,
-                }
-                return
+                answer, forced = response.content, False
+                break
 
             messages.append(
                 Message(
@@ -253,6 +302,7 @@ class LeadAgent:
                     "arguments": call.arguments,
                 }
                 result = await self.registry.dispatch(call, ctx)
+                tool_results.append(result)
                 self.state.provenance.record_tool_call(
                     call.name, call.arguments, result
                 )
@@ -277,23 +327,64 @@ class LeadAgent:
                     )
                 )
 
-        # The last turn still asked for tools. One more call, with no tools,
-        # asks for the answer, so the run never ends without one (exp86 round
-        # 1: three runs ended at the cap with nothing to show). Any tool call
-        # the model still emits is not run.
-        yield {"type": "max_turns", "turns": max_turns, "final_answer_forced": True}
-        turn = max_turns + 1
-        self.state.turn_count = turn
-        messages.append(Message(role="user", content=TURN_CAP_PROMPT))
-        response = await self.llm.chat(messages, tools=None)
-        if response.thinking:
-            yield {"type": "thinking", "turn": turn, "text": response.thinking}
-        content = response.content if (response.content or "").strip() else None
+        if forced:
+            # The last turn still asked for tools. One more call, with no
+            # tools, asks for the answer, so the run never ends without one
+            # (exp86 round 1: three runs ended at the cap with nothing to
+            # show). Any tool call the model still emits is not run.
+            yield {"type": "max_turns", "turns": max_turns, "final_answer_forced": True}
+            turn = max_turns + 1
+            self.state.turn_count = turn
+            messages.append(Message(role="user", content=TURN_CAP_PROMPT))
+            response = await self.llm.chat(messages, tools=None)
+            if response.thinking:
+                yield {"type": "thinking", "turn": turn, "text": response.thinking}
+            answer = response.content if (response.content or "").strip() else None
+
+        # The number check (exp86: in each of three rounds the only genuine
+        # fault was a number no tool had returned). Once per run: a rewrite
+        # that still states such a number is shown, and the event says so.
+        # The harness's own turn-cap fallback is not checked.
+        grounding_revised = False
+        if self.check_numbers and answer and answer.strip():
+            pool = NumberPool(
+                [*tool_results, brief, self._memory_block]
+                + [m.content for m in history or () if m.content]
+            )
+            unsupported = pool.unsupported(answer)
+            if unsupported:
+                yield {
+                    "type": "grounding_check",
+                    "turn": turn,
+                    "unsupported": unsupported,
+                    "action": "revise",
+                }
+                messages.append(Message(role="assistant", content=answer))
+                messages.append(
+                    Message(role="user", content=grounding_prompt(unsupported))
+                )
+                response = await self.llm.chat(messages, tools=None)
+                if response.thinking:
+                    yield {"type": "thinking", "turn": turn, "text": response.thinking}
+                if (response.content or "").strip():
+                    answer, grounding_revised = response.content, True
+                    unsupported = pool.unsupported(answer or "")
+                if unsupported:
+                    yield {
+                        "type": "grounding_check",
+                        "turn": turn,
+                        "unsupported": unsupported,
+                        "action": "shown",
+                    }
+
+        if forced and answer is None:
+            answer = turn_cap_fallback(max_turns)
         yield {
             "type": "final",
             "turn": turn,
-            "content": content or turn_cap_fallback(max_turns),
-            "forced_by_turn_cap": True,
+            "content": answer,
+            "forced_by_turn_cap": forced,
+            "grounding_revised": grounding_revised,
         }
 
     async def run(
@@ -329,6 +420,8 @@ class LeadAgent:
         turns = 0
         calls: list[tuple[str, bool]] = []
         hit_max_turns = False
+        grounding_revised = False
+        checks: list[dict[str, Any]] = []
 
         async for event in self.run_stream(brief, max_turns=max_turns, history=history):
             kind = event["type"]
@@ -337,9 +430,12 @@ class LeadAgent:
             elif kind == "final":
                 final_content = event["content"]
                 turns = event["turn"]
+                grounding_revised = bool(event.get("grounding_revised"))
             elif kind == "max_turns":
                 hit_max_turns = True
                 turns = event["turns"]
+            elif kind == "grounding_check":
+                checks.append(event)
 
         return AgentResult(
             final_content=final_content,
@@ -347,4 +443,6 @@ class LeadAgent:
             tool_calls=calls,
             hit_max_turns=hit_max_turns,
             state=self.state,
+            grounding_revised=grounding_revised,
+            grounding_checks=checks,
         )
