@@ -54,6 +54,7 @@ from olmoearth_agent.analysis.raster_compare import (
     compare_group_numeric,
     compare_narration,
     compare_numeric,
+    declared_range,
     grid_windows,
     intersect_bboxes,
     result_bbox,
@@ -66,6 +67,7 @@ from olmoearth_agent.analysis.trace_shifts import (
 )
 from olmoearth_agent.analysis.uncertainty import prediction_confidence
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     FAILED,
@@ -257,13 +259,21 @@ def _different_properties(
 def _property_refusal(
     mode: str, ids: list[str], names: list[str | None], nodata: list[ResultNodata]
 ) -> dict[str, Any]:
-    """The refusal for results of different properties, in the mode's shape."""
+    """The refusal for results of different properties, in the mode's shape.
+
+    Both shapes carry the forbidden claims of a comparison across properties
+    (a combined statistic, a winner), since a refusal is also read as one.
+    """
+    claims = rules.different_properties(names)
     if mode == "pair":
-        return _different_properties(
-            ids[0],
-            ids[1],
-            _property_summary(names[0], nodata[0]),
-            _property_summary(names[1], nodata[1]),
+        return rules.add_contract(
+            _different_properties(
+                ids[0],
+                ids[1],
+                _property_summary(names[0], nodata[0]),
+                _property_summary(names[1], nodata[1]),
+            ),
+            forbidden_claims=claims,
         )
     distinct = sorted({n for n in names if n})
     escape = (
@@ -271,7 +281,7 @@ def _property_refusal(
         if mode == "group"
         else ""
     )
-    return _refuse(
+    refusal = _refuse(
         f"the results measure different properties ({distinct}); a "
         f"{mode} of them would mix quantities, not measure how one quantity "
         f"differs. Pass results of one property (or pin property_name){escape}.",
@@ -282,6 +292,7 @@ def _property_refusal(
             for rid, name, nd in zip(ids, names, nodata)
         ],
     )
+    return rules.add_contract(refusal, forbidden_claims=claims)
 
 
 #: What a comparison of two different properties keeps: each map's own mean
@@ -794,18 +805,51 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         out = _ensemble(s, value_type=value_type)
     if out.get("comparable") is False:
         return out
-    return {
-        "comparable": True,
-        "mode": mode,
-        "result_ids": ids,
-        **out,
-        "grid": f"{grid}x{grid}",
-        "n_cells": s.n_points,
-        "samples_requested": s.n_points * len(ids),
-        "sampling_note": _sampling_note(s, out, mode),
-        "shared_extent_km2": _extent_km2(bbox),
-        "nodata_rule": NODATA_RULE,
-    }
+    claims: list[dict[str, str]] = []
+    if unthresholded := _unthresholded_regression(s, out):
+        claims.append(rules.unthresholded_regression(unthresholded))
+    if different:
+        claims += rules.different_properties(names)
+    return rules.add_contract(
+        {
+            "comparable": True,
+            "mode": mode,
+            "result_ids": ids,
+            **out,
+            "grid": f"{grid}x{grid}",
+            "n_cells": s.n_points,
+            "samples_requested": s.n_points * len(ids),
+            "sampling_note": _sampling_note(s, out, mode),
+            "shared_extent_km2": _extent_km2(bbox),
+            "nodata_rule": NODATA_RULE,
+        },
+        forbidden_claims=claims,
+    )
+
+
+def _unthresholded_regression(
+    s: _Sampled, out: dict[str, Any]
+) -> list[tuple[str | None, tuple[float, float] | None]]:
+    """The compared regression bands that have no decision threshold.
+
+    A band declared (or sampled) with the range ``[0, 1]`` is the score the
+    estimation tools decide at 0.5, as they state; any other regression band
+    has no threshold here, so no error rate or classification metric (exp86
+    round 7, brief 3 on Studio: "estimate each map's error rate" for a band
+    declared 0.2 to 1.2). Returns ``(property_name, declared range)`` per band.
+    """
+    if out.get("value_type") != "regression":
+        return []
+    found: dict[str | None, tuple[float, float] | None] = {}
+    for name, nd, row in zip(s.names, s.nodata, s.sampled):
+        band = next(
+            (b for rec in row if rec and (b := select_band(rec, name)) is not None),
+            None,
+        )
+        rng = declared_range(band, nd.declared.get(str(name)))
+        if rng != (0.0, 1.0) and name not in found:
+            found[name] = rng
+    return list(found.items())
 
 
 def _sampling_note(s: _Sampled, out: dict[str, Any], mode: str) -> str:

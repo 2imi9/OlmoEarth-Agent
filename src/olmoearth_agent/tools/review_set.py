@@ -68,6 +68,7 @@ from olmoearth_agent.analysis.review_set import (
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.security.paths import safe_path, workspace_root
 from olmoearth_agent.tools import inferencex
+from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     FAILED,
@@ -685,6 +686,9 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
     out["dates"] = dates
     if dates.get("assessed"):
         if dates.get("status") in ("different_time", "overlapping_time"):
+            # exp86 round 7 (brief 3, cluster): "run a third dated map" to
+            # check the change; another unlabelled date cannot settle it.
+            rules.add_contract(out, forbidden_claims=rules.across_dates(dates))
             out["which_side_is_right"] = (
                 "not graded: the maps describe different times, so a window where "
                 "they differ may have changed on the ground; "
