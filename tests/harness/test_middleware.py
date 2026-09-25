@@ -35,6 +35,7 @@ from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.harness.turn_cap import TURN_CAP_PROMPT, TurnCapMiddleware
 from olmoearth_agent.llm.presets import REVISION_MODE
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
+from olmoearth_agent.provenance.log import _hash_args
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
 
 _SCHEMA = {"type": "object", "properties": {}, "required": []}
@@ -314,8 +315,15 @@ async def test_an_overridden_tool_call_is_what_runs() -> None:
             fixed = ToolCall(id=call.id, name=call.name, arguments={"x": 2})
             return await handler(request.override(tool_call=fixed))
 
+    records: list[Any] = []
+
+    class Records(AgentMiddleware):
+        async def aafter_agent(self, state: AgentState, runtime: Runtime) -> None:
+            records.extend(state["tool_records"])
+
     llm = _Scripted([_calls("echo", "nosuch"), _answer("ok")])
-    events = await _events(_agent(llm, [Args()]))
+    agent = _agent(llm, [Args(), Records()])
+    events = await _events(agent)
     results = [e for e in events if e["type"] == "tool_result"]
     assert results[0]["result"] == {"ok": True, "result": {"x": 2}}
     assert seen[0].tool_call.arguments == {} and seen[0].tool == ToolSpec(
@@ -323,6 +331,11 @@ async def test_an_overridden_tool_call_is_what_runs() -> None:
     )
     # A tool the registry does not know comes with no spec.
     assert seen[1].tool is None and results[1]["ok"] is False
+    # The records hold the call that ran; the events keep the model's id.
+    assert records[0].arguments == {"x": 2}
+    entry = agent.state.provenance.entries[0]
+    assert entry.request_hash == _hash_args({"x": 2})
+    assert [e["id"] for e in results] == ["c0", "c1"]
 
 
 # --- jumps --------------------------------------------------------------------
@@ -609,6 +622,16 @@ async def test_without_the_retry_middleware_no_hint_is_added() -> None:
     events = await _events(_agent(llm, [RetryHintMiddleware()]))
     results = [e["result"] for e in events if e["type"] == "tool_result"]
     assert [r.get("same_error_count") for r in results] == [None, 2]
+
+
+@pytest.mark.asyncio
+async def test_the_middleware_does_not_count_an_unknown_tool() -> None:
+    llm = _Scripted([_calls("nosuch"), _calls("nosuch"), _answer("stopped")])
+    agent = _agent(llm, [RetryHintMiddleware()])
+    events = await _events(agent)
+    results = [e["result"] for e in events if e["type"] == "tool_result"]
+    assert [r.get("same_error_count") for r in results] == [None, None]
+    assert agent.state.tool_failures == {}
 
 
 @pytest.mark.asyncio

@@ -120,12 +120,15 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `TurnCapMiddleware` (the forced answer without tools at the cap, and
   `max_turns`), `RetryHintMiddleware` (the stop-retrying hint, moved from
   `ToolRegistry.dispatch`, whose `retry_hint=True` default still applies it to
-  direct calls) and `AnswerChecksMiddleware` (the checks, the one rewrite in
+  direct calls; a subclass that overrides `dispatch(call, ctx)` must now accept
+  the `retry_hint` keyword, since the agent passes it) and
+  `AnswerChecksMiddleware` (the checks, the one rewrite in
   `REVISION_MODE`, the marking and the appended required statements, with
   their `check` and `grounding_check` events). `LeadAgent(middleware=[...])`
   replaces them; the default chain runs as the loop did: the existing tests
   pass unchanged, and 3,000 random scripted runs give the same events, model
-  calls and state as the loop before it. A chain that would start a turn past
+  calls and state as the loop before it. When a wrap hook replaces a tool
+  call, the provenance log and the answer checks record the call that ran. A chain that would start a turn past
   `max_turns + 1`, or enter the model step more than 10 times in one turn,
   raises `MiddlewareError`.
 - The `inferencex` extra is `olmoearth-inferencex[geo]` (>= 1.3.0): reading a

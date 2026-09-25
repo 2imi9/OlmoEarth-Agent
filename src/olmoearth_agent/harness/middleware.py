@@ -38,7 +38,11 @@ What differs from LangChain:
 - A ``"messages"`` update appends. Our messages have no ids to replace by.
 - The runtime's ``emit(event)`` stands in for LangGraph's ``stream_writer``.
   ``LeadAgent.run_stream`` relays each event in order, as it is emitted, even
-  from inside a wrapped model or tool call.
+  from inside a wrapped model or tool call. The step that emitted it keeps
+  running meanwhile: a consumer that stops at an event may find the step's
+  next call already started (a model call after ``max_turns``, say).
+- The tool calls of one turn run one after another, in the model's order, as
+  the loop did before; LangGraph's ``ToolNode`` runs them concurrently.
 
 The state is a dict (:class:`AgentState`): the conversation without the
 system message, the run's :class:`~olmoearth_agent.harness.state.ThreadState`,
@@ -484,6 +488,8 @@ class EventRelay:
     consumer sees an event emitted inside a model call before the call
     returns. The step's result is left in :attr:`value`. If the consumer
     stops early, or the run is cancelled, the step is cancelled and awaited.
+    The step does not wait for the consumer: by the time an event is yielded,
+    the step may have gone on to its next await, such as a model call.
     """
 
     def __init__(self) -> None:

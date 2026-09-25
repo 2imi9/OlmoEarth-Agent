@@ -181,6 +181,9 @@ class _Run:
     pending: list[ToolCall] = field(default_factory=list)
     #: Model steps entered in the current turn (jumps back included).
     steps: int = 0
+    #: The call the registry last ran: a wrap hook may have replaced the
+    #: model's call, and the records must hold the one that ran.
+    executed: ToolCall | None = None
 
 
 class LeadAgent:
@@ -408,6 +411,7 @@ class LeadAgent:
 
         async def dispatch(request: ToolCallRequest) -> dict[str, Any]:
             # The chain's RetryHintMiddleware adds the stop-retrying hint.
+            run.executed = request.tool_call
             return await self.registry.dispatch(
                 request.tool_call, ctx, retry_hint=False
             )
@@ -442,22 +446,27 @@ class LeadAgent:
                         state=state,
                         runtime=runtime,
                     )
+                    run.executed = call
                     step = chain.call_tool(request, dispatch)
                     async with aclosing(relay.run(step)) as events:
                         async for event in events:
                             yield event
                     result: dict[str, Any] = relay.value
+                    # The records hold the call that ran, which a wrap hook
+                    # may have changed; the events and the tool message keep
+                    # the model's id and name, which pair them with its call.
+                    ran = run.executed or call
                     # Oversized results are spilled to a workspace file and
                     # replaced by a compact envelope so one big payload can't
                     # eat the context window. The UI event below and the
                     # provenance record keep the full result; the spill file
                     # is one this run wrote, which the answer may name.
-                    content, spilled_to = spill_result_for_llm(call.name, result)
+                    content, spilled_to = spill_result_for_llm(ran.name, result)
                     state["tool_records"].append(
-                        ToolRecord(call.name, call.arguments, result, spilled_to)
+                        ToolRecord(ran.name, ran.arguments, result, spilled_to)
                     )
                     self.state.provenance.record_tool_call(
-                        call.name, call.arguments, result
+                        ran.name, ran.arguments, result
                     )
                     yield {
                         "type": "tool_result",

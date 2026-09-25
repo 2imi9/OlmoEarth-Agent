@@ -19,6 +19,7 @@ the next turn on.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -37,6 +38,39 @@ class ToolContext:
 
     studio: StudioClient
     state: ThreadState
+
+
+#: The hint on a tool's failure the second time in a run it fails the same way.
+STOP_RETRYING_HINT = (
+    "This tool has now failed {count} times in this run with this same error "
+    "(numbers aside). Stop retrying it: tell the user what the error says the "
+    "limit or problem is, and answer with what you have."
+)
+
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def note_failure(envelope: dict[str, Any], name: str, thread_state: Any) -> None:
+    """Count a failed envelope in the run; from the second alike, tell the model to stop.
+
+    exp86 round 1: the model met one refusal ("budget 300 ... 173 valid
+    windows") five times, with a new grid each time, and never answered.
+    "Alike" is the same tool with the same error once its numbers are masked.
+    The counts live on the run's state (``ThreadState.tool_failures``), so a
+    new run starts afresh. A successful envelope, or a state without the
+    counts (as in some unit tests), changes nothing.
+    """
+    if envelope.get("ok") is not False:
+        return
+    failures = getattr(thread_state, "tool_failures", None)
+    if not isinstance(failures, dict):
+        return
+    key = (name, _NUMBER.sub("N", str(envelope.get("error", ""))))
+    count = failures.get(key, 0) + 1
+    failures[key] = count
+    if count >= 2:
+        envelope["same_error_count"] = count
+        envelope["hint"] = STOP_RETRYING_HINT.format(count=count)
 
 
 #: A tool handler: receives parsed arguments + context, returns any
@@ -137,7 +171,7 @@ class ToolRegistry:
         The second time in a run a tool fails with the same error (numbers
         aside), the envelope's ``hint`` tells the model to stop retrying and
         report the limit to the user, and ``same_error_count`` counts it
-        (:mod:`olmoearth_agent.harness.retry_hint`). ``retry_hint=False``
+        (:func:`note_failure`). ``retry_hint=False``
         leaves that out: the lead agent passes it, and its
         ``RetryHintMiddleware`` adds the hint around this call instead.
         """
@@ -151,9 +185,6 @@ class ToolRegistry:
             }
         envelope = await self._execute(tool, call, ctx)
         if retry_hint:
-            # Imported here: the harness imports this module.
-            from olmoearth_agent.harness.retry_hint import note_failure
-
             note_failure(envelope, call.name, getattr(ctx, "state", None))
         return envelope
 
