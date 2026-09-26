@@ -490,6 +490,86 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **The tools state what round 9's model filled in from general knowledge**
+  (the audit of exp86 round 9, on agent c62538f). Most of round 9's material
+  errors sat where the tools said nothing. Offers are not restricted; the
+  tools now say what holds.
+  - Labels. A Studio model summary (`olmoearth_search_predictions`'
+    `models`, `olmoearth_review_set_from_result`'s `model`) carries
+    `trained_on_labels`, the `label_field_id` and the train/val/test `split`
+    when the fine-tuning wizard names a label field; the requester is never
+    read. `olmoearth_search_predictions`, `olmoearth_compare_results` and
+    `olmoearth_review_set_from_result` state the fact `labels_in_studio`:
+    which models were fine-tuned on a label field of their project, so labels
+    for it may exist in Studio, and that no tool of the run looked them up
+    for this area. The comparisons' `winner_without_labels` reason, and
+    `olmoearth_compare_results`' framings and `method`, say no labels (no
+    ground truth) were given to this comparison, never that none exist.
+    Round 9 (B3/studio run 1) answered "no ground-truth labels exist" of two
+    models each fine-tuned on a label field of the user's project.
+  - Review sets. `margin_summary`'s `listed`, `not_listed` and `review_set`
+    give the `ranks` they cover, `not_listed` names what it counts after
+    (`after`: the tool's own listing), and the `reading` says a table of fewer
+    rows leaves out more windows, with margins no higher. Round 9 (B2/studio
+    run 1) showed 5 of 8 listed windows and called the tool's "83 not listed"
+    "the other 83 windows", margins 0.516 to 0.991, where three unshown
+    windows had margins of 0.26 to 0.47. The fact `review_set_classes` counts
+    every window of the review set by predicted class, listed or not (named
+    by the scores file's class names, a Studio score's side of its threshold,
+    or the class number; ten by name, the rest together). Round 9
+    (B8/cluster run 2) said montane_forest and woodland_forest pairs
+    "dominate" from the 10 listed windows; the 819 hold 256 grassland_barren
+    and 246 shrubland_savanna against 125 woodland_forest and 84
+    montane_forest.
+  - Lists in files. The fact `list_file` names, by its full path, the file a
+    comparison's differing windows or a review set's full list was written
+    to, and what it holds ("All 3,807 differing windows are listed, in window
+    order, in <path>, each with both maps' class and margin."), and
+    `listing_note` and `listing_order` name the file, not the key that holds
+    its path. Round 9 (B7/files run 1): "All 1,570 differing windows are
+    listed in `differing_path` above".
+  - A margin is not a probability of error. The contract gains the fixed id
+    `margin_as_error_probability`, emitted with every ranking
+    (`olmoearth_review_set`, from rows or a scores file, and
+    `olmoearth_review_set_from_result`). Its reason forbids calling a window
+    "most likely wrong", "probably an error" or "likely mislabeled", and,
+    where the ranking evidence does not or may not cover the case, an order
+    by likelihood ("the likeliest spots for a wrong call"). The answer
+    checks' detector reads the same: a window called probably wrong ("they're
+    most likely mislabeled", "the argmax label is most likely wrong there",
+    "probably errors", "more likely wrong than right", a margin called a
+    probability of error) is flagged; an order ("the most likely places for
+    a wrong label", "the windows most likely to be wrong", "where it is most
+    likely wrong") only where the emitting result's
+    `evidence_covers_this_case` is "no" or "not known": the blind audit of
+    rounds 7 and 8 refuted two such orders of an OlmoEarth model's logits,
+    and the audit of round 9 confirmed one of a Studio score. A negated,
+    quoted or example claim, an error rate, "least decided", "most
+    uncertain", "checked first" and the tools' own sentences pass. Over the
+    1,824 sentences of rounds 6 to 9's 120 answers, with the id emitted in
+    the 24 runs that ranked a review set, it flags 4: round 9's three
+    audited claims (two material), and round 6's "where it is most likely
+    wrong" (no finding), an order that passes under the current tools but
+    is read there because round 6's result predates
+    `evidence_covers_this_case`. Emitted in all 120 runs, it adds round 8's
+    "where each model is likely wrong" (B3/studio run 2), a confirmed
+    finding.
+  - Boundary shares. `boundary_means` says the shares measure no contiguity
+    and do not show whether whole regions flip or only their edges; `where`
+    says the differing windows lie on map A's predicted-class boundaries more
+    (or no more) often than windows overall, "not whether whole regions
+    flip", in place of "mostly on class boundaries" and "spread across the
+    scene"; and the fact `boundary_share` states both shares with that
+    limit. Round 9 (B3/cluster run 3): "mostly boundary reclassification
+    rather than wholesale area flips", where the round's audit found blocks
+    of 696, 543 and 467 differing windows.
+  - The integrated check (outside the repo) replays the tool calls of
+    rounds 8 and 9 (30 runs each) on these tools. Answers built from the
+    tools' own sentences raise no violation, with or without the extended
+    notes. Round 8's recorded answers keep 14 of 17 material findings
+    flagged, with the same 8 other flags; round 9's are flagged on 2 of its
+    16 material findings (the two "most likely" claims) and on one
+    immaterial confirmed finding, and nowhere else.
 - **The comparison and review tools state what their outputs cannot support**
   (the blind audit of exp86 rounds 7 and 8, round 8 on agent 6d25307).
   - `olmoearth_compare_results`: every correlation it returns (a pair's, each
