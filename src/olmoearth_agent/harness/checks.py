@@ -210,6 +210,46 @@ class RunEvidence:
         return frozenset(w for t in texts for w in re.findall(r"[A-Za-z0-9]+", t))
 
     @cached_property
+    def review_bands(self) -> tuple[re.Pattern[str] | None, re.Pattern[str] | None]:
+        """The names of the bands a review set is forbidden for, and of the others.
+
+        The bands are the ones every ``review_set_for_unthresholded_regression``
+        reason of the run names (``'sample_number' (declared range ...)``);
+        the others, every other property the run's results name. Each is
+        matched by its property name and by the names of the maps that carry
+        it (a prediction's "KarstNumber--01-01-2025--..." reads as
+        "KarstNumber"), a name both carry by neither. ``(None, None)`` when
+        no reason names a band or the run holds no other property: an offer
+        is then read whatever it names.
+        """
+        bands: set[str] = set()
+        for _record, item in self.contract("forbidden_claims"):
+            if isinstance(item, Mapping) and item.get("id") == (
+                "review_set_for_unthresholded_regression"
+            ):
+                bands.update(
+                    re.findall(r"'([^']+)' \(declared range", str(item.get("why", "")))
+                )
+        if not bands:
+            return None, None
+        aliases: dict[str, set[str]] = {}
+        for record in self.tools:
+            if record.ok:
+                for props, names in _property_names(record.result):
+                    for prop in props:
+                        aliases.setdefault(prop, {prop}).update(names)
+        mine = set().union(*(aliases.get(b, {b}) for b in bands))
+        theirs = (
+            set().union(
+                *(names for prop, names in aliases.items() if prop not in bands)
+            )
+            - mine
+        )
+        if not theirs:
+            return None, None
+        return _names_re(mine), _names_re(theirs)
+
+    @cached_property
     def written_files(self) -> list[tuple[str, str]]:
         """``(key, path)`` of every file a tool's result reports writing.
 
@@ -264,6 +304,59 @@ class RunEvidence:
                 named += [(k, v) for k, v in _strings(record.result) if _is_path(v)]
             out.update(path for key, path in named if _holds_list(key, path))
         return frozenset(out)
+
+
+def _property_names(obj: Any, depth: int = 0) -> Iterator[tuple[list[str], set[str]]]:
+    """``(properties, names)`` of every record in a result that names its property.
+
+    A record with ``property_names`` (or ``property_name``) and a map's name
+    (``prediction_name``, ``name``): the name and its leading word
+    ("KarstNumber" of "KarstNumber--01-01-2025--12-31-2025--PA regular"), and
+    the property with its underscores read as spaces.
+    """
+    if depth > 6:
+        return
+    if isinstance(obj, Mapping):
+        found = obj.get("property_names")
+        props = (
+            [p for p in found if isinstance(p, str)]
+            if isinstance(found, list)
+            else (
+                [obj["property_name"]]
+                if isinstance(obj.get("property_name"), str)
+                else []
+            )
+        )
+        if props:
+            names: set[str] = set()
+            for key in ("prediction_name", "name"):
+                value = obj.get(key)
+                if isinstance(value, str) and value.strip():
+                    names.add(value.strip())
+                    lead = re.match(r"[A-Za-z][A-Za-z0-9]{3,}", value.strip())
+                    if lead:
+                        names.add(lead.group())
+            for prop in props:
+                names |= {prop, prop.replace("_", " ")}
+            yield props, names
+        for value in obj.values():
+            yield from _property_names(value, depth + 1)
+    elif isinstance(obj, list):
+        for value in obj:
+            yield from _property_names(value, depth + 1)
+
+
+def _names_re(names: Iterable[str]) -> re.Pattern[str] | None:
+    """One pattern for any of ``names`` as whole words, longest first."""
+    kept = sorted({n for n in names if len(n) >= 3}, key=len, reverse=True)
+    if not kept:
+        return None
+    return re.compile(
+        r"(?<![A-Za-z0-9_])(?:"
+        + "|".join(re.escape(n) for n in kept)
+        + r")(?![A-Za-z0-9_])",
+        re.I,
+    )
 
 
 def _is_path(value: str) -> bool:
@@ -2009,7 +2102,9 @@ _NEGATED_AFTER_RE = re.compile(
 _NEGATION_REACH = 6
 
 
-def _negated_close(p: _Parse, start: int, end: int) -> bool:
+def _negated_close(
+    p: _Parse, start: int, end: int, *, besides: re.Pattern[str] | None = None
+) -> bool:
     """Whether a negation governs ``s[start:end]``: before it in its clause, or
     within :data:`_NEGATION_REACH` words after it.
 
@@ -2017,12 +2112,17 @@ def _negated_close(p: _Parse, start: int, end: int) -> bool:
     long clause exempt a claim: exp86 round 7 (B7/files run 1), "To settle
     it, provide labels for one or both dates, or treat this as a
     change-detection layer rather than a contest", read as negated by its
-    last words.
+    last words. A negation inside a match of ``besides`` governs something
+    else ("without a threshold, I can still build a review set").
     """
     lo, hi = p.span(start, end)
     inside = p.bracket_at(start, end) is not None
-    if p.find(_NEGATION_RE, lo, start, masked=not inside):
-        return True
+    at = lo
+    while found := p.find(_NEGATION_RE, at, start, masked=not inside):
+        own = besides and p.find(besides, found[0], start, masked=not inside)
+        if not own or own[0] != found[0]:
+            return True
+        at = found[1]
     text = p.s if inside else p.masked
     # read in place (pos, endpos): a slice per match of a long listing is quadratic
     after = _REACH_RE.match(text, end, hi)
@@ -2523,6 +2623,33 @@ _REVIEW_RANKING_RE = re.compile(
     re.I,
 )
 _THRESHOLD_RE = re.compile(r"\bthreshold\w*|\bcut-?\s?off\b|\bcut\s+point\b", re.I)
+#: A threshold stated as what the review needs, not merely mentioned: "the
+#: review set needs a threshold", "once a threshold is named", "name a
+#: threshold first", "with a threshold of 0.5". "Without a threshold, I can
+#: still build a review set" and "there is no decision threshold, but I can
+#: rank by margin" mention one and offer the review anyway (the fix-r8
+#: review).
+_THRESHOLD_REQUIRED_RE = re.compile(
+    r"\b(?:need|needs|needed|needing|require|requires|required|requiring|name|"
+    r"names|named|naming|give|gives|given|giving|set|pick|choose|provide|"
+    r"provided|supply|specify|specified|pass|with|using|at|once|after|until|"
+    r"unless|if|first)\s+(?:me\s+|us\s+)?(?:(?:a|an|the|its|your|one|each|some|"
+    r"this|that|their)\s+)?(?:(?:decision|valid|specific|numeric|chosen)\s+)?"
+    r"(?:threshold\w*|cut-?\s?off|cut\s+point)"
+    r"|\b(?:threshold\w*|cut-?\s?off|cut\s+point)\s+(?:is|are|was|has\s+been|"
+    r"have\s+been|gets|get)\s+(?:\w+\s+)?(?:named|given|set|chosen|picked|"
+    r"provided|specified|fixed|passed|known)\b"
+    r"|\b(?:threshold\w*|cut-?\s?off|cut\s+point)\s*(?:of|=|at|:)\s*[-−]?\d"
+    r"|\b(?:threshold\w*|cut-?\s?off|cut\s+point)\s+(?:\w+\s+)?first\b",
+    re.I,
+)
+#: A threshold said to be missing: the negation in it is the threshold's,
+#: not the review's ("without a threshold, I can still build a review set").
+_NO_THRESHOLD_RE = re.compile(
+    r"\b(?:no|without|not\s+(?:a|any)|lacks?|lacking)\s+(?:(?:a|an|any|its|the)\s+)?"
+    r"(?:(?:decision|valid|clear|natural)\s+)?(?:threshold\w*|cut-?\s?off|cut\s+point)",
+    re.I,
+)
 #: An offer or a recommendation: what the answer proposes to do next. A
 #: statement of what a review set would do ("a review set would overstate
 #: the error") is none, nor is a table's header row ("| Rank | Margin |")
@@ -2541,6 +2668,19 @@ _PROPOSAL_RE = re.compile(
 _PROPOSAL_START_RE = re.compile(
     r"(?:[-*+•]\s+|\d+[.)]\s+)?(?:run|build|use|flag|open|check|plan|start)\b"
     r"(?!\s*:)",
+    re.I,
+)
+#: A [0, 1] score's decision stated: "a 0-1 score", "[0, 1]", "nearest 0.5".
+_UNIT_SCORE_RE = re.compile(
+    r"(?<![\d.])(?:\[\s*0(?:\.0)?\s*,\s*1(?:\.0)?\s*\]|0(?:\.0)?\s*(?:[-–—]|to)\s*"
+    r"1(?:\.0)?(?![\d.])|0?\.5(?![\d]))",
+)
+
+
+#: Every map of the run: "each map", "both maps", "either result".
+_EVERY_MAP_RE = re.compile(
+    r"\b(?:each|both|either|every|all)\s+(?:of\s+the\s+)?(?:two\s+)?(?:maps?|results?|"
+    r"bands?|models?|layers?|predictions?)\b|\bboth\b|\bone\s+or\s+both\b",
     re.I,
 )
 
@@ -2568,17 +2708,22 @@ def _review_set_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool
     set (lowest-confidence windows first)". Only an offer or a
     recommendation in the review's own clause is read (the id is a review
     set *offered* for the band): a report of a review set a tool ran is
-    another band's, and so is a table row. A sentence that
-    names a threshold ("the review set needs a threshold for this band",
-    "once you name a threshold") or negates the review ("no review set
-    applies") is none.
+    another band's, and so is a table row. A sentence that states a
+    threshold as what the review needs ("the review set needs a threshold
+    for this band", "once you name a threshold") or negates the review ("no
+    review set applies") is none; one that only mentions a threshold
+    ("without a threshold, I can still build a review set") is read. The
+    claim is about the bands its reason names: an offer for another band of
+    the run (a [0, 1] score the tools decide at 0.5, named by its map or its
+    property) is not it, while an offer that names no band ("each map") is.
     """
-    if _THRESHOLD_RE.search(s) or s.lstrip().startswith("|"):
+    if _THRESHOLD_REQUIRED_RE.search(s) or s.lstrip().startswith("|"):
         return False
     p = _parse(s)
+    bands, others = run.review_bands
     for m in _REVIEW_RANKING_RE.finditer(s):
         if (
-            _negated_close(p, m.start(), m.end())
+            _negated_close(p, m.start(), m.end(), besides=_NO_THRESHOLD_RE)
             or p.example_before(m.start())
             or p.quoted(m.start())
         ):
@@ -2586,8 +2731,31 @@ def _review_set_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool
         lo, hi, _ = p.region(m.start(), m.end())
         if not _proposed_in(p, lo, hi):
             continue
+        if others is not None and not _about_the_band(p, lo, hi, bands, others):
+            continue
         return True
     return False
+
+
+def _about_the_band(
+    p: _Parse, lo: int, hi: int, bands: re.Pattern[str] | None, others: re.Pattern[str]
+) -> bool:
+    """Whether an offer in ``s[lo:hi]`` may be about an unthresholded band.
+
+    Not when its clause, or else its sentence, names only another band of the
+    run (by its map's or its property's name, or as a [0, 1] score) and not
+    every map ("each map", "both").
+    """
+    if p.has(_EVERY_MAP_RE, lo, hi):
+        return True
+    for a, b in ((lo, hi), (0, len(p.s))):
+        names_band = bool(bands and p.has(bands, a, b))
+        names_other = p.has(others, a, b) or p.has(_UNIT_SCORE_RE, a, b)
+        if names_band:
+            return True
+        if names_other:
+            return False
+    return True
 
 
 _DATE_NOUN = r"(?:dates?|years?|periods?|times?|epochs?|acquisitions?)"

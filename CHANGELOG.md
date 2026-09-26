@@ -560,7 +560,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   cannot say whether the maps co-vary, what an interval holds, or the sign
   the tool found); `review_set_for_unthresholded_regression` (a review set,
   margins or the least decided windows *offered*, in the review's own
-  clause, unless a threshold is named); `one_reference_settles_two_dates`
+  clause, unless a threshold is stated as what the review needs, "once a
+  threshold is named", while "without a threshold, I can still build a
+  review set" is read; and only for the bands the reason names, so an offer
+  that names only another band of the run, by its map's or its property's
+  name or as a [0, 1] score, is not it); `one_reference_settles_two_dates`
   ("either date", "one or both dates", "at least one, plus a date-matched
   second inference", and one map's year named alone, read against the
   comparison's own `dates`; a clause that restricts one date's labels to

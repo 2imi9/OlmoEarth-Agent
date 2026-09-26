@@ -1126,6 +1126,11 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
     ),
     "review_set_for_unthresholded_regression": (
         [
+            # a threshold mentioned, not required (the fix-r8 review)
+            "Without a threshold, I can still build a review set of each map's "
+            "lowest-margin windows.",
+            "There is no decision threshold for KarstNumber, but I can rank its "
+            "windows by margin for review.",
             "If you want, I can next design a label sample so N labels give an "
             "honest error estimate for one or both maps, or run a per-class review "
             "set to flag where each map looks uncertain.",
@@ -1140,6 +1145,8 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "Want me to build a review list of the most ambiguous cells in each map?",
         ],
         [
+            "Once a threshold is named, I can build a review set for each map.",
+            "Name a threshold first, and then I can rank the windows by margin.",
             "The review set needs a threshold for this band.",
             "Name a threshold and I can build a review set for each map.",
             "No review set applies to a regression band without a threshold.",
@@ -1473,6 +1480,66 @@ def test_a_correlation_stated_with_the_sign_the_tool_found_is_no_claim() -> None
         "The maps c1 and b1 are unrelated.",
         # an interval that spans 0 withdraws nothing
         "c1 and b1 do not co-vary (95% interval -0.21 to 0.30).",
+    ):
+        assert _flagged(check_forbidden_claims, flagged, run) == [flagged], flagged
+
+
+def _karst(threshold_claim: bool = True) -> RunEvidence:
+    """exp86 round 8, B3/studio: KarstBinary (sample_karst_score, [0, 1]) and
+    KarstNumber (sample_number, 0.2 to 1.2, no threshold)."""
+    why = (
+        "'sample_number' (declared range [0.2, 1.2]): a margin-based review set "
+        "(olmoearth_review_set_from_result) ranks a band's windows by their "
+        "distance from a decision threshold, and this band has none"
+    )
+    return _run(
+        _record(
+            "olmoearth_get_prediction_result",
+            {
+                "prediction_name": "KarstBinary--01-01-2025--12-31-2025--PA regular",
+                "property_names": ["sample_karst_score"],
+            },
+        ),
+        _record(
+            "olmoearth_get_prediction_result",
+            {
+                "prediction_name": "KarstNumber--01-01-2025--12-31-2025--PA regular",
+                "property_names": ["sample_number"],
+            },
+        ),
+        _record(
+            "olmoearth_compare_results",
+            {
+                "property_a": {"property_name": "sample_karst_score"},
+                "property_b": {"property_name": "sample_number"},
+                "forbidden_claims": [
+                    {"id": "review_set_for_unthresholded_regression", "why": why}
+                ],
+            },
+        ),
+    )
+
+
+def test_a_review_set_is_forbidden_only_for_the_band_the_reason_names() -> None:
+    """The fix-r8 review: the id is emitted for KarstNumber (no threshold), and
+    an offer for KarstBinary, a [0, 1] score the tools decide at 0.5, was
+    flagged. An offer that names only another band of the run passes; one
+    that names the band, or no band, is read."""
+    run = _karst()
+    for fine in (
+        "For KarstBinary, a 0-1 score, I can build a review set of the windows "
+        "nearest 0.5.",
+        "I can build a review set of KarstBinary's lowest-margin windows.",
+        "For sample_karst_score I can list the lowest-margin windows for review.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    for flagged in (
+        "For KarstNumber I can build a review set of its lowest-margin windows.",
+        "I can build a review set of each map's lowest-margin windows.",
+        "I can build a review set for KarstBinary and KarstNumber.",
+        # another band named, but the offer is for every map
+        "KarstBinary is a 0-1 score, and I can build a review set of each map's "
+        "lowest-margin windows.",
     ):
         assert _flagged(check_forbidden_claims, flagged, run) == [flagged], flagged
 
