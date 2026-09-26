@@ -407,6 +407,10 @@ def evidence_detail_path() -> str | None:
     return str(target)
 
 
+#: Classes a ``review_set_classes`` sentence names one by one; the rest are
+#: counted together.
+CLASSES_NAMED = 10
+
 #: A review list file's columns, in order: the first five always (``row`` and
 #: ``col`` empty without a grid), the rest when the rows have them. Never a
 #: coordinate, and never a caller's own window label (rule §3.1).
@@ -477,10 +481,13 @@ def review_list(
             f"{evidence}."
         }
     path = _save_review_list(full)
+    # The note names the file, not the key that holds its path: exp86 round 9
+    # (B7/files run 1) told the user the windows were "listed in
+    # `differing_path` above", a field the user never sees.
     where = (
-        f"the full list of {total:,}, in the same order, is in the CSV at "
-        f"review_list_path ({', '.join(REVIEW_LIST_COLUMNS)} and the class or "
-        "score; no coordinates)"
+        f"the full list of {total:,}, in the same order, is in the CSV "
+        f"{os.path.basename(path)} ({', '.join(REVIEW_LIST_COLUMNS)} and the "
+        "class or score; no coordinates)"
         if path
         else f"the full list of {total:,} could not be saved"
     )
@@ -493,6 +500,112 @@ def review_list(
         out["review_list_path"] = path
         out["review_list_rows"] = total
     return out
+
+
+def list_file_fact(
+    path: str | None, sentence: str, **fields: Any
+) -> dict[str, Any] | None:
+    """The ``list_file`` fact: a sentence for the user naming a list's file.
+
+    A comparison or a review set that writes its windows to a file returns
+    the path under a key (``differing_path``, ``review_list_path``) the user
+    never sees: exp86 round 9 (B7/files run 1) answered "All 1,570 differing
+    windows are listed in `differing_path` above", naming the field for the
+    file and pointing at a list the answer did not show. The fact's sentence
+    names the file by its full path and says what it holds, so an answer
+    points to the file. ``None`` when no file was written.
+    """
+    if not path:
+        return None
+    return rules.fact("list_file", sentence, path=path, **fields)
+
+
+def review_list_fact(out: dict[str, Any], budget: float) -> dict[str, Any] | None:
+    """The ``list_file`` fact of a review set whose full list went to a CSV."""
+    path = out.get("review_list_path")
+    if not path:
+        return None
+    rows = int(out.get("review_list_rows") or 0)
+    return list_file_fact(
+        path,
+        f"The {rows:,} windows of the review set at budget {budget:g} are listed, "
+        f"in review order, in {path}.",
+        rows=rows,
+        order="review order",
+    )
+
+
+def review_set_classes_fact(
+    full: list[dict[str, Any]],
+    n_listed: int,
+    *,
+    meaning: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """The ``review_set_classes`` fact: every review-set window by predicted class.
+
+    exp86 round 9 (B8/cluster run 2) said "montane_forest vs woodland_forest
+    pairs dominate the list" of an 819-window review set from the 10 windows
+    the tool listed (8 of them montane or woodland); over all 819 the
+    predicted classes are grassland_barren 256 and shrubland_savanna 246
+    before woodland_forest 125 and montane_forest 84. The counts and shares
+    here are over every window of the review set, listed or not, so which
+    classes it holds most of comes from code. A class is named by the scores
+    file's class name, else by ``meaning`` (a Studio score's side of its
+    threshold), else by its number; past :data:`CLASSES_NAMED` classes the
+    rest are counted together.
+    """
+    total = len(full)
+    if not total:
+        return None
+    counts: dict[Any, int] = {}
+    names: dict[Any, str] = {}
+    for row in full:
+        k = row.get("predicted_class")
+        counts[k] = counts.get(k, 0) + 1
+        if row.get("class_name") and k not in names:
+            names[k] = str(row["class_name"])
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], str(kv[0])))
+
+    def label(k: Any) -> str:
+        if k in names:
+            return names[k]
+        if meaning and str(k) in meaning:
+            return f"class {k} ({meaning[str(k)]})"
+        return f"class {k}"
+
+    shown = ranked[:CLASSES_NAMED]
+    parts = [f"{n:,} ({rules.percent(n / total)}) {label(k)}" for k, n in shown]
+    parts[0] = parts[0].replace(") ", ") are predicted ", 1)
+    rest = ranked[CLASSES_NAMED:]
+    if rest:
+        n_rest = sum(n for _k, n in rest)
+        parts.append(
+            f"{n_rest:,} ({rules.percent(n_rest / total)}) in {len(rest)} "
+            "other classes"
+        )
+    listing = (
+        "every one of them is listed"
+        if n_listed >= total
+        else f"these counts cover all {total:,}, not only the {n_listed:,} listed"
+    )
+    joined = (
+        parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + f" and {parts[-1]}"
+    )
+    return rules.fact(
+        "review_set_classes",
+        f"Of the {total:,} windows in the review set, {joined}; {listing}.",
+        n=total,
+        n_listed=min(n_listed, total),
+        classes=[
+            {
+                "class": k,
+                "name": names.get(k),
+                "n": n,
+                "share": round(n / total, 6),
+            }
+            for k, n in ranked
+        ],
+    )
 
 
 async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
@@ -564,6 +677,17 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     _place_rows(full, "window_index", windows, cols)
     out["evidence_detail_path"] = evidence_detail_path()
     out.update(review_list(len(out.get("review", [])), full, budget))
+    rules.add_contract(
+        out,
+        facts=[
+            f
+            for f in (
+                review_set_classes_fact(full, len(out.get("review", []))),
+                review_list_fact(out, budget),
+            )
+            if f
+        ],
+    )
     return out
 
 
@@ -722,11 +846,16 @@ def _save_differing(
 
 
 def _listing_order(n_listed: int, n_total: int, path: str | None) -> str:
-    """What the inline listing is, where the rest is, and where to read patterns."""
+    """What the inline listing is, where the rest is, and where to read patterns.
+
+    The file is named, not the key that holds its path (exp86 round 9,
+    B7/files run 1: "listed in `differing_path` above").
+    """
     if not n_total:
         return "no window differs, so nothing is listed and no file is saved"
     where = (
-        f"all {n_total:,} are in the file at differing_path, in the same order"
+        f"all {n_total:,} are in the file {os.path.basename(path)}, in the same "
+        "order"
         if path
         else f"the full listing of {n_total:,} could not be saved"
     )
@@ -836,6 +965,15 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
     out["n_differing_total"] = out["n_differing"]
     out["differing_path"] = path
     out["listing_order"] = _listing_order(out["n_differing_listed"], len(rows), path)
+    pointer = list_file_fact(
+        path,
+        f"All {len(rows):,} differing windows are listed, in window order, in "
+        f"{path}, each with both maps' class and margin.",
+        rows=len(rows),
+        order="window order",
+    )
+    if pointer:
+        rules.add_contract(out, facts=[pointer])
     if grid_note:
         out["grid_note"] = grid_note
     dates = _dates_block(args)
@@ -1260,11 +1398,22 @@ async def _review_set_from_result(
         "must_state": ranked["must_state"],
         "forbidden_claims": ranked["forbidden_claims"],
     }
-    # exp86 round 9 (B3/studio run 1): "no ground-truth labels exist", of
-    # models fine-tuned on the project's labels
-    labels = rules.labels_in_studio_fact([sampled.model] if sampled.model else [])
-    if labels:
-        rules.add_contract(out, facts=[labels])
+    rules.add_contract(
+        out,
+        facts=[
+            f
+            for f in (
+                review_set_classes_fact(
+                    full, len(review), meaning=out["class_meaning"]
+                ),
+                review_list_fact(out, budgets[-1]),
+                # exp86 round 9 (B3/studio run 1): "no ground-truth labels
+                # exist", of models fine-tuned on the project's labels
+                rules.labels_in_studio_fact([sampled.model] if sampled.model else []),
+            )
+            if f
+        ],
+    )
     if sampled.model:
         out["model"] = {k: v for k, v in sampled.model.items() if k != "nodata_value"}
     if bool(args.get("save_scores", True)):

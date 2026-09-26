@@ -1182,6 +1182,14 @@ def margin_summary(
     (median margin 0.965)") where the lowest unlisted margin was 0.786. Every
     field now says what it is, and the unlisted windows get their own range.
 
+    Each count says which ranks it covers: ``listed`` ranks 1 to the tool's
+    own ``n_listed``, ``not_listed`` the ranks after it, ``review_set`` ranks
+    1 to ``k``. exp86 round 9 (B2/studio run 1) showed 5 of the 8 listed
+    windows and called ``not_listed``'s 83 "the other 83 windows", margins
+    0.516 to 0.991, where 86 windows were not shown and three of them had
+    margins of 0.26 to 0.47. The reading says the count is the tool's
+    listing's, not a shorter table's.
+
     Parameters
     ----------
     marg
@@ -1199,7 +1207,8 @@ def margin_summary(
         ``n_windows``, ``lowest_margin``, ``median_margin``,
         ``highest_margin``, ``margin_at_budget_cut``, ``listed``,
         ``not_listed`` and ``review_set`` (every window at the budget, listed
-        or not; each ``{n, margin_range}``) and a ``reading``.
+        or not; each ``{n, margin_range, ranks}``, ``ranks`` the first and
+        last rank it covers, ``None`` when it is empty) and a ``reading``.
     """
     n = len(marg)
     ordered = sorted(marg)
@@ -1207,6 +1216,10 @@ def margin_summary(
     rest = [marg[i] for i in ranked[n_listed:]]
     in_review = [marg[i] for i in ranked[: min(k, n)]]
     not_listed = _margin_range(rest)
+
+    def ranks(first: int, last: int) -> list[int] | None:
+        return [first, last] if last >= first else None
+
     reading = (
         f"Over all {n} windows: lowest_margin is the smallest margin (the most "
         "suspect window) and highest_margin the largest; median_margin is the "
@@ -1217,10 +1230,19 @@ def margin_summary(
     )
     if not_listed is None:
         reading += "Every window is listed, so not_listed has no range."
+    elif not listed:
+        reading += (
+            f"No window is listed: not_listed holds all {n} (ranks 1 to {n}), "
+            f"margins from {not_listed[0]:g} to {not_listed[1]:g}."
+        )
     else:
         reading += (
-            f"The {len(rest)} windows not listed (not_listed) have margins from "
-            f"{not_listed[0]:g} to {not_listed[1]:g}."
+            f"The {len(rest)} windows ranked after the tool's {len(listed)} "
+            f"listed (ranks {len(listed) + 1} to {n}; not_listed) have margins "
+            f"from {not_listed[0]:g} to {not_listed[1]:g}. These counts are the "
+            f"tool's listing's: a table of fewer than {len(listed)} rows leaves out "
+            "more windows than not_listed counts, the extra ones with margins no "
+            f"higher than {not_listed[0]:g}."
         )
     return {
         "n_windows": n,
@@ -1228,9 +1250,22 @@ def margin_summary(
         "median_margin": round(ordered[n // 2], 6),
         "highest_margin": round(ordered[-1], 6),
         "margin_at_budget_cut": round(ordered[min(k, n) - 1], 6),
-        "listed": {"n": len(listed), "margin_range": _margin_range(listed)},
-        "not_listed": {"n": len(rest), "margin_range": not_listed},
-        "review_set": {"n": len(in_review), "margin_range": _margin_range(in_review)},
+        "listed": {
+            "n": len(listed),
+            "margin_range": _margin_range(listed),
+            "ranks": ranks(1, len(listed)),
+        },
+        "not_listed": {
+            "n": len(rest),
+            "margin_range": not_listed,
+            "ranks": ranks(len(listed) + 1, n),
+            "after": f"the tool's {len(listed)} listed windows",
+        },
+        "review_set": {
+            "n": len(in_review),
+            "margin_range": _margin_range(in_review),
+            "ranks": ranks(1, len(in_review)),
+        },
         "reading": reading,
     }
 
@@ -1794,13 +1829,57 @@ def more_confident_fact(a_more: int, b_more: int, n_diff: int) -> dict[str, Any]
 
 #: What a comparison's boundary shares count, stated beside them (exp86 round 6
 #: read a 78% boundary share as "boundary placement rather than whole-window
-#: flips").
+#: flips"; round 9, B3/cluster run 3, as "mostly boundary reclassification
+#: rather than wholesale area flips", where a 467-window block had flipped).
+#: A window with one differing neighbour is on a boundary, so a region that
+#: flips whole has its every window on one: the share measures no contiguity.
 BOUNDARY_SHARE_MEANS = (
     "boundary_share_overall and boundary_share_of_differing count windows with at "
     "least one of their 8 neighbours of a different class in map A's PREDICTED "
     "classes: a boundary of map A, not a true class boundary. Every differing "
-    "window is a change of that whole window's class, on a boundary or not."
+    "window is a change of that whole window's class, on a boundary or not. The "
+    "shares measure no contiguity: they do not show whether whole regions flip "
+    "or only their edges."
 )
+
+#: The ``where`` of a comparison whose differing windows touch map A's predicted
+#: boundaries more often than windows overall, and otherwise. Round 9 read
+#: "mostly on class boundaries" as "mostly boundary reclassification".
+WHERE_MORE_ON_BOUNDARIES = (
+    "on map A's predicted-class boundaries more often than windows overall "
+    "(not whether whole regions flip)"
+)
+WHERE_NOT_MORE_ON_BOUNDARIES = (
+    "on map A's predicted-class boundaries no more often than windows overall "
+    "(not whether whole regions flip)"
+)
+
+
+def boundary_share_fact(
+    overall: float, of_differing: float | None, n_windows: int, n_differing: int
+) -> dict[str, Any] | None:
+    """The ``boundary_share`` fact: the differing windows on map A's predicted
+    boundaries, against all windows, and what that does not show.
+
+    exp86 round 9 (B3/cluster run 3) wrote "78.3% of the differing windows sit
+    on class boundaries (vs. 53.9% of all windows) - mostly boundary
+    reclassification rather than wholesale area flips"; the tool measures no
+    contiguity, and the round's audit found, on that pair's own scores,
+    connected blocks of 696, 543 and 467 differing windows. ``None`` when no
+    window differs.
+    """
+    if of_differing is None or not n_differing:
+        return None
+    return {
+        "id": "boundary_share",
+        "sentence": f"{_pct(of_differing)} of the {n_differing:,} differing windows "
+        "have a neighbour of another class in map A's predicted classes, against "
+        f"{_pct(overall)} of all {n_windows:,} windows; this counts neighbours, not "
+        "regions, so it does not show whether whole regions flip or only their "
+        "edges.",
+        "share_of_differing": of_differing,
+        "share_overall": overall,
+    }
 
 
 def compare_scores(
@@ -1899,10 +1978,10 @@ def compare_scores(
             round(sum(on_boundary[i] for i in diff) / len(diff), 6) if diff else None
         )
         out["where"] = (
-            "mostly on class boundaries"
+            WHERE_MORE_ON_BOUNDARIES
             if diff
             and out["boundary_share_of_differing"] > out["boundary_share_overall"]
-            else "spread across the scene"
+            else WHERE_NOT_MORE_ON_BOUNDARIES
         )
         out["boundary_means"] = BOUNDARY_SHARE_MEANS
     # What the differences are, over all of them: the listing below is the first
@@ -1977,6 +2056,15 @@ def compare_scores(
     confident = more_confident_fact(a_more, b_more, len(diff))
     if confident:
         facts.append(confident)
+    if "boundary_share_overall" in out:
+        boundary = boundary_share_fact(
+            out["boundary_share_overall"],
+            out["boundary_share_of_differing"],
+            n,
+            len(diff),
+        )
+        if boundary:
+            facts.append(boundary)
     if grid is not None:
         present = windows if windows is not None else range(n)
         where_diff = [windows[i] for i in diff] if windows is not None else diff

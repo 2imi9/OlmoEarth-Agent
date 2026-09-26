@@ -223,7 +223,7 @@ async def test_a_studio_band_is_scoped_as_no_recorded_experiment_grades_it(
     assert out["must_state"] == [
         "No recorded experiment grades a regression score read as a probability."
     ]
-    assert [f["id"] for f in out["facts"]] == ["margin_ratio"]
+    assert [f["id"] for f in out["facts"]] == ["margin_ratio", "review_set_classes"]
     assert [c["id"] for c in out["forbidden_claims"]] == [
         "error_rate_without_labels",
         "evidence_outside_its_scope",
@@ -441,18 +441,22 @@ async def test_margin_summary_of_a_fully_listed_review_set() -> None:
         ToolContext(studio=None, state=ThreadState()),  # type: ignore[arg-type]
     )
     ms = out["margin_summary"]
-    assert ms["listed"]["n"] == 3 and ms["not_listed"] == {"n": 0, "margin_range": None}
+    assert ms["listed"]["n"] == 3 and ms["listed"]["ranks"] == [1, 3]
+    assert ms["not_listed"]["n"] == 0 and ms["not_listed"]["margin_range"] is None
+    assert ms["not_listed"]["ranks"] is None
     assert ms["lowest_margin"] == pytest.approx(0.1)
     assert ms["median_margin"] == pytest.approx(0.2)
 
 
 @pytest.mark.asyncio
-async def test_a_studio_review_set_says_its_model_was_fine_tuned_on_labels(
+async def test_a_studio_review_set_counts_its_sides_and_its_models_labels(
     httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """exp86 round 9 (B3/studio run 1): "no ground-truth labels exist" of a
-    model fine-tuned on the project's labels. The model's record says it was
-    trained on a label field."""
+    """exp86 round 9: which classes a review set holds read off its listing
+    (B8/cluster run 2), and "no ground-truth labels exist" of a model fine-tuned
+    on the project's labels (B3/studio run 1). The review set's windows are
+    counted by side of the threshold, all of them; the model's record says it
+    was trained on a label field."""
     monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
     record = _record("kb", _BINARY_META)
     record["records"][0]["prediction_id"] = "p1"
@@ -486,6 +490,13 @@ async def test_a_studio_review_set_says_its_model_was_fine_tuned_on_labels(
             {"result_id": "kb", "grid": 4, "budgets": [0.25], "max_listed": 1}, ctx
         )
     facts = {f["id"]: f for f in out["facts"]}
+    # the 3 least decided of 13: 0.52 (above 0.5), 0.47 and 0.45 (at or below)
+    assert facts["review_set_classes"]["sentence"] == (
+        "Of the 3 windows in the review set, 2 (66.7%) are predicted class 0 (at "
+        "or below the threshold 0.5) and 1 (33.3%) class 1 (above the threshold "
+        "0.5); these counts cover all 3, not only the 1 listed."
+    )
+    assert facts["list_file"]["path"] == out["review_list_path"]
     assert facts["labels_in_studio"]["sentence"].startswith(
         "KarstBinary was fine-tuned in Studio on a label field of its project "
         "(train/val split 0.75/0.25)"

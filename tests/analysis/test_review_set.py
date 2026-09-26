@@ -17,6 +17,7 @@ from olmoearth_agent.analysis.output_contract import (
 )
 from olmoearth_agent.analysis.review_set import (
     BOUNDARY_NEIGHBOURS_MEANS,
+    BOUNDARY_SHARE_MEANS,
     EVIDENCE,
     EVIDENCE_LIMITS,
     MUST_STATE_BINARY_SCORE,
@@ -37,6 +38,7 @@ from olmoearth_agent.analysis.review_set import (
     excess_aurc,
     grade_rule,
     margin_ratio_fact,
+    margin_summary,
     margins,
     more_confident_fact,
     must_state_other_model,
@@ -212,6 +214,27 @@ def test_review_set_states_its_evidence_in_one_scoped_sentence() -> None:
         "error_rate_without_labels",
         "evidence_outside_its_scope",
     ]
+
+
+def test_not_listed_says_it_counts_after_the_tools_own_listing() -> None:
+    """exp86 round 9 (B2/studio run 1): 5 of 8 listed windows shown, and the
+    tool's "83 not listed" called "the other 83 windows" (86 were not shown,
+    three of them below the stated range). Each count names its ranks."""
+    marg = [0.01, 0.04, 0.12, 0.19, 0.22, 0.26, 0.39, 0.47, 0.52, 0.8, 0.9, 0.95]
+    ranked = sorted(range(len(marg)), key=marg.__getitem__)
+    summary = margin_summary(marg, ranked, k=9, n_listed=8)
+    assert summary["listed"]["ranks"] == [1, 8]
+    assert summary["review_set"]["ranks"] == [1, 9]
+    not_listed = summary["not_listed"]
+    assert not_listed["n"] == 4 and not_listed["ranks"] == [9, 12]
+    assert not_listed["after"] == "the tool's 8 listed windows"
+    reading = summary["reading"]
+    assert "The 4 windows ranked after the tool's 8 listed (ranks 9 to 12" in reading
+    assert "a table of fewer than 8 rows leaves out more windows" in reading
+    assert "no higher than 0.52" in reading
+    none = margin_summary(marg, ranked, k=9, n_listed=0)
+    assert none["not_listed"]["ranks"] == [1, 12] and none["listed"]["ranks"] is None
+    assert "No window is listed" in none["reading"]
 
 
 def test_the_full_evidence_text_is_kept_for_the_file() -> None:
@@ -417,6 +440,7 @@ def test_margin_ratio_gives_the_whole_review_sets_range_beside_the_listed() -> N
     assert out["margin_summary"]["review_set"] == {
         "n": 4,
         "margin_range": [0.1, 0.8],
+        "ranks": [1, 4],
     }
     (fact,) = out["facts"]
     assert (fact["listed_low"], fact["listed_high"]) == (20.0, 40.0)
@@ -599,6 +623,32 @@ def test_a_comparisons_winner_claim_says_no_labels_were_given_to_it() -> None:
     ]
     assert why.startswith("no labels were given to this comparison")
     assert "nothing here says whether labels for these maps exist" in why
+
+
+def test_a_boundary_share_says_it_does_not_show_whether_regions_flip() -> None:
+    """exp86 round 9 (B3/cluster run 3): "78.3% of the differing windows sit on
+    class boundaries (vs. 53.9%) - mostly boundary reclassification rather than
+    wholesale area flips". A window with one differing neighbour is on a
+    boundary, so a block that flips whole has every window on one."""
+    rows, cols = 8, 8
+    # a 4 x 4 block flips whole in map B; map A's classes form two halves
+    a = [[5.0, 0.1] if c < 4 else [0.1, 5.0] for r in range(rows) for c in range(cols)]
+    block = {r * cols + c for r in range(2, 6) for c in range(2, 6)}
+    b = [row[::-1] if i in block else list(row) for i, row in enumerate(a)]
+    out = compare_scores(a, b, grid=(rows, cols), max_listed=3)
+    assert BOUNDARY_SHARE_MEANS == out["boundary_means"]
+    assert "do not show whether whole regions flip" in out["boundary_means"]
+    assert "not whether whole regions flip" in out["where"]
+    assert "mostly" not in out["where"]
+    (fact,) = [f for f in out["facts"] if f["id"] == "boundary_share"]
+    assert fact["share_of_differing"] == out["boundary_share_of_differing"]
+    assert fact["share_overall"] == out["boundary_share_overall"]
+    assert fact["sentence"].startswith(
+        f"{out['boundary_share_of_differing'] * 100:.1f}% of the 16 differing windows"
+    )
+    assert "does not show whether whole regions flip" in fact["sentence"]
+    same = compare_scores(a, a, grid=(rows, cols), max_listed=3)
+    assert "boundary_share" not in {f["id"] for f in same["facts"]}
 
 
 def test_the_concentration_fact_is_the_contracts() -> None:

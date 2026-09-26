@@ -182,6 +182,49 @@ async def test_a_review_set_of_multiclass_logits_listed_short_passes(
     _assert_passes("olmoearth_review_set", args, out)
 
 
+#: AWF's classes, as a scores file from olmoearth_scores_from_file names them.
+_AWF = {
+    "0": "woodland_forest",
+    "1": "open_water",
+    "2": "shrubland_savanna",
+    "3": "herbaceous_wetland",
+    "4": "grassland_barren",
+    "5": "agriculture_settlement",
+    "6": "montane_forest",
+    "7": "lava_forest",
+    "8": "urban_dense_development",
+}
+
+
+@pytest.mark.asyncio
+async def test_a_review_sets_class_counts_and_its_list_file_pass(
+    tmp_path: Path,
+) -> None:
+    """exp86 round 9, B8/cluster: the classes of the whole review set
+    (review_set_classes) and the sentence naming its CSV (list_file), beside
+    the other claims of a ranking."""
+    rng = random.Random(9)
+    rows = [[rng.gauss(0.0, 2.0) for _ in range(9)] for _ in range(400)]
+    (tmp_path / "awf.json").write_text(
+        json.dumps(
+            {
+                "grid": [20, 20],
+                "scores": rows,
+                "map_class": [max(range(9), key=r.__getitem__) for r in rows],
+                "classes": _AWF,
+                "score_type": "logit",
+                "model": {"repo": "allenai/OlmoEarth-v1-FT-AWF-Base"},
+            }
+        )
+    )
+    args = {"scores_path": str(tmp_path / "awf.json"), "budget": 0.1, "max_listed": 10}
+    out = await _call("olmoearth_review_set", args)
+    assert {"margin_ratio", "review_set_classes", "list_file"} <= {
+        f["id"] for f in out["facts"]
+    }
+    _assert_passes("olmoearth_review_set", args, out)
+
+
 @pytest.mark.parametrize("n_models", [1, 2])
 def test_the_labels_in_studio_fact_passes_beside_a_comparisons_claims(
     n_models: int,

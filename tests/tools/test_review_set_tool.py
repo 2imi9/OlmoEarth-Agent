@@ -18,12 +18,17 @@ from olmoearth_agent.analysis.output_contract import (
 from olmoearth_agent.analysis.review_set import (
     MUST_STATE_MULTICLASS_LOGIT,
     MUST_STATE_NO_WINNER,
+    WHERE_MORE_ON_BOUNDARIES,
+    WHERE_NOT_MORE_ON_BOUNDARIES,
 )
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
-from olmoearth_agent.tools.review_set import build_review_set_tools
+from olmoearth_agent.tools.review_set import (
+    build_review_set_tools,
+    review_set_classes_fact,
+)
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 #: 4x4 grid, two classes. Column 0 is the minority class AND carries the low
@@ -187,7 +192,7 @@ async def test_review_set_scopes_its_evidence_and_saves_the_full_text() -> None:
     assert "suite-margin-wins-every-task" in detail["ranking"]["claims"]
     assert "shrug-signals-rejected" in detail["ranking"]["claims"]
     assert any("predictive entropy" in c.lower() for c in detail["ranking"]["limits"])
-    assert [f["id"] for f in out["facts"]] == ["margin_ratio"]
+    assert [f["id"] for f in out["facts"]] == ["margin_ratio", "review_set_classes"]
 
 
 @pytest.mark.asyncio
@@ -481,7 +486,10 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
         "winner_without_labels",
         "subset_labelling_sufficient",
     ]
-    assert result["where"] in ("mostly on class boundaries", "spread across the scene")
+    # exp86 round 9 (B3/cluster run 3): "mostly on class boundaries" read as
+    # "boundary reclassification rather than wholesale area flips"
+    assert result["where"] in (WHERE_MORE_ON_BOUNDARIES, WHERE_NOT_MORE_ON_BOUNDARIES)
+    assert "not whether whole regions flip" in result["where"]
 
 
 @pytest.mark.asyncio
@@ -505,12 +513,19 @@ async def test_compare_review_lists_ten_inline_and_saves_every_differing_window(
     assert saved["n_differing_total"] == 32
     assert [d["window_index"] for d in saved["differing"]] == list(range(0, n, 2))
     assert saved["differing"][:10] == out["differing"]
-    assert "all 32 are in the file at differing_path" in out["listing_order"]
+    name = Path(out["differing_path"]).name
+    assert f"all 32 are in the file {name}" in out["listing_order"]
     assert "not a sample" in out["listing_order"]
     ids = [f["id"] for f in out["facts"]]
-    assert ids == ["dominant_change", "more_confident_side", "concentration"]
+    assert ids == [
+        "dominant_change",
+        "more_confident_side",
+        "boundary_share",
+        "concentration",
+        "list_file",
+    ]
     assert out["spatial"]["top_band_share"] == 0.25  # every row band holds 8 of 32
-    concentration = out["facts"][2]
+    concentration = out["facts"][3]
     assert concentration["grid"] == [8, 8] and concentration["n_differing"] == 32
     assert concentration["max_band"]["axis"] == "rows"
     fewer = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
@@ -882,7 +897,8 @@ async def test_a_review_set_cut_short_saves_its_full_list_and_says_where(
     assert "lon" not in text and "lat" not in text and "50.0" not in text
     note = out["listing_note"]
     assert "the first 5 of the 20 windows" in note
-    assert "full list of 20" in note and "review_list_path" in note
+    assert f"full list of 20, in the same order, is in the CSV {path.name}" in note
+    assert "review_list_path" not in note
     assert "review_set_evidence.json" in note and "evidence text only" in note
     # Everything listed: no file, and the note says so.
     whole = await tool.handler(  # type: ignore[attr-defined]
@@ -903,11 +919,124 @@ async def test_a_comparisons_listing_says_the_evidence_file_holds_no_windows() -
     out = await tool.handler(  # type: ignore[attr-defined]
         {"scores_a": _SCORES, "scores_b": other, "grid": [4, 4]}, _ctx()
     )
-    assert "differing_path" in out["listing_order"]
+    assert Path(out["differing_path"]).name in out["listing_order"]
     assert (
         "review_set_evidence.json (evidence_detail_path) holds evidence text only"
         in out["listing_order"]
     )
+
+
+# --------------------------------------------------------------------------- what a review set holds, and where its lists are
+
+
+def _classed_scores(tmp_path: Path) -> Path:
+    """A scores file of 40 windows: the 10 least decided are class 1 (water),
+    the next 30 class 0 (forest) then class 2 (crop), by margin."""
+    n = 40
+    rows = [[0.1 + 0.05 * i, 0.0, 0.0] for i in range(n)]
+    classes = [1] * 10 + [0] * 20 + [2] * 10
+    path = tmp_path / "classed.json"
+    path.write_text(
+        json.dumps(
+            {
+                "grid": [5, 8],
+                "scores": rows,
+                "map_class": classes,
+                "classes": {"0": "forest", "1": "water", "2": "crop"},
+            }
+        )
+    )
+    return path
+
+
+@pytest.mark.asyncio
+async def test_the_review_sets_classes_are_counted_over_all_its_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 9 (B8/cluster run 2): "montane_forest vs woodland_forest pairs
+    dominate the list" of an 819-window review set, read off the 10 listed. The
+    fact counts every window of the review set, listed or not."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(_classed_scores(tmp_path)), "budget": 0.5, "max_listed": 5},
+        _ctx(),
+    )
+    # the 5 listed are all water; the 20 in the review set are 10 water, 10 forest
+    assert {r["class_name"] for r in out["review"]} == {"water"}
+    (fact,) = [f for f in out["facts"] if f["id"] == "review_set_classes"]
+    assert fact["n"] == 20 and fact["n_listed"] == 5
+    assert [(c["name"], c["n"], c["share"]) for c in fact["classes"]] == [
+        ("forest", 10, 0.5),
+        ("water", 10, 0.5),
+    ]
+    assert fact["sentence"] == (
+        "Of the 20 windows in the review set, 10 (50.0%) are predicted forest and "
+        "10 (50.0%) water; these counts cover all 20, not only the 5 listed."
+    )
+    whole = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores": _SCORES, "budget": 0.25}, _ctx()
+    )
+    (fact,) = [f for f in whole["facts"] if f["id"] == "review_set_classes"]
+    assert fact["sentence"] == (
+        "Of the 4 windows in the review set, 4 (100.0%) are predicted class 1; "
+        "every one of them is listed."
+    )
+
+
+def test_the_classes_named_one_by_one_are_capped() -> None:
+    full = [{"predicted_class": k} for k in range(14) for _ in range(14 - k)]
+    fact = review_set_classes_fact(full, 3)
+    assert fact is not None and len(fact["classes"]) == 14
+    assert "14 (13.3%) are predicted class 0, 13 (12.4%) class 1" in fact["sentence"]
+    assert "5 (4.8%) class 9" in fact["sentence"]
+    assert "class 10" not in fact["sentence"]
+    assert "and 10 (9.5%) in 4 other classes" in fact["sentence"]
+    assert review_set_classes_fact([], 0) is None
+
+
+@pytest.mark.asyncio
+async def test_a_list_written_to_a_file_is_named_for_the_user(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 9 (B7/files run 1): "All 1,570 differing windows are listed in
+    `differing_path` above", a key the user never sees and a list the answer
+    did not show. The fact names the file and what it holds."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    out = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(_classed_scores(tmp_path)), "budget": 0.5, "max_listed": 5},
+        _ctx(),
+    )
+    (fact,) = [f for f in out["facts"] if f["id"] == "list_file"]
+    assert fact["path"] == out["review_list_path"] and fact["rows"] == 20
+    assert fact["sentence"] == (
+        "The 20 windows of the review set at budget 0.5 are listed, in review "
+        f"order, in {out['review_list_path']}."
+    )
+    assert "review_list_path" not in out["listing_note"]
+    # everything listed: no file, no pointer
+    whole = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
+        {"scores_path": str(_classed_scores(tmp_path)), "budget": 0.1}, _ctx()
+    )
+    assert "list_file" not in {f["id"] for f in whole["facts"]}
+    # a comparison's differing windows
+    n = 64
+    a = [[5.0, 0.1] for _ in range(n)]
+    b = [list(r) for r in a]
+    for i in range(0, n, 2):
+        b[i] = [0.1, 6.0]
+    cmp = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": b, "grid": [8, 8]}, _ctx()
+    )
+    (pointer,) = [f for f in cmp["facts"] if f["id"] == "list_file"]
+    assert pointer["sentence"] == (
+        f"All 32 differing windows are listed, in window order, in "
+        f"{cmp['differing_path']}, each with both maps' class and margin."
+    )
+    assert "differing_path" not in cmp["listing_order"]
+    same = await _tools()["olmoearth_compare_review"].handler(  # type: ignore[attr-defined]
+        {"scores_a": a, "scores_b": a, "grid": [8, 8]}, _ctx()
+    )
+    assert "list_file" not in {f["id"] for f in same.get("facts", [])}
 
 
 # --------------------------------------------------------------------------- north, only on a georeferenced grid
