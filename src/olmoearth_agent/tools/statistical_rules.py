@@ -388,16 +388,19 @@ def review_set_for_unthresholded_regression(
     exp86 round 8 (brief 3 on Studio) offered a "per-class review set" and
     "the most-ambiguous (lowest-margin) windows" of KarstNumber, a band
     declared 0.2 to 1.2 with no threshold, beside the error rate the
-    comparison already forbade (:func:`unthresholded_regression`).
+    comparison already forbade (:func:`unthresholded_regression`). The reason
+    is scoped to a margin- or threshold-based review set of the named band:
+    another band of the run, or a ranking that needs no threshold (a group's
+    disagreement, an ensemble's spread), is not what it forbids.
     """
     return forbidden(
         REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
-        f"{_bands_named(bands)}: a review set ranks windows by their margin, the "
-        "distance from a decision, and a regression band with no decision "
-        "threshold has none: no margins, no 'most ambiguous', 'least certain' or "
-        "lower-confidence windows and no per-class review; the review set needs "
-        "a threshold for this band (olmoearth_review_set_from_result takes "
-        "'threshold')",
+        f"{_bands_named(bands)}: a margin-based review set "
+        "(olmoearth_review_set_from_result) ranks a band's windows by their "
+        "distance from a decision threshold, and this band has none: it has no "
+        "margins, no 'most ambiguous' or lowest-margin windows and no per-class "
+        "review; a review set of this band needs a threshold for it "
+        "(olmoearth_review_set_from_result takes 'threshold')",
     )
 
 

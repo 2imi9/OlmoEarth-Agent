@@ -507,10 +507,11 @@ async def test_group_of_different_properties_is_refused_then_allowed(
     assert allowed["most_divergent_pair"] is None
     assert "rmse_between_models" in allowed["statistics_left_out"]
     assert "ensemble" in allowed["statistics_left_out"]
+    # A group's own ranking of where its results disagree needs no threshold,
+    # so no review set is forbidden here (the fix-r8 review).
     assert {c["id"] for c in allowed["forbidden_claims"]} == {
         "combined_statistic_across_properties",
         "error_rate_for_unthresholded_regression",
-        "review_set_for_unthresholded_regression",
         "winner_without_labels",
         "subset_labelling_sufficient",
         "spatial_pattern_from_one_correlation",

@@ -471,8 +471,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     "one is high where the other is indifferent".
   - A regression band with no threshold forbids a review set
     (`review_set_for_unthresholded_regression`, beside the error-rate claim)
-    in `olmoearth_compare_results` and in `olmoearth_review_set_from_result`'s
-    refusal; both comparisons forbid labelling only the low-confidence windows
+    in `olmoearth_compare_results` (a pair or a series; not a group or an
+    ensemble, whose own ranking of where the results disagree needs no
+    threshold) and in `olmoearth_review_set_from_result`'s refusal, its reason
+    scoped to a margin-based review set of the band it names; both
+    comparisons forbid labelling only the low-confidence windows
     (`subset_labelling_sufficient`: not a sample of the map; the plan tool's
     designs draw from every window).
   - Two dated maps (`olmoearth_compare_review` with dates, a temporal pair or

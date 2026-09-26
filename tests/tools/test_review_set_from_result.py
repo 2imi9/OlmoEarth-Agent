@@ -300,7 +300,7 @@ async def test_another_range_needs_a_threshold(
     }
     review = claims["review_set_for_unthresholded_regression"]
     assert review.startswith("'sample_karst_score' (declared range [0, 10])")
-    assert "needs a threshold for this band" in review
+    assert "a review set of this band needs a threshold for it" in review
     assert ranked["ranked"] is True
     assert "review_set_for_unthresholded_regression" not in {
         c["id"] for c in ranked["forbidden_claims"]

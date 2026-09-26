@@ -220,7 +220,8 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
     no_review = _why(allowed, rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION)
     assert no_review.startswith("'sample_number' (declared range [0.2, 1.2])")
     assert "sample_karst_score" not in no_review
-    assert "the review set needs a threshold for this band" in no_review
+    assert "a margin-based review set" in no_review
+    assert "a review set of this band needs a threshold for it" in no_review
     combined = _why(allowed, rules.COMBINED_STATISTIC_ACROSS_PROPERTIES)
     assert "['sample_karst_score', 'sample_number']" in combined
     # One winner claim, the one that says what the correlation does say.
@@ -296,6 +297,35 @@ async def test_one_unthresholded_property_has_no_error_rate(
         _why(out, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION).count("sample_number")
         == 1
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["group", "ensemble"])
+async def test_a_ranking_that_needs_no_threshold_forbids_no_review_set(
+    mode: str, httpx_mock: HTTPXMock
+) -> None:
+    """The fix-r8 review: in a group (top_disagreement_points) or an ensemble
+    (each window's spread as a confidence) the answer may point to the
+    windows the results disagree on most, with no threshold; only the error
+    rate of a band with none stays forbidden. A pair keeps both claims."""
+    props = {"a1": "sample_number", "b1": "sample_number", "c1": "sample_number"}
+    _mock_pair(httpx_mock, props, 3)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _result(
+            "olmoearth_compare_results",
+            {"result_ids": list(props), "mode": mode, "grid": 3},
+            ctx,
+        )
+        pair = await _result(
+            "olmoearth_compare_results",
+            {"result_ids": ["a1", "b1"], "mode": "pair", "grid": 3},
+            ctx,
+        )
+    assert out["comparable"] is True and out["mode"] == mode
+    assert rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION in _ids(out)
+    assert rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION not in _ids(out)
+    assert rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION in _ids(pair)
 
 
 # --------------------------------------------------------------------------- one correlation

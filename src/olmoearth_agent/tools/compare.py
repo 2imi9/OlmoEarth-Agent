@@ -828,8 +828,12 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     if unthresholded := _unthresholded_regression(s, out):
         claims.append(rules.unthresholded_regression(unthresholded))
         # exp86 round 8 (brief 3 on Studio): a "per-class review set" and the
-        # "most-ambiguous windows" of a band with no threshold.
-        claims.append(rules.review_set_for_unthresholded_regression(unthresholded))
+        # "most-ambiguous windows" of a band with no threshold. Not in a group
+        # or an ensemble, whose own ranking of where the results disagree
+        # (top_disagreement_points, the ensemble's per-window confidence)
+        # needs no threshold and is what those modes are for.
+        if mode in MARGIN_REVIEW_MODES:
+            claims.append(rules.review_set_for_unthresholded_regression(unthresholded))
     if different:
         claims += rules.different_properties(names)
     claims.append(rules.winner_without_labels())  # no labels here; listed once
@@ -863,6 +867,13 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         result, facts=facts, must_state=must_state, forbidden_claims=claims
     )
 
+
+#: The modes whose answers may offer a margin- or threshold-based review set of
+#: a band (olmoearth_review_set_from_result): a group ranks where its results
+#: disagree and an ensemble gives each window a spread-based confidence, both
+#: without a threshold (the fix-r8 review: "open the least confident windows
+#: first" is an ensemble's correct advice).
+MARGIN_REVIEW_MODES = ("pair", "series")
 
 #: Fewer compared cells than this and a comparison that returns a correlation
 #: names a denser grid as a next step (exp86 round 8: 25 cells gave an
