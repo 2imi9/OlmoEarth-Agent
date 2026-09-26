@@ -1811,6 +1811,9 @@ def test_the_users_own_file_and_a_count_of_windows_are_no_list_claim() -> None:
         "the label-design estimator run on that file)."
     )
     assert check_actions(said, run) == []
+    # the user's file said to hold what the user said it holds
+    labels = "The 300 labelled windows are listed in `F3/labels_random_300_s0.csv`."
+    assert check_actions(labels, run) == []
     # the count alone, for a file the user did not name, is no list either
     other = "I need the number of wrong windows in `other/labels.csv`."
     assert check_actions(other, _run(certify)) == []
