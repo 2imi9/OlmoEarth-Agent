@@ -282,7 +282,20 @@ async def test_another_range_needs_a_threshold(
     assert refused["ranked"] is False
     assert "needs a decision threshold" in refused["reason"]
     assert refused["declared_range"] == [0.0, 10.0]
+    # exp86 round 8 (brief 3 on Studio): the most ambiguous windows of a band
+    # with no threshold were offered for review; the refusal forbids it.
+    claims = {c["id"]: c["why"] for c in refused["forbidden_claims"]}
+    assert set(claims) == {
+        "review_set_for_unthresholded_regression",
+        "error_rate_for_unthresholded_regression",
+    }
+    review = claims["review_set_for_unthresholded_regression"]
+    assert review.startswith("'sample_karst_score' (declared range [0, 10])")
+    assert "needs a threshold for this band" in review
     assert ranked["ranked"] is True
+    assert "review_set_for_unthresholded_regression" not in {
+        c["id"] for c in ranked["forbidden_claims"]
+    }
     assert ranked["score_kind"] == "threshold_distance"
     assert ranked["review"][0]["window_index"] == 1  # 5.2, nearest the threshold
     assert ranked["review"][0]["margin"] == pytest.approx(0.02)

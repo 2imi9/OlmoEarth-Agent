@@ -510,6 +510,7 @@ async def test_group_of_different_properties_is_refused_then_allowed(
     assert {c["id"] for c in allowed["forbidden_claims"]} == {
         "combined_statistic_across_properties",
         "error_rate_for_unthresholded_regression",
+        "review_set_for_unthresholded_regression",
         "winner_without_labels",
         "spatial_pattern_from_one_correlation",
     }

@@ -193,6 +193,7 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
     assert allowed["comparable"] is True
     assert _ids(allowed) == {
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
+        rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
         rules.COMBINED_STATISTIC_ACROSS_PROPERTIES,
         rules.WINNER_WITHOUT_LABELS,
         rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
@@ -200,6 +201,12 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
     no_rate = _why(allowed, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION)
     assert no_rate.startswith("'sample_number' (declared range [0.2, 1.2])")
     assert "sample_karst_score" not in no_rate  # a [0, 1] score is decided at 0.5
+    # exp86 round 8 (brief 3 on Studio): a "per-class review set" and the
+    # "most-ambiguous windows" of KarstNumber, which has no threshold.
+    no_review = _why(allowed, rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION)
+    assert no_review.startswith("'sample_number' (declared range [0.2, 1.2])")
+    assert "sample_karst_score" not in no_review
+    assert "the review set needs a threshold for this band" in no_review
     combined = _why(allowed, rules.COMBINED_STATISTIC_ACROSS_PROPERTIES)
     assert "['sample_karst_score', 'sample_number']" in combined
     # One winner claim, the one that says what the correlation does say.
@@ -264,6 +271,7 @@ async def test_one_unthresholded_property_has_no_error_rate(
         )
     assert _ids(out) == {
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
+        rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
         rules.WINNER_WITHOUT_LABELS,
         rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }

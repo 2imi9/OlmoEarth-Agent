@@ -325,21 +325,46 @@ def rule_switch_after_failure(
 # --------------------------------------------------------------------------- claims about comparisons
 
 
-def unthresholded_regression(
-    bands: list[tuple[str | None, tuple[float, float] | None]],
-) -> dict[str, str]:
-    """A regression score with no decision threshold has no error rate."""
-    named = "; ".join(
+def _bands_named(bands: list[tuple[str | None, tuple[float, float] | None]]) -> str:
+    """``'sample_number' (declared range [0.2, 1.2])``, for each band."""
+    return "; ".join(
         f"{name!r} (declared range "
         f"{f'[{rng[0]:g}, {rng[1]:g}]' if rng else 'none'})"
         for name, rng in bands
     )
+
+
+def unthresholded_regression(
+    bands: list[tuple[str | None, tuple[float, float] | None]],
+) -> dict[str, str]:
+    """A regression score with no decision threshold has no error rate."""
     return forbidden(
         ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
-        f"{named}: a per-pixel regression value with no decision threshold "
+        f"{_bands_named(bands)}: a per-pixel regression value with no decision threshold "
         "has no error rate, accuracy, confusion matrix or other "
         "classification metric; one exists only once a threshold is named "
         "(olmoearth_plan_label_sample takes 'threshold')",
+    )
+
+
+def review_set_for_unthresholded_regression(
+    bands: list[tuple[str | None, tuple[float, float] | None]],
+) -> dict[str, str]:
+    """A regression band with no decision threshold has no margin to review by.
+
+    exp86 round 8 (brief 3 on Studio) offered a "per-class review set" and
+    "the most-ambiguous (lowest-margin) windows" of KarstNumber, a band
+    declared 0.2 to 1.2 with no threshold, beside the error rate the
+    comparison already forbade (:func:`unthresholded_regression`).
+    """
+    return forbidden(
+        REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
+        f"{_bands_named(bands)}: a review set ranks windows by their margin, the "
+        "distance from a decision, and a regression band with no decision "
+        "threshold has none: no margins, no 'most ambiguous', 'least certain' or "
+        "lower-confidence windows and no per-class review; the review set needs "
+        "a threshold for this band (olmoearth_review_set_from_result takes "
+        "'threshold')",
     )
 
 

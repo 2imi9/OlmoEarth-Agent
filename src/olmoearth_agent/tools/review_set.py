@@ -955,6 +955,31 @@ def _budgets(raw: Any) -> list[float]:
     return budgets
 
 
+def _refused_regression(refusal: dict[str, Any]) -> dict[str, Any]:
+    """A refused regression band with no threshold, with the claims it forbids.
+
+    A refusal that names a ``declared_range`` is a regression band that is not
+    a ``[0, 1]`` score and came with no threshold: it has no margins to review
+    by and no error rate (exp86 round 8, brief 3 on Studio: the most ambiguous
+    windows of KarstNumber, declared 0.2 to 1.2, offered for review). Any other
+    refusal is returned as it is.
+    """
+    if "declared_range" not in refusal:
+        return refusal
+    rng = refusal.get("declared_range")
+    band = (
+        refusal.get("property_name"),
+        (float(rng[0]), float(rng[1])) if isinstance(rng, list) else None,
+    )
+    return rules.add_contract(
+        refusal,
+        forbidden_claims=[
+            rules.review_set_for_unthresholded_regression([band]),
+            rules.unthresholded_regression([band]),
+        ],
+    )
+
+
 async def _review_set_from_result(
     args: dict[str, Any], ctx: ToolContext
 ) -> dict[str, Any]:
@@ -977,7 +1002,7 @@ async def _review_set_from_result(
         grid_requested=grid_requested,
     )
     if isinstance(sampled, dict):
-        return sampled
+        return _refused_regression(sampled)
 
     ranked = review_set(
         sampled.scores,

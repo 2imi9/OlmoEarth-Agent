@@ -827,6 +827,9 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     claims: list[dict[str, str]] = []
     if unthresholded := _unthresholded_regression(s, out):
         claims.append(rules.unthresholded_regression(unthresholded))
+        # exp86 round 8 (brief 3 on Studio): a "per-class review set" and the
+        # "most-ambiguous windows" of a band with no threshold.
+        claims.append(rules.review_set_for_unthresholded_regression(unthresholded))
     if different:
         claims += rules.different_properties(names)
     claims.append(rules.winner_without_labels())  # no labels here; listed once
