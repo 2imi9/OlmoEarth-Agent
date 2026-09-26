@@ -231,7 +231,7 @@ def test_the_full_evidence_text_is_kept_for_the_file() -> None:
         ("logit", 2, "someone/Other-Model", "not known", "not an OlmoEarth model"),
         ("logit", 2, "allenai/OlmoEarth-v1-FT-AWF-Base", "yes", "two-class margin"),
         ("probability", 9, "allenai/OlmoEarth-v1-Base", "yes", "14 of the suite's 16"),
-        ("logit", 9, "allenai/OlmoEarth-v1-FT-AWF-Base", "in part", "all 16"),
+        ("logit", 9, "allenai/OlmoEarth-v1-FT-AWF-Base", "in part", "14 of 16"),
         (
             "window_confidence_probability",
             9,
@@ -251,6 +251,11 @@ def test_the_scope_sentence_says_whether_the_evidence_covers_the_case(
         # exp86 round 8: the source only, none of its figures or its dataset.
         assert scope["sentence"].startswith(RANKING_SOURCE)
         assert "24" not in scope["sentence"] and "suite" not in scope["sentence"]
+    elif covers == "in part":
+        # The suite measured the probability margin: none of its 24-task
+        # figures, only exp76's about the logit margin itself.
+        assert "24" not in scope["sentence"]
+        assert "not the logit margin" in scope["sentence"]
     else:
         assert scope["sentence"].startswith("Ai2's 24-task embedding suite")
     # A limit goes to must_state as its own short sentence, never the scope.
@@ -993,9 +998,13 @@ def test_no_field_carries_evidence_that_does_not_cover_the_case() -> None:
     assert "51 to 70" in evidence_detail()["comparison"]["reading"]
 
 
-def test_evidence_that_covers_the_case_in_part_keeps_its_figures() -> None:
-    """Multi-class logits of an OlmoEarth model: the suite measured this kind,
-    so its figures stay, and nothing is forbidden as out of scope."""
+def test_evidence_that_covers_the_case_in_part_states_only_its_own_figure() -> None:
+    """Multi-class logits of an OlmoEarth model: the suite measured the
+    probability margin, not the logit margin this ranking uses. The fix-r8
+    review found its 24-task finding in evidence_scope (B8/cluster, all three
+    runs): no field the answer reads carries it, exp76's figure about the
+    logit margin itself stays, and evidence_outside_its_scope names what the
+    suite did not measure."""
     out = review_set(
         [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0]],
         budget=1.0,
@@ -1003,7 +1012,17 @@ def test_evidence_that_covers_the_case_in_part_keeps_its_figures() -> None:
         model="allenai/OlmoEarth-v1-FT-AWF-Base",
     )
     assert out["evidence_covers_this_case"] == "in part"
-    assert "all 16" in out["evidence_scope"]
-    assert "evidence_outside_its_scope" not in {
-        c["id"] for c in out["forbidden_claims"]
-    }
+    read = [out["evidence_scope"], *out["must_state"]] + [
+        f["sentence"] for f in out["facts"]
+    ]
+    for text in read:
+        assert not any(f in text for f in ("24-task", "all 24", "all 16")), text
+    assert "14 of 16" in out["evidence_scope"] and "exp76" in out["evidence_scope"]
+    assert out["must_state"] == [MUST_STATE_MULTICLASS_LOGIT]
+    (claim,) = [
+        c for c in out["forbidden_claims"] if c["id"] == "evidence_outside_its_scope"
+    ]
+    assert "logit margin, which the suite did not measure" in claim["why"]
+    assert "14 of 16" in claim["why"]
+    # The file keeps the suite's finding whole.
+    assert "all 24 tasks" in evidence_detail()["ranking"]["measured"]

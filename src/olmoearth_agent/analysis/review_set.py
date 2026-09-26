@@ -190,10 +190,18 @@ COVERS = ("yes", "in part", "no", "not known")
 #: says it does not cover the case. exp86 round 8: "the more confident side was
 #: only right 51-70% of the time in comparable cases" (brief 3 on the cluster)
 #: and "the two Sen1Floods11 flood maps" (brief 7 on files), for a pair the
-#: comparison said its evidence does not cover. ``"in part"`` keeps its
-#: numbers: they measure this case's kind (an OlmoEarth model's multi-class
-#: scores), and the part they do not cover is what they state.
+#: comparison said its evidence does not cover. ``"in part"`` (an OlmoEarth
+#: model's multi-class logits) keeps only exp76's figure about the logit margin
+#: itself, the case's own evidence; the suite's 24-task finding, measured on
+#: the probability margin, stays in the file (:data:`PARTLY_COVERED`).
 NOT_COVERED = ("no", "not known")
+
+#: The value for which the evidence covers the case's kind but not its form:
+#: the suite measured the probability margin, and these rows are logits.
+#: ``evidence_outside_its_scope`` is emitted, naming what the suite did not
+#: measure (the exp76 review of fix-r8: the 24-task figure sat in
+#: ``evidence_scope`` beside a ranking by the logit margin).
+PARTLY_COVERED = "in part"
 
 #: Where the ranking evidence was measured, named without its numbers or its
 #: dataset (the suite and its figures stay in :func:`evidence_detail`).
@@ -355,13 +363,16 @@ def ranking_evidence_scope(
             "covers": "yes",
             "must_state": None,
         }
+    # Logits: the suite's finding is about the probability margin, so none of
+    # its figures is stated; exp76's figure about the logit margin itself is.
     return {
-        "sentence": f"{SUITE_MEASURED}, which covers this case only in part: these "
-        f"are logits over {n_classes} classes, and the logit margin ranked errors "
-        "slightly worse than the probability margin on all 16 of the suite's "
-        "multi-class tasks (exp76).",
+        "sentence": "The ranking evidence (exp70 of 2imi9/olmoearth_inferenceX) "
+        "measured OlmoEarth models' probability margin, not the logit margin this "
+        f"ranking uses over {n_classes} classes, so it covers this case only in "
+        "part; on 14 of 16 multi-class suite tasks the logit margin ranked errors "
+        "worse than one minus the top probability (exp76).",
         "source": "exp70",
-        "covers": "in part",
+        "covers": PARTLY_COVERED,
         "must_state": MUST_STATE_MULTICLASS_LOGIT,
     }
 
@@ -388,9 +399,26 @@ def comparison_evidence_scope() -> dict[str, Any]:
 def evidence_outside_scope(scope: dict[str, Any]) -> list[dict[str, str]]:
     """The ``evidence_outside_its_scope`` claim for a scope that does not cover the case.
 
-    Empty when the evidence covers the case, in whole or in part. The reason
-    names the source, never its numbers or dataset.
+    Empty when the evidence covers the case. Covered only in part (multi-class
+    logits), the reason names what the suite did not measure, the logit
+    margin, and the one figure that is about it (exp76). Otherwise it names
+    the source, never its numbers or dataset.
     """
+    if scope.get("covers") == PARTLY_COVERED:
+        return [
+            {
+                "id": EVIDENCE_OUTSIDE_ITS_SCOPE,
+                "why": "the ranking evidence (exp70) measured the probability "
+                "margin, and this ranking uses the logit margin, which the suite "
+                "did not measure as a ranker against no-model controls: its "
+                "finding that the margin ranked errors better than every control "
+                "does not carry over to this ranking, neither 'in comparable "
+                "cases' nor as 'the evidence behind this ranking'; the only "
+                "figure about this form is exp76's (the logit margin ranked "
+                "errors worse than one minus the top probability on 14 of 16 "
+                "multi-class suite tasks)",
+            }
+        ]
     if scope.get("covers") not in NOT_COVERED:
         return []
     source = str(scope.get("source") or "upstream")

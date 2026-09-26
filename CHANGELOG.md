@@ -488,7 +488,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     times", a provider's multi-class limit reaches `must_state` only where
     the suite covers the case, and `evidence_outside_its_scope` is forbidden.
     Round 8 wrote "51-70% of the time in comparable cases" and called a
-    GEOID-Flood pair "Sen1Floods11 flood maps". The file keeps the full text.
+    GEOID-Flood pair "Sen1Floods11 flood maps". Where it covers the case only
+    in part (an OlmoEarth model's multi-class logits; the suite measured the
+    probability margin), `evidence_scope` carries none of the suite's 24-task
+    figures, only exp76's about the logit margin itself (worse than one minus
+    the top probability on 14 of 16 multi-class tasks), and
+    `evidence_outside_its_scope` names the logit margin as what the suite did
+    not measure. The file keeps the full text.
   - A review set listed short (`olmoearth_review_set`, and the largest
     budget's in `olmoearth_review_set_from_result`) saves every window of it
     to a CSV beside the evidence file (rank, window, row, col, margin, class
