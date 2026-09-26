@@ -390,6 +390,52 @@ def labelling_low_confidence_only() -> dict[str, str]:
     )
 
 
+#: Stated with a comparison of maps of different or overlapping times (the
+#: exp86 round 7 build's dates sentence, merged): exp86 round 8 offered labels
+#: for "either date" (brief 3 on the cluster), or for one date "plus a
+#: date-matched second inference" (brief 7 on files), to settle which is right.
+DATED_MAPS_MUST_STATE = (
+    "Maps of different times may differ by real change; labels for one date "
+    "grade only that date's map; each map needs its own date's reference."
+)
+
+
+def one_reference_settles_two_dates(
+    a: str | None = None,
+    b: str | None = None,
+    labels: str | None = None,
+    *,
+    partly: bool = False,
+) -> dict[str, str]:
+    """Labels for one date, or one reference and another run, settle nothing across dates.
+
+    ``a`` and ``b`` are the maps' dates, ``labels`` the labels' date when
+    given; ``partly`` is set when only one map's date is known. exp86 round 8:
+    "if you have reference labels for either date ... I can grade which map is
+    right" (brief 3 on the cluster), "or for at least one, plus a date-matched
+    second inference" (brief 7 on files).
+    """
+    if partly:
+        head = (
+            "only one map's date is known, so labels or a reference for that "
+            "date cannot grade the other map"
+        )
+    else:
+        when = f" ({a} and {b})" if a and b else ""
+        head = (
+            f"the maps describe different times{when}: labels or a reference for "
+            "one date grade only the map of that date, and would count the other "
+            "wrong wherever the ground changed"
+        )
+    dated = f" (labels dated {labels} grade only a map of that date)" if labels else ""
+    return forbidden(
+        ONE_REFERENCE_SETTLES_TWO_DATES,
+        f"{head}; one reference plus another model run adds an unlabelled map "
+        "and settles nothing; to say which map is right where they differ, each "
+        f"map needs a reference of its own date{dated}",
+    )
+
+
 def different_properties(names: Iterable[str | None]) -> list[dict[str, str]]:
     """Two properties: no statistic combines them, and no side wins without labels."""
     distinct = sorted({n for n in names if n})

@@ -156,6 +156,11 @@ async def test_trace_orders_by_date_and_traces_shifts(
     assert "spatial_pattern_from_one_correlation" in {
         c["id"] for c in out["forbidden_claims"]
     }
+    # Dated maps: labels for one date grade only that date's map (exp86 round 8).
+    assert "one_reference_settles_two_dates" in {
+        c["id"] for c in out["forbidden_claims"]
+    }
+    assert out["must_state"][0].startswith("Maps of different times")
     assert out["steps"][0]["from"] == {"result_id": "ra", "date": _PREDICTIONS["ra"][1]}
     assert out["steps"][0]["to"] == {"result_id": "rb", "date": _PREDICTIONS["rb"][1]}
     trajectory = out["trajectory"]

@@ -836,9 +836,14 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     # "Which is right" points to labelling; exp86 round 8 (brief 3 on Studio,
     # run 3) offered a sample of each map's low-confidence windows only.
     claims.append(rules.labelling_low_confidence_only())
-    facts, must_state, forbid, next_steps = _correlation_contract(
+    must_state: list[str] = []
+    if mode == "series" or (mode == "pair" and kind == "temporal"):
+        must_state.append(rules.DATED_MAPS_MUST_STATE)
+        claims += _dated_claims(dates if mode == "pair" else None)
+    facts, said, forbid, next_steps = _correlation_contract(
         _correlations(mode, out), mode=mode, grid=grid
     )
+    must_state += said
     claims += forbid
     result: dict[str, Any] = {
         "comparable": True,
@@ -944,6 +949,21 @@ def _correlation_contract(
                 "the correlation's interval further."
             )
     return facts, must_state, claims, next_steps
+
+
+def _dated_claims(dates: list[str | None] | None) -> list[dict[str, str]]:
+    """The claims of a comparison of one model's maps at different times.
+
+    Another unlabelled date settles nothing, and neither do labels for one
+    date, nor one reference and another model run: exp86 round 8 (brief 3 on
+    the cluster, brief 7 on files) offered both through
+    olmoearth_compare_review; a temporal pair or a series here is the same
+    question on Studio results. ``dates`` are a pair's two dates; a series
+    names none.
+    """
+    a, b = (dates[0], dates[1]) if dates and len(dates) == 2 else (None, None)
+    another = rules.across_dates({"a": a, "b": b})[0]
+    return [another, rules.one_reference_settles_two_dates(a, b)]
 
 
 def _unthresholded_regression(

@@ -528,11 +528,10 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
     return reading
 
 
-#: Stated with a comparison of maps of different or overlapping times.
-DIFFERENT_TIMES_MUST_STATE = (
-    "The maps describe different times, so where they differ the ground may have "
-    "changed; a difference is not by itself an error."
-)
+#: Stated with a comparison of maps of different or overlapping times: the
+#: dates sentence merged with what labels for one date can grade (exp86 round
+#: 8, brief 3 on the cluster and brief 7 on files).
+DIFFERENT_TIMES_MUST_STATE = rules.DATED_MAPS_MUST_STATE
 
 #: Stated with a comparison where only one map's date was given.
 PARTLY_DATED_MUST_STATE = (
@@ -686,14 +685,20 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
     if dates.get("assessed"):
         if dates.get("status") in ("different_time", "overlapping_time"):
             # exp86 round 7 (brief 3, cluster): "run a third dated map" to
-            # check the change; another unlabelled date cannot settle it.
-            rules.add_contract(out, forbidden_claims=rules.across_dates(dates))
+            # check the change; another unlabelled date cannot settle it. Round
+            # 8: labels for "either date", or one reference "plus a date-matched
+            # second inference" (brief 7 on files), cannot either.
+            one = rules.one_reference_settles_two_dates(
+                dates.get("a"), dates.get("b"), dates.get("labels")
+            )
+            rules.add_contract(out, forbidden_claims=[*rules.across_dates(dates), one])
             out["which_side_is_right"] = (
                 "not graded: the maps describe different times, so a window where "
-                "they differ may have changed on the ground; "
+                "they differ may have changed on the ground, and each map needs a "
+                "reference of its own date; "
                 + (
-                    "labels would be graded against their own date "
-                    f"({dates.get('labels')}) only"
+                    f"labels dated {dates.get('labels')} grade only a map of that "
+                    "date"
                     if dates.get("labels")
                     else "no labels_date was given, so no grading is possible even "
                     "with labels"
@@ -706,6 +711,10 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 "told from a change on the ground"
             )
             add_must_state(out, [PARTLY_DATED_MUST_STATE])
+            rules.add_contract(
+                out,
+                forbidden_claims=[rules.one_reference_settles_two_dates(partly=True)],
+            )
     # No labels are taken here, whatever the dates; kept once when the dates
     # block has already listed it with the labels' date.
     winner = rules.winner_without_labels(rules.MORE_CONFIDENT_IS_NOT_RIGHT)

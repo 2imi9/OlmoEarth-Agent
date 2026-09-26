@@ -75,6 +75,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
     assert apart["dates"]["status"] == "different_time"
     assert _ids(apart) == {
         rules.ANOTHER_DATE_SETTLES_IT,
+        rules.ONE_REFERENCE_SETTLES_TWO_DATES,
         rules.WINNER_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
     }
@@ -91,6 +92,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
     assert overlap["dates"]["status"] == "overlapping_time"
     assert _ids(overlap) == {
         rules.ANOTHER_DATE_SETTLES_IT,
+        rules.ONE_REFERENCE_SETTLES_TWO_DATES,
         rules.WINNER_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
     }
@@ -412,3 +414,75 @@ async def test_every_comparison_forbids_labelling_only_its_low_confidence_window
         {"scores_a": [[0.2, 0.8], [0.7, 0.3]], "scores_b": [[0.2, 0.8], [0.3, 0.7]]},
     )
     _assert_whole_map_labelling(scores)
+
+
+# --------------------------------------------------------------------------- two dated maps
+
+
+@pytest.mark.asyncio
+async def test_labels_for_one_date_do_not_settle_two_dated_maps() -> None:
+    """exp86 round 8: "if you have reference labels for either date ... I can
+    grade which map is right" (brief 3 on the cluster), and "for at least one,
+    plus a date-matched second inference" (brief 7 on files). Labels grade
+    only the map of their date; each map needs a reference of its own."""
+    pytest.importorskip("oe_inferencex.compare")
+    a = [[0.2, 0.8], [0.7, 0.3], [0.4, 0.6]]
+    b = [[0.2, 0.8], [0.3, 0.7], [0.4, 0.6]]
+    apart = await _result(
+        "olmoearth_compare_review",
+        {
+            "scores_a": a,
+            "scores_b": b,
+            "date_a": "2023-01-01/2023-12-31",
+            "date_b": "2022-01-01/2022-12-31",
+            "labels_date": "2023-06-01",
+        },
+    )
+    one = _why(apart, rules.ONE_REFERENCE_SETTLES_TWO_DATES)
+    assert "(2023-01-01/2023-12-31 and 2022-01-01/2022-12-31)" in one
+    assert "grade only the map of that date" in one
+    assert "one reference plus another model run" in one
+    assert "each map needs a reference of its own date" in one
+    assert "labels dated 2023-06-01 grade only a map of that date" in one
+    assert rules.DATED_MAPS_MUST_STATE in apart["must_state"]
+    assert "each map needs a reference of its own date" in apart["which_side_is_right"]
+    partly = await _result(
+        "olmoearth_compare_review",
+        {"scores_a": a, "scores_b": b, "date_a": "2023-01-01/2023-12-31"},
+    )
+    assert "only one map's date is known" in _why(
+        partly, rules.ONE_REFERENCE_SETTLES_TWO_DATES
+    )
+    # Maps of one time, or of no stated time, are not two dated maps.
+    same = await _result(
+        "olmoearth_compare_review",
+        {"scores_a": a, "scores_b": b, "date_a": "2023-03-01", "date_b": "2023-03-01"},
+    )
+    assert rules.ONE_REFERENCE_SETTLES_TWO_DATES not in _ids(same)
+
+
+@pytest.mark.asyncio
+async def test_a_temporal_studio_pair_needs_a_reference_for_each_date(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The same question on two Studio results of one model at two dates."""
+    _mock_pair(httpx_mock, {"a1": "sample_karst_score", "b1": "sample_karst_score"}, 3)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        temporal = await _result(
+            "olmoearth_compare_results",
+            {"result_ids": ["a1", "b1"], "grid": 3, "kind": "temporal"},
+            ctx,
+        )
+        across = await _result(
+            "olmoearth_compare_results",
+            {"result_ids": ["a1", "b1"], "grid": 3, "kind": "cross_model"},
+            ctx,
+        )
+    assert {
+        rules.ONE_REFERENCE_SETTLES_TWO_DATES,
+        rules.ANOTHER_DATE_SETTLES_IT,
+    } <= _ids(temporal)
+    assert temporal["must_state"][0] == rules.DATED_MAPS_MUST_STATE
+    assert rules.ONE_REFERENCE_SETTLES_TWO_DATES not in _ids(across)
+    assert rules.DATED_MAPS_MUST_STATE not in across["must_state"]

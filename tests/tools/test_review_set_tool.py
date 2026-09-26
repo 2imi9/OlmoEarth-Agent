@@ -633,6 +633,7 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
     assert {c["id"] for c in apart["forbidden_claims"]} == {
         "winner_without_labels",
         "another_date_settles_it",
+        "one_reference_settles_two_dates",
         "subset_labelling_sufficient",
     }
     partly = await tool.handler(  # type: ignore[attr-defined]
@@ -640,6 +641,7 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
     )
     assert "Only one map's date" in partly["must_state"][1]
     assert [c["id"] for c in partly["forbidden_claims"]] == [
+        "one_reference_settles_two_dates",
         "winner_without_labels",
         "subset_labelling_sufficient",
     ]
