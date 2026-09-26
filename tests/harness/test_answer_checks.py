@@ -661,6 +661,85 @@ def test_the_harness_spill_file_is_a_written_file() -> None:
     assert _flagged(check_actions, f"The full list is saved in `{_SCORES}`.", run)
 
 
+_WS = "/runs/B8/cluster/2/workspace"
+
+
+def _reviewed() -> RunEvidence:
+    """exp86 round 8, B8/cluster: a scores file, then a review set that lists 50
+    of its 819 windows and writes only its evidence text."""
+    return _run(
+        _record(
+            "olmoearth_scores_from_file",
+            {"scores_path": f"{_WS}/scores_run_AWF_a7c40be9_p4.json"},
+            run_dir="C1/awf",
+        ),
+        _record(
+            "olmoearth_review_set",
+            {
+                "n_review": 819,
+                "evidence_detail_path": f"{_WS}/review_set_evidence.json",
+            },
+            scores_path=f"{_WS}/scores_run_AWF_a7c40be9_p4.json",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # exp86 round 8, B8/cluster runs 2 and 3
+        "The rest of the list and the evidence file are saved under the run's "
+        "workspace (`review_set_evidence.json`).",
+        "Full list (819 windows) and per-window scores are saved in the run's "
+        "workspace (`review_set_evidence.json`).",
+        "All 819 windows are listed in `.../workspace/review_set_evidence.json`.",
+        "Full ranking: `review_set_evidence.json`.",
+        # a file no tool of the run named
+        "The full list is in `review_windows.csv`.",
+    ],
+)
+def test_a_list_said_to_be_in_a_file_no_tool_names_as_a_list_is_flagged(
+    sentence: str,
+) -> None:
+    """The evidence file is named by its key (evidence_detail_path), not by the
+    "review" in its name, and a list claimed in a file needs a list's key."""
+    violations = check_actions(sentence, _reviewed())
+    assert [v["text"] for v in violations] == [sentence]
+    assert "holds the list" in violations[0]["detail"]
+
+
+def test_what_the_evidence_and_scores_files_hold_may_be_said_saved() -> None:
+    for fine in (
+        "The evidence file is saved as `review_set_evidence.json`.",
+        "Scores are saved at `scores_run_AWF_a7c40be9_p4.json`.",
+        "Per-window scores for all 16,384 windows are saved in "
+        "`scores_run_AWF_a7c40be9_p4.json`.",
+    ):
+        assert check_actions(fine, _reviewed()) == [], fine
+
+
+def test_a_list_in_the_file_a_tool_names_as_the_list_passes() -> None:
+    """exp86 round 8, B3/cluster and B7/files: the differing windows are in the
+    file at differing_path, and the answers said so in four ways."""
+    differing = "/runs/B3/cluster/1/workspace/compare_differing_df789c0586.json"
+    run = _run(_record("compare_review", {"differing_path": differing}))
+    for fine in (
+        "Full list of the 3,807 differing windows: "
+        "`.../workspace/compare_differing_df789c0586.json`.",
+        "All 3,807 differing windows are listed in "
+        "`.../workspace/compare_differing_df789c0586.json`.",
+        "full list in `compare_differing_df789c0586.json`",
+        "All 1,570 differing windows (with margins) are saved at differing_path "
+        "(`.../compare_differing_df789c0586.json`).",
+        # not a claim
+        "I can list the windows in `windows.csv` if you want.",
+        "Compared F4/emsr279-11_s1_pre.json against F4/emsr279-11_s1_post.json "
+        "over their shared windows.",
+    ):
+        assert check_actions(fine, run) == [], fine
+    assert _flagged(check_actions, "The full list is in `other_windows.json`.", run)
+
+
 def test_items_said_to_be_listed_must_be_in_the_answer_on_the_cli() -> None:
     """Round 6, B4/studio run 3: "The first 30 windows are listed above"."""
     run = _run(_record("plan", {"n_windows_listed": 50}))

@@ -226,6 +226,26 @@ class RunEvidence:
                     add(key, value)
         return out
 
+    @cached_property
+    def list_files(self) -> frozenset[str]:
+        """The paths a tool of this run names as holding a list (:func:`_holds_list`).
+
+        Any path in a successful result, an echoed input included (the design
+        a tool read), under a key that names a list; and the harness's spill
+        of a result, which holds that result's listings whole.
+        """
+        out: set[str] = set()
+        for record in self.tools:
+            named = [("saved_to", record.spilled_to)] if record.spilled_to else []
+            if record.ok:
+                named += [
+                    (k, v)
+                    for k, v in _strings(record.result)
+                    if "://" not in v and _FILE_RE.search(v)
+                ]
+            out.update(path for key, path in named if _holds_list(key, path))
+        return frozenset(out)
+
 
 #: Words of a result's key that say the path under it was written.
 _OUTPUT_KEY_WORDS = frozenset(
@@ -602,6 +622,18 @@ def _example_before(s: str, start: int) -> bool:
     or to the end of the bracket the cue opens in.
     """
     return _parse(s).example_before(start)
+
+
+def _label_start(p: _Parse, lo: int) -> int:
+    """Where the label a colon ends just before ``lo`` starts, or ``lo``.
+
+    "**Where they differ:** effectively everywhere" and "Full list of the
+    differing windows: <file>" state their subject in the label.
+    """
+    at = lo - 1
+    while at >= 0 and p.masked[at].isspace():
+        at -= 1
+    return p.span(at, at + 1)[0] if at >= 0 and p.masked[at] == ":" else lo
 
 
 # --------------------------------------------------------------------------
@@ -1393,9 +1425,6 @@ _HEDGE_RE = re.compile(
     r"when\s+you|to\s+be)\b",
     re.I,
 )
-_LIST_CLAIM_RE = re.compile(
-    r"\b(?:list|listing|ranking|ranked\s+windows|review\s+set|review\s+list)\b", re.I
-)
 #: The words of a result key that say the file it names is a list.
 _LIST_FILE_WORDS = frozenset(
     {
@@ -1464,14 +1493,86 @@ def _file_matches(named: str, path: str) -> bool:
     return bool(parts)
 
 
-def _is_list_file(key: str, path: str) -> bool:
-    words = {w.lower() for w in re.split(r"[^A-Za-z]+", key) if w}
+#: Words of a result's key that say only where a file is, not what it holds.
+_PLACE_KEY_WORDS = _OUTPUT_KEY_WORDS | {
+    "path",
+    "paths",
+    "file",
+    "files",
+    "filename",
+    "name",
+    "dir",
+    "directory",
+    "location",
+    "to",
+    "at",
+}
+
+
+def _holds_list(key: str, path: str) -> bool:
+    """Whether a result names ``path`` as holding a list, by the key it is under.
+
+    A key that names its content says what the file holds, and it is a list
+    only when that content is one (:data:`_LIST_FILE_WORDS`: ``differing_path``,
+    ``labels_csv_path``, a ``review_list_path``). ``evidence_detail_path``
+    names evidence and ``scores_path`` scores, whatever the file is called:
+    exp86 round 8 (B8/cluster runs 2 and 3) said the 819-window review list
+    was saved in ``review_set_evidence.json``, which holds evidence text only,
+    and the check read "review" in its name as a list. Only a key that names
+    no content (``out_path``, the harness's ``saved_to``) leaves the file's
+    name to tell.
+    """
+    words = {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", key)}
+    content = words - _PLACE_KEY_WORDS
+    if content:
+        return bool(content & _LIST_FILE_WORDS)
     stem = os.path.basename(path).lower()
-    return (
-        bool(words & _LIST_FILE_WORDS)
-        or stem.endswith((".csv", ".tsv"))
-        or any(w in stem for w in ("list", "review", "differing", "to_label"))
+    return stem.endswith((".csv", ".tsv")) or any(
+        w in stem for w in ("list", "review", "differing", "to_label")
     )
+
+
+#: A list, a ranking or the windows, as what a claim puts in a file.
+_LIST_NOUN_RE = re.compile(
+    r"\b(?:lists?|listing|ranking|ranked\s+(?:windows|list)|review\s+(?:set|list))\b",
+    re.I,
+)
+_WINDOWS_RE = re.compile(r"\bwindows\b", re.I)
+#: A comma between clauses, not one inside a number ("3,807").
+_COMMA_RE = re.compile(r",(?!\d)")
+_SCORES_WORD_RE = re.compile(r"\bscores?\b", re.I)
+
+
+def _is_listy(subject: str) -> bool:
+    """Whether a claim's subject is a list: a list or ranking, or windows
+    ("all 819 windows") that are not scores ("scores for all windows")."""
+    return bool(_LIST_NOUN_RE.search(subject)) or bool(
+        _WINDOWS_RE.search(subject) and not _SCORES_WORD_RE.search(subject)
+    )
+
+
+def _subject(s: str, lo: int, at: int) -> str:
+    """What a claim at ``at`` says of: its clause before it, from the last comma
+    (brackets kept: "Full list (819 windows) and per-window scores are saved")."""
+    commas = [m.end() for m in _COMMA_RE.finditer(_parse(s).masked, lo, at)]
+    return s[(commas[-1] if commas else lo) : at]
+
+
+def _not_a_list_file(named: list[str], run: RunEvidence) -> str:
+    """Why the files an answer says hold a list do not: what the run says they are."""
+    for f in named:
+        for key, path in run.written_files:
+            if _file_matches(f, path):
+                return (
+                    f"says {f} holds the list; the tool that wrote it names it "
+                    f"{key}, not a list"
+                    + (
+                        f" (a list is in {', '.join(sorted(os.path.basename(p) for p in run.list_files))})"
+                        if run.list_files
+                        else ""
+                    )
+                )
+    return f"says {named[0]} holds the list; no tool of this run names it as holding a list"
 
 
 def _save_violation(s: str, text: str, run: RunEvidence) -> str | None:
@@ -1485,21 +1586,65 @@ def _save_violation(s: str, text: str, run: RunEvidence) -> str | None:
     named = [f.group() for f in _FILE_RE.finditer(text)]
     # What was saved: the word after "the saved", else the clause's subject.
     if m.group().lower().startswith("the saved"):
-        listy = bool(_LIST_CLAIM_RE.match(m.group().split()[-1]))
+        listy = bool(_LIST_NOUN_RE.match(m.group().split()[-1]))
     else:
-        listy = bool(_LIST_CLAIM_RE.search(s[max(lo, m.start() - 40) : m.start()]))
-    pool = [p for k, p in written if not listy or _is_list_file(k, p)]
+        listy = _is_listy(_subject(s, lo, m.start()))
+    pool = [p for _, p in written if not listy or p in run.list_files]
     if named:
         if any(_file_matches(f, p) for f in named for p in pool):
             return None
+        if listy:
+            return _not_a_list_file(named, run)
         return (
             f"says {named[0]} holds what was saved; no tool of this run reported "
-            f"writing it{' as a list' if listy else ''}"
+            "writing it"
         )
     if pool:
         return None
     what = "a list" if listy and written else "a file"
     return f"says something was saved; no tool of this run reported writing {what}"
+
+
+#: A claim that a list sits in a file, without a save verb: "are listed in",
+#: "full list in", "Full list of the differing windows: <file>".
+_LISTED_IN_RE = re.compile(
+    r"\b(?:listed|enumerated|tabulated|ranked|kept|held|available|included|"
+    r"recorded)\s+(?:\w+\s+){0,3}?(?:in|at|under|inside|within)\b",
+    re.I,
+)
+#: Right before the file: "in", "at", "under" or a label's colon, with the
+#: path's leading directories ("in .../workspace/").
+_AT_FILE_RE = re.compile(
+    r"(?:\b(?:in|at|under|inside|within)\b|:)\s*[(\[]?\s*(?:the\s+(?:file|json|"
+    r"csv)\s+)?\S*$",
+    re.I,
+)
+
+
+def _list_location_violation(s: str, run: RunEvidence) -> str | None:
+    """A list, a ranking or the windows said to be in a named file that holds none.
+
+    The file must be one a tool of the run names as holding a list
+    (:attr:`RunEvidence.list_files`): a file the run wrote that its tool
+    names as something else (``evidence_detail_path``, ``scores_path``) is
+    a violation, and so is a file no tool named. A list named in a label
+    ("Full list of the differing windows: <file>") is read with its label.
+    """
+    p = _parse(s)
+    for f in _FILE_RE.finditer(s):
+        lo = _label_start(p, p.region(f.start(), f.end())[0])
+        pre = s[lo : f.start()]
+        claim = _LISTED_IN_RE.search(pre)
+        if not (claim or (_LIST_NOUN_RE.search(pre) and _AT_FILE_RE.search(pre))):
+            continue
+        if not _is_listy(_subject(s, lo, lo + (claim.start() if claim else len(pre)))):
+            continue
+        if _negated(pre) or _HEDGE_RE.search(pre):
+            continue
+        if any(_file_matches(f.group(), path) for path in run.list_files):
+            continue
+        return _not_a_list_file([f.group()], run)
+    return None
 
 
 def _listing_violation(
@@ -1533,8 +1678,10 @@ def check_actions(answer: str, run: RunEvidence) -> list[Violation]:
 
     A save claim is backed by a file a tool of this run reported writing: the
     file it names (``...`` elisions allowed), or, when it names none, any
-    file; a claim that a *list* was saved needs a file a tool reported as a
-    list (by its key or name, or a CSV). A claim that items are listed above
+    file; a claim that a *list* (a ranking, the windows) was saved, or is
+    listed in a named file, needs a file a tool names as holding a list: by
+    its key, or by its name only under a key that names no content
+    (:func:`_holds_list`). A claim that items are listed above
     or below, or that the first N are, is backed by that many list items in
     the answer on that side of it; on the ``"web"`` surface, where tool
     results are shown above the answer, a claim of items above is not
@@ -1545,6 +1692,8 @@ def check_actions(answer: str, run: RunEvidence) -> list[Violation]:
     for sent in sentences(answer):
         s = _plain(sent.text)
         detail = _save_violation(s, sent.text, run)
+        if detail is None and not _SAVE_RE.search(s):
+            detail = _list_location_violation(s, run)
         if detail is None:
             line_no = answer.count("\n", 0, sent.start)
             detail = _listing_violation(s, lines, line_no, run.surface)
