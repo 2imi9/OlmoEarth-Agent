@@ -1268,6 +1268,50 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "guarantee covers only an alpha fixed before seeing the labels.",
         ],
     ),
+    "margin_as_error_probability": (
+        [
+            # exp86 round 9, B8/cluster runs 2 and 3, B2/studio run 1
+            "The margins of the flagged windows sit far below the median, so "
+            "they're most likely mislabeled.",
+            "When the top two class logits are nearly tied, the argmax label is "
+            "most likely wrong there.",
+            "Any of them could flip with a small score change, making them the "
+            "likeliest spots for a wrong call.",
+            "These windows are probably errors.",
+            # round 8, B8/cluster runs 1 and 2 (an order: read where the
+            # evidence does not cover the case, as here)
+            "So those are the most likely places for a wrong label.",
+            "So those are the windows most likely to be wrong.",
+            "These windows are likely mislabelled.",
+            "The margin gives each window's probability of error.",
+            "These windows are more likely wrong than right.",
+        ],
+        [
+            # what the tools say, and rewordings
+            "These are the least decided windows.",
+            "The most uncertain windows are checked first.",
+            "The margin orders windows for review; it is not a probability of "
+            "error.",
+            "Margins are not error probabilities.",
+            "This ranking uses the logit margin; on Ai2's suite one minus the top "
+            "probability ranked errors better on 14 of 16 multi-class tasks.",
+            "No recorded experiment grades a regression score read as a "
+            "probability.",
+            # round 8, B2/studio run 1; round 6, B2/studio run 3
+            'A low margin means "model is unsure," not "likely wrong" — it is '
+            "relative suspicion, not an error probability.",
+            "These margins are not error probabilities, and this ranks relative "
+            "suspicion, not calibrated likelihood of being wrong.",
+            # round 7, B8/cluster run 1: no error is named
+            "Many of these sit next to differently-classified neighbours, i.e. "
+            "likely true class-boundary pixels.",
+            # an error rate is error_rate_without_labels' to read, not this id's
+            "The error rate is likely between 18% and 28%.",
+            "A designed sample gives the map's most likely error rate, with its "
+            "interval.",
+            "Which of them are wrong is known only once they are labelled.",
+        ],
+    ),
 }
 
 
@@ -1406,6 +1450,62 @@ def test_a_year_of_one_map_named_alone_is_a_reference_for_one_date() -> None:
     # without the comparison's dates a bare year is not read
     undated = _forbidding("one_reference_settles_two_dates")
     assert check_forbidden_claims(flagged, undated) == []
+
+
+def _ranked(covers: str) -> RunEvidence:
+    """A review set whose ranking evidence covers the case as ``covers`` says."""
+    result = {
+        "evidence_covers_this_case": covers,
+        "forbidden_claims": [{"id": "margin_as_error_probability", "why": "x"}],
+    }
+    return _run(_record("olmoearth_review_set", result))
+
+
+#: Orders of the windows by how likely they are wrong (the blind audit of
+#: rounds 7 and 8 refuted the first two, of an OlmoEarth model's logits; the
+#: audit of round 9 confirmed the third, of a Studio score no experiment grades).
+_ORDERS = (
+    "So those are the most likely places for a wrong label.",
+    "So those are the windows most likely to be wrong.",
+    "Any of them could flip with a small score change, making them the "
+    "likeliest spots for a wrong call.",
+    "The smaller the gap, the more torn the model, i.e. where it is most likely "
+    "wrong.",
+    "Low-margin windows are more likely to be misclassified.",
+    "Errors are most likely in these windows.",
+)
+#: The windows called probably wrong (round 9, B8/cluster runs 2 and 3).
+_PROBABLY_WRONG = (
+    "The model was weakest there, so they're most likely mislabeled.",
+    "The model was weakest there, so they\u2019re most likely mislabeled.",
+    "When the top two logits are nearly tied, the argmax label is most likely "
+    "wrong there.",
+    "These windows are probably errors.",
+    "These windows are more likely wrong than right.",
+)
+
+
+@pytest.mark.parametrize("covers", ["yes", "in part"])
+def test_an_order_by_likelihood_passes_where_the_evidence_covers_the_case(
+    covers: str,
+) -> None:
+    """The ranking evidence measured that the margin ranks errors, so an order
+    has support where it covers the case; the windows are still not probably
+    wrong (the audits of rounds 7-8 and of round 9)."""
+    run = _ranked(covers)
+    for sentence in _ORDERS:
+        assert check_forbidden_claims(sentence, run) == [], sentence
+    for sentence in _PROBABLY_WRONG:
+        assert _flagged(check_forbidden_claims, sentence, run) == [sentence], sentence
+
+
+@pytest.mark.parametrize("covers", ["no", "not known"])
+def test_an_order_by_likelihood_is_read_where_no_experiment_grades_the_ranking(
+    covers: str,
+) -> None:
+    run = _ranked(covers)
+    for sentence in (*_ORDERS, *_PROBABLY_WRONG):
+        assert _flagged(check_forbidden_claims, sentence, run) == [sentence], sentence
 
 
 def test_a_name_only_the_evidence_holds_is_the_evidence_put_in_the_case() -> None:

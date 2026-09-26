@@ -485,7 +485,20 @@ def _scope_fields(scope: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-#: Stated with every ranking: the margin orders a review; it is not an error rate.
+#: Forbidden with every ranking: a window's margin read as how likely it is
+#: wrong. exp86 round 9 called the review set's windows "most likely
+#: mislabeled" and "most likely wrong" (B8/cluster runs 2 and 3), and "the
+#: likeliest spots for a wrong call" (B2/studio run 1), beside the tool's own
+#: "not a probability of error". On Bolivia's hand labels the windows of a 5%
+#: review set were wrong at 0.46 on a predicted boundary and 0.155 off one
+#: (exp37, claim explanation-cues-cover-errors), so "most likely wrong" is
+#: unsupported and, there, false. The contract's fixed id
+#: (``statistical_rules.MARGIN_AS_ERROR_PROBABILITY``).
+MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
+
+#: Stated with every ranking: the margin orders a review; it is not an error
+#: rate (:func:`margin_as_error_probability` adds that it is not how likely a
+#: window is wrong).
 RANKING_FORBIDDEN: tuple[dict[str, str], ...] = (
     {
         "id": "error_rate_without_labels",
@@ -495,6 +508,44 @@ RANKING_FORBIDDEN: tuple[dict[str, str], ...] = (
         "(olmoearth_plan_label_sample)",
     },
 )
+
+
+def margin_as_error_probability(covers: str | None) -> dict[str, str]:
+    """The ``margin_as_error_probability`` claim of a ranking, by what its evidence covers.
+
+    No window of a review set is probably wrong: "most likely mislabeled",
+    "probably an error". Where the ranking evidence covers the case, in
+    whole or in part, it measured that the margin ranks errors, so an order
+    ("the windows most likely to be wrong", "the likeliest spots for a wrong
+    call") has support: the blind audit of rounds 7 and 8 refuted "the most
+    likely places for a wrong label" of an OlmoEarth model's logits (B8/cluster
+    run 1) as that order. Where it does not, or may not, no recorded
+    experiment grades the order either (round 9, B2/studio run 1: "the
+    likeliest spots for a wrong call" of a Studio score read as a
+    probability), and the reason says so.
+    """
+    head = (
+        "the margin orders windows for review, least decided first; it is not "
+        "a probability of error, so no window of the review set is 'most likely "
+        "wrong', 'probably an error' or 'likely mislabeled', and a low margin "
+        "does not say a window is more likely wrong than right"
+    )
+    order = (
+        ", nor, since no recorded experiment grades this ranking, are they 'the "
+        "likeliest spots for a wrong call' or 'the windows most likely to be "
+        "wrong'"
+        if covers in NOT_COVERED or covers is None
+        else ""
+    )
+    return {
+        "id": MARGIN_AS_ERROR_PROBABILITY,
+        "why": head
+        + order
+        + ": call them the least decided, the most suspect or the windows to "
+        "check first; which of them are wrong is known only once they are "
+        "labelled",
+    }
+
 
 #: Stated with every comparison: no side is right without labels. The reason
 #: says none were given to this comparison, never that none exist (exp86
@@ -998,6 +1049,7 @@ def review_set(
         **_scope_fields(scope),
         "facts": [ratio] if ratio else [],
         "forbidden_claims": [dict(c) for c in RANKING_FORBIDDEN]
+        + [margin_as_error_probability(scope.get("covers"))]
         + evidence_outside_scope(scope),
     }
     if keep_full:

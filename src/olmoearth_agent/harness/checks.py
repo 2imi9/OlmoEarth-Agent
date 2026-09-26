@@ -3139,6 +3139,108 @@ def _certification_guaranteed(s: str, record: ToolRecord, run: RunEvidence) -> b
     return False
 
 
+#: How likely something is: "most likely", "likeliest", "probably", "a high
+#: chance". "Probability" alone is none: "one minus the top probability ranked
+#: errors better" (the tools' must_state) names a score.
+_LIKELY = (
+    r"(?:(?:most|more|very|highly|quite)\s+)?likely|likeliest|likelier|"
+    r"probabl[ey]|in\s+all\s+likelihood|chances\s+are|almost\s+certainly|"
+    r"high(?:er|est)?\s+(?:chance|odds|likelihood|risk)\s+of"
+)
+#: Wrong: an error, a wrong call or label, mislabelled. An error rate, bound or
+#: estimate is a measure, not a window's error (error_rate_without_labels
+#: reads those).
+_WRONG = (
+    r"wrong|mis-?label+ed|mis-?classified|misclassifications?|incorrect(?:ly)?|"
+    r"erroneous|mistakes?|mistaken|in\s+error|"
+    r"errors?(?![\s-]+(?:rates?|bounds?|estimates?|intervals?|bars?|probabilit))"
+)
+#: A window, or the review set's windows, called likely wrong: "most likely
+#: mislabeled", "the likeliest spots for a wrong call", "the most likely
+#: places for a wrong label", "probably errors", "errors are most likely
+#: here", and the margin called a probability of error.
+_ERROR_LIKELIHOOD_RE = re.compile(
+    rf"\b(?P<lik>{_LIKELY})\b(?:[\s,]+(?:to\s+)?(?:be\s+|being\s+|hold\s+|have\s+|"
+    rf"contain\s+|find\s+)?(?:[\w'-]+\s+){{0,3}}?)?(?:a\s+|an\s+|the\s+)?"
+    rf"\b(?:{_WRONG})\b"
+    r"|\b(?:errors?|mistakes?|misclassifications?)\s+(?:are|is|sit|lie)\s+"
+    r"(?P<lik2>(?:most\s+|more\s+)?(?:likely|likeliest|probable))\b"
+    r"|\b(?P<prob>(?:probabilit(?:y|ies)|likelihood|chance|odds)\s+of\s+(?:being\s+)?"
+    r"(?:an?\s+)?(?:error|wrong|mis-?label\w*|misclassif\w*)|error[\s-]+"
+    r"probabilit(?:y|ies))\b",
+    re.I,
+)
+#: A copula right before "most likely": "they're most likely mislabeled" says
+#: they are probably wrong, not that they are the likeliest of the windows.
+_COPULA_BEFORE_RE = re.compile(
+    r"(?:\b(?:is|are|was|were|be|been|being)|'re|'s|’re|’s)\s*$", re.I
+)
+#: "More likely wrong than right" is a probability over one half.
+_THAN_RIGHT_RE = re.compile(r"\W*(?:\w+\W+){0,4}?than\s+(?:right|correct|not)\b", re.I)
+#: The values of ``evidence_covers_this_case`` under which the ranking
+#: evidence measured that the margin ranks errors (analysis.review_set.COVERS).
+_ORDER_COVERED = ("yes", "in part")
+
+
+def _an_order(p: _Parse, m: re.Match[str]) -> bool:
+    """Whether a likelihood claim ranks the windows rather than calls them wrong.
+
+    "The likeliest spots", "the most likely places for a wrong label", "the
+    windows most likely to be wrong", "where it is most likely wrong", "more
+    likely to be misclassified" and "errors are most likely here" order the
+    windows; "they're most likely mislabeled", "probably errors", "likely
+    wrong", "more likely wrong than right" and a probability of error say how
+    likely they are wrong.
+    """
+    if m.group("prob"):
+        return False
+    lik = (m.group("lik") or m.group("lik2") or "").lower()
+    if "likeliest" in lik or "likelier" in lik:
+        return True
+    if m.group("lik2"):
+        return lik.startswith(("most", "more"))
+    if lik.startswith("more"):
+        return not _THAN_RIGHT_RE.match(p.s, m.end())
+    if lik.startswith("most"):
+        lo, _ = p.span(m.start(), m.end())
+        before = p.s[lo : m.start()]
+        return bool(re.search(r"\bwhere\b", before, re.I)) or not (
+            _COPULA_BEFORE_RE.search(before)
+        )
+    return False
+
+
+def _margin_as_error_probability(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """A review set's windows called likely wrong, or its margin a probability of error.
+
+    exp86 round 9: "the model was weakest there, so they're most likely
+    mislabeled" and "when the top two class logits are nearly tied, the
+    argmax label is most likely wrong there" (B8/cluster runs 2 and 3), "the
+    likeliest spots for a wrong call" (B2/studio run 1). An order of the
+    windows by likelihood ("the most likely places for a wrong label", round 8
+    B8/cluster run 1, which the blind audit of rounds 7 and 8 refuted as a
+    finding) is read only where the emitting tool says its ranking evidence
+    does not, or may not, cover the case (``evidence_covers_this_case``):
+    where it covers it, the evidence measured that the margin ranks errors.
+    "Least decided", "most uncertain", "checked first" and "not a
+    probability of error" pass, as do the tools' own sentences, and a
+    negated, quoted or example claim ('not "likely wrong"') is none.
+    """
+    result = record.result if isinstance(record.result, Mapping) else {}
+    covered = result.get("evidence_covers_this_case") in _ORDER_COVERED
+    p = _parse(s)
+    for m in _ERROR_LIKELIHOOD_RE.finditer(s):
+        if (
+            _negated_close(p, m.start(), m.end())
+            or p.example_before(m.start())
+            or p.quoted(m.start())
+            or (covered and _an_order(p, m))
+        ):
+            continue
+        return True
+    return False
+
+
 #: A detector per ``forbidden_claims`` id: does one sentence make that claim
 #: about the result of that tool, in this run? An id without one (the
 #: contract's ``simple_random_interval_for_stratified_design``: the package's
@@ -3160,6 +3262,7 @@ FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] =
     "one_reference_settles_two_dates": _one_reference,
     "evidence_outside_its_scope": _evidence_outside_scope,
     "certification_guaranteed": _certification_guaranteed,
+    "margin_as_error_probability": _margin_as_error_probability,
 }
 
 

@@ -226,6 +226,7 @@ async def test_a_studio_band_is_scoped_as_no_recorded_experiment_grades_it(
     assert [f["id"] for f in out["facts"]] == ["margin_ratio", "review_set_classes"]
     assert [c["id"] for c in out["forbidden_claims"]] == [
         "error_rate_without_labels",
+        "margin_as_error_probability",
         "evidence_outside_its_scope",
     ]
     assert len(out["caveats"]) == 2

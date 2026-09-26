@@ -107,6 +107,7 @@ CONTRACT_IDS = {
     "one_reference_settles_two_dates",
     "evidence_outside_its_scope",
     "certification_guaranteed",
+    "margin_as_error_probability",
 }
 
 

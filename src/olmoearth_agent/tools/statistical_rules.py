@@ -70,6 +70,11 @@ EVIDENCE_OUTSIDE_ITS_SCOPE = "evidence_outside_its_scope"
 #: A design, sample size or plan promised to certify a zone: a random design
 #: makes certification possible, never certain.
 CERTIFICATION_GUARANTEED = "certification_guaranteed"
+#: A review set's windows called likely wrong ("most likely mislabeled", "the
+#: likeliest spots for a wrong call", "probably errors"): the margin orders a
+#: review, it is no probability of error (exp86 round 9, B8/cluster and
+#: B2/studio).
+MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
 
 #: The contract's fixed ids: every forbidden claim a tool emits is one of them.
 FIXED_IDS = (
@@ -89,6 +94,7 @@ FIXED_IDS = (
     ONE_REFERENCE_SETTLES_TWO_DATES,
     EVIDENCE_OUTSIDE_ITS_SCOPE,
     CERTIFICATION_GUARANTEED,
+    MARGIN_AS_ERROR_PROBABILITY,
 )
 
 

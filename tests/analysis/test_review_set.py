@@ -212,8 +212,53 @@ def test_review_set_states_its_evidence_in_one_scoped_sentence() -> None:
     assert out["must_state"] == [MUST_STATE_UNNAMED_MODEL]
     assert [c["id"] for c in out["forbidden_claims"]] == [
         "error_rate_without_labels",
+        "margin_as_error_probability",
         "evidence_outside_its_scope",
     ]
+
+
+@pytest.mark.parametrize(
+    ("model", "score_kind", "covers"),
+    [
+        (None, None, "not known"),
+        ("allenai/OlmoEarth-v1-FT-AWF-Base", "logit", "in part"),
+        ("allenai/OlmoEarth-v1-FT-AWF-Base", "probability", "yes"),
+        (None, "binary_score", "no"),
+    ],
+)
+def test_every_ranking_forbids_reading_its_margin_as_a_probability_of_error(
+    model: str | None, score_kind: str | None, covers: str
+) -> None:
+    """exp86 round 9: "they're most likely mislabeled" (B8/cluster run 2), "the
+    likeliest spots for a wrong call" (B2/studio run 1). No window is probably
+    wrong; an order by likelihood is forbidden only where no experiment grades
+    the ranking (the blind audit of rounds 7 and 8 refuted it for logits)."""
+    scores, _ = _planted()
+    if score_kind == "binary_score":
+        scores = [[1.0 - s, s] for s in (0.49, 0.3, 0.9, 0.95, 0.1, 0.02)]
+    out = review_set(
+        scores,
+        budget=0.5,
+        model=model,
+        score_type=score_kind if score_kind in ("logit", "probability") else None,
+        score_kind=score_kind if score_kind == "binary_score" else None,
+    )
+    assert out["evidence_covers_this_case"] == covers
+    (claim,) = [
+        c for c in out["forbidden_claims"] if c["id"] == "margin_as_error_probability"
+    ]
+    assert "not a probability of error" in claim["why"]
+    assert "'most likely wrong'" in claim["why"] and "least decided" in claim["why"]
+    order = "'the likeliest spots for a wrong call'" in claim["why"]
+    assert order is (covers in NOT_COVERED)
+
+
+def test_the_margin_claims_id_is_the_contracts() -> None:
+    from olmoearth_agent.analysis import review_set as analysis
+    from olmoearth_agent.tools import statistical_rules as rules
+
+    assert analysis.MARGIN_AS_ERROR_PROBABILITY == rules.MARGIN_AS_ERROR_PROBABILITY
+    assert rules.MARGIN_AS_ERROR_PROBABILITY in rules.FIXED_IDS
 
 
 def test_not_listed_says_it_counts_after_the_tools_own_listing() -> None:

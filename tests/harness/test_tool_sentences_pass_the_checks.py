@@ -202,7 +202,7 @@ async def test_a_review_sets_class_counts_and_its_list_file_pass(
 ) -> None:
     """exp86 round 9, B8/cluster: the classes of the whole review set
     (review_set_classes) and the sentence naming its CSV (list_file), beside
-    the other claims of a ranking."""
+    margin_as_error_probability and the other claims of a ranking."""
     rng = random.Random(9)
     rows = [[rng.gauss(0.0, 2.0) for _ in range(9)] for _ in range(400)]
     (tmp_path / "awf.json").write_text(
@@ -221,6 +221,9 @@ async def test_a_review_sets_class_counts_and_its_list_file_pass(
     out = await _call("olmoearth_review_set", args)
     assert {"margin_ratio", "review_set_classes", "list_file"} <= {
         f["id"] for f in out["facts"]
+    }
+    assert rules.MARGIN_AS_ERROR_PROBABILITY in {
+        c["id"] for c in out["forbidden_claims"]
     }
     _assert_passes("olmoearth_review_set", args, out)
 
