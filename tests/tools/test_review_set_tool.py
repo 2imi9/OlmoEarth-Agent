@@ -891,3 +891,66 @@ async def test_a_review_set_cut_short_saves_its_full_list_and_says_where(
     assert "review_list_path" not in whole
     assert "all 4 windows of the review set" in whole["listing_note"]
     assert "evidence text only" in whole["listing_note"]
+
+
+# --------------------------------------------------------------------------- north, only on a georeferenced grid
+
+
+def _dated_files(tmp_path: Path, extra: dict) -> dict[str, str]:
+    """Two scores files of a 4 x 2 grid that differ in rows 0 and 3."""
+    rows_a = [[5.0, 0.1]] * 8
+    rows_b = [[0.1, 5.0], [5.0, 0.1]] + [[5.0, 0.1]] * 4 + [[0.1, 5.0], [0.1, 5.0]]
+    for name, rows in (("a", rows_a), ("b", rows_b)):
+        (tmp_path / f"{name}.json").write_text(
+            json.dumps({"grid": [4, 2], "scores": rows, **extra})
+        )
+    return {
+        "scores_path_a": str(tmp_path / "a.json"),
+        "scores_path_b": str(tmp_path / "b.json"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_grid_is_called_north_only_when_its_scores_are_georeferenced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 8 (brief 7 on files): F4's grid is 400 chips of 14 x 14
+    windows stacked in dataset order, with no georeference, and the answers
+    called row band 0 "the northmost band" and rows 2,800-4,199 "mid-south",
+    from the tool's "the north edge of a north-up map"."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    tool = _tools()["olmoearth_compare_review"]
+
+    async def compare(extra: dict) -> dict:
+        args = _dated_files(tmp_path, extra)
+        return await tool.handler(args, _ctx())  # type: ignore[attr-defined,no-any-return]
+
+    def concentration(out: dict) -> dict:
+        return next(f for f in out["facts"] if f["id"] == "concentration")
+
+    bare = await compare({})
+    fact = concentration(bare)
+    assert fact["row_order"] is None and bare["spatial"]["row_order"] is None
+    assert "north" not in fact["sentence"].replace("north to south", "")
+    assert "row band 0 (row 0, the grid's first rows" in fact["sentence"]
+    assert "no georeference" in fact["sentence"]
+    assert "north edge" not in bare["spatial"]["reading"]
+    assert "no georeference" in bare["spatial"]["reading"]
+    # The fields the harness reads keep their names.
+    assert fact["top_band_share"] == bare["spatial"]["top_band_share"]
+    # Window centres that put row 0 north (latitude falls with the row).
+    north_up = [[10.0 + c, 50.0 - r] for r in range(4) for c in range(2)]
+    fact = concentration(await compare({"centres_lon_lat": north_up}))
+    assert fact["row_order"] == "north_to_south"
+    assert "the northmost row band" in fact["sentence"]
+    south_up = [[10.0 + c, 46.0 + r] for r in range(4) for c in range(2)]
+    fact = concentration(await compare({"centres_lon_lat": south_up}))
+    assert fact["row_order"] == "south_to_north"
+    assert "the southmost row band" in fact["sentence"]
+    # A transform in rasterio's order (a, b, c, d, e, f): e < 0 runs north to south.
+    transform = [10.0, 0.0, 500000.0, 0.0, -10.0, 4000000.0]
+    fact = concentration(await compare({"transform": transform}))
+    assert fact["row_order"] == "north_to_south"
+    # No coordinate reaches the result.
+    blob = json.dumps(await compare({"centres_lon_lat": north_up}))
+    assert "50.0" not in blob and "centres_lon_lat" not in blob

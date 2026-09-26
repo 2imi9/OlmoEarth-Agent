@@ -1367,11 +1367,34 @@ def _bands(size: int, n_bands: int) -> list[tuple[int, int]]:
     return [(edges[k], edges[k + 1] - 1) for k in range(n)]
 
 
+#: How a grid's rows run on the ground, when the scores are georeferenced:
+#: row 0 in the north, or in the south. ``None`` is a grid with no
+#: georeference, whose rows need not run north to south at all.
+ROW_ORDERS = ("north_to_south", "south_to_north")
+
+#: The words for row band 0 by row order: exp86 round 8 (brief 7 on files)
+#: called row band 0 of a grid of 400 chips stacked in dataset order "the
+#: northmost band" and rows 2,800-4,199 "mid-south", from the tool's own "the
+#: north edge of a north-up map" for a file with no georeference.
+_BAND_0 = {
+    "north_to_south": "the north edge: the scores' window locations put row 0 north",
+    "south_to_north": "the south edge: the scores' window locations put row 0 south",
+}
+
+#: Said of a grid with no georeference.
+NO_GEOREFERENCE = (
+    "the scores carry no georeference (no window locations or transform), so the "
+    "rows need not run north to south and no band is a compass direction"
+)
+
+
 def spatial_breakdown(
     differing: Sequence[int],
     present: Sequence[int],
     grid: tuple[int, int],
     n_bands: int = SPATIAL_BANDS,
+    *,
+    row_order: str | None = None,
 ) -> dict[str, Any]:
     """Where the differing windows sit: their share in each row band and each column band.
 
@@ -1379,8 +1402,10 @@ def spatial_breakdown(
     strip along the north edge" for 1.3% of the differences; blocks invented
     from ten windows). This counts every differing window instead.
 
-    Bands are numbered from 0: row band 0 holds row 0, the grid's top (the
-    north edge of a north-up map), and column band 0 holds column 0.
+    Bands are numbered from 0: row band 0 holds row 0, the grid's first rows,
+    and column band 0 holds column 0. Row band 0 is called north (or south)
+    only with a ``row_order`` from georeferenced scores (:data:`ROW_ORDERS`);
+    without one the reading says the rows need not run north to south.
 
     Parameters
     ----------
@@ -1393,6 +1418,9 @@ def spatial_breakdown(
         ``(rows, cols)``.
     n_bands
         Bands per axis (fewer when the grid has fewer rows or columns).
+    row_order
+        ``"north_to_south"``, ``"south_to_north"`` or ``None`` (no
+        georeference).
 
     Returns
     -------
@@ -1401,8 +1429,12 @@ def spatial_breakdown(
         differing windows, ``share_of_differing``, ``share_of_windows`` and
         ``share_of_band_differing``), ``top_band_share`` (row band 0's share
         of the differing windows), the ``max_band`` holding the most of them,
-        with ``n_tied`` other bands holding as many, and a ``reading``.
+        with ``n_tied`` other bands holding as many, ``row_order`` and a
+        ``reading``.
     """
+    order = row_order if row_order in ROW_ORDERS else None
+    band_0 = f" ({_BAND_0[order]})" if order else ""
+    unreferenced = f"; {NO_GEOREFERENCE}" if order is None else ""
     rows, cols = int(grid[0]), int(grid[1])
     n_diff, n_present = len(differing), len(present)
 
@@ -1445,11 +1477,12 @@ def spatial_breakdown(
         "col_bands": col_bands,
         "top_band_share": row_bands[0]["share_of_differing"],
         "max_band": None,
+        "row_order": order,
         "reading": (
             "Each band is a strip of whole rows (row_bands) or whole columns "
             "(col_bands) of the window grid, numbered from 0: row band 0 holds "
-            "row 0, the grid's top (the north edge of a north-up map), and column "
-            "band 0 holds column 0. share_of_differing is the band's share of ALL "
+            f"row 0, the grid's first rows{band_0}, and column band 0 holds column "
+            f"0{unreferenced}. share_of_differing is the band's share of ALL "
             "differing windows; share_of_windows is its share of all compared "
             "windows, the share an even spread would give it; "
             "share_of_band_differing is the share of the band's own windows that "
@@ -1486,19 +1519,24 @@ def _band_where(axis: str, first: int, last: int) -> str:
 def concentration_fact(
     spatial: dict[str, Any], n_differing: int
 ) -> dict[str, Any] | None:
-    """The ``concentration`` fact: the northmost row band's share of the differing
-    windows, and the band of either axis holding the most of them.
+    """The ``concentration`` fact: row band 0's share of the differing windows,
+    and the band of either axis holding the most of them.
 
-    ``top_band_share`` is row band 0's share (the grid's top rows, the north
-    edge of a north-up map), whatever band holds the most: exp86 round 7 put
-    the differences "along the north edge" where that band held 1.3% of them.
+    ``top_band_share`` is row band 0's share (the grid's first rows), whatever
+    band holds the most: exp86 round 7 put the differences "along the north
+    edge" where that band held 1.3% of them. Row band 0 is the northmost (or
+    southmost) band only with the ``row_order`` of georeferenced scores; exp86
+    round 8 (brief 7 on files) called it "the northmost band" for a grid of
+    chips stacked in dataset order, so without one the sentence names it by
+    its rows and says the rows need not run north to south.
 
     Returns
     -------
     dict or None
         ``id``, ``grid``, ``n_differing``, ``top_band_share``, ``max_band``
         (``axis`` ``"rows"`` or ``"cols"``, ``band`` from 0, ``of_grid``,
-        ``share``) and ``sentence``; ``None`` when nothing differs.
+        ``share``), ``row_order`` and ``sentence``; ``None`` when nothing
+        differs.
     """
     top = spatial.get("max_band")
     if not top or not n_differing:
@@ -1507,6 +1545,24 @@ def concentration_fact(
     n_row_bands, n_col_bands = spatial["n_bands"]
     north = spatial["row_bands"][0]
     north_where = _band_where("rows", *north["rows"])
+    order = spatial.get("row_order")
+    if order == "north_to_south":
+        band_0 = f"the northmost row band ({north_where}, band 0 of {n_row_bands})"
+    elif order == "south_to_north":
+        band_0 = (
+            f"the southmost row band ({north_where}, band 0 of {n_row_bands}; row 0 "
+            "is the south edge here)"
+        )
+    else:
+        band_0 = (
+            f"row band 0 ({north_where}, the grid's first rows, band 0 of "
+            f"{n_row_bands})"
+        )
+    unreferenced = (
+        " The scores carry no georeference, so the rows need not run north to " "south."
+        if order not in ROW_ORDERS
+        else ""
+    )
     first, last = top[top["axis"]]
     where = _band_where(top["axis"], first, last)
     size, noun = (rows, "rows") if top["axis"] == "rows" else (cols, "columns")
@@ -1517,8 +1573,8 @@ def concentration_fact(
     )
     head = (
         f"Of the {n_differing:,} differing windows, {_pct(north['share_of_differing'])} "
-        f"lie in the northmost row band ({north_where}, band 0 of {n_row_bands}), "
-        f"which holds {_pct(north['share_of_windows'])} of all compared windows"
+        f"lie in {band_0}, which holds {_pct(north['share_of_windows'])} of all "
+        "compared windows"
     )
     if top["axis"] == "rows" and top["band"] == 0:
         body = (
@@ -1542,7 +1598,8 @@ def concentration_fact(
             "of_grid": top["of_grid"],
             "share": top["share"],
         },
-        "sentence": head + body,
+        "row_order": order if order in ROW_ORDERS else None,
+        "sentence": head + body + unreferenced,
     }
 
 
@@ -1715,6 +1772,7 @@ def compare_scores(
     *,
     windows: Sequence[int] | None = None,
     class_names: dict[str, str] | None = None,
+    row_order: str | None = None,
 ) -> dict[str, Any]:
     """Compare two inferences of the same windows: how much they differ and where.
 
@@ -1742,6 +1800,10 @@ def compare_scores(
     class_names
         Class id (as a string) to name, when the scores name their classes;
         used in ``class_changes``, ``class_pairs``, the listing and the facts.
+    row_order
+        How the grid's rows run on the ground when the scores are
+        georeferenced (:data:`ROW_ORDERS`); ``None`` for scores with no
+        georeference, whose row bands are never called north or south.
 
     Returns
     -------
@@ -1866,7 +1928,7 @@ def compare_scores(
     out["n_differing_listed"] = len(listed)
     out["listing_order"] = (
         "the listed windows are the first differing windows in window order (from "
-        "the top rows of the grid), not a sample of them: read which classes change "
+        "the grid's first rows), not a sample of them: read which classes change "
         "and in which direction from class_changes and the shares, not from the list"
     )
     facts: list[dict[str, Any]] = []
@@ -1879,7 +1941,9 @@ def compare_scores(
     if grid is not None:
         present = windows if windows is not None else range(n)
         where_diff = [windows[i] for i in diff] if windows is not None else diff
-        out["spatial"] = spatial_breakdown(where_diff, list(present), (rows_, cols_))
+        out["spatial"] = spatial_breakdown(
+            where_diff, list(present), (rows_, cols_), row_order=row_order
+        )
         concentration = concentration_fact(out["spatial"], len(diff))
         if concentration:
             facts.append(concentration)

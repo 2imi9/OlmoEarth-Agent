@@ -598,6 +598,7 @@ def test_the_concentration_fact_is_the_contracts() -> None:
         "n_differing",
         "top_band_share",
         "max_band",
+        "row_order",
         "sentence",
     }
     assert fact["grid"] == [8, 8] and fact["n_differing"] == 14
@@ -608,12 +609,28 @@ def test_the_concentration_fact_is_the_contracts() -> None:
         "of_grid": "50-75%",
         "share": pytest.approx(12 / 14, abs=1e-6),
     }
+    # Inline scores carry no georeference: row band 0 is the grid's first rows,
+    # never "the northmost" (exp86 round 8, brief 7 on files).
+    assert fact["row_order"] is None
     assert fact["sentence"] == (
-        "Of the 14 differing windows, 14.3% lie in the northmost row band (rows "
-        "0-1, band 0 of 4), which holds 25.0% of all compared windows; the most in "
-        "any band, 85.7%, lie in rows 4-5 (50-75% of the grid's 8 rows, band 2), "
-        "which holds 25.0% of all compared windows."
+        "Of the 14 differing windows, 14.3% lie in row band 0 (rows 0-1, the "
+        "grid's first rows, band 0 of 4), which holds 25.0% of all compared "
+        "windows; the most in any band, 85.7%, lie in rows 4-5 (50-75% of the "
+        "grid's 8 rows, band 2), which holds 25.0% of all compared windows. The "
+        "scores carry no georeference, so the rows need not run north to south."
     )
+    # Georeferenced scores whose row 0 is north: the northmost band.
+    north = compare_scores(
+        a, b, grid=(rows, cols), max_listed=3, row_order="north_to_south"
+    )
+    fact = next(f for f in north["facts"] if f["id"] == "concentration")
+    assert fact["row_order"] == "north_to_south"
+    assert fact["sentence"].startswith(
+        "Of the 14 differing windows, 14.3% lie in the northmost row band (rows "
+        "0-1, band 0 of 4), which holds 25.0% of all compared windows;"
+    )
+    assert "georeference" not in fact["sentence"]
+    assert "the north edge" in north["spatial"]["reading"]
 
 
 def test_the_concentration_fact_on_columns_on_the_north_band_and_on_a_tie() -> None:
@@ -630,7 +647,7 @@ def test_the_concentration_fact_on_columns_on_the_north_band_and_on_a_tie() -> N
     assert "lie in column 3 (75-100% of the grid's 4 columns, band 3)" in (
         fact["sentence"]
     )
-    # The northmost band holds the most, so the sentence says it is the most.
+    # Row band 0 holds the most, so the sentence says it is the most.
     north = next(
         f
         for f in compare_scores(*_flip(16, [0, 1, 2]), grid=(4, 4))["facts"]

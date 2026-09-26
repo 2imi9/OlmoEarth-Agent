@@ -648,6 +648,44 @@ PARTLY_DATED_MUST_STATE = (
 )
 
 
+def file_row_order(
+    meta: dict[str, Any], cols: int | None, windows: list[int] | None, n_rows: int
+) -> str | None:
+    """How a scores file's grid rows run on the ground, or ``None`` without a georeference.
+
+    A file with each window's centre (``centres_lon_lat``, one per row, as
+    ``olmoearth_scores_from_file`` writes for a georeferenced raster and
+    ``olmoearth_review_set_from_result`` for a Studio result) is read: row 0
+    is north when the first grid row's centres lie north of the last row's.
+    A file with a ``transform`` (rasterio's affine order, ``a, b, c, d, e,
+    f``) runs north to south when ``e`` is negative. Anything else has no
+    georeference: exp86 round 8 (brief 7 on files) called row band 0 of 400
+    chips stacked in dataset order "the northmost band".
+    """
+    centres = meta.get("centres_lon_lat")
+    if cols and isinstance(centres, list) and len(centres) == n_rows and n_rows:
+        by_row: dict[int, list[float]] = {}
+        try:
+            for i, centre in enumerate(centres):
+                index = windows[i] if windows is not None else i
+                by_row.setdefault(int(index) // cols, []).append(float(centre[1]))
+        except (IndexError, TypeError, ValueError):
+            return None
+        first, last = by_row[min(by_row)], by_row[max(by_row)]
+        north_first = sum(first) / len(first) - sum(last) / len(last)
+        if north_first > 0:
+            return "north_to_south"
+        if north_first < 0:
+            return "south_to_north"
+        return None
+    transform = meta.get("transform")
+    if isinstance(transform, (list, tuple)) and len(transform) >= 6:
+        e = transform[4]
+        if isinstance(e, (int, float)) and not isinstance(e, bool) and e:
+            return "north_to_south" if e < 0 else "south_to_north"
+    return None
+
+
 def _file_names(metas: list[dict[str, Any]]) -> dict[str, str] | None:
     """The class names both scores files give, when they give the same ones."""
     first, second = (m.get("classes") for m in metas)
@@ -764,6 +802,14 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 )
     # Every differing window comes back; the inline listing is cut below and the
     # whole of it goes to a file.
+    # North only for georeferenced scores: inline rows and a file with no
+    # window locations or transform have rows that need not run north to south.
+    cols = int(grid[1]) if grid else None
+    orders = {
+        file_row_order(meta, cols, windows, len(rows))
+        for meta, rows in zip(metas, sides)
+        if meta
+    } - {None}
     out = compare_scores(
         sides[0],
         sides[1],
@@ -771,6 +817,7 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         max_listed=None,
         windows=windows,
         class_names=_file_names(metas),
+        row_order=orders.pop() if len(orders) == 1 else None,
     )
     rows = out.pop("differing")
     # compare_scores' generic winner_without_labels gives way to the statistical
