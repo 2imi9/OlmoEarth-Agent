@@ -931,7 +931,9 @@ def review_set(
     scope = ranking_evidence_scope(
         score_kind=kind, n_classes=len(matrix[0]), model=model
     )
-    ratio = margin_ratio_fact(summary)
+    ratio = margin_ratio_fact(
+        summary, _margin_range([marg[i] for i in ranked[:MARGIN_RATIO_FIRST]])
+    )
     out: dict[str, Any] = {
         "n_windows": n,
         "n_classes": len(matrix[0]),
@@ -1007,9 +1009,19 @@ def _range_text(rng: list[float]) -> str:
     return _num(lo) if lo == hi else f"{_num(lo)} to {_num(hi)}"
 
 
-def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
+#: The first listed windows an answer usually shows (a table of ten); the
+#: ``margin_ratio`` fact states their own ratio beside the listed windows'.
+#: exp86 round 8 (brief 8 on the cluster, run 2) showed ten windows and gave
+#: them the 50 listed windows' "13 to 41 times"; the ten shown are 20.68 to
+#: 41.31 times below the median.
+MARGIN_RATIO_FIRST = 10
+
+
+def margin_ratio_fact(
+    summary: dict[str, Any], first_range: list[float] | None = None
+) -> dict[str, Any] | None:
     """The ``margin_ratio`` fact: the median margin over the listed windows' margins,
-    and over every margin in the review set.
+    over the first listed ones', and over every margin in the review set.
 
     exp86 round 6 (brief 8) called the listed windows "3-4 orders of magnitude
     more uncertain" where the median margin was 13 to 41 times theirs. A
@@ -1018,13 +1030,19 @@ def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
     between a window's top two classes) is ``None``. The review set's range
     covers all ``n_review`` windows at the budget, listed or not (exp87
     review: an answer about the review set read the listed range as its).
+    ``listed_n`` says how many windows the listed ratio covers, and
+    ``first_range``, the margin range of the first
+    :data:`MARGIN_RATIO_FIRST` listed windows when more are listed, gives
+    theirs (exp86 round 8 put the 50 listed windows' ratio on the 10 shown).
 
     Returns
     -------
     dict or None
-        ``id``, ``listed_low``, ``listed_high``, ``review_set_low``,
-        ``review_set_high``, ``versus`` (``"median"``) and ``sentence``;
-        ``None`` when the review set is empty.
+        ``id``, ``listed_n``, ``listed_low``, ``listed_high``,
+        ``review_set_low``, ``review_set_high``, ``versus`` (``"median"``),
+        with ``first_range`` also ``first_n``, ``first_low`` and
+        ``first_high``, and ``sentence``; ``None`` when the review set is
+        empty.
     """
     review = summary.get("review_set", {}).get("margin_range")
     if not review:
@@ -1035,6 +1053,15 @@ def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
     n_listed = summary["listed"]["n"]
     listed_low, listed_high = _ratios(median, listed)
     review_low, review_high = _ratios(median, review)
+    first_n = min(MARGIN_RATIO_FIRST, n_listed)
+    first = first_range if listed and first_range and n_listed > first_n else None
+    first_low, first_high = _ratios(median, first)
+    shown = (
+        f", {_times(first_low, first_high)} those of the first {first_n} listed "
+        f"({_range_text(first)})"
+        if first
+        else ""
+    )
     head = f"The median margin over all {n:,} windows ({_num(median)}) is"
     whole = (
         f"all {k:,} windows in the review set"
@@ -1049,7 +1076,7 @@ def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
     elif n_listed >= k:
         body = (
             f"{_times(listed_low, listed_high)} the margins of {whole}, every one "
-            f"listed ({_range_text(listed)})"
+            f"listed ({_range_text(listed)}){shown}"
         )
     else:
         some = (
@@ -1059,8 +1086,8 @@ def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
         )
         body = (
             f"{_times(listed_low, listed_high)} the margins of {some} "
-            f"({_range_text(listed)}) and {_times(review_low, review_high)} those of "
-            f"{whole} ({_range_text(review)})"
+            f"({_range_text(listed)}){shown} and {_times(review_low, review_high)} "
+            f"those of {whole} ({_range_text(review)})"
         )
     # The listed windows are the first of the review set, so its lowest margin
     # is the lowest of both.
@@ -1070,15 +1097,19 @@ def margin_ratio_fact(summary: dict[str, Any]) -> dict[str, Any] | None:
         if float(review[0]) == 0.0
         else ""
     )
-    return {
+    out: dict[str, Any] = {
         "id": "margin_ratio",
+        "listed_n": n_listed,
         "listed_low": listed_low,
         "listed_high": listed_high,
         "review_set_low": review_low,
         "review_set_high": review_high,
         "versus": "median",
-        "sentence": f"{head} {body}{tail}.",
     }
+    if first:
+        out.update(first_n=first_n, first_low=first_low, first_high=first_high)
+    out["sentence"] = f"{head} {body}{tail}."
+    return out
 
 
 def _margin_range(values: list[float]) -> list[float] | None:

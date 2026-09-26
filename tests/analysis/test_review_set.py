@@ -355,6 +355,7 @@ def test_margin_ratio_is_the_median_over_the_listed_margins() -> None:
     (fact,) = out["facts"]
     assert set(fact) == {
         "id",
+        "listed_n",
         "listed_low",
         "listed_high",
         "review_set_low",
@@ -370,6 +371,35 @@ def test_margin_ratio_is_the_median_over_the_listed_margins() -> None:
     assert "all 3 windows in the review set, every one listed (0.1 to 0.4)" in (
         fact["sentence"]
     )
+
+
+def test_margin_ratio_names_its_windows_and_gives_the_first_ten_their_own() -> None:
+    """exp86 round 8 (brief 8 on the cluster, run 2): an answer showed ten of
+    the 50 listed windows and gave them the 50's ratio, "13 to 41 times"; the
+    ten shown were 20.68 to 41.31 times below the median. The fact says how
+    many windows its listed ratio covers and gives the first ten theirs."""
+    marg = [0.1 * (i + 1) for i in range(60)] + [10.0] * 940
+    scores = [[1.0 + m, 1.0] for m in marg]
+    out = review_set(scores, budget=0.1, max_listed=50)
+    (fact,) = out["facts"]
+    assert fact["listed_n"] == 50
+    assert (fact["listed_low"], fact["listed_high"]) == (2.0, 100.0)
+    assert (fact["first_n"], fact["first_low"], fact["first_high"]) == (
+        10,
+        10.0,
+        100.0,
+    )
+    assert (fact["review_set_low"], fact["review_set_high"]) == (1.0, 100.0)
+    assert (
+        "2.00 to 100.00 times the margins of the 50 listed windows (0.1 to 5), "
+        "10.00 to 100.00 times those of the first 10 listed (0.1 to 1) and 1.00 "
+        "to 100.00 times those of all 100 windows in the review set (0.1 to 10)"
+    ) in fact["sentence"]
+    # Ten or fewer listed: the listed ratio is the first ten's; no second one.
+    few = review_set(scores, budget=0.1, max_listed=10)
+    (fact,) = few["facts"]
+    assert fact["listed_n"] == 10 and "first_n" not in fact
+    assert "first 10 listed" not in fact["sentence"]
 
 
 def test_margin_ratio_gives_the_whole_review_sets_range_beside_the_listed() -> None:
