@@ -73,7 +73,11 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         date_a="2022-01-01/2022-12-31", date_b="2023-01-01/2023-12-31"
     )
     assert apart["dates"]["status"] == "different_time"
-    assert _ids(apart) == {rules.ANOTHER_DATE_SETTLES_IT, rules.WINNER_WITHOUT_LABELS}
+    assert _ids(apart) == {
+        rules.ANOTHER_DATE_SETTLES_IT,
+        rules.WINNER_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
+    }
     another = _why(apart, rules.ANOTHER_DATE_SETTLES_IT)
     assert "(2022-01-01/2022-12-31 and 2023-01-01/2023-12-31)" in another
     assert "cannot tell which" in another
@@ -88,6 +92,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
     assert _ids(overlap) == {
         rules.ANOTHER_DATE_SETTLES_IT,
         rules.WINNER_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
     }
     # The reason covers the overlapping periods, not only disjoint ones.
     assert "different or overlapping periods" in _why(
@@ -100,7 +105,10 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         await compare(date_a="2024-03-01", date_b="2024-03-01"),
         await compare(),
     ):
-        assert _ids(same) == {rules.WINNER_WITHOUT_LABELS}
+        assert _ids(same) == {
+            rules.WINNER_WITHOUT_LABELS,
+            rules.SUBSET_LABELLING_SUFFICIENT,
+        }
         assert "more confident side" in _why(same, rules.WINNER_WITHOUT_LABELS)
     # The counts the parity check reads are untouched.
     assert apart["n_differing"] == 1 and apart["share_differing"] == pytest.approx(
@@ -196,6 +204,7 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
         rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
         rules.COMBINED_STATISTIC_ACROSS_PROPERTIES,
         rules.WINNER_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
         rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }
     no_rate = _why(allowed, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION)
@@ -254,6 +263,7 @@ async def test_two_unit_scores_of_one_property_name_no_winner(
     assert out["comparable"] is True and out["value_type"] == "regression"
     assert _ids(out) == {
         rules.WINNER_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
         rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }
     assert "no labels were used" in _why(out, rules.WINNER_WITHOUT_LABELS)
@@ -273,6 +283,7 @@ async def test_one_unthresholded_property_has_no_error_rate(
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
         rules.REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
         rules.WINNER_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
         rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }
     # one property, named once
@@ -368,3 +379,36 @@ async def test_a_group_states_every_pairs_correlation(httpx_mock: HTTPXMock) -> 
     assert rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION in _ids(out)
     # 9 cells: the group's own grid cap is named.
     assert any("pass grid=8" in step for step in out["next_steps"])
+
+
+# --------------------------------------------------------------------------- labelling to settle a comparison
+
+
+def _assert_whole_map_labelling(out: dict[str, Any]) -> None:
+    why = _why(out, rules.SUBSET_LABELLING_SUFFICIENT)
+    assert "low-confidence" in why and "not a sample of the map" in why
+    assert "overstates the map's" in why
+    assert "olmoearth_plan_label_sample's designs" in why
+    assert "draws from every window of the map" in why
+
+
+@pytest.mark.asyncio
+async def test_every_comparison_forbids_labelling_only_its_low_confidence_windows(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """exp86 round 8 (brief 3 on Studio, run 3): "a targeted labeling sample
+    from the lower-confidence windows of each map ... defensible error rates".
+    Both comparisons point to labelling to say which map is right; neither
+    lets a sample of the low-confidence windows stand for the map."""
+    _mock_pair(httpx_mock, {"a1": "sample_karst_score", "b1": "sample_karst_score"}, 3)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        studio_pair = await _result(
+            "olmoearth_compare_results", {"result_ids": ["a1", "b1"], "grid": 3}, ctx
+        )
+    _assert_whole_map_labelling(studio_pair)
+    scores = await _result(
+        "olmoearth_compare_review",
+        {"scores_a": [[0.2, 0.8], [0.7, 0.3]], "scores_b": [[0.2, 0.8], [0.3, 0.7]]},
+    )
+    _assert_whole_map_labelling(scores)

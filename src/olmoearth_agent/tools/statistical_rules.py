@@ -368,6 +368,28 @@ def review_set_for_unthresholded_regression(
     )
 
 
+def labelling_low_confidence_only() -> dict[str, str]:
+    """A sample of the low-confidence windows only is not a sample of the map.
+
+    Emitted by the comparisons, whose answers point to labelling to settle
+    which map is right: exp86 round 8 (brief 3 on Studio, run 3) offered "a
+    targeted labeling sample from the lower-confidence windows of each map"
+    and "defensible error rates per map" from it. The plan tool's designs
+    all draw from every window (``confidence`` and ``proportional`` stratify
+    all of them by margin; ``random`` draws from all of them alike).
+    """
+    return forbidden(
+        SUBSET_LABELLING_SUFFICIENT,
+        "labels drawn only from the low-confidence, least certain or most "
+        "ambiguous windows (or from a review set) are not a sample of the map: "
+        "an error rate over them describes those windows and overstates the "
+        "map's, so it is no defensible error rate for either map; each of "
+        "olmoearth_plan_label_sample's designs ('confidence', 'proportional', "
+        "'random') draws from every window of the map, and its estimate needs "
+        "every drawn window labelled",
+    )
+
+
 def different_properties(names: Iterable[str | None]) -> list[dict[str, str]]:
     """Two properties: no statistic combines them, and no side wins without labels."""
     distinct = sorted({n for n in names if n})

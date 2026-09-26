@@ -512,6 +512,7 @@ async def test_group_of_different_properties_is_refused_then_allowed(
         "error_rate_for_unthresholded_regression",
         "review_set_for_unthresholded_regression",
         "winner_without_labels",
+        "subset_labelling_sufficient",
         "spatial_pattern_from_one_correlation",
     }
     assert "different properties" in allowed["must_state"][0]

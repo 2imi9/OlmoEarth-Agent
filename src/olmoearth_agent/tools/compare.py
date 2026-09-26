@@ -833,6 +833,9 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     if different:
         claims += rules.different_properties(names)
     claims.append(rules.winner_without_labels())  # no labels here; listed once
+    # "Which is right" points to labelling; exp86 round 8 (brief 3 on Studio,
+    # run 3) offered a sample of each map's low-confidence windows only.
+    claims.append(rules.labelling_low_confidence_only())
     facts, must_state, forbid, next_steps = _correlation_contract(
         _correlations(mode, out), mode=mode, grid=grid
     )

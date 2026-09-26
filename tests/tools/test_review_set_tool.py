@@ -463,7 +463,10 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
     assert result["which_side_is_right"] == "not resolvable without labels"
     assert "51 to 70" in result["evidence_scope"]
     assert result["must_state"] == [MUST_STATE_NO_WINNER]
-    assert [c["id"] for c in result["forbidden_claims"]] == ["winner_without_labels"]
+    assert [c["id"] for c in result["forbidden_claims"]] == [
+        "winner_without_labels",
+        "subset_labelling_sufficient",
+    ]
     assert result["where"] in ("mostly on class boundaries", "spread across the scene")
 
 
@@ -630,12 +633,16 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
     assert {c["id"] for c in apart["forbidden_claims"]} == {
         "winner_without_labels",
         "another_date_settles_it",
+        "subset_labelling_sufficient",
     }
     partly = await tool.handler(  # type: ignore[attr-defined]
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01"}, _ctx()
     )
     assert "Only one map's date" in partly["must_state"][1]
-    assert [c["id"] for c in partly["forbidden_claims"]] == ["winner_without_labels"]
+    assert [c["id"] for c in partly["forbidden_claims"]] == [
+        "winner_without_labels",
+        "subset_labelling_sufficient",
+    ]
     same = await tool.handler(  # type: ignore[attr-defined]
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01", "date_b": "2024-03-01"},
         _ctx(),
