@@ -1733,3 +1733,63 @@ def test_marking_keeps_every_sentence_and_marks_the_flagged_ones() -> None:
         f"Note from the tool: {_DATES}"
     )
     assert mark_answer(answer, {}) == answer
+
+
+def test_an_offer_for_a_unit_score_band_by_its_range_alone_passes() -> None:
+    """The fix-r8 re-review: every fine case of the band scoping named
+    KarstBinary, so the "[0, 1] score" half of the rule went untested. An offer
+    that names only a 0-1 score, and no band the reason names, passes."""
+    run = _karst()
+    for fine in (
+        "For the 0-1 score, I can build a review set of the windows nearest 0.5.",
+        "The [0, 1] band can have a review set of its lowest-margin windows.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+
+
+def test_the_rules_reworded_by_the_fix_r8_re_review_pass_and_the_claims_do_not() -> (
+    None
+):
+    """The fix-r8 re-review's false alarms on correct paraphrases, and the
+    claims beside them that must still be read."""
+    dated = _dated()
+    for fine in (
+        # grading one map is the rule, not a verdict between the two
+        "Reference labels dated 2023 could grade map A, not map B.",
+        "Reference data for 2022 would let you grade map B only.",
+        "A 2023 reference would tell you how accurate the 2023 map is, but not "
+        "which map is right where they differ.",
+        "Ground truth from 2022 grades the 2022 map; it says nothing about the "
+        "2023 one.",
+        "Labels for 2023 and for 2022, one set per year, would let me grade each "
+        "map against its own date's reference.",
+    ):
+        assert check_forbidden_claims(fine, dated) == [], fine
+    for flagged in (
+        "Give me labels for 2023 and I will grade both maps against them.",
+        "If you have reference labels for either date, I can grade which map is "
+        "right at the differing windows.",
+    ):
+        assert _flagged(check_forbidden_claims, flagged, dated) == [flagged], flagged
+
+    uncertain = _forbidding("agreement_from_uncertain_correlation")
+    fine = "A correlation near zero here does not show that the maps are independent."
+    assert check_forbidden_claims(fine, uncertain) == []
+    flagged = "They do not agree spatially at all."
+    assert _flagged(check_forbidden_claims, flagged, uncertain) == [flagged]
+
+    # certify_zone's own next step, reworded: a change stated as what voids
+    # the guarantee is the rule
+    alpha = _forbidding("post_hoc_alpha", alpha=0.05)
+    rule = _forbidding("rule_switch_after_failure")
+    for fine in (
+        "Switching to a looser alpha or another rule on these same labels would "
+        "fall outside what the guarantee covers.",
+        "Choosing a looser alpha after seeing these bounds would void the guarantee.",
+    ):
+        assert check_forbidden_claims(fine, alpha) == [], fine
+        assert check_forbidden_claims(fine, rule) == [], fine
+    flagged = "Want me to re-test with a looser alpha, say 0.15?"
+    assert _flagged(check_forbidden_claims, flagged, alpha) == [flagged]
+    flagged = "I can rerun it under the Bonferroni rule if you like."
+    assert _flagged(check_forbidden_claims, flagged, rule) == [flagged]

@@ -1068,3 +1068,14 @@ async def test_no_output_promises_a_certified_zone() -> None:
         if t.spec.name == "olmoearth_certify_zone"
     ]
     assert "it may certify none" in spec.description
+
+
+def test_one_ranked_class_with_none_correct_is_still_the_lowest_of_nothing() -> None:
+    """The fix-r8 re-review: without the one-ranked-class guard, a single
+    ranked class with none correct became ``lowest`` while the sentence said
+    nothing is ranked against it, and the next step to name the weakest came
+    back. The sentence names its 0 of 6; nothing is ranked."""
+    fact = _weakest_classes(_rare_positive((0, 6), (1, 2)))
+    assert fact is not None and fact["lowest"] == []
+    assert "class 0 (0 of 6 correct" in fact["sentence"]
+    assert "so no class is ranked against it" in fact["sentence"]

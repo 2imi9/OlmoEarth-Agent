@@ -1988,6 +1988,20 @@ def _allowed_alpha(
     return False
 
 
+#: A change of alpha or rule stated as what the guarantee does not cover, the
+#: tool's own next step: "a looser alpha on these same labels would fall
+#: outside what the guarantee covers", "... would void the guarantee".
+_OUTSIDE_GUARANTEE_RE = re.compile(
+    r"\b(?:void\w*|invalidat\w*|break\w*|forfeit\w*|los(?:e|es|ing)|undermin\w*)\s+"
+    r"(?:\w+\s+){0,2}?guarantee"
+    r"|\b(?:fall\w*|lies?|is|are|be)\s+outside\s+(?:\w+\s+){0,4}?guarantee"
+    r"|\bguarantee\s+(?:\w+\s+){0,3}?(?:does\s*n[o']t|would\s*n[o']t|no\s+longer)\s+"
+    r"(?:cover|hold|apply)"
+    r"|\bnot\s+covered\s+by\s+(?:\w+\s+){0,2}?guarantee",
+    re.I,
+)
+
+
 def _post_hoc_alpha(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     """Another alpha offered or applied after the bounds were seen.
 
@@ -1996,6 +2010,8 @@ def _post_hoc_alpha(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     alpha said to be fixed in advance is the rule, not a choice.
     """
     if not (_OFFER_RE.search(s) or re.search(r"\bcertif\w*", s, re.I)):
+        return False
+    if _OUTSIDE_GUARANTEE_RE.search(s):
         return False
     used = _alpha_used(record)
     alphas = ([] if used is None else [used]) + _alphas_asked(run)
@@ -2019,11 +2035,15 @@ def _rule_switch(s: str, record: ToolRecord, run: RunEvidence) -> bool:
         r"(?:bonferroni|holm|fixed[\s-]sequence|prefix|another\s+rule|"
         r"a\s+different\s+rule|other\s+rules?|stricter\s+rule|looser\s+rule)"
     )
-    return bool(_OFFER_RE.search(s)) and any(
-        _unnegated(
-            r"\b(?:re-?run|run|try|re-?test|redo|switch\w*|use|apply|repeat)\b"
-            rf"[^.;]{{0,50}}\b{rules}",
-            s,
+    return (
+        bool(_OFFER_RE.search(s))
+        and not _OUTSIDE_GUARANTEE_RE.search(s)
+        and any(
+            _unnegated(
+                r"\b(?:re-?run|run|try|re-?test|redo|switch\w*|use|apply|repeat)\b"
+                rf"[^.;]{{0,50}}\b{rules}",
+                s,
+            )
         )
     )
 
@@ -2336,6 +2356,12 @@ _CORRELATION_LIMIT_RE = re.compile(
     r"incorrect|invalid)\s+to)\b",
     re.I,
 )
+#: A statement that the correlation cannot establish what follows it.
+_DOES_NOT_SHOW_THAT_RE = re.compile(
+    r"\b(?:does|do|did|would|can|could)\s*(?:n[o']t|not)\s+(?:by\s+itself\s+)?"
+    r"(?:show|prove|mean|imply|establish|demonstrate|tell\s+you)\s+(?:that\b|whether\b)?",
+    re.I,
+)
 #: Co-variation predicated of the two maps, either way: "they do not rise and
 #: fall together", "essentially no relationship", "their values rise and
 #: fall independently", "one going high says nothing about the other",
@@ -2494,7 +2520,10 @@ def _agreement_uncertain(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     for m in _COVARIATION_CLAIM_RE.finditer(s):
         lo, _hi = p.span(m.start(), m.end())
         if (
-            p.in_clause(_CORRELATION_LIMIT_RE, m.start(), m.end(), own=True)
+            # the claim is what the correlation does not show: "a correlation
+            # near zero does not show that the maps are independent"
+            _DOES_NOT_SHOW_THAT_RE.search(s, 0, m.end())
+            or p.in_clause(_CORRELATION_LIMIT_RE, m.start(), m.end(), own=True)
             or _held_by_an_interval(p, lo, m.start())
             or _AGAINST_REFERENCE_RE.match(s, m.end())
             or p.example_before(m.start())
@@ -2783,8 +2812,11 @@ _PLUS_RUN_RE = re.compile(
     re.I,
 )
 #: What a reference would decide: which map is right, change from error.
+#: Grading one map is not a verdict between them ("labels from April 2018
+#: can grade map B, but not map A" is the rule): only grading both is.
 _SETTLE_RE = re.compile(
-    r"\b(?:settle\w*|grad\w*|verdict|decide\w*|resolve\w*|separat\w*|"
+    r"\b(?:settle\w*|verdict|decide\w*|resolve\w*|separat\w*|"
+    r"grad\w*\s+(?:\w+\s+){0,2}?(?:both|each|either|them|the\s+two|all)\b|"
     r"disambiguat\w*|tell\s+(?:you\s+)?which|which\s+(?:map|one|side)|"
     r"right|correct|errs|winner|pick)\b",
     re.I,
@@ -2820,7 +2852,15 @@ _GRADES_ONLY_ITS_DATE_RE = re.compile(
     re.I,
 )
 #: A reference for each map, the rule: "each", "both", "per date".
-_EACH_DATE_RE = re.compile(r"\b(?:each|both|every|per)\b", re.I)
+#: "Both" or "each" of the dates or maps' own references is the rule; "grade
+#: both maps" against one date's labels is not.
+_EACH_DATE_RE = re.compile(
+    r"\b(?:each|both|every|per)\s+(?:of\s+the\s+(?:two\s+)?)?(?:\w+\s+)?"
+    r"(?:dates?|years?|periods?|times?|epochs?)\b"
+    r"|\beach\s+map'?s?\s+(?:own\s+)?(?:date|year|period|reference)"
+    r"|\b(?:its|their)\s+own\s+(?:date|year|period)",
+    re.I,
+)
 _YEAR_RE = re.compile(r"(?<![\d.])(?:19|20)\d\d(?![\d.])")
 
 
@@ -2873,11 +2913,15 @@ def _one_reference(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     do ("labels for one date grade only that date's map", "labels dated 2023
     would grade the 2023 map only").
     """
-    if not (_SETTLE_RE.search(s) and _REFERENCE_RE.search(s)):
-        return False
-    if _ONE_DATE_CAVEAT_RE.search(s):
+    if not _REFERENCE_RE.search(s) or _ONE_DATE_CAVEAT_RE.search(s):
         return False
     p = _parse(s)
+    # a verdict the sentence denies is the rule: "a 2023 reference would tell
+    # you how accurate the 2023 map is, but not which map is right"
+    if not any(
+        not _negated_close(p, m.start(), m.end()) for m in _SETTLE_RE.finditer(s)
+    ):
+        return False
     cues = [*_PLUS_RUN_RE.finditer(s), *_one_map_year(s, record)]
     if _DATE_CONTEXT_RE.search(s):
         # "at least one", "one or both": a date is what they count
