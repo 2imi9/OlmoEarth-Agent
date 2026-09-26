@@ -848,8 +848,46 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
         ],
     ),
     "subset_labelling_sufficient": (
-        ["Is 30 enough to start labeling?", "Labelling just the first 10 is enough."],
-        ["Label all 173 windows in order.", "30 windows are not enough."],
+        [
+            "Is 30 enough to start labeling?",
+            "Labelling just the first 10 is enough.",
+            # exp86 round 8, B3/studio run 3 (kept unmarked by the rewrite)
+            "You name a decision threshold for each regression band → I design a "
+            "targeted labeling sample from the lower-confidence windows of each "
+            "map, you label them, and I compute defensible error rates per map.",
+            # round 6, B4/cluster run 2; round 8, B5/files run 3
+            "Note: because this is a targeted (low-confidence-first) design, the "
+            "estimate stays unbiased.",
+            "This confidence (targeted) design gives an honest whole-map estimate.",
+            "Label the 50 most uncertain windows and I'll compute an unbiased "
+            "error rate.",
+            "A targeted sample of low-confidence windows gives a valid estimate of "
+            "the map's error.",
+            "Labelling only the review set yields an honest accuracy.",
+            "An honest error rate comes from labelling the most uncertain windows.",
+        ],
+        [
+            "Label all 173 windows in order.",
+            "30 windows are not enough.",
+            "A confidence-stratified design gives an honest whole-map estimate.",
+            "A review set is not a sample, so it gives no honest error rate.",
+            "Labelling only the least confident windows biases the estimate.",
+            "The design oversamples the least confident windows and weights them, "
+            "so the estimate stays unbiased.",
+            # the honest estimate is the label sample's; the review set is another offer
+            "I can design a label sample so N labels give an honest error estimate "
+            "for one or both maps, or run a per-class review set to flag where each "
+            "map looks uncertain.",
+            "This review set holds errors, so its rate would overstate the map's; "
+            "use olmoearth_plan_label_sample if you want an honest error estimate.",
+            # round 5, B4/cluster run 2: the stratified design named in another clause
+            "I designed a confidence-stratified sample: windows are ranked by "
+            "margin, so the most suspect windows get labelled first while the "
+            "estimate stays unbiased for the whole map.",
+            # round 3, B3/cluster run 3
+            "The more confident side is right only 51–70% of the time — not enough "
+            "to pick a winner by confidence.",
+        ],
     ),
     "winner_without_labels": (
         ["C2 is more accurate.", "Map B is the better map."],

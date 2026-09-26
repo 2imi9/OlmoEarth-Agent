@@ -1890,11 +1890,139 @@ def _error_rate_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool
     )
 
 
+#: A negation that governs a claim from after it: "labels for one date
+#: cannot settle it", "... is not enough".
+_NEGATED_AFTER_RE = re.compile(
+    r"\b(?:cannot|can't|can\s+not|won't|will\s+not|would\s*n[o']t|does\s*n[o']t|"
+    r"do\s*n[o']t|is\s*n[o']t|are\s*n[o']t|is\s+not|are\s+not|never|not\s+enough|"
+    r"(?:should|must|may|might|could|need)\s*(?:n[o']t|not)|"
+    r"insufficient|blocked|impossible|not\s+possible|"
+    r"only\s+(?:tells?|shows?|measures?|says?))\b",
+    re.I,
+)
+#: The words after a claim in which a negation still governs it.
+_NEGATION_REACH = 6
+
+
+def _negated_close(p: _Parse, start: int, end: int) -> bool:
+    """Whether a negation governs ``s[start:end]``: before it in its clause, or
+    within :data:`_NEGATION_REACH` words after it.
+
+    Clause-level negation (:meth:`_Parse.negated`) lets a hedge far along a
+    long clause exempt a claim: exp86 round 7 (B7/files run 1), "To settle
+    it, provide labels for one or both dates, or treat this as a
+    change-detection layer rather than a contest", read as negated by its
+    last words.
+    """
+    lo, hi = p.span(start, end)
+    text = p.s if p.bracket_at(start, end) else p.masked
+    if _NEGATION_RE.search(text[lo:start]):
+        return True
+    after = re.match(rf"(?:\W*\w+){{0,{_NEGATION_REACH}}}", text[end:hi])
+    return bool(after and _NEGATED_AFTER_RE.search(after.group()))
+
+
+def _clause_text(p: _Parse, start: int, end: int) -> tuple[int, str]:
+    """The clause around ``s[start:end]`` with its brackets kept, and where it starts.
+
+    The clause a bracket elaborates, for a match inside one (as
+    :meth:`_Parse.region` reads it). "This confidence (targeted) design gives
+    an honest estimate" states its design in a bracket of the clause that
+    makes the promise.
+    """
+    lo, hi, _ = p.region(start, end)
+    return lo, p.s[lo:hi]
+
+
+#: A labelling sample drawn from the least confident windows only: "a
+#: targeted labelling sample", "from the lower-confidence windows", "the most
+#: uncertain windows", a review set. A confidence-stratified design samples
+#: every stratum and weights them, which :data:`_WEIGHTED_DESIGN_RE` exempts.
+_LOW_CONFIDENCE_DRAW_RE = re.compile(
+    r"\btargeted\b"
+    r"|\b(?:lower|low|least|lowest|less)[\s-]+(?:confidence|confident|certain|"
+    r"margin)\b(?:[\s-]+first)?"
+    r"|\b(?:most|more)[\s-]+(?:uncertain|ambiguous|suspect|doubtful)\b"
+    r"|\breview[\s_-]+(?:set|list)\b",
+    re.I,
+)
+#: A promise that an error rate is sound: "defensible error rates", "an
+#: honest estimate", "the estimate stays unbiased".
+_SOUND_RATE_RE = re.compile(
+    r"\b(?:defensible|honest|unbiased|design-unbiased|valid|trustworthy|"
+    r"representative|reliable)\s+(?:\w+[\s-]+){0,2}?(?:error\s+rates?|error|"
+    r"estimates?|rates?|accuracy)\b"
+    r"|\b(?:error\s+rates?|estimates?|accuracy)\s+(?:\w+\s+){0,2}?(?:stays?|remains?|"
+    r"is|are|will\s+be|would\s+be)\s+(?:\w+\s+)?(?:unbiased|honest|defensible|valid)\b",
+    re.I,
+)
+#: A design that samples every stratum and weights it: its estimate is sound.
+_WEIGHTED_DESIGN_RE = re.compile(
+    r"\bstratif\w*|\bweight\w*|\bevery\s+stratum\b|\ball\s+(?:the\s+)?strata\b|"
+    r"\boversampl\w*|\bNeyman\b",
+    re.I,
+)
+
+
+#: A sound rate said to come from such a draw: "... from labelling the
+#: review set", "... by labelling the most uncertain windows".
+_FROM_DRAW_RE = re.compile(
+    r"^\W*(?:\w+\W+){0,4}?(?:from|by|via|through|with)\s+(?:labell?ing\s+)?"
+    r"(?:only\s+)?(?:a\s+|the\s+)?(?:\w+\s+)?(?:targeted|review[\s_-]+set|"
+    r"(?:most|more)[\s-]+(?:uncertain|ambiguous|suspect)|(?:lower|low|least|"
+    r"lowest)[\s-]+(?:confidence|margin))",
+    re.I,
+)
+#: Where one offer ends and another begins inside a clause: ", or run ...".
+#: A step of the same offer (", you label them, and I compute ...") is none.
+_NEXT_OFFER_RE = re.compile(
+    r",\s*or\s+|\bor\s+(?:else\s+)?(?:run|build|use|try)\b", re.I
+)
+
+
+def _low_confidence_sample_sound(s: str) -> bool:
+    """A sample of the least confident windows promised a sound error rate.
+
+    exp86 round 8 (B3/studio run 3) offered to "design a targeted labeling
+    sample from the lower-confidence windows of each map ... and compute
+    defensible error rates per map"; round 6 (B4/cluster run 2) said "because
+    this is a targeted (low-confidence-first) design, the estimate stays
+    unbiased". A rate over the least confident windows describes those
+    windows, not the map. The draw must be described before the promise in
+    its clause (brackets kept), or named as its source right after it
+    ("... by labelling the most uncertain windows"); another offer between
+    them ("an honest error estimate, or run a per-class review set") is
+    another claim. A stratified or weighted design named anywhere in the
+    sentence is what gives the map's rate, and passes (round 5, B4/cluster
+    run 2: "a confidence-stratified sample: ... the most suspect windows get
+    labelled first while the estimate stays unbiased").
+    """
+    p = _parse(s)
+    for m in _SOUND_RATE_RE.finditer(s):
+        if _negated_close(p, m.start(), m.end()) or p.example_before(m.start()):
+            continue
+        lo, clause = _clause_text(p, m.start(), m.end())
+        before = _NEXT_OFFER_RE.split(clause[: m.start() - lo])[-1]
+        drawn = _LOW_CONFIDENCE_DRAW_RE.search(before) or _FROM_DRAW_RE.match(
+            clause[m.end() - lo :]
+        )
+        if drawn and not _WEIGHTED_DESIGN_RE.search(s):
+            return True
+    return False
+
+
 def _subset_sufficient(s: str, record: ToolRecord, run: RunEvidence) -> bool:
-    return any(
+    """A part of the sample offered as enough, or a sample of the least
+    confident windows offered as a sound error rate.
+
+    "Not enough" is no offer: "the more confident side is right only 51-70%
+    of the time, not enough to pick a winner" (round 3, B3/cluster run 3).
+    """
+    return _low_confidence_sample_sound(s) or any(
         _unnegated(
             r"\b(?:first|top|only|just)\s+(?:the\s+)?(?:\d+|few|some|handful)\b"
-            r"[^.;]{0,50}\b(?:enough|suffic\w*|would\s+do|is\s+fine|are\s+fine)\b"
+            r"[^.;]{0,50}\b(?<!not\s)(?:enough|suffic\w*|would\s+do|is\s+fine|"
+            r"are\s+fine)\b"
             r"|\b(?:is|are)\s+(?:\d+|these|those|that)\s+(?:windows\s+|labels\s+)?"
             r"enough\b",
             s,
