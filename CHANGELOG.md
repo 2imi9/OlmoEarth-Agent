@@ -588,7 +588,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `direction`: a `concentration` violation calls row band 0 the northmost
   only when the fact's `row_order` runs north to south (a fact without the
   key is read as north-up), and with row 0 south a compass place is not
-  read against row band 0. On the recorded answers of rounds 6 to 8, with each id
+  read against row band 0. The detectors read a sentence in time linear in
+  its length: quotes, negations, clauses and offers are found once per
+  sentence and looked up by bisection, where the review-set and spatial
+  detectors had searched the whole clause once per match (14.7 s for one
+  130 KB listing line with the id emitted; now well under a second with
+  every id emitted). On the recorded answers of rounds 6 to 8, with each id
   emitted wherever it could apply, the detectors flag 43 sentences: 37 hold
   a confirmed audit finding (in two, the finding is another claim of the
   same sentence), 3 a finding the verifiers added, and 3 none, which read

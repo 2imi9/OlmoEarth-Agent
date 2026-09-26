@@ -490,6 +490,9 @@ class _Parse:
         self._cue_starts = [a for a, _ in cues]
         self._cue_ends = [b for _, b in cues]
         self._semicolons = [i for i, ch in enumerate(s) if ch == ";"]
+        self._straight = [i for i, ch in enumerate(s) if ch == '"']
+        self._left = [i for i, ch in enumerate(s) if ch == "“"]
+        self._right = [i for i, ch in enumerate(s) if ch == "”"]
 
     def bracket_at(self, start: int, end: int) -> tuple[int, int] | None:
         """The outermost bracket ``(open, close)`` that holds ``s[start:end]``."""
@@ -608,6 +611,39 @@ class _Parse:
             return False
         label_lo, _ = self.span(at, at + 1)
         return self.find(pattern, label_lo, at) is not None
+
+    def has(
+        self,
+        pattern: re.Pattern[str],
+        lo: int,
+        hi: int,
+        *,
+        skip: tuple[int, int] | None = None,
+    ) -> bool:
+        """Whether ``pattern`` matches in ``s[lo:hi]`` (read on the sentence).
+
+        A bisection over the pattern's matches in the whole sentence, found
+        once: a detector that asks it per match of a long listing stays
+        linear, where searching a slice per match does not.
+        """
+        return self.find(pattern, lo, hi, masked=False, skip=skip) is not None
+
+    def last_end(self, pattern: re.Pattern[str], lo: int, hi: int) -> int:
+        """Where the last match of ``pattern`` in ``s[lo:hi]`` ends, or ``lo``."""
+        spans = self._spans(pattern, False)
+        i = bisect.bisect_left(spans, (hi, -1)) - 1
+        while i >= 0 and spans[i][0] >= lo:
+            if spans[i][1] <= hi:
+                return spans[i][1]
+            i -= 1
+        return lo
+
+    def quoted(self, start: int) -> bool:
+        """Whether ``s[start:]`` sits inside double quotes (:func:`_quoted`)."""
+        straight = bisect.bisect_left(self._straight, start)
+        left = bisect.bisect_left(self._left, start)
+        right = bisect.bisect_left(self._right, start)
+        return straight % 2 == 1 or left > right
 
     def negated(self, start: int, end: int) -> bool:
         """Whether the clause of ``s[start:end]`` negates it (:func:`_negated_at`)."""
@@ -1984,23 +2020,17 @@ def _negated_close(p: _Parse, start: int, end: int) -> bool:
     last words.
     """
     lo, hi = p.span(start, end)
-    text = p.s if p.bracket_at(start, end) else p.masked
-    if _NEGATION_RE.search(text[lo:start]):
+    inside = p.bracket_at(start, end) is not None
+    if p.find(_NEGATION_RE, lo, start, masked=not inside):
         return True
-    after = re.match(rf"(?:\W*\w+){{0,{_NEGATION_REACH}}}", text[end:hi])
+    text = p.s if inside else p.masked
+    # read in place (pos, endpos): a slice per match of a long listing is quadratic
+    after = _REACH_RE.match(text, end, hi)
     return bool(after and _NEGATED_AFTER_RE.search(after.group()))
 
 
-def _clause_text(p: _Parse, start: int, end: int) -> tuple[int, str]:
-    """The clause around ``s[start:end]`` with its brackets kept, and where it starts.
-
-    The clause a bracket elaborates, for a match inside one (as
-    :meth:`_Parse.region` reads it). "This confidence (targeted) design gives
-    an honest estimate" states its design in a bracket of the clause that
-    makes the promise.
-    """
-    lo, hi, _ = p.region(start, end)
-    return lo, p.s[lo:hi]
+#: The words after a claim that :func:`_negated_close` reads.
+_REACH_RE = re.compile(rf"(?:\W*\w+){{0,{_NEGATION_REACH}}}")
 
 
 #: A labelling sample drawn from the least confident windows only: "a
@@ -2036,7 +2066,7 @@ _WEIGHTED_DESIGN_RE = re.compile(
 #: A sound rate said to come from such a draw: "... from labelling the
 #: review set", "... by labelling the most uncertain windows".
 _FROM_DRAW_RE = re.compile(
-    r"^\W*(?:\w+\W+){0,4}?(?:from|by|via|through|with)\s+(?:labell?ing\s+)?"
+    r"\W*(?:\w+\W+){0,4}?(?:from|by|via|through|with)\s+(?:labell?ing\s+)?"
     r"(?:only\s+)?(?:a\s+|the\s+)?(?:\w+\s+)?(?:targeted|review[\s_-]+set|"
     r"(?:most|more)[\s-]+(?:uncertain|ambiguous|suspect)|(?:lower|low|least|"
     r"lowest)[\s-]+(?:confidence|margin))",
@@ -2066,16 +2096,19 @@ def _low_confidence_sample_sound(s: str) -> bool:
     run 2: "a confidence-stratified sample: ... the most suspect windows get
     labelled first while the estimate stays unbiased").
     """
+    if _WEIGHTED_DESIGN_RE.search(s):
+        return False
     p = _parse(s)
     for m in _SOUND_RATE_RE.finditer(s):
         if _negated_close(p, m.start(), m.end()) or p.example_before(m.start()):
             continue
-        lo, clause = _clause_text(p, m.start(), m.end())
-        before = _NEXT_OFFER_RE.split(clause[: m.start() - lo])[-1]
-        drawn = _LOW_CONFIDENCE_DRAW_RE.search(before) or _FROM_DRAW_RE.match(
-            clause[m.end() - lo :]
-        )
-        if drawn and not _WEIGHTED_DESIGN_RE.search(s):
+        lo, hi, _ = p.region(m.start(), m.end())
+        # the draw is read after the last other offer before the promise, in
+        # place: slicing the clause per match is quadratic on a long listing
+        before = p.last_end(_NEXT_OFFER_RE, lo, m.start())
+        if p.has(_LOW_CONFIDENCE_DRAW_RE, before, m.start()) or _FROM_DRAW_RE.match(
+            p.s, m.end(), hi
+        ):
             return True
     return False
 
@@ -2182,9 +2215,12 @@ def _another_date(s: str, record: ToolRecord, run: RunEvidence) -> bool:
 
 
 def _quoted(s: str, start: int) -> bool:
-    """Whether ``s[start:]`` sits inside double quotes: a phrase cited, not claimed."""
-    head = s[:start]
-    return head.count('"') % 2 == 1 or head.count("“") > head.count("”")
+    """Whether ``s[start:]`` sits inside double quotes: a phrase cited, not claimed.
+
+    Counted by bisection over the quotes found once per sentence: counting
+    from the sentence's start per match was quadratic on a long listing.
+    """
+    return _parse(s).quoted(start)
 
 
 #: A statement about what one correlation can say, not a reading of it:
@@ -2273,7 +2309,7 @@ def _agreement_uncertain(s: str, record: ToolRecord, run: RunEvidence) -> bool:
             p.in_clause(_CORRELATION_LIMIT_RE, m.start(), m.end(), own=True)
             or _AGAINST_REFERENCE_RE.match(s, m.end())
             or p.example_before(m.start())
-            or _quoted(s, m.start())
+            or p.quoted(m.start())
         ):
             continue
         return True
@@ -2346,16 +2382,16 @@ def _spatial_from_correlation(s: str, record: ToolRecord, run: RunEvidence) -> b
     """
     p = _parse(s)
     for m in _PLACE_OF_AGREEMENT_RE.finditer(s):
-        lo, clause = _clause_text(p, m.start(), m.end())
-        clause = s[_label_start(p, lo) : lo] + clause
-        if not _AGREEMENT_WORD_RE.search(clause.replace(m.group(), " ")):
+        lo, hi, _ = p.region(m.start(), m.end())
+        lo = _label_start(p, lo)
+        if not p.has(_AGREEMENT_WORD_RE, lo, hi, skip=(m.start(), m.end())):
             continue
         if (
-            _CORRELATION_LIMIT_RE.search(clause)
-            or _SHOW_OFFER_RE.search(clause)
-            or _COMPUTED_PLACE_RE.search(clause)
+            p.has(_CORRELATION_LIMIT_RE, lo, hi)
+            or p.has(_SHOW_OFFER_RE, lo, hi)
+            or p.has(_COMPUTED_PLACE_RE, lo, hi)
             or p.example_before(m.start())
-            or _quoted(s, m.start())
+            or p.quoted(m.start())
         ):
             continue
         return True
@@ -2384,10 +2420,28 @@ _PROPOSAL_RE = re.compile(
     r"we\s+could|let\s+me|would\s+you\s+like|you\s+(?:can|could|might|may)|"
     r"happy\s+to|recommend\w*|suggest\w*|path\s+forward|next\s+step|"
     r"alternatively|option|try|next)\b"
-    r"|(?:^|[:—–]\s*|\s-\s)(?:[-*+•]\s+|\d+[.)]\s+)?(?:run|build|"
+    r"|(?:[:—–]\s*|\s-\s)(?:[-*+•]\s+|\d+[.)]\s+)?(?:run|build|"
     r"use|flag|open|check|plan|start)\b(?!\s*:)",
     re.I,
 )
+#: The same proposal verbs opening a clause ("Run olmoearth_review_set_from_result
+#: on each result", a bullet's "- Build ...").
+_PROPOSAL_START_RE = re.compile(
+    r"(?:[-*+•]\s+|\d+[.)]\s+)?(?:run|build|use|flag|open|check|plan|start)\b"
+    r"(?!\s*:)",
+    re.I,
+)
+
+
+def _proposed_in(p: _Parse, lo: int, hi: int) -> bool:
+    """Whether the clause ``s[lo:hi]`` offers or recommends (:data:`_PROPOSAL_RE`).
+
+    Read by bisection over the sentence's matches, never on a slice: a
+    listing of hundreds of windows in one clause asks it once per window.
+    """
+    while lo < hi and p.s[lo].isspace():
+        lo += 1
+    return p.has(_PROPOSAL_RE, lo, hi) or bool(_PROPOSAL_START_RE.match(p.s, lo, hi))
 
 
 def _review_set_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool:
@@ -2414,12 +2468,13 @@ def _review_set_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool
         if (
             _negated_close(p, m.start(), m.end())
             or p.example_before(m.start())
-            or _quoted(s, m.start())
+            or p.quoted(m.start())
         ):
             continue
-        _, clause = _clause_text(p, m.start(), m.end())
-        if _PROPOSAL_RE.search(clause):
-            return True
+        lo, hi, _ = p.region(m.start(), m.end())
+        if not _proposed_in(p, lo, hi):
+            continue
+        return True
     return False
 
 
@@ -2533,7 +2588,7 @@ def _one_reference(s: str, record: ToolRecord, run: RunEvidence) -> bool:
         not (
             _negated_close(p, m.start(), m.end())
             or p.example_before(m.start())
-            or _quoted(s, m.start())
+            or p.quoted(m.start())
         )
         for m in cues
     )
@@ -2631,7 +2686,7 @@ def _evidence_outside_scope(s: str, record: ToolRecord, run: RunEvidence) -> boo
         return False
     p = _parse(s)
     return any(
-        not (_negated_close(p, m.start(), m.end()) or _quoted(s, m.start()))
+        not (_negated_close(p, m.start(), m.end()) or p.quoted(m.start()))
         for m in _APPLIED_HERE_RE.finditer(s)
     )
 
@@ -2693,12 +2748,12 @@ def _certification_guaranteed(s: str, record: ToolRecord, run: RunEvidence) -> b
         if (
             _negated_close(p, m.start(), m.end())
             or p.example_before(m.start())
-            or _quoted(s, m.start())
+            or p.quoted(m.start())
             or _REQUIREMENT_RE.search(m.group())
         ):
             continue
-        _, clause = _clause_text(p, m.start(), m.end())
-        if not _DESIGN_WORD_RE.search(clause):
+        lo, hi, _ = p.region(m.start(), m.end())
+        if not p.has(_DESIGN_WORD_RE, lo, hi):
             continue
         # a hedge inside the promise ("would plausibly certify") or its clause
         if "guarant" not in m.group().lower() and (

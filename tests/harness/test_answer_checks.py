@@ -1383,6 +1383,54 @@ def test_a_name_only_the_evidence_holds_is_the_evidence_put_in_the_case() -> Non
     assert check_forbidden_claims(flagged, named) == []
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        # exp86 round 8, B8/cluster: a review listing in one clause, no offer
+        "w{i} (row {r}, col {c}) margin 0.{i:03d}, ",
+        # each cue in one long clause, which a detector reads per match
+        "w{i} agrees everywhere in places row {r}, ",
+        "w{i} targeted honest estimate from the review set {r}, ",
+        "w{i} for either date labels settle which map, guaranteed certifiable "
+        "random design, upstream such windows, they do not co-vary, ",
+    ],
+)
+def test_a_long_listing_is_checked_in_linear_time_with_every_claim_forbidden(
+    item: str,
+) -> None:
+    """The fix-r8 review: the review-set detector counted quotes from the
+    sentence's start and searched its whole clause once per "margin", 14.7 s
+    for one 130 KB listing line; the spatial one sliced and searched the
+    clause once per place (about a minute each on these lines). Every
+    forbidden id of the contract is emitted, and all the detectors read the
+    line within a second."""
+    ids = list(FORBIDDEN_DETECTORS)
+    record = _record(
+        "tool",
+        {
+            "forbidden_claims": [
+                {"id": i, "why": "'sample_number' (declared range [0.2, 1.2]): x"}
+                for i in ids
+            ],
+            "dates": {"a": "2023-01-01/2023-12-31", "b": "2022-01-01/2022-12-31"},
+            "property_a": {"property_name": "sample_karst_score"},
+        },
+    )
+    run = _run(record)
+    parts: list[str] = []
+    while sum(map(len, parts)) < 130_000:
+        i = len(parts)
+        parts.append(item.format(i=i, r=i % 128, c=i % 97))
+    listing = "Windows " + "".join(parts)
+    started = time.perf_counter()
+    for detector in FORBIDDEN_DETECTORS.values():
+        detector(listing, record, run)
+    assert time.perf_counter() - started < 1.0
+    started = time.perf_counter()
+    run_checks(listing, run)
+    assert time.perf_counter() - started < 1.0
+
+
 def test_a_claim_no_tool_forbade_is_not_checked() -> None:
     run = _run(_record("tool", {"forbidden_claims": [{"id": "not_a_known_id"}]}))
     assert check_forbidden_claims("A looser alpha would certify it.", run) == []
