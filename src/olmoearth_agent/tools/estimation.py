@@ -78,11 +78,12 @@ ZONE_RULES = ("prefix", "bonferroni")
 DESIGN_FORMAT = "olmoearth-agent/label-design@1"
 
 #: Stated with every certify_zone output: exp86 round 2's model recommended a
-#: confidence design for certification, which the tool refuses.
+#: confidence design for certification, which the tool refuses, and round
+#: 8's answers promised "a guaranteed-certifiable region" from a random one.
 DESIGN_REQUIREMENT = (
     "Certification needs design='random' (a simple random sample of the map); "
     "olmoearth_certify_zone refuses a 'confidence' or 'proportional' design, so "
-    "recommend only a random design for a certified zone."
+    "recommend only a random design for a certified zone. " + rules.POSSIBLE_NOT_CERTAIN
 )
 
 #: Stated with every plan and estimate, because the trial's model broke both.
@@ -485,7 +486,12 @@ def _unused_labels(
 def _plan_next_steps(
     design: str, csv_path: str, planned: int, pop: Population, unused: int
 ) -> list[str]:
-    """What follows a plan, from its design (and a budget above the ceiling)."""
+    """What follows a plan, from its design (and a budget above the ceiling).
+
+    Every plan's steps name a certified zone, as this plan's follow-up or as
+    what a separate random plan is for, so each says a random design makes
+    one possible, not certain (exp86 round 8, B5/files/2).
+    """
     steps = [
         f"Label every one of the {planned} windows in {csv_path} (wrong, and "
         "reference_class for per-class accuracy); olmoearth_estimate_map_error "
@@ -497,13 +503,15 @@ def _plan_next_steps(
         steps.append(
             "For a certified zone, olmoearth_certify_zone with the same "
             "design_path and labels, at an alpha (and delta and rule) fixed now, "
-            "before any label is seen: the guarantee covers only that alpha."
+            "before any label is seen: the guarantee covers only that alpha. "
+            + rules.POSSIBLE_NOT_CERTAIN
         )
     else:
         steps.append(
             f"This {design} design gives an estimate, not a certification: "
             "olmoearth_certify_zone refuses it. A certified zone needs a separate "
-            "plan with design='random', fixed before labelling."
+            "plan with design='random', fixed before labelling. "
+            + rules.POSSIBLE_NOT_CERTAIN
         )
     if unused:
         steps.append(
@@ -804,7 +812,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             "Strata by confidence margin, labels allocated from the model's own "
             "top-1 score; the score only allocates labels, so the estimate stays "
             "design-unbiased whatever its calibration. A certified zone needs "
-            "design='random'."
+            "design='random', which makes one possible, not certain."
         )
     if pop.source.get("assumption"):
         out["assumption"] = pop.source["assumption"]
@@ -830,6 +838,17 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         facts.append(rules.prefix_is_random_sample(budget, _scores_route(pop)))
     else:
         claims.append(rules.subset_labelling_sufficient(design))
+    # Every plan's next steps name a certified zone (exp86 round 8, B5/files/2).
+    claims.append(
+        rules.certification_guaranteed(
+            f"this plan's {budget} windows certify nothing until labelled and "
+            "tested at an alpha fixed before labelling, and may certify no zone "
+            "then"
+            if design == "random"
+            else f"this {design} design cannot certify at all, and a separate "
+            "random plan may certify nothing"
+        )
+    )
     return rules.add_contract(
         out,
         facts=facts,
@@ -999,8 +1018,39 @@ async def _estimate_map_error(
             ]
             if stratified
             else []
-        ),
+        )
+        # Every estimate's next steps name a certified zone: exp86 round 8
+        # (B5/files/2) read them as "a guaranteed-certifiable region".
+        + [
+            _estimate_certification_claim(
+                str(out.get("design")), from_design=bool(args.get("design_path"))
+            )
+        ],
     )
+
+
+def _estimate_certification_claim(design: str, *, from_design: bool) -> dict[str, str]:
+    """``certification_guaranteed`` for an estimate, with what its labels allow.
+
+    As in :func:`_estimate_next_steps`: windows labelled with no design are
+    estimated as a random sample but have no design file to certify from.
+    """
+    if design in ("confidence", "proportional"):
+        detail = (
+            f"these labels of a {design} design cannot certify at all, and a new "
+            "random plan may certify nothing"
+        )
+    elif from_design:
+        detail = (
+            "these labels certify a zone only if olmoearth_certify_zone, at an "
+            "alpha the map's use requires, finds one, and it may find none"
+        )
+    else:
+        detail = (
+            "these windows have no design file to certify from, and a random "
+            "plan may certify nothing"
+        )
+    return rules.certification_guaranteed(detail)
 
 
 def _estimate_next_steps(
@@ -1020,24 +1070,30 @@ def _estimate_next_steps(
             f"user's accuracy, over classes with at least {MIN_TO_RANK} "
             "map-labelled windows), not from the table by eye."
         )
+    # Each certification step says a random design makes a certified zone
+    # possible, not certain: exp86 round 8 (B5/files/2) read "a certified zone
+    # needs a new plan with design='random'" as "a guaranteed-certifiable
+    # region".
     if design in ("confidence", "proportional"):
         steps.append(
             f"No zone can be certified from this {design} design: "
             "olmoearth_certify_zone needs design='random'. A certified zone "
             "needs a new plan with design='random', every drawn window labelled, "
-            "and alpha, delta and rule fixed before labelling."
+            "and alpha, delta and rule fixed before labelling. "
+            + rules.POSSIBLE_NOT_CERTAIN
         )
     elif from_design:
         steps.append(
             "For a certified zone from these labels, olmoearth_certify_zone with "
             "the same design_path and labels, at the alpha the map's use "
-            "requires, not one chosen from these results."
+            "requires, not one chosen from these results. " + rules.POSSIBLE_NOT_CERTAIN
         )
     else:
         steps.append(
             "These windows were checked as a random sample and estimated as one; "
             "a certified zone needs a design file: plan one with "
-            "olmoearth_plan_label_sample(design='random') before labelling."
+            "olmoearth_plan_label_sample(design='random') before labelling. "
+            + rules.POSSIBLE_NOT_CERTAIN
         )
     steps.append(
         "A narrower interval needs more labels under a new plan with a larger "
@@ -1106,6 +1162,10 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 ),
                 rules.rule_switch_after_failure(
                     certified=None, levels=None, delta=None, rule=None
+                ),
+                rules.certification_guaranteed(
+                    f"these labels of a {design.get('design')} design cannot "
+                    "certify at all, and a new random plan may certify nothing"
                 ),
             ],
         )
@@ -1202,6 +1262,15 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 delta=delta,
                 rule=rule,
             ),
+            rules.certification_guaranteed(
+                f"this call certified the {zone['n_zone']} most confident windows "
+                f"at alpha={alpha:g}, and a new random design with a larger budget "
+                "may certify a smaller zone, or none"
+                if out["certified"]
+                else f"this random design of {out.get('n_labelled')} labels "
+                f"certified nothing at alpha={alpha:g}, and a new one with a "
+                "larger budget may certify nothing either"
+            ),
         ],
     )
 
@@ -1212,7 +1281,9 @@ def _certify_next_steps(out: dict[str, Any] | None) -> list[str]:
     ``out`` is ``None`` for a refused (stratified) design. Nothing certified
     under a random design: label more windows under a NEW random design fixed
     in advance, or report the whole-map estimate; never a looser alpha and
-    never another rule (exp86 rounds 1 to 7, brief 6).
+    never another rule (exp86 rounds 1 to 7, brief 6). Every step that
+    names a new random design says it makes a certified zone possible, not
+    certain (exp86 round 8, B5/files/2: "a guaranteed-certifiable region").
     """
     if out is None:
         return [
@@ -1221,7 +1292,7 @@ def _certify_next_steps(out: dict[str, Any] | None) -> list[str]:
             "labels gives the estimate and the interval this design earns.",
             "A certified zone needs a new plan: olmoearth_plan_label_sample with "
             "design='random', every drawn window labelled, and alpha, delta and "
-            "rule fixed before labelling.",
+            "rule fixed before labelling. " + rules.POSSIBLE_NOT_CERTAIN,
         ]
     estimate_step = (
         "report the whole-map estimate and interval (the fact whole_map_estimate "
@@ -1234,11 +1305,15 @@ def _certify_next_steps(out: dict[str, Any] | None) -> list[str]:
             "Nothing outside the zone is certified; for the whole map, "
             + estimate_step
             + ".",
+            "A larger zone needs a NEW random design with a larger budget, and "
+            "alpha, delta and rule fixed before labelling; it makes a larger "
+            "zone possible, not certain: it may certify a smaller zone, or none.",
         ]
     return [
         "Label more windows under a NEW random design fixed in advance: "
         "olmoearth_plan_label_sample with design='random' and a larger budget, "
-        "with alpha, delta and rule set before any of its labels is seen.",
+        "with alpha, delta and rule set before any of its labels is seen. "
+        + rules.POSSIBLE_NOT_CERTAIN,
         "Or " + estimate_step + ".",
         "Not a looser alpha and not another rule on these labels: either is "
         "chosen after seeing this result, which the guarantee does not cover "
@@ -1443,7 +1518,8 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 description=(
                     "The largest most-confident share of the map whose error "
                     "rate is at most alpha, certified by exact tests (the "
-                    "statement fails on at most delta of draws). Needs a "
+                    "statement fails on at most delta of draws); it may "
+                    "certify none. Needs a "
                     "design='random' plan and its labels; a stratified design "
                     "is refused. rule 'prefix' (default) or 'bonferroni' (no "
                     "assumption). Needs the inferencex extra."

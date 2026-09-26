@@ -286,10 +286,14 @@ async def test_a_plan_states_its_next_steps_by_design() -> None:
     assert _ids(stratified) == [
         rules.ERROR_RATE_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
+        rules.CERTIFICATION_GUARANTEED,
     ]
     assert "facts" not in stratified
     # A random sheet's first rows are a smaller random sample: no subset claim.
-    assert _ids(random_plan) == [rules.ERROR_RATE_WITHOUT_LABELS]
+    assert _ids(random_plan) == [
+        rules.ERROR_RATE_WITHOUT_LABELS,
+        rules.CERTIFICATION_GUARANTEED,
+    ]
     assert [f["id"] for f in random_plan["facts"]] == ["prefix_is_random_sample"]
 
 
@@ -374,7 +378,10 @@ async def test_a_single_stratum_design_is_a_random_draw_in_effect() -> None:
         {"scores": [[0.3, 0.7]] * 200, "budget": 40, "design": "confidence"},
     )
     assert "random sample in effect" in out["note"]
-    assert _ids(out) == [rules.ERROR_RATE_WITHOUT_LABELS]
+    assert _ids(out) == [
+        rules.ERROR_RATE_WITHOUT_LABELS,
+        rules.CERTIFICATION_GUARANTEED,
+    ]
     assert _fact(out, "prefix_is_random_sample")["n_rows"] == 40
 
 
@@ -462,6 +469,7 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
     assert _ids(out) == [
         rules.SIMPLE_RANDOM_INTERVAL,
         rules.CERTIFY_FROM_NONRANDOM_DESIGN,
+        rules.CERTIFICATION_GUARANTEED,
     ]
     assert "1.96" in _why(out, rules.SIMPLE_RANDOM_INTERVAL)
     assert "'confidence'" in _why(out, rules.CERTIFY_FROM_NONRANDOM_DESIGN)
@@ -474,7 +482,7 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
         "olmoearth_estimate_map_error",
         {"design_path": random_plan["design_path"], "wrong": _labels_of(random_plan)},
     )
-    assert "forbidden_claims" not in srs
+    assert _ids(srs) == [rules.CERTIFICATION_GUARANTEED]
     assert "olmoearth_certify_zone" in " ".join(srs["next_steps"])
     assert "the map's use requires" in " ".join(srs["next_steps"])
 
@@ -719,7 +727,11 @@ async def test_nothing_certified_says_what_follows_and_what_does_not() -> None:
     assert "design='random'" in steps[0] and "larger budget" in steps[0]
     assert steps[1].startswith("Or report the whole-map estimate and interval")
     assert steps[2].startswith("Not a looser alpha and not another rule")
-    assert _ids(out) == [rules.POST_HOC_ALPHA, rules.RULE_SWITCH_AFTER_FAILURE]
+    assert _ids(out) == [
+        rules.POST_HOC_ALPHA,
+        rules.RULE_SWITCH_AFTER_FAILURE,
+        rules.CERTIFICATION_GUARANTEED,
+    ]
     assert "alpha=0.05 was fixed for this call" in _why(out, rules.POST_HOC_ALPHA)
     switch = _why(out, rules.RULE_SWITCH_AFTER_FAILURE)
     levels = out["levels"]
@@ -763,7 +775,11 @@ async def test_a_certified_zone_states_that_nothing_outside_it_is() -> None:
     assert out["next_steps"][0].startswith("Report the zone as returned (certified")
     assert "zone_path" in out["next_steps"][0]
     assert "Nothing outside the zone is certified" in out["next_steps"][1]
-    assert _ids(out) == [rules.POST_HOC_ALPHA, rules.RULE_SWITCH_AFTER_FAILURE]
+    assert _ids(out) == [
+        rules.POST_HOC_ALPHA,
+        rules.RULE_SWITCH_AFTER_FAILURE,
+        rules.CERTIFICATION_GUARANTEED,
+    ]
     assert "to get a larger zone" in _why(out, rules.RULE_SWITCH_AFTER_FAILURE)
     _holds_to_the_contract(out)
 
@@ -826,6 +842,7 @@ async def test_a_refused_certification_names_the_design_and_the_estimate() -> No
         rules.CERTIFY_FROM_NONRANDOM_DESIGN,
         rules.POST_HOC_ALPHA,
         rules.RULE_SWITCH_AFTER_FAILURE,
+        rules.CERTIFICATION_GUARANTEED,
     ]
     assert "'confidence'" in _why(out, rules.CERTIFY_FROM_NONRANDOM_DESIGN)
     assert "alpha=0.05" in _why(out, rules.POST_HOC_ALPHA)
@@ -849,3 +866,89 @@ async def test_the_rules_change_no_number_the_package_returns() -> None:
     expected = _jsonable(direct)
     assert {key: out[key] for key in expected} == expected
     assert out["certified"] is (expected["coverage"] is not None)
+
+
+# --------------------------------------------------------------------------- certification is possible, never certain
+
+#: The reason every certification_guaranteed entry starts with.
+_NEVER_CERTAIN = "a random design makes a certified zone possible, never certain"
+
+
+def _says_possible_not_certain(out: dict[str, Any], detail: str) -> None:
+    """The claim with its reason, and every step naming a certified zone qualified."""
+    assert rules.CERTIFICATION_GUARANTEED in _ids(out)
+    why = _why(out, rules.CERTIFICATION_GUARANTEED)
+    assert why.startswith(_NEVER_CERTAIN) and "may certify none" in why
+    assert detail in why
+    naming = [s for s in out["next_steps"] if "certified zone" in s]
+    assert naming, out["next_steps"]
+    assert all("possible, not certain" in s for s in naming), naming
+    _holds_to_the_contract(out)
+
+
+@pytest.mark.asyncio
+async def test_no_output_promises_a_certified_zone() -> None:
+    """exp86 round 8 (B5/files/2): "Happy to plan that if you want a
+    guaranteed-certifiable region", read off an estimate's next step that a
+    certified zone needs a random design. A random design makes one possible,
+    never certain: F3, that map's own 300-label random design, certified
+    nothing. Every plan, estimate and certification says so and forbids the
+    promise."""
+    random_plan = await _plan("random")
+    _says_possible_not_certain(random_plan, "this plan's 300 windows certify nothing")
+    stratified = await _plan("confidence")
+    _says_possible_not_certain(stratified, "this confidence design cannot certify")
+    assert "possible, not certain" in stratified["design_note"]
+
+    labels = _labels_of(stratified)
+    est = await _result(
+        "olmoearth_estimate_map_error",
+        {"design_path": stratified["design_path"], "wrong": labels},
+    )
+    _says_possible_not_certain(est, "a new random plan may certify nothing")
+    assert "possible, not certain" in _why(est, rules.CERTIFY_FROM_NONRANDOM_DESIGN)
+    srs = await _result(
+        "olmoearth_estimate_map_error",
+        {"design_path": random_plan["design_path"], "wrong": _labels_of(random_plan)},
+    )
+    _says_possible_not_certain(srs, "and it may find none")
+    scores, truth = _map(2000, seed=11)
+    first = json.loads(Path(random_plan["design_path"]).read_text())["sample"][
+        "indices"
+    ][:100]
+    no_design = await _result(
+        "olmoearth_estimate_map_error",
+        {"window_indices": first, "wrong": [truth[i] for i in first], "scores": scores},
+    )
+    _says_possible_not_certain(no_design, "no design file to certify from")
+
+    refused = await _result(
+        "olmoearth_certify_zone",
+        {"design_path": stratified["design_path"], "wrong": labels, "alpha": 0.05},
+    )
+    _says_possible_not_certain(refused, "a new random plan may certify nothing")
+    args = {"design_path": random_plan["design_path"], "wrong": _labels_of(random_plan)}
+    none = await _result("olmoearth_certify_zone", {**args, "alpha": 0.05})
+    assert none["certified"] is False
+    assert "possible, not certain" in none["next_steps"][0]  # the NEW design
+    assert "possible, not certain" in none["design_requirement"]
+    assert rules.CERTIFICATION_GUARANTEED in _ids(none)
+    assert "of 300 labels certified nothing at alpha=0.05" in _why(
+        none, rules.CERTIFICATION_GUARANTEED
+    )
+    some = await _result(
+        "olmoearth_certify_zone", {**args, "alpha": 0.1, "rule": "bonferroni"}
+    )
+    assert some["certified"] is True
+    (larger,) = [s for s in some["next_steps"] if s.startswith("A larger zone")]
+    assert "NEW random design" in larger and "possible, not certain" in larger
+    assert f"certified the {some['n_zone']} most confident windows" in _why(
+        some, rules.CERTIFICATION_GUARANTEED
+    )
+    # The tool's description, sent with every model call, says it too.
+    (spec,) = [
+        t.spec
+        for t in build_estimation_tools()
+        if t.spec.name == "olmoearth_certify_zone"
+    ]
+    assert "it may certify none" in spec.description

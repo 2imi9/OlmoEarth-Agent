@@ -6,7 +6,8 @@ exp86's audits (rounds 6 and 7) found answers that broke the statistics the
 tools had just applied: a looser alpha proposed after nothing certified, a
 Bonferroni re-run after the prefix rule failed, an error rate offered for a
 regression score with no threshold, a third dated map offered to settle which
-of two is right, 69/300 worked out by hand. The tools' notes said so in
+of two is right, 69/300 worked out by hand; round 8's audit found "a
+guaranteed-certifiable region" promised from a random plan. The tools' notes said so in
 prose, and the prose was not followed. This module gives the tools the
 shared output contract's three keys, so a harness can check an answer
 against them:
@@ -249,7 +250,39 @@ def certify_from_nonrandom_design(design: str | None) -> dict[str, str]:
         "needs the labels inside each candidate zone to be a random sample of "
         "it, which a stratified draw is not, so no zone can be certified from "
         "these labels (olmoearth_certify_zone refuses them); certification "
-        "needs a new plan with design='random'",
+        "needs a new plan with design='random', which makes a certified zone "
+        "possible, not certain",
+    )
+
+
+#: What every step that names a random plan for a certified zone adds: exp86
+#: round 8 (B5/files/2) read "a certified zone needs a new plan with
+#: design='random'" as "a guaranteed-certifiable region", a precondition as
+#: an outcome.
+POSSIBLE_NOT_CERTAIN = (
+    "A random design makes a certified zone possible, not certain: "
+    "olmoearth_certify_zone may certify nothing."
+)
+
+
+def certification_guaranteed(detail: str | None = None) -> dict[str, str]:
+    """No design, budget or plan promises a certified zone.
+
+    exp86 round 8 (B5/files/2) offered "a guaranteed-certifiable region"
+    from a random plan. The package certifies a zone only where the labels
+    drawn in it hold few enough errors for its exact test, so a random
+    design can certify nothing: on that map's own 300-label random design
+    (F3) every one of 18 levels failed. ``detail`` says what this result
+    adds (the design, the budget, the outcome).
+    """
+    return forbidden(
+        CERTIFICATION_GUARANTEED,
+        "a random design makes a certified zone possible, never certain: "
+        "olmoearth_certify_zone certifies a zone only where the labels drawn "
+        "in it hold few enough errors for its exact test, so it may certify "
+        "none, and no design, sample size, budget or plan can promise a "
+        "certified (or 'certifiable') region, or a zone of any size"
+        + (f"; {detail}" if detail else ""),
     )
 
 
