@@ -482,7 +482,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     a series in `olmoearth_compare_results`) forbid
     `one_reference_settles_two_dates`, and their dates sentence says labels
     for one date grade only that date's map and each map needs its own
-    date's reference.
+    date's reference. A temporal pair also forbids another date as what
+    settles which map is right (`another_date_settles_it`); a series does not,
+    since the trend over more dates is its own question.
   - Where the evidence does not, or may not, cover the case, no field
     carries the experiment's figures or its dataset: `evidence_scope` names
     the source (exp58 or exp70 of 2imi9/olmoearth_inferenceX) and says it does

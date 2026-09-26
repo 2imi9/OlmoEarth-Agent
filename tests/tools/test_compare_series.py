@@ -160,6 +160,9 @@ async def test_trace_orders_by_date_and_traces_shifts(
     assert "one_reference_settles_two_dates" in {
         c["id"] for c in out["forbidden_claims"]
     }
+    # A trend over more dates is a series' own question, not a claim that
+    # another date settles which map is right (the fix-r8 review).
+    assert "another_date_settles_it" not in {c["id"] for c in out["forbidden_claims"]}
     assert out["must_state"][0].startswith("Maps of different times")
     assert out["steps"][0]["from"] == {"result_id": "ra", "date": _PREDICTIONS["ra"][1]}
     assert out["steps"][0]["to"] == {"result_id": "rb", "date": _PREDICTIONS["rb"][1]}

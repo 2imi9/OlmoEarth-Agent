@@ -843,7 +843,9 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     must_state: list[str] = []
     if mode == "series" or (mode == "pair" and kind == "temporal"):
         must_state.append(rules.DATED_MAPS_MUST_STATE)
-        claims += _dated_claims(dates if mode == "pair" else None)
+        claims += _dated_claims(
+            dates if mode == "pair" else None, series=mode == "series"
+        )
     facts, said, forbid, next_steps = _correlation_contract(
         _correlations(mode, out), mode=mode, grid=grid
     )
@@ -962,19 +964,25 @@ def _correlation_contract(
     return facts, must_state, claims, next_steps
 
 
-def _dated_claims(dates: list[str | None] | None) -> list[dict[str, str]]:
+def _dated_claims(
+    dates: list[str | None] | None, *, series: bool = False
+) -> list[dict[str, str]]:
     """The claims of a comparison of one model's maps at different times.
 
-    Another unlabelled date settles nothing, and neither do labels for one
-    date, nor one reference and another model run: exp86 round 8 (brief 3 on
-    the cluster, brief 7 on files) offered both through
-    olmoearth_compare_review; a temporal pair or a series here is the same
-    question on Studio results. ``dates`` are a pair's two dates; a series
-    names none.
+    Labels for one date settle nothing, nor one reference and another model
+    run: exp86 round 8 (brief 3 on the cluster, brief 7 on files) offered both
+    through olmoearth_compare_review; a temporal pair or a series here is the
+    same question on Studio results. A temporal pair also forbids another
+    unlabelled date as what settles which map is right; a series does not,
+    since a trend over more dates is that mode's own question (the fix-r8
+    review: "a later map would show whether the upward shift continues" was
+    flagged). ``dates`` are a pair's two dates; a series names none.
     """
     a, b = (dates[0], dates[1]) if dates and len(dates) == 2 else (None, None)
-    another = rules.across_dates({"a": a, "b": b})[0]
-    return [another, rules.one_reference_settles_two_dates(a, b)]
+    one = rules.one_reference_settles_two_dates(a, b)
+    if series:
+        return [one]
+    return [rules.across_dates({"a": a, "b": b})[0], one]
 
 
 def _unthresholded_regression(
