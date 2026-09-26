@@ -122,10 +122,13 @@ CHECK_NUMBERS_ENV = "OLMOEARTH_CHECK_NUMBERS"
 #: The same for the answer's other checks (direction, actions, forbidden
 #: claims, required statements); ``LeadAgent(check_answer=False)``.
 CHECK_ANSWER_ENV = "OLMOEARTH_CHECK_ANSWER"
-#: The same for the claim check, the model's own reading of the answer
-#: against the run (``harness/claim_check.py``); ``LeadAgent(check_claims=
-#: False)``. Independent of the two above: it is the one check that costs
-#: model calls (at most two per run).
+#: The claim check, the model's own reading of the answer against the run
+#: (``harness/claim_check.py``), is OFF unless this is set to 1 (or
+#: ``LeadAgent(check_claims=True)``). exp86 round 10 ran it with the agent's
+#: own model: of its 20 flags 2 or 3 were real, three of the four sentences
+#: it left marked were correct, and it flagged none of the round's 10
+#: material findings. It is the one check that costs model calls (at most
+#: two per run).
 CHECK_CLAIMS_ENV = "OLMOEARTH_CHECK_CLAIMS"
 _FALSY = {"0", "false", "no", "off"}
 
@@ -138,6 +141,12 @@ MODEL_STEPS_PER_TURN = 10
 
 def _env_on(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() not in _FALSY
+
+
+def _env_set(name: str) -> bool:
+    """An opt-in switch: on only when set to a value that is not falsy."""
+    value = os.environ.get(name, "").strip().lower()
+    return bool(value) and value not in _FALSY
 
 
 def _forced_skill_clause(skill: str) -> str:
@@ -226,7 +235,7 @@ class LeadAgent:
         local: bool = False,
         check_numbers: bool = True,
         check_answer: bool = True,
-        check_claims: bool = True,
+        check_claims: bool | None = None,
         surface: str = "cli",
         middleware: Sequence[AgentMiddleware] | None = None,
     ) -> None:
@@ -247,12 +256,15 @@ class LeadAgent:
         #: What follows the card: skill index, memory, forced skill, budget.
         tail = ""
         # Check the answer against the run before it is shown, unless
-        # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers),
-        # OLMOEARTH_CHECK_ANSWER=0 (the other rules) and
-        # OLMOEARTH_CHECK_CLAIMS=0 (the claim check).
+        # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers) and
+        # OLMOEARTH_CHECK_ANSWER=0 (the other rules). The claim check is
+        # opt-in: check_claims=True, or OLMOEARTH_CHECK_CLAIMS=1 when
+        # check_claims is left unset.
         self.check_numbers = check_numbers and _env_on(CHECK_NUMBERS_ENV)
         self.check_answer = check_answer and _env_on(CHECK_ANSWER_ENV)
-        self.check_claims = check_claims and _env_on(CHECK_CLAIMS_ENV)
+        self.check_claims = (
+            _env_set(CHECK_CLAIMS_ENV) if check_claims is None else check_claims
+        )
         # Where the answer is shown: on the web the tool results are shown
         # beside it, so "listed above" may point at them (harness/checks.py).
         self.surface = surface
@@ -419,8 +431,8 @@ class LeadAgent:
           (``error`` says which; nothing is flagged). Each carries the
           verifier's raw ``reply``, its ``version``, ``unmatched`` (quotes
           found in no sentence of the answer), ``reply_complete`` and
-          ``finish_reason``. Off with ``check_claims=False`` or
-          ``OLMOEARTH_CHECK_CLAIMS=0``.
+          ``finish_reason``. Off unless ``check_claims=True`` or
+          ``OLMOEARTH_CHECK_CLAIMS=1``.
 
         The loop runs this agent's middleware (``middleware``, else
         :meth:`default_middleware`) in LangChain's order: ``abefore_agent``

@@ -154,9 +154,11 @@ def _check_events(events: list[dict[str, Any]]) -> list[tuple[str, str, int]]:
 
 @pytest.fixture(autouse=True)
 def _claims_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The claim check at its default (tests/conftest.py turns it off)."""
-    for env in (CHECK_CLAIMS_ENV, CHECK_NUMBERS_ENV, CHECK_ANSWER_ENV):
+    """The claim check switched on (it is opt-in since exp86 round 10), the
+    rule checks at their defaults."""
+    for env in (CHECK_NUMBERS_ENV, CHECK_ANSWER_ENV):
         monkeypatch.delenv(env, raising=False)
+    monkeypatch.setenv(CHECK_CLAIMS_ENV, "1")
 
 
 # --- the loop ---------------------------------------------------------------
@@ -333,13 +335,23 @@ async def test_the_claim_check_can_be_switched_off(
     events = await _events(_agent(llm, check_claims=False))
     assert _check_events(events) == [] and len(llm.calls) == 2
 
-    monkeypatch.setenv(CHECK_CLAIMS_ENV, "off")
-    llm = _Scripted([_compare_call(), _answer(_DRAFT)])
-    events = await _events(_agent(llm))
-    assert _check_events(events) == [] and len(llm.calls) == 2
+    # Opt-in since exp86 round 10: unset, or set to a falsy value, it is off.
+    for value in (None, "off", "0", ""):
+        if value is None:
+            monkeypatch.delenv(CHECK_CLAIMS_ENV)
+        else:
+            monkeypatch.setenv(CHECK_CLAIMS_ENV, value)
+        llm = _Scripted([_compare_call(), _answer(_DRAFT)])
+        events = await _events(_agent(llm))
+        assert _check_events(events) == [] and len(llm.calls) == 2, value
+
+    # On by argument, whatever the environment says.
+    llm = _Scripted([_compare_call(), _answer(_DRAFT), _answer("[]")])
+    events = await _events(_agent(llm, check_claims=True))
+    assert _check_events(events) == [("claims", "passed", 0)]
 
     # The other switches leave it on: it is the one check that calls the model.
-    monkeypatch.delenv(CHECK_CLAIMS_ENV)
+    monkeypatch.setenv(CHECK_CLAIMS_ENV, "1")
     llm = _Scripted([_compare_call(), _answer(_DRAFT), _answer("[]")])
     events = await _events(_agent(llm, check_numbers=False, check_answer=False))
     assert _check_events(events) == [("claims", "passed", 0)]
