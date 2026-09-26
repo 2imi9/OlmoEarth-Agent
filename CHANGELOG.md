@@ -541,76 +541,83 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   forbidden claim `certification_guaranteed`. No number the package
   returns changes.
 - **The answer checks catch exp86 round 8's audited claims** (the blind
-  audit of rounds 7 and 8; 17 material findings in round 8, 15 of them of
-  the kinds below). `forbidden_claims` gains a detector for each of the
-  contract's six new ids, each run only when a tool of the run emits it:
+  audit of rounds 7 and 8, and the review of branch 2imi9/fix-r8).
+  `forbidden_claims` gains a detector for each of the contract's six new
+  ids, each run only when a tool of the run emits it:
   `spatial_pattern_from_one_correlation` (where, or in what pattern, the
-  maps agree, read from one pooled correlation: "anywhere", "nowhere",
-  "high where the other is low", "large parts ... while the rest differs",
-  its label read with the clause; not a breakdown a tool computed by rows
-  or bands, a share such as "a large part of the disagreement", "agree
-  spatially", which says how much, not where, or one map's level in a
-  place, "KarstBinary is low almost everywhere": the clause must relate the
-  two maps);
-  `agreement_from_uncertain_correlation` (that the maps do or do not
-  co-vary: "do not rise and fall together", "unrelated", "strongly
-  agree"; a negation does not exempt it, a statement of what the
-  correlation can say does: "only whether they rise and fall together is
-  meaningful", and so do the tools' own sentences, which say the sample
-  cannot say whether the maps co-vary, what an interval holds, or the sign
-  the tool found); `review_set_for_unthresholded_regression` (a review set,
-  margins or the least decided windows *offered*, in the review's own
-  clause, unless a threshold is stated as what the review needs, "once a
-  threshold is named", while "without a threshold, I can still build a
-  review set" is read; and only for the bands the reason names, so an offer
-  that names only another band of the run, by its map's or its property's
-  name or as a [0, 1] score, is not it); `one_reference_settles_two_dates`
-  ("either date", "one or both dates", "at least one, plus a date-matched
-  second inference", and one map's year named alone, read against the
-  comparison's own `dates`; a clause that restricts one date's labels to
-  that date's map, as the tools' must_state does, is the rule);
-  `evidence_outside_its_scope` ("in comparable
-  cases", "of such windows", "behind this rule", "why these: on Ai2's
-  suite ...", and a name only the tool's `evidence_scope` holds, such as
-  round 8's "the two Sen1Floods11 flood maps", unless the sentence states
+  maps agree, read from one pooled correlation: "anywhere", "nowhere", "high
+  where the other is low", "large parts ... while the rest differs", its
+  label read with the clause; not a breakdown a tool computed by rows or
+  bands, a share such as "a large part of the disagreement", "agree
+  spatially", which says how much, not where, or one map's level in a place,
+  "KarstBinary is low almost everywhere": the clause must relate the two
+  maps); `agreement_from_uncertain_correlation` (that the maps do or do not
+  co-vary: "do not rise and fall together", "unrelated", "strongly agree"; a
+  negation does not exempt it, a statement of what the correlation can say
+  does: "only whether they rise and fall together is meaningful", and so do
+  the tools' own sentences, which say the sample cannot say whether the maps
+  co-vary, what an interval holds, or the sign the tool found);
+  `review_set_for_unthresholded_regression` (a review set, margins or the
+  least decided windows *offered*, in the review's own clause, unless a
+  threshold is stated as what the review needs, "once a threshold is named",
+  while "without a threshold, I can still build a review set" is read; and
+  only for the bands the reason names, so an offer that names only another
+  band of the run, by its map's or its property's name or as a [0, 1] score,
+  is not it); `one_reference_settles_two_dates` ("either date", "one or both
+  dates", "at least one, plus a date-matched second inference", and one
+  map's year named alone, read against the comparison's own `dates`; a
+  clause that restricts one date's labels to that date's map, as the tools'
+  must_state does, is the rule); `evidence_outside_its_scope` ("in
+  comparable cases", "of such windows", "behind this rule", "why these: on
+  Ai2's suite ...", and a name only the tool's `evidence_scope` holds, such
+  as round 8's "the two Sen1Floods11 flood maps", unless the sentence states
   the scope; a bare "measurement" is the run's); `certification_guaranteed`
   (a design, sample or plan in the promise's own clause:
   "guaranteed-certifiable", "enough labels to certify", "a random design
   will certify"; not a requirement, a hedged offer, or the test's own
   guarantee, "the certified zone's error is at most alpha", "the guarantee
-  covers only that alpha"). `subset_labelling_sufficient` also catches a sample of the least
-  confident windows promised a sound rate ("a targeted labeling sample
-  from the lower-confidence windows ... defensible error rates", round 8
-  B3/studio run 3, which the rewrite had kept unmarked), unless the
-  sentence names a stratified or weighted design; "not enough" is no
-  offer. A negation governs a claim only before it in its clause or within
-  six words after it (round 7's "... or treat this as a change-detection
-  layer rather than a contest" had exempted a one-date offer). `actions`: a
-  list, a ranking or the windows said to be saved in, or listed in, a named
-  file must be one a tool names as holding a list by its key
-  (`differing_path`, `labels_csv_path`); `review_set_evidence.json`, which
-  `evidence_detail_path` names and which holds evidence text only, is no
-  longer read as a list by the "review" in its name (round 8, B8/cluster
+  covers only that alpha"). `subset_labelling_sufficient` also catches a
+  sample of the least confident windows promised a sound rate ("a targeted
+  labeling sample from the lower-confidence windows ... defensible error
+  rates", round 8 B3/studio run 3, which the rewrite had kept unmarked),
+  unless the sentence names a stratified or weighted design; "not enough" is
+  no offer. A negation governs a claim only before it in its clause or
+  within six words after it (round 7's "... or treat this as a
+  change-detection layer rather than a contest" had exempted a one-date
+  offer). `actions`: a list, a ranking or the windows said to be saved in,
+  or listed in, a named file must be one a tool names as holding a list by
+  its key (`differing_path`, `labels_csv_path`); `review_set_evidence.json`,
+  which `evidence_detail_path` names and which holds evidence text only, is
+  no longer read as a list by the "review" in its name (round 8, B8/cluster
   runs 2 and 3), and only a string that is a path counts as a file a tool
   wrote or names (no whitespace, or a rooted path): the review tools'
   `listing_note`, a note that names `review_set_evidence.json` in prose
   under a key that names a listing, had made that file a list's. A list or
-  the windows right before a file ("the full ranked list is in <file>",
-  "all 3,807 differing windows are in <file>") is read as the claim too.
+  the windows right before a file ("the full ranked list is in <file>", "all
+  3,807 differing windows are in <file>") is read as the claim too.
   `direction`: a `concentration` violation calls row band 0 the northmost
   only when the fact's `row_order` runs north to south (a fact without the
-  key is read as north-up), and with row 0 south a compass place is not
-  read against row band 0. The detectors read a sentence in time linear in
-  its length: quotes, negations, clauses and offers are found once per
-  sentence and looked up by bisection, where the review-set and spatial
-  detectors had searched the whole clause once per match (14.7 s for one
-  130 KB listing line with the id emitted; now well under a second with
-  every id emitted). On the recorded answers of rounds 6 to 8, with each id
-  emitted wherever it could apply, the detectors flag 43 sentences: 37 hold
-  a confirmed audit finding (in two, the finding is another claim of the
-  same sentence), 3 a finding the verifiers added, and 3 none, which read
-  as true catches the audits did not record; none is a false alarm.
-  `actions` flags 5 sentences, all confirmed findings (3 at c3d2e28).
+  key is read as north-up), and with row 0 south a compass place is not read
+  against row band 0. The detectors read a sentence in time linear in its
+  length: quotes, negations, clauses and offers are found once per sentence
+  and looked up by bisection, where the review-set and spatial detectors had
+  searched the whole clause once per match (14.7 s for one 130 KB listing
+  line with the id emitted; now well under a second with every id emitted).
+  On the recorded answers of rounds 6 to 8, with each id emitted wherever it
+  could apply, the detectors flag 43 sentences: 37 hold a confirmed audit
+  finding (in two, the finding is another claim of the same sentence), 3 a
+  finding the verifiers added, and 3 none, which read as true catches the
+  audits did not record; none is a false alarm. `actions` flags 5 sentences,
+  all confirmed findings (3 at c3d2e28). With round 8's 30 runs replayed on
+  these tools (every recorded call, Studio served from the run's recorded
+  responses; 5,508 of 5,508 numbers at shared paths reproduced), an answer
+  made of the results' own facts, must_state and notes raises no violation
+  in any run, and the checks flag 14 of round 8's 17 material findings in
+  the recorded answers; the other three are a margin ratio of the 50 listed
+  windows given for the 10 shown, a dataset name the tools no longer return,
+  and weakest classes named by eye, which `weakest_classes` now ranks.
+  Rounds 6 and 7, checked against their recorded results, gain and lose no
+  flag against c3d2e28.
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
   - `olmoearth_plan_label_sample` held a Studio result's grid to 16 in
     silence (20, 30 and 40 all gave the same 173 valid windows) and crashed
