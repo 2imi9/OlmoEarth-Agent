@@ -14,7 +14,7 @@ from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.studio.client import studio_context
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 async def _load_context(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -102,6 +102,9 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_load_context,
+            capability=Capability(
+                does="the user's identity, organization and a page of Studio projects"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -121,6 +124,7 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_create_project,
+            capability=Capability(does="create a Studio project"),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -152,6 +156,10 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_request_aoi,
+            capability=Capability(
+                does="ask the user to draw an area on a map in the web UI; its "
+                "area_id comes with their next message"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -168,5 +176,6 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_get_prediction,
+            capability=Capability(does="a prediction's status and model_id"),
         ),
     ]

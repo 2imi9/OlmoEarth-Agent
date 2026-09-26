@@ -52,7 +52,7 @@ from olmoearth_agent.analysis.review_set import (
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.review_set import (
     FROM_RESULT_DEFAULT_GRID,
     FROM_RESULT_GRID_RANGE,
@@ -1508,6 +1508,16 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_plan_label_sample,
+            capability=Capability(
+                does="choose which windows to label for an error rate "
+                "(design 'confidence', or 'random' for a certified zone) and "
+                "save the design",
+                needs=(
+                    "threshold, for a Studio regression band not in [0, 1]",
+                    "a budget of at most the valid windows (a Studio result at "
+                    "grid 16 plans them all)",
+                ),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -1555,6 +1565,17 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_estimate_map_error,
+            capability=Capability(
+                does="the map's error rate with its design's interval, from the "
+                "reviewer's 0/1 labels; per-class accuracy with reference classes",
+                needs=(
+                    "a 0/1 label on every window of a planned design, or on "
+                    "windows drawn at random",
+                ),
+                cannot=(
+                    "use a review set, or windows chosen by margin, as the sample",
+                ),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -1593,5 +1614,10 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_certify_zone,
+            capability=Capability(
+                does="the largest most-confident share of the map whose error "
+                "rate is at most alpha, by exact tests; it may certify none",
+                needs=("a design='random' plan and its labels",),
+            ),
         ),
     ]

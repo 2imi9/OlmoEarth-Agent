@@ -73,7 +73,7 @@ from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.security.paths import safe_path, workspace_root
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA,
@@ -1428,6 +1428,14 @@ def build_review_set_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_review_set,
+            capability=Capability(
+                does="rank windows for review by the model's top-1 minus top-2 "
+                "margin, from per-class scores inline or in a scores file; a "
+                "review set is not a sample",
+                needs=(
+                    "2 or more class scores per window (a hard class has no margin)",
+                ),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -1495,6 +1503,12 @@ def build_review_set_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_review_set_from_result,
+            capability=Capability(
+                does="rank a Studio result's sampled windows for review by "
+                "distance from its decision",
+                needs=("threshold, for a regression band not in [0, 1]",),
+                cannot=("rank a classification band (a hard class has no margin)",),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -1566,6 +1580,15 @@ def build_review_set_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_compare_review,
+            capability=Capability(
+                does="how two inferences of the same windows differ (counts, "
+                "class changes, boundaries, each side's margin)",
+                needs=("both inferences over the same windows",),
+                cannot=(
+                    "say which map is right, even with labels_date (it takes no "
+                    "labels)",
+                ),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -1640,6 +1663,10 @@ def build_review_set_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_grade_review_rule,
+            capability=Capability(
+                does="whether a candidate suspicion signal finds errors better "
+                "than the margin, on units with 0/1 error labels the caller gives"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -1679,5 +1706,9 @@ def build_review_set_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_budget_ceiling,
+            capability=Capability(
+                does="the most errors any ranking can catch at a review budget, "
+                "min(1, budget / error_rate)"
+            ),
         ),
     ]

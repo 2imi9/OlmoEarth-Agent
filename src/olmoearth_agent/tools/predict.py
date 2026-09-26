@@ -21,7 +21,7 @@ from olmoearth_agent.analysis.raster_compare import (
     declared_range,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     band_value,
     is_categorical,
@@ -259,6 +259,14 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_search_predictions,
+            capability=Capability(
+                does="this account's predictions, and each model's name, type "
+                "and prediction_type",
+                cannot=(
+                    "say what a model was trained on (label fields, training "
+                    "data, metrics)",
+                ),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -292,6 +300,10 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_submit_prediction,
+            capability=Capability(
+                does="run a Studio model over a Studio area and period; returns a "
+                "prediction id to poll"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -314,6 +326,10 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_fetch_results,
+            capability=Capability(
+                does="a prediction's results (tile URLs, property names, "
+                "declared outputs)"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -331,6 +347,10 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_get_prediction_result,
+            capability=Capability(
+                does="one result's tile URLs, properties and declared outputs, "
+                "without its geometry"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -363,5 +383,6 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_pixel_value,
+            capability=Capability(does="one result's value at one lon/lat point"),
         ),
     ]

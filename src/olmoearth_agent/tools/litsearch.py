@@ -35,7 +35,7 @@ from olmoearth_agent.analysis.litsearch import (
     search_literature,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 # Behavioral rules echoed into the description (the ToolSpec.description is the
 # only routing + guardrail surface for an implemented tool -- no SKILL.md gate).
@@ -158,5 +158,9 @@ def build_litsearch_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_litsearch,
+            capability=Capability(
+                does="search arXiv and OpenAlex for papers, or resolve one DOI or "
+                "arXiv id"
+            ),
         ),
     ]

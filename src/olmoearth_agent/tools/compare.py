@@ -76,7 +76,7 @@ from olmoearth_agent.analysis.trace_shifts import (
 from olmoearth_agent.analysis.uncertainty import prediction_confidence
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import statistical_rules as rules
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA,
@@ -1119,5 +1119,15 @@ def build_compare_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_compare_results,
+            capability=Capability(
+                does="how 2-8 Studio results differ over their shared area, on a "
+                "sampled grid (agreement or estimate movement, never accuracy)",
+                needs=(
+                    "2 or more distinct results",
+                    "results of one property (allow_different_properties relaxes "
+                    "it for a pair or group)",
+                    "for mode='series', 3 or more dates of one model",
+                ),
+            ),
         )
     ]

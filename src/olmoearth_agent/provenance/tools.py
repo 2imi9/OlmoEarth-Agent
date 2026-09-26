@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 async def _provenance_summary(
@@ -40,5 +40,8 @@ def build_provenance_tools() -> list[RegisteredTool]:
                 parameters={"type": "object", "properties": {}, "required": []},
             ),
             handler=_provenance_summary,
+            capability=Capability(
+                does="this run's tool calls in order, and a replay skeleton"
+            ),
         ),
     ]

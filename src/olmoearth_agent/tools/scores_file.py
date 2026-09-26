@@ -50,7 +50,7 @@ from typing import Any
 from olmoearth_agent.analysis.review_set import MAX_WINDOWS
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import inferencex
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.review_set import (
     load_json_file,
     read_roots,
@@ -571,5 +571,10 @@ def build_scores_file_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_scores_from_file,
+            capability=Capability(
+                does="read a direct model run already made (scores raster and "
+                "manifest.json) into a scores file; it runs no model",
+                needs=("run_dir under the scores root",),
+            ),
         ),
     ]

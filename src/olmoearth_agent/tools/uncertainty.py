@@ -33,7 +33,7 @@ from typing import Any
 from olmoearth_agent.analysis.review_set import EVIDENCE
 from olmoearth_agent.analysis.uncertainty import area_of_applicability
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _VECTORS_SCHEMA = {
     "type": "array",
@@ -103,5 +103,9 @@ def build_uncertainty_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_area_of_applicability,
+            capability=Capability(
+                does="which points lie outside a model's area of applicability "
+                "(OOD), from feature vectors the caller gives"
+            ),
         ),
     ]

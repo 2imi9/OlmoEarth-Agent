@@ -34,7 +34,7 @@ from olmoearth_agent.analysis.rslearn_advisor import (
     validate_config,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 async def _recommend(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
@@ -171,6 +171,10 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_recommend,
+            capability=Capability(
+                does="an rslearn training setup for a user training themselves; "
+                "it runs no training"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -204,6 +208,9 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_validate,
+            capability=Capability(
+                does="check an rslearn dataset config or model.yaml before training"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -299,6 +306,7 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_compose,
+            capability=Capability(does="write an rslearn fine-tuning model.yaml"),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -329,5 +337,9 @@ def build_rslearn_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_diagnose,
+            capability=Capability(
+                does="fixes for a failing rslearn prepare, ingest or materialize "
+                "stage, from its summary or log"
+            ),
         ),
     ]

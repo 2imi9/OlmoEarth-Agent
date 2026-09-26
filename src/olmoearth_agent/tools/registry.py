@@ -82,12 +82,57 @@ Handler = Callable[[dict[str, Any], ToolContext], Awaitable[Any]]
 _CONTRACT_KEYS = ("facts", "must_state", "forbidden_claims")
 
 
+@dataclass(frozen=True)
+class Capability:
+    """What one tool does, what it needs, and what it cannot do, in words.
+
+    The system prompt's capability card is assembled from these
+    (:func:`olmoearth_agent.harness.capabilities.capability_card`). exp86
+    round 9: the model answers only from its tools, and 7 of the audit's 16
+    material findings were offers of actions no tool can do or whose
+    preconditions did not hold: a review set of a regression band with no
+    threshold, "I'll set up a direct model run", labels on flagged windows
+    turned into "a proper error-rate estimate", a comparison "rerun with
+    labels_date", which takes no labels. Nothing the model saw said what the
+    tools cannot do, so it filled the gap from general knowledge.
+
+    Declared beside the handler, so a change to one is made beside the
+    other. Every entry of ``needs`` and ``cannot`` is a condition a test
+    calls the tool in (``tests/tools/test_tool_capabilities.py``), getting the
+    refusal or the absence it states, so the card cannot drift from the code.
+
+    Attributes
+    ----------
+    does
+        What the tool does, in one line; its required arguments come from the
+        spec, not from here.
+    needs
+        Preconditions the tool enforces, each a short phrase (e.g. "threshold,
+        for a regression band not in [0, 1]"); without one it refuses.
+    cannot
+        What the tool refuses or does not do, each a short phrase (e.g. "say
+        which map is right: it takes no labels").
+    covers
+        Ids of :data:`olmoearth_agent.harness.capabilities.NO_TOOL_CAN` this
+        tool can do after all; the card's list of what no tool can do drops
+        them (e.g. the opt-in ``olmoearth_run_python`` reads any file).
+    """
+
+    does: str
+    needs: tuple[str, ...] = ()
+    cannot: tuple[str, ...] = ()
+    covers: frozenset[str] = frozenset()
+
+
 @dataclass
 class RegisteredTool:
-    """A JSON-Schema spec paired with its async handler."""
+    """A JSON-Schema spec paired with its async handler and its capability."""
 
     spec: ToolSpec
     handler: Handler
+    #: The tool's line on the capability card; every tool of the default
+    #: registry has one (``tests/tools/test_tool_capabilities.py``).
+    capability: Capability | None = None
 
 
 class ToolRegistry:
@@ -143,6 +188,11 @@ class ToolRegistry:
         """The spec of the tool called ``name``, or ``None`` if none is registered."""
         tool = self._tools.get(name)
         return None if tool is None else tool.spec
+
+    def capability_of(self, name: str) -> Capability | None:
+        """The declared capability of the tool called ``name``, or ``None``."""
+        tool = self._tools.get(name)
+        return None if tool is None else tool.capability
 
     def active_specs(self, loaded: Iterable[str] = ()) -> list[ToolSpec]:
         """The specs to send on one turn: every core tool plus ``loaded`` groups."""

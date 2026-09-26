@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 if TYPE_CHECKING:
     from olmoearth_agent.skills.loader import SkillLoader
@@ -106,5 +106,8 @@ def build_skill_tools(
                 },
             ),
             handler=_load_skill,
+            capability=Capability(
+                does="load a skill's steps, and its tools when they are deferred"
+            ),
         ),
     ]

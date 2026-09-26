@@ -14,7 +14,7 @@ from typing import Any
 
 from olmoearth_agent.harness import memory
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _REMEMBER_SPEC = ToolSpec(
     name="olmoearth_remember",
@@ -80,6 +80,16 @@ async def _forget(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
 def build_memory_tools() -> list[RegisteredTool]:
     """The cross-thread memory bundle for the default registry."""
     return [
-        RegisteredTool(spec=_REMEMBER_SPEC, handler=_remember),
-        RegisteredTool(spec=_FORGET_SPEC, handler=_forget),
+        RegisteredTool(
+            spec=_REMEMBER_SPEC,
+            handler=_remember,
+            capability=Capability(
+                does="save one standing user preference for later conversations"
+            ),
+        ),
+        RegisteredTool(
+            spec=_FORGET_SPEC,
+            handler=_forget,
+            capability=Capability(does="delete one saved preference"),
+        ),
     ]
