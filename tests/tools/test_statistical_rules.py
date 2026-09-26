@@ -97,6 +97,12 @@ CONTRACT_IDS = {
     "combined_statistic_across_properties",
     "another_date_settles_it",
     "simple_random_interval_for_stratified_design",
+    "spatial_pattern_from_one_correlation",
+    "agreement_from_uncertain_correlation",
+    "review_set_for_unthresholded_regression",
+    "one_reference_settles_two_dates",
+    "evidence_outside_its_scope",
+    "certification_guaranteed",
 }
 
 

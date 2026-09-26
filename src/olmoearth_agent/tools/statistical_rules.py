@@ -47,6 +47,27 @@ COMBINED_STATISTIC_ACROSS_PROPERTIES = "combined_statistic_across_properties"
 ANOTHER_DATE_SETTLES_IT = "another_date_settles_it"
 #: The simple-random interval put in place of a stratified design's own.
 SIMPLE_RANDOM_INTERVAL = "simple_random_interval_for_stratified_design"
+#: Where, or in what pattern, two maps agree or disagree ("anywhere",
+#: "nowhere", "one is high where the other is low", "large parts agree"),
+#: read from one pooled correlation, which has no location (exp86 round 8).
+SPATIAL_PATTERN_FROM_ONE_CORRELATION = "spatial_pattern_from_one_correlation"
+#: That two maps do, or do not, co-vary ("do not agree at all", "independent",
+#: "unrelated", "strongly agree") when the correlation's 95% interval holds
+#: both no relation and a moderate one (round 8: r = -0.02 on 25 cells, where
+#: a 12 x 12 grid of the same pair gives 0.50).
+AGREEMENT_FROM_UNCERTAIN_CORRELATION = "agreement_from_uncertain_correlation"
+#: A review set, margins, "most ambiguous" or "least certain" windows, or a
+#: per-class review offered for a regression band that has no threshold.
+REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION = "review_set_for_unthresholded_regression"
+#: Labels or a reference for one date, or one reference plus another model
+#: run, offered to say which of two differently dated maps is right.
+ONE_REFERENCE_SETTLES_TWO_DATES = "one_reference_settles_two_dates"
+#: An experiment's result applied to a case the tool says it does not cover
+#: ("in comparable cases", "upstream evidence shows" for this pair).
+EVIDENCE_OUTSIDE_ITS_SCOPE = "evidence_outside_its_scope"
+#: A design, sample size or plan promised to certify a zone: a random design
+#: makes certification possible, never certain.
+CERTIFICATION_GUARANTEED = "certification_guaranteed"
 
 #: The contract's fixed ids: every forbidden claim a tool emits is one of them.
 FIXED_IDS = (
@@ -60,6 +81,12 @@ FIXED_IDS = (
     COMBINED_STATISTIC_ACROSS_PROPERTIES,
     ANOTHER_DATE_SETTLES_IT,
     SIMPLE_RANDOM_INTERVAL,
+    SPATIAL_PATTERN_FROM_ONE_CORRELATION,
+    AGREEMENT_FROM_UNCERTAIN_CORRELATION,
+    REVIEW_SET_FOR_UNTHRESHOLDED_REGRESSION,
+    ONE_REFERENCE_SETTLES_TWO_DATES,
+    EVIDENCE_OUTSIDE_ITS_SCOPE,
+    CERTIFICATION_GUARANTEED,
 )
 
 
