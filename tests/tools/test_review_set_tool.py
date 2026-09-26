@@ -180,7 +180,8 @@ async def test_review_set_scopes_its_evidence_and_saves_the_full_text() -> None:
     )
     out = result["result"]
     assert "evidence" not in out and "caveats" not in out
-    assert "24-task embedding suite" in out["evidence_scope"]
+    # Inline scores name no model: the scope names its source, not its figures.
+    assert "exp70 of 2imi9/olmoearth_inferenceX" in out["evidence_scope"]
     detail = json.loads(Path(out["evidence_detail_path"]).read_text())
     assert "suite-margin-wins-every-task" in detail["ranking"]["claims"]
     assert "shrug-signals-rejected" in detail["ranking"]["claims"]
@@ -262,28 +263,38 @@ async def test_must_state_never_carries_an_argument_no_agent_tool_takes(
         "ranked errors better on 14 of 16 multi-class tasks (exp76); pass form='top1'"
     )
     rows = [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0], [0.0, 0.0, 0.3], [0.9, 0.0, 0.0]]
-    (tmp_path / "s.json").write_text(
-        json.dumps(
-            {
-                "scores": rows,
-                "score_kind": "window_confidence",
-                "score_type": "logit",
-                "model": {"repo": "someone/Other-Model"},
-                "package_warnings": [warning],
-            }
+
+    async def ranked(model: str) -> dict:
+        (tmp_path / "s.json").write_text(
+            json.dumps(
+                {
+                    "scores": rows,
+                    "score_kind": "window_confidence",
+                    "score_type": "logit",
+                    "model": {"repo": model},
+                    "package_warnings": [warning],
+                }
+            )
         )
-    )
+        tool = _tools()["olmoearth_review_set"]
+        return await tool.handler(  # type: ignore[attr-defined,no-any-return]
+            {"scores_path": str(tmp_path / "s.json"), "budget": 0.5}, _ctx()
+        )
+
     monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
-    out = await _tools()["olmoearth_review_set"].handler(  # type: ignore[attr-defined]
-        {"scores_path": str(tmp_path / "s.json"), "budget": 0.5}, _ctx()
-    )
-    assert len(out["must_state"]) == 2 <= MUST_STATE_MAX
-    assert "someone/Other-Model" in out["must_state"][0]
-    assert out["must_state"][1] == MUST_STATE_MULTICLASS_LOGIT
+    out = await ranked("allenai/OlmoEarth-v1-FT-AWF-Base")
+    assert out["must_state"] == [MUST_STATE_MULTICLASS_LOGIT]
     for sentence in out["must_state"]:
         assert "form" not in sentence and "pass" not in sentence
         assert word_count(sentence) <= MUST_STATE_MAX_WORDS
     assert out["scores_file_warnings"][0].endswith("pass form='top1'")
+    # Another model's scores: the suite may not cover them, so must_state
+    # states that and no suite figure (exp86 round 8); the provider's warning
+    # stays whole, as the provider's.
+    other = await ranked("someone/Other-Model")
+    assert len(other["must_state"]) == 1 <= MUST_STATE_MAX
+    assert "someone/Other-Model" in other["must_state"][0]
+    assert other["scores_file_warnings"][0].endswith("pass form='top1'")
 
 
 @pytest.mark.asyncio
@@ -461,9 +472,11 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
     assert result["n_differing"] == 2
     assert {d["window_index"] for d in result["differing"]} == {1, 2}
     assert result["which_side_is_right"] == "not resolvable without labels"
-    assert "51 to 70" in result["evidence_scope"]
+    assert "exp58" in result["evidence_scope"]
+    assert "51 to 70" not in result["evidence_scope"]  # exp86 round 8
     assert result["must_state"] == [MUST_STATE_NO_WINNER]
     assert [c["id"] for c in result["forbidden_claims"]] == [
+        "evidence_outside_its_scope",
         "winner_without_labels",
         "subset_labelling_sufficient",
     ]
@@ -635,12 +648,14 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
         "another_date_settles_it",
         "one_reference_settles_two_dates",
         "subset_labelling_sufficient",
+        "evidence_outside_its_scope",
     }
     partly = await tool.handler(  # type: ignore[attr-defined]
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01"}, _ctx()
     )
     assert "Only one map's date" in partly["must_state"][1]
     assert [c["id"] for c in partly["forbidden_claims"]] == [
+        "evidence_outside_its_scope",
         "one_reference_settles_two_dates",
         "winner_without_labels",
         "subset_labelling_sufficient",

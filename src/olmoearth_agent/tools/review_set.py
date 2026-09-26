@@ -59,6 +59,7 @@ from olmoearth_agent.analysis.review_set import (
     DEFAULT_BUDGETS,
     DEFAULT_MAX_LISTED,
     MUST_STATE_MULTICLASS_LOGIT,
+    NOT_COVERED,
     attainable_ceiling,
     compare_scores,
     evidence_detail,
@@ -448,7 +449,11 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         warnings = file_warnings(meta)
         if warnings:
             out["scores_file_warnings"] = warnings
-        add_must_state(out, warning_limits(meta))
+        # A limit that states the suite's figures is stated only where the
+        # suite's evidence covers the case, in whole or in part (exp86 round
+        # 8: no field carries an experiment's numbers to a case it excludes).
+        if out.get("evidence_covers_this_case") not in NOT_COVERED:
+            add_must_state(out, warning_limits(meta))
     if grid_note:
         out["grid_note"] = grid_note
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
@@ -1087,9 +1092,11 @@ async def _review_set_from_result(
         "caveats": [
             "Budgets are fractions of the valid sampled windows, not of the map's "
             "pixels.",
-            "This review set is chosen to hold errors; it is not a sample. Its "
-            "error rate overstates the map's (1.8 to 5.8 times upstream, exp78). "
-            "To say how wrong the map is, use olmoearth_plan_label_sample.",
+            # No upstream figure: no recorded experiment covers a Studio band
+            # (exp86 round 8 carried such figures to cases they exclude).
+            "This review set is chosen to hold errors; it is not a sample, and "
+            "its error rate overstates the map's. To say how wrong the map is, "
+            "use olmoearth_plan_label_sample.",
         ],
         "facts": ranked["facts"],
         "must_state": ranked["must_state"],

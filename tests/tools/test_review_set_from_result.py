@@ -223,8 +223,16 @@ async def test_a_studio_band_is_scoped_as_no_recorded_experiment_grades_it(
         "No recorded experiment grades a regression score read as a probability."
     ]
     assert [f["id"] for f in out["facts"]] == ["margin_ratio"]
-    assert [c["id"] for c in out["forbidden_claims"]] == ["error_rate_without_labels"]
+    assert [c["id"] for c in out["forbidden_claims"]] == [
+        "error_rate_without_labels",
+        "evidence_outside_its_scope",
+    ]
     assert len(out["caveats"]) == 2
+    # No experiment covers a Studio band: no field carries an upstream figure
+    # (exp86 round 8), and the scope names its source only.
+    blob = json.dumps({k: v for k, v in out.items() if k != "evidence_detail_path"})
+    for figure in ("exp78", "1.8 to 5.8", "24-task", "all 24", "Sen1Floods11"):
+        assert figure not in blob
     detail = json.loads(Path(out["evidence_detail_path"]).read_text())
     assert "suite-margin-wins-every-task" in detail["ranking"]["claims"]
 

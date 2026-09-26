@@ -23,6 +23,8 @@ from olmoearth_agent.analysis.review_set import (
     MUST_STATE_MULTICLASS_LOGIT,
     MUST_STATE_NO_WINNER,
     MUST_STATE_UNNAMED_MODEL,
+    NOT_COVERED,
+    RANKING_SOURCE,
     attainable_ceiling,
     aurc_expected,
     auroc,
@@ -198,14 +200,18 @@ def test_review_set_states_its_evidence_in_one_scoped_sentence() -> None:
     out = review_set(scores, budget=0.1)
     assert "evidence" not in out and "caveats" not in out
     scope = out["evidence_scope"]
-    assert "24-task embedding suite" in scope and "window level" in scope
-    assert "OlmoEarth family" in scope
-    assert scope.count(". ") == 0 and scope.endswith(".")
     # Inline scores name no model, so coverage is not known and must be stated,
-    # in one short sentence: the scope itself stays in evidence_scope.
+    # in one short sentence: the scope itself stays in evidence_scope, naming
+    # its source without the suite's figures (exp86 round 8).
+    assert scope.startswith(RANKING_SOURCE) and "OlmoEarth models" in scope
+    assert "24" not in scope and "suite" not in scope
+    assert scope.count(". ") == 0 and scope.endswith(".")
     assert out["evidence_covers_this_case"] == "not known"
     assert out["must_state"] == [MUST_STATE_UNNAMED_MODEL]
-    assert [c["id"] for c in out["forbidden_claims"]] == ["error_rate_without_labels"]
+    assert [c["id"] for c in out["forbidden_claims"]] == [
+        "error_rate_without_labels",
+        "evidence_outside_its_scope",
+    ]
 
 
 def test_the_full_evidence_text_is_kept_for_the_file() -> None:
@@ -241,7 +247,12 @@ def test_the_scope_sentence_says_whether_the_evidence_covers_the_case(
     scope = ranking_evidence_scope(score_kind=kind, n_classes=n_classes, model=model)
     assert scope["covers"] == covers
     assert phrase in scope["sentence"]
-    assert scope["sentence"].startswith("Ai2's 24-task embedding suite")
+    if covers in NOT_COVERED:
+        # exp86 round 8: the source only, none of its figures or its dataset.
+        assert scope["sentence"].startswith(RANKING_SOURCE)
+        assert "24" not in scope["sentence"] and "suite" not in scope["sentence"]
+    else:
+        assert scope["sentence"].startswith("Ai2's 24-task embedding suite")
     # A limit goes to must_state as its own short sentence, never the scope.
     if covers == "yes":
         assert scope["must_state"] is None
@@ -500,10 +511,18 @@ def test_the_comparison_scope_and_contract() -> None:
     a, b = _flip(4, [1])
     out = compare_scores(a, b)
     assert "evidence" not in out and "caveats" not in out
-    assert "51 to 70 percent" in out["evidence_scope"]
+    # exp86 round 8: the scope names its source and that it does not cover the
+    # pair, never exp58's figures or its dataset.
+    assert "exp58" in out["evidence_scope"]
+    assert "does not cover this pair" in out["evidence_scope"]
+    assert "51 to 70" not in out["evidence_scope"]
+    assert "Sen1Floods11" not in out["evidence_scope"]
     assert out["evidence_covers_this_case"] == "no"
     assert out["must_state"] == [MUST_STATE_NO_WINNER]
-    assert [c["id"] for c in out["forbidden_claims"]] == ["winner_without_labels"]
+    assert [c["id"] for c in out["forbidden_claims"]] == [
+        "winner_without_labels",
+        "evidence_outside_its_scope",
+    ]
 
 
 def test_spatial_breakdown_counts_every_differing_window_by_band() -> None:
@@ -880,3 +899,64 @@ def test_a_dominant_change_tied_with_another_direction_names_both() -> None:
     assert fact is not None and fact["tied_with_reverse"] is True
     assert "a tie between 3 directions" in fact["sentence"]
     assert fact["sentence"].endswith("class 2 in map A to class 0 in map B.")
+
+
+# --------------------------------------------------------------------------- evidence outside its scope
+
+
+def _strings(value: object) -> list[str]:
+    """Every string anywhere inside a JSON-like value."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [t for v in value.values() for t in _strings(v)]
+    if isinstance(value, list):
+        return [t for v in value for t in _strings(v)]
+    return []
+
+
+#: exp58's figures and dataset, and the suite's, as the fields carried them.
+_UPSTREAM = ("51 to 70", "Sen1Floods11", "15 pairs", "24-task", "all 24", "exp78")
+
+
+def test_no_field_carries_evidence_that_does_not_cover_the_case() -> None:
+    """exp86 round 8: "the more confident side was only right 51-70% of the
+    time in comparable cases" (brief 3 on the cluster) and "the two
+    Sen1Floods11 flood maps" (brief 7 on files), for a pair whose scope said
+    the evidence does not cover it. Where it does not, no field carries its
+    figures or dataset, and the answer may not apply them."""
+    a, b = _flip(16, [1, 5, 9])
+    comparison = compare_scores(a, b, grid=(4, 4))
+    band = review_set(
+        [[0.4, 0.6], [0.9, 0.1], [0.3, 0.7]], budget=1.0, score_kind="binary_score"
+    )
+    for out in (comparison, band):
+        assert out["evidence_covers_this_case"] in NOT_COVERED
+        for text in _strings(out):
+            assert not any(figure in text for figure in _UPSTREAM), text
+        (claim,) = [
+            c
+            for c in out["forbidden_claims"]
+            if c["id"] == "evidence_outside_its_scope"
+        ]
+        assert "in comparable cases" in claim["why"]
+        assert "upstream evidence shows" in claim["why"]
+    assert "exp58" in _strings(comparison["forbidden_claims"])[-1]
+    # The file keeps the record whole.
+    assert "51 to 70" in evidence_detail()["comparison"]["reading"]
+
+
+def test_evidence_that_covers_the_case_in_part_keeps_its_figures() -> None:
+    """Multi-class logits of an OlmoEarth model: the suite measured this kind,
+    so its figures stay, and nothing is forbidden as out of scope."""
+    out = review_set(
+        [[0.0, 2.0, 0.0], [1.5, 0.0, 0.0]],
+        budget=1.0,
+        score_type="logit",
+        model="allenai/OlmoEarth-v1-FT-AWF-Base",
+    )
+    assert out["evidence_covers_this_case"] == "in part"
+    assert "all 16" in out["evidence_scope"]
+    assert "evidence_outside_its_scope" not in {
+        c["id"] for c in out["forbidden_claims"]
+    }

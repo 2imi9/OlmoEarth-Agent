@@ -184,6 +184,34 @@ COMPARISON_MEASURED = (
 #: short sentence stating the limit in ``must_state``.
 COVERS = ("yes", "in part", "no", "not known")
 
+#: The values for which the evidence does not, or may not, cover the case: a
+#: field the answer reads then carries none of the experiment's numbers and
+#: not its dataset's name, and ``evidence_scope`` only names the source and
+#: says it does not cover the case. exp86 round 8: "the more confident side was
+#: only right 51-70% of the time in comparable cases" (brief 3 on the cluster)
+#: and "the two Sen1Floods11 flood maps" (brief 7 on files), for a pair the
+#: comparison said its evidence does not cover. ``"in part"`` keeps its
+#: numbers: they measure this case's kind (an OlmoEarth model's multi-class
+#: scores), and the part they do not cover is what they state.
+NOT_COVERED = ("no", "not known")
+
+#: Where the ranking evidence was measured, named without its numbers or its
+#: dataset (the suite and its figures stay in :func:`evidence_detail`).
+RANKING_SOURCE = (
+    "The ranking evidence (exp70 of 2imi9/olmoearth_inferenceX) was measured on "
+    "OlmoEarth models' class-score margins"
+)
+
+#: Where the side-picking evidence was measured, named the same way.
+COMPARISON_SOURCE = (
+    "The side-picking evidence (exp58 of 2imi9/olmoearth_inferenceX) was measured "
+    "on other pairs of maps with labels"
+)
+
+#: Forbidden with every result whose evidence does not, or may not, cover the
+#: case (:data:`NOT_COVERED`); the contract's fixed id.
+EVIDENCE_OUTSIDE_ITS_SCOPE = "evidence_outside_its_scope"
+
 # The must_state sentence for each case the evidence does not cover: at most
 # 25 words, a limit the answer must convey, never an instruction (the long
 # scope sentence stays in ``evidence_scope``, the full text in the file).
@@ -262,16 +290,19 @@ def ranking_evidence_scope(
         of :data:`COVERS`) and ``must_state``: the limit in at most 25 words
         when the evidence does not cover the case, else ``None``.
     """
+    # Where the evidence does not, or may not, cover the case the sentence names
+    # its source only: none of the suite's figures, and not the suite (exp86
+    # round 8 carried a scope's numbers and dataset to cases it excluded).
     if score_kind == "binary_score":
         return {
-            "sentence": f"{SUITE_MEASURED}, which does not cover this case: no "
+            "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
             "recorded experiment grades a regression score read as a probability.",
             "covers": "no",
             "must_state": MUST_STATE_BINARY_SCORE,
         }
     if score_kind == "threshold_distance":
         return {
-            "sentence": f"{SUITE_MEASURED}, which does not cover this case: no "
+            "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
             "recorded experiment grades a regression band's distance from a "
             "decision threshold.",
             "covers": "no",
@@ -284,7 +315,7 @@ def ranking_evidence_scope(
             else "these scores do not name the model they came from"
         )
         return {
-            "sentence": f"{SUITE_MEASURED}, which may not cover this case: {named}.",
+            "sentence": f"{RANKING_SOURCE} and may not cover this case: {named}.",
             "covers": "not known",
             "must_state": (
                 must_state_other_model(str(model))
@@ -328,14 +359,53 @@ def ranking_evidence_scope(
 
 
 def comparison_evidence_scope() -> dict[str, Any]:
-    """ONE sentence: what the side-picking evidence measured, and that it does not cover this pair."""
+    """ONE sentence: where the side-picking evidence was measured, and that it does not cover this pair.
+
+    The source only: exp58's figures and its dataset stay in the file
+    (:func:`evidence_detail`), since exp86 round 8 applied them to pairs this
+    sentence excluded ("the more confident side was only right 51-70% of the
+    time in comparable cases"; "the two Sen1Floods11 flood maps" for a pair of
+    GEOID-Flood maps).
+    """
     return {
-        "sentence": f"{COMPARISON_MEASURED}, which does not cover this pair: no "
-        "recorded experiment grades which of these two maps is right, and without "
-        "labels neither side can be picked.",
+        "sentence": f"{COMPARISON_SOURCE} and does not cover this pair: no recorded "
+        "experiment grades which of these two maps is right, and without labels "
+        "neither side can be picked.",
         "covers": "no",
         "must_state": MUST_STATE_NO_WINNER,
     }
+
+
+def evidence_outside_scope(scope: dict[str, Any]) -> list[dict[str, str]]:
+    """The ``evidence_outside_its_scope`` claim for a scope that does not cover the case.
+
+    Empty when the evidence covers the case, in whole or in part. The reason
+    names the source, never its numbers or dataset.
+    """
+    if scope.get("covers") not in NOT_COVERED:
+        return []
+    comparison = scope.get("must_state") == MUST_STATE_NO_WINNER
+    source, finding = (
+        (
+            "exp58",
+            "its finding about how often the more confident side was right",
+        )
+        if comparison
+        else ("exp70", "its finding that the margin ranks errors well")
+    )
+    does = "does not" if scope["covers"] == "no" else "may not"
+    case = "pair" if comparison else "case"
+    named = ", and the maps here are not named after its dataset" if comparison else ""
+    return [
+        {
+            "id": EVIDENCE_OUTSIDE_ITS_SCOPE,
+            "why": f"evidence_scope names upstream evidence ({source}) that the tool "
+            f"says {does} cover this {case}: none of its numbers, its dataset or "
+            f"{finding} applies here, neither 'in comparable cases' nor as "
+            f"'upstream evidence shows'{named}; the file at evidence_detail_path "
+            f"keeps that record, not a finding about this {case}",
+        }
+    ]
 
 
 def evidence_detail() -> dict[str, Any]:
@@ -877,7 +947,8 @@ def review_set(
         "margin_summary": summary,
         **_scope_fields(scope),
         "facts": [ratio] if ratio else [],
-        "forbidden_claims": [dict(c) for c in RANKING_FORBIDDEN],
+        "forbidden_claims": [dict(c) for c in RANKING_FORBIDDEN]
+        + evidence_outside_scope(scope),
     }
     if bnd is not None:
         out["n_boundary_windows"] = sum(1 for b in bnd if b > 0)
@@ -1545,9 +1616,12 @@ def more_confident_fact(a_more: int, b_more: int, n_diff: int) -> dict[str, Any]
     share_a, share_b = round(a_more / n_diff, 6), round(b_more / n_diff, 6)
     share_equal = round(equal / n_diff, 6)
     tie_text = f", equal on {_pct(equal / n_diff)}" if equal else ""
+    # No upstream figure: the comparison's evidence does not cover this pair,
+    # and exp86 round 8 carried exp58's "51 to 70 percent" from this sentence
+    # to a pair it excludes ("in comparable cases", brief 3 on the cluster).
     upstream = (
-        "upstream the more confident side was right on 51 to 70 percent of "
-        "differing windows (exp58)"
+        "a margin is not a label, and no recorded experiment grades which of "
+        "these two maps is right"
     )
     if a_more == b_more:
         side = "neither"
@@ -1601,6 +1675,8 @@ def compare_scores(
     upstream measured that the more confident side is right on 51 to 70 percent
     of differing windows and that confidence does not order the set (exp58), so
     the honest answer to "which one do I believe" is to decline and say why.
+    That measurement does not cover the pair at hand, so no field of the result
+    carries its figures or its dataset (only :func:`evidence_detail` does).
 
     Parameters
     ----------
@@ -1761,5 +1837,7 @@ def compare_scores(
         if concentration:
             facts.append(concentration)
     out["facts"] = facts
-    out["forbidden_claims"] = [dict(c) for c in COMPARISON_FORBIDDEN]
+    out["forbidden_claims"] = [
+        dict(c) for c in COMPARISON_FORBIDDEN
+    ] + evidence_outside_scope(scope)
     return out

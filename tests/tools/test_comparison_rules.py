@@ -78,6 +78,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         rules.ONE_REFERENCE_SETTLES_TWO_DATES,
         rules.WINNER_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
+        rules.EVIDENCE_OUTSIDE_ITS_SCOPE,
     }
     another = _why(apart, rules.ANOTHER_DATE_SETTLES_IT)
     assert "(2022-01-01/2022-12-31 and 2023-01-01/2023-12-31)" in another
@@ -95,6 +96,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         rules.ONE_REFERENCE_SETTLES_TWO_DATES,
         rules.WINNER_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
+        rules.EVIDENCE_OUTSIDE_ITS_SCOPE,
     }
     # The reason covers the overlapping periods, not only disjoint ones.
     assert "different or overlapping periods" in _why(
@@ -110,6 +112,7 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         assert _ids(same) == {
             rules.WINNER_WITHOUT_LABELS,
             rules.SUBSET_LABELLING_SUFFICIENT,
+            rules.EVIDENCE_OUTSIDE_ITS_SCOPE,
         }
         assert "more confident side" in _why(same, rules.WINNER_WITHOUT_LABELS)
     # The counts the parity check reads are untouched.
