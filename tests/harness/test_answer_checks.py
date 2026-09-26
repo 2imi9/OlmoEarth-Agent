@@ -926,6 +926,201 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "would settle it.",
         ],
     ),
+    # exp86 round 8 (B3/studio): r = -0.02 over 25 cells, 95% interval -0.41
+    # to 0.38; a 12 x 12 grid of the same pair gives 0.50.
+    "spatial_pattern_from_one_correlation": (
+        [
+            "Their correlation is -0.017, i.e. essentially zero — the two maps do "
+            "not rise and fall together anywhere in the sampled region.",
+            "The two models do not agree spatially at all: one is high where the "
+            "other is indifferent, and vice versa.",
+            "A moderate degree of overlap, meaning large parts of the AOI show "
+            "similar relative patterns while much of the rest disagrees.",
+            "They disagree everywhere.",
+            "Nowhere do the two maps move together.",
+            "Where KarstBinary is high, KarstNumber tends to be low.",
+            "The two maps agree in some regions and disagree in others.",
+            "They co-vary locally but not overall.",
+            "High values of one coincide with low values of the other.",
+            "The maps diverge most in the north.",
+            # round 1, B3/studio run 2: the comparison named in the label
+            "**Where they differ:** effectively everywhere sampleable.",
+        ],
+        [
+            "The correlation is -0.017, essentially zero over 25 cells.",
+            "A single correlation cannot say where the maps agree or differ.",
+            "The correlation pools all 25 cells, so it says nothing about where "
+            "they differ.",
+            "If you want to see the divergence spatially, I can turn both into "
+            "layer packs so you can overlay them.",
+            # a breakdown a tool computed by place
+            "Spatially, differences cluster in the middle rows: rows 2800-4199 "
+            "hold 46.8% of the differing windows.",
+            'Saying they "agree nowhere" would be wrong to claim from one number.',
+            # round 4, B3/cluster run 3: a share of the differences
+            "A large part of the disagreement sits right at class edges.",
+            # round 1, B7/files run 2
+            "Any differing window has two explanations: it changed on the ground "
+            "(this is likely a large part of the 2%), or one map is wrong.",
+            # round 3, B3/studio run 1: how much, not where
+            "The two maps agree spatially only moderately (r = 0.497).",
+        ],
+    ),
+    "agreement_from_uncertain_correlation": (
+        [
+            "Only whether they rise and fall together is comparable — and with "
+            "correlation ≈ -0.0172, they effectively do not agree spatially: one "
+            "going high says essentially nothing about the other.",
+            "Across those the correlation is −0.0172, i.e. the two surfaces "
+            "essentially do not rise and fall together.",
+            "The two maps show a correlation of -0.0172 — essentially no "
+            "relationship, i.e. their values rise and fall independently.",
+            "The near-zero correlation suggests they're capturing different aspects "
+            "of karst.",
+            "The two maps are unrelated.",
+            "The maps are essentially independent.",
+            "KarstBinary and KarstNumber do not co-vary.",
+            "The maps strongly agree.",
+            "They're uncorrelated.",
+            "They are not correlated.",
+            "One tells you nothing about the other.",
+            "The two maps disagree completely.",
+            "The two predictions have nothing in common.",
+            # round 3, B3/studio run 2
+            "They barely agree spatially: correlation -0.017 across the 25 cells.",
+            # the interval stated beside the claim does not withdraw it
+            "With its 95% interval of -0.41 to 0.38, the maps do not co-vary.",
+        ],
+        [
+            "The correlation is -0.017, essentially zero over 25 cells.",
+            "With 25 cells the interval runs from -0.41 to 0.38, so it cannot say "
+            "whether they co-vary.",
+            "Only whether they rise and fall together is meaningful between them.",
+            # round 3, B3/studio run 1; round 5, B3/studio run 1
+            "Only how they move together is meaningful.",
+            "The comparison only reports how much they rise and fall together.",
+            "They measure different quantities, so no difference or RMSE is "
+            "computed.",
+            # a map against its reference is a labelling instruction
+            "Set wrong = 1 where the map's class does not agree with the ground "
+            "truth, else 0.",
+            "Each map is scored against the labels independent of the other.",
+        ],
+    ),
+    "review_set_for_unthresholded_regression": (
+        [
+            "If you want, I can next design a label sample so N labels give an "
+            "honest error estimate for one or both maps, or run a per-class review "
+            "set to flag where each map looks uncertain.",
+            "Run olmoearth_review_set_from_result on each result to flag its own "
+            "most-ambiguous (lowest-margin) windows — where each model is likely "
+            "wrong.",
+            "Alternatively, I can build a human review set (lowest-confidence "
+            "windows first) for either map.",
+            "I can rank each map's windows by margin so you review the least "
+            "certain first.",
+            "Next, flag the windows closest to the decision boundary for review.",
+            "Want me to build a review list of the most ambiguous cells in each map?",
+        ],
+        [
+            "The review set needs a threshold for this band.",
+            "Name a threshold and I can build a review set for each map.",
+            "No review set applies to a regression band without a threshold.",
+            "A regression value has no margin, so a review set does not apply here.",
+            # reports of a review set that ran, a statement, a table row
+            "The review set holds 819 windows (margins 0.108 to 0.994).",
+            "A targeted review set would overstate the true error rate.",
+            "The margin should not be read as a reason to open a window first.",
+            "| Rank | Window (row, col) | Predicted class | Margin |",
+        ],
+    ),
+    "one_reference_settles_two_dates": (
+        [
+            # exp86 round 8, B3/cluster runs 1 and 2, B7/files run 1
+            "If you have reference labels for either date (ideally one set per "
+            "year, with their dates), I can grade which map is right at the "
+            "differing windows.",
+            "If you have labels for either date, pass them (e.g. as labels_date) "
+            "and I can grade each map against its own reference to separate true "
+            "change from errors.",
+            "To settle it you'd need expert-labeled references for both periods (or "
+            "for at least one, plus a date-matched second inference).",
+            # round 7, B7/files run 1: a hedge far along the clause is no negation
+            "To settle it, provide labels for one or both dates, or treat this as a "
+            "change-detection layer rather than a contest between the two maps.",
+            "Provide reference labels dated to one of the two years for a verdict.",
+            "Labels from just one of the dates would tell us which map is right.",
+            "Labels for one date would settle which map is right.",
+            "One reference and a second model run would be enough to decide.",
+        ],
+        [
+            "Only a reference dated to each map would separate them.",
+            "Labels dated to each map's date would settle it.",
+            "You'd need references for both dates to say which is right.",
+            "Labels for one date cannot settle which map is right.",
+            # round 2, B7/files run 1
+            "No labels_date reference was given, so even with labels for only one "
+            "date, grading would be blocked.",
+            "Labels for one date would measure which map matches the ground at that "
+            "date, counting the other wrong wherever the ground changed.",
+        ],
+    ),
+    "evidence_outside_its_scope": (
+        [
+            # exp86 round 8, B3/cluster run 3; round 7, B3/cluster run 1
+            "The 2022 map has a larger logit margin on 57.8% of differing windows, "
+            "but upstream evidence shows the more confident side was only right "
+            "51–70% of the time in comparable cases.",
+            "Upstream evidence shows the more confident side is right on only about "
+            "half or less of such windows.",
+            "Measured evidence behind this rule: on Ai2's published suite the "
+            "model's own margin beat every no-model control on all 24 scored tasks.",
+            "Upstream results carry over to this pair.",
+            "The margin's lead on Ai2's suite means it is the right ranker here.",
+            "Published results for cases like this show confidence is a weak guide.",
+        ],
+        [
+            "No recorded experiment grades this case.",
+            "No recorded experiment grades which of these two maps is right.",
+            "Upstream, the more confident side was right on 51-70% of differing "
+            "windows on flood maps, which does not cover this pair.",
+            "The evidence covers this case only in part.",
+            # the run's own evidence, and a measure of this run
+            "Why these: a near-zero margin means the pixel-level evidence can't "
+            "separate the two classes.",
+            "Why this ordering: here the margin is measured by the mean top-1 "
+            "minus top-2 logit.",
+        ],
+    ),
+    "certification_guaranteed": (
+        [
+            # exp86 round 8, B5/files run 2
+            "Happy to plan that if you want a guaranteed-certifiable region.",
+            "A random design of 900 labels will certify the top 25%.",
+            "With enough random labels you are guaranteed a certified zone.",
+            "This plan ensures the top zone can be certified.",
+            "300 more random labels are sufficient to certify the high-confidence "
+            "half.",
+            "Planning a random design means you will get a certified region.",
+        ],
+        [
+            "Certification needs a random design.",
+            "A random design makes certification possible, never certain.",
+            "With a random design, a zone could be certified if its errors are few.",
+            "No design guarantees a certified zone.",
+            "The guarantee holds only for an alpha fixed before the labels are seen.",
+            "To get a certified zone you would need a new random-design label plan "
+            "fixed in advance.",
+            "Want me to size up how many labels a random design would need to "
+            "certify the top 25% of the map?",
+            # round 3, B6/files run 1
+            "Want me to estimate how many additional labels would plausibly certify "
+            "a 15–20% zone?",
+            # another alpha, not a design (post_hoc_alpha reads it)
+            "A looser alpha (e.g. 0.15) would certify the top zone, but the "
+            "guarantee covers only an alpha fixed before seeing the labels.",
+        ],
+    ),
 }
 
 
@@ -1007,6 +1202,91 @@ def test_a_quantity_after_around_or_near_is_no_place() -> None:
         assert _flagged(check_direction, sentence, _flips()) == [sentence], sentence
     fine = "A is more confident near the class boundaries."
     assert check_direction(fine, _sides()) == []
+
+
+_ROUND_8_IDS = (
+    "spatial_pattern_from_one_correlation",
+    "agreement_from_uncertain_correlation",
+    "review_set_for_unthresholded_regression",
+    "one_reference_settles_two_dates",
+    "evidence_outside_its_scope",
+    "certification_guaranteed",
+)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The correlation is -0.017, essentially zero over 25 cells.",
+        "Only a reference dated to each map would separate them.",
+        "Labels dated to each map's date would settle it.",
+        "Certification needs a random design.",
+        "No recorded experiment grades this case.",
+        "The review set needs a threshold for this band.",
+    ],
+)
+def test_the_rules_stated_correctly_pass_every_round_8_detector(sentence: str) -> None:
+    """The correct statements of the exp86 round 8 fixes, under all six ids at once."""
+    result = {"forbidden_claims": [{"id": i, "why": "x"} for i in _ROUND_8_IDS]}
+    assert check_forbidden_claims(sentence, _run(_record("tool", result))) == []
+
+
+def _dated(**result: Any) -> RunEvidence:
+    """A comparison of a 2023 and a 2022 map (exp86 B3/cluster)."""
+    dates = {"a": "2023-01-01/2023-12-31", "b": "2022-01-01/2022-12-31"}
+    forbidden = [{"id": "one_reference_settles_two_dates", "why": "x"}]
+    return _run(
+        _record(
+            "compare_review", {"dates": dates, "forbidden_claims": forbidden, **result}
+        )
+    )
+
+
+def test_a_year_of_one_map_named_alone_is_a_reference_for_one_date() -> None:
+    """Read against the comparison's own dates: 2023 is one map's year."""
+    flagged = "A reference for 2023 alone would settle which map is right."
+    assert _flagged(check_forbidden_claims, flagged, _dated()) == [flagged]
+    for fine in (
+        "References for 2023 and 2022 would settle which map is right.",
+        "Labels for each map's year (2023 for C1) would settle which is right.",
+        # a year of neither map is another_date_settles_it's, not this id's
+        "A reference for 2019 would settle which map is right.",
+    ):
+        assert check_forbidden_claims(fine, _dated()) == [], fine
+    # without the comparison's dates a bare year is not read
+    undated = _forbidding("one_reference_settles_two_dates")
+    assert check_forbidden_claims(flagged, undated) == []
+
+
+def test_a_name_only_the_evidence_holds_is_the_evidence_put_in_the_case() -> None:
+    """exp86 round 8, B7/files run 2: the pair called "the two Sen1Floods11 flood
+    maps", a name only the tool's evidence_scope held."""
+    scope = (
+        "On 15 pairs of Sen1Floods11 flood maps with expert labels (exp58) the "
+        "more confident side was right on 51 to 70 percent of differing windows, "
+        "which does not cover this pair."
+    )
+    result = {
+        "evidence_scope": scope,
+        "facts": [{"id": "more_confident_side", "sentence": "... (exp58)."}],
+        "forbidden_claims": [{"id": "evidence_outside_its_scope", "why": "x"}],
+    }
+    brief = "Map A (F4/emsr279-11_s1_pre.json) and map B: where do they differ?"
+    run = _run(_record("compare_review", result), brief=brief)
+    flagged = (
+        "Compared all 78,028 shared windows between the two Sen1Floods11 flood maps."
+    )
+    assert _flagged(check_forbidden_claims, flagged, run) == [flagged]
+    for fine in (
+        # the evidence cited with its scope, and a name the case holds too
+        "In the closest study (exp58, 15 Sen1Floods11 pairs) the more confident "
+        "side was right on 51-70%, and that study does not cover this pair.",
+        "The confident side is right on 51-70% upstream (exp58).",
+        "Compared all 78,028 shared windows of the emsr279 maps.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    named = _run(_record("compare_review", result), brief="Two Sen1Floods11 chips.")
+    assert check_forbidden_claims(flagged, named) == []
 
 
 def test_a_claim_no_tool_forbade_is_not_checked() -> None:

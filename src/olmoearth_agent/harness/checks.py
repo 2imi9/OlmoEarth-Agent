@@ -192,6 +192,23 @@ class RunEvidence:
         return names
 
     @cached_property
+    def case_words(self) -> frozenset[str]:
+        """The words of the run other than its tools' evidence.
+
+        The user's messages, every argument, and every result key but an
+        ``evidence*`` one (``evidence_scope`` describes the experiments a
+        tool's claim rests on, not this case): a name only the evidence
+        holds is the evidence's (``evidence_outside_its_scope``).
+        """
+        texts = [*self.user_messages]
+        for record in self.tools:
+            for source in (record.arguments, record.result):
+                texts.extend(
+                    v for k, v in _strings(source) if not k.startswith("evidence")
+                )
+        return frozenset(w for t in texts for w in re.findall(r"[A-Za-z0-9]+", t))
+
+    @cached_property
     def written_files(self) -> list[tuple[str, str]]:
         """``(key, path)`` of every file a tool's result reports writing.
 
@@ -2112,6 +2129,535 @@ def _another_date(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     )
 
 
+def _quoted(s: str, start: int) -> bool:
+    """Whether ``s[start:]`` sits inside double quotes: a phrase cited, not claimed."""
+    head = s[:start]
+    return head.count('"') % 2 == 1 or head.count("“") > head.count("”")
+
+
+#: A statement about what one correlation can say, not a reading of it:
+#: "only whether they rise and fall together is meaningful", "it cannot say
+#: where they agree", "the interval is too wide to tell".
+_CORRELATION_LIMIT_RE = re.compile(
+    r"\b(?:whether|if|how|cannot|can't|cant|could\s*n[o']t|unclear|uncertain\w*|"
+    r"too\s+(?:few|wide|small)|not\s+enough|detect\w*|no\s+basis|"
+    r"no\s+location|has\s+no\s+(?:place|location)|not\s+(?:known|established)|"
+    r"(?:does|do|did)\s*n[o']t\s+(?:say|show|tell|establish|prove|locate|mean)|"
+    r"says?\s+only|only\s+(?:says?|tells?|shows?|measures?|reports?)|(?:wrong|"
+    r"misleading|"
+    r"incorrect|invalid)\s+to)\b",
+    re.I,
+)
+#: Co-variation predicated of the two maps, either way: "they do not rise and
+#: fall together", "essentially no relationship", "their values rise and
+#: fall independently", "one going high says nothing about the other",
+#: "they strongly agree", "a moderate degree of overlap".
+_COVARIATION_CLAIM_RE = re.compile(
+    r"\b(?:do|does|did)\s*(?:not|n't)\s+(?:\w+\s+){0,2}?(?:agree|co-?vary|"
+    r"correlate|track|relate|move\s+together|go\s+together|"
+    r"rise\s*(?:and|&|/)\s*fall)\b"
+    r"|\b(?:vary|varies|move|moves|rise\s+and\s+fall|rise/fall|behave|behaves|"
+    r"fluctuate|fluctuates|change|changes)\s+independently\b"
+    r"|\b(?:are|'re|is|look|looks|seem|seems|appear|appears|essentially|"
+    r"effectively|largely|basically|statistically|mutually)\s+(?:\w+\s+)?"
+    r"(?:independent|unrelated|decoupled|disconnected)\b"
+    r"|\b(?:uncorrelated|anti-?correlated)\b"
+    r"|\b(?:are|'re|is)\s+not\s+(?:\w+\s+)?(?:correlated|related|associated|"
+    r"linked|connected)\b"
+    r"|\bnothing\s+in\s+common\b"
+    r"|\b(?:no|little|zero|essentially\s+no|virtually\s+no|hardly\s+any|almost\s+no)"
+    r"\s+(?:real\s+|meaningful\s+|linear\s+|spatial\s+|clear\s+)?(?:relationship|"
+    r"relation|association|connection|link|co-?variation|correspondence|"
+    r"coupling)\b"
+    r"|\b(?:says?|tells?|reveals?|predicts?)\s+(?:you\s+|us\s+)?(?:essentially\s+|"
+    r"almost\s+|virtually\s+|little\s+or\s+)?nothing\s+about\s+the\s+other\b"
+    r"|\b(?:strongly|closely|highly|well|largely|broadly|moderately|weakly|"
+    r"tightly|clearly|barely|hardly|scarcely|poorly)\s+(?:agree|agrees|correlated|"
+    r"co-?vary|track|match|related|aligned|coupled)\b"
+    r"|\b(?:agree|agrees|disagree|disagrees|track|tracks|match|matches)\s+"
+    r"(?:well|closely|strongly|poorly|weakly|completely|entirely|totally|"
+    r"substantially|largely|broadly)\b"
+    r"|\b(?:completely|entirely|totally|substantially|mostly)\s+(?:agree|"
+    r"disagree)\w*"
+    r"|\b(?:strong|moderate|weak|high|good|close|substantial|partial|poor|clear)\s+"
+    r"(?:degree\s+of\s+)?(?:agreement|overlap|co-?variation|correspondence|"
+    r"association|relationship|alignment|coupling)\b"
+    r"|\b(?:they|maps|models|results|surfaces|values|layers|bands|both)\s+"
+    r"(?:\w+\s+){0,2}?(?:rise\s+and\s+fall|rise/fall|move|go\s+up)\s+together\b"
+    r"|\bcorrelation\b[^.;:]{0,40}?\b(?:suggests?|shows?|means|indicates?|implies|"
+    r"confirms?|reflects?)\s+(?:that\s+)?(?:they|the\s+(?:two\s+)?(?:maps|models|"
+    r"results|surfaces|bands|layers)|both)\b",
+    re.I,
+)
+
+
+#: A map against its reference, not against the other map: "does not agree
+#: with the ground truth" is a labelling instruction.
+_AGAINST_REFERENCE_RE = re.compile(
+    r"\W*(?:\w+\W+){0,2}?(?:with|to)\s+(?:the\s+|its\s+|a\s+)?(?:ground|"
+    r"reference|truth|labels?|field)",
+    re.I,
+)
+
+
+def _agreement_uncertain(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """That the maps do, or do not, co-vary, read from a correlation that cannot say.
+
+    Emitted when the correlation's 95% interval holds both no relation and a
+    moderate one: exp86 round 8 (B3/studio) read r = -0.02 over 25 cells
+    (interval -0.41 to 0.38) as "they do not agree spatially at all", "the
+    two maps do not rise and fall together", "one going high says
+    essentially nothing about the other", where a 12 x 12 grid of the same
+    pair gives 0.50. The claim is often a negation, so a negation does not
+    exempt it; a statement of what the correlation can say does ("only
+    whether they rise and fall together is meaningful", "only how they move
+    together is meaningful", "it cannot tell"), and so does a sentence about
+    the number alone ("the correlation is -0.017, essentially zero over 25
+    cells"). The interval stated beside a reading does not withdraw it.
+    """
+    p = _parse(s)
+    for m in _COVARIATION_CLAIM_RE.finditer(s):
+        if (
+            p.in_clause(_CORRELATION_LIMIT_RE, m.start(), m.end(), own=True)
+            or _AGAINST_REFERENCE_RE.match(s, m.end())
+            or p.example_before(m.start())
+            or _quoted(s, m.start())
+        ):
+            continue
+        return True
+    return False
+
+
+#: Where, or in what pattern, the two maps agree or differ. "Agree spatially"
+#: is how much they co-vary, not where (``agreement_from_uncertain_correlation``
+#: reads it): round 3 put "the two maps agree spatially only moderately" beside
+#: r = 0.50 over 91 cells.
+_PLACE_OF_AGREEMENT_RE = re.compile(
+    r"\b(?:anywhere|nowhere|everywhere|somewhere|locally|in\s+places)\b"
+    r"|\b(?:at|in)\s+the\s+same\s+(?:locations?|places?|spots?|areas?|cells?|"
+    r"pixels?|parts?|sites?)\b"
+    r"|\b(?:large|most|many|some|much|big|other)\s+(?:\w+\s+)?(?:parts?|areas?|"
+    r"regions?|portions?|patches|stretches)\b"
+    # "part of" a place is a place; "a large part of the disagreement" or "of
+    # the 2%" is a share of the differences
+    r"(?!\s+of\s+(?!(?:the\s+|this\s+|your\s+|their\s+)?(?:\w+\s+)?(?:area|aoi|"
+    r"region|map|extent|grid|scene|image|landscape|country|state|county|basin|"
+    r"watershed)s?\b))"
+    r"|\bthe\s+rest\s+(?:of\s+the\s+(?:area|aoi|region|map|extent)\s+)?"
+    r"(?:disagree|differ|diverge)\w*"
+    r"|\bin\s+(?:the\s+)?(?:\w+\s+)?patterns?\b|\b(?:similar|same|different)\s+"
+    r"(?:\w+\s+)?patterns?\b"
+    r"|\bwhere\s+the\s+other\b|\bvice\s+versa\b"
+    r"|\bwhere\s+(?:the\s+)?(?:\w+\s+){0,2}?(?:is|are|reads?|runs?|goes|sits?)\s+"
+    r"(?:\w+\s+)?(?:high|higher|low|lower|elevated|strong|weak)\b"
+    r"|\b(?:coincid\w*|co-?locat\w*|line\s+up|lines\s+up)\b"
+    r"|\bin\s+the\s+(?:far\s+)?(?:north|south|east|west|centre|center|middle|"
+    r"interior|edges?|margins)\w*",
+    re.I,
+)
+#: The comparison a place is a place of: agreement, co-variation, highs and lows.
+_AGREEMENT_WORD_RE = re.compile(
+    r"\b(?:agree\w*|disagree\w*|co-?var\w*|correlat\w*|rise\w*|fall\w*|track\w*|"
+    r"match\w*|similar|diverg\w*|differ\w*|high\w*|low\w*|overlap\w*|together|"
+    r"relat\w*|indifferent)\b|rise/fall",
+    re.I,
+)
+#: An offer to show the maps, not a claim about where they agree.
+_SHOW_OFFER_RE = re.compile(
+    r"\b(?:if\s+you|i\s+can|i\s+could|i'll|want\s+me|would\s+you|to\s+see|"
+    r"overlay\w*|visuali[sz]\w*|layer\s+packs?)\b",
+    re.I,
+)
+#: A breakdown a tool computed by place (rows, bands, differing windows): a
+#: location read from it is the tool's, not one correlation's.
+_COMPUTED_PLACE_RE = re.compile(
+    r"\b(?:rows?|columns?|cols?|bands?|quarters?|quadrants?)\b|\bdiffering\s+windows\b",
+    re.I,
+)
+
+
+def _spatial_from_correlation(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """Where the maps agree or differ, or a pattern of it, read from one correlation.
+
+    One pooled correlation has no location. exp86 round 8 (B3/studio) read
+    one r as "they do not rise and fall together anywhere in the sampled
+    region" and "one is high where the other is indifferent, and vice
+    versa"; round 7 as "large parts of the AOI show similar relative
+    patterns while much of the rest disagrees". A place is read only in a
+    clause about agreement, its label included ("Where they differ:
+    effectively everywhere", round 1); what the correlation cannot say ("it has no
+    location, so it cannot say where they differ"), a cited phrase and an
+    offer to overlay the maps are no claim, and neither is a place in the
+    rows or bands of a breakdown a tool computed by place ("differences
+    cluster in the middle rows") or a share of the differences ("a large
+    part of the disagreement sits at class edges").
+    """
+    p = _parse(s)
+    for m in _PLACE_OF_AGREEMENT_RE.finditer(s):
+        lo, clause = _clause_text(p, m.start(), m.end())
+        clause = s[_label_start(p, lo) : lo] + clause
+        if not _AGREEMENT_WORD_RE.search(clause.replace(m.group(), " ")):
+            continue
+        if (
+            _CORRELATION_LIMIT_RE.search(clause)
+            or _SHOW_OFFER_RE.search(clause)
+            or _COMPUTED_PLACE_RE.search(clause)
+            or p.example_before(m.start())
+            or _quoted(s, m.start())
+        ):
+            continue
+        return True
+    return False
+
+
+#: What a review set ranks by: margins, the least decided windows, a
+#: per-class review, or the review-set tools by name.
+_REVIEW_RANKING_RE = re.compile(
+    r"\breview[\s_-]+(?:set|list)s?\b|\bolmoearth_review_set\w*"
+    r"|\bper[\s-]+class\s+review\b"
+    r"|\bmost[\s-]+(?:ambiguous|uncertain|undecided|suspect)\b"
+    r"|\b(?:least|lowest|low|lower|less)[\s-]+(?:certain|confident|confidence|"
+    r"decided|decisive|margin)\b"
+    r"|\bmargins?\b|\bundecided\b|\b(?:nearest|closest)\s+to\s+(?:0?\.5|the\s+"
+    r"decision)",
+    re.I,
+)
+_THRESHOLD_RE = re.compile(r"\bthreshold\w*|\bcut-?\s?off\b|\bcut\s+point\b", re.I)
+#: An offer or a recommendation: what the answer proposes to do next. A
+#: statement of what a review set would do ("a review set would overstate
+#: the error") is none, nor is a table's header row ("| Rank | Margin |")
+#: or a label ("Run: C1/awf").
+_PROPOSAL_RE = re.compile(
+    r"\?|\b(?:want\s+me|shall\s+i|should|i\s+can|i\s+could|i'll|i\s+will|we\s+can|"
+    r"we\s+could|let\s+me|would\s+you\s+like|you\s+(?:can|could|might|may)|"
+    r"happy\s+to|recommend\w*|suggest\w*|path\s+forward|next\s+step|"
+    r"alternatively|option|try|next)\b"
+    r"|(?:^|[:—–]\s*|\s-\s)(?:[-*+•]\s+|\d+[.)]\s+)?(?:run|build|"
+    r"use|flag|open|check|plan|start)\b(?!\s*:)",
+    re.I,
+)
+
+
+def _review_set_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """A review set, margins or the least decided windows offered for a band
+    with no threshold.
+
+    A regression value has no decision to be near, so it has no margin and
+    no least-decided window until a threshold is named. exp86 round 8
+    (B3/studio) offered "a per-class review set to flag where each map
+    looks uncertain" and to "flag its own most-ambiguous (lowest-margin)
+    windows" of two unthresholded regression bands; round 6 "a human review
+    set (lowest-confidence windows first)". Only an offer or a
+    recommendation in the review's own clause is read (the id is a review
+    set *offered* for the band): a report of a review set a tool ran is
+    another band's, and so is a table row. A sentence that
+    names a threshold ("the review set needs a threshold for this band",
+    "once you name a threshold") or negates the review ("no review set
+    applies") is none.
+    """
+    if _THRESHOLD_RE.search(s) or s.lstrip().startswith("|"):
+        return False
+    p = _parse(s)
+    for m in _REVIEW_RANKING_RE.finditer(s):
+        if (
+            _negated_close(p, m.start(), m.end())
+            or p.example_before(m.start())
+            or _quoted(s, m.start())
+        ):
+            continue
+        _, clause = _clause_text(p, m.start(), m.end())
+        if _PROPOSAL_RE.search(clause):
+            return True
+    return False
+
+
+_DATE_NOUN = r"(?:dates?|years?|periods?|times?|epochs?|acquisitions?)"
+#: A reference for one of the two dates offered where each needs its own:
+#: "labels for either date", "one of the two years", "one or both dates",
+#: "at least one", "(ideally one set per year)".
+_ONE_DATE_RE = re.compile(
+    rf"\beither\s+(?:of\s+the\s+(?:two\s+)?)?{_DATE_NOUN}\b"
+    rf"|\bone\s+of\s+(?:the\s+)?(?:two\s+|those\s+|these\s+|both\s+)?{_DATE_NOUN}\b"
+    rf"|\bone\s+or\s+(?:both|the\s+other)(?:\s+(?:of\s+the\s+)?(?:\w+\s+)?"
+    rf"{_DATE_NOUN})?\b"
+    r"|\bat\s+least\s+one\b"
+    rf"|\b(?:a\s+single|only\s+one|just\s+one)\s+(?:\w+\s+)?{_DATE_NOUN}\b"
+    r"|\bdated\s+to\s+(?:either|one)\b"
+    r"|\b(?:for|from|at|of)\s+(?:only\s+|just\s+)?(?:one|a\s+single)\s+(?:\w+\s+)?"
+    rf"{_DATE_NOUN}\b"
+    r"|\bideally\s+(?:also|both|one\s+(?:set\s+)?(?:per|for\s+each))\b",
+    re.I,
+)
+#: One reference plus another model run: "plus a date-matched second inference".
+_PLUS_RUN_RE = re.compile(
+    r"\b(?:plus|with|and)\s+(?:a|an|another|one)?\s*(?:(?:date-?matched|second|"
+    r"third|new|additional|extra|matching)\s+)+(?:inference|model\s+run|run|"
+    r"prediction|map)s?\b",
+    re.I,
+)
+#: What a reference would decide: which map is right, change from error.
+_SETTLE_RE = re.compile(
+    r"\b(?:settle\w*|grad\w*|verdict|decide\w*|resolve\w*|separat\w*|"
+    r"disambiguat\w*|tell\s+(?:you\s+)?which|which\s+(?:map|one|side)|"
+    r"right|correct|errs|winner|pick)\b",
+    re.I,
+)
+_REFERENCE_RE = re.compile(
+    r"\b(?:labels?|labell?ed|references?|ground[\s-]+truth|truth|annotations?)\b",
+    re.I,
+)
+_DATE_CONTEXT_RE = re.compile(rf"\b{_DATE_NOUN}\b|\b(?:19|20)\d\d\b|\bdated\b", re.I)
+
+
+#: What labels at one date do say, which the tool states: "labels dated
+#: 2023 would measure which map matches the ground at that date, counting
+#: the other wrong wherever the ground changed".
+_ONE_DATE_CAVEAT_RE = re.compile(
+    r"\b(?:at\s+that\s+date|counting\s+the\s+other|wherever\s+the\s+ground|"
+    r"matches\s+the\s+ground)\b",
+    re.I,
+)
+#: A reference for each map, the rule: "each", "both", "per date".
+_EACH_DATE_RE = re.compile(r"\b(?:each|both|every|per)\b", re.I)
+_YEAR_RE = re.compile(r"(?<![\d.])(?:19|20)\d\d(?![\d.])")
+
+
+def _map_years(record: ToolRecord) -> tuple[set[str], set[str]]:
+    """The years of the two maps the emitting comparison compared.
+
+    From its result's ``dates`` (``{"a", "b"}``) or its ``date_a`` and
+    ``date_b`` arguments; two empty sets when it gives neither, or when the
+    maps share a year.
+    """
+    result = record.result if isinstance(record.result, Mapping) else {}
+    found = result.get("dates")
+    dates: Mapping[str, Any] = found if isinstance(found, Mapping) else {}
+    a = str(dates.get("a") or record.arguments.get("date_a") or "")
+    b = str(dates.get("b") or record.arguments.get("date_b") or "")
+    ya, yb = set(_YEAR_RE.findall(a)), set(_YEAR_RE.findall(b))
+    return (ya, yb) if ya and yb and not ya & yb else (set(), set())
+
+
+def _one_map_year(s: str, record: ToolRecord) -> Iterator[re.Match[str]]:
+    """A year of one map named alone as the reference's ("a reference for 2023")."""
+    ya, yb = _map_years(record)
+    if not ya or _EACH_DATE_RE.search(s):
+        return
+    years = list(_YEAR_RE.finditer(s))
+    named = {m.group() for m in years}
+    if bool(named & ya) != bool(named & yb):
+        yield from (m for m in years if m.group() in ya | yb)
+
+
+def _one_reference(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """A reference for one of two dated maps, or one plus another run, offered
+    to say which map is right.
+
+    Where two maps of different dates differ, the ground may have changed:
+    labels at one date count the other map wrong wherever it did, and another
+    unlabelled run is no reference. exp86 round 8 offered to "grade which map
+    is right" from "reference labels for either date" (B3/cluster run 1),
+    and references "for both periods (or for at least one, plus a
+    date-matched second inference)" (B7/files run 1); round 7 "labels for
+    one or both dates". A year of one map named alone ("a reference for
+    2023 would settle it") is read against the comparison's own dates.
+    "Labels dated to each map's date" and "only a reference dated to each
+    map would separate them" are the rule, and pass; so does a clause that
+    negates the one-date reference ("labels for one date cannot settle it",
+    "even with labels for only one date, grading would be blocked")
+    and what one date's labels do measure, as the tool states it ("which map
+    matches the ground at that date").
+    """
+    if not (_SETTLE_RE.search(s) and _REFERENCE_RE.search(s)):
+        return False
+    if _ONE_DATE_CAVEAT_RE.search(s):
+        return False
+    p = _parse(s)
+    cues = [*_PLUS_RUN_RE.finditer(s), *_one_map_year(s, record)]
+    if _DATE_CONTEXT_RE.search(s):
+        # "at least one", "one or both": a date is what they count
+        cues += list(_ONE_DATE_RE.finditer(s))
+    return any(
+        not (
+            _negated_close(p, m.start(), m.end())
+            or p.example_before(m.start())
+            or _quoted(s, m.start())
+        )
+        for m in cues
+    )
+
+
+#: Evidence from recorded experiments. A bare "evidence" or "measured" is
+#: often the run's own ("the pixel-level evidence can't separate them",
+#: "here measured by the mean margin"), so each needs its experimental sense.
+_EVIDENCE_RE = re.compile(
+    r"\b(?:upstream|experiments?|stud(?:y|ies)|suite|benchmarks?|exp\d+|"
+    r"published|literature)\b"
+    r"|\b(?:measured|recorded|prior|experimental|empirical)\s+(?:evidence|"
+    r"results?|measurements?|stud(?:y|ies)|experiments?|record)\b"
+    r"|\bevidence\s+(?:shows?|says?|puts?|suggests?|indicates?|found|finds|from|"
+    r"behind|on)\b"
+    r"|\bmeasured\s+to\b|\bmeasurements?\b"
+    r"|\b(?:previous|prior|earlier|past)\s+(?:\w+\s+)?(?:experiments?|stud(?:y|ies)|"
+    r"results?|work|runs|tests|trials)\b|\bresearch\b"
+    r"|\b(?:has|have|was|were)\s+been\s+shown\b|\b(?:was|were)\s+shown\s+to\b",
+    re.I,
+)
+#: The evidence carried over to this case: "in comparable cases", "of such
+#: windows", "behind this rule", "trust in the signal", "why these: ...".
+_APPLIED_HERE_RE = re.compile(
+    r"\b(?:comparable|similar|analogous|equivalent)\s+(?:\w+\s+)?(?:cases?|pairs?|"
+    r"maps?|settings?|situations?|windows?|comparisons?|tasks?|data|sets?)\b"
+    r"|\bsuch\s+(?:\w+\s+)?(?:windows|cases|pairs|maps|sets|comparisons|"
+    r"disagreements|differences)\b"
+    r"|\b(?:cases?|pairs?|maps?|situations?)\s+like\s+(?:this|these|yours|ours)\b"
+    r"|\b(?:behind|supports?|supporting|justif\w*|backs?|backing|validat\w*|"
+    r"trust\s+in)\s+(?:this|these|the|your)\s+(?:rule|ranking|ordering|signal|"
+    r"ranker|choice|method|approach|pair|maps?|case|result|comparison)\b"
+    r"|\b(?:appl(?:y|ies)|holds?|carr(?:y|ies)\s+over|transfers?|"
+    r"generali[sz]es?)\s+(?:here|to\s+(?:this|these|your))\b"
+    r"|\bwhy\s+(?:these|this)\b"
+    r"|\b(?:so|means|thus|hence|therefore)\b[^.;:]{0,60}?\b(?:is|are)\s+(?:the\s+)?"
+    r"(?:best|incumbent|most\s+reliable|proven|right\s+(?:ranker|signal|choice))\b",
+    re.I,
+)
+#: The evidence's scope stated: it does not cover this case, or only in part.
+_SCOPE_STATED_RE = re.compile(
+    r"\b(?:does|do|did)\s*n[o']t\s+(?:\w+\s+)?(?:cover|apply|extend|transfer|"
+    r"grade|include)\w*|\bnot\s+(?:\w+\s+)?(?:cover\w*|apply|applicable)\b"
+    r"|\bno\s+recorded\b|\bin\s+part\b|\boutside\s+(?:its|their|the)\b"
+    r"|\bnot\s+(?:this|these|your)\s+(?:pair|case|maps?)\b",
+    re.I,
+)
+
+
+#: A name of the kind a dataset or an experiment has: letters and digits
+#: ("Sen1Floods11", "exp58").
+_EVIDENCE_NAME_RE = re.compile(r"\b(?=[A-Za-z0-9]*\d)[A-Za-z][A-Za-z0-9]{3,}\b")
+
+
+def _evidence_only_names(record: ToolRecord, run: RunEvidence) -> set[str]:
+    """Names that only the emitting tool's evidence carries.
+
+    Read from the result's top-level ``evidence*`` keys (``evidence_scope``);
+    a name the user wrote, or that any other key of any result or argument of
+    the run holds (a fact's "(exp58)", a file name), is the case's own
+    (:attr:`RunEvidence.case_words`).
+    """
+    result = record.result if isinstance(record.result, Mapping) else {}
+    evidence = [
+        v
+        for key, value in result.items()
+        if str(key).startswith("evidence")
+        for _, v in _strings(value)
+    ]
+    names = {m.group() for text in evidence for m in _EVIDENCE_NAME_RE.finditer(text)}
+    return names - run.case_words if names else set()
+
+
+def _evidence_outside_scope(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """An experiment's result carried over to a case the tool says it does not cover.
+
+    exp86 round 8 (B3/cluster run 3): "upstream evidence shows the more
+    confident side was only right 51-70% of the time in comparable cases",
+    where the tool's evidence was flood maps of one date and this pair two
+    land-cover maps a year apart; round 7 "upstream evidence shows ... of
+    such windows" and "measured evidence behind this rule". Round 8 (B7/files
+    run 2) also named this pair "the two Sen1Floods11 flood maps", a name
+    only the tool's evidence held: a name of the evidence's own used without
+    its scope is the evidence put in the case's place. Citing the evidence
+    with its scope ("that study does not cover this pair", "no recorded
+    experiment grades this case", "covers this case only in part") is what
+    the tool asks, and passes.
+    """
+    if _SCOPE_STATED_RE.search(s):
+        return False
+    names = _evidence_only_names(record, run)
+    if any(re.search(rf"\b{re.escape(n)}\b", s) for n in names):
+        return True
+    if not _EVIDENCE_RE.search(s):
+        return False
+    p = _parse(s)
+    return any(
+        not (_negated_close(p, m.start(), m.end()) or _quoted(s, m.start()))
+        for m in _APPLIED_HERE_RE.finditer(s)
+    )
+
+
+#: A plan, design or sample size promised to certify: "a guaranteed-
+#: certifiable region", "enough labels to certify", "would certify".
+_CERTIFY_PROMISE_RE = re.compile(
+    r"\bguaranteed?[\s-]+(?:to\s+)?(?:be\s+)?(?:a\s+|an\s+|the\s+)?(?:\w+\s+)?"
+    r"certif\w*"
+    r"|(?<!the\s)(?<!its\s)(?<!that\s)\bguarantees?\s+(?:that\s+)?(?:a|an|the|you|"
+    r"your|some|certif\w*)\b[^.;]{0,30}?\bcertif\w*"
+    r"|\bcertif\w*\s+(?:is\s+|are\s+|will\s+be\s+)?guaranteed\b"
+    r"|\b(?:ensures?|ensuring|assures?|make\s+sure|makes\s+sure|secures?)\b"
+    r"[^.;]{0,40}?\bcertif\w*"
+    r"|\b(?:enough|sufficient)\s+(?:\w+\s+){0,3}?to\s+(?:certify|get\s+a\s+"
+    r"certified)\b"
+    r"|\b(?:certain|sure|bound)\s+to\s+(?:certify|be\s+certified)\b"
+    r"|\bdefinitely\s+(?:be\s+)?certif\w*"
+    r"|\b(?:will|would|shall)\s+(?:\w+\s+){0,2}?(?:certify|be\s+certified|be\s+"
+    r"certifiable|yield\s+(?:you\s+)?a\s+certified|give\s+(?:you\s+)?a\s+"
+    r"certified|get\s+(?:you\s+)?a\s+certified)\b",
+    re.I,
+)
+#: What the promise is made of: a design, a sample, labels, a plan.
+_DESIGN_WORD_RE = re.compile(
+    r"\b(?:design\w*|sample\w*|plan\w*|labels?|budget|random|draw)\b", re.I
+)
+#: A requirement, not a promise: "a design would need to certify ...".
+_REQUIREMENT_RE = re.compile(
+    r"\b(?:need|needs|needed|require|requires|required|take|takes)\b", re.I
+)
+#: A promise kept conditional on what the labels will show: "if its errors
+#: are few", "provided the zone holds up".
+_CONDITIONAL_RE = re.compile(
+    r"\b(?:if|unless|provided|providing|as\s+long\s+as|only\s+when|whether|"
+    r"could|might|may|possibl\w*|plausibl\w*|probabl\w*|perhaps|potentially|"
+    r"chance)\b",
+    re.I,
+)
+
+
+def _certification_guaranteed(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """A design, sample size or plan promised to certify a zone.
+
+    A random design makes certification possible; whether a zone certifies
+    depends on the errors its labels show. exp86 round 8 (B5/files run 2)
+    offered "a guaranteed-certifiable region". "Certification needs a random
+    design", "you would need more labels to certify" (a requirement) and "a
+    zone could be certified if its errors are few" pass, as does a hedged
+    offer ("how many labels would plausibly certify a zone"); so does "the
+    guarantee holds only for an alpha fixed before", the test's own
+    guarantee. The design, sample or plan must be in the promise's own
+    clause: "a looser alpha would certify the top zone, but the guarantee
+    covers only an alpha fixed before seeing the labels" promises nothing of
+    a design (``post_hoc_alpha`` reads it).
+    """
+    p = _parse(s)
+    for m in _CERTIFY_PROMISE_RE.finditer(s):
+        if (
+            _negated_close(p, m.start(), m.end())
+            or p.example_before(m.start())
+            or _quoted(s, m.start())
+            or _REQUIREMENT_RE.search(m.group())
+        ):
+            continue
+        _, clause = _clause_text(p, m.start(), m.end())
+        if not _DESIGN_WORD_RE.search(clause):
+            continue
+        # a hedge inside the promise ("would plausibly certify") or its clause
+        if "guarant" not in m.group().lower() and (
+            _CONDITIONAL_RE.search(m.group())
+            or p.in_clause(_CONDITIONAL_RE, m.start(), m.end(), own=True)
+        ):
+            continue
+        return True
+    return False
+
+
 #: A detector per ``forbidden_claims`` id: does one sentence make that claim
 #: about the result of that tool, in this run? An id without one (the
 #: contract's ``simple_random_interval_for_stratified_design``: the package's
@@ -2127,6 +2673,12 @@ FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] =
     "winner_without_labels": _winner,
     "combined_statistic_across_properties": _combined_statistic,
     "another_date_settles_it": _another_date,
+    "spatial_pattern_from_one_correlation": _spatial_from_correlation,
+    "agreement_from_uncertain_correlation": _agreement_uncertain,
+    "review_set_for_unthresholded_regression": _review_set_regression,
+    "one_reference_settles_two_dates": _one_reference,
+    "evidence_outside_its_scope": _evidence_outside_scope,
+    "certification_guaranteed": _certification_guaranteed,
 }
 
 
