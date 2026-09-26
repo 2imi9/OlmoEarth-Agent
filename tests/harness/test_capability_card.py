@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The capability card (harness/capabilities.py).
+"""The capability card (harness/capabilities.py) and its place in the system prompt.
 
 exp86 round 9: most material errors sat where the tools said nothing, and 7 of
 16 were offers of actions no tool can do or whose preconditions did not hold.
@@ -15,13 +15,17 @@ import os
 from typing import Any
 from unittest import mock
 
+import pytest
+
+from olmoearth_agent.harness.agent import LeadAgent
 from olmoearth_agent.harness.capabilities import (
     CARD_TITLE,
     NO_TOOL_CAN,
     beyond_tools,
     capability_card,
 )
-from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.harness.soul import load_soul
+from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
 from olmoearth_agent.skills import build_default_registry
 from olmoearth_agent.tools.registry import (
     Capability,
@@ -151,3 +155,68 @@ def test_an_undeclared_tool_is_listed_from_its_description() -> None:
 
 def test_an_empty_registry_has_no_card() -> None:
     assert capability_card(ToolRegistry()) == ""
+
+
+# --------------------------------------------------------------------------- the system prompt
+
+
+class _Recording:
+    """Answers from a script and records every call's messages."""
+
+    def __init__(self, responses: list[ChatResponse]) -> None:
+        self.responses = list(responses)
+        self.calls: list[list[Message]] = []
+
+    async def chat(
+        self, messages: list[Message], *, tools: Any = None, **_kw: Any
+    ) -> ChatResponse:
+        self.calls.append(list(messages))
+        return self.responses.pop(0)
+
+
+def test_the_system_prompt_is_the_soul_then_the_card_then_the_clauses() -> None:
+    registry = build_default_registry()
+    agent = LeadAgent(
+        None,  # type: ignore[arg-type]
+        registry,
+        studio=None,  # type: ignore[arg-type]
+        skill_index="- some-skill: does things",
+        local=True,
+    )
+    prompt = agent.system_prompt
+    soul = load_soul()
+    card = capability_card(registry)
+    assert prompt.startswith(soul + "\n\n" + card)
+    assert prompt.index(card) < prompt.index("Available instruction skills")
+
+
+@pytest.mark.asyncio
+async def test_a_group_loaded_mid_run_joins_the_card_from_the_next_turn() -> None:
+    registry = ToolRegistry()
+    registry.register(_tool("core_tool", Capability(does="a core thing")))
+    registry.register(
+        _tool("deep_tool", Capability(does="a deferred thing")), group="deep-skill"
+    )
+    llm = _Recording(
+        [
+            ChatResponse(
+                content=None,
+                tool_calls=[ToolCall(id="c1", name="deep_tool", arguments={})],
+                finish_reason="tool_calls",
+            ),
+            ChatResponse(content="done", tool_calls=[], finish_reason="stop"),
+        ]
+    )
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        registry,
+        studio=None,  # type: ignore[arg-type]
+        check_numbers=False,
+        check_answer=False,
+    )
+    await agent.run("use the deep tool")
+    first, second = (call[0].content for call in llm.calls)
+    assert "- core_tool: a core thing." in first
+    assert "- deep_tool" not in first and "deep-skill" in first
+    assert "- deep_tool: a deferred thing." in second
+    assert agent.system_prompt == second

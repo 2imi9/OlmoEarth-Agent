@@ -8,15 +8,23 @@ code change. The packaged ``soul.md`` next to this module is the default;
 operators can point ``OLMOEARTH_SOUL_PATH`` at a different markdown file to
 swap the soul without touching the package (a config change, not a rebuild).
 
-The file's whole text becomes the base system prompt; the harness then
-appends run-specific clauses (skill index, forced skill, local-model budget)
-on top — see :mod:`olmoearth_agent.harness.agent`.
+The file's whole text becomes the base system prompt, followed by the
+capability card of the run's tools (:func:`with_capability_card`); the
+harness then appends run-specific clauses (skill index, forced skill,
+local-model budget) on top — see :mod:`olmoearth_agent.harness.agent`.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from olmoearth_agent.harness.capabilities import capability_card
+
+if TYPE_CHECKING:
+    from olmoearth_agent.tools.registry import ToolRegistry
 
 #: Env var pointing at an alternative soul markdown file.
 SOUL_PATH_ENV = "OLMOEARTH_SOUL_PATH"
@@ -46,3 +54,19 @@ def load_soul() -> str:
     if not text and path != PACKAGED_SOUL:
         text = PACKAGED_SOUL.read_text(encoding="utf-8").strip()
     return text
+
+
+def with_capability_card(
+    soul: str, registry: ToolRegistry, loaded_groups: Iterable[str] = ()
+) -> str:
+    """The soul followed by the capability card of ``registry``.
+
+    The soul's rules tell the model to state as fact only what a tool
+    returned and to propose only what the card lists (exp86 round 9: most
+    material errors were offers and claims no tool backed); the card is
+    what those rules point at, built from the tools' code
+    (:func:`~olmoearth_agent.harness.capabilities.capability_card`). A
+    registry with no tools adds nothing.
+    """
+    card = capability_card(registry, loaded_groups)
+    return f"{soul}\n\n{card}" if card else soul

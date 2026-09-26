@@ -61,7 +61,7 @@ from olmoearth_agent.harness.middleware import (
     ToolCallRequest,
 )
 from olmoearth_agent.harness.retry_hint import RetryHintMiddleware
-from olmoearth_agent.harness.soul import load_soul
+from olmoearth_agent.harness.soul import load_soul, with_capability_card
 from olmoearth_agent.harness.spill import spill_result_for_llm
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.harness.turn_cap import (
@@ -229,7 +229,10 @@ class LeadAgent:
         self.studio = studio
         self.state = state or ThreadState()
         self.forced_skill = forced_skill
-        self.system_prompt = system_prompt
+        #: The prompt the card follows (the soul, unless one was passed).
+        self._soul = system_prompt
+        #: What follows the card: skill index, memory, forced skill, budget.
+        tail = ""
         # Check the answer against the run before it is shown, unless
         # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers) and
         # OLMOEARTH_CHECK_ANSWER=0 (the other checks).
@@ -241,17 +244,17 @@ class LeadAgent:
         if skill_index:
             # Progressive disclosure: list the vendored SKILL.md skills so the
             # model knows to call olmoearth_load_skill when a task matches.
-            self.system_prompt += (
+            tail += (
                 "\n\nAvailable instruction skills (call olmoearth_load_skill "
                 "with the name to get full steps):\n" + skill_index
             )
         if memory_block:
             # Cross-thread memory: durable user preferences (rendered by
             # harness/memory.py, already framed as data-not-instructions).
-            self.system_prompt += "\n\n" + memory_block
+            tail += "\n\n" + memory_block
         if forced_skill:
             # Server-side skill routing: pin this run to the user-chosen skill.
-            self.system_prompt += _forced_skill_clause(forced_skill)
+            tail += _forced_skill_clause(forced_skill)
             # A forced skill whose tools are deferred has them from turn one.
             group = f"olmoearth-{forced_skill}"
             if group in registry.groups():
@@ -259,7 +262,37 @@ class LeadAgent:
         if local:
             # The local model needs an explicit output-budget + brevity reminder
             # (a hosted model does not), or long answers truncate mid-sentence.
-            self.system_prompt += LOCAL_BUDGET_CLAUSE
+            tail += LOCAL_BUDGET_CLAUSE
+        self._prompt_tail = tail
+        #: The loaded groups the prompt's capability card lists in full.
+        self._card_groups = frozenset(self.state.loaded_groups)
+        self.system_prompt = self._compose_system_prompt()
+
+    def _compose_system_prompt(self) -> str:
+        """The soul, the capability card of the loaded groups, then the clauses.
+
+        The card follows the soul, whose rules point at it (exp86 round 9:
+        offers of actions no tool can do); the run's clauses come after, the
+        local budget clause last, where recency helps a weak model.
+        """
+        head = with_capability_card(
+            self._soul, self.registry, sorted(self._card_groups)
+        )
+        return head + self._prompt_tail
+
+    def _refresh_card(self, run: _Run) -> None:
+        """Rebuild the system message when the run has loaded another group.
+
+        ``olmoearth_load_skill`` (or dispatching a deferred tool) sends that
+        group's specs from the next turn on; its tools join the card at the
+        same time, so the card lists every tool the model is offered.
+        """
+        groups = frozenset(self.state.loaded_groups)
+        if groups == self._card_groups:
+            return
+        self._card_groups = groups
+        self.system_prompt = self._compose_system_prompt()
+        run.system = Message(role="system", content=self.system_prompt)
 
     def _checks(self) -> list[str]:
         """The answer checks this agent runs, in order."""
@@ -532,6 +565,7 @@ class LeadAgent:
                 "middleware ended the run (TurnCapMiddleware does)"
             )
         self.state.turn_count = state["turn"]
+        self._refresh_card(run)
         request = ModelRequest(
             messages=list(state["messages"]),
             system_message=run.system,
