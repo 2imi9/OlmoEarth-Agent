@@ -52,6 +52,31 @@ def test_soul_states_numbers_as_the_tools_returned_them() -> None:
     assert "checks your answer's numbers against the tool results" in text
 
 
+def test_soul_states_as_fact_only_what_a_tool_returned() -> None:
+    """exp86 round 9 (B3/studio): "no ground-truth labels exist", while Studio's
+    model records showed both models fine-tuned on the project's label fields,
+    which no tool reads."""
+    text = " ".join(load_soul().split())
+    assert (
+        "State as fact only what a tool of this run returned or the user said." in text
+    )
+    assert "whether ground-truth labels exist, what a model was trained on" in text
+    assert "say it is not known from this run" in text
+    # The soul's own routing no longer presumes that no labels exist.
+    assert "with no ground-truth labels" not in text
+    assert "when ground-truth labels exist" not in text
+
+
+def test_soul_proposes_only_what_the_capability_card_lists() -> None:
+    """exp86 round 9: 7 of 16 material findings were offers no tool can carry
+    out, or whose preconditions did not hold; the owner keeps offers, possible
+    ones only."""
+    text = " ".join(load_soul().split())
+    assert "Propose next steps freely, but only actions the capability card" in text
+    assert "each with its preconditions" in text
+    assert "say plainly that no tool of this agent can do it" in text
+
+
 def test_default_system_prompt_is_the_soul() -> None:
     from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT
 
