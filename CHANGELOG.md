@@ -548,25 +548,33 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   maps agree, read from one pooled correlation: "anywhere", "nowhere",
   "high where the other is low", "large parts ... while the rest differs",
   its label read with the clause; not a breakdown a tool computed by rows
-  or bands, a share such as "a large part of the disagreement", or "agree
-  spatially", which says how much, not where);
+  or bands, a share such as "a large part of the disagreement", "agree
+  spatially", which says how much, not where, or one map's level in a
+  place, "KarstBinary is low almost everywhere": the clause must relate the
+  two maps);
   `agreement_from_uncertain_correlation` (that the maps do or do not
   co-vary: "do not rise and fall together", "unrelated", "strongly
   agree"; a negation does not exempt it, a statement of what the
   correlation can say does: "only whether they rise and fall together is
-  meaningful"); `review_set_for_unthresholded_regression` (a review set,
+  meaningful", and so do the tools' own sentences, which say the sample
+  cannot say whether the maps co-vary, what an interval holds, or the sign
+  the tool found); `review_set_for_unthresholded_regression` (a review set,
   margins or the least decided windows *offered*, in the review's own
   clause, unless a threshold is named); `one_reference_settles_two_dates`
   ("either date", "one or both dates", "at least one, plus a date-matched
   second inference", and one map's year named alone, read against the
-  comparison's own `dates`); `evidence_outside_its_scope` ("in comparable
+  comparison's own `dates`; a clause that restricts one date's labels to
+  that date's map, as the tools' must_state does, is the rule);
+  `evidence_outside_its_scope` ("in comparable
   cases", "of such windows", "behind this rule", "why these: on Ai2's
   suite ...", and a name only the tool's `evidence_scope` holds, such as
   round 8's "the two Sen1Floods11 flood maps", unless the sentence states
-  the scope); `certification_guaranteed` (a design, sample or plan in the
-  promise's own clause: "guaranteed-certifiable", "enough labels to
-  certify", "a random design will certify"; not a requirement or a hedged
-  offer). `subset_labelling_sufficient` also catches a sample of the least
+  the scope; a bare "measurement" is the run's); `certification_guaranteed`
+  (a design, sample or plan in the promise's own clause:
+  "guaranteed-certifiable", "enough labels to certify", "a random design
+  will certify"; not a requirement, a hedged offer, or the test's own
+  guarantee, "the certified zone's error is at most alpha", "the guarantee
+  covers only that alpha"). `subset_labelling_sufficient` also catches a sample of the least
   confident windows promised a sound rate ("a targeted labeling sample
   from the lower-confidence windows ... defensible error rates", round 8
   B3/studio run 3, which the rewrite had kept unmarked), unless the

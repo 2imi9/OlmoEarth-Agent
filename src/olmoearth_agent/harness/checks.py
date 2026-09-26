@@ -2288,6 +2288,85 @@ _AGAINST_REFERENCE_RE = re.compile(
 )
 
 
+#: The sample said to be unable to say whether the maps co-vary, anywhere in
+#: the sentence: "so this sample cannot say whether the maps co-vary" (the
+#: tool's fact and must_state), "it is unclear whether they do". A bare
+#: "whether" is not it: "only whether they rise and fall together is
+#: comparable — and ... they do not agree" (exp86 round 8, B3/studio run 1)
+#: states what is comparable, then a reading.
+_CANNOT_SAY_WHETHER_RE = re.compile(
+    r"\b(?:cannot|can't|cant|can\s+not|could\s*n[o']t|does\s*n[o']t|do\s*n[o']t|"
+    r"is\s*n[o']t\s+able\s+to|unable\s+to|too\s+(?:few|wide|small|uncertain)\s+to)"
+    r"\s+(?:\w+\s+){0,2}?(?:say|tell|show|establish|determine|decide|settle|know|"
+    r"distinguish)\b[^.;]{0,40}?\bwhether\b"
+    r"|\b(?:unknown|unclear|not\s+known|undetermined|uncertain|open)\s+whether\b",
+    re.I,
+)
+#: An interval said to hold a value, not a reading of the maps: "the interval
+#: holds both no relation and a moderate one" (the tool's fact).
+_INTERVAL_HOLDS_RE = re.compile(
+    r"\binterval\b(?:[^.;:]|\.(?=\d)){0,60}?\b(?:holds?|holding|includes?|including|spans?|"
+    r"spanning|covers?|covering|contains?|containing|allows?|admits?|"
+    r"consistent\s+with|runs?\s+from|ranges?\s+from|reaches?)\b",
+    re.I,
+)
+#: A stated interval: "95% interval 0.51 to 0.71", "CI [0.51, 0.71]".
+_STATED_INTERVAL_RE = re.compile(
+    r"\b(?:interval|CI)\b[^\d\n]{0,24}?(?P<lo>[-−+]?\d*\.?\d+)\s*(?:to|,|–|—|\.\.)\s*"
+    r"(?P<hi>[-−+]?\d*\.?\d+)",
+    re.I,
+)
+_R_VALUE_RE = re.compile(r"(?<![\w.])[-−]?\d*\.\d+")
+
+
+def _number(text: str) -> float:
+    return float(text.replace("−", "-").replace("+", ""))
+
+
+def _signed_correlation_stated(s: str, run: RunEvidence) -> bool:
+    """Whether the sentence states a correlation whose sign is known.
+
+    An interval that excludes 0 ("95% interval 0.51 to 0.71", the tool's own
+    signed fact), or the r of a ``correlation`` fact whose interval excludes
+    0 (a group's certain pair beside an uncertain one): saying those maps
+    rise and fall together is the tool's reading, not this claim.
+    """
+    for m in _STATED_INTERVAL_RE.finditer(s):
+        lo, hi = _number(m.group("lo")), _number(m.group("hi"))
+        if lo * hi > 0:
+            return True
+    stated = [m.group() for m in _R_VALUE_RE.finditer(s)]
+    if not stated:
+        return False
+    known: list[float] = []
+    unknown: list[float] = []
+    for _record, fact in run.facts("correlation"):
+        r = fact.get("r")
+        if isinstance(r, int | float) and not isinstance(r, bool):
+            (unknown if fact.get("co_varies") == "unknown" else known).append(float(r))
+
+    def said(value: float) -> bool:
+        for text in stated:
+            decimals = len(text.partition(".")[2])
+            if abs(_number(text) - value) <= 0.5 * 10.0**-decimals + 1e-12:
+                return True
+        return False
+
+    return any(said(r) for r in known) and not any(said(r) for r in unknown)
+
+
+def _held_by_an_interval(p: _Parse, lo: int, start: int) -> bool:
+    """Whether the claim at ``start`` is what an interval holds ("the interval
+    holds both no relation and a moderate one"): the interval's verb ends at
+    most three words before it, in its clause. "The interval spans zero and
+    the maps are unrelated" is a reading beside the interval, not its object.
+    """
+    end = p.last_end(_INTERVAL_HOLDS_RE, lo, start)
+    if end <= lo or start - end > 40:
+        return False
+    return len(p.s[end:start].split()) <= 3
+
+
 def _agreement_uncertain(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     """That the maps do, or do not, co-vary, read from a correlation that cannot say.
 
@@ -2297,16 +2376,26 @@ def _agreement_uncertain(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     two maps do not rise and fall together", "one going high says
     essentially nothing about the other", where a 12 x 12 grid of the same
     pair gives 0.50. The claim is often a negation, so a negation does not
-    exempt it; a statement of what the correlation can say does ("only
-    whether they rise and fall together is meaningful", "only how they move
-    together is meaningful", "it cannot tell"), and so does a sentence about
-    the number alone ("the correlation is -0.017, essentially zero over 25
-    cells"). The interval stated beside a reading does not withdraw it.
+    exempt it; a statement of what the correlation can say does, in the
+    claim's clause ("only whether they rise and fall together is
+    meaningful", "only how they move together is meaningful", "it cannot
+    tell") or anywhere in the sentence when it says the sample cannot say
+    whether they co-vary (the tool's own fact: "the interval holds both no
+    relation and a moderate one, so this sample cannot say whether the maps
+    co-vary"); so does what an interval holds, a sentence about the number
+    alone ("the correlation is -0.017, essentially zero over 25 cells"), and
+    a correlation stated with a sign the tool found (an interval that
+    excludes 0: "the maps' values tend to rise and fall together"). The
+    interval stated beside a reading does not withdraw it.
     """
+    if _CANNOT_SAY_WHETHER_RE.search(s) or _signed_correlation_stated(s, run):
+        return False
     p = _parse(s)
     for m in _COVARIATION_CLAIM_RE.finditer(s):
+        lo, _hi = p.span(m.start(), m.end())
         if (
             p.in_clause(_CORRELATION_LIMIT_RE, m.start(), m.end(), own=True)
+            or _held_by_an_interval(p, lo, m.start())
             or _AGAINST_REFERENCE_RE.match(s, m.end())
             or p.example_before(m.start())
             or p.quoted(m.start())
@@ -2343,11 +2432,21 @@ _PLACE_OF_AGREEMENT_RE = re.compile(
     r"interior|edges?|margins)\w*",
     re.I,
 )
-#: The comparison a place is a place of: agreement, co-variation, highs and lows.
-_AGREEMENT_WORD_RE = re.compile(
-    r"\b(?:agree\w*|disagree\w*|co-?var\w*|correlat\w*|rise\w*|fall\w*|track\w*|"
-    r"match\w*|similar|diverg\w*|differ\w*|high\w*|low\w*|overlap\w*|together|"
-    r"relat\w*|indifferent)\b|rise/fall",
+#: A relation between the two maps: agreement, co-variation, difference.
+_RELATION_WORD_RE = re.compile(
+    r"\b(?:agree\w*|disagree\w*|co-?var\w*|correlat\w*|track\w*|match\w*|"
+    r"similar\w*|diverg\w*|differ\w*|overlap\w*|together|relat\w*|indifferent|"
+    r"coincid\w*|opposite\w*|align\w*|contrast\w*)\b|\brise\s+and\s+fall\b|rise/fall",
+    re.I,
+)
+#: A level of one map ("high", "low"): a relation only beside the other map.
+_LEVEL_WORD_RE = re.compile(
+    r"\b(?:high\w*|low\w*|elevated|strong\w*|weak\w*|rise\w*|fall\w*)\b", re.I
+)
+#: The two maps together: "both", "they", "the other", "vice versa".
+_BOTH_MAPS_RE = re.compile(
+    r"\b(?:both|they|them|their|the\s+two|each\s+other|one\s+another|the\s+other|"
+    r"vice\s+versa|between)\b",
     re.I,
 )
 #: An offer to show the maps, not a claim about where they agree.
@@ -2372,19 +2471,32 @@ def _spatial_from_correlation(s: str, record: ToolRecord, run: RunEvidence) -> b
     region" and "one is high where the other is indifferent, and vice
     versa"; round 7 as "large parts of the AOI show similar relative
     patterns while much of the rest disagrees". A place is read only in a
-    clause about agreement, its label included ("Where they differ:
-    effectively everywhere", round 1); what the correlation cannot say ("it has no
-    location, so it cannot say where they differ"), a cited phrase and an
-    offer to overlay the maps are no claim, and neither is a place in the
-    rows or bands of a breakdown a tool computed by place ("differences
-    cluster in the middle rows") or a share of the differences ("a large
-    part of the disagreement sits at class edges").
+    clause about the two maps together, its label included ("Where they
+    differ: effectively everywhere", round 1): a relation (agree, differ,
+    co-vary, together), or a level beside the other map ("high where the
+    other is low", "where A is high, B is low"). One map's level in a place
+    ("KarstBinary is low almost everywhere") is no such claim (the fix-r8
+    review). What the correlation cannot say ("it has no location, so it
+    cannot say where they differ"), a cited phrase and an offer to overlay
+    the maps are no claim, and neither is a place in the rows or bands of a
+    breakdown a tool computed by place ("differences cluster in the middle
+    rows") or a share of the differences ("a large part of the disagreement
+    sits at class edges").
     """
     p = _parse(s)
     for m in _PLACE_OF_AGREEMENT_RE.finditer(s):
         lo, hi, _ = p.region(m.start(), m.end())
         lo = _label_start(p, lo)
-        if not p.has(_AGREEMENT_WORD_RE, lo, hi, skip=(m.start(), m.end())):
+        own = (m.start(), m.end())
+        related = p.has(_RELATION_WORD_RE, lo, hi, skip=own) or (
+            p.has(_LEVEL_WORD_RE, lo, hi, skip=own)
+            and (
+                p.has(_BOTH_MAPS_RE, lo, hi)
+                # "where A is high, B ...": the place is one map's level
+                or m.group().lower().startswith("where")
+            )
+        )
+        if not related:
             continue
         if (
             p.has(_CORRELATION_LIMIT_RE, lo, hi)
@@ -2524,6 +2636,21 @@ _ONE_DATE_CAVEAT_RE = re.compile(
     r"matches\s+the\s+ground)\b",
     re.I,
 )
+#: What labels for one date grade, stated as the rule: "labels for one date
+#: grade only that date's map" (the tools' dates must_state), "labels dated
+#: 2023-06-01 grade only a map of that date" (which_side_is_right), "can grade
+#: only the map of that date", "would grade the 2023 map only".
+_GRADES_ONLY_ITS_DATE_RE = re.compile(
+    r"\bgrad\w*\s+only\b|\bonly\s+(?:\w+\s+){0,2}?grad\w*"
+    r"|\b(?:that|the\s+same|its|their)\s+(?:own\s+)?(?:date|year|period|time)'?s?"
+    r"\s+maps?\b"
+    r"|\bmaps?\s+of\s+(?:that|the\s+same|its|their)\s+(?:own\s+)?(?:date|year|"
+    r"period|time)\b"
+    r"|\bmaps?\s+only\b"
+    r"|\bonly\s+(?:for|at|of)?\s*(?:that|this|its|the\s+same)\s+(?:date|year|"
+    r"period|time)\b",
+    re.I,
+)
 #: A reference for each map, the rule: "each", "both", "per date".
 _EACH_DATE_RE = re.compile(r"\b(?:each|both|every|per)\b", re.I)
 _YEAR_RE = re.compile(r"(?<![\d.])(?:19|20)\d\d(?![\d.])")
@@ -2571,9 +2698,12 @@ def _one_reference(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     "Labels dated to each map's date" and "only a reference dated to each
     map would separate them" are the rule, and pass; so does a clause that
     negates the one-date reference ("labels for one date cannot settle it",
-    "even with labels for only one date, grading would be blocked")
-    and what one date's labels do measure, as the tool states it ("which map
-    matches the ground at that date").
+    "even with labels for only one date, grading would be blocked"),
+    what one date's labels do measure, as the tool states it ("which map
+    matches the ground at that date"), and a clause that restricts them to
+    their own date's map, as the tools' must_state and which_side_is_right
+    do ("labels for one date grade only that date's map", "labels dated 2023
+    would grade the 2023 map only").
     """
     if not (_SETTLE_RE.search(s) and _REFERENCE_RE.search(s)):
         return False
@@ -2587,6 +2717,7 @@ def _one_reference(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     return any(
         not (
             _negated_close(p, m.start(), m.end())
+            or p.in_clause(_GRADES_ONLY_ITS_DATE_RE, m.start(), m.end())
             or p.example_before(m.start())
             or p.quoted(m.start())
         )
@@ -2604,7 +2735,7 @@ _EVIDENCE_RE = re.compile(
     r"results?|measurements?|stud(?:y|ies)|experiments?|record)\b"
     r"|\bevidence\s+(?:shows?|says?|puts?|suggests?|indicates?|found|finds|from|"
     r"behind|on)\b"
-    r"|\bmeasured\s+to\b|\bmeasurements?\b"
+    r"|\bmeasured\s+to\b"
     r"|\b(?:previous|prior|earlier|past)\s+(?:\w+\s+)?(?:experiments?|stud(?:y|ies)|"
     r"results?|work|runs|tests|trials)\b|\bresearch\b"
     r"|\b(?:has|have|was|were)\s+been\s+shown\b|\b(?:was|were)\s+shown\s+to\b",
@@ -2714,6 +2845,17 @@ _CERTIFY_PROMISE_RE = re.compile(
 _DESIGN_WORD_RE = re.compile(
     r"\b(?:design\w*|sample\w*|plan\w*|labels?|budget|random|draw)\b", re.I
 )
+#: What the certification test itself guarantees: a certified zone's error
+#: bound at alpha, except with probability delta, for the alpha fixed before
+#: the labels ("the guarantee covers only that alpha").
+_GUARANTEE_OF_THE_TEST_RE = re.compile(
+    r"guarant\w*\s+(?:that\s+)?(?:(?:the|a|any|each|every|its)\s+)?(?:certif\w*\s+"
+    r"(?:\w+\s+)?(?:zone|region|area|level)(?:'s|s')\s+(?:\w+\s+)?errors?\b|errors?\s+"
+    r"(?:rate\s+)?(?:of|in|inside|within)\s+(?:the|a|any|each|every|that)\s+certif\w*)"
+    r"|guarant\w*\s+(?:\w+\s+){0,2}?(?:covers?|holds?|applies)\s+only\b"
+    r"|guarant\w*\s+only\s+(?:covers?|holds?|applies)\b",
+    re.I,
+)
 #: A requirement, not a promise: "a design would need to certify ...".
 _REQUIREMENT_RE = re.compile(
     r"\b(?:need|needs|needed|require|requires|required|take|takes)\b", re.I
@@ -2754,6 +2896,11 @@ def _certification_guaranteed(s: str, record: ToolRecord, run: RunEvidence) -> b
             continue
         lo, hi, _ = p.region(m.start(), m.end())
         if not p.has(_DESIGN_WORD_RE, lo, hi):
+            continue
+        # the test's own guarantee: a certified zone's error bound, or the
+        # alpha it covers ("guarantees that the certified zone's error is at
+        # most alpha", "the guarantee covers only that alpha")
+        if _GUARANTEE_OF_THE_TEST_RE.match(s, m.start()):
             continue
         # a hedge inside the promise ("would plausibly certify") or its clause
         if "guarant" not in m.group().lower() and (

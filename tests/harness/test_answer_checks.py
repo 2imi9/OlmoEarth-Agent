@@ -1041,6 +1041,9 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "**Where they differ:** effectively everywhere sampleable.",
         ],
         [
+            # one map's level, not the two maps together (the fix-r8 review)
+            "KarstBinary is low almost everywhere (mean 0.096).",
+            "KarstNumber sits high in most parts of the AOI.",
             "The correlation is -0.017, essentially zero over 25 cells.",
             "A single correlation cannot say where the maps agree or differ.",
             "The correlation pools all 25 cells, so it says nothing about where "
@@ -1084,8 +1087,28 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "They barely agree spatially: correlation -0.017 across the 25 cells.",
             # the interval stated beside the claim does not withdraw it
             "With its 95% interval of -0.41 to 0.38, the maps do not co-vary.",
+            # beside the interval, not what it holds (the fix-r8 review)
+            "The 95% interval spans zero and the maps are unrelated.",
         ],
         [
+            # the tools' own correlation fact and must_state (the fix-r8 review)
+            "The correlation is -0.0172 over 25 cells, 95% interval -0.41 to 0.38 "
+            "(Fisher's z): the interval holds both no relation and a moderate one, "
+            "so this sample cannot say whether the maps co-vary; a correlation says "
+            "nothing about where the maps agree or differ.",
+            "Between results a1 and b1, the correlation is 0.1 over 25 cells, 95% "
+            "interval -0.31 to 0.48 (Fisher's z): the interval holds 0 (no "
+            "relation), so this sample cannot say whether the maps co-vary;",
+            "The correlation is 0.62 over 144 cells, 95% interval 0.51 to 0.71 "
+            "(Fisher's z): the maps' values tend to rise and fall together across "
+            "the sampled cells; a correlation says nothing about where the maps "
+            "agree or differ.",
+            "One correlation says nothing about where two maps agree or differ, and "
+            "one whose 95% interval spans zero cannot say whether they co-vary.",
+            # rewordings of them
+            "The 95% interval, -0.41 to 0.38, includes both no relationship and a "
+            "moderate one.",
+            "It is unclear whether the two maps co-vary: 25 cells are too few.",
             "The correlation is -0.017, essentially zero over 25 cells.",
             "With 25 cells the interval runs from -0.41 to 0.38, so it cannot say "
             "whether they co-vary.",
@@ -1148,6 +1171,17 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "One reference and a second model run would be enough to decide.",
         ],
         [
+            # the tools' must_state and which_side_is_right, and rewordings
+            # (the fix-r8 review)
+            "Maps of different times may differ by real change; labels for one "
+            "date grade only that date's map; each map needs its own date's "
+            "reference.",
+            "Not graded: the maps describe different times, so a window where they "
+            "differ may have changed on the ground, and each map needs a reference "
+            "of its own date; labels dated 2023-06-01 grade only a map of that date.",
+            "Labels for one date can grade only the map of that date.",
+            "A reference for one date only grades that date's map, so each map "
+            "needs its own.",
             "Only a reference dated to each map would separate them.",
             "Labels dated to each map's date would settle it.",
             "You'd need references for both dates to say which is right.",
@@ -1174,6 +1208,9 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "Published results for cases like this show confidence is a weak guide.",
         ],
         [
+            # "measurement" alone is the run's (the fix-r8 review)
+            "Why these: the tool ranks by margin, the measurement of how undecided "
+            "the model is on each window.",
             "No recorded experiment grades this case.",
             "No recorded experiment grades which of these two maps is right.",
             "Upstream, the more confident side was right on 51-70% of differing "
@@ -1196,8 +1233,17 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "300 more random labels are sufficient to certify the high-confidence "
             "half.",
             "Planning a random design means you will get a certified region.",
+            # a bound beside the promise is no bound of the test (the fix-r8 review)
+            "A random design guarantees you a certified zone, and the guarantee "
+            "holds only at alpha 0.05.",
         ],
         [
+            # the test's own guarantee (the fix-r8 review)
+            "The random-design test guarantees that the certified zone's error is "
+            "at most alpha, except with probability delta.",
+            "For a certified zone, olmoearth_certify_zone with the same design_path "
+            "and labels, at an alpha (and delta and rule) fixed now, before any "
+            "label is seen: the guarantee covers only that alpha.",
             "Certification needs a random design.",
             "A random design makes certification possible, never certain.",
             "With a random design, a zone could be certified if its errors are few.",
@@ -1343,6 +1389,9 @@ def test_a_year_of_one_map_named_alone_is_a_reference_for_one_date() -> None:
     for fine in (
         "References for 2023 and 2022 would settle which map is right.",
         "Labels for each map's year (2023 for C1) would settle which is right.",
+        # the rule, in a year's words (the fix-r8 review)
+        "Labels dated 2023 would grade the 2023 map only, so they cannot say "
+        "which map is right.",
         # a year of neither map is another_date_settles_it's, not this id's
         "A reference for 2019 would settle which map is right.",
     ):
@@ -1381,6 +1430,51 @@ def test_a_name_only_the_evidence_holds_is_the_evidence_put_in_the_case() -> Non
         assert check_forbidden_claims(fine, run) == [], fine
     named = _run(_record("compare_review", result), brief="Two Sen1Floods11 chips.")
     assert check_forbidden_claims(flagged, named) == []
+
+
+def _correlations(*facts: tuple[str, float, str]) -> RunEvidence:
+    """A group of Studio results, each pair's correlation a fact, one uncertain."""
+    return _run(
+        _record(
+            "olmoearth_compare_results",
+            {
+                "facts": [
+                    {
+                        "id": "correlation",
+                        "r": r,
+                        "co_varies": sign,
+                        "result_id_a": a,
+                        "result_id_b": "b1",
+                        "sentence": "...",
+                    }
+                    for a, r, sign in facts
+                ],
+                "forbidden_claims": [
+                    {"id": "agreement_from_uncertain_correlation", "why": "x"}
+                ],
+            },
+        )
+    )
+
+
+def test_a_correlation_stated_with_the_sign_the_tool_found_is_no_claim() -> None:
+    """The fix-r8 review: in a group with one uncertain pair, the certain
+    pair's own reading ("the maps' values tend to rise and fall together")
+    was flagged. A correlation stated with an interval that excludes 0, or
+    with the r of a pair whose interval does, is the tool's reading."""
+    run = _correlations(("a1", 0.62, "positive"), ("c1", 0.05, "unknown"))
+    for fine in (
+        "For a1 and b1, the maps' values rise and fall together (r = 0.62).",
+        "a1 and b1: the maps move together, 95% interval 0.51 to 0.71.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    for flagged in (
+        "For c1 and b1, the maps' values rise and fall together (r = 0.05).",
+        "The maps c1 and b1 are unrelated.",
+        # an interval that spans 0 withdraws nothing
+        "c1 and b1 do not co-vary (95% interval -0.21 to 0.30).",
+    ):
+        assert _flagged(check_forbidden_claims, flagged, run) == [flagged], flagged
 
 
 @pytest.mark.parametrize(
