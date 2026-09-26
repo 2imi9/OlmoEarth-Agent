@@ -100,6 +100,42 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   these numbers order a review well while being badly miscalibrated as
   probabilities. Evidence from
   [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
+- **A capability card in the system prompt, built from the tools' code, and
+  two rules in the soul** (exp86 round 9's audit: 7 of 16 material findings
+  were offers of actions no tool can do or whose preconditions did not hold,
+  such as a review set of a regression band with no threshold, "I'll set up a
+  direct model run", labels on flagged windows turned into "a proper
+  error-rate estimate" and a comparison "rerun with labels_date", which takes
+  no labels; others were claims no tool checked, such as "no ground-truth
+  labels exist"). Every `RegisteredTool` now carries a `Capability`
+  (`tools/registry.py`), declared beside its handler: what it `does` in one
+  line, what it `needs` (preconditions it enforces, e.g. a threshold for a
+  regression band not in [0, 1], a `design='random'` plan to certify) and
+  what it `cannot` do (e.g. say which map is right, even with `labels_date`,
+  for `olmoearth_compare_review`; take a review set as its sample, for
+  `olmoearth_estimate_map_error`). `harness/capabilities.capability_card(registry,
+  loaded_groups=())` assembles the card: each core tool and each tool of a
+  loaded group with its required arguments from the spec, the groups not yet
+  loaded by name, and what no tool of the registry can do (run a model
+  outside Studio; look up or fetch ground-truth labels, or say whether any
+  exist; read what a Studio model was trained on; read files outside the
+  workspace and the scores root), each dropped once a registered tool
+  `covers` it (the opt-in `olmoearth_run_python` covers files and model
+  runs). `LeadAgent` puts the card right after the soul
+  (`soul.with_capability_card`), before the skill index and the other
+  clauses, and rebuilds the system message on the turn after a group loads.
+  The card is about 1,390 tokens (characters / 4) for the default registry,
+  about 1,700 with every group loaded. The soul's new rules: state as fact
+  only what a tool of this run returned or the user said, and say what no
+  tool looked up is not known from this run; propose next steps freely, but
+  only actions the card lists, with their preconditions, and say plainly
+  when no tool can do what the user may want. Its routing no longer presumes
+  that no labels exist ("when the user gives no ground-truth labels"). A test
+  fails for a tool of `build_default_registry()` with no declaration, and
+  each `needs` and `cannot` entry has a probe that calls the tool in that
+  condition and gets the refusal or the absence it states
+  (`tests/tools/test_tool_capabilities.py`), so the card cannot drift from
+  the code.
 
 ### Changed
 - **The lead-agent loop is a middleware chain with LangChain 1.x's hook
