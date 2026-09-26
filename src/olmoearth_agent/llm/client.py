@@ -379,7 +379,12 @@ class OlmoEarthLLM:
             elif not self._openai_compat:
                 extra_body[key] = value
         if preserve_thinking and not self._openai_compat:
-            extra_body["chat_template_kwargs"] = {"preserve_thinking": True}
+            # Merged into the preset's template switches, never over them:
+            # the claim check's preset turns thinking off this way.
+            extra_body["chat_template_kwargs"] = {
+                **extra_body.get("chat_template_kwargs", {}),
+                "preserve_thinking": True,
+            }
         if extra_body:
             payload["extra_body"] = extra_body
         if tools is not None:
