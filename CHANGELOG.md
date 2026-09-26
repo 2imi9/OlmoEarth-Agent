@@ -454,6 +454,56 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **The comparison and review tools state what their outputs cannot support**
+  (the blind audit of exp86 rounds 7 and 8, round 8 on agent 6d25307).
+  - `olmoearth_compare_results`: every correlation it returns (a pair's, each
+    pair's of a group, each step's of a series, with
+    `allow_different_properties` too) is a `correlation` fact with `r`, `n`
+    and its 95% interval by Fisher's z (none below 4 cells), whose sentence
+    says the sample cannot say whether the maps co-vary when the interval
+    holds 0, the sign otherwise, and that a correlation says nothing about
+    where. `must_state` says so; `spatial_pattern_from_one_correlation` is
+    forbidden whenever a correlation is returned, and
+    `agreement_from_uncertain_correlation` when its interval holds 0 and
+    reaches 0.3 on a side; below 50 cells `next_steps` names a denser `grid`
+    (or says the mode's cap is reached). Round 8 read r = -0.0172 over 25
+    cells (interval -0.41 to 0.38) as "do not agree spatially at all" and
+    "one is high where the other is indifferent".
+  - A regression band with no threshold forbids a review set
+    (`review_set_for_unthresholded_regression`, beside the error-rate claim)
+    in `olmoearth_compare_results` and in `olmoearth_review_set_from_result`'s
+    refusal; both comparisons forbid labelling only the low-confidence windows
+    (`subset_labelling_sufficient`: not a sample of the map; the plan tool's
+    designs draw from every window).
+  - Two dated maps (`olmoearth_compare_review` with dates, a temporal pair or
+    a series in `olmoearth_compare_results`) forbid
+    `one_reference_settles_two_dates`, and their dates sentence says labels
+    for one date grade only that date's map and each map needs its own
+    date's reference.
+  - Where the evidence does not, or may not, cover the case, no field
+    carries the experiment's figures or its dataset: `evidence_scope` names
+    the source (exp58 or exp70 of 2imi9/olmoearth_inferenceX) and says it does
+    not cover the case, the `more_confident_side` fact drops "51 to 70
+    percent", the Studio review set's caveat drops exp78's "1.8 to 5.8
+    times", a provider's multi-class limit reaches `must_state` only where
+    the suite covers the case, and `evidence_outside_its_scope` is forbidden.
+    Round 8 wrote "51-70% of the time in comparable cases" and called a
+    GEOID-Flood pair "Sen1Floods11 flood maps". The file keeps the full text.
+  - A review set listed short (`olmoearth_review_set`, and the largest
+    budget's in `olmoearth_review_set_from_result`) saves every window of it
+    to a CSV beside the evidence file (rank, window, row, col, margin, class
+    or score; no coordinates): `review_list_path`, `review_list_rows`, and a
+    `listing_note` that says `review_set_evidence.json` holds evidence text
+    only, where round 8 said the full list was saved in it.
+  - `margin_ratio` gives `listed_n` and, past ten listed, the first ten's own
+    ratio (`first_n`, `first_low`, `first_high`); round 8 gave ten shown
+    windows the 50's "13 to 41 times" (theirs: 20.68 to 41.31).
+  - `olmoearth_compare_review` calls row band 0 the northmost (or southmost)
+    only for scores with window centres or a transform; otherwise it is the
+    grid's first rows and the result says the rows need not run north to
+    south (round 8 called row band 0 of F4's 400 chips stacked in dataset
+    order "the northmost band"). `top_band_share` and the other fields keep
+    their names; `spatial` and the fact add `row_order`.
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
   - `olmoearth_plan_label_sample` held a Studio result's grid to 16 in
     silence (20, 30 and 40 all gave the same 173 valid windows) and crashed
