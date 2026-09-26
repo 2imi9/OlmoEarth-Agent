@@ -16,8 +16,9 @@ does not get the simple-random-sample formula. Three tools wrap
   when a certified zone is wanted) and save the design to a file;
 - ``olmoearth_estimate_map_error`` -- the error rate with the design's
   interval and ``method`` (``estimate_error_rate``), per-class accuracy with
-  reference classes (``estimate_per_class``), or, for windows labelled with no
-  design, ``estimate_from_indices``, which refuses a review set;
+  reference classes (``estimate_per_class``; the fact ``weakest_classes``
+  ranks them), or, for windows labelled with no design,
+  ``estimate_from_indices``, which refuses a review set;
 - ``olmoearth_certify_zone`` -- the largest most-confident share of the map
   whose error rate is at most ``alpha`` (``certify_zone``), random designs
   only.
@@ -93,6 +94,15 @@ INTERVAL_RULES = (
     "apply to a stratified or targeted design, nor to a pool of both; report "
     "the interval and method olmoearth_estimate_map_error returns instead.",
 )
+
+#: A class's user's accuracy is ranked only on at least this many windows the
+#: map puts in it (the ``weakest_classes`` fact); below it one window more or
+#: fewer moves the estimate by a fifth or more.
+MIN_TO_RANK = 5
+
+#: The lowest classes the ``weakest_classes`` sentence names: every class with
+#: none of its map-labelled windows correct, then the next lowest up to this.
+N_WEAKEST = 3
 
 _SCORES_SCHEMA = {
     "type": "array",
@@ -534,6 +544,126 @@ def _whole_map_estimate(
     return rules.fact("whole_map_estimate", sentence, **{k: est.get(k) for k in fields})
 
 
+def _names(items: list[str]) -> str:
+    """``a``, ``a and b``, ``a, b and c``."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``weakest_classes`` fact: the classes ranked by user's accuracy, lowest first.
+
+    exp86 round 8 (B5/files/2) named class 1 (user's accuracy 22.5%) and
+    class 6 (45.1%) the weakest, while class 5 had none of its 10
+    map-labelled windows correct (interval 0 to 0.278, below both): the model
+    ranked the nine rows of the package's table by eye and left the worst out.
+    Code ranks them here. A class is ranked on at least :data:`MIN_TO_RANK`
+    windows the map puts in it; ``correct`` is the confusion matrix's
+    diagonal (rows the map's class, columns the reference's), ``labelled``
+    its row. The sentence names every ranked class with none correct first
+    (they tie at 0, and leaving one out was the defect), then the next
+    lowest up to :data:`N_WEAKEST` named, and names the classes the map or
+    the labels hold on fewer windows as too few to rank. It says which
+    accuracy this is: a class's producer's accuracy, what the map misses, is
+    another quantity in the table. ``None`` without a per-class table.
+    """
+    table = per_class.get("per_class")
+    if not isinstance(table, dict) or not table:
+        return None
+    confusion = per_class.get("confusion_counts") or []
+
+    def diagonal(c: int) -> int | None:
+        row = confusion[c] if c < len(confusion) else None
+        return int(row[c]) if isinstance(row, list) and c < len(row) else None
+
+    ranked: list[dict[str, Any]] = []
+    too_few: list[dict[str, Any]] = []
+    for key in sorted(table, key=int):
+        row, c = table[key], int(key)
+        labelled = int(row.get("n_labelled_map_class") or 0)
+        ua = row.get("user_accuracy")
+        if labelled >= MIN_TO_RANK and isinstance(ua, dict):
+            if ua.get("estimate") is None:
+                continue
+            ranked.append(
+                {
+                    "class": c,
+                    "correct": diagonal(c),
+                    "labelled": labelled,
+                    **{k: ua.get(k) for k in ("estimate", "low", "high")},
+                }
+            )
+        elif labelled < MIN_TO_RANK and (
+            labelled or row.get("map_share") or row.get("n_labelled_reference_class")
+        ):
+            # a class neither the map nor the labels hold is not in this map
+            too_few.append({"class": c, "labelled": labelled, "correct": diagonal(c)})
+
+    def none_right(r: dict[str, Any]) -> bool:
+        if r["correct"] is not None:
+            return bool(r["correct"] == 0)
+        return bool(r["estimate"] == 0)
+
+    ranked.sort(key=lambda r: (not none_right(r), r["estimate"], r["high"], r["class"]))
+    zero = [r for r in ranked if none_right(r)]
+    rest = [r for r in ranked if not none_right(r)]
+    named = zero + rest[: max(0, N_WEAKEST - len(zero))]
+
+    cov = per_class.get("nominal_coverage")
+    level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
+    what = (
+        "user's accuracy (of the windows the map puts in a class, the share the "
+        "labels agree with)"
+    )
+
+    def described(r: dict[str, Any]) -> str:
+        count = (
+            f"{r['correct']} of {r['labelled']} correct"
+            if r["correct"] is not None
+            else f"{r['labelled']} map-labelled windows"
+        )
+        return (
+            f"class {r['class']} ({count}; {rules.percent(r['estimate'])}, {level}"
+            f"interval {rules.percent(r['low'])} to {rules.percent(r['high'])})"
+        )
+
+    if not ranked:
+        sentence = (
+            f"No class has at least {MIN_TO_RANK} map-labelled windows, so none "
+            f"is ranked by {what}."
+        )
+    else:
+        over = f"the {len(ranked)} classes" if len(ranked) > 1 else "the one class"
+        sentence = (
+            f"Ranked by {what} over {over} with at least {MIN_TO_RANK} "
+            f"map-labelled windows, the lowest {'are' if len(named) > 1 else 'is'} "
+            + _names([described(r) for r in named])
+            + "."
+        )
+    if too_few:
+        many = len(too_few) > 1
+        sentence += (
+            f" Class{'es' if many else ''} "
+            + _names([str(r["class"]) for r in too_few])
+            + f" {'have' if many else 'has'} fewer than {MIN_TO_RANK} map-labelled "
+            f"windows ({_names([str(r['labelled']) for r in too_few])}), too few "
+            "to rank."
+        )
+    if ranked and per_class.get("design") not in (None, "random"):
+        sentence += (
+            " Under this design each estimate is weighted, so it need not equal "
+            "correct over labelled."
+        )
+    return rules.fact(
+        "weakest_classes",
+        sentence,
+        accuracy="user's",
+        min_labelled=MIN_TO_RANK,
+        lowest=[r["class"] for r in named],
+        ranked=ranked,
+        too_few_to_rank=too_few,
+    )
+
+
 def _refused_band(refusal: dict[str, Any]) -> dict[str, Any]:
     """A Studio band the plan cannot use, with the rules for a regression one.
 
@@ -850,12 +980,15 @@ async def _estimate_map_error(
         + "."
     )
     stratified = out.get("design") in ("confidence", "proportional")
+    weakest = _weakest_classes(out["per_class"]) if out.get("per_class") else None
     out["next_steps"] = _estimate_next_steps(
-        str(out.get("design")), from_design=bool(args.get("design_path"))
+        str(out.get("design")),
+        from_design=bool(args.get("design_path")),
+        per_class=weakest is not None,
     )
     return rules.add_contract(
         out,
-        facts=[_whole_map_estimate(out)],
+        facts=[_whole_map_estimate(out)] + ([weakest] if weakest else []),
         must_state=_studio_scope(
             population.get("source") or {}, out.get("n_population")
         ),
@@ -870,13 +1003,23 @@ async def _estimate_map_error(
     )
 
 
-def _estimate_next_steps(design: str, *, from_design: bool) -> list[str]:
-    """What follows an estimate, from its design."""
+def _estimate_next_steps(
+    design: str, *, from_design: bool, per_class: bool = False
+) -> list[str]:
+    """What follows an estimate, from its design (and a per-class table)."""
     steps = [
         "Report the estimate with its interval and method as returned (the fact "
         "whole_map_estimate states them); the rate is of the design's "
         "population."
     ]
+    if per_class:
+        # exp86 round 8 (B5/files/2) ranked the per-class table by eye and
+        # left out the class with none of its windows correct.
+        steps.append(
+            "Name the weakest classes as the fact weakest_classes ranks them (by "
+            f"user's accuracy, over classes with at least {MIN_TO_RANK} "
+            "map-labelled windows), not from the table by eye."
+        )
     if design in ("confidence", "proportional"):
         steps.append(
             f"No zone can be certified from this {design} design: "

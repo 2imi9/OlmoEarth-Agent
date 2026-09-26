@@ -29,7 +29,11 @@ from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall, ToolSpec
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools import statistical_rules as rules
-from olmoearth_agent.tools.estimation import _jsonable, build_estimation_tools
+from olmoearth_agent.tools.estimation import (
+    _jsonable,
+    _weakest_classes,
+    build_estimation_tools,
+)
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 
@@ -520,6 +524,180 @@ async def test_an_estimate_over_a_studio_grid_states_its_scope(tmp_path: Path) -
     assert "plan one with olmoearth_plan_label_sample(design='random')" in " ".join(
         out["next_steps"]
     )
+
+
+def _row(labelled: int, ua: tuple[float, float, float] | None, **kw: Any) -> Any:
+    """One class row of the package's per-class table."""
+    user = dict(zip(("estimate", "low", "high"), ua)) if ua else None
+    return {"n_labelled_map_class": labelled, "user_accuracy": user, **kw}
+
+
+#: exp86 round 8, B5/files/2: the package's per-class table on F2's
+#: confidence design (rows of the confusion matrix are the map's class).
+ROUND_8_PER_CLASS = {
+    "design": "confidence",
+    "nominal_coverage": 0.95,
+    "confusion_counts": [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 2, 0, 0, 7, 0, 0, 0, 0],
+        [0, 1, 0, 0, 1, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 110, 0, 0, 3, 0],
+        [0, 5, 0, 0, 3, 0, 0, 2, 0],
+        [0, 6, 0, 0, 13, 0, 20, 5, 0],
+        [0, 3, 0, 0, 3, 0, 3, 111, 0],
+        [0, 0, 0, 0, 0, 0, 0, 1, 0],
+    ],
+    "per_class": {
+        "0": _row(0, None, map_share=0.0006, n_labelled_reference_class=0),
+        "1": _row(9, (0.22549, 0.06487, 0.54995), map_share=0.0273),
+        "2": _row(2, (0.0, 0.0, 0.65762), map_share=0.0054),
+        "3": _row(0, None, map_share=0.0, n_labelled_reference_class=0),
+        "4": _row(114, (0.96376, 0.91262, 0.98544), map_share=0.3276),
+        "5": _row(10, (0.0, 0.0, 0.27753), map_share=0.0298),
+        "6": _row(44, (0.45117, 0.32309, 0.58607), map_share=0.1551),
+        "7": _row(120, (0.92281, 0.86281, 0.95785), map_share=0.4507),
+        "8": _row(1, (0.0, 0.0, 0.79345), map_share=0.0034),
+    },
+}
+
+
+def test_the_weakest_classes_are_ranked_by_code_zero_correct_first() -> None:
+    """exp86 round 8 (B5/files/2) named class 1 (22.5%) and class 6 (45.1%)
+    the weakest; class 5 had none of its 10 map-labelled windows correct."""
+    fact = _weakest_classes(ROUND_8_PER_CLASS)
+    assert fact is not None and fact["id"] == "weakest_classes"
+    assert fact["accuracy"] == "user's" and fact["min_labelled"] == 5
+    assert fact["lowest"] == [5, 1, 6]
+    assert [r["class"] for r in fact["ranked"]] == [5, 1, 6, 7, 4]
+    assert [(r["correct"], r["labelled"]) for r in fact["ranked"][:3]] == [
+        (0, 10),
+        (2, 9),
+        (20, 44),
+    ]
+    # Classes on fewer than 5 map-labelled windows are named, never ranked;
+    # class 3, in neither the map nor the labels, is not in this map at all.
+    assert fact["too_few_to_rank"] == [
+        {"class": 0, "labelled": 0, "correct": 0},
+        {"class": 2, "labelled": 2, "correct": 0},
+        {"class": 8, "labelled": 1, "correct": 0},
+    ]
+    sentence = fact["sentence"]
+    assert sentence.startswith(
+        "Ranked by user's accuracy (of the windows the map puts in a class, the "
+        "share the labels agree with) over the 5 classes with at least 5 "
+        "map-labelled windows, the lowest are class 5 (0 of 10 correct; 0.0%, "
+        "95% interval 0.0% to 27.8%), class 1 (2 of 9 correct; 22.5%, 95% "
+        "interval 6.5% to 55.0%) and class 6 (20 of 44 correct; 45.1%, 95% "
+        "interval 32.3% to 58.6%)."
+    )
+    assert (
+        "Classes 0, 2 and 8 have fewer than 5 map-labelled windows (0, 2 and 1), "
+        "too few to rank." in sentence
+    )
+    # A weighted estimate beside a count (22.5% beside 2 of 9) is explained.
+    assert sentence.endswith("so it need not equal correct over labelled.")
+    assert "class 3" not in sentence and "Class 3" not in sentence
+
+
+def test_every_class_with_none_correct_is_named_before_the_next_lowest() -> None:
+    """Four ranked classes with none correct are all named: the cap of three
+    applies to the next lowest, so none of them is left out as class 5 was."""
+    per_class = {
+        "design": "random",
+        "nominal_coverage": 0.95,
+        "confusion_counts": [
+            [0, 6, 0, 0, 0, 0],
+            [5, 0, 0, 0, 0, 0],
+            [0, 0, 0, 7, 0, 0],
+            [0, 0, 8, 0, 0, 0],
+            [0, 0, 0, 0, 3, 3],
+            [0, 0, 0, 0, 0, 30],
+        ],
+        "per_class": {
+            "0": _row(6, (0.0, 0.0, 0.39)),
+            "1": _row(5, (0.0, 0.0, 0.45)),
+            "2": _row(7, (0.0, 0.0, 0.35)),
+            "3": _row(8, (0.0, 0.0, 0.31)),
+            "4": _row(6, (0.5, 0.18, 0.82)),
+            "5": _row(30, (1.0, 0.89, 1.0)),
+        },
+    }
+    fact = _weakest_classes(per_class)
+    assert fact is not None
+    # none correct first, the most labelled (narrowest) of them first
+    assert fact["lowest"] == [3, 2, 0, 1]
+    assert fact["too_few_to_rank"] == []
+    assert "Classes" not in fact["sentence"]  # no class too few to rank
+    # a random design's user's accuracy is correct over labelled: no weighting
+    assert "weighted" not in fact["sentence"]
+    one = _weakest_classes(
+        {
+            "design": "random",
+            "confusion_counts": [[3, 1], [0, 4]],
+            "per_class": {
+                "0": _row(4, (0.75, 0.3, 0.95)),
+                "1": _row(4, (1.0, 0.5, 1.0)),
+            },
+        }
+    )
+    assert one is not None and one["lowest"] == [] and one["ranked"] == []
+    assert one["sentence"].startswith(
+        "No class has at least 5 map-labelled windows, so none is ranked by "
+        "user's accuracy"
+    )
+    assert one["sentence"].endswith(
+        "Classes 0 and 1 have fewer than 5 map-labelled windows (4 and 4), too "
+        "few to rank."
+    )
+    assert _weakest_classes({"per_class": {}}) is None
+
+
+@pytest.mark.asyncio
+async def test_an_estimate_with_reference_classes_ranks_its_weakest() -> None:
+    """Through the tool: a map class every label contradicts comes first, and
+    a class only the labels hold is named as too few to rank."""
+    plan = await _plan("confidence")
+    design = json.loads(Path(plan["design_path"]).read_text())
+    idx, mc = design["sample"]["indices"], design["population"]["map_class"]
+    wrong = _labels_of(plan)
+    # map class 2 is always wrong; three windows are a class the map never has
+    reference = [
+        (mc[i] + 1) % 3 if (w or mc[i] == 2) else mc[i] for i, w in zip(idx, wrong)
+    ]
+    reference[:3] = [3, 3, 3]
+    wrong = [int(r != mc[i]) for i, r in zip(idx, reference)]
+    out = await _result(
+        "olmoearth_estimate_map_error",
+        {
+            "design_path": plan["design_path"],
+            "wrong": wrong,
+            "reference": reference,
+            "n_classes": 4,
+        },
+    )
+    fact = _fact(out, "weakest_classes")
+    assert fact["lowest"][0] == 2 and fact["ranked"][0]["correct"] == 0
+    confusion = out["per_class"]["confusion_counts"]
+    for r in fact["ranked"]:
+        assert r["correct"] == confusion[r["class"]][r["class"]]
+        assert r["labelled"] == sum(confusion[r["class"]])
+        ua = out["per_class"]["per_class"][str(r["class"])]["user_accuracy"]
+        assert (r["estimate"], r["low"], r["high"]) == (
+            ua["estimate"],
+            ua["low"],
+            ua["high"],
+        )
+    assert fact["too_few_to_rank"] == [{"class": 3, "labelled": 0, "correct": 0}]
+    assert any("weakest_classes" in s for s in out["next_steps"])
+    _holds_to_the_contract(out)
+    # Without reference classes there is no table, and no ranking.
+    plain = await _result(
+        "olmoearth_estimate_map_error",
+        {"design_path": plan["design_path"], "wrong": _labels_of(plan)},
+    )
+    assert [f["id"] for f in plain["facts"]] == ["whole_map_estimate"]
+    assert not any("weakest_classes" in s for s in plain["next_steps"])
 
 
 # --------------------------------------------------------------------------- certify
