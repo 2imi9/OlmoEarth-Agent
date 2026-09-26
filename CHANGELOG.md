@@ -585,7 +585,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   under a key that names a listing, had made that file a list's. A list or
   the windows right before a file ("the full ranked list is in <file>",
   "all 3,807 differing windows are in <file>") is read as the claim too.
-  On the recorded answers of rounds 6 to 8, with each id
+  `direction`: a `concentration` violation calls row band 0 the northmost
+  only when the fact's `row_order` runs north to south (a fact without the
+  key is read as north-up), and with row 0 south a compass place is not
+  read against row band 0. On the recorded answers of rounds 6 to 8, with each id
   emitted wherever it could apply, the detectors flag 43 sentences: 37 hold
   a confirmed audit finding (in two, the finding is another claim of the
   same sentence), 3 a finding the verifiers added, and 3 none, which read

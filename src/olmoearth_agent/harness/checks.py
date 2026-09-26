@@ -21,11 +21,12 @@ themselves. Besides numbers, they read three keys a tool's result may carry
   (``side`` "A", "B" or "neither", ``share_a``, ``share_b``,
   ``share_equal``), ``concentration`` (``grid`` ``[rows, cols]``,
   ``n_differing``, ``top_band_share``, the share of the differing windows in
-  the northmost of four row bands, and ``max_band`` ``{axis, band, of_grid,
-  share}``), ``margin_ratio`` (``listed_low``, ``listed_high``,
-  ``review_set_low``, ``review_set_high``, ``versus``) and ``unused_labels``
-  (``requested``, ``planned``, ``n``). ``whole_map_estimate`` and any other
-  id are shown, never checked.
+  row band 0 of four, ``max_band`` ``{axis, band, of_grid, share}`` and
+  ``row_order``: row band 0 is the northmost only for ``"north_to_south"``,
+  and a fact without the key is read as north-up), ``margin_ratio``
+  (``listed_low``, ``listed_high``, ``review_set_low``, ``review_set_high``,
+  ``versus``) and ``unused_labels`` (``requested``, ``planned``, ``n``).
+  ``whole_map_estimate`` and any other id are shown, never checked.
 - ``must_state``: at most :data:`MUST_STATE_MAX` short sentences (at most
   :data:`MUST_STATE_MAX_WORDS` words each) the answer must convey whenever
   it reports that result.
@@ -1135,6 +1136,8 @@ _PLACE_RES = {
     band: re.compile(rf"\b(?:{pattern})\b", re.I)
     for band, (_, _, pattern) in _PLACES.items()
 }
+#: A place named by the compass, which a grid's row order may turn around.
+_COMPASS_RE = re.compile(r"(?:north|south)", re.I)
 #: A clause that places the bulk of the differences: "mostly", "most of",
 #: "most differing windows", "concentrated", "clustered", "dominated", a
 #: strip, "along". "The most suspect" (a superlative) is none.
@@ -1252,17 +1255,35 @@ def _concentration(
     top = fact.get("top_band_share")
     band_fact = fact.get("max_band")
     max_band: Mapping[str, Any] = band_fact if isinstance(band_fact, Mapping) else {}
+    # A fact from before row_order was read as north-up; one that carries it
+    # names row band 0 north only for "north_to_south" (the fix-r8 review: a
+    # rewrite said "northmost" of a grid of chips with no georeference).
+    order = fact.get("row_order", "north_to_south")
     for place, (axis, band, _) in _PLACES.items():
         if place == "top":
             if not isinstance(top, int | float) or top >= BAND_SHARE_MAX:
                 continue
-            why = f"where the northmost band holds {top:.1%} of them"
+            if order == "north_to_south":
+                why = f"where the northmost band holds {top:.1%} of them"
+            elif order == "south_to_north":
+                why = (
+                    f"where row band 0 (the grid's first rows, the south edge "
+                    f"here) holds {top:.1%} of them"
+                )
+            else:
+                why = (
+                    f"where row band 0 (the grid's first rows) holds {top:.1%} of "
+                    "them, and the scores carry no georeference, so no band is "
+                    "north or south"
+                )
         else:
             if max_band.get("axis") != axis or max_band.get("band") in (band, None):
                 continue
             where = max_band.get("of_grid") or f"band {max_band.get('band')}"
             why = f"while most of them are in the {axis} {where}"
         for m in _PLACE_RES[place].finditer(s):
+            if order == "south_to_north" and _COMPASS_RE.match(m.group()):
+                continue  # north is the last row band here, south the first
             if _bulk_place(p, m.start(), m.end(), fact.get("n_differing")):
                 return f"places the differences at the {place} ({m.group()}), {why}; {about}"
     # A strip of rows too narrow to hold most of the differing windows.

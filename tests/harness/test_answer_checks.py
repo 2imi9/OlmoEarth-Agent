@@ -403,6 +403,31 @@ def test_a_place_the_bands_contradict_is_flagged() -> None:
         assert check_direction(fine, run) == [], fine
 
 
+def test_row_band_0_is_called_north_only_when_the_rows_run_north_to_south() -> None:
+    """The fix-r8 review: the violation said "where the northmost band holds
+    1.6%" of F4's 400 chips stacked in dataset order, which carry no
+    georeference (row_order None). A fact from before row_order is north-up."""
+    claim = "The differing windows are concentrated in the top rows."
+    for order, says in (
+        (None, "row band 0 (the grid's first rows)"),
+        ("south_to_north", "the south edge here"),
+        ("north_to_south", "the northmost band"),
+    ):
+        fact = {**_where(top=0.016, band=2, share=0.47), "row_order": order}
+        (v,) = check_direction(claim, _awf(fact))
+        assert says in v["detail"], (order, v["detail"])
+        if order != "north_to_south":
+            assert "northmost" not in v["detail"], v["detail"]
+    legacy = check_direction(claim, _awf(_where(top=0.016, band=2, share=0.47)))
+    assert "the northmost band" in legacy[0]["detail"]
+    # Row 0 south: a north edge is the last row band, which top_band_share
+    # does not count, so a compass claim is not read against it.
+    south = _awf(
+        {**_where(top=0.016, band=2, share=0.47), "row_order": "south_to_north"}
+    )
+    assert check_direction("Most differences sit along the north edge.", south) == []
+
+
 def test_another_edge_contradicts_only_the_band_that_holds_the_most() -> None:
     """``max_band`` rows band 1: the south edge (band 3) cannot hold most."""
     run = _awf(_where(top=0.3, band=1, share=0.41))
