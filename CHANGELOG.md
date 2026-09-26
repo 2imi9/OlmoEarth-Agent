@@ -47,9 +47,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `OLMOEARTH_CHECK_CLAIMS=1`. exp86 round 10 ran it on, with the agent's own
   model as verifier: 2 or 3 of its 20 flags were real, three of the four
   sentences it left marked were correct, and it flagged none of the round's
-  10 material findings. `harness/capabilities.py` is a stub of the
-  capability card (each tool's name and description) with the signature the
-  card's own branch keeps. A preset's `chat_template_kwargs` are merged with
+  10 material findings. The verifier reads the capability card
+  (`harness/capabilities.py`). A preset's `chat_template_kwargs` are merged with
   `preserve_thinking`, no longer replaced by it; the web UI shows a check
   event that passed, failed open or appended as such, not as a rewrite.
   Measured offline, without a model: the verifier prompts of round 9's 30
