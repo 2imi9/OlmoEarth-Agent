@@ -16,6 +16,7 @@ from olmoearth_agent.harness.spill import (
     DEFAULT_SPILL_BYTES,
     SPILL_BYTES_ENV,
     compact_result_for_llm,
+    llm_view,
     spill_result_for_llm,
     spill_threshold,
 )
@@ -144,6 +145,17 @@ def test_the_spill_returns_the_file_it_wrote() -> None:
     text, saved = spill_result_for_llm("echo", big)
     assert saved is not None and json.loads(text)["saved_to"] == saved
     assert json.loads(Path(saved).read_text(encoding="utf-8")) == big
+
+
+def test_the_view_of_a_result_is_what_the_model_read() -> None:
+    """The claim check reads each result as the model did, writing no file."""
+    small = {"ok": True, "result": {"x": 1}}
+    assert llm_view(small, None) == spill_result_for_llm("echo", small)[0]
+    big = {"ok": True, "result": {"blob": "x" * 100_000, "n": 3}}
+    text, saved = spill_result_for_llm("echo", big)
+    assert llm_view(big, saved) == text
+    unsaved = json.loads(llm_view(big, None))
+    assert unsaved["saved_to"] is None and unsaved["preview"] == {"n": 3}
 
 
 def test_zero_threshold_disables_spilling(monkeypatch: pytest.MonkeyPatch) -> None:

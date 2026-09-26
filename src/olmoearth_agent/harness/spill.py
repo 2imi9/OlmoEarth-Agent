@@ -127,7 +127,27 @@ def spill_result_for_llm(tool_name: str, result: Any) -> tuple[str, str | None]:
         logger.warning(
             "could not spill %s result to %s", tool_name, path, exc_info=True
         )
+    return json.dumps(_envelope(result, text, saved)), saved
 
+
+def llm_view(result: Any, spilled_to: str | None) -> str:
+    """The result as the model read it, without writing any file.
+
+    The whole result when it was not spilled, else the compact envelope
+    :func:`spill_result_for_llm` gave the model, naming ``spilled_to`` (the
+    file it wrote, as the harness's ``ToolRecord`` keeps it). The claim check
+    (``harness/claim_check.py``) reads a run's results this way: the answer
+    can rest only on what the model saw (exp86 round 9).
+    """
+    text = json.dumps(result)
+    limit = spill_threshold()
+    if spilled_to is None and (limit <= 0 or len(text) <= limit):
+        return text
+    return json.dumps(_envelope(result, text, spilled_to))
+
+
+def _envelope(result: Any, text: str, saved: str | None) -> dict[str, Any]:
+    """The compact envelope of a spilled result (``text`` is its full JSON)."""
     body = _body(result)
     summary = _summary_preview(body) if body is not None else None
     envelope: dict[str, Any] = {
@@ -143,7 +163,7 @@ def spill_result_for_llm(tool_name: str, result: Any) -> tuple[str, str | None]:
         for key in CONTRACT_KEYS:
             if key in body:
                 envelope[key] = body[key]
-    return json.dumps(envelope), saved
+    return envelope
 
 
 def _body(result: Any) -> dict[str, Any] | None:
