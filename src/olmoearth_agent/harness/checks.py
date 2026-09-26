@@ -77,6 +77,10 @@ DIRECTION = "direction"
 ACTIONS = "actions"
 FORBIDDEN = "forbidden_claims"
 MUST_STATE = "must_state"
+#: The claim check (``harness/claim_check.py``): the agent's own model reads
+#: the answer against the run. Not in :data:`CHECKS`, which are the rules: it
+#: is a model call, which the answer-check middleware makes itself.
+CLAIMS = "claims"
 
 #: The marker appended to a sentence a check still flags after the rewrite.
 MARK = "[unverified: {check}]"
@@ -3422,6 +3426,12 @@ _SECTION_HEAD = {
     "its result. Remove them:",
     MUST_STATE: "Statements a tool requires whenever its result is reported, "
     "which the answer does not convey. Include each, in your own words:",
+    CLAIMS: "Sentences that a reading of this run's record (the tool outputs, "
+    "the user's messages and what each tool can do) does not support. A "
+    "statement no tool output supports: remove it, or state what a tool "
+    "returned. One that contradicts a tool output: state the tool's reading. "
+    "An offer no tool can carry out, or whose inputs the run lacks: offer "
+    "instead a step a tool can take, and say what it needs:",
 }
 
 

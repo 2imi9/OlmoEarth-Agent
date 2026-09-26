@@ -27,7 +27,11 @@ runs the chain. By default, in this order:
   violation, one more call, with no tools, asks the model to rewrite the
   answer with every violation listed. The rewrite is checked again but never
   sent back: each sentence a check still flags is shown with ``[unverified:
-  <check>]`` after it, and nothing is deleted.
+  <check>]`` after it, and nothing is deleted. Beside the rules, the claim
+  check (:mod:`~olmoearth_agent.harness.claim_check`) has the agent's own
+  model read the answer against the run's record and the tools' capability
+  card, for the unsupported claims and impossible offers no rule enumerates
+  (exp86 round 9); it costs at most two model calls per run.
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ from typing import Any
 from olmoearth_agent.harness.answer_checks import AnswerChecksMiddleware
 from olmoearth_agent.harness.checks import (
     CHECKS,
+    CLAIMS,
     NUMBERS,
     SURFACES,
     ToolRecord,
@@ -79,6 +84,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "CHECK_ANSWER_ENV",
+    "CHECK_CLAIMS_ENV",
     "CHECK_NUMBERS_ENV",
     "DEFAULT_SYSTEM_PROMPT",
     "TURN_CAP_PROMPT",
@@ -116,6 +122,11 @@ CHECK_NUMBERS_ENV = "OLMOEARTH_CHECK_NUMBERS"
 #: The same for the answer's other checks (direction, actions, forbidden
 #: claims, required statements); ``LeadAgent(check_answer=False)``.
 CHECK_ANSWER_ENV = "OLMOEARTH_CHECK_ANSWER"
+#: The same for the claim check, the model's own reading of the answer
+#: against the run (``harness/claim_check.py``); ``LeadAgent(check_claims=
+#: False)``. Independent of the two above: it is the one check that costs
+#: model calls (at most two per run).
+CHECK_CLAIMS_ENV = "OLMOEARTH_CHECK_CLAIMS"
 _FALSY = {"0", "false", "no", "off"}
 
 
@@ -164,7 +175,8 @@ class AgentResult:
     grounding_checks: list[dict[str, Any]] = field(default_factory=list)
     #: The answer is the model's rewrite after any check.
     revised: bool = False
-    #: The run's ``check`` events, one per check that fired and pass.
+    #: The run's ``check`` events: one per check that fired and pass, and one
+    #: per call of the claim check.
     checks: list[dict[str, Any]] = field(default_factory=list)
     #: The checks whose sentences the answer shows marked ``[unverified: ...]``.
     marked: list[str] = field(default_factory=list)
@@ -214,6 +226,7 @@ class LeadAgent:
         local: bool = False,
         check_numbers: bool = True,
         check_answer: bool = True,
+        check_claims: bool = True,
         surface: str = "cli",
         middleware: Sequence[AgentMiddleware] | None = None,
     ) -> None:
@@ -234,10 +247,12 @@ class LeadAgent:
         #: What follows the card: skill index, memory, forced skill, budget.
         tail = ""
         # Check the answer against the run before it is shown, unless
-        # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers) and
-        # OLMOEARTH_CHECK_ANSWER=0 (the other checks).
+        # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers),
+        # OLMOEARTH_CHECK_ANSWER=0 (the other rules) and
+        # OLMOEARTH_CHECK_CLAIMS=0 (the claim check).
         self.check_numbers = check_numbers and _env_on(CHECK_NUMBERS_ENV)
         self.check_answer = check_answer and _env_on(CHECK_ANSWER_ENV)
+        self.check_claims = check_claims and _env_on(CHECK_CLAIMS_ENV)
         # Where the answer is shown: on the web the tool results are shown
         # beside it, so "listed above" may point at them (harness/checks.py).
         self.surface = surface
@@ -295,25 +310,33 @@ class LeadAgent:
         run.system = Message(role="system", content=self.system_prompt)
 
     def _checks(self) -> list[str]:
-        """The answer checks this agent runs, in order."""
-        return [
+        """The answer checks this agent runs, in order: the rules, then the claims."""
+        rules = [
             name
             for name in CHECKS
             if (self.check_numbers if name == NUMBERS else self.check_answer)
         ]
+        return rules + ([CLAIMS] if self.check_claims else [])
 
     def default_middleware(self) -> list[AgentMiddleware]:
         """The chain a run uses when ``middleware`` was not given.
 
         The turn cap outermost, then the retry hint, then the answer checks
-        (the ones ``check_numbers`` and ``check_answer`` leave on, on this
-        agent's ``surface``). Their hooks do not depend on each other's
-        order; this order is the loop's before middleware.
+        (the ones ``check_numbers``, ``check_answer`` and ``check_claims``
+        leave on, on this agent's ``surface``; the claim check calls this
+        agent's ``llm`` and reads its ``registry``'s card). Their hooks do
+        not depend on each other's order; this order is the loop's before
+        middleware.
         """
         return [
             TurnCapMiddleware(),
             RetryHintMiddleware(),
-            AnswerChecksMiddleware(self._checks(), surface=self.surface),
+            AnswerChecksMiddleware(
+                self._checks(),
+                surface=self.surface,
+                llm=self.llm,
+                registry=self.registry,
+            ),
         ]
 
     def _record_external_endpoints(self) -> None:
@@ -371,8 +394,9 @@ class LeadAgent:
           Off with ``check_numbers=False`` or ``OLMOEARTH_CHECK_NUMBERS=0``.
         - ``check``       : one per check that found violations in the
           answer (``check``: ``numbers``, ``direction``, ``actions``,
-          ``forbidden_claims`` or ``must_state``; ``violations``: each
-          ``{check, text, detail}``, ``text`` the sentence). ``action`` is
+          ``forbidden_claims``, ``must_state`` or ``claims``;
+          ``violations``: each ``{check, text, detail}``, ``text`` the
+          sentence). ``action`` is
           ``"revise"`` on the draft (which the event carries as ``draft``):
           one call, with no tools and the rewrite sampling
           (``REVISION_MODE``), asks for a rewrite that fixes every
@@ -385,7 +409,18 @@ class LeadAgent:
           it is added the same way, with no rewrite. The number check
           yields its ``grounding_check`` beside its ``check`` event. Off
           with ``check_answer=False`` or ``OLMOEARTH_CHECK_ANSWER=0``
-          (every check but the numbers).
+          (every rule but the numbers). The claim check (``claims``: the
+          agent's own model reads the answer against the run, one call on
+          the draft and one on the rewrite, no tools) yields one ``check``
+          event per call, flags or not: ``"revise"`` or ``"marked"`` with
+          its flags (``violations`` also carry ``kind``: ``unsupported``,
+          ``contradicts`` or ``offer``), else ``"passed"``, or
+          ``"failed_open"`` when its call failed or its reply was no list
+          (``error`` says which; nothing is flagged). Each carries the
+          verifier's raw ``reply``, its ``version``, ``unmatched`` (quotes
+          found in no sentence of the answer), ``reply_complete`` and
+          ``finish_reason``. Off with ``check_claims=False`` or
+          ``OLMOEARTH_CHECK_CLAIMS=0``.
 
         The loop runs this agent's middleware (``middleware``, else
         :meth:`default_middleware`) in LangChain's order: ``abefore_agent``
