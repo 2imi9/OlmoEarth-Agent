@@ -611,7 +611,13 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
             return bool(r["correct"] == 0)
         return bool(r["estimate"] == 0)
 
-    ranked.sort(key=lambda r: (not none_right(r), r["estimate"], r["high"], r["class"]))
+    def rank(r: dict[str, Any]) -> tuple[bool, float, float, int]:
+        # a bound the package left non-finite comes back None (_jsonable):
+        # it sorts as the widest, never as a comparison of None with a float
+        high = r["high"] if isinstance(r["high"], (int, float)) else 1.0
+        return (not none_right(r), float(r["estimate"]), float(high), r["class"])
+
+    ranked.sort(key=rank)
     zero = [r for r in ranked if none_right(r)]
     rest = [r for r in ranked if not none_right(r)]
     named = zero + rest[: max(0, N_WEAKEST - len(zero))]

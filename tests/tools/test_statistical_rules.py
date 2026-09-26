@@ -659,6 +659,22 @@ def test_every_class_with_none_correct_is_named_before_the_next_lowest() -> None
         "few to rank."
     )
     assert _weakest_classes({"per_class": {}}) is None
+    # A bound the package left non-finite is None after _jsonable: ranked as
+    # the widest, not a TypeError that would fail the whole estimate.
+    missing = _weakest_classes(
+        {
+            "design": "confidence",
+            "confusion_counts": [[5, 1], [2, 6]],
+            "per_class": {
+                "0": _row(6, (0.8, 0.4, None)),
+                "1": _row(8, (0.8, 0.5, 0.95)),
+            },
+        }
+    )
+    assert missing is not None and missing["lowest"] == [1, 0]
+    assert "class 0 (5 of 6 correct; 80.0%, interval 40.0% to n/a)" in (
+        missing["sentence"]
+    )
 
 
 @pytest.mark.asyncio
