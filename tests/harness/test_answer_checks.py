@@ -1793,3 +1793,27 @@ def test_the_rules_reworded_by_the_fix_r8_re_review_pass_and_the_claims_do_not()
     assert _flagged(check_forbidden_claims, flagged, alpha) == [flagged]
     flagged = "I can rerun it under the Bonferroni rule if you like."
     assert _flagged(check_forbidden_claims, flagged, rule) == [flagged]
+
+
+def test_the_users_own_file_and_a_count_of_windows_are_no_list_claim() -> None:
+    """exp86 round 9, B6/files run 2: "I need the count of wrong windows in
+    `F3/labels_random_300_s0.csv`" was flagged as saying the file holds a list
+    no tool named. The brief names the file ("labelled in
+    F3/labels_random_300_s0.csv"), and a count of windows is no list."""
+    brief = (
+        "The windows in F3/design_random_300_s0.json are a simple random sample "
+        "of this map, labelled in F3/labels_random_300_s0.csv."
+    )
+    certify = _record("olmoearth_certify_zone", {"certified": False})
+    run = _run(certify, brief=brief)
+    said = (
+        "I need the count of wrong windows in `F3/labels_random_300_s0.csv` (or "
+        "the label-design estimator run on that file)."
+    )
+    assert check_actions(said, run) == []
+    # the count alone, for a file the user did not name, is no list either
+    other = "I need the number of wrong windows in `other/labels.csv`."
+    assert check_actions(other, _run(certify)) == []
+    # a list of windows in a file no tool and no user named is still read
+    listed = "All 300 labelled windows are listed in `other/labels.csv`."
+    assert _flagged(check_actions, listed, _run(certify)) == [listed]

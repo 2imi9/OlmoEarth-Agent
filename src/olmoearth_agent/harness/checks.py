@@ -1734,11 +1734,22 @@ _COMMA_RE = re.compile(r",(?!\d)")
 _SCORES_WORD_RE = re.compile(r"\bscores?\b", re.I)
 
 
+#: A count of windows, not a list of them: "the count of wrong windows in
+#: <file>" (exp86 round 9, B6/files run 2, of the user's own labels file).
+_COUNT_OF_WINDOWS_RE = re.compile(
+    r"\b(?:count|number|share|fraction|proportion|rate|percentage|how\s+many)\s+of\b",
+    re.I,
+)
+
+
 def _is_listy(subject: str) -> bool:
     """Whether a claim's subject is a list: a list or ranking, or windows
-    ("all 819 windows") that are not scores ("scores for all windows")."""
+    ("all 819 windows") that are not scores ("scores for all windows") and
+    not a count ("the count of wrong windows")."""
     return bool(_LIST_NOUN_RE.search(subject)) or bool(
-        _WINDOWS_RE.search(subject) and not _SCORES_WORD_RE.search(subject)
+        _WINDOWS_RE.search(subject)
+        and not _SCORES_WORD_RE.search(subject)
+        and not _COUNT_OF_WINDOWS_RE.search(subject)
     )
 
 
@@ -1840,6 +1851,10 @@ def _list_location_violation(s: str, run: RunEvidence) -> str | None:
         if _negated(pre) or _HEDGE_RE.search(pre):
             continue
         if any(_file_matches(f.group(), path) for path in run.list_files):
+            continue
+        # a file the user named holds what the user says it does ("labelled in
+        # F3/labels_random_300_s0.csv"): no tool has to name it
+        if any(os.path.basename(f.group()) in text for text in run.user_messages):
             continue
         return _not_a_list_file([f.group()], run)
     return None
