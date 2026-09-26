@@ -30,7 +30,7 @@ The builders here are shared by the estimation tools
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
@@ -171,6 +171,80 @@ def error_rate_without_labels() -> dict[str, str]:
         "until the reviewer has labelled its windows, so none may be stated or "
         "guessed from the scores (a confidence score is not a probability of "
         "error)",
+    )
+
+
+def _names(names: Sequence[str]) -> str:
+    """``A``, ``A and B``, ``A, B and C``."""
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+
+
+def _split_text(split: Any) -> str | None:
+    """``train/val split 0.75/0.25`` (``/test`` when it has a share), or ``None``."""
+    if not isinstance(split, Mapping):
+        return None
+    parts: list[tuple[str, float]] = []
+    for name in ("train", "val", "test"):
+        value = split.get(f"{name}_prop")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if value or name != "test":  # a test share of 0 is no part
+                parts.append((name, float(value)))
+    if len(parts) < 2:
+        return None
+    return (
+        "/".join(n for n, _ in parts) + " split " + "/".join(f"{v:g}" for _, v in parts)
+    )
+
+
+def labels_in_studio_fact(
+    models: Iterable[Mapping[str, Any] | None],
+) -> dict[str, Any] | None:
+    """The ``labels_in_studio`` fact: the Studio models fine-tuned on a label field.
+
+    exp86 round 9 (B3/studio run 1) answered "no ground-truth labels exist"
+    while the run's own Studio model records showed both models fine-tuned on
+    a label field of the user's project, with a 0.75/0.25 train/val split:
+    the tools said only that no labels were used, and the model filled the
+    rest from general knowledge. A model summary
+    (:func:`olmoearth_agent.tools.sampling.summarize_model`) whose record
+    names a label field is stated here: labels for the project may exist in
+    Studio, and no tool of this run looked them up for this area (no agent
+    tool reads Studio labels). No person's id or name is read or stated;
+    ``label_field_id`` is the id of the label field.
+
+    Returns
+    -------
+    dict or None
+        ``id``, ``sentence``, ``models`` (``name``, ``model_id``,
+        ``label_field_id`` and ``split`` of each), or ``None`` when no model
+        names a label field.
+    """
+    trained = [m for m in models if m and m.get("trained_on_labels")]
+    if not trained:
+        return None
+    names = [str(m.get("name") or m.get("model_id")) for m in trained]
+    splits = {_split_text(m.get("split")) for m in trained}
+    split = splits.pop() if len(splits) == 1 else None
+    one = len(trained) == 1
+    sentence = (
+        f"{_names(names)} {'was' if one else 'were each'} fine-tuned in Studio on "
+        f"a label field of {'its' if one else 'their'} project"
+        + (f" ({split})" if split else "")
+        + ", so labels for this project may exist in Studio; no tool of this run "
+        "looked them up for this area."
+    )
+    return fact(
+        "labels_in_studio",
+        sentence,
+        models=[
+            {
+                "name": m.get("name"),
+                "model_id": m.get("model_id"),
+                "label_field_id": m.get("label_field_id"),
+                "split": m.get("split"),
+            }
+            for m in trained
+        ],
     )
 
 
@@ -490,18 +564,28 @@ def different_properties(names: Iterable[str | None]) -> list[dict[str, str]]:
     ]
 
 
+#: What a comparison's lack of labels is, and is not: none were given to it;
+#: that is no finding that none exist.
+NO_LABELS_GIVEN = (
+    "no labels were given to this comparison, which takes none: nothing here "
+    "says which map is right, more accurate or better, and nothing here says "
+    "whether labels for these maps exist (none was looked up)"
+)
+
+
 def winner_without_labels(detail: str | None = None) -> dict[str, str]:
-    """No labels are used by a comparison, so no map is shown right or better.
+    """No labels are given to a comparison, so no map is shown right or better.
 
     The comparisons take no labels at all (``olmoearth_compare_results`` and
     ``olmoearth_compare_review``), so this is emitted on every comparison
     they return, whatever the dates or properties; ``detail`` adds what the
-    comparison does say.
+    comparison does say. The reason says the labels were not given to this
+    comparison, never that none exist: exp86 round 9 (B3/studio run 1) read
+    "no labels were used" as "no ground-truth labels exist", of two Studio
+    models each fine-tuned on a label field of the user's project.
     """
     return forbidden(
-        WINNER_WITHOUT_LABELS,
-        "no labels were used: nothing here says which map is right, more "
-        "accurate or better" + (f"; {detail}" if detail else ""),
+        WINNER_WITHOUT_LABELS, NO_LABELS_GIVEN + (f"; {detail}" if detail else "")
     )
 
 

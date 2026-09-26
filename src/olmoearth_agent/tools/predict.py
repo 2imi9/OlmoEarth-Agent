@@ -21,6 +21,7 @@ from olmoearth_agent.analysis.raster_compare import (
     declared_range,
 )
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.sampling import (
     band_value,
@@ -79,6 +80,12 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
     if model_ids:
         out["models"] = models
         out["models_note"] = _MODELS_SCOPE_NOTE
+        # Which models were fine-tuned on a label field: exp86 round 9
+        # (B3/studio run 1) said "no ground-truth labels exist" of two such
+        # models, from tools that said nothing of labels.
+        labels = rules.labels_in_studio_fact(summaries)
+        if labels:
+            rules.add_contract(out, facts=[labels])
     return out
 
 
@@ -260,12 +267,9 @@ def build_predict_tools() -> list[RegisteredTool]:
             ),
             handler=_search_predictions,
             capability=Capability(
-                does="this account's predictions, and each model's name, type "
-                "and prediction_type",
-                cannot=(
-                    "say what a model was trained on (label fields, training "
-                    "data, metrics)",
-                ),
+                does="this account's predictions, and each model's name, type, "
+                "prediction_type and, when fine-tuned, its label field and split",
+                cannot=("say what a model's training data held, or its metrics",),
             ),
         ),
         RegisteredTool(

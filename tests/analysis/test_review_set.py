@@ -588,6 +588,19 @@ def test_spatial_breakdown_counts_every_differing_window_by_band() -> None:
     assert "boundary_means" in out and "PREDICTED" in out["boundary_means"]
 
 
+def test_a_comparisons_winner_claim_says_no_labels_were_given_to_it() -> None:
+    """exp86 round 9 (B3/studio run 1): "no labels were used" read as "no
+    ground-truth labels exist"."""
+    a = [[5.0, 0.1], [0.1, 5.0], [5.0, 0.1]]
+    b = [[5.0, 0.1], [5.0, 0.1], [5.0, 0.1]]
+    out = compare_scores(a, b)
+    (why,) = [
+        c["why"] for c in out["forbidden_claims"] if c["id"] == "winner_without_labels"
+    ]
+    assert why.startswith("no labels were given to this comparison")
+    assert "nothing here says whether labels for these maps exist" in why
+
+
 def test_the_concentration_fact_is_the_contracts() -> None:
     """exp87 review: top_band_share was the largest band's share, so a claim
     about the north edge was checked against the wrong band. It is row band 0's

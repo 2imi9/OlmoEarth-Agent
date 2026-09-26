@@ -472,6 +472,13 @@ def compare_group_categorical(series: list[list[Any]]) -> dict[str, Any]:
     }
 
 
+#: Why a comparison says nothing of accuracy: it was given no ground truth.
+#: Never "there is no ground truth": exp86 round 9 (B3/studio run 1) read
+#: "(no ground truth)" as "no ground-truth labels exist", of two Studio models
+#: each fine-tuned on a label field of the user's project.
+NO_GROUND_TRUTH_GIVEN = "no ground truth was given to this comparison"
+
+
 def compare_group_narration(
     group: dict[str, Any], *, n_results: int, value_type: str
 ) -> dict[str, Any]:
@@ -501,8 +508,8 @@ def compare_group_narration(
         )
     return {
         "headline": headline,
-        "framing": "model-vs-model consensus across the group "
-        "(no ground truth), not accuracy",
+        "framing": "model-vs-model consensus across the group, not accuracy: "
+        f"{NO_GROUND_TRUTH_GIVEN}",
     }
 
 
@@ -557,7 +564,7 @@ def compare_narration(
                 headline = f"no net change (later - earlier) across {n} cells"
         framing = (
             "change over time for one model (later minus earlier), "
-            "not model-vs-model agreement"
+            f"not model-vs-model agreement: {NO_GROUND_TRUTH_GIVEN}"
         )
     else:  # cross_model
         labels = {"a": "model A", "b": "model B", "diff": "difference (B - A)"}
@@ -573,5 +580,5 @@ def compare_narration(
                 if agree_pct is not None
                 else "no overlapping valid cells to compare"
             )
-        framing = "model-vs-model agreement (no ground truth), not accuracy"
+        framing = f"model-vs-model agreement, not accuracy: {NO_GROUND_TRUTH_GIVEN}"
     return {"kind": kind, "labels": labels, "headline": headline, "framing": framing}

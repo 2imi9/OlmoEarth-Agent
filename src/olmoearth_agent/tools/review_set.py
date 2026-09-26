@@ -1260,6 +1260,11 @@ async def _review_set_from_result(
         "must_state": ranked["must_state"],
         "forbidden_claims": ranked["forbidden_claims"],
     }
+    # exp86 round 9 (B3/studio run 1): "no ground-truth labels exist", of
+    # models fine-tuned on the project's labels
+    labels = rules.labels_in_studio_fact([sampled.model] if sampled.model else [])
+    if labels:
+        rules.add_contract(out, facts=[labels])
     if sampled.model:
         out["model"] = {k: v for k, v in sampled.model.items() if k != "nodata_value"}
     if bool(args.get("save_scores", True)):

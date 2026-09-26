@@ -169,6 +169,48 @@ def test_every_forbidden_id_is_one_of_the_contracts_fixed_ids() -> None:
     )
 
 
+def test_the_labels_in_studio_fact_names_each_model_trained_on_labels() -> None:
+    """exp86 round 9 (B3/studio run 1): "no ground-truth labels exist", of two
+    Studio models fine-tuned on label fields of the user's project."""
+    half = {"train_prop": 0.5, "val_prop": 0.3, "test_prop": 0.2}
+    one = rules.labels_in_studio_fact(
+        [
+            {"name": "A", "model_id": "ma", "trained_on_labels": True, "split": half},
+            {"name": "E", "model_id": "me", "trained_on_labels": None},
+            None,  # a model whose record could not be read
+        ]
+    )
+    assert one is not None and one["id"] == "labels_in_studio"
+    assert one["sentence"] == (
+        "A was fine-tuned in Studio on a label field of its project (train/val/"
+        "test split 0.5/0.3/0.2), so labels for this project may exist in Studio; "
+        "no tool of this run looked them up for this area."
+    )
+    assert [m["name"] for m in one["models"]] == ["A"]
+    # splits that differ are not stated; three names are listed in order
+    three = rules.labels_in_studio_fact(
+        [
+            {"name": n, "trained_on_labels": True, "split": s}
+            for n, s in (("A", half), ("B", None), ("C", half))
+        ]
+    )
+    assert three is not None
+    assert three["sentence"].startswith(
+        "A, B and C were each fine-tuned in Studio on a label field of their "
+        "project, so labels"
+    )
+    assert rules.labels_in_studio_fact([{"name": "E"}, None]) is None
+    assert rules.labels_in_studio_fact([]) is None
+
+
+def test_no_labels_given_is_never_no_labels_exist() -> None:
+    """The comparisons are given no labels; that is no finding that none exist."""
+    why = rules.winner_without_labels("detail")["why"]
+    assert why.startswith(rules.NO_LABELS_GIVEN) and why.endswith("; detail")
+    assert "given to this comparison" in why
+    assert "whether labels for these maps exist" in why
+
+
 @pytest.mark.asyncio
 async def test_a_refusal_keeps_its_error_and_carries_the_contract_keys() -> None:
     """A refusal raised as an error stays the same error (text, ok, the

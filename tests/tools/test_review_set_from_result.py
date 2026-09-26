@@ -447,6 +447,54 @@ async def test_margin_summary_of_a_fully_listed_review_set() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_studio_review_set_says_its_model_was_fine_tuned_on_labels(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 9 (B3/studio run 1): "no ground-truth labels exist" of a
+    model fine-tuned on the project's labels. The model's record says it was
+    trained on a label field."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    record = _record("kb", _BINARY_META)
+    record["records"][0]["prediction_id"] = "p1"
+    httpx_mock.add_response(url=f"{BASE}/prediction-results/kb", json=record)
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/p1",
+        json={"records": [{"id": "p1", "model_id": "m1"}]},
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1",
+        json={
+            "records": [
+                {
+                    "id": "m1",
+                    "name": "KarstBinary",
+                    "model_type": "fine_tuned",
+                    "requester_id": "person-7f3a",
+                    "wizard_answers": {
+                        "prediction_type": "per_pixel_regression",
+                        "label_field_id": "lf-1",
+                        "split_proportions": {"train_prop": 0.75, "val_prop": 0.25},
+                    },
+                }
+            ]
+        },
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler(
+            {"result_id": "kb", "grid": 4, "budgets": [0.25], "max_listed": 1}, ctx
+        )
+    facts = {f["id"]: f for f in out["facts"]}
+    assert facts["labels_in_studio"]["sentence"].startswith(
+        "KarstBinary was fine-tuned in Studio on a label field of its project "
+        "(train/val split 0.75/0.25)"
+    )
+    assert out["model"]["trained_on_labels"] is True
+    assert "person-7f3a" not in json.dumps(out)
+
+
+@pytest.mark.asyncio
 async def test_a_studio_review_set_cut_short_saves_its_full_list(
     httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -496,12 +496,16 @@ RANKING_FORBIDDEN: tuple[dict[str, str], ...] = (
     },
 )
 
-#: Stated with every comparison: no side is right without labels.
+#: Stated with every comparison: no side is right without labels. The reason
+#: says none were given to this comparison, never that none exist (exp86
+#: round 9, B3/studio run 1: "no ground-truth labels exist").
 COMPARISON_FORBIDDEN: tuple[dict[str, str], ...] = (
     {
         "id": "winner_without_labels",
-        "why": "without labels neither map can be shown right where they differ; "
-        "the more confident side is not the right one (see evidence_scope)",
+        "why": "no labels were given to this comparison, so neither map can be "
+        "shown right where they differ, and nothing here says whether labels "
+        "for these maps exist; the more confident side is not the right one "
+        "(see evidence_scope)",
     },
 )
 

@@ -262,6 +262,9 @@ def test_compare_group_narration_headlines() -> None:
     )
     assert "all 3 models agree within tolerance at 50% of 9 cells" == nar["headline"]
     assert "not accuracy" in nar["framing"]
+    # exp86 round 9: none was given to it, never "there is none"
+    assert "no ground truth was given to this comparison" in nar["framing"]
+    assert "(no ground truth)" not in nar["framing"]
 
     nar_cls = compare_group_narration(
         {"ensemble": {"n_points_used": 4, "unanimous_fraction": 0.25}},

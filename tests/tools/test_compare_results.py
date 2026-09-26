@@ -95,6 +95,11 @@ async def test_compare_results_quantifies_divergence(httpx_mock: HTTPXMock) -> N
     assert out["value_type"] == "regression"  # data type (renamed from "kind")
     assert out["narration"]["labels"]["a"] == "model A"
     assert "model-vs-model agreement" in out["narration"]["framing"]
+    # exp86 round 9 (B3/studio run 1) read "(no ground truth)" as "no
+    # ground-truth labels exist": none were given to this comparison
+    for said in (out["narration"]["framing"], out["method"]):
+        assert "no ground truth was given to this comparison" in said
+        assert "(no ground truth)" not in said and "no ground truth, so" not in said
     s = out["stats"]
     assert s["n_samples"] == 9  # 3x3 grid, all valid
     assert s["mean_diff_b_minus_a"] == 0.05  # B is uniformly +0.05
@@ -163,6 +168,7 @@ async def test_compare_results_temporal_frames_change_over_time(
     # the framing string (used in `method`) must not claim model agreement
     assert "not model-vs-model agreement" in nar["framing"]
     assert "not model-vs-model agreement" in out["method"]
+    assert "no ground truth was given to this comparison" in out["method"]
 
 
 @pytest.mark.asyncio

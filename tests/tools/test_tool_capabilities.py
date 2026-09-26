@@ -177,7 +177,7 @@ def probe(tool: str, entry: str) -> Callable[[Probe], Probe]:
 
 @probe(
     "olmoearth_search_predictions",
-    "say what a model was trained on (label fields, training data, metrics)",
+    "say what a model's training data held, or its metrics",
 )
 async def _search_gives_no_training(_tmp: Path) -> None:
     """exp86 round 9 said "no ground-truth labels exist" of two fine-tuned models."""
@@ -191,6 +191,7 @@ async def _search_gives_no_training(_tmp: Path) -> None:
                 "wizard_answers": {
                     "prediction_type": "per_pixel_regression",
                     "label_field": "karst_label_field",
+                    "label_field_id": "karst_label_field",
                     "training_data": "karst_training_windows",
                 },
                 "training_metrics": {"val_loss": 0.123456},
@@ -200,9 +201,20 @@ async def _search_gives_no_training(_tmp: Path) -> None:
     out = await _call("olmoearth_search_predictions", {}, studio)
     assert out["ok"] is True
     model = out["result"]["models"]["m1"]
-    assert set(model) <= {"name", "model_type", "prediction_type", "nodata_value"}
+    # the label field it was fine-tuned on and its split, so a user can find
+    # the labels in Studio (round 10); never the training data or metrics
+    assert set(model) <= {
+        "name",
+        "model_type",
+        "prediction_type",
+        "nodata_value",
+        "trained_on_labels",
+        "label_field_id",
+        "split",
+    }
+    assert model.get("trained_on_labels") is True
     blob = json.dumps(out)
-    for secret in ("karst_label_field", "karst_training_windows", "0.123456"):
+    for secret in ("karst_training_windows", "0.123456"):
         assert secret not in blob
 
 

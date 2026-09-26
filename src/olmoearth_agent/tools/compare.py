@@ -408,7 +408,7 @@ def _pair(
         "stats": stats,
         "method": "pointwise pixel-value sampled on a grid over the shared "
         "extent (an estimate, not every pixel); windows where either map is "
-        "no-data are dropped before any statistic; no ground truth, so this is "
+        "no-data are dropped before any statistic; this is "
         + narration["framing"]
         + ".",
     }
@@ -470,8 +470,9 @@ def _group(s: _Sampled, *, tolerance: float, different: bool) -> dict[str, Any]:
         "most_divergent_pair": divergent,
         "method": "pointwise pixel-value sampled on a grid over the extent "
         "shared by all results (an estimate, not every pixel); no-data "
-        "samples are dropped before any statistic; no ground truth, so this "
-        "is " + narration["framing"] + ".",
+        "samples are dropped before any statistic; this is "
+        + narration["framing"]
+        + ".",
     }
     if different:
         # Pairs of one property keep their statistics; a pair of two
@@ -849,6 +850,14 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     facts, said, forbid, next_steps = _correlation_contract(
         _correlations(mode, out), mode=mode, grid=grid
     )
+    # No labels were given to this comparison; the models' records say
+    # whether they were fine-tuned on labels of the project (exp86 round 9,
+    # B3/studio run 1: "no ground-truth labels exist").
+    labels = rules.labels_in_studio_fact(
+        list({m["model_id"]: m for m in models if m and m.get("model_id")}.values())
+    )
+    if labels:
+        facts.append(labels)
     must_state += said
     claims += forbid
     result: dict[str, Any] = {

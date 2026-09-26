@@ -125,12 +125,13 @@ _BOX = [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]
 _RANGES = {"sample_karst_score": (0.0, 1.0), "sample_number": (0.2, 1.2)}
 
 
-def _record(rid: str, prop: str) -> dict[str, Any]:
+def _record(rid: str, prop: str, prediction: str | None = None) -> dict[str, Any]:
     lo, hi = _RANGES[prop]
     return {
         "records": [
             {
                 "id": rid,
+                **({"prediction_id": prediction} if prediction else {}),
                 "property_names": [prop],
                 "result_metadata": {
                     "geometry": {"type": "Polygon", "coordinates": _BOX},
@@ -144,14 +145,33 @@ def _record(rid: str, prop: str) -> dict[str, Any]:
 
 
 def _mock_pair(
-    httpx_mock: HTTPXMock, props: dict[str, str], grid: int, *, sampled: bool = True
+    httpx_mock: HTTPXMock,
+    props: dict[str, str],
+    grid: int,
+    *,
+    sampled: bool = True,
+    models: dict[str, dict[str, Any]] | None = None,
 ) -> None:
+    """Two results; with ``models``, each result's prediction and model record
+    (result id to the model record's fields) are served too."""
     for rid, prop in props.items():
+        model = (models or {}).get(rid)
         httpx_mock.add_response(
             url=f"{BASE}/prediction-results/{rid}",
-            json=_record(rid, prop),
+            json=_record(rid, prop, f"p_{rid}" if model else None),
             is_reusable=True,
         )
+        if model:
+            httpx_mock.add_response(
+                url=f"{BASE}/predictions/p_{rid}",
+                json={"records": [{"id": f"p_{rid}", "model_id": model["id"]}]},
+                is_reusable=True,
+            )
+            httpx_mock.add_response(
+                url=f"{BASE}/models/{model['id']}",
+                json={"records": [model]},
+                is_reusable=True,
+            )
     if not sampled:  # refused from the records, before any pixel-value call
         return
     points = grid_points([0.0, 0.0, 10.0, 10.0], grid)
@@ -272,7 +292,87 @@ async def test_two_unit_scores_of_one_property_name_no_winner(
         rules.SUBSET_LABELLING_SUFFICIENT,
         rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }
-    assert "no labels were used" in _why(out, rules.WINNER_WITHOUT_LABELS)
+    # exp86 round 9 (B3/studio run 1): "no labels were used" was read as "no
+    # ground-truth labels exist"; the reason says none were given to it
+    why = _why(out, rules.WINNER_WITHOUT_LABELS)
+    assert "no labels were given to this comparison" in why
+    assert "nothing here says whether labels for these maps exist" in why
+    assert "no labels were used" not in why
+
+
+#: Two Studio model records as round 9's B3/studio run recorded them: each
+#: fine-tuned on a label field of the project, split 0.75/0.25 (the person
+#: who asked for it withheld).
+_KARST_MODELS = {
+    "a1": {
+        "id": "ma",
+        "name": "KarstBinary",
+        "model_type": "fine_tuned",
+        "requester_id": "person-7f3a",
+        "wizard_answers": {
+            "prediction_type": "per_pixel_regression",
+            "label_field_id": "0bc0d29c-1553-4a86-be1b-a6a5a4205bac",
+            "split_proportions": {
+                "train_prop": 0.75,
+                "val_prop": 0.25,
+                "test_prop": 0.0,
+            },
+        },
+    },
+    "b1": {
+        "id": "mb",
+        "name": "KarstNumber",
+        "model_type": "fine_tuned",
+        "requester_id": "person-7f3a",
+        "wizard_answers": {
+            "prediction_type": "per_pixel_regression",
+            "label_field_id": "be8b6411-ef71-4680-a9bc-aa6d895763fc",
+            "split_proportions": {
+                "train_prop": 0.75,
+                "val_prop": 0.25,
+                "test_prop": 0.0,
+            },
+        },
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_says_its_models_were_fine_tuned_on_labels(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """exp86 round 9 (B3/studio run 1): "no ground-truth labels exist", of two
+    models whose Studio records named a label field of the user's project. The
+    comparison, which is given no labels, says the models were trained on
+    some, and that no tool of the run looked them up."""
+    _mock_pair(
+        httpx_mock,
+        {"a1": "sample_karst_score", "b1": "sample_karst_score"},
+        3,
+        models=_KARST_MODELS,
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _result(
+            "olmoearth_compare_results",
+            {"result_ids": ["a1", "b1"], "grid": 3, "kind": "cross_model"},
+            ctx,
+        )
+    (fact,) = [f for f in out["facts"] if f["id"] == "labels_in_studio"]
+    assert fact["sentence"] == (
+        "KarstBinary and KarstNumber were each fine-tuned in Studio on a label "
+        "field of their project (train/val split 0.75/0.25), so labels for this "
+        "project may exist in Studio; no tool of this run looked them up for this "
+        "area."
+    )
+    assert [m["label_field_id"] for m in fact["models"]] == [
+        "0bc0d29c-1553-4a86-be1b-a6a5a4205bac",
+        "be8b6411-ef71-4680-a9bc-aa6d895763fc",
+    ]
+    assert "person-7f3a" not in str(out)  # no person's id
+    assert "no labels were given to this comparison" in _why(
+        out, rules.WINNER_WITHOUT_LABELS
+    )
 
 
 @pytest.mark.asyncio

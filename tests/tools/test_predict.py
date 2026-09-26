@@ -67,6 +67,80 @@ async def test_search_predictions_tool(httpx_mock: HTTPXMock) -> None:
 
 
 @pytest.mark.asyncio
+async def test_search_predictions_says_which_models_were_fine_tuned_on_labels(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """exp86 round 9 (B3/studio run 1) answered "no ground-truth labels exist"
+    while these records named a label field of the project. The listing says
+    which models were fine-tuned on one, without the person who asked for it."""
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        json={
+            "records": [
+                {"id": "p1", "name": "X", "status": "completed", "model_id": "m1"},
+                {"id": "p2", "name": "E", "status": "completed", "model_id": "m2"},
+            ],
+            "meta": {"total": 2},
+        },
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1",
+        json={
+            "records": [
+                {
+                    "id": "m1",
+                    "name": "KarstBinary",
+                    "model_type": "fine_tuned",
+                    "requester_id": "person-7f3a",
+                    "wizard_answers": {
+                        "prediction_type": "per_pixel_regression",
+                        "label_field_id": "lf-1",
+                        "split_proportions": {
+                            "train_prop": 0.75,
+                            "val_prop": 0.25,
+                            "test_prop": 0.0,
+                        },
+                    },
+                }
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m2",
+        json={
+            "records": [
+                {
+                    "id": "m2",
+                    "name": "KarstEmbedding",
+                    "model_type": "embeddings",
+                    "wizard_answers": {"wizard_id": "embeddings_v1"},
+                }
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_search_predictions").handler({}, ctx)
+    trained = result["models"]["m1"]
+    assert trained["trained_on_labels"] is True
+    assert trained["label_field_id"] == "lf-1"
+    assert trained["split"] == {"train_prop": 0.75, "val_prop": 0.25, "test_prop": 0.0}
+    assert result["models"]["m2"]["trained_on_labels"] is None
+    assert "label_field_id" not in result["models"]["m2"]
+    (fact,) = result["facts"]
+    assert fact["id"] == "labels_in_studio"
+    assert fact["sentence"] == (
+        "KarstBinary was fine-tuned in Studio on a label field of its project "
+        "(train/val split 0.75/0.25), so labels for this project may exist in "
+        "Studio; no tool of this run looked them up for this area."
+    )
+    assert "person-7f3a" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
 async def test_search_predictions_survives_a_missing_model(
     httpx_mock: HTTPXMock,
 ) -> None:

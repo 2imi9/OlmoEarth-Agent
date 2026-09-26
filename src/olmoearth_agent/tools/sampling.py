@@ -114,15 +114,34 @@ def summarize_model(record: dict[str, Any]) -> dict[str, Any]:
     ``prediction_type`` (from ``wizard_answers``, e.g. ``per_pixel_regression``)
     says what the output is: a regression output is a value per pixel, not a
     class probability and not a confidence.
+
+    ``trained_on_labels`` is True when the fine-tuning wizard names a label
+    field (``label_field_id``, with its ``split`` of the labels into train,
+    val and test), else None: not known from the record. exp86 round 9
+    (B3/studio run 1) said "no ground-truth labels exist" of two models whose
+    records named a label field of the user's project; the tools had passed
+    on only name, type and output. No person's id is read (the record's
+    ``requester_id`` is left out).
     """
     wiz = record.get("wizard_answers") or {}
-    return {
+    out: dict[str, Any] = {
         "model_id": record.get("id"),
         "name": record.get("name"),
         "model_type": record.get("model_type"),
         "prediction_type": wiz.get("prediction_type"),
         "nodata_value": wiz.get("nodata_value"),
+        "trained_on_labels": True if wiz.get("label_field_id") else None,
     }
+    if wiz.get("label_field_id"):
+        out["label_field_id"] = wiz.get("label_field_id")
+        split = wiz.get("split_proportions")
+        if isinstance(split, dict):
+            out["split"] = {
+                k: v
+                for k, v in split.items()
+                if k in ("train_prop", "val_prop", "test_prop")
+            }
+    return out
 
 
 async def model_summary(

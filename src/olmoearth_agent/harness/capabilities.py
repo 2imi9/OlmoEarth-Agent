@@ -50,10 +50,7 @@ NO_TOOL_CAN: dict[str, str] = {
         "look up or fetch ground-truth labels (they come from the user or a "
         "reviewer), or say whether any exist"
     ),
-    "training": (
-        "read what a Studio model was trained on (label fields, training data, "
-        "metrics)"
-    ),
+    "training": ("say what a Studio model's training data held, or its metrics"),
     "files": (
         "read files outside the workspace, the scores root and, with no scores "
         "root set, the working directory"

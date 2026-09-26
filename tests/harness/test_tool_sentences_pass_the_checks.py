@@ -182,6 +182,32 @@ async def test_a_review_set_of_multiclass_logits_listed_short_passes(
     _assert_passes("olmoearth_review_set", args, out)
 
 
+@pytest.mark.parametrize("n_models", [1, 2])
+def test_the_labels_in_studio_fact_passes_beside_a_comparisons_claims(
+    n_models: int,
+) -> None:
+    """exp86 round 9, B3/studio: the models' label fields, beside the claims a
+    comparison of two Studio results forbids."""
+    split = {"train_prop": 0.75, "val_prop": 0.25, "test_prop": 0.0}
+    models = [
+        {"name": n, "model_id": f"m{n}", "trained_on_labels": True, "split": split}
+        for n in ("KarstBinary", "KarstNumber")[:n_models]
+    ]
+    band = [("sample_number", (0.2, 1.2))]
+    result = rules.add_contract(
+        {},
+        facts=[rules.labels_in_studio_fact(models)],
+        forbidden_claims=[
+            rules.winner_without_labels(),
+            rules.labelling_low_confidence_only(),
+            rules.unthresholded_regression(band),
+            rules.review_set_for_unthresholded_regression(band),
+            rules.error_rate_without_labels(),
+        ],
+    )
+    _assert_passes("olmoearth_compare_results", {}, result)
+
+
 def _map(n: int = 2000, seed: int = 11) -> list[list[float]]:
     rng = random.Random(seed)
     return [[rng.gauss(0.0, 1.5) for _ in range(3)] for _ in range(n)]
