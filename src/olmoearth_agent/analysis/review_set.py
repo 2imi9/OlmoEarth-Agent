@@ -812,6 +812,7 @@ def review_set(
     max_listed: int = DEFAULT_MAX_LISTED,
     score_kind: str | None = None,
     model: str | None = None,
+    keep_full: bool = False,
 ) -> dict[str, Any]:
     """Rank windows by suspicion and return the ones to review first.
 
@@ -847,6 +848,9 @@ def review_set(
     model
         The model the scores came from, when known; only the evidence scope
         reads it (the measurement is on the OlmoEarth family).
+    keep_full
+        Also return ``review_full``: every window of the review set at the
+        budget as its own row, listed or not, for the caller to save.
 
     Returns
     -------
@@ -908,8 +912,9 @@ def review_set(
     ranked = sorted(range(n), key=rank_key)
 
     k = max(1, int(round(budget * n)))
-    rows: list[dict[str, Any]] = []
-    for rank, i in enumerate(ranked[:k][:max_listed], start=1):
+
+    def review_row(rank: int, i: int) -> dict[str, Any]:
+        """One review row: its rank, window, class, margin and what else is known."""
         row: dict[str, Any] = {
             "rank": rank,
             "window_index": i,
@@ -920,7 +925,11 @@ def review_set(
             row["id"] = ids[i]
         if bnd is not None:
             row["boundary_neighbours"] = bnd[i]
-        rows.append(row)
+        return row
+
+    rows = [
+        review_row(rank, i) for rank, i in enumerate(ranked[:k][:max_listed], start=1)
+    ]
 
     summary = margin_summary(marg, ranked, k, len(rows))
     kind = score_kind or used_type
@@ -952,6 +961,13 @@ def review_set(
         "forbidden_claims": [dict(c) for c in RANKING_FORBIDDEN]
         + evidence_outside_scope(scope),
     }
+    if keep_full:
+        # Every window of the review set, listed or not, as rows of their own
+        # (a caller writes them to a file): exp86 round 8 (brief 8 on the
+        # cluster) said "the full list is saved" where no file held it.
+        out["review_full"] = [
+            review_row(rank, i) for rank, i in enumerate(ranked[:k], start=1)
+        ]
     if bnd is not None:
         out["n_boundary_windows"] = sum(1 for b in bnd if b > 0)
         out["boundary_neighbours_means"] = BOUNDARY_NEIGHBOURS_MEANS

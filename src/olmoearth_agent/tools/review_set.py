@@ -39,7 +39,9 @@ from __future__ import annotations
 
 import asyncio
 import calendar
+import csv
 import hashlib
+import io
 import json
 import logging
 import os
@@ -278,15 +280,24 @@ def _file_classes(meta: dict[str, Any], n_rows: int) -> list[int] | None:
     return [int(c) for c in classes]
 
 
-def _annotate_from_file(out: dict[str, Any], meta: dict[str, Any], n_rows: int) -> None:
-    """Carry a scores file's signal, provenance, classes and class names into a ranking."""
+def _annotate_from_file(
+    out: dict[str, Any],
+    meta: dict[str, Any],
+    n_rows: int,
+    full: list[dict[str, Any]] | None = None,
+) -> None:
+    """Carry a scores file's signal, provenance, classes and class names into a ranking.
+
+    The classes and names go on the listed rows and on ``full``, the review
+    set's every row, when given.
+    """
     if isinstance(meta.get("signal"), str):
         out["signal"] = meta["signal"]
     if isinstance(meta.get("provenance"), str):
         out["provenance"] = meta["provenance"]
     names = meta.get("classes") if isinstance(meta.get("classes"), dict) else None
     classes = _file_classes(meta, n_rows)
-    for row in out.get("review", []):
+    for row in [*out.get("review", []), *(full or [])]:
         if classes is not None:
             row["predicted_class"] = classes[int(row["window_index"])]
         if names is not None:
@@ -396,6 +407,94 @@ def evidence_detail_path() -> str | None:
     return str(target)
 
 
+#: A review list file's columns, in order: the first five always (``row`` and
+#: ``col`` empty without a grid), the rest when the rows have them. Never a
+#: coordinate, and never a caller's own window label (rule §3.1).
+REVIEW_LIST_COLUMNS = ("rank", "window_index", "row", "col", "margin")
+REVIEW_LIST_OPTIONAL = ("score", "predicted_class", "class_name", "boundary_neighbours")
+
+
+def _save_review_list(rows: list[dict[str, Any]]) -> str | None:
+    """The review set's every row, in review order, to a CSV beside the evidence file.
+
+    Named by a digest of its content, so the same ranking writes the same
+    file. A failure to write never fails the ranking: the result then says
+    the list could not be saved.
+    """
+    optional = [c for c in REVIEW_LIST_OPTIONAL if rows and c in rows[0]]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=[*REVIEW_LIST_COLUMNS, *optional],
+        extrasaction="ignore",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerows(rows)
+    body = buffer.getvalue()
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:10]
+    try:
+        target = safe_path(f"review_list_{digest}.csv", root=write_root())
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+    except (OSError, ValueError):
+        logger.warning("could not save the review list", exc_info=True)
+        return None
+    return str(target)
+
+
+def review_list(
+    listed: int, full: list[dict[str, Any]], budget: float
+) -> dict[str, Any]:
+    """The review list file when the listing is cut short, and the note that says so.
+
+    exp86 round 8 (brief 8 on the cluster, runs 2 and 3) said the rest of the
+    819-window review set was saved in review_set_evidence.json, which holds
+    evidence text only; nothing held the list. When fewer windows are listed
+    than the review set holds, every one is written to a CSV
+    (:func:`_save_review_list`) and returned as ``review_list_path`` with
+    ``review_list_rows``; ``listing_note`` says what the listing shows, where
+    the rest is, and what the evidence file holds.
+
+    Parameters
+    ----------
+    listed
+        Rows listed inline.
+    full
+        Every row of the review set, in review order.
+    budget
+        The budget the review set is at.
+    """
+    total = len(full)
+    evidence = (
+        f"{EVIDENCE_FILE} (evidence_detail_path) holds evidence text only, no "
+        "windows"
+    )
+    if listed >= total:
+        return {
+            "listing_note": f"review lists all {total:,} windows of the review set "
+            f"at budget {budget:g}, in review order, so no list file is written; "
+            f"{evidence}."
+        }
+    path = _save_review_list(full)
+    where = (
+        f"the full list of {total:,}, in the same order, is in the CSV at "
+        f"review_list_path ({', '.join(REVIEW_LIST_COLUMNS)} and the class or "
+        "score; no coordinates)"
+        if path
+        else f"the full list of {total:,} could not be saved"
+    )
+    out: dict[str, Any] = {
+        "listing_note": f"review lists the first {listed:,} of the {total:,} "
+        f"windows in the review set at budget {budget:g}, in review order (not a "
+        f"sample of them); {where}; {evidence}."
+    }
+    if path:
+        out["review_list_path"] = path
+        out["review_list_rows"] = total
+    return out
+
+
 async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_review_set``."""
     grid = args.get("grid")
@@ -422,9 +521,10 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     # A file that says what its rows are (logits or probabilities) is believed
     # over detection: a provider's rows are one confidence and zeros.
     file_type = meta.get("score_type")
+    budget = float(args.get("budget", 0.05))
     out = review_set(
         scores,
-        budget=float(args.get("budget", 0.05)),
+        budget=budget,
         ids=args.get("ids"),
         # A grid whose no-data windows were left out has no full neighbourhood.
         grid=(int(grid[0]), int(grid[1])) if grid and windows is None else None,
@@ -439,9 +539,11 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             meta.get("score_kind") if isinstance(meta.get("score_kind"), str) else None
         ),
         model=file_model(meta),
+        keep_full=True,
     )
+    full = out.pop("review_full")
     if meta:
-        _annotate_from_file(out, meta, len(scores))
+        _annotate_from_file(out, meta, len(scores), full)
         # A warning the scores file carries travels with every ranking of it
         # (exp86 round 6: no brief-8 answer passed the provider's multi-class
         # warning on): whole in scores_file_warnings, and as the limit it
@@ -457,10 +559,11 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     if grid_note:
         out["grid_note"] = grid_note
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
-    _place_rows(
-        out.get("review", []), "window_index", windows, int(grid[1]) if grid else None
-    )
+    cols = int(grid[1]) if grid else None
+    _place_rows(out.get("review", []), "window_index", windows, cols)
+    _place_rows(full, "window_index", windows, cols)
     out["evidence_detail_path"] = evidence_detail_path()
+    out.update(review_list(len(out.get("review", [])), full, budget))
     return out
 
 
@@ -1027,7 +1130,9 @@ async def _review_set_from_result(
         error_rate=None,
         max_listed=max_listed,
         score_kind=sampled.score_kind,
+        keep_full=True,
     )
+    full = ranked.pop("review_full")
     n_valid = len(sampled.windows)
     margins_sorted = sorted(abs(r[1] - r[0]) for r in sampled.scores)
     per_budget = []
@@ -1045,10 +1150,11 @@ async def _review_set_from_result(
             )
         per_budget.append(entry)
     review = ranked["review"]
-    for row in review:
+    for row in [*review, *full]:
         local = int(row["window_index"])
         row["score"] = round(sampled.values[local], 6)
     _place_rows(review, "window_index", sampled.windows, grid)
+    _place_rows(full, "window_index", sampled.windows, grid)
 
     out: dict[str, Any] = {
         "ranked": True,
@@ -1085,6 +1191,8 @@ async def _review_set_from_result(
         },
         "review": review,
         "n_review_listed": len(review),
+        # The largest budget's review set, whole, when the listing is cut short.
+        **review_list(len(review), full, budgets[-1]),
         "margin_summary": ranked["margin_summary"],
         "evidence_scope": ranked["evidence_scope"],
         "evidence_covers_this_case": ranked["evidence_covers_this_case"],
@@ -1261,7 +1369,9 @@ def build_review_set_tools() -> list[RegisteredTool]:
                         "max_listed": {
                             "type": "integer",
                             "default": DEFAULT_MAX_LISTED,
-                            "description": "Cap on inline review rows.",
+                            "description": "Cap on inline review rows; a "
+                            "review set listed short is saved whole to "
+                            "review_list_path.",
                         },
                     },
                     "required": [],
@@ -1320,7 +1430,9 @@ def build_review_set_tools() -> list[RegisteredTool]:
                         "max_listed": {
                             "type": "integer",
                             "default": DEFAULT_MAX_LISTED,
-                            "description": "Cap on inline review rows.",
+                            "description": "Cap on inline review rows; a "
+                            "review set listed short is saved whole to "
+                            "review_list_path.",
                         },
                         "save_scores": {
                             "type": "boolean",

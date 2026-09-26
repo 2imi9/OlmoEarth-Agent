@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -820,3 +821,73 @@ def test_a_comparison_across_properties_is_marked_once() -> None:
     # the forbidden claim comes from the statistical rules, which name the
     # properties; marking adds none, so none can be listed twice
     assert "forbidden_claims" not in out
+
+
+# --------------------------------------------------------------------------- the review list file
+
+
+@pytest.mark.asyncio
+async def test_a_review_set_cut_short_saves_its_full_list_and_says_where(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp86 round 8 (brief 8 on the cluster, runs 2 and 3): "the full list
+    (819 windows) ... saved in review_set_evidence.json", which holds evidence
+    text only; nothing held the list. A review set listed short now writes all
+    of its windows to a CSV, without coordinates, and says so."""
+    n = 40
+    rows = [[0.1 + 0.05 * i, 0.0, 0.0] for i in range(n)]
+    classes = [0] * n
+    (tmp_path / "s.json").write_text(
+        json.dumps(
+            {
+                "grid": [5, 8],
+                "scores": rows,
+                "map_class": classes,
+                "classes": {"0": "forest", "1": "water", "2": "crop"},
+                "centres_lon_lat": [[10.0 + i, 50.0] for i in range(n)],
+            }
+        )
+    )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    tool = _tools()["olmoearth_review_set"]
+    out = await tool.handler(  # type: ignore[attr-defined]
+        {"scores_path": str(tmp_path / "s.json"), "budget": 0.5, "max_listed": 5},
+        _ctx(),
+    )
+    assert out["n_review"] == 20 and out["n_review_listed"] == 5
+    assert out["review_list_rows"] == 20
+    path = Path(out["review_list_path"])
+    assert path.parent == tmp_path and path.suffix == ".csv"
+    with path.open(encoding="utf-8") as fh:
+        saved = list(csv.DictReader(fh))
+    assert list(saved[0]) == [
+        "rank",
+        "window_index",
+        "row",
+        "col",
+        "margin",
+        "predicted_class",
+        "class_name",
+        "boundary_neighbours",
+    ]
+    assert len(saved) == 20
+    assert [int(r["rank"]) for r in saved] == list(range(1, 21))
+    # The file's first rows are the listed ones, placed on the grid.
+    for listed, row in zip(out["review"], saved):
+        assert int(row["window_index"]) == listed["window_index"]
+        assert (int(row["row"]), int(row["col"])) == (listed["row"], listed["col"])
+        assert float(row["margin"]) == listed["margin"]
+        assert row["class_name"] == "forest"
+    text = path.read_text(encoding="utf-8")
+    assert "lon" not in text and "lat" not in text and "50.0" not in text
+    note = out["listing_note"]
+    assert "the first 5 of the 20 windows" in note
+    assert "full list of 20" in note and "review_list_path" in note
+    assert "review_set_evidence.json" in note and "evidence text only" in note
+    # Everything listed: no file, and the note says so.
+    whole = await tool.handler(  # type: ignore[attr-defined]
+        {"scores_path": str(tmp_path / "s.json"), "budget": 0.1}, _ctx()
+    )
+    assert "review_list_path" not in whole
+    assert "all 4 windows of the review set" in whole["listing_note"]
+    assert "evidence text only" in whole["listing_note"]

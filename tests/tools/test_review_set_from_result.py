@@ -11,6 +11,7 @@ windows lead and the most confident come last.
 
 from __future__ import annotations
 
+import csv
 import json
 import re
 from pathlib import Path
@@ -443,3 +444,43 @@ async def test_margin_summary_of_a_fully_listed_review_set() -> None:
     assert ms["listed"]["n"] == 3 and ms["not_listed"] == {"n": 0, "margin_range": None}
     assert ms["lowest_margin"] == pytest.approx(0.1)
     assert ms["median_margin"] == pytest.approx(0.2)
+
+
+@pytest.mark.asyncio
+async def test_a_studio_review_set_cut_short_saves_its_full_list(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Studio path: the largest budget's review set, whole, to a CSV with
+    each window's score and no coordinates (exp86 round 8, brief 8)."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler(
+            {"result_id": "kb", "grid": 4, "budgets": [0.1, 0.5], "max_listed": 2},
+            ctx,
+        )
+    # 13 valid windows; the largest budget, 0.5, holds round(6.5) = 6 of them.
+    assert out["budgets"][-1]["n_review"] == 6
+    assert out["n_review_listed"] == 2 and out["review_list_rows"] == 6
+    with Path(out["review_list_path"]).open(encoding="utf-8") as fh:
+        saved = list(csv.DictReader(fh))
+    assert list(saved[0]) == [
+        "rank",
+        "window_index",
+        "row",
+        "col",
+        "margin",
+        "score",
+        "predicted_class",
+    ]
+    assert [float(r["score"]) for r in saved[:2]] == [r["score"] for r in out["review"]]
+    assert [int(r["window_index"]) for r in saved[:2]] == [
+        r["window_index"] for r in out["review"]
+    ]
+    assert not _BANNED_KEYS & set(saved[0])
+    assert "the first 2 of the 6 windows" in out["listing_note"]
+    assert "budget 0.5" in out["listing_note"]
