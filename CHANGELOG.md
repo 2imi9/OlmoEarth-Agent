@@ -527,8 +527,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   puts in a class, the share the labels agree with; `correct` and
   `labelled` from the confusion matrix, the estimate and its interval),
   a sentence naming every class with none correct first and then the next
-  lowest up to three, and the classes on fewer windows named as too few to
-  rank; a next step points to it. Every next step of
+  lowest up to three, but never every ranked class (of two, one is the
+  lowest; with one, no class is ranked against it and none is named the
+  lowest), the classes on fewer windows named as too few to rank, and a
+  class with enough windows but no estimate named as unranked; a next step
+  points to it when it names a lowest class. Every next step of
   `olmoearth_plan_label_sample`, `olmoearth_estimate_map_error` and
   `olmoearth_certify_zone` that names a random design for a certified zone
   says it makes one possible, not certain (`olmoearth_certify_zone` may

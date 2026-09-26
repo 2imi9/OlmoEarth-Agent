@@ -569,10 +569,16 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
     diagonal (rows the map's class, columns the reference's), ``labelled``
     its row. The sentence names every ranked class with none correct first
     (they tie at 0, and leaving one out was the defect), then the next
-    lowest up to :data:`N_WEAKEST` named, and names the classes the map or
-    the labels hold on fewer windows as too few to rank. It says which
-    accuracy this is: a class's producer's accuracy, what the map misses, is
-    another quantity in the table. ``None`` without a per-class table.
+    lowest, up to :data:`N_WEAKEST` named and never every ranked class: with
+    two ranked, one is the lowest; with one, nothing is ranked against it and
+    ``lowest`` is empty (the fix-r8 review: on a map with a rare positive
+    class, the one ranked class, 97.7% correct, was named "the lowest" while
+    the positive class, too few to rank, went unnamed). It names the classes
+    the map or the labels hold on fewer windows as too few to rank, and a
+    class with enough windows but no estimate as such, never dropping one.
+    It says which accuracy this is: a class's producer's accuracy, what the
+    map misses, is another quantity in the table. ``None`` without a
+    per-class table.
     """
     table = per_class.get("per_class")
     if not isinstance(table, dict) or not table:
@@ -585,12 +591,17 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
 
     ranked: list[dict[str, Any]] = []
     too_few: list[dict[str, Any]] = []
+    no_estimate: list[dict[str, Any]] = []
     for key in sorted(table, key=int):
         row, c = table[key], int(key)
         labelled = int(row.get("n_labelled_map_class") or 0)
         ua = row.get("user_accuracy")
-        if labelled >= MIN_TO_RANK and isinstance(ua, dict):
-            if ua.get("estimate") is None:
+        if labelled >= MIN_TO_RANK:
+            if not isinstance(ua, dict) or ua.get("estimate") is None:
+                # enough windows but no estimate: listed, never dropped
+                no_estimate.append(
+                    {"class": c, "labelled": labelled, "correct": diagonal(c)}
+                )
                 continue
             ranked.append(
                 {
@@ -600,9 +611,7 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
                     **{k: ua.get(k) for k in ("estimate", "low", "high")},
                 }
             )
-        elif labelled < MIN_TO_RANK and (
-            labelled or row.get("map_share") or row.get("n_labelled_reference_class")
-        ):
+        elif labelled or row.get("map_share") or row.get("n_labelled_reference_class"):
             # a class neither the map nor the labels hold is not in this map
             too_few.append({"class": c, "labelled": labelled, "correct": diagonal(c)})
 
@@ -620,7 +629,10 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
     ranked.sort(key=rank)
     zero = [r for r in ranked if none_right(r)]
     rest = [r for r in ranked if not none_right(r)]
-    named = zero + rest[: max(0, N_WEAKEST - len(zero))]
+    # Every class with none correct, then the next lowest, but never every
+    # ranked class: the highest of them is not "the lowest" of anything.
+    cap = min(N_WEAKEST, len(ranked) - 1)
+    named = [] if len(ranked) < 2 else zero + rest[: max(0, cap - len(zero))]
 
     cov = per_class.get("nominal_coverage")
     level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
@@ -640,16 +652,30 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
             f"interval {rules.percent(r['low'])} to {rules.percent(r['high'])})"
         )
 
+    estimated = " with an estimate" if no_estimate else ""
     if not ranked:
         sentence = (
-            f"No class has at least {MIN_TO_RANK} map-labelled windows, so none "
-            f"is ranked by {what}."
+            f"No class has at least {MIN_TO_RANK} map-labelled windows{estimated}, "
+            f"so none is ranked by {what}."
+        )
+    elif len(ranked) == 1:
+        sentence = (
+            f"Only one class has at least {MIN_TO_RANK} map-labelled "
+            f"windows{estimated}, {described(ranked[0])}, so no class is ranked "
+            f"against it by {what}."
+        )
+    elif len(named) == len(ranked):
+        sentence = (
+            f"Ranked by {what} over the {len(ranked)} classes with at least "
+            f"{MIN_TO_RANK} map-labelled windows, none has any correct: "
+            + _names([described(r) for r in named])
+            + "."
         )
     else:
-        over = f"the {len(ranked)} classes" if len(ranked) > 1 else "the one class"
         sentence = (
-            f"Ranked by {what} over {over} with at least {MIN_TO_RANK} "
-            f"map-labelled windows, the lowest {'are' if len(named) > 1 else 'is'} "
+            f"Ranked by {what} over the {len(ranked)} classes with at least "
+            f"{MIN_TO_RANK} map-labelled windows, the lowest "
+            f"{'are' if len(named) > 1 else 'is'} "
             + _names([described(r) for r in named])
             + "."
         )
@@ -661,6 +687,15 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
             + f" {'have' if many else 'has'} fewer than {MIN_TO_RANK} map-labelled "
             f"windows ({_names([str(r['labelled']) for r in too_few])}), too few "
             "to rank."
+        )
+    if no_estimate:
+        many = len(no_estimate) > 1
+        sentence += (
+            f" Class{'es' if many else ''} "
+            + _names([str(r["class"]) for r in no_estimate])
+            + f" {'have' if many else 'has'} at least {MIN_TO_RANK} map-labelled "
+            f"windows ({_names([str(r['labelled']) for r in no_estimate])}) but no "
+            "user's accuracy estimate, so not ranked."
         )
     if ranked and per_class.get("design") not in (None, "random"):
         sentence += (
@@ -675,6 +710,7 @@ def _weakest_classes(per_class: dict[str, Any]) -> dict[str, Any] | None:
         lowest=[r["class"] for r in named],
         ranked=ranked,
         too_few_to_rank=too_few,
+        no_estimate=no_estimate,
     )
 
 
@@ -1009,7 +1045,9 @@ async def _estimate_map_error(
     out["next_steps"] = _estimate_next_steps(
         str(out.get("design")),
         from_design=bool(args.get("design_path")),
-        per_class=weakest is not None,
+        # only when the fact names a lowest class: with one ranked class,
+        # "name the weakest" steered an answer to a 97.7% class (fix-r8 review)
+        per_class=bool(weakest and weakest.get("lowest")),
     )
     return rules.add_contract(
         out,

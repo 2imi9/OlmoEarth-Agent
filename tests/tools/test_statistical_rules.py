@@ -664,10 +664,11 @@ def test_every_class_with_none_correct_is_named_before_the_next_lowest() -> None
     missing = _weakest_classes(
         {
             "design": "confidence",
-            "confusion_counts": [[5, 1], [2, 6]],
+            "confusion_counts": [[5, 1, 0], [2, 6, 0], [0, 0, 20]],
             "per_class": {
                 "0": _row(6, (0.8, 0.4, None)),
                 "1": _row(8, (0.8, 0.5, 0.95)),
+                "2": _row(20, (1.0, 0.83, 1.0)),
             },
         }
     )
@@ -675,6 +676,73 @@ def test_every_class_with_none_correct_is_named_before_the_next_lowest() -> None
     assert "class 0 (5 of 6 correct; 80.0%, interval 40.0% to n/a)" in (
         missing["sentence"]
     )
+
+
+def _rare_positive(zero: tuple[int, int], one: tuple[int, int]) -> dict[str, Any]:
+    """A binary map's per-class table: (correct, labelled) per map class."""
+    (c0, n0), (c1, n1) = zero, one
+    return {
+        "design": "random",
+        "nominal_coverage": 0.95,
+        "confusion_counts": [[c0, n0 - c0], [n1 - c1, c1]],
+        "per_class": {
+            "0": _row(n0, (c0 / n0, c0 / n0 - 0.03, min(1.0, c0 / n0 + 0.02))),
+            "1": _row(n1, (c1 / n1, 0.0, 0.9) if n1 else None, map_share=0.01),
+        },
+    }
+
+
+def test_one_ranked_class_is_the_lowest_of_nothing() -> None:
+    """The fix-r8 review: a 300-label random design over a 1%-positive map
+    ranks only class 0 (291 of 298 correct). The sentence called it "the
+    lowest", and the next step said to name the weakest as ranked, so an
+    answer named a 97.7% class the weakest while class 1 (1 of 2) went
+    unnamed. With one ranked class nothing is ranked against it."""
+    fact = _weakest_classes(_rare_positive((291, 298), (1, 2)))
+    assert fact is not None
+    assert fact["lowest"] == [] and [r["class"] for r in fact["ranked"]] == [0]
+    sentence = fact["sentence"]
+    assert sentence.startswith(
+        "Only one class has at least 5 map-labelled windows, class 0 (291 of 298 "
+        "correct; 97.7%"
+    )
+    assert "so no class is ranked against it" in sentence
+    assert "the lowest" not in sentence
+    assert "Class 1 has fewer than 5 map-labelled windows (2), too few to rank." in (
+        sentence
+    )
+
+
+def test_two_ranked_classes_never_both_the_lowest() -> None:
+    """The fix-r8 review: at 1.5% positive, "the lowest are class 1 (0 of 5
+    correct) and class 0 (281 of 295 correct; 95.3%)". One of two ranked
+    classes is the lowest; every class with none correct is still named."""
+    fact = _weakest_classes(_rare_positive((281, 295), (0, 5)))
+    assert fact is not None and fact["lowest"] == [1]
+    assert "the lowest is class 1 (0 of 5 correct" in fact["sentence"]
+    assert "class 0 (" not in fact["sentence"]
+    some = _weakest_classes(_rare_positive((290, 295), (3, 5)))
+    assert some is not None and some["lowest"] == [1]
+    both = _weakest_classes(_rare_positive((0, 6), (0, 5)))
+    assert both is not None and both["lowest"] == [0, 1]
+    assert "none has any correct" in both["sentence"]
+    assert "the lowest" not in both["sentence"]
+
+
+def test_a_class_with_enough_windows_but_no_estimate_is_listed() -> None:
+    """Never dropped: a class the table holds on 5 or more windows with no
+    user's accuracy is named as unranked (the fix-r8 review)."""
+    per_class = _rare_positive((281, 295), (0, 5))
+    per_class["per_class"]["2"] = _row(7, None, map_share=0.02)
+    per_class["confusion_counts"] = [[281, 14, 0], [5, 0, 0], [0, 0, 7]]
+    fact = _weakest_classes(per_class)
+    assert fact is not None
+    assert fact["no_estimate"] == [{"class": 2, "labelled": 7, "correct": 7}]
+    assert (
+        "Class 2 has at least 5 map-labelled windows (7) but no user's accuracy "
+        "estimate, so not ranked." in fact["sentence"]
+    )
+    assert 2 not in [r["class"] for r in fact["ranked"]]
 
 
 @pytest.mark.asyncio
@@ -722,6 +790,38 @@ async def test_an_estimate_with_reference_classes_ranks_its_weakest() -> None:
     )
     assert [f["id"] for f in plain["facts"]] == ["whole_map_estimate"]
     assert not any("weakest_classes" in s for s in plain["next_steps"])
+
+
+@pytest.mark.asyncio
+async def test_no_step_names_the_weakest_when_one_class_is_ranked() -> None:
+    """Through the tool, on a binary map with a rare positive class (the
+    fix-r8 review): a random design holds too few of it to rank, so the fact
+    names no lowest class and no next step says to name the weakest."""
+    n = 3000
+    scores = [
+        [-2.0, 2.0 + (i % 7) / 10] if i % 300 == 0 else [2.0 + (i % 11) / 10, -2.0]
+        for i in range(n)
+    ]
+    plan = await _result(
+        "olmoearth_plan_label_sample",
+        {"scores": scores, "budget": 300, "design": "random"},
+    )
+    design = json.loads(Path(plan["design_path"]).read_text())
+    idx, mc = design["sample"]["indices"], design["population"]["map_class"]
+    assert sum(1 for i in idx if mc[i] == 1) < 5  # too few positives to rank
+    reference = [mc[i] if k % 30 else 1 - mc[i] for k, i in enumerate(idx)]
+    out = await _result(
+        "olmoearth_estimate_map_error",
+        {
+            "design_path": plan["design_path"],
+            "wrong": [int(r != mc[i]) for r, i in zip(reference, idx)],
+            "reference": reference,
+            "n_classes": 2,
+        },
+    )
+    fact = _fact(out, "weakest_classes")
+    assert fact["lowest"] == [] and [r["class"] for r in fact["ranked"]] == [0]
+    assert not any("weakest" in step for step in out["next_steps"])
 
 
 # --------------------------------------------------------------------------- certify
