@@ -286,9 +286,10 @@ def ranking_evidence_scope(
     Returns
     -------
     dict
-        ``sentence`` (the scope, however long it needs to be), ``covers`` (one
-        of :data:`COVERS`) and ``must_state``: the limit in at most 25 words
-        when the evidence does not cover the case, else ``None``.
+        ``sentence`` (the scope, however long it needs to be), ``source``
+        (the experiment, ``"exp70"``), ``covers`` (one of :data:`COVERS`) and
+        ``must_state``: the limit in at most 25 words when the evidence does
+        not cover the case, else ``None``.
     """
     # Where the evidence does not, or may not, cover the case the sentence names
     # its source only: none of the suite's figures, and not the suite (exp86
@@ -297,6 +298,7 @@ def ranking_evidence_scope(
         return {
             "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
             "recorded experiment grades a regression score read as a probability.",
+            "source": "exp70",
             "covers": "no",
             "must_state": MUST_STATE_BINARY_SCORE,
         }
@@ -305,6 +307,7 @@ def ranking_evidence_scope(
             "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
             "recorded experiment grades a regression band's distance from a "
             "decision threshold.",
+            "source": "exp70",
             "covers": "no",
             "must_state": MUST_STATE_THRESHOLD_DISTANCE,
         }
@@ -316,6 +319,7 @@ def ranking_evidence_scope(
         )
         return {
             "sentence": f"{RANKING_SOURCE} and may not cover this case: {named}.",
+            "source": "exp70",
             "covers": "not known",
             "must_state": (
                 must_state_other_model(str(model))
@@ -327,6 +331,7 @@ def ranking_evidence_scope(
         return {
             "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
             "OlmoEarth model's two-class margin) but not this map itself.",
+            "source": "exp70",
             "covers": "yes",
             "must_state": None,
         }
@@ -336,6 +341,7 @@ def ranking_evidence_scope(
             f"OlmoEarth model's top-1 probability over {n_classes} classes, which "
             "ranked errors slightly better than that margin on 14 of the suite's 16 "
             "multi-class tasks, exp76) but not this map itself.",
+            "source": "exp70",
             "covers": "yes",
             "must_state": None,
         }
@@ -345,6 +351,7 @@ def ranking_evidence_scope(
             f"OlmoEarth model's probability margin over {n_classes} classes) but not "
             "this map itself; one minus the top probability ranked errors slightly "
             "better on 14 of the suite's 16 multi-class tasks (exp76).",
+            "source": "exp70",
             "covers": "yes",
             "must_state": None,
         }
@@ -353,6 +360,7 @@ def ranking_evidence_scope(
         f"are logits over {n_classes} classes, and the logit margin ranked errors "
         "slightly worse than the probability margin on all 16 of the suite's "
         "multi-class tasks (exp76).",
+        "source": "exp70",
         "covers": "in part",
         "must_state": MUST_STATE_MULTICLASS_LOGIT,
     }
@@ -371,6 +379,7 @@ def comparison_evidence_scope() -> dict[str, Any]:
         "sentence": f"{COMPARISON_SOURCE} and does not cover this pair: no recorded "
         "experiment grades which of these two maps is right, and without labels "
         "neither side can be picked.",
+        "source": "exp58",
         "covers": "no",
         "must_state": MUST_STATE_NO_WINNER,
     }
@@ -384,14 +393,12 @@ def evidence_outside_scope(scope: dict[str, Any]) -> list[dict[str, str]]:
     """
     if scope.get("covers") not in NOT_COVERED:
         return []
-    comparison = scope.get("must_state") == MUST_STATE_NO_WINNER
-    source, finding = (
-        (
-            "exp58",
-            "its finding about how often the more confident side was right",
-        )
+    source = str(scope.get("source") or "upstream")
+    comparison = source == "exp58"
+    finding = (
+        "its finding about how often the more confident side was right"
         if comparison
-        else ("exp70", "its finding that the margin ranks errors well")
+        else "its finding that the margin ranks errors well"
     )
     does = "does not" if scope["covers"] == "no" else "may not"
     case = "pair" if comparison else "case"

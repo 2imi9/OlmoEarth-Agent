@@ -494,7 +494,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     to a CSV beside the evidence file (rank, window, row, col, margin, class
     or score; no coordinates): `review_list_path`, `review_list_rows`, and a
     `listing_note` that says `review_set_evidence.json` holds evidence text
-    only, where round 8 said the full list was saved in it.
+    only (as `olmoearth_compare_review`'s `listing_order` now does), where
+    round 8 said the full list was saved in it.
   - `margin_ratio` gives `listed_n` and, past ten listed, the first ten's own
     ratio (`first_n`, `first_low`, `first_high`); round 8 gave ten shown
     windows the 50's "13 to 41 times" (theirs: 20.68 to 41.31).

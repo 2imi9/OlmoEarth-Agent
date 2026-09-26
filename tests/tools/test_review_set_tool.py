@@ -893,6 +893,23 @@ async def test_a_review_set_cut_short_saves_its_full_list_and_says_where(
     assert "evidence text only" in whole["listing_note"]
 
 
+@pytest.mark.asyncio
+async def test_a_comparisons_listing_says_the_evidence_file_holds_no_windows() -> None:
+    """The evidence file sits beside every listing file; exp86 round 8 (brief 8)
+    named it as the list. A comparison's listing says what it holds."""
+    other = [list(r) for r in _SCORES]
+    other[1] = [0.1, 5.0]
+    tool = _tools()["olmoearth_compare_review"]
+    out = await tool.handler(  # type: ignore[attr-defined]
+        {"scores_a": _SCORES, "scores_b": other, "grid": [4, 4]}, _ctx()
+    )
+    assert "differing_path" in out["listing_order"]
+    assert (
+        "review_set_evidence.json (evidence_detail_path) holds evidence text only"
+        in out["listing_order"]
+    )
+
+
 # --------------------------------------------------------------------------- north, only on a georeferenced grid
 
 

@@ -734,7 +734,10 @@ def _listing_order(n_listed: int, n_total: int, path: str | None) -> str:
         f"the {n_listed} listed windows are the first differing windows in window "
         f"order (from row 0), not a sample of them; {where}. Read which classes "
         "change, in which direction and where from class_changes, class_pairs, "
-        "spatial and facts, not from the list"
+        "spatial and facts, not from the list. "
+        # exp86 round 8 (brief 8) named the evidence file as holding a list.
+        f"{EVIDENCE_FILE} (evidence_detail_path) holds evidence text only, no "
+        "windows"
     )
 
 
@@ -800,8 +803,6 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                     "scores files leave windows out and name no grid to check it "
                     "against"
                 )
-    # Every differing window comes back; the inline listing is cut below and the
-    # whole of it goes to a file.
     # North only for georeferenced scores: inline rows and a file with no
     # window locations or transform have rows that need not run north to south.
     cols = int(grid[1]) if grid else None
@@ -810,6 +811,8 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
         for meta, rows in zip(metas, sides)
         if meta
     } - {None}
+    # Every differing window comes back; the inline listing is cut below and the
+    # whole of it goes to a file.
     out = compare_scores(
         sides[0],
         sides[1],
