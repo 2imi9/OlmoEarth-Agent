@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from olmoearth_agent.analysis.raster_compare import (
     compare_categorical,
     compare_narration,
     compare_numeric,
+    correlation_interval,
     grid_points,
     intersect_bbox,
     normalize_kind,
@@ -34,6 +37,21 @@ def test_grid_points_count_and_interior() -> None:
 def test_pearson_perfect_and_constant() -> None:
     assert pearson([1, 2, 3], [2, 4, 6]) == 1.0  # perfectly correlated
     assert pearson([1, 1, 1], [2, 3, 4]) is None  # a constant has no correlation
+
+
+def test_correlation_interval_is_fishers_z() -> None:
+    """exp86 round 8 (brief 3 on Studio): r = -0.0172 over 25 cells was read as
+    "do not agree at all"; its 95% interval holds both no relation and a
+    moderate one, as the audit recomputed."""
+    low, high = correlation_interval(-0.0172, 25)  # type: ignore[misc]
+    assert (round(low, 2), round(high, 2)) == (-0.41, 0.38)
+    low, high = correlation_interval(0.5, 103)  # type: ignore[misc]
+    assert low == pytest.approx(0.3393, abs=1e-4)  # tanh(atanh(0.5) - 0.196)
+    assert high == pytest.approx(0.6323, abs=1e-4)
+    # Below four cells Fisher's z has no interval; +-1 is degenerate.
+    assert correlation_interval(0.9, 3) is None
+    assert correlation_interval(1.0, 9) == (1.0, 1.0)
+    assert correlation_interval(-1.0, 9) == (-1.0, -1.0)
 
 
 def test_compare_numeric_identical_is_full_agreement() -> None:

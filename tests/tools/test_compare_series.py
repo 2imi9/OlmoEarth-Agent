@@ -146,6 +146,16 @@ async def test_trace_orders_by_date_and_traces_shifts(
     for step in out["steps"]:
         assert step["stats"]["mean_diff_b_minus_a"] == 0.1
         assert step["stats"]["correlation"] == 1.0
+    # Each step's correlation is a fact that places nothing (exp86 round 8).
+    facts = [f for f in out["facts"] if f["id"] == "correlation"]
+    assert [(f["result_id_a"], f["result_id_b"]) for f in facts] == [
+        ("ra", "rb"),
+        ("rb", "rc"),
+    ]
+    assert all(f["co_varies"] == "positive" for f in facts)
+    assert "spatial_pattern_from_one_correlation" in {
+        c["id"] for c in out["forbidden_claims"]
+    }
     assert out["steps"][0]["from"] == {"result_id": "ra", "date": _PREDICTIONS["ra"][1]}
     assert out["steps"][0]["to"] == {"result_id": "rb", "date": _PREDICTIONS["rb"][1]}
     trajectory = out["trajectory"]

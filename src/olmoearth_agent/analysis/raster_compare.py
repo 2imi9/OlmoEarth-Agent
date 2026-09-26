@@ -17,7 +17,7 @@ labeled as such.
 
 from __future__ import annotations
 
-from math import isfinite, isnan, sqrt
+from math import atanh, isfinite, isnan, sqrt, tanh
 from typing import Any
 
 from olmoearth_agent.analysis.aoi import geometry_bbox
@@ -249,6 +249,35 @@ def pearson(xs: list[float], ys: list[float]) -> float | None:
         return None
     sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
     return sxy / sqrt(sxx * syy)
+
+
+#: The normal quantile of a two-sided 95% interval.
+Z_95 = 1.96
+
+#: Fewest paired samples a correlation's interval takes (Fisher's z divides by
+#: ``sqrt(n - 3)``).
+MIN_INTERVAL_N = 4
+
+
+def correlation_interval(r: float, n: int) -> tuple[float, float] | None:
+    """The 95% interval of a Pearson correlation by Fisher's z, or ``None``.
+
+    ``tanh(atanh(r) -+ 1.96 / sqrt(n - 3))``; ``None`` below
+    :data:`MIN_INTERVAL_N` samples, where the interval is undefined. exp86
+    round 8 (brief 3 on Studio) read r = -0.0172 over 25 cells as "do not agree
+    at all"; its interval, -0.41 to 0.38, holds both no relation and a moderate
+    one (the same pair on a 12 x 12 grid gives 0.50). A correlation of exactly
+    +-1 has the degenerate interval ``(r, r)``.
+    """
+    if n < MIN_INTERVAL_N:
+        return None
+    r = float(r)
+    if abs(r) >= 1.0:
+        edge = 1.0 if r > 0 else -1.0
+        return edge, edge
+    z = atanh(r)
+    half = Z_95 / sqrt(n - 3)
+    return tanh(z - half), tanh(z + half)
 
 
 def compare_numeric(

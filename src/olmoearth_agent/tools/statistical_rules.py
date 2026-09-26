@@ -29,10 +29,11 @@ The builders here are shared by the estimation tools
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from olmoearth_agent.analysis.output_contract import add_forbidden, add_must_state
+from olmoearth_agent.analysis.raster_compare import MIN_INTERVAL_N, correlation_interval
 
 # --------------------------------------------------------------------------- the contract's fixed ids
 
@@ -406,3 +407,155 @@ def across_dates(dates: dict[str, Any]) -> list[dict[str, str]]:
             )
         ),
     ]
+
+
+# --------------------------------------------------------------------------- claims about a correlation
+
+#: A correlation's 95% interval that holds 0 and reaches this far from it on
+#: either side holds both no relation and a moderate one (exp86 round 8: r =
+#: -0.0172 over 25 cells, interval -0.41 to 0.38).
+MODERATE_CORRELATION = 0.3
+
+#: Stated whenever a comparison returns a correlation. exp86 round 8 (brief 3
+#: on Studio) read one pooled r as a place: "do not agree spatially at all",
+#: "do not rise and fall together anywhere", "one is high where the other is
+#: indifferent, and vice versa".
+CORRELATION_MUST_STATE = (
+    "One correlation says nothing about where two maps agree or differ."
+)
+
+#: The same, when a returned correlation's interval holds 0 (or, below four
+#: cells, does not exist): the sample cannot say whether the maps co-vary.
+UNCERTAIN_CORRELATION_MUST_STATE = (
+    "One correlation says nothing about where two maps agree or differ, and one "
+    "whose 95% interval spans zero cannot say whether they co-vary."
+)
+
+
+def correlation_fact(
+    r: float, n: int, *, pair: tuple[str, str] | None = None
+) -> dict[str, Any]:
+    """The ``correlation`` fact: r, the cells it pools and its 95% interval, stated.
+
+    The interval is Fisher's z (:func:`~olmoearth_agent.analysis.raster_compare.
+    correlation_interval`); below four cells there is none. The sentence says
+    that the sample cannot say whether the maps co-vary when the interval holds
+    0, and the sign otherwise; it always says that a correlation has no
+    location. exp86 round 8 read r = -0.0172 over 25 cells as "do not agree at
+    all" where the interval was -0.41 to 0.38. ``pair`` names the two results
+    when a comparison returns several correlations (a group, a series).
+
+    Returns
+    -------
+    dict
+        ``id`` "correlation", ``sentence``, ``r``, ``n``, ``ci_low`` and
+        ``ci_high`` (2 decimals; ``None`` without an interval), ``level``,
+        ``method``, ``co_varies`` ("unknown", "positive" or "negative"),
+        ``holds_moderate`` (the interval holds 0 and reaches
+        :data:`MODERATE_CORRELATION`, or there is none) and, with ``pair``,
+        ``result_id_a`` and ``result_id_b``.
+    """
+    interval = correlation_interval(r, n)
+    who = f"Between results {pair[0]} and {pair[1]}, the" if pair else "The"
+    head = f"{who} correlation is {r:g} over {n:,} cells"
+    where = "; a correlation says nothing about where the maps agree or differ."
+    low = high = None
+    if interval is None:
+        co_varies, moderate = "unknown", True
+        body = (
+            f"; with fewer than {MIN_INTERVAL_N} cells it has no interval, so "
+            "this sample cannot say whether the maps co-vary"
+        )
+    else:
+        lo, hi = interval
+        low, high = round(lo, 2), round(hi, 2)
+        stated = f", 95% interval {low:.2f} to {high:.2f} (Fisher's z)"
+        if lo <= 0.0 <= hi:
+            co_varies = "unknown"
+            moderate = max(abs(lo), abs(hi)) >= MODERATE_CORRELATION
+            holds = (
+                "both no relation and a moderate one" if moderate else "0 (no relation)"
+            )
+            body = (
+                f"{stated}: the interval holds {holds}, so this sample cannot "
+                "say whether the maps co-vary"
+            )
+        else:
+            moderate = False
+            co_varies = "positive" if lo > 0.0 else "negative"
+            sign = (
+                "the maps' values tend to rise and fall together across the "
+                "sampled cells"
+                if co_varies == "positive"
+                else "the maps' values tend to move in opposite directions across "
+                "the sampled cells"
+            )
+            body = f"{stated}: {sign}"
+    out = fact(
+        "correlation",
+        head + body + where,
+        r=r,
+        n=n,
+        ci_low=low,
+        ci_high=high,
+        level=0.95,
+        method="Fisher's z",
+        co_varies=co_varies,
+        holds_moderate=moderate,
+    )
+    if pair:
+        out["result_id_a"], out["result_id_b"] = pair
+    return out
+
+
+def spatial_pattern_from_one_correlation() -> dict[str, str]:
+    """A pooled correlation has no location, so it places no agreement or difference."""
+    return forbidden(
+        SPATIAL_PATTERN_FROM_ONE_CORRELATION,
+        "a correlation is one number pooled over all the compared cells and has "
+        "no location: it cannot say where the maps agree or differ, that they "
+        "agree or differ anywhere or nowhere, that large parts agree while the "
+        "rest differs, or that one is high where the other is low; only a "
+        "per-window value, which a correlation is not, can place them",
+    )
+
+
+#: Most correlations an ``agreement_from_uncertain_correlation`` reason names.
+_UNCERTAIN_NAMED = 4
+
+
+def agreement_from_uncertain_correlation(
+    facts: Sequence[dict[str, Any]],
+) -> dict[str, str]:
+    """No agreement, or its absence, from correlations whose interval holds both.
+
+    ``facts`` are the ``correlation`` facts whose ``holds_moderate`` is true: an
+    interval that holds 0 and reaches :data:`MODERATE_CORRELATION` on a side,
+    or none at all.
+    """
+    parts = []
+    for item in facts[:_UNCERTAIN_NAMED]:
+        who = (
+            f"results {item['result_id_a']} and {item['result_id_b']}: "
+            if item.get("result_id_a")
+            else ""
+        )
+        if item.get("ci_low") is None:
+            parts.append(
+                f"{who}r = {item['r']:g} over {item['n']} cells, too few for an "
+                "interval"
+            )
+        else:
+            parts.append(
+                f"{who}r = {item['r']:g} over {item['n']} cells, 95% interval "
+                f"{item['ci_low']:.2f} to {item['ci_high']:.2f}"
+            )
+    more = len(facts) - _UNCERTAIN_NAMED
+    listed = "; ".join(parts) + (f"; and {more} more" if more > 0 else "")
+    return forbidden(
+        AGREEMENT_FROM_UNCERTAIN_CORRELATION,
+        f"{listed}: an interval that holds both no relation and a moderate one "
+        "cannot say whether the maps co-vary, so neither 'they do not agree at "
+        "all', 'independent', 'unrelated' or 'effectively zero' nor 'they "
+        "agree' follows from it; more cells narrow the interval",
+    )

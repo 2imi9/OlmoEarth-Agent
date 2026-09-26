@@ -34,6 +34,13 @@ fraction or an ensemble spread between two quantities is left out). Windows are 
 ``window_index``, row 0 the northernmost (rule §3.1): no coordinate and no
 extent is returned. Every sample is a live pixel-value call, so the grid is
 small by default and capped per mode.
+
+Every correlation returned (a pair's, each pair's of a group, each step's of a
+series) is also a ``correlation`` fact with its 95% interval by Fisher's z,
+beside the claims it cannot support: a place (it is pooled over every cell)
+and, when its interval holds both no relation and a moderate one, whether the
+maps co-vary at all (exp86 round 8 read r = -0.0172 over 25 cells as "do not
+agree spatially at all").
 """
 
 from __future__ import annotations
@@ -54,6 +61,7 @@ from olmoearth_agent.analysis.raster_compare import (
     compare_group_numeric,
     compare_narration,
     compare_numeric,
+    correlation_interval,
     declared_range,
     grid_windows,
     intersect_bboxes,
@@ -340,6 +348,22 @@ def _mark_different(out: dict[str, Any]) -> None:
     # here first would shadow it.
 
 
+def _interval_text(stats: dict[str, Any]) -> str:
+    """`` (95% interval -0.41 to 0.38)`` for a stats block's correlation, or ``""``.
+
+    The different-properties headline is the one line such a comparison leads
+    with, and exp86 round 8 read its bare r = -0.0172 over 25 cells as "do not
+    agree at all".
+    """
+    r, n = stats.get("correlation"), stats.get("n_samples")
+    if not isinstance(r, (int, float)) or isinstance(r, bool) or not isinstance(n, int):
+        return ""
+    interval = correlation_interval(float(r), n)
+    if interval is None:
+        return ""
+    return f" (95% interval {interval[0]:.2f} to {interval[1]:.2f})"
+
+
 def _pair(
     s: _Sampled,
     *,
@@ -394,8 +418,9 @@ def _pair(
         _mark_different(out)
         narration["headline"] = (
             f"different properties: correlation {stats.get('correlation')} "
-            f"across {stats.get('n_samples', 0)} cells; no other statistic "
-            "between them is returned"
+            f"across {stats.get('n_samples', 0)} cells"
+            f"{_interval_text(stats)}; no other statistic between them is "
+            "returned"
             if not categorical
             else f"different properties: two class sets across "
             f"{stats.get('n_samples', 0)} cells; no statistic between them is "
@@ -805,21 +830,114 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     if different:
         claims += rules.different_properties(names)
     claims.append(rules.winner_without_labels())  # no labels here; listed once
-    return rules.add_contract(
-        {
-            "comparable": True,
-            "mode": mode,
-            "result_ids": ids,
-            **out,
-            "grid": f"{grid}x{grid}",
-            "n_cells": s.n_points,
-            "samples_requested": s.n_points * len(ids),
-            "sampling_note": _sampling_note(s, out, mode),
-            "shared_extent_km2": _extent_km2(bbox),
-            "nodata_rule": NODATA_RULE,
-        },
-        forbidden_claims=claims,
+    facts, must_state, forbid, next_steps = _correlation_contract(
+        _correlations(mode, out), mode=mode, grid=grid
     )
+    claims += forbid
+    result: dict[str, Any] = {
+        "comparable": True,
+        "mode": mode,
+        "result_ids": ids,
+        **out,
+        "grid": f"{grid}x{grid}",
+        "n_cells": s.n_points,
+        "samples_requested": s.n_points * len(ids),
+        "sampling_note": _sampling_note(s, out, mode),
+        "shared_extent_km2": _extent_km2(bbox),
+        "nodata_rule": NODATA_RULE,
+    }
+    if next_steps:
+        result["next_steps"] = next_steps
+    return rules.add_contract(
+        result, facts=facts, must_state=must_state, forbidden_claims=claims
+    )
+
+
+#: Fewer compared cells than this and a comparison that returns a correlation
+#: names a denser grid as a next step (exp86 round 8: 25 cells gave an
+#: interval of -0.41 to 0.38 around r = -0.0172).
+DENSE_CELLS = 50
+
+
+def _correlations(
+    mode: str, out: dict[str, Any]
+) -> list[tuple[float, int, tuple[str, str] | None]]:
+    """Every correlation a comparison returns: ``(r, cells, the two results)``.
+
+    A pair returns one (its two results need no naming); a group one per pair
+    of results, of one property or two; a series one per step. A
+    classification returns none.
+    """
+    if out.get("value_type") != "regression":
+        return []
+    entries: list[tuple[dict[str, Any], tuple[str, str] | None]]
+    if mode == "pair":
+        entries = [(out.get("stats") or {}, None)]
+    elif mode == "group":
+        entries = [
+            (e.get("stats") or {}, (e["result_id_a"], e["result_id_b"]))
+            for e in out.get("pairwise", [])
+        ]
+    elif mode == "series":
+        entries = [
+            (st.get("stats") or {}, (st["from"]["result_id"], st["to"]["result_id"]))
+            for st in out.get("steps", [])
+        ]
+    else:
+        return []
+    return [
+        (float(stats["correlation"]), int(stats["n_samples"]), pair)
+        for stats, pair in entries
+        if _is_number(stats.get("correlation"))
+        and isinstance(stats.get("n_samples"), int)
+    ]
+
+
+def _correlation_contract(
+    found: list[tuple[float, int, tuple[str, str] | None]], *, mode: str, grid: int
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, str]], list[str]]:
+    """The facts, must_state, forbidden claims and next steps of the correlations returned.
+
+    Each correlation is a ``correlation`` fact with its 95% interval; any one
+    forbids a spatial pattern read from it, and one whose interval holds both
+    no relation and a moderate one forbids saying the maps do, or do not,
+    co-vary. exp86 round 8 (brief 3 on Studio, all three runs): "do not agree
+    spatially at all", "not together anywhere", "one is high where the other
+    is indifferent, and vice versa", from r = -0.0172 over 25 cells.
+    """
+    if not found:
+        return [], [], [], []
+    facts = [rules.correlation_fact(r, n, pair=pair) for r, n, pair in found]
+    unknown = any(f["co_varies"] == "unknown" for f in facts)
+    must_state = [
+        (
+            rules.UNCERTAIN_CORRELATION_MUST_STATE
+            if unknown
+            else rules.CORRELATION_MUST_STATE
+        )
+    ]
+    claims = [rules.spatial_pattern_from_one_correlation()]
+    if moderate := [f for f in facts if f["holds_moderate"]]:
+        claims.append(rules.agreement_from_uncertain_correlation(moderate))
+    fewest = min(n for _r, n, _p in found)
+    next_steps: list[str] = []
+    if fewest < DENSE_CELLS:
+        most = _LIMITS[mode][1]
+        which = " (the fewest of its correlations)" if len(found) > 1 else ""
+        if grid < most:
+            next_steps.append(
+                f"A denser grid narrows the correlation's interval: this call "
+                f"compared {fewest} cells{which} on a {grid}x{grid} grid; pass "
+                f"grid={most} (the most mode='{mode}' takes, {most * most} cells "
+                "per result) to compare more."
+            )
+        else:
+            next_steps.append(
+                f"The grid is at mode='{mode}''s cap ({grid}x{grid}) and "
+                f"{fewest} cells were compared{which}, so this tool cannot narrow "
+                "the correlation's interval further."
+            )
+    return facts, must_state, claims, next_steps
 
 
 def _unthresholded_regression(

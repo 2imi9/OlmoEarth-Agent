@@ -297,14 +297,76 @@ async def test_compare_results_allows_different_properties_with_a_warning(
         "tolerance",
     ]
     # The output contract: what to state, and the claim the answer must not make.
-    assert out["must_state"] == [
+    assert out["must_state"][0] == (
         "The results measure different properties: only whether they rise and "
         "fall together (the correlation) is meaningful between them."
-    ]
-    assert {c["id"] for c in out["forbidden_claims"]} == {
+    )
+    assert {
         "combined_statistic_across_properties",
         "winner_without_labels",
-    }
+    } <= {c["id"] for c in out["forbidden_claims"]}
+
+
+async def _trial_pair(httpx_mock: HTTPXMock) -> dict[str, Any]:
+    """The trial's KarstBinary-KarstNumber pair on its 6x6 grid, allowed."""
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/a1", json=_result("a1", "sample_karst_score")
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/b1", json=_result("b1", "sample_number")
+    )
+    callback = _pixel_callback(
+        {
+            "a1": ("sample_karst_score", [a for a, _ in KARST_PAIRS]),
+            "b1": ("sample_number", [b for _, b in KARST_PAIRS]),
+        },
+        6,
+    )
+    httpx_mock.add_callback(
+        callback, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        return await _compare(
+            {"result_ids": ["a1", "b1"], "grid": 6, "allow_different_properties": True},
+            ctx,
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_trials_correlation_states_its_interval_and_places_nothing(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """exp86 round 8 (brief 3 on Studio, all three runs): r = -0.0172 over 25
+    cells read as "do not agree spatially at all", "not together anywhere" and
+    "one is high where the other is indifferent". Its 95% interval, -0.41 to
+    0.38, holds both no relation and a moderate one, and it has no location."""
+    out = await _trial_pair(httpx_mock)
+    (corr,) = [f for f in out["facts"] if f["id"] == "correlation"]
+    assert (corr["r"], corr["n"]) == (-0.0172, 25)
+    assert (corr["ci_low"], corr["ci_high"]) == (-0.41, 0.38)
+    assert corr["co_varies"] == "unknown" and corr["holds_moderate"] is True
+    assert "cannot say whether the maps co-vary" in corr["sentence"]
+    assert "says nothing about where" in corr["sentence"]
+    assert "(95% interval -0.41 to 0.38)" in out["narration"]["headline"]
+    assert (
+        "One correlation says nothing about where two maps agree or differ, and one "
+        "whose 95% interval spans zero cannot say whether they co-vary."
+    ) in out["must_state"]
+    ids = {c["id"] for c in out["forbidden_claims"]}
+    assert {
+        "spatial_pattern_from_one_correlation",
+        "agreement_from_uncertain_correlation",
+    } <= ids
+    (why,) = [
+        c["why"]
+        for c in out["forbidden_claims"]
+        if c["id"] == "agreement_from_uncertain_correlation"
+    ]
+    assert "r = -0.0172 over 25 cells, 95% interval -0.41 to 0.38" in why
+    # 25 cells < 50: a denser grid, by the tool's own argument and cap.
+    (step,) = out["next_steps"]
+    assert "pass grid=12" in step and "compared 25 cells on a 6x6 grid" in step
 
 
 @pytest.mark.asyncio

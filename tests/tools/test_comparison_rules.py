@@ -195,6 +195,7 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
         rules.COMBINED_STATISTIC_ACROSS_PROPERTIES,
         rules.WINNER_WITHOUT_LABELS,
+        rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }
     no_rate = _why(allowed, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION)
     assert no_rate.startswith("'sample_number' (declared range [0.2, 1.2])")
@@ -244,7 +245,10 @@ async def test_two_unit_scores_of_one_property_name_no_winner(
             "olmoearth_compare_results", {"result_ids": ["a1", "b1"], "grid": 3}, ctx
         )
     assert out["comparable"] is True and out["value_type"] == "regression"
-    assert _ids(out) == {rules.WINNER_WITHOUT_LABELS}
+    assert _ids(out) == {
+        rules.WINNER_WITHOUT_LABELS,
+        rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
+    }
     assert "no labels were used" in _why(out, rules.WINNER_WITHOUT_LABELS)
 
 
@@ -261,9 +265,98 @@ async def test_one_unthresholded_property_has_no_error_rate(
     assert _ids(out) == {
         rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION,
         rules.WINNER_WITHOUT_LABELS,
+        rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
     }
     # one property, named once
     assert (
         _why(out, rules.ERROR_RATE_FOR_UNTHRESHOLDED_REGRESSION).count("sample_number")
         == 1
     )
+
+
+# --------------------------------------------------------------------------- one correlation
+
+
+def test_the_correlation_fact_states_the_sign_or_that_the_sample_cannot_say() -> None:
+    """exp86 round 8 (brief 3 on Studio): one pooled r read as a place and as
+    no agreement at all. The fact states the interval, the sign only when the
+    interval excludes 0, and that a correlation has no location."""
+    wide = rules.correlation_fact(-0.0172, 25)
+    assert wide["co_varies"] == "unknown" and wide["holds_moderate"] is True
+    assert "holds both no relation and a moderate one" in wide["sentence"]
+    positive = rules.correlation_fact(0.497, 91)
+    assert positive["co_varies"] == "positive"
+    assert positive["holds_moderate"] is False
+    assert "rise and fall together" in positive["sentence"]
+    negative = rules.correlation_fact(-0.6, 50)
+    assert negative["co_varies"] == "negative"
+    assert "opposite directions" in negative["sentence"]
+    # An interval that holds 0 but not a moderate relation still cannot say.
+    narrow = rules.correlation_fact(0.05, 1000)
+    assert narrow["co_varies"] == "unknown" and narrow["holds_moderate"] is False
+    assert "cannot say whether the maps co-vary" in narrow["sentence"]
+    tiny = rules.correlation_fact(0.9, 3)
+    assert tiny["ci_low"] is None and tiny["holds_moderate"] is True
+    assert "no interval" in tiny["sentence"]
+    for item in (wide, positive, negative, narrow, tiny):
+        assert "says nothing about where the maps agree or differ" in item["sentence"]
+        # a place is never read into the sign
+        assert " where one " not in item["sentence"]
+
+
+def test_a_denser_grid_is_a_next_step_below_fifty_cells_and_below_the_cap() -> None:
+    from olmoearth_agent.tools.compare import _correlation_contract
+
+    facts, must, claims, steps = _correlation_contract(
+        [(0.2, 30, None)], mode="pair", grid=6
+    )
+    assert [f["id"] for f in facts] == ["correlation"]
+    assert must == [rules.UNCERTAIN_CORRELATION_MUST_STATE]
+    assert {c["id"] for c in claims} == {
+        rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION,
+        rules.AGREEMENT_FROM_UNCERTAIN_CORRELATION,
+    }
+    assert steps and "pass grid=12" in steps[0]
+    # At the cap the tool says it cannot narrow the interval, and offers no grid.
+    *_, capped = _correlation_contract([(0.2, 30, None)], mode="pair", grid=12)
+    assert "cannot narrow" in capped[0] and "pass grid" not in capped[0]
+    # A clear correlation over enough cells: the plain limit, no next step.
+    _, must, claims, steps = _correlation_contract(
+        [(0.8, 144, None)], mode="pair", grid=12
+    )
+    assert must == [rules.CORRELATION_MUST_STATE]
+    assert {c["id"] for c in claims} == {rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION}
+    assert steps == []
+
+
+@pytest.mark.asyncio
+async def test_a_group_states_every_pairs_correlation(httpx_mock: HTTPXMock) -> None:
+    """A group returns one correlation per pair of results; each is a fact."""
+    _mock_pair(
+        httpx_mock,
+        {
+            "a1": "sample_karst_score",
+            "b1": "sample_karst_score",
+            "c1": "sample_karst_score",
+        },
+        3,
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _result(
+            "olmoearth_compare_results",
+            {"result_ids": ["a1", "b1", "c1"], "mode": "group", "grid": 3},
+            ctx,
+        )
+    facts = [f for f in out["facts"] if f["id"] == "correlation"]
+    pairs = {(f["result_id_a"], f["result_id_b"]) for f in facts}
+    returned = {
+        (p["result_id_a"], p["result_id_b"])
+        for p in out["pairwise"]
+        if p["stats"].get("correlation") is not None
+    }
+    assert pairs == returned and pairs
+    assert all(f["n"] == 9 for f in facts)
+    assert rules.SPATIAL_PATTERN_FROM_ONE_CORRELATION in _ids(out)
+    # 9 cells: the group's own grid cap is named.
+    assert any("pass grid=8" in step for step in out["next_steps"])
