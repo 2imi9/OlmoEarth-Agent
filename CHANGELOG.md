@@ -10,6 +10,48 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **The claim check: the agent's own model reads the answer against the run
+  (`harness/claim_check.py`).** exp86 round 9's audit found 16 material
+  claims in 10 of 30 answers, most where the tools said nothing and the model
+  filled the gap: offers of a step no tool takes or whose preconditions do
+  not hold (7 of 16), claims about the world no tool checked, a margin read
+  as a probability of error, a tool's summary read against another set. The
+  rules catch 14 of round 8's 17 material claims on replayed calls but about
+  half of new wordings (23 of 46). The check sends the draft, the user's
+  messages (and on the web the earlier answers), the capability card and
+  every tool call with its result as the model read it (whole, or a spilled
+  result's summary and file, `spill.llm_view`) to the agent's own client
+  (`OlmoEarthLLM.chat`, no tools, the new `instruct_verify` preset:
+  temperature 0.1, no presence penalty, `enable_thinking` false, at most
+  4,096 tokens), and asks for `[{"sentence", "kind", "why"}]`: a sentence
+  that states what no tool output or user message supports (`unsupported`),
+  contradicts a tool output (`contradicts`), or offers a step no tool on the
+  card can take, or whose inputs the run lacks (`offer`); not a restatement,
+  a hedged reading the outputs support, or an offer the card lists with what
+  it needs. The reply is read leniently (prose, a fence, a thinking block, a
+  Python literal, a reply cut at the budget keeps its complete items); each
+  quote is matched to the answer's own sentence (Markdown, bullets, case and
+  punctuation aside, a quote over two sentences names both, a near copy of a
+  long one names it) and a quote found nowhere is reported, never marked. A
+  malformed reply, a failed call (named by its exception type only) or a
+  record over 200,000 characters fails open. `AnswerChecksMiddleware` runs it
+  as the check `claims` after the rules: its flags join theirs in the one
+  rewrite, with a section that asks for a possible step and what it needs in
+  place of an impossible offer, and it reads the rewrite again, marking what
+  it still flags `[unverified: claims]`; at most two model calls per run.
+  Each call emits one `check` event (`revise`, `marked`, `passed` or
+  `failed_open`) with the verifier's raw `reply`, its `version`
+  (`claim-check-1`, with the prompt's digest pinned in the tests),
+  `unmatched`, `reply_complete`, `finish_reason` and any `error`. On by
+  default; off with `LeadAgent(check_claims=False)` or
+  `OLMOEARTH_CHECK_CLAIMS=0`. `harness/capabilities.py` is a stub of the
+  capability card (each tool's name and description) with the signature the
+  card's own branch keeps. A preset's `chat_template_kwargs` are merged with
+  `preserve_thinking`, no longer replaced by it; the web UI shows a check
+  event that passed, failed open or appended as such, not as a rewrite.
+  Measured offline, without a model: the verifier prompts of round 9's 30
+  runs are 7,078 to 12,762 tokens (chars / 4; median 9,798, of which the
+  card is 6,172).
 - **`olmoearth_scores_from_file`: a direct model run's map as review-set
   input (the cluster scores provider).** Studio's API gives map tiles and a
   point lookup, never per-class scores. A run outside Studio (the companion
