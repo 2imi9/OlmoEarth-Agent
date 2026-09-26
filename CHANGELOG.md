@@ -526,6 +526,51 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   and the certify tool's description, and each of those results emits the
   forbidden claim `certification_guaranteed`. No number the package
   returns changes.
+- **The answer checks catch exp86 round 8's audited claims** (the blind
+  audit of rounds 7 and 8; 17 material findings in round 8, 15 of them of
+  the kinds below). `forbidden_claims` gains a detector for each of the
+  contract's six new ids, each run only when a tool of the run emits it:
+  `spatial_pattern_from_one_correlation` (where, or in what pattern, the
+  maps agree, read from one pooled correlation: "anywhere", "nowhere",
+  "high where the other is low", "large parts ... while the rest differs",
+  its label read with the clause; not a breakdown a tool computed by rows
+  or bands, a share such as "a large part of the disagreement", or "agree
+  spatially", which says how much, not where);
+  `agreement_from_uncertain_correlation` (that the maps do or do not
+  co-vary: "do not rise and fall together", "unrelated", "strongly
+  agree"; a negation does not exempt it, a statement of what the
+  correlation can say does: "only whether they rise and fall together is
+  meaningful"); `review_set_for_unthresholded_regression` (a review set,
+  margins or the least decided windows *offered*, in the review's own
+  clause, unless a threshold is named); `one_reference_settles_two_dates`
+  ("either date", "one or both dates", "at least one, plus a date-matched
+  second inference", and one map's year named alone, read against the
+  comparison's own `dates`); `evidence_outside_its_scope` ("in comparable
+  cases", "of such windows", "behind this rule", "why these: on Ai2's
+  suite ...", and a name only the tool's `evidence_scope` holds, such as
+  round 8's "the two Sen1Floods11 flood maps", unless the sentence states
+  the scope); `certification_guaranteed` (a design, sample or plan in the
+  promise's own clause: "guaranteed-certifiable", "enough labels to
+  certify", "a random design will certify"; not a requirement or a hedged
+  offer). `subset_labelling_sufficient` also catches a sample of the least
+  confident windows promised a sound rate ("a targeted labeling sample
+  from the lower-confidence windows ... defensible error rates", round 8
+  B3/studio run 3, which the rewrite had kept unmarked), unless the
+  sentence names a stratified or weighted design; "not enough" is no
+  offer. A negation governs a claim only before it in its clause or within
+  six words after it (round 7's "... or treat this as a change-detection
+  layer rather than a contest" had exempted a one-date offer). `actions`: a
+  list, a ranking or the windows said to be saved in, or listed in, a named
+  file must be one a tool names as holding a list by its key
+  (`differing_path`, `labels_csv_path`); `review_set_evidence.json`, which
+  `evidence_detail_path` names and which holds evidence text only, is no
+  longer read as a list by the "review" in its name (round 8, B8/cluster
+  runs 2 and 3). On the recorded answers of rounds 6 to 8, with each id
+  emitted wherever it could apply, the detectors flag 43 sentences: 37 hold
+  a confirmed audit finding (in two, the finding is another claim of the
+  same sentence), 3 a finding the verifiers added, and 3 none, which read
+  as true catches the audits did not record; none is a false alarm.
+  `actions` flags 5 sentences, all confirmed findings (3 at c3d2e28).
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
   - `olmoearth_plan_label_sample` held a Studio result's grid to 16 in
     silence (20, 30 and 40 all gave the same 173 valid windows) and crashed
