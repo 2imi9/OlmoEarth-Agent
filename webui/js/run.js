@@ -303,11 +303,25 @@ export function handleRunEvent(body, ev, staticRender) {
     // An answer check other than the numbers (harness/checks.py; the number
     // check has its grounding_check above). 'revise': a rewrite was asked,
     // noted in the steps; 'marked': the answer below carries
-    // "[unverified: <check>]" after each sentence still flagged.
+    // "[unverified: <check>]" after each sentence still flagged. The claim
+    // check (harness/claim_check.py) reports every call: 'passed' flagged
+    // nothing and is not shown; 'failed_open' could not be read, and the
+    // answer was shown without it. 'appended': a statement a tool requires
+    // was added at the end of the answer, with no rewrite.
     const n = (ev.violations || []).length;
     const name = String(ev.check || 'answer');
-    if (ev.action === 'marked') {
+    if (ev.action === 'passed') {
+      // nothing to show
+    } else if (ev.action === 'marked') {
       body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">The ' + escapeHtml(name) + ' check still flags ' + n + ' statement(s) of the answer below; each is marked [unverified: ' + escapeHtml(name) + '].</div>');
+    } else if (ev.action === 'failed_open' || ev.action === 'appended') {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = ev.action === 'appended'
+        ? 'Answer check (' + name + '): a statement the tool requires was added at the end.'
+        : 'Answer check (' + name + '): not run (' + String(ev.error || 'no reply') + '); the answer is shown unchecked for it.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
     } else {
       const row = document.createElement('div');
       row.className = 'think run-step';
