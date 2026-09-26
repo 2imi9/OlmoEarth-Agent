@@ -219,7 +219,8 @@ class RunEvidence:
         write even when the caller chose the path, and so does a path under
         another key than the argument's (``folds_path`` for ``output_path``).
         The harness's own spill of a result too large for the model's context
-        (``saved_to``) is a written file too.
+        (``saved_to``) is a written file too. Only a string that is a path
+        counts (:func:`_is_path`), never a note that names a file.
         """
         out: list[tuple[str, str]] = []
 
@@ -236,8 +237,8 @@ class RunEvidence:
             for key, value in _strings(record.arguments):
                 given.setdefault(value, set()).add(key)
             for key, value in _strings(record.result):
-                if "://" in value or not _FILE_RE.search(value):
-                    continue  # a URL (a tile, a page) is no file
+                if not _is_path(value):
+                    continue  # a URL (a tile, a page) or a note naming a file
                 echoed = key in given.get(value, ()) and not _names_output(key)
                 if not echoed:
                     add(key, value)
@@ -249,20 +250,43 @@ class RunEvidence:
 
         Any path in a successful result, an echoed input included (the design
         a tool read), under a key that names a list; and the harness's spill
-        of a result, which holds that result's listings whole.
+        of a result, which holds that result's listings whole. A note that
+        names a file is no path (:func:`_is_path`): the review tools'
+        ``listing_note`` says "review_set_evidence.json (evidence_detail_path)
+        holds evidence text only, no windows" under a key that names a
+        listing, and read as a path it made the evidence file a list's.
         """
         out: set[str] = set()
         for record in self.tools:
             named = [("saved_to", record.spilled_to)] if record.spilled_to else []
             if record.ok:
-                named += [
-                    (k, v)
-                    for k, v in _strings(record.result)
-                    if "://" not in v and _FILE_RE.search(v)
-                ]
+                named += [(k, v) for k, v in _strings(record.result) if _is_path(v)]
             out.update(path for key, path in named if _holds_list(key, path))
         return frozenset(out)
 
+
+def _is_path(value: str) -> bool:
+    """Whether a result's string is a file path, not a URL or a note naming a file.
+
+    A path holds no whitespace ("/w/review_list_ab12.csv"), or is rooted and
+    ends in the file ("/Users/me/My Data/scores.json"); prose that mentions a
+    file ("review_set_evidence.json (evidence_detail_path) holds evidence text
+    only") is neither.
+    """
+    text = value.strip()
+    if not text or "://" in text or not _FILE_RE.search(text):
+        return False
+    if not re.search(r"\s", text):
+        return True
+    return bool(_ROOTED_PATH_RE.fullmatch(text))
+
+
+#: A rooted path that may hold spaces, ending in a file's extension.
+_ROOTED_PATH_RE = re.compile(
+    r"(?:[A-Za-z]:)?[/\\~][^\n;:,()\[\]]*?\.(?:json|csv|tsv|tif|tiff|geojson|gpkg|txt|"
+    r"md|png|jpe?g|qlr|xml|parquet|npz|npy|zip|shp|html|ya?ml|log|nc)",
+    re.I,
+)
 
 #: Words of a result's key that say the path under it was written.
 _OUTPUT_KEY_WORDS = frozenset(
@@ -1652,9 +1676,16 @@ def _list_location_violation(s: str, run: RunEvidence) -> str | None:
         lo = _label_start(p, p.region(f.start(), f.end())[0])
         pre = s[lo : f.start()]
         claim = _LISTED_IN_RE.search(pre)
-        if not (claim or (_LIST_NOUN_RE.search(pre) and _AT_FILE_RE.search(pre))):
-            continue
-        if not _is_listy(_subject(s, lo, lo + (claim.start() if claim else len(pre)))):
+        # "listed in", or a list (or the windows) right before the file ("the
+        # full ranked list is in <file>", where "ranked" is no verb; "all 3,807
+        # differing windows are in <file>")
+        verb = claim is not None and _is_listy(_subject(s, lo, lo + claim.start()))
+        noun = bool(
+            (_LIST_NOUN_RE.search(pre) or _WINDOWS_RE.search(pre))
+            and _AT_FILE_RE.search(pre)
+            and _is_listy(_subject(s, lo, lo + len(pre)))
+        )
+        if not (verb or noun):
             continue
         if _negated(pre) or _HEDGE_RE.search(pre):
             continue

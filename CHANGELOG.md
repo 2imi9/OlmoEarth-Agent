@@ -579,7 +579,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   (`differing_path`, `labels_csv_path`); `review_set_evidence.json`, which
   `evidence_detail_path` names and which holds evidence text only, is no
   longer read as a list by the "review" in its name (round 8, B8/cluster
-  runs 2 and 3). On the recorded answers of rounds 6 to 8, with each id
+  runs 2 and 3), and only a string that is a path counts as a file a tool
+  wrote or names (no whitespace, or a rooted path): the review tools'
+  `listing_note`, a note that names `review_set_evidence.json` in prose
+  under a key that names a listing, had made that file a list's. A list or
+  the windows right before a file ("the full ranked list is in <file>",
+  "all 3,807 differing windows are in <file>") is read as the claim too.
+  On the recorded answers of rounds 6 to 8, with each id
   emitted wherever it could apply, the detectors flag 43 sentences: 37 hold
   a confirmed audit finding (in two, the finding is another claim of the
   same sentence), 3 a finding the verifiers added, and 3 none, which read

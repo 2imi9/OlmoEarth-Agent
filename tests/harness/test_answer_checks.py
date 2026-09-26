@@ -740,6 +740,75 @@ def test_a_list_in_the_file_a_tool_names_as_the_list_passes() -> None:
     assert _flagged(check_actions, "The full list is in `other_windows.json`.", run)
 
 
+_NOTE = (
+    "review lists the first 50 of the 819 windows in the review set at budget "
+    "0.05, in review order (not a sample of them); the full list of 819, in the "
+    "same order, is in the CSV at review_list_path (rank, window_index, row, "
+    "col, margin and the class or score; no coordinates); "
+    "review_set_evidence.json (evidence_detail_path) holds evidence text only, "
+    "no windows."
+)
+
+
+def _listed_short() -> RunEvidence:
+    """exp86 round 8, B8/cluster, on the fixed tools: the review set writes its
+    full list to a CSV, and its listing_note names the evidence file in prose."""
+    return _run(
+        _record(
+            "olmoearth_review_set",
+            {
+                "n_review": 819,
+                "evidence_detail_path": f"{_WS}/review_set_evidence.json",
+                "review_list_path": f"{_WS}/review_list_49faf61fce.csv",
+                "review_list_rows": 819,
+                "listing_note": _NOTE,
+            },
+            scores_path=f"{_WS}/scores_run_AWF_a7c40be9_p4.json",
+        ),
+        _record(
+            "olmoearth_compare_review",
+            {
+                "differing_path": f"{_WS}/compare_differing_df789c0586.json",
+                "listing_order": "the 10 listed windows are the first differing "
+                "windows in window order (from row 0), not a sample of them. "
+                "review_set_evidence.json (evidence_detail_path) holds evidence "
+                "text only, no windows",
+            },
+        ),
+    )
+
+
+def test_a_note_that_names_a_file_is_no_list_file() -> None:
+    """The fix-r8 review: list_files read the tools' listing_note, a prose note
+    under a key that names a listing, as a path, so the evidence file it
+    mentions passed as a list. Only a string that is a path counts."""
+    run = _listed_short()
+    assert run.list_files == {
+        f"{_WS}/review_list_49faf61fce.csv",
+        f"{_WS}/compare_differing_df789c0586.json",
+    }
+    assert all(" " not in path for _, path in run.written_files)
+    for flagged in (
+        # exp86 round 8, B8/cluster runs 2 and 3
+        "The rest of the list and the evidence file are saved under the run's "
+        "workspace (`review_set_evidence.json`).",
+        "Full list (819 windows) and per-window scores are saved in the run's "
+        "workspace (`review_set_evidence.json`).",
+        "The full ranked list is in `review_set_evidence.json`.",
+        "All 3,807 differing windows are in `review_set_evidence.json`.",
+    ):
+        assert _flagged(check_actions, flagged, run) == [flagged], flagged
+    for fine in (
+        "The full ranked list of 819 is saved in `review_list_49faf61fce.csv`.",
+        "All 3,807 differing windows are listed in `compare_differing_df789c0586.json`.",
+        "The evidence file is saved as `review_set_evidence.json`.",
+    ):
+        assert check_actions(fine, run) == [], fine
+    # A path with spaces is still a path; a note is not.
+    spaced = _run(_record("export", {"out_path": "/Users/me/My Data/review list.csv"}))
+    assert spaced.written_files == [("out_path", "/Users/me/My Data/review list.csv")]
+
+
 def test_items_said_to_be_listed_must_be_in_the_answer_on_the_cli() -> None:
     """Round 6, B4/studio run 3: "The first 30 windows are listed above"."""
     run = _run(_record("plan", {"n_windows_listed": 50}))
