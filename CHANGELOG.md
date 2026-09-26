@@ -505,6 +505,27 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     south (round 8 called row band 0 of F4's 400 chips stacked in dataset
     order "the northmost band"). `top_band_share` and the other fields keep
     their names; `spatial` and the fact add `row_order`.
+- **The estimation tools rank the weakest classes in code and never promise
+  a certified zone** (the blind audit of exp86 round 8, B5/files/2). One
+  answer named class 1 (user's accuracy 22.5%) and class 6 (45.1%) the
+  weakest while class 5 had none of its 10 map-labelled windows correct
+  (interval 0 to 27.8%), and another offered "a guaranteed-certifiable
+  region" from a random plan. `olmoearth_estimate_map_error` with reference
+  classes now carries the fact `weakest_classes`: the classes with at least
+  5 map-labelled windows ranked by user's accuracy (of the windows the map
+  puts in a class, the share the labels agree with; `correct` and
+  `labelled` from the confusion matrix, the estimate and its interval),
+  a sentence naming every class with none correct first and then the next
+  lowest up to three, and the classes on fewer windows named as too few to
+  rank; a next step points to it. Every next step of
+  `olmoearth_plan_label_sample`, `olmoearth_estimate_map_error` and
+  `olmoearth_certify_zone` that names a random design for a certified zone
+  says it makes one possible, not certain (`olmoearth_certify_zone` may
+  certify nothing; on the same map's 300-label random design every level
+  failed), as do `design_requirement`, the confidence plan's `design_note`
+  and the certify tool's description, and each of those results emits the
+  forbidden claim `certification_guaranteed`. No number the package
+  returns changes.
 - **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
   - `olmoearth_plan_label_sample` held a Studio result's grid to 16 in
     silence (20, 30 and 40 all gave the same 173 valid windows) and crashed
