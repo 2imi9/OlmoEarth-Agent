@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Tests for the vendored-skill loader."""
+"""Tests for the skill-package loader."""
 
 from __future__ import annotations
 
@@ -8,7 +8,20 @@ from pathlib import Path
 
 import pytest
 
-from olmoearth_agent.skills.loader import SkillLoader, _parse_frontmatter
+from olmoearth_agent.skills.loader import (
+    DEFAULT_SKILLS_DIR,
+    SkillLoader,
+    _parse_frontmatter,
+)
+from olmoearth_agent.skills.registry import skills_by_status
+
+#: The four instruction packages that ship inside the agent package.
+PACKAGED_SKILLS = {
+    "olmoearth-data-prep",
+    "olmoearth-studio-job-config",
+    "olmoearth-embeddings",
+    "olmoearth-rslearn",
+}
 
 _SKILL_MD = (
     "---\n"
@@ -62,12 +75,45 @@ def test_loader_unknown_skill_raises(tmp_path: Path) -> None:
         loader.load("nope")
 
 
-def test_vendored_submodule_when_initialized() -> None:
-    """If the submodule is checked out, the 3 upstream skills are visible."""
-    loader = SkillLoader()  # default vendor/ path
-    names = {s.name for s in loader.discover()}
-    if not names:
-        pytest.skip("vendor/olmoearth-skills submodule not initialized")
-    assert "olmoearth-data-prep" in names
-    assert "olmoearth-embeddings" in names
-    assert "olmoearth-studio-job-config" in names
+def test_default_dir_is_inside_the_package() -> None:
+    """The packages resolve beside the loader, so a wheel install finds them."""
+    import olmoearth_agent
+
+    package_dir = Path(olmoearth_agent.__file__).resolve().parent
+    assert DEFAULT_SKILLS_DIR == package_dir / "skills" / "packages"
+    assert (DEFAULT_SKILLS_DIR / "LICENSE").is_file()
+
+
+def test_default_dir_holds_the_four_packages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No checkout step is needed: the four packages are always present."""
+    monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
+    loader = SkillLoader()
+    assert {s.name for s in loader.discover()} == PACKAGED_SKILLS
+    for name in PACKAGED_SKILLS:
+        assert loader.load(name).startswith("---\nname: ")
+
+
+def test_packages_match_the_catalog_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every catalog row served by ``olmoearth_load_skill`` has a package."""
+    monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
+    catalog = {s.name for s in skills_by_status("vendored")}
+    assert catalog == {s.name for s in SkillLoader().discover()}
+
+
+def test_rslearn_skill_matches_the_python_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rslearn skill must not describe a preloaded, import-free sandbox.
+
+    ``olmoearth_run_python`` runs each snippet in a fresh ``python -I``
+    subprocess with nothing preloaded, so a snippet needs its own imports.
+    """
+    monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
+    body = SkillLoader().load("olmoearth-rslearn")
+    assert "are preloaded" not in body
+    assert "without `import`" not in body
+    assert "bans `import`" not in body
+    assert "from rslearn.dataset import Dataset" in body
+    assert "OLMOEARTH_RUN_PYTHON" in body

@@ -48,6 +48,7 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
+from olmoearth_agent.analysis.raster_compare import band_is_nodata
 from olmoearth_agent.harness import LeadAgent, ThreadState
 from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.workflow import WORKFLOW_STAGES, skill_workflow_stages
@@ -59,6 +60,7 @@ from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
+from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
 _MAX_TURNS_CEILING = 12
@@ -113,8 +115,8 @@ def _key_hash(key: str) -> str:
 #: trip. Keyed by capability + key-hash + ids; TTL keeps it fresh enough.
 _READ_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 _READ_CACHE_MAX = 512
-_READ_TTL_LONG = 300.0   # projects / areas / extent: rarely change in a session
-_READ_TTL_SHORT = 30.0   # predictions / results: change as runs progress
+_READ_TTL_LONG = 300.0  # projects / areas / extent: rarely change in a session
+_READ_TTL_SHORT = 30.0  # predictions / results: change as runs progress
 
 
 def _read_cache_get(k: str) -> dict[str, Any] | None:
@@ -183,7 +185,7 @@ async def _pooled_studio(key: str) -> StudioClient:
                 _, evicted = _STUDIO_POOL.popitem(last=False)
                 try:
                     await evicted.aclose()
-                except Exception:  # noqa: BLE001, S110 - best-effort close of an evicted client
+                except Exception:  # noqa: BLE001, S110 - best-effort close
                     pass
         _STUDIO_POOL.move_to_end(h)
     return client
@@ -458,7 +460,7 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     return _filter_models(backend, ids)
 
 
-async def _local_llm_up(endpoint: str) -> bool:
+async def _local_llm_up(endpoint: str, api_key: str | None = None) -> bool:
     """Best-effort check that the configured local LLM endpoint answers.
 
     Used only so the web UI can nudge the user when the default (local)
@@ -466,11 +468,28 @@ async def _local_llm_up(endpoint: str) -> bool:
     cloud provider). A localhost model probe must never traverse a proxy, so
     ``trust_env=False``. Any failure -> ``False``; bounded by a short timeout
     and never raises.
+
+    Parameters
+    ----------
+    endpoint : str
+        The OpenAI-compatible base URL (``LLM_ENDPOINT``); ``/models`` is
+        appended.
+    api_key : str or None, optional
+        The key the chat client sends (``LLM_API_KEY``). When set, the probe
+        sends it as ``Authorization: Bearer <api_key>``, as the OpenAI client
+        does, so a server started with an access token (vLLM or llama.cpp
+        ``--api-key``) is not reported down while it serves the agent.
+
+    Returns
+    -------
+    bool
+        ``True`` only when ``GET /models`` answers 200.
     """
     url = endpoint.rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         async with httpx.AsyncClient(timeout=2.0, trust_env=False) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=headers)
         return resp.status_code == 200
     except Exception:
         return False
@@ -490,7 +509,7 @@ async def api_health() -> dict[str, Any]:
         "mode": "live",
         "llm_endpoint": llm.config.endpoint,
         "llm_model": llm.config.model,
-        "llm_local_up": await _local_llm_up(llm.config.endpoint),
+        "llm_local_up": await _local_llm_up(llm.config.endpoint, llm.config.api_key),
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
     }
@@ -608,7 +627,10 @@ async def api_run(request: Request) -> StreamingResponse:
     # ignored (not rejected) so a stray slug never breaks a run -- and a
     # well-formed but unknown slug is never injected into the prompt directive.
     forced_skill = str(body.get("forced_skill", "")).strip().lower()
-    if not _SKILL_SLUG_RE.match(forced_skill) or forced_skill not in _VALID_FORCED_SKILLS:
+    if (
+        not _SKILL_SLUG_RE.match(forced_skill)
+        or forced_skill not in _VALID_FORCED_SKILLS
+    ):
         forced_skill = ""
 
     llm = _llm_for_request(request)
@@ -648,6 +670,9 @@ async def api_run(request: Request) -> StreamingResponse:
                     # hosted client (Claude/OpenAI/Gemini) is not. Only the local
                     # model gets the brevity/budget clause.
                     local=llm is app.state.llm,
+                    # The web UI shows the tool results beside the answer, so
+                    # the answer check reads "listed above" as pointing at them.
+                    surface="web",
                 )
                 try:
                     async for event in agent.run_stream(
@@ -955,14 +980,21 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     bands = rec.get("bands") or []
     prop = q.get("property")
-    band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
+    band = next(
+        (b for b in bands if b.get("property_name") == prop), bands[0] if bands else {}
+    )
     cls = band.get("classification")
+    # Studio returns no-data as a value (e.g. -1 on a [0, 1] band); the scan
+    # must skip that cell, not paint the sentinel as a model output.
+    nodata = band_is_nodata(band)
     out = {
         "ok": True,
-        "value": cls if cls is not None else band.get("raw_value"),
+        "value": None if nodata else band_value({"bands": [band]}, None),
         "property": band.get("property_name"),
         "categorical": cls is not None,
     }
+    if nodata:
+        out["nodata"] = True
     _cache_put(_PV_CACHE, ckey, out)
     return out
 

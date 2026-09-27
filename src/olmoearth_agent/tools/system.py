@@ -21,7 +21,7 @@ Studio/LLM keys are removed from ``os.environ`` before the snippet sees it), so
 executed code cannot trivially read and exfiltrate them. This is
 defence-in-depth informed by NemoClaw's sandbox-hardening posture, NOT a
 sandbox: the subprocess is still NOT network-isolated and inherits the rest of
-the environment. See ``docs/nemoclaw-assessment.md``.
+the environment. See ``docs/archive/nemoclaw-assessment.md``.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ import tempfile
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 #: Default wall-clock cap per call (seconds); override OLMOEARTH_RUN_PYTHON_TIMEOUT.
 _DEFAULT_TIMEOUT = 30.0
@@ -185,5 +185,10 @@ def build_system_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_run_python,
+            capability=Capability(
+                does="run a short Python snippet in a subprocess (timeout, no "
+                "state kept between calls)",
+                covers=frozenset({"files", "run_model"}),
+            ),
         ),
     ]

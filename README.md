@@ -5,7 +5,7 @@
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
-[![Skills](https://img.shields.io/badge/skills-17-F0529C.svg)](SKILLS.md)
+[![Skills](https://img.shields.io/badge/skills-18-F0529C.svg)](SKILLS.md)
 [![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
@@ -23,7 +23,7 @@
 
 ---
 
-OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls tools over a sandboxed Python interpreter, submits and polls predictions, and reports honest results: a provenance manifest per call, mandatory spatial cross-validation on auto-correlated AOIs, and no raw coordinates in chat. It runs on a local **Qwen3.6-35B-A3B** model served with llama.cpp by default (no hosted LLM required), and can optionally use your own **cloud API** key via the web UI's model-backend picker.
+OlmoEarth Agent turns a natural-language brief into real geospatial work on [OlmoEarth Studio](https://allenai.org/blog/olmoearth). It reasons about the ask, calls function tools, submits and polls predictions, and reports the results with a provenance manifest per call. It runs on a local **Qwen3.6-35B-A3B** model served with llama.cpp by default (no hosted LLM required), and can optionally use your own **cloud API** key via the web UI's model-backend picker.
 
 ## Quick start
 
@@ -34,7 +34,7 @@ Pick the backbone for the agent's reasoning - both drive the same live UI:
 **A. Cloud API** (Claude / ChatGPT / Gemini) - no Docker, no 17.7 GB download:
 
 ```bash
-make setup      # init vendored skills + uv sync --all-extras
+make setup      # uv sync --all-extras
 make bridge     # live web UI on http://localhost:8088 (no local model needed)
 ```
 
@@ -43,7 +43,7 @@ Open **http://localhost:8088**, paste your Studio key, then go to **Settings -> 
 **B. Local model** (fully offline, free) - one command auto-starts the LLM and the UI:
 
 ```bash
-make setup      # init vendored skills + uv sync --all-extras
+make setup      # uv sync --all-extras
 make up         # start the 4-bit Qwen3.6 LLM (first run pulls ~17.7 GB), then the live UI
 ```
 
@@ -60,11 +60,11 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 ## What it does
 
-The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The operational rules -- trailing-12-month windows, cost guards on fine-tunes, mandatory spatial CV on auto-correlated AOIs, a provenance manifest per call -- are enforced by the harness, not the model. The agent's persona and guardrails live in a versioned soul artifact (`harness/soul.md`; swap via `OLMOEARTH_SOUL_PATH`); tool arguments are schema-validated at dispatch; oversized tool results spill to workspace files instead of the context window; and durable user preferences (default project / area / sources, saved via `olmoearth_remember`) carry across conversations.
+The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The harness records a provenance manifest for every tool call. The agent's persona and guardrails live in a versioned soul artifact (`harness/soul.md`; swap via `OLMOEARTH_SOUL_PATH`), followed in the system prompt by a capability card built from the tools' code (what each tool does, needs and cannot do, and what no tool can do; `harness/capabilities.py`); tool arguments are schema-validated at dispatch; oversized tool results spill to workspace files instead of the context window; the answer is checked against the run before it is shown (its numbers against the tool results and the user's messages, its directions, places and magnitudes against the facts the tools computed, its claims of files saved or items listed against what the run did, and the claims the tools forbid or require; and, by the agent's own model, against the run's record for statements no tool output supports and offers no tool can carry out), every problem found goes into one request to rewrite the answer, and a sentence that still fails is shown marked `[unverified: <check>]` (`harness/checks.py`, `harness/claim_check.py`; off with `OLMOEARTH_CHECK_NUMBERS=0` and `OLMOEARTH_CHECK_ANSWER=0`; the model's own reading is opt-in with `OLMOEARTH_CHECK_CLAIMS=1`); and durable user preferences (default project / area / sources, saved via `olmoearth_remember`) carry across conversations.
 
 > **Production posture:** the per-capability egress allowlist defaults to `audit` (log-only) so a first run never breaks. For any deployment beyond your own laptop, set `OLMOEARTH_EGRESS=enforce` -- unknown hosts are then refused, not just logged (add self-hosted endpoints via `OLMOEARTH_EGRESS_ALLOW`).
 
-The capability set ships as **18 skills**, grouped by EO-workflow stage.
+The capability set ships as **18 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) that ship inside the Python package and load on demand with `olmoearth_load_skill`.
 
 <details>
 <summary><strong>The 18 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
@@ -92,7 +92,7 @@ The capability set ships as **18 skills**, grouped by EO-workflow stage.
 
 </details>
 
-See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with real outputs -- each driven by the live Qwen3.6 backbone (real reasoning, function calls, and results, not mockups). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
+See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for captured runs of skills #1-#16 with real outputs, driven by the live Qwen3.6 backbone. Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
 
 ## Stack
 
@@ -103,8 +103,8 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 |---|---|
 | **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
-| **Harness** | A compact catalog of function-call tools + an **opt-in** `system:python` subprocess for light glue, with operational constraints enforced ([`PLAN.md`](PLAN.md)) |
-| **Skills** | 17-skill catalog; vendored #1-#3 + #17 via submodule `vendor/olmoearth-skills` |
+| **Harness** | A catalog of function-call tools, an **opt-in** `system:python` subprocess for light glue, and a provenance manifest per call ([`PLAN.md`](PLAN.md)) |
+| **Skills** | 18-skill catalog ([`SKILLS.md`](SKILLS.md)); the instruction packages for #1-#3 and #17 are in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
 
 </details>
@@ -112,8 +112,8 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for every skill in action with re
 ## Docs & links
 
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
-- [**SKILLS.md**](SKILLS.md): the full 17-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
-- [**docs/SHOWCASE.md**](docs/SHOWCASE.md): every skill run live, with real outputs
+- [**SKILLS.md**](SKILLS.md): the 18-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**docs/SHOWCASE.md**](docs/SHOWCASE.md): captured runs of skills #1-#16
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) | [**CHANGELOG.md**](CHANGELOG.md) | [**AGENTS.md**](AGENTS.md)
 

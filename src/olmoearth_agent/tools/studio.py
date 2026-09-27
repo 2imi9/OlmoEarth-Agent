@@ -3,43 +3,45 @@
 """Foundational ``olmoearth.*`` tools that wrap the Studio API.
 
 This is the minimal bundle every Studio-calling skill builds on:
-context, project search, project creation, prediction status. Skills add
-their own tools (predict, evaluate, …) as separate bundles registered
-alongside these.
+context (identity plus a page of projects), project creation, prediction
+status. Skills add their own tools (predict, evaluate, …) as separate bundles
+registered alongside these.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.studio.client import studio_context
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
-async def _load_context(_args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    studio_ctx = await ctx.studio.load_context()
-    ctx.state.studio_context = studio_ctx
-    return {
-        "user_name": studio_ctx.user_name,
-        "organization": studio_ctx.organization,
-        "projects": [asdict(p) for p in studio_ctx.projects],
-        "project_count": len(studio_ctx.projects),
-    }
-
-
-async def _search_projects(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+async def _load_context(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Identity, organization and one page of projects (``limit``/``offset``)."""
     limit = int(args.get("limit", 50))
     offset = int(args.get("offset", 0))
+    me = await ctx.studio.users_me()
     env = await ctx.studio.search_projects(limit=limit, offset=offset)
-    return {
-        "total": env.total,
+    studio_ctx = studio_context(me, env.records)
+    ctx.state.studio_context = studio_ctx
+    out: dict[str, Any] = {
+        "user_name": studio_ctx.user_name,
+        "organization": studio_ctx.organization,
         "projects": [
-            {"id": r.get("id"), "name": r.get("name"),
-             "creation_time": r.get("creation_time")}
+            {
+                "id": r.get("id"),
+                "name": r.get("name"),
+                "creation_time": r.get("creation_time"),
+            }
             for r in env.records
         ],
+        "project_count": len(env.records),
+        "total": env.total,
     }
+    if env.total is not None and offset + len(env.records) < env.total:
+        out["next_offset"] = offset + len(env.records)
+    return out
 
 
 async def _create_project(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -85,20 +87,10 @@ def build_studio_tools() -> list[RegisteredTool]:
                 name="olmoearth_load_context",
                 description=(
                     "Load the user's active OlmoEarth Studio context: "
-                    "identity, organization, and available projects. Call "
-                    "this first to discover what projects already exist."
-                ),
-                parameters={"type": "object", "properties": {}, "required": []},
-            ),
-            handler=_load_context,
-        ),
-        RegisteredTool(
-            spec=ToolSpec(
-                name="olmoearth_search_projects",
-                description=(
-                    "Search the user's OlmoEarth Studio projects. Returns "
-                    "id, name, and creation_time for each, plus the total "
-                    "count. Read-only."
+                    "identity, organization, and a page of projects (id, "
+                    "name, creation_time) with the total count. Call this "
+                    "first to discover what projects already exist; page with "
+                    "offset (next_offset) when total exceeds the page. Read-only."
                 ),
                 parameters={
                     "type": "object",
@@ -109,7 +101,10 @@ def build_studio_tools() -> list[RegisteredTool]:
                     "required": [],
                 },
             ),
-            handler=_search_projects,
+            handler=_load_context,
+            capability=Capability(
+                does="the user's identity, organization and a page of Studio projects"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -129,6 +124,7 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_create_project,
+            capability=Capability(does="create a Studio project"),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -160,6 +156,10 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_request_aoi,
+            capability=Capability(
+                does="ask the user to draw an area on a map in the web UI; its "
+                "area_id comes with their next message"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -176,5 +176,6 @@ def build_studio_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_get_prediction,
+            capability=Capability(does="a prediction's status and model_id"),
         ),
     ]

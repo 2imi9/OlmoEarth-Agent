@@ -79,7 +79,9 @@ def geometry_bbox(geom: Any) -> list[float]:
     """
     lons: list[float] = []
     lats: list[float] = []
-    for lon, lat in _iter_positions(geom.get("coordinates") if isinstance(geom, dict) else geom):
+    for lon, lat in _iter_positions(
+        geom.get("coordinates") if isinstance(geom, dict) else geom
+    ):
         lons.append(lon)
         lats.append(lat)
     if not lons:

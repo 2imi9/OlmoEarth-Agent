@@ -449,22 +449,27 @@ class StudioClient:
         env = await self.get(f"/models/{model_id}")
         return env.one or {}
 
-    async def load_context(self) -> StudioContext:
+    async def load_context(self, *, limit: int = 50, offset: int = 0) -> StudioContext:
         """Assemble the user's active Studio context.
 
         Combines ``/users/me`` with a project search so the agent has the
-        user identity, org, and available projects in one object.
+        user identity, org, and available projects in one object. ``limit``
+        and ``offset`` page the project list.
         """
         me = await self.users_me()
-        projects_env = await self.search_projects(limit=50)
-        orgs = me.get("organizations") or []
-        org_name = orgs[0].get("name") if orgs else None
-        return StudioContext(
-            user_id=me.get("id"),
-            user_name=me.get("name"),
-            organization=org_name,
-            projects=[
-                ProjectRef(id=p.get("id", ""), name=p.get("name", ""))
-                for p in projects_env.records
-            ],
-        )
+        projects_env = await self.search_projects(limit=limit, offset=offset)
+        return studio_context(me, projects_env.records)
+
+
+def studio_context(me: dict[str, Any], projects: list[dict[str, Any]]) -> StudioContext:
+    """A :class:`StudioContext` from a ``/users/me`` record and project records."""
+    orgs = me.get("organizations") or []
+    org_name = orgs[0].get("name") if orgs else None
+    return StudioContext(
+        user_id=me.get("id"),
+        user_name=me.get("name"),
+        organization=org_name,
+        projects=[
+            ProjectRef(id=p.get("id", ""), name=p.get("name", "")) for p in projects
+        ],
+    )

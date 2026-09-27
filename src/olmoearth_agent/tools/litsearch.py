@@ -4,12 +4,13 @@
 
 Literature search + identifier resolution over arXiv and OpenAlex so the agent
 can GROUND EO/geospatial claims and citations in real papers instead of
-world-knowledge or hallucinated links. Two tools:
+world-knowledge or hallucinated links. One tool, ``olmoearth_litsearch``:
 
-* ``olmoearth_litsearch`` -- search arXiv and/or OpenAlex, deduped across
-  sources, returning curated records (each with a real ``url`` to cite).
-* ``olmoearth_litsearch_resolve`` -- resolve one DOI or arXiv id to a single
-  record (the resolve-before-cite primitive).
+* given a ``query``, it searches arXiv and/or OpenAlex, deduped across
+  sources, returning curated records (each with a real ``url`` to cite);
+* given an ``identifier`` (a DOI or an arXiv id), it resolves that one record
+  instead (the resolve-before-cite primitive), from the same sources and in
+  the same record shape.
 
 Public + key-free (OpenAlex uses the documented polite-pool ``mailto`` when
 ``OLMOEARTH_OPENALEX_MAILTO`` is set). Returns bibliographic metadata only --
@@ -34,9 +35,9 @@ from olmoearth_agent.analysis.litsearch import (
     search_literature,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
-# Behavioral rules echoed into both descriptions (the ToolSpec.description is the
+# Behavioral rules echoed into the description (the ToolSpec.description is the
 # only routing + guardrail surface for an implemented tool -- no SKILL.md gate).
 _RULES = (
     " Never invent DOIs, arXiv ids, titles, or authors; if nothing matches, "
@@ -48,6 +49,18 @@ _RULES = (
 
 
 async def _litsearch(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    """Search by ``query``, or resolve one DOI / arXiv ``identifier``."""
+    identifier = str(args.get("identifier") or "").strip()
+    if identifier:
+        return await resolve_identifier(
+            identifier=identifier,
+            include_abstract=bool(args.get("include_abstract", True)),
+        )
+    if not str(args.get("query") or "").strip():
+        raise ValueError(
+            "pass a non-empty query to search, or an identifier (a DOI or an "
+            "arXiv id) to resolve one paper."
+        )
     source = str(args.get("source", "both"))
     if source == "asta":
         # Optional full-text backend (Ai2's Asta CLI). Unavailability is a
@@ -80,15 +93,8 @@ async def _litsearch(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     )
 
 
-async def _litsearch_resolve(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-    return await resolve_identifier(
-        identifier=str(args.get("identifier", "")),
-        include_abstract=bool(args.get("include_abstract", True)),
-    )
-
-
 def build_litsearch_tools() -> list[RegisteredTool]:
-    """Return the ``olmoearth-litsearch`` tool bundle (search + resolve)."""
+    """Return the ``olmoearth-litsearch`` tool bundle (search, or resolve an id)."""
     return [
         RegisteredTool(
             spec=ToolSpec(
@@ -107,7 +113,9 @@ def build_litsearch_tools() -> list[RegisteredTool]:
                     "to Ai2's full-text ranked search with relevance judgements and "
                     "supporting snippets — prefer it for grounding a specific claim "
                     "when available; if it reports itself unavailable, fall back to "
-                    "'both'." + _RULES
+                    "'both'. Given an identifier (a DOI or an arXiv id) instead of "
+                    "a query, it resolves that one paper ({found, paper}): use it "
+                    "to verify a citation before relying on it." + _RULES
                 ),
                 parameters={
                     "type": "object",
@@ -115,6 +123,11 @@ def build_litsearch_tools() -> list[RegisteredTool]:
                         "query": {
                             "type": "string",
                             "description": "Free-text search (title/abstract/author terms).",
+                        },
+                        "identifier": {
+                            "type": "string",
+                            "description": "A DOI (10.xxxx/...) or arXiv id (e.g. "
+                            "2511.13655) to resolve instead of searching.",
                         },
                         "source": {
                             "type": "string",
@@ -137,37 +150,17 @@ def build_litsearch_tools() -> list[RegisteredTool]:
                         },
                         "include_abstract": {
                             "type": "boolean",
-                            "default": False,
-                            "description": "Include truncated abstracts (off by default to save context).",
+                            "description": "Include truncated abstracts (default: "
+                            "off for a search, on for an identifier).",
                         },
                     },
-                    "required": ["query"],
+                    "required": [],
                 },
             ),
             handler=_litsearch,
-        ),
-        RegisteredTool(
-            spec=ToolSpec(
-                name="olmoearth_litsearch_resolve",
-                description=(
-                    "Resolve a single identifier -- a DOI (10.xxxx/...) or an "
-                    "arXiv id (YYMM.NNNNN) -- to one curated paper record (title, "
-                    "authors, year, venue, url, citation count). Use this to "
-                    "verify a citation before relying on it, or to expand a bare "
-                    "DOI/arXiv id the user gave you. Key-free; read-only." + _RULES
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "identifier": {
-                            "type": "string",
-                            "description": "A DOI (10.xxxx/...) or arXiv id (e.g. 2511.13655).",
-                        },
-                        "include_abstract": {"type": "boolean", "default": True},
-                    },
-                    "required": ["identifier"],
-                },
+            capability=Capability(
+                does="search arXiv and OpenAlex for papers, or resolve one DOI or "
+                "arXiv id"
             ),
-            handler=_litsearch_resolve,
         ),
     ]

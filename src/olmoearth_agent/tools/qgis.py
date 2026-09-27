@@ -23,7 +23,7 @@ from olmoearth_agent.reporting.qgis import (
     resolve_xyz_url,
 )
 from olmoearth_agent.security import egress
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 def _property_from_tiles(tile_urls: list[str], fallback: str) -> str:
@@ -149,5 +149,14 @@ def build_qgis_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_qgis_bridge,
+            capability=Capability(
+                does="a QGIS layer pack (layer file, style, legend) from a "
+                "result's tile URLs",
+                needs=("tile URLs on the Studio host",),
+                cannot=(
+                    "make a Cloud-Optimized GeoTIFF (it returns a command for the "
+                    "user to run)",
+                ),
+            ),
         ),
     ]

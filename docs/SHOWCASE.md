@@ -10,6 +10,8 @@ The OlmoEarth Agent ships **17 skills** that drive the OlmoEarth Studio platform
 > uv run python scripts/generate_showcase.py > docs/SHOWCASE.md
 > ```
 
+> **Captured before the September 2026 tool changes.** Tool names are as they were at capture. Transcripts #1 and #3 call `olmoearth_list_skills`, which has since been removed: the skill index is in the system prompt, and `olmoearth_load_skill` is unchanged. Skills #17 and #18 postdate the captures. The current catalog is [`SKILLS.md`](../SKILLS.md); regenerating this page replaces this note.
+
 Skills #4 and #12 are captured against the **live Studio API** (#4 read-only: the write half is never exercised); #1-#3 load the real vendored `SKILL.md` bodies through `olmoearth_load_skill`.
 
 ---
@@ -604,7 +606,7 @@ I will summarize this step-by-step as requested by the prompt ("summarize how to
 2.  **Model type (Step 2):** Select **Per-pixel classification (semantic segmentation)**. Land cover assigns a categorical class to every pixel inside your labeled polygons, which matches this output type.
 3.  **Foundation model (Step 3):** Select **Base**. The skill's preset for land-cover specifically recommends `base` because segmentation tasks usually involve many classes (>5) or complex boundaries where the larger model's representation quality outweighs the training speed of Tiny or Nano.
 4.  **Label field (Step 4):** Select the exact metadata field in your labels file that contains the class names (e.g., `land_cover`, `category`, or `class`). You will see this in your dataset schema; if you haven't prepared the labels yet, stop and run the `olmoearth-data-prep` skill first to define it.
-5.  **Training data (Step 5):** Select **Full**. Use 100% of your labeled samples for the final model. 
+5.  **Training data (Step 5):** Select **Full**. Use 100% of your labeled samples for the final model.
 6.  **Data split (Step 6):** Select **Spatial** (the default). Earth observation data has high spatial autocorrelation; a random split would leak neighboring pixels into validation, inflating accuracy scores artificially.
 7.  **Temporal context (Step 7):** Select **A period of time → 12 months**. The skill explicitly warns that stable landscape properties like land cover should be modeled as an annual period (Mode A), not a single moment. Set `start_months` to `[1]` for year-round monitoring, or restrict to your region's primary growing months if relevant.
 8.  **Image sources (Step 8):** Select **Sentinel-2 only** (`["sentinel2"]`). Optical spectral signatures are sufficient for standard land cover; adding Sentinel-1 is not recommended unless you have a very cloudy region where optical data is frequently masked.
@@ -1236,7 +1238,7 @@ I have all the information needed to answer. I should present this clearly to th
 
 **Qwen3.6 answer.**
 
-> I found 12 predictions in your account, several using completed models like the Potomac model (`044f7ac7-e668-4100-a32d-290b7aa7972a`). 
+> I found 12 predictions in your account, several using completed models like the Potomac model (`044f7ac7-e668-4100-a32d-290b7aa7972a`).
 
 I pulled the results for the **"Potomac Prediction"** (prediction ID: `f8a0027f-1525-46a0-8127-883719a2edd7`), which completed successfully. Here are its output tiles:
 
@@ -1819,19 +1821,19 @@ Here's a thinking process:
    - F1 Score: 1.000
    - IoU: 1.000
 
-   **Overall Performance**: Accuracy = 83.3%, Macro-F1 = 82.2%, Mean IoU = 72.2%. 
+   **Overall Performance**: Accuracy = 83.3%, Macro-F1 = 82.2%, Mean IoU = 72.2%.
 
    *Interpretation*: Class 2 is predicted perfectly with no errors. Class 0 achieves perfect recall (all true instances captured) but has a lower precision due to one false positive from Class 1. Conversely, Class 1 has perfect precision but misses half its true instances (recall = 0.5), which is the primary driver of the overall error. Adjusting your decision threshold or addressing class separability for classes 0 and 1 could improve the F1 scores.
 
    This matches the tool output perfectly and gives a concise, useful interpretation. I will output this.✅
-   No further tool calls needed. All constraints met. Proceeds. 
-   Output matches response. 
-   Self-Correction/Verification during thought: The prompt asks specifically for per-class precision, recall, F1, and IoU. I'll list them exactly as requested. The interpretation is brief and directly addresses the metrics. All good. 
-   Output generation. 
-   [Done] 
+   No further tool calls needed. All constraints met. Proceeds.
+   Output matches response.
+   Self-Correction/Verification during thought: The prompt asks specifically for per-class precision, recall, F1, and IoU. I'll list them exactly as requested. The interpretation is brief and directly addresses the metrics. All good.
+   Output generation.
+   [Done]
    *Self-Correction/Refinement during generation prep*: I'll make sure the formatting is clean and directly answers the prompt. I'll stick to 4 decimal places as in the tool output or standard rounding. The tool gave 4 decimals, I'll keep that or round reasonably. I'll present it clearly.✅
-   Proceeds. 
-   [Output Generation] -> *See response.* 
+   Proceeds.
+   [Output Generation] -> *See response.*
    *(Note: I will ensure the tone is professional and directly addresses the researcher's request without extra fluff.)*
    All steps verified. Output matches.✅
 ```
@@ -2126,12 +2128,12 @@ query_coord: [-77.0, 40.5]
 coords: [[-77.1,40.4],[-76.9,40.6],[12.5,41.9],[-122.3,47.6]]
 metric: "cosine" (default)
 prior_radius_km: 100 (default)
-All required and optional parameters are available. I will make the call. 
+All required and optional parameters are available. I will make the call.
 Wait, should I pass metric as cosine or euclidean? The prompt doesn't specify, so default cosine is fine.
-Let's call the tool. 
+Let's call the tool.
 Check parameter names: query, corpus, ids, k, metric, query_coord, coords, prior_radius_km.
 All match.
-Proceed. 
+Proceed.
 Tool call generation...
 ```
 
@@ -2528,7 +2530,7 @@ Let's call the tool.
 The user asked me to audit four cloud masks and determine if model errors were caused by cloud confusion or a real model miss. The tool returned results showing that 100% of the errors fall in contested areas (where algorithms disagree) or agreed cloud areas, but specifically "errors_in_contested_fraction" is 1.0 and "cloud_related_error_fraction" is 1.0. The verdict is "cloud-mask-limited".
 
 Let me check the specific pixels:
-Pixel 2 (index 1): cfmask=1, s2cloudless=1, sen2cor=0, maja=1 -> 3 out of 4 say cloud. This is actually an agreed/cloud area for majority? Wait, let's see the vote histogram. 
+Pixel 2 (index 1): cfmask=1, s2cloudless=1, sen2cor=0, maja=1 -> 3 out of 4 say cloud. This is actually an agreed/cloud area for majority? Wait, let's see the vote histogram.
 Actually, let's look at pixel indices (0-based):
 Pixel 0: all 1s? No: cfmask=1, s2cloudless=1, sen2cor=1, maja=1 -> unanimous cloud
 Pixel 1: cfmask=1, s2cloudless=1, sen2cor=0, maja=1 -> 3 cloud, 1 clear
@@ -3268,4 +3270,3 @@ The user requested background samples for their presence-only label file. The to
 The minimum distance from any negative to its nearest positive is ~1.06 km (mean: 3.27 km), so all background points respect the exclusion buffer. As with all pseudo-absences, spot-check that none fall on unmapped karst features in your study area before training.
 
 Re-run your data-prep audit on the new file — it should now pass since the `background` class is present.
-

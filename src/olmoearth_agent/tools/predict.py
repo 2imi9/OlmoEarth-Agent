@@ -5,8 +5,9 @@
 Search predictions (to discover reusable ``model_id``s), submit a new
 prediction, and poll it. Polling reuses the foundational
 ``olmoearth_get_prediction`` tool. ``olmoearth_pixel_value`` reads the
-model's output at a single point; feature-search remains a follow-up
-within this skill.
+model's output at a single point; comparing results over an area is
+``olmoearth_compare_results`` (:mod:`olmoearth_agent.tools.compare`);
+feature-search remains a follow-up within this skill.
 """
 
 from __future__ import annotations
@@ -15,218 +16,36 @@ import asyncio
 from typing import Any
 
 from olmoearth_agent.analysis.raster_compare import (
-    compare_categorical,
-    compare_group_categorical,
-    compare_group_narration,
-    compare_group_numeric,
-    compare_narration,
-    compare_numeric,
-    grid_points,
-    intersect_bbox,
-    intersect_bboxes,
-    normalize_kind,
-    result_bbox,
+    band_is_nodata,
+    declared_fields,
+    declared_range,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools import statistical_rules as rules
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.sampling import (
+    band_value,
+    is_categorical,
+    model_summary,
+    select_band,
+)
 
-#: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
-_SAMPLE_CONCURRENCY = 8
+#: Cap on distinct models resolved per olmoearth_search_predictions call.
+_MAX_MODELS_RESOLVED = 20
 
-
-def _select_band(
-    record: dict[str, Any], property_name: str | None
-) -> dict[str, Any] | None:
-    """Pick the pixel-value band to read: the named property, else the first."""
-    bands: list[dict[str, Any]] = record.get("bands") or []
-    if not bands:
-        return None
-    if property_name:
-        return next(
-            (b for b in bands if b.get("property_name") == property_name), bands[0]
-        )
-    return bands[0]
-
-
-def _band_value(record: dict[str, Any], property_name: str | None) -> Any:
-    """Extract a pixel-value band's value: ``classification`` if set, else
-    ``raw_value``. Picks the named property, or the first band."""
-    band = _select_band(record, property_name)
-    if band is None:
-        return None
-    cls = band.get("classification")
-    return cls if cls is not None else band.get("raw_value")
-
-
-def _is_categorical(record: dict[str, Any], property_name: str | None) -> bool:
-    band = _select_band(record, property_name)
-    return band is not None and band.get("classification") is not None
-
-
-async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    a_id = args["result_id_a"]
-    b_id = args["result_id_b"]
-    prop = args.get("property_name")
-    grid = max(2, min(12, int(args.get("grid", 6))))
-    tol = float(args.get("tolerance", 0.1))
-    kind = normalize_kind(args.get("kind"))
-
-    rec_a = await ctx.studio.get_prediction_result(a_id)
-    rec_b = await ctx.studio.get_prediction_result(b_id)
-    bbox = intersect_bbox(result_bbox(rec_a), result_bbox(rec_b))
-    if bbox is None:
-        return {
-            "comparable": False,
-            "reason": "the two results have no overlapping extent (or missing bounds)",
-        }
-    points = grid_points(bbox, grid)
-
-    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
-
-    async def sample(result_id: str, lon: float, lat: float) -> Any:
-        async with sem:
-            try:
-                rec = await ctx.studio.pixel_value(result_id, lon, lat)
-                return rec
-            except Exception:  # off-raster / nodata / transient -> drop the point
-                return None
-
-    recs_a = await asyncio.gather(*[sample(a_id, lo, la) for lo, la in points])
-    recs_b = await asyncio.gather(*[sample(b_id, lo, la) for lo, la in points])
-
-    # Detect categorical vs regression from the first valid sample.
-    first = next((r for r in recs_a if r), None)
-    categorical = bool(first and _is_categorical(first, prop))
-    vals_a = [(_band_value(r, prop) if r else None) for r in recs_a]
-    vals_b = [(_band_value(r, prop) if r else None) for r in recs_b]
-    pairs = list(zip(vals_a, vals_b))
-    stats = (
-        compare_categorical(pairs)
-        if categorical
-        else compare_numeric(pairs, tolerance=tol)
-    )
-    value_type = "classification" if categorical else "regression"
-    narration = compare_narration(stats, kind=kind, value_type=value_type)
-    return {
-        "comparable": True,
-        "result_id_a": a_id,
-        "result_id_b": b_id,
-        "property_name": prop or (first.get("bands", [{}])[0].get("property_name") if first else None),
-        "kind": kind,
-        "value_type": value_type,
-        "narration": narration,
-        "grid": f"{grid}x{grid}",
-        "samples_requested": len(points),
-        "shared_extent_bbox": [round(v, 5) for v in bbox],
-        "stats": stats,
-        "method": "pointwise pixel-value sampled on a grid over the shared "
-        "extent (an estimate, not every pixel); no ground truth, so this is "
-        + narration["framing"]
-        + ".",
-    }
-
-
-#: Group-compare bounds. Results are capped at 6 (15 pairs) and the default
-#: grid is small because every sample is a live Studio pixel-value call
-#: (~0.5-1 min each): N results x grid^2 points is the cost driver.
-_GROUP_MAX_RESULTS = 6
-_GROUP_DEFAULT_GRID = 3
-_GROUP_MAX_GRID = 8
-
-
-async def _compare_group(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    raw_ids = args.get("result_ids") or []
-    ids = [str(r) for r in raw_ids if str(r).strip()]
-    # Order-preserving dedup: a repeated id would just re-sample the same raster.
-    ids = list(dict.fromkeys(ids))
-    if len(ids) < 2:
-        return {
-            "comparable": False,
-            "reason": "need at least 2 distinct result_ids (2-6).",
-        }
-    if len(ids) > _GROUP_MAX_RESULTS:
-        return {
-            "comparable": False,
-            "reason": f"too many results ({len(ids)}); cap is "
-            f"{_GROUP_MAX_RESULTS} (each adds grid^2 slow pixel-value calls).",
-        }
-    prop = args.get("property_name")
-    grid = max(2, min(_GROUP_MAX_GRID, int(args.get("grid", _GROUP_DEFAULT_GRID))))
-    tol = float(args.get("tolerance", 0.1))
-
-    records = await asyncio.gather(*[ctx.studio.get_prediction_result(r) for r in ids])
-    bbox = intersect_bboxes([result_bbox(rec) for rec in records])
-    if bbox is None:
-        return {
-            "comparable": False,
-            "reason": "the results have no extent shared by all of them "
-            "(or one is missing bounds)",
-        }
-    points = grid_points(bbox, grid)
-
-    sem = asyncio.Semaphore(_SAMPLE_CONCURRENCY)
-
-    async def sample(result_id: str, lon: float, lat: float) -> Any:
-        async with sem:
-            try:
-                return await ctx.studio.pixel_value(result_id, lon, lat)
-            except Exception:  # off-raster / nodata / transient -> drop the point
-                return None
-
-    sampled = [
-        await asyncio.gather(*[sample(rid, lo, la) for lo, la in points])
-        for rid in ids
-    ]
-    first = next((r for recs in sampled for r in recs if r), None)
-    categorical = bool(first and _is_categorical(first, prop))
-    series = [
-        [(_band_value(r, prop) if r else None) for r in recs] for recs in sampled
-    ]
-    group = (
-        compare_group_categorical(series)
-        if categorical
-        else compare_group_numeric(series, tolerance=tol)
-    )
-    value_type = "classification" if categorical else "regression"
-
-    # Index -> id / coordinate mapping for readability (the analysis layer
-    # works on indices; ids and lon/lat only exist here).
-    for entry in group["pairwise"]:
-        entry["result_id_a"] = ids[entry.pop("a_index")]
-        entry["result_id_b"] = ids[entry.pop("b_index")]
-    divergent = group.pop("most_divergent_pair", None)
-    if divergent is not None:
-        divergent = {
-            "result_id_a": ids[divergent["a_index"]],
-            "result_id_b": ids[divergent["b_index"]],
-        }
-    for spot in group["ensemble"].get("top_disagreement_points", []):
-        lon, lat = points[spot.pop("point_index")]
-        spot["lon"], spot["lat"] = lon, lat
-
-    narration = compare_group_narration(
-        group, n_results=len(ids), value_type=value_type
-    )
-    return {
-        "comparable": True,
-        "result_ids": ids,
-        "property_name": prop
-        or (first.get("bands", [{}])[0].get("property_name") if first else None),
-        "value_type": value_type,
-        "narration": narration,
-        "grid": f"{grid}x{grid}",
-        "samples_requested": len(points) * len(ids),
-        "shared_extent_bbox": [round(v, 5) for v in bbox],
-        "pairwise": group["pairwise"],
-        "ensemble": group["ensemble"],
-        "most_divergent_pair": divergent,
-        "method": "pointwise pixel-value sampled on a grid over the extent "
-        "shared by all results (an estimate, not every pixel); no ground "
-        "truth, so this is " + narration["framing"] + ".",
-    }
+#: What a model listing does not contain, stated with it every time.
+_MODELS_SCOPE_NOTE = (
+    "These are the models in this Studio account only. Ai2 also publishes "
+    "fine-tuned OlmoEarth models (the olmoearth_projects configurations and "
+    "their task cards) that are not in this listing; say so instead of "
+    "presenting this list as every model the user can run. prediction_type "
+    "says what a model outputs: a *_regression output is a value per pixel, "
+    "not a class probability and not a confidence."
+)
 
 
 async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_search_predictions``: predictions plus their models."""
     project_id = args.get("project_id")
     env = await ctx.studio.search_predictions(
         project_id=project_id,
@@ -236,7 +55,17 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
     # With a project_id filter the match list is built client-side, so
     # env.total (the unfiltered server total) would mislead; report the
     # actual returned count instead.
-    return {
+    model_ids = list(
+        dict.fromkeys(str(r["model_id"]) for r in env.records if r.get("model_id"))
+    )[:_MAX_MODELS_RESOLVED]
+    cache: dict[str, dict[str, Any] | None] = {}
+    summaries = await asyncio.gather(*[model_summary(ctx, m, cache) for m in model_ids])
+    models = {
+        mid: {k: v for k, v in summary.items() if k != "model_id"}
+        for mid, summary in zip(model_ids, summaries)
+        if summary is not None
+    }
+    out: dict[str, Any] = {
         "total": len(env.records) if project_id else env.total,
         "predictions": [
             {
@@ -248,9 +77,20 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
             for r in env.records
         ],
     }
+    if model_ids:
+        out["models"] = models
+        out["models_note"] = _MODELS_SCOPE_NOTE
+        # Which models were fine-tuned on a label field: exp86 round 9
+        # (B3/studio run 1) said "no ground-truth labels exist" of two such
+        # models, from tools that said nothing of labels.
+        labels = rules.labels_in_studio_fact(summaries)
+        if labels:
+            rules.add_contract(out, facts=[labels])
+    return out
 
 
 async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_submit_prediction``."""
     record = await ctx.studio.submit_prediction(
         name=args["name"],
         project_id=args["project_id"],
@@ -265,17 +105,38 @@ async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str
     return {"id": prediction_id, "status": record.get("status")}
 
 
+def _declared_outputs(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each output property with what the result declares about it.
+
+    A regression output carries its declared ``[min_value, max_value]``; a
+    classification output its class count and labels (capped). No geometry.
+    """
+    return [
+        {"property_name": name, **info}
+        for name, info in declared_fields(record).items()
+    ]
+
+
 def _summarize_result(record: dict[str, Any]) -> dict[str, Any]:
-    return {
+    """A prediction-result record as the agent sees it (no geometry)."""
+    meta = record.get("result_metadata") or {}
+    out: dict[str, Any] = {
         "result_id": record.get("id"),
         "prediction_id": record.get("prediction_id"),
         "tile_urls": record.get("tile_urls"),
         "property_names": record.get("property_names"),
         "file_format": record.get("file_format"),
     }
+    outputs = _declared_outputs(record)
+    if outputs:
+        out["outputs"] = outputs
+    if meta.get("start_datetime") or meta.get("end_datetime"):
+        out["period"] = [meta.get("start_datetime"), meta.get("end_datetime")]
+    return out
 
 
 async def _fetch_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_fetch_results``."""
     env = await ctx.studio.search_prediction_results(
         prediction_id=args["prediction_id"],
         limit=int(args.get("scan_limit", 200)),
@@ -290,9 +151,18 @@ async def _fetch_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, An
 async def _get_prediction_result(
     args: dict[str, Any], ctx: ToolContext
 ) -> dict[str, Any]:
+    """Handler for ``olmoearth_get_prediction_result``.
+
+    ``result_metadata`` is returned without its ``geometry`` (rule §3.1): the
+    extent is raw coordinates, and the tools that need it read it themselves.
+    """
     record = await ctx.studio.get_prediction_result(args["result_id"])
     summary = _summarize_result(record)
-    summary["result_metadata"] = record.get("result_metadata")
+    meta = record.get("result_metadata")
+    if isinstance(meta, dict) and "geometry" in meta:
+        meta = {k: v for k, v in meta.items() if k != "geometry"}
+        meta["geometry"] = "omitted (rule 3.1)"
+    summary["result_metadata"] = meta
     return summary
 
 
@@ -319,7 +189,7 @@ async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
             "reason": "pixel-value request failed (off-raster, nodata, or "
             f"transient): {str(exc)[:200]}",
         }
-    band = _select_band(record, prop)
+    band = select_band(record, prop)
     if band is None:
         return {
             "result_id": result_id,
@@ -327,28 +197,38 @@ async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
             "available": False,
             "reason": "no value at this point (off-raster or nodata)",
         }
-    value = _band_value(record, prop)
-    categorical = _is_categorical(record, prop)
+    value = band_value(record, prop)
+    categorical = is_categorical(record, prop)
+    rng = declared_range(band)
+    nodata = value is not None and band_is_nodata(band)
     out: dict[str, Any] = {
         "result_id": result_id,
         "queried_point": point,
-        "available": value is not None,
+        "available": value is not None and not nodata,
         "property_name": band.get("property_name") or prop,
         "value_type": "classification" if categorical else "regression",
-        "value": value,
+        "value": None if nodata else value,
         "bands": [
             {
                 "property_name": b.get("property_name"),
-                "value": (
-                    b.get("classification")
-                    if b.get("classification") is not None
-                    else b.get("raw_value")
-                ),
+                "value": band_value({"bands": [b]}, None),
             }
             for b in (record.get("bands") or [])
         ],
     }
-    if value is None:
+    if rng is not None:
+        out["declared_range"] = list(rng)
+    if nodata:
+        # Studio returns no-data as a value (e.g. -1.0 on a [0, 1] band);
+        # reporting it as the model's output would be a fabricated reading.
+        out["nodata"] = True
+        out["raw_value"] = band.get("raw_value")
+        out["reason"] = (
+            "no-data at this point: the raw value lies outside the band's "
+            "declared range or is not a number (Studio's no-data sentinel), "
+            "so it is not a model output"
+        )
+    elif value is None:
         # Band exists but carries no value here -- report it like the other
         # unavailable paths instead of a bare available=false.
         out["reason"] = "band present but no value at this point (nodata)"
@@ -365,10 +245,15 @@ def build_predict_tools() -> list[RegisteredTool]:
             spec=ToolSpec(
                 name="olmoearth_search_predictions",
                 description=(
-                    "Search predictions, optionally scoped to a project. "
-                    "Returns id, name, status, and model_id for each. Use "
-                    "this to discover a reusable model_id before submitting "
-                    "a new prediction. Read-only."
+                    "Search predictions, optionally scoped to a project: id, "
+                    "name, status and model_id for each, plus a 'models' map "
+                    "with each model's name, model_type and prediction_type "
+                    "(e.g. per_pixel_regression: a value per pixel, not a class "
+                    "probability or a confidence). Use it to find a reusable "
+                    "model_id and to say what each model predicts. It lists "
+                    "this account's models only; Ai2 also publishes fine-tuned "
+                    "OlmoEarth models (task cards), so do not present the list "
+                    "as complete. Read-only."
                 ),
                 parameters={
                     "type": "object",
@@ -381,6 +266,11 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_search_predictions,
+            capability=Capability(
+                does="this account's predictions, and each model's name, type, "
+                "prediction_type and, when fine-tuned, its label field and split",
+                cannot=("say what a model's training data held, or its metrics",),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -414,16 +304,21 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_submit_prediction,
+            capability=Capability(
+                does="run a Studio model over a Studio area and period; returns a "
+                "prediction id to poll"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
                 name="olmoearth_fetch_results",
                 description=(
                     "Fetch the output results for a prediction: tile URLs "
-                    "(XYZ/MVT map layers), property names, and file format. "
-                    "Scans recent prediction-results and filters to this "
-                    "prediction (the API has no server-side prediction_id "
-                    "filter). Increase scan_limit if results are older."
+                    "(XYZ/MVT map layers), property names, file format, and "
+                    "'outputs' (each property's declared regression range or "
+                    "classes). Scans recent prediction-results and filters to "
+                    "this prediction (no server-side filter); increase "
+                    "scan_limit if results are older."
                 ),
                 parameters={
                     "type": "object",
@@ -435,13 +330,19 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_fetch_results,
+            capability=Capability(
+                does="a prediction's results (tile URLs, property names, "
+                "declared outputs)"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
                 name="olmoearth_get_prediction_result",
                 description=(
                     "Fetch one prediction-result by its result id: tile "
-                    "URLs, property names, result metadata, and file format."
+                    "URLs, property names, declared outputs (regression range "
+                    "or classes per property), result metadata (without its "
+                    "geometry), and file format."
                 ),
                 parameters={
                     "type": "object",
@@ -450,6 +351,10 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_get_prediction_result,
+            capability=Capability(
+                does="one result's tile URLs, properties and declared outputs, "
+                "without its geometry"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -459,10 +364,12 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "lon/lat point (the Studio /pixel-value endpoint). Returns "
                     "the value (raw_value for a regression layer, the class for "
                     "a categorical layer), the value_type, and every band's "
-                    "value at that point. If the point is off-raster or nodata, "
+                    "value at that point. If the point is off-raster or nodata "
+                    "(including Studio's no-data sentinel, a value outside the "
+                    "band's declared range such as -1 on a [0, 1] score), "
                     "returns available=false with a reason. Use this to answer "
                     "'what does the model predict at this exact location?'; to "
-                    "compare TWO results over an area use olmoearth_compare_results."
+                    "compare results over an area use olmoearth_compare_results."
                 ),
                 parameters={
                     "type": "object",
@@ -480,114 +387,6 @@ def build_predict_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_pixel_value,
-        ),
-        RegisteredTool(
-            spec=ToolSpec(
-                name="olmoearth_compare_results",
-                description=(
-                    "Quantitatively compare TWO prediction results over their "
-                    "shared area, with no ground truth. Samples both rasters on "
-                    "a grid (pointwise pixel-value) and returns mean difference, "
-                    "mean-absolute difference, RMSE, correlation, and an "
-                    "agreement fraction (regression) or class agreement "
-                    "(classification). Set kind='cross_model' (default) to "
-                    "compare TWO different models over the same area (how much "
-                    "they agree -- divergence, not accuracy); set kind='temporal' "
-                    "to compare ONE model's output at an earlier (A) vs a later "
-                    "(B) date (net change over time, later minus earlier). The "
-                    "returned narration adapts to the kind. Use this for a "
-                    "numeric comparison instead of only a visual / metadata one; "
-                    "for accuracy against labels use "
-                    "olmoearth_classification_metrics."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "result_id_a": {"type": "string"},
-                        "result_id_b": {"type": "string"},
-                        "kind": {
-                            "type": "string",
-                            "enum": ["cross_model", "temporal"],
-                            "default": "cross_model",
-                            "description": "cross_model = two models, same area "
-                            "(agreement); temporal = one model, earlier (A) vs "
-                            "later (B) date (change over time).",
-                        },
-                        "property_name": {
-                            "type": "string",
-                            "description": "Band/property to compare; defaults to "
-                            "the first band.",
-                        },
-                        "grid": {
-                            "type": "integer",
-                            "default": 6,
-                            "description": "Grid size N (N*N sample points; 2-12).",
-                        },
-                        "tolerance": {
-                            "type": "number",
-                            "default": 0.1,
-                            "description": "Regression: |a-b| <= tolerance counts "
-                            "as agreement.",
-                        },
-                    },
-                    "required": ["result_id_a", "result_id_b"],
-                },
-            ),
-            handler=_compare_results,
-        ),
-        RegisteredTool(
-            spec=ToolSpec(
-                name="olmoearth_compare_group",
-                description=(
-                    "Quantitatively compare a GROUP of 2-6 prediction results "
-                    "(different models) over the extent shared by all of them, "
-                    "with no ground truth. Samples every raster on the same "
-                    "grid (pointwise pixel-value) and returns (a) a PAIRWISE "
-                    "matrix -- agreement / difference stats for every pair -- "
-                    "and (b) an ENSEMBLE consensus: the fraction of cells where "
-                    "ALL models agree (within tolerance, or same class), the "
-                    "most divergent pair, and the most-contested grid points "
-                    "(lon/lat). Use when the user compares THREE OR MORE "
-                    "results, or asks where an ensemble of models converges / "
-                    "diverges. For exactly TWO results prefer "
-                    "olmoearth_compare_results (richer two-way stats + temporal "
-                    "mode); for ONE model across MULTIPLE DATES use "
-                    "olmoearth_change_detect (trajectory over time). Each "
-                    "result adds grid^2 slow Studio pixel-value calls, so keep "
-                    "the grid small (default 3x3)."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "result_ids": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 2,
-                            "maxItems": _GROUP_MAX_RESULTS,
-                            "description": "2-6 prediction-result ids "
-                            "(different models over a shared area).",
-                        },
-                        "property_name": {
-                            "type": "string",
-                            "description": "Band/property to compare; defaults to "
-                            "the first band.",
-                        },
-                        "grid": {
-                            "type": "integer",
-                            "default": _GROUP_DEFAULT_GRID,
-                            "description": "Grid size N (N*N sample points per "
-                            f"result; 2-{_GROUP_MAX_GRID}).",
-                        },
-                        "tolerance": {
-                            "type": "number",
-                            "default": 0.1,
-                            "description": "Regression: a cell is consensus when "
-                            "max-min across models <= tolerance.",
-                        },
-                    },
-                    "required": ["result_ids"],
-                },
-            ),
-            handler=_compare_group,
+            capability=Capability(does="one result's value at one lon/lat point"),
         ),
     ]

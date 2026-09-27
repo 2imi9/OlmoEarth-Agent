@@ -9,8 +9,9 @@ range ("legend") so a shift has real units.
 
 Index-based like the rest of this layer (``raster_compare``): the caller
 supplies ``series[k][p]`` = chronological result ``k`` sampled at grid point
-``p``; result ids, dates, and lon/lat exist only in the tool layer, which
-remaps ``a_index``/``b_index``/``point_index`` on the way out.
+``p``; result ids and dates exist only in the tool layer, which remaps
+``a_index``/``b_index`` to them and ``point_index`` to a grid window's
+``(row, col)`` on the way out (``olmoearth_compare_results``, mode="series").
 
 Three views of the same series:
 
@@ -43,8 +44,8 @@ from olmoearth_agent.analysis.raster_compare import (
     compare_numeric,
 )
 
-#: A trace needs at least three results: a two-date diff is just
-#: ``olmoearth_compare_results`` kind="temporal" and cannot tell a steady
+#: A trace needs at least three results: a two-date diff is just a pair
+#: (``olmoearth_compare_results``, kind="temporal") and cannot tell a steady
 #: trend from a reversal (same rationale as change detection's MIN_DATES).
 MIN_RESULTS = 3
 
@@ -259,8 +260,7 @@ def trace_categorical(series: list[list[Any]]) -> dict[str, Any]:
         "n_points": n_points,
         "steps": steps,
         "transitions": [
-            {"from": a, "to": b, "count": c}
-            for (a, b), c in transitions.most_common(8)
+            {"from": a, "to": b, "count": c} for (a, b), c in transitions.most_common(8)
         ],
         "trajectory": trajectory,
     }

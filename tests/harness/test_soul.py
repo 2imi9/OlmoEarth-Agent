@@ -25,6 +25,58 @@ def test_packaged_soul_exists_and_loads() -> None:
     assert "Never invent project, area, dataset, model, or prediction IDs" in text
 
 
+def test_soul_routes_review_and_estimation_questions_to_their_tools() -> None:
+    """The trial's model ranked hand-sampled pixels and invented an interval."""
+    text = load_soul()
+    assert "olmoearth_review_set_from_result" in text
+    assert "olmoearth_plan_label_sample" in text
+    assert "olmoearth_estimate_map_error" in text
+    assert "a review set is not a sample" in text
+
+
+def test_soul_routes_a_direct_model_runs_map_to_the_scores_provider() -> None:
+    """A cluster run's raster goes through the provider, never Studio sampling."""
+    text = load_soul()
+    assert "direct model run" in text
+    assert "olmoearth_scores_from_file" in text
+
+
+def test_soul_states_numbers_as_the_tools_returned_them() -> None:
+    """exp86 round 1: derived ratios ("3/46 ~ 6.5%"), a wrong subtraction ("47
+    dropped") and a figure quoted from a tool's description ("51-70%")."""
+    text = " ".join(load_soul().split())  # the rule wraps across lines
+    assert "exactly as the tools returned them" in text
+    assert "no ratio, difference or percentage of your own" in text
+    assert "never quote a figure from a tool's description" in text
+    # exp86 round 3: the rule alone was broken once a round; the harness checks.
+    assert "checks your answer's numbers against the tool results" in text
+
+
+def test_soul_states_as_fact_only_what_a_tool_returned() -> None:
+    """exp86 round 9 (B3/studio): "no ground-truth labels exist", while Studio's
+    model records showed both models fine-tuned on the project's label fields,
+    which no tool reads."""
+    text = " ".join(load_soul().split())
+    assert (
+        "State as fact only what a tool of this run returned or the user said." in text
+    )
+    assert "whether ground-truth labels exist, what a model was trained on" in text
+    assert "say it is not known from this run" in text
+    # The soul's own routing no longer presumes that no labels exist.
+    assert "with no ground-truth labels" not in text
+    assert "when ground-truth labels exist" not in text
+
+
+def test_soul_proposes_only_what_the_capability_card_lists() -> None:
+    """exp86 round 9: 7 of 16 material findings were offers no tool can carry
+    out, or whose preconditions did not hold; the owner keeps offers, possible
+    ones only."""
+    text = " ".join(load_soul().split())
+    assert "Propose next steps freely, but only actions the capability card" in text
+    assert "each with its preconditions" in text
+    assert "say plainly that no tool of this agent can do it" in text
+
+
 def test_default_system_prompt_is_the_soul() -> None:
     from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT
 

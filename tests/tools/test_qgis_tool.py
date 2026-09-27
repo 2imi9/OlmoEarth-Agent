@@ -55,9 +55,7 @@ async def test_qgis_bridge_refuses_non_studio_host() -> None:
     with pytest.raises(ValueError, match="non-Studio host"):
         await tool.handler(
             {
-                "tile_urls": [
-                    "https://evil.example/{z}/{x}/{y}.png?property_name=s"
-                ],
+                "tile_urls": ["https://evil.example/{z}/{x}/{y}.png?property_name=s"],
                 "layer_name": "karst",
             },
             ctx,

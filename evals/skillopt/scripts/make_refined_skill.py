@@ -7,6 +7,7 @@ train-split failures: the un-applied ">20K samples -> Tiny" downgrade, the
 all-twelve start_months default, inconsistent S1 use, flood patch size, and
 context-month defaults. Fully general (no benchmark/test fixtures).
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -60,5 +61,12 @@ refined = src[:cut] + "\n" + BLOCK + src[cut:]
 
 out = ENV / "refined_claude.md"
 out.write_text(refined, encoding="utf-8")
-print("wrote", out, "chars=", len(refined), "(+%d)" % (len(refined) - len(src)),
-      "approx_tokens=", len(refined) // 4)
+print(
+    "wrote",
+    out,
+    "chars=",
+    len(refined),
+    "(+%d)" % (len(refined) - len(src)),
+    "approx_tokens=",
+    len(refined) // 4,
+)

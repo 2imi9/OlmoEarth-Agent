@@ -15,7 +15,7 @@ from typing import Any
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.reporting.export import curate, group_items, slugify, to_json
 from olmoearth_agent.security.paths import safe_path
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _PROJECT_FIELDS = ("id", "name", "description", "creation_time")
 _PREDICTION_FIELDS = (
@@ -111,5 +111,10 @@ def build_export_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_export_data,
+            capability=Capability(
+                does="export the user's Studio projects and predictions to JSON "
+                "files",
+                needs=("out_dir inside the workspace",),
+            ),
         ),
     ]

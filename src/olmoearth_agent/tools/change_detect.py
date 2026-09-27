@@ -15,7 +15,7 @@ from typing import Any
 
 from olmoearth_agent.analysis.change_detect import diff_layers
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 def _is_iso(value: Any) -> bool:
@@ -96,5 +96,10 @@ def build_change_detect_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_change_detect,
+            capability=Capability(
+                does="the trend of one value per date the caller gives (steps, "
+                "net change, reversals)",
+                needs=("3 or more dates",),
+            ),
         ),
     ]

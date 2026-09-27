@@ -15,7 +15,7 @@ from typing import Any
 
 from olmoearth_agent.analysis.baseline import compare_metrics, difference_raster
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _LABELS = {
     "type": "array",
@@ -83,5 +83,9 @@ def build_baseline_compare_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_baseline_compare,
+            capability=Capability(
+                does="OlmoEarth against a baseline model's predictions, on "
+                "ground-truth labels the caller gives"
+            ),
         ),
     ]

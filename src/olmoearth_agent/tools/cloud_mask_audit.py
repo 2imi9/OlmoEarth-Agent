@@ -19,7 +19,7 @@ from olmoearth_agent.analysis.cloud_mask import (
     verdict_classifier,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _MASKS_SCHEMA = {
     "type": "object",
@@ -87,5 +87,6 @@ def build_cloud_mask_audit_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_cloud_mask_audit,
+            capability=Capability(does="where aligned cloud masks agree or disagree"),
         ),
     ]

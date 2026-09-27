@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-shot quickstart for the OlmoEarth Agent: init vendored skills, sync the
-# Python env, and bring up the local LLM. After this finishes, set your Studio
+# One-shot quickstart for the OlmoEarth Agent: sync the Python env and bring
+# up the local LLM. After this finishes, set your Studio
 # key and run a brief. Canonical values: docs/CANON.md.
 set -euo pipefail
 
@@ -9,15 +9,11 @@ echo "# OlmoEarth Agent: quickstart"
 echo "############################################"
 
 echo ""
-echo "==> [1/3] Initializing vendored skills (submodule #1-#4)"
-git submodule update --init
-
-echo ""
-echo "==> [2/3] Syncing the Python environment (uv sync --all-extras)"
+echo "==> [1/2] Syncing the Python environment (uv sync --all-extras)"
 uv sync --all-extras
 
 echo ""
-echo "==> [3/3] Bringing up the local LLM (llama.cpp, 4-bit GGUF)"
+echo "==> [2/2] Bringing up the local LLM (llama.cpp, 4-bit GGUF)"
 ./scripts/serve-llm.sh
 
 echo ""

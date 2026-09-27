@@ -36,13 +36,127 @@ async def test_search_predictions_tool(httpx_mock: HTTPXMock) -> None:
             "meta": {"total": 1},
         },
     )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1",
+        json={
+            "records": [
+                {
+                    "id": "m1",
+                    "name": "KarstBinary",
+                    "model_type": "fine_tuned",
+                    "wizard_answers": {
+                        "prediction_type": "per_pixel_regression",
+                        "nodata_value": None,
+                    },
+                }
+            ]
+        },
+    )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
-        result = await _tool("olmoearth_search_predictions").handler(
-            {"limit": 5}, ctx
-        )
+        result = await _tool("olmoearth_search_predictions").handler({"limit": 5}, ctx)
     assert result["total"] == 1
     assert result["predictions"][0]["model_id"] == "m1"
+    # The model is described by what it outputs, read from the model record,
+    # so a regression score is never narrated as a "confidence layer".
+    model = result["models"]["m1"]
+    assert model["prediction_type"] == "per_pixel_regression"
+    assert model["model_type"] == "fine_tuned"
+    assert "not a class probability" in result["models_note"]
+    assert "Ai2 also publishes" in result["models_note"]
+
+
+@pytest.mark.asyncio
+async def test_search_predictions_says_which_models_were_fine_tuned_on_labels(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """exp86 round 9 (B3/studio run 1) answered "no ground-truth labels exist"
+    while these records named a label field of the project. The listing says
+    which models were fine-tuned on one, without the person who asked for it."""
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        json={
+            "records": [
+                {"id": "p1", "name": "X", "status": "completed", "model_id": "m1"},
+                {"id": "p2", "name": "E", "status": "completed", "model_id": "m2"},
+            ],
+            "meta": {"total": 2},
+        },
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1",
+        json={
+            "records": [
+                {
+                    "id": "m1",
+                    "name": "KarstBinary",
+                    "model_type": "fine_tuned",
+                    "requester_id": "person-7f3a",
+                    "wizard_answers": {
+                        "prediction_type": "per_pixel_regression",
+                        "label_field_id": "lf-1",
+                        "split_proportions": {
+                            "train_prop": 0.75,
+                            "val_prop": 0.25,
+                            "test_prop": 0.0,
+                        },
+                    },
+                }
+            ]
+        },
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m2",
+        json={
+            "records": [
+                {
+                    "id": "m2",
+                    "name": "KarstEmbedding",
+                    "model_type": "embeddings",
+                    "wizard_answers": {"wizard_id": "embeddings_v1"},
+                }
+            ]
+        },
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_search_predictions").handler({}, ctx)
+    trained = result["models"]["m1"]
+    assert trained["trained_on_labels"] is True
+    assert trained["label_field_id"] == "lf-1"
+    assert trained["split"] == {"train_prop": 0.75, "val_prop": 0.25, "test_prop": 0.0}
+    assert result["models"]["m2"]["trained_on_labels"] is None
+    assert "label_field_id" not in result["models"]["m2"]
+    (fact,) = result["facts"]
+    assert fact["id"] == "labels_in_studio"
+    assert fact["sentence"] == (
+        "KarstBinary was fine-tuned in Studio on a label field of its project "
+        "(train/val split 0.75/0.25), so labels for this project may exist in "
+        "Studio; no tool of this run looked them up for this area."
+    )
+    assert "person-7f3a" not in json.dumps(result)
+
+
+@pytest.mark.asyncio
+async def test_search_predictions_survives_a_missing_model(
+    httpx_mock: HTTPXMock,
+) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        json={"records": [{"id": "p1", "model_id": "gone"}], "meta": {"total": 1}},
+    )
+    httpx_mock.add_response(url=f"{BASE}/models/gone", status_code=404)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_search_predictions").handler({}, ctx)
+    assert result["predictions"][0]["model_id"] == "gone"
+    assert result["models"] == {}
 
 
 @pytest.mark.asyncio
@@ -94,8 +208,13 @@ async def test_fetch_results_filters_by_prediction_id(
         method="POST",
         json={
             "records": [
-                {"id": "r1", "prediction_id": "pX", "tile_urls": ["t1"],
-                 "property_names": ["score"], "file_format": "png"},
+                {
+                    "id": "r1",
+                    "prediction_id": "pX",
+                    "tile_urls": ["t1"],
+                    "property_names": ["score"],
+                    "file_format": "png",
+                },
                 {"id": "r2", "prediction_id": "pOTHER", "tile_urls": ["t2"]},
             ],
             "meta": {"total": 2},
@@ -119,9 +238,14 @@ async def test_get_prediction_result_tool(httpx_mock: HTTPXMock) -> None:
         url=f"{BASE}/prediction-results/r9",
         json={
             "records": [
-                {"id": "r9", "prediction_id": "p1", "tile_urls": ["tpl"],
-                 "property_names": ["karst_score"], "file_format": "png",
-                 "result_metadata": {"foo": 1}}
+                {
+                    "id": "r9",
+                    "prediction_id": "p1",
+                    "tile_urls": ["tpl"],
+                    "property_names": ["karst_score"],
+                    "file_format": "png",
+                    "result_metadata": {"foo": 1},
+                }
             ]
         },
     )
@@ -180,10 +304,16 @@ async def test_pixel_value_categorical_and_property_select(
             "records": [
                 {
                     "bands": [
-                        {"property_name": "score", "raw_value": 0.1,
-                         "classification": None},
-                        {"property_name": "landcover", "raw_value": None,
-                         "classification": "forest"},
+                        {
+                            "property_name": "score",
+                            "raw_value": 0.1,
+                            "classification": None,
+                        },
+                        {
+                            "property_name": "landcover",
+                            "raw_value": None,
+                            "classification": "forest",
+                        },
                     ]
                 }
             ]
@@ -231,8 +361,15 @@ async def test_pixel_value_null_band_value_is_unavailable_with_reason(
         url=re.compile(r".*/prediction-results/r4/pixel-value\?.*"),
         json={
             "records": [
-                {"bands": [{"property_name": "score", "raw_value": None,
-                            "classification": None}]}
+                {
+                    "bands": [
+                        {
+                            "property_name": "score",
+                            "raw_value": None,
+                            "classification": None,
+                        }
+                    ]
+                }
             ]
         },
     )
@@ -257,9 +394,9 @@ async def test_live_search_predictions_have_model_ids() -> None:
     async with StudioClient.from_env() as studio:
         env = await studio.search_predictions(limit=5)
     assert env.total is not None and env.total >= 1
-    assert all(r.get("model_id") for r in env.records), (
-        "every prediction should expose a model_id for reuse"
-    )
+    assert all(
+        r.get("model_id") for r in env.records
+    ), "every prediction should expose a model_id for reuse"
 
 
 @pytest.mark.integration

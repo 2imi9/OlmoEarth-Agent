@@ -145,9 +145,7 @@ async def test_delete_area(config: StudioConfig, httpx_mock: HTTPXMock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_header_sent(
-    config: StudioConfig, httpx_mock: HTTPXMock
-) -> None:
+async def test_auth_header_sent(config: StudioConfig, httpx_mock: HTTPXMock) -> None:
     httpx_mock.add_response(url=f"{BASE}/users/me", json={"records": [{}]})
     async with StudioClient(config) as studio:
         await studio.users_me()

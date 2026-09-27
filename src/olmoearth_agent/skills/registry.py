@@ -22,6 +22,8 @@ from olmoearth_agent.tools.automate import build_automate_tools
 from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
+from olmoearth_agent.tools.compare import build_compare_tools
+from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
 from olmoearth_agent.tools.litsearch import build_litsearch_tools
@@ -33,11 +35,11 @@ from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.rslearn import build_rslearn_tools
+from olmoearth_agent.tools.scores_file import build_scores_file_tools
 from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.system import build_system_tools
-from olmoearth_agent.tools.trace_shifts import build_trace_shift_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
@@ -69,7 +71,6 @@ SKILLS: list[SkillSpec] = [
         "Base Studio API tools every Run/Analyze skill builds on.",
         [
             "olmoearth_load_context",
-            "olmoearth_search_projects",
             "olmoearth_create_project",
             "olmoearth_request_aoi",
             "olmoearth_get_prediction",
@@ -120,8 +121,8 @@ SKILLS: list[SkillSpec] = [
         "implemented",
         "Run loop: search predictions (find model_id), submit, poll, "
         "fetch results (tile URLs), sample the model output at a point, and "
-        "compare results quantitatively (grid-sampled model-vs-model "
-        "agreement, no ground truth) -- two-way or a 2-6 result group "
+        "compare results quantitatively with one tool (grid-sampled, no "
+        "ground truth): a pair of results, or a group of 2-6 models "
         "(pairwise matrix + ensemble consensus).",
         [
             "olmoearth_search_predictions",
@@ -131,7 +132,6 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_get_prediction_result",
             "olmoearth_pixel_value",
             "olmoearth_compare_results",
-            "olmoearth_compare_group",
         ],
     ),
     # #5 unifies change-detect + the JEPA latent-change skill: both are change
@@ -147,9 +147,9 @@ SKILLS: list[SkillSpec] = [
         "Change detection, two engines: in-process Studio multi-date (>=3) "
         "trajectory diff (refuses naive 2-date) plus date-ordered, "
         "legend-calibrated shift tracing across dated results "
-        "(olmoearth_trace_shifts), and an out-of-process JEPA "
-        "latent-prediction residual detector (separate torch repo).",
-        ["olmoearth_change_detect", "olmoearth_trace_shifts"],
+        "(olmoearth_compare_results, mode='series'), and an out-of-process "
+        "JEPA latent-prediction residual detector (separate torch repo).",
+        ["olmoearth_change_detect", "olmoearth_compare_results"],
     ),
     SkillSpec(
         6,
@@ -188,11 +188,12 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-uncertainty",
         "Analyze",
         "implemented",
-        "Ensemble-disagreement confidence (across distinct results) + "
-        "Meyer-Pebesma Area-of-Applicability OOD flag. The signals that "
-        "work when Studio gives you hard classes only; when per-class "
-        "scores exist, #18 ranks errors better (measured).",
-        ["olmoearth_area_of_applicability", "olmoearth_ensemble_uncertainty"],
+        "Ensemble-disagreement confidence (across distinct results: "
+        "olmoearth_compare_results, mode='ensemble') + Meyer-Pebesma "
+        "Area-of-Applicability OOD flag. The signals that work when Studio "
+        "gives you hard classes only; when per-class scores exist, #18 ranks "
+        "errors better (measured).",
+        ["olmoearth_area_of_applicability", "olmoearth_compare_results"],
     ),
     SkillSpec(
         10,
@@ -246,7 +247,7 @@ SKILLS: list[SkillSpec] = [
         "implemented",
         "arXiv + OpenAlex literature search + DOI/arXiv-id resolution to "
         "ground citations (key-free; deduped across sources).",
-        ["olmoearth_litsearch", "olmoearth_litsearch_resolve"],
+        ["olmoearth_litsearch"],
     ),
     SkillSpec(
         16,
@@ -300,17 +301,31 @@ SKILLS: list[SkillSpec] = [
         "Analyze",
         "implemented",
         "Label-free review set from the model's own top-1-minus-top-2 margin: "
-        "which windows to check first at a budget, boundary-first ordering, "
-        "the attainable-ceiling arithmetic, and a grader that scores any "
-        "candidate audit rule against the margin and a no-model control with "
-        "a per-group sign test. Bring-your-own scores (Studio returns none).",
+        "which windows to check first at a budget (from caller scores, from a "
+        "direct model run's scores raster and manifest, or from a Studio "
+        "result whose band is a binary score in [0, 1], sampled on a grid), "
+        "boundary-first ordering, the attainable-ceiling arithmetic, and "
+        "a grader for any candidate audit rule. Then how wrong the map is: a "
+        "labelled sample drawn by a design, its error rate with the interval "
+        "that design earns, per-class accuracy and a certified zone (the "
+        "optional olmoearth-inferencex extra). A review set is not a sample.",
         [
             "olmoearth_review_set",
+            "olmoearth_review_set_from_result",
+            "olmoearth_scores_from_file",
+            "olmoearth_compare_review",
             "olmoearth_grade_review_rule",
             "olmoearth_review_budget_ceiling",
+            "olmoearth_plan_label_sample",
+            "olmoearth_estimate_map_error",
+            "olmoearth_certify_zone",
         ],
     ),
 ]
+
+
+#: The one #7 tool sent on every turn; the spatial-CV tools are deferred.
+_EVALUATE_CORE = frozenset({"olmoearth_classification_metrics"})
 
 
 def skills_by_status(status: SkillStatus) -> list[SkillSpec]:
@@ -319,36 +334,67 @@ def skills_by_status(status: SkillStatus) -> list[SkillSpec]:
 
 
 def build_default_registry() -> ToolRegistry:
-    """Assemble a :class:`ToolRegistry` from the implemented skill bundles.
+    """Assemble a :class:`ToolRegistry` from every implemented skill bundle.
 
-    Today that is only the foundational Studio tools. As skills land,
-    add their ``build_*_tools()`` bundle here (and flip the catalog
-    ``status`` to ``"implemented"``).
+    Core bundles are sent to the LLM on every turn. Deferred bundles are
+    registered under their skill's name (``group=``) and sent only once that
+    skill is loaded (``olmoearth_load_skill``) or forced from the web UI; see
+    :mod:`olmoearth_agent.tools.registry`. A new skill adds its
+    ``build_*_tools()`` bundle here and flips its catalog ``status``.
     """
     registry = ToolRegistry()
+    # --- Core: sent on every turn. ---
     registry.register_all(build_studio_tools())
     registry.register_all(build_predict_tools())
-    registry.register_all(build_baseline_compare_tools())
+    # How Studio results differ (#4, #5 series, #9 ensemble): one tool.
+    registry.register_all(build_compare_tools())
     registry.register_all(build_change_detect_tools())
-    # Timeseries shift tracing (skill #5 family): one model across dated results.
-    registry.register_all(build_trace_shift_tools())
-    registry.register_all(build_cloud_mask_audit_tools())
-    registry.register_all(build_evaluate_tools())
-    registry.register_all(build_uncertainty_tools())
+    # Accuracy against labels stays core (the comparison and review tools
+    # route to it); #7's spatial-CV tools are deferred below.
+    evaluate = build_evaluate_tools()
+    registry.register_all(t for t in evaluate if t.spec.name in _EVALUATE_CORE)
     # Label-free error ranking (skill #18); complements #9's ensemble/OOD
     # signals, which are what remain reachable when Studio yields only
     # hard classes.
     registry.register_all(build_review_set_tools())
-    registry.register_all(build_similarity_tools())
+    # The scores provider (#18): a direct model run's raster + manifest as the
+    # review set's and the estimation tools' input. Core, not deferred: it is
+    # the entry point of a path whose other tools are all core, and deferring
+    # it would put a load_skill turn before the first useful call.
+    registry.register_all(build_scores_file_tools())
+    # How wrong is the map (skill #18, second half): design-based estimation
+    # through the optional inferencex extra; the tools say so when it is absent.
+    registry.register_all(build_estimation_tools())
     registry.register_all(build_narrative_tools())
-    registry.register_all(build_negative_sampler_tools())
     registry.register_all(build_litsearch_tools())
-    registry.register_all(build_automate_tools())
-    registry.register_all(build_rslearn_tools())
     registry.register_all(build_export_tools())
     registry.register_all(build_qgis_tools())
     registry.register_all(build_provenance_tools())
-    registry.register_all(build_skill_tools())
+    # --- Deferred: sent once their skill is loaded. ---
+    # Self-run training (#3, #17): only when the user trains the model
+    # themselves; Studio trains on Ai2's compute (soul.md).
+    registry.register_all(build_automate_tools(), group="olmoearth-embeddings")
+    registry.register_all(build_rslearn_tools(), group="olmoearth-rslearn")
+    # Caller-array tools (#6, #7 spatial CV, #8, #9 AOA, #10): their inputs
+    # are arrays the user supplies inline, which no agent tool produces.
+    registry.register_all(
+        build_baseline_compare_tools(), group="olmoearth-baseline-compare"
+    )
+    registry.register_all(
+        (t for t in evaluate if t.spec.name not in _EVALUATE_CORE),
+        group="olmoearth-evaluate",
+    )
+    registry.register_all(build_similarity_tools(), group="olmoearth-similarity")
+    registry.register_all(build_uncertainty_tools(), group="olmoearth-uncertainty")
+    registry.register_all(
+        build_cloud_mask_audit_tools(), group="olmoearth-cloud-mask-audit"
+    )
+    # Label preparation from the user's own presence-only file (#16).
+    registry.register_all(
+        build_negative_sampler_tools(), group="olmoearth-negative-sampler"
+    )
+    # Skill loading, after the deferred bundles so its description lists them.
+    registry.register_all(build_skill_tools(registry=registry))
     # Cross-thread preference memory (remember/forget); core, not a skill.
     registry.register_all(build_memory_tools())
     # Opt-in code execution (OLMOEARTH_RUN_PYTHON); an empty bundle otherwise.

@@ -10,6 +10,115 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **The claim check: the agent's own model reads the answer against the run
+  (`harness/claim_check.py`).** exp86 round 9's audit found 16 material
+  claims in 10 of 30 answers, most where the tools said nothing and the model
+  filled the gap: offers of a step no tool takes or whose preconditions do
+  not hold (7 of 16), claims about the world no tool checked, a margin read
+  as a probability of error, a tool's summary read against another set. The
+  rules catch 14 of round 8's 17 material claims on replayed calls but about
+  half of new wordings (23 of 46). The check sends the draft, the user's
+  messages (and on the web the earlier answers), the capability card and
+  every tool call with its result as the model read it (whole, or a spilled
+  result's summary and file, `spill.llm_view`) to the agent's own client
+  (`OlmoEarthLLM.chat`, no tools, the new `instruct_verify` preset:
+  temperature 0.1, no presence penalty, `enable_thinking` false, at most
+  4,096 tokens), and asks for `[{"sentence", "kind", "why"}]`: a sentence
+  that states what no tool output or user message supports (`unsupported`),
+  contradicts a tool output (`contradicts`), or offers a step no tool on the
+  card can take, or whose inputs the run lacks (`offer`); not a restatement,
+  a hedged reading the outputs support, or an offer the card lists with what
+  it needs. The reply is read leniently (prose, a fence, a thinking block, a
+  Python literal, a reply cut at the budget keeps its complete items); each
+  quote is matched to the answer's own sentence (Markdown, bullets, case and
+  punctuation aside, a quote over two sentences names both, a near copy of a
+  long one names it) and a quote found nowhere is reported, never marked. A
+  malformed reply, a failed call (named by its exception type only) or a
+  record over 200,000 characters fails open. `AnswerChecksMiddleware` runs it
+  as the check `claims` after the rules: its flags join theirs in the one
+  rewrite, with a section that asks for a possible step and what it needs in
+  place of an impossible offer, and it reads the rewrite again, marking what
+  it still flags `[unverified: claims]`; at most two model calls per run.
+  Each call emits one `check` event (`revise`, `marked`, `passed` or
+  `failed_open`) with the verifier's raw `reply`, its `version`
+  (`claim-check-1`, with the prompt's digest pinned in the tests),
+  `unmatched`, `reply_complete`, `finish_reason` and any `error`. Off by
+  default; on with `LeadAgent(check_claims=True)` or
+  `OLMOEARTH_CHECK_CLAIMS=1`. exp86 round 10 ran it on, with the agent's own
+  model as verifier: 2 or 3 of its 20 flags were real, three of the four
+  sentences it left marked were correct, and it flagged none of the round's
+  10 material findings. The verifier reads the capability card
+  (`harness/capabilities.py`). A preset's `chat_template_kwargs` are merged with
+  `preserve_thinking`, no longer replaced by it; the web UI shows a check
+  event that passed, failed open or appended as such, not as a rewrite.
+  Measured offline, without a model: the verifier prompts of round 9's 30
+  runs are 7,078 to 12,762 tokens (chars / 4; median 9,798, of which the
+  card is 6,172).
+- **`olmoearth_scores_from_file`: a direct model run's map as review-set
+  input (the cluster scores provider).** Studio's API gives map tiles and a
+  point lookup, never per-class scores. A run outside Studio (the companion
+  repository's `scripts/score_area.py`, Ai2's fine-tuned AWF model on a GPU
+  cluster) writes a georeferenced `(C, H, W)` float32 `scores.tif` of logits
+  or probabilities with NaN no-data, and a `manifest.json`. The tool reads
+  such a directory under `OLMOEARTH_SCORES_ROOT` (the scores files' path
+  rule; a symlink or a manifest naming a file outside the directory is
+  refused, and the raster's sha256 must be the manifest's), pools it with
+  `oe_inferencex.assess.assess_prediction` as `oe-inferencex assess` does
+  (`is_logit` from the manifest, `patch` 4 by default), and writes one scores
+  file: each valid window's row holds the package's window confidence at its
+  majority class and 0 elsewhere (exp64's mapping), with its pooled top-1
+  probability and class beside it. `olmoearth_review_set` on it is the
+  package's review set, `olmoearth_plan_label_sample` draws what
+  `oe-inferencex sample` draws, and two runs go to `olmoearth_compare_review`.
+  A channel the manifest marks as the label fill value (`nodata_value_<c>`;
+  AWF's channel 9, never a training target) is left out of the margin and the
+  class vote unless `include_fill_class` is set. For probabilities the
+  confidence is the package's, the top-1 probability. The result gives the
+  scores file, the window grid, valid and no-data windows, the classes, the
+  model and revision, the date window and the provenance (full model output,
+  not Studio point samples); never the area. Core, not deferred: it opens a
+  path whose other tools are all core (a default turn now carries about 7,700
+  spec tokens). On the first real run (AWF, 512 x 512 px, 16,384 windows of
+  4 px) the 5% review set is `oe-inferencex assess --logits`'s, the same 819
+  windows in the same order; leaving channel 9 out changes none of them,
+  since it is the lowest channel at every pixel. The soul routes a map from a
+  direct model run to it.
+- `olmoearth_review_set` reads a scores file's own `score_type`, `signal`,
+  per-window class and class names; the estimation tools read its `p1` and
+  `map_class`.
+- **`olmoearth_review_set_from_result`: which windows of a Studio prediction to
+  check first.** A live trial (Qwen3.8-27B-NVFP4, 24 September 2026) asked
+  which windows a reviewer should open first; with no tool turning a Studio
+  result into review-set input, the model ranked hand-sampled pixels and put
+  the most confident cells (0.97, 0.99) first. The new tool samples the
+  result's band on a grid (one pixel-value per window, 2-16 per side, bounded
+  concurrency, no-data dropped and counted), reads a `[0, 1]` score `s` as
+  `[1 - s, s]` and ranks with `analysis.review_set.review_set`, least decided
+  first, stating the assumption (the score is P(positive) for ranking only;
+  not a probability of error). Other regression ranges need a `threshold`;
+  classification bands are refused. Windows are `(row, col)` and index; the
+  scores and window locations go to a file under `OLMOEARTH_SCORES_ROOT` that
+  `olmoearth_review_set` and the estimation tools read.
+- **How wrong is the map: `olmoearth_plan_label_sample`,
+  `olmoearth_estimate_map_error`, `olmoearth_certify_zone`.** Wrap
+  `oe_inferencex.estimate` from `olmoearth-inferencex` >= 1.3.0, a new
+  optional extra (`pip install 'olmoearth-agent[inferencex]'`; the core stays
+  numpy-free, and without the extra the tools answer `available: false` with
+  the install line). The trial's model had proposed a pooled stratified and
+  near-threshold sample with a simple-random-sample interval; the tools draw
+  the package's design (confidence strata by default, random for a certified
+  zone), save it with a labelling sheet, return the error rate with the
+  interval that design earns and its `method`, per-class accuracy, and the
+  certified zone, and refuse a review set offered as a sample.
+- `olmoearth_compare_review` takes `date_a`, `date_b` and `labels_date`; with
+  the extra it attaches `oe_inferencex.compare.dates_reading` and, across
+  different dates, declines to grade which side is right; without it, it says
+  the dates were not assessed.
+- `olmoearth_search_predictions` returns a `models` map (name, `model_type`,
+  `prediction_type` from the model record's `wizard_answers`) and says the
+  listing is this account's models only; `olmoearth_fetch_results` and
+  `olmoearth_get_prediction_result` return each output's declared regression
+  range or classes from `result_metadata`.
 - **Skill #18 `olmoearth-review-set` — label-free error ranking.** Answers the
   question nothing in the catalog answered: *which windows should a human open
   first, and how much of the error do they catch at that budget?*
@@ -35,8 +144,93 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   these numbers order a review well while being badly miscalibrated as
   probabilities. Evidence from
   [`2imi9/olmoearth_inferenceX`](https://github.com/2imi9/olmoearth_inferenceX).
+- **A capability card in the system prompt, built from the tools' code, and
+  two rules in the soul** (exp86 round 9's audit: 7 of 16 material findings
+  were offers of actions no tool can do or whose preconditions did not hold,
+  such as a review set of a regression band with no threshold, "I'll set up a
+  direct model run", labels on flagged windows turned into "a proper
+  error-rate estimate" and a comparison "rerun with labels_date", which takes
+  no labels; others were claims no tool checked, such as "no ground-truth
+  labels exist"). Every `RegisteredTool` now carries a `Capability`
+  (`tools/registry.py`), declared beside its handler: what it `does` in one
+  line, what it `needs` (preconditions it enforces, e.g. a threshold for a
+  regression band not in [0, 1], a `design='random'` plan to certify) and
+  what it `cannot` do (e.g. say which map is right, even with `labels_date`,
+  for `olmoearth_compare_review`; take a review set as its sample, for
+  `olmoearth_estimate_map_error`). `harness/capabilities.capability_card(registry,
+  loaded_groups=())` assembles the card: each core tool and each tool of a
+  loaded group with its required arguments from the spec, the groups not yet
+  loaded by name, and what no tool of the registry can do (run a model
+  outside Studio; look up or fetch ground-truth labels, or say whether any
+  exist; read what a Studio model was trained on; read files outside the
+  workspace and the scores root), each dropped once a registered tool
+  `covers` it (the opt-in `olmoearth_run_python` covers files and model
+  runs). `LeadAgent` puts the card right after the soul
+  (`soul.with_capability_card`), before the skill index and the other
+  clauses, and rebuilds the system message on the turn after a group loads.
+  The card is about 1,390 tokens (characters / 4) for the default registry,
+  about 1,700 with every group loaded. The soul's new rules: state as fact
+  only what a tool of this run returned or the user said, and say what no
+  tool looked up is not known from this run; propose next steps freely, but
+  only actions the card lists, with their preconditions, and say plainly
+  when no tool can do what the user may want. Its routing no longer presumes
+  that no labels exist ("when the user gives no ground-truth labels"). A test
+  fails for a tool of `build_default_registry()` with no declaration, and
+  each `needs` and `cannot` entry has a probe that calls the tool in that
+  condition and gets the refusal or the absence it states
+  (`tests/tools/test_tool_capabilities.py`), so the card cannot drift from
+  the code.
 
 ### Changed
+- **The lead-agent loop is a middleware chain with LangChain 1.x's hook
+  interface** (`harness/middleware.py`; the owner chose on 25 September 2026
+  to build the layer rather than migrate, so that a later migration is a
+  mechanical replacement). `AgentMiddleware` has LangChain's async hooks
+  (`abefore_agent`, `abefore_model`, `awrap_model_call`, `aafter_model`,
+  `awrap_tool_call`, `aafter_agent`), its order (`before_*` in list order,
+  `after_*` in reverse, wraps nested with the first outermost), node hooks
+  that return state updates or `{"jump_to": "model" | "tools" | "end"}`, and
+  `@hook_config(can_jump_to=[...])`; an undeclared jump raises.
+  `ModelRequest` (messages, system message, tools, tool choice,
+  `model_settings` = `OlmoEarthLLM.chat`'s keyword arguments, state,
+  runtime) and `ToolCallRequest` have `.override()`; `ModelResponse` wraps our
+  `ChatResponse`. The runtime's `emit(event)` publishes an event, and
+  `run_stream` yields it in order as it is emitted, even from inside a model
+  or tool call. The loop's behaviours are ported onto three middlewares:
+  `TurnCapMiddleware` (the forced answer without tools at the cap, and
+  `max_turns`), `RetryHintMiddleware` (the stop-retrying hint, moved from
+  `ToolRegistry.dispatch`, whose `retry_hint=True` default still applies it to
+  direct calls; a subclass that overrides `dispatch(call, ctx)` must now accept
+  the `retry_hint` keyword, since the agent passes it) and
+  `AnswerChecksMiddleware` (the checks, the one rewrite in
+  `REVISION_MODE`, the marking and the appended required statements, with
+  their `check` and `grounding_check` events). `LeadAgent(middleware=[...])`
+  replaces them; the default chain runs as the loop did: the existing tests
+  pass unchanged, and 3,000 random scripted runs give the same events, model
+  calls and state as the loop before it. When a wrap hook replaces a tool
+  call, the provenance log and the answer checks record the call that ran. A chain that would start a turn past
+  `max_turns + 1`, or enter the model step more than 10 times in one turn,
+  raises `MiddlewareError`.
+- The `inferencex` extra is `olmoearth-inferencex[geo]` (>= 1.3.0): reading a
+  scores GeoTIFF needs rasterio, and the package's `geo` extra brings it, with
+  geopandas, shapely, pystac-client, planetary-computer, matplotlib and scipy.
+  The core install is unchanged and numpy-free.
+- **One comparison tool.** `olmoearth_compare_results` takes 2-8
+  `result_ids` and a `mode`: `pair`, `group`, `series` (one model, ordered by
+  date) or `ensemble`; the default `auto` picks pair, series or group from the
+  results' models and dates. It replaces `olmoearth_compare_group`,
+  `olmoearth_trace_shifts` and `olmoearth_ensemble_uncertainty` and keeps their
+  statistics. Breaking: `result_id_a`/`result_id_b` inputs are now
+  `result_ids`; hotspots are grid `(row, col)` and index, and
+  `shared_extent_bbox` is gone (rule 3.1).
+- **Deferred tool groups.** A turn sends the core tools only (about 7,400
+  spec tokens instead of 13,700). The self-run training tools, the
+  caller-array tools and the negative sampler are sent once their skill is
+  loaded with `olmoearth_load_skill`, or forced from the web UI.
+- `olmoearth_load_context` pages projects (`limit`, `offset`, `total`) and
+  replaces `olmoearth_search_projects`; `olmoearth_litsearch` takes an
+  `identifier` and replaces `olmoearth_litsearch_resolve`;
+  `olmoearth_list_skills` is removed (the index is in the system prompt).
 - **Skill #9 `olmoearth-uncertainty` now routes the error-ranking question to
   #18** instead of silently answering it. Both its tool descriptions and its
   `SKILLS.md` section state the split: #9 owns self-consistency and the
@@ -56,6 +250,605 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `build_default_registry()`.
 - Ruff `per-file-ignores` for `tests/**` now also allows `S311`: seeded PRNG
   fixtures must be reproducible, not unguessable.
+- **`olmoearth_compare_results` refuses two results of different properties**
+  (`comparable: false`, both property names and declared ranges) unless
+  `allow_different_properties=true`, which returns only the correlation as
+  meaningful, with a warning (the web UI's compare card then shows the warning
+  instead of a difference map); the trial had narrated a binary score and a
+  count as one quantity. `olmoearth_ensemble_uncertainty` refuses the same.
+- The harness soul routes "which windows to check" to the review-set tools and
+  "how wrong is the map" to the estimation tools, and describes a model by its
+  `prediction_type`. `olmoearth_compare_group` routes dated series to
+  `olmoearth_trace_shifts`. Skill #18's catalog row lists all eight of its
+  tools. The review-set and ensemble descriptions were shortened (the
+  evidence stays in the results).
+- `olmoearth_get_prediction_result` returns `result_metadata` without its
+  `geometry` (rule §3.1).
+- Shared grid sampling (`tools/sampling.py`) replaces four copies of the
+  pixel-value loop and two band readers; a Studio class (`{label, color}`)
+  reads as its label, so categorical agreement and vote counts no longer
+  depend on an unhashable object.
+- mypy skips numpy's stubs (3.12 syntax) and the untyped companion package.
+- **Repository reorganised.** The four instruction skills (#1-#3, #17) ship
+  inside the package under `src/olmoearth_agent/skills/packages/` (moved from
+  the frozen `2imi9/OlmoEarth-Skills`) and the `vendor/olmoearth-skills`
+  submodule is removed; five research notes and the web UI design notes move
+  to `docs/archive/`; nine unused dataclasses are removed from `types.py`;
+  `docs/serving.md` documents the vLLM cluster setup.
+- **The turn cap no longer ends a run without an answer.** When the last
+  allowed turn still asks for tools, `LeadAgent.run_stream` yields
+  `max_turns` (`final_answer_forced`), tells the model the cap is reached,
+  and makes one more call with no tools; its text is the `final` event,
+  marked `forced_by_turn_cap` (a model that writes nothing gets a harness
+  answer naming the cap). The CLI prints it with a note on stderr and the
+  web UI shows the same note above it; the Claude backend writes tool turns
+  as text in a request without tools. exp86 round 1's brief 4 on a Studio
+  result ended all three runs at the cap with no answer.
+- The soul asks for numbers exactly as the tools returned them, no ratio,
+  difference or percentage of the model's own, and no figure quoted from a
+  tool's description as a finding (exp86 round 1).
+- **The answer's numbers are checked before it is shown** (exp86 round 3's
+  fix, 25 September 2026). In each of three rounds the only genuine fault was
+  a number no tool had returned (round 3: "5,565+ windows" between the budget
+  cut and the median; the scores give 7,373), and each tool fix only moved
+  the model to a new derived quantity. `LeadAgent.run_stream` now reads every
+  number of the final answer (`harness/grounding.py`: thousands separators,
+  a U+2212 minus, percents, `k`/`M` suffixes, digit runs inside ids and
+  dates, integers up to 8 exempt) and looks for it in the run's full tool
+  results, the brief, the history and the saved preferences, never in the
+  system prompt or a tool description. When one is found in none of them it
+  yields `grounding_check` (`action: "revise"`, the numbers as written),
+  sends the draft back with a harness note naming them and makes one more
+  call with no tools; the rewrite is the `final` (`grounding_revised`), or
+  the draft if the rewrite is empty. A rewrite that still states such a
+  number is shown as written, with a second `grounding_check`
+  (`action: "shown"`); nothing is asked twice. The answer forced at the turn
+  cap is checked too; the harness's own fallback text is not. `AgentResult`
+  carries `grounding_revised` and `grounding_checks`. The CLI names the
+  numbers still unsupported on stderr (the rewrite request under
+  `--show-trace`); the web UI notes them above the answer and puts the
+  request in the steps. Off with `LeadAgent(check_numbers=False)` or
+  `OLMOEARTH_CHECK_NUMBERS=0`. Over the 87 answers of rounds 1-3 the reader
+  reports seven numbers in six answers, each a fault the trial's diagnoses
+  found ("51-70%" from a description, "47 dropped", "> 90%", "6.5%",
+  "delta/18", "5,565+"), and none of the other 3,053. The soul says the
+  harness checks.
+- **A comparison of different properties returns only what its warning allows**
+  (exp86 round 4's fix, 25 September 2026). With `allow_different_properties`,
+  `olmoearth_compare_results` used to return the mean difference, the mean and
+  maximum absolute difference, the RMSE and the agreement fraction between the
+  two quantities, beside a warning not to read them; two of round 4's three
+  answers put them in a table as findings. A pair of different properties now
+  keeps `n_samples`, each map's own mean and the correlation, and names the
+  rest in `statistics_left_out`. In a group, a pair of one property keeps its
+  statistics, a pair of two keeps only those, and the ensemble and the
+  most-divergent pair are not computed. The number check's `revise` event
+  carries the answer it replaces (`draft`), so a trace shows what was removed.
+- **The number check reads "1,000" as a thousand** (exp86 round 5's fix). A
+  thousands-separated number was also tried as its parts, so that a window
+  written "(24,108)" is supported by its row and column; "1,000" became 1
+  and 0, both exempt, and "e.g. 1,000+ labels", in no tool output, passed.
+  Only a number standing alone in brackets is split now. Over the 147
+  answers of exp86's five rounds the reader reports the same seven answers
+  as the trial's scorer, and no other.
+- **A comparison of two inferences counts every class change, not only the
+  listed ones** (the exp86 round 6 audit). `olmoearth_compare_review` listed
+  the first differing windows in window order (the top rows of the grid) and
+  gave no breakdown, and answers read a direction and a place off that
+  listing: "most differing windows flip class 1 -> 0" when 1,247 of 1,570
+  flipped 0 -> 1, "a long strip along the north edge" for 1.3% of the
+  differences, a "dominant contrast" of 11.7% where another pair held 37%.
+  The output now carries `class_changes` (each (class A, class B) pair with
+  its count and share of the differing windows, largest first, up to ten),
+  `n_class_changes`, `a_more_confident_share_of_differing`, and
+  `listing_order`, which says the list is the first windows in order, not a
+  sample.
+- **The review-set tools give the aggregates an answer needs, scope their
+  evidence to the case, and carry the output contract** (the exp86 round 7
+  diagnosis and the blind audit of rounds 6 and 7). `olmoearth_compare_review`
+  adds a `spatial` breakdown (each of 4 row and 4 column bands' share of the
+  differing windows and of all windows), `class_pairs` (each unordered class
+  pair with both directions' counts, beside the directed `class_changes`),
+  `b_more_confident_share_of_differing`, and class names when both scores
+  files give them; it lists only the first 10 differing windows inline and
+  saves every one to `differing_path` (`n_differing_total`, `listing_order`).
+  A result now carries the shared output contract: `facts` (one-sentence
+  statements computed by code), `must_state` (at most 3 sentences of at most
+  25 words, each a limit the answer must convey) and `forbidden_claims`
+  (`winner_without_labels`, `another_date_settles_it` across dates,
+  `error_rate_without_labels`, `combined_statistic_across_properties` in
+  `olmoearth_compare_results`; each id once per result). The facts:
+  `dominant_change` (`from_class` -> `to_class` from map A to map B, with
+  `reverse_n`, `reverse_share` and `tied_with_reverse`; a tie with any other
+  direction is named in the sentence), `more_confident_side` (`side` A, B or
+  `neither`, decided on counts; `share_a`, `share_b`, `share_equal`),
+  `concentration` (`grid`, `n_differing`, `top_band_share` = the northmost
+  row band's share of the differing windows, and `max_band`, the band of
+  either axis holding the most, with its `axis`, `band` from 0, `of_grid`
+  and `share`), and `margin_ratio` (the median margin over the listed
+  windows' margins and over all windows in the review set:
+  `listed_low`/`listed_high`, `review_set_low`/`review_set_high`; the margin
+  summary adds the review set's range). The inline `evidence` and `caveats`
+  blocks are replaced by one `evidence_scope` sentence: Ai2's 24-task
+  embedding suite, window level, OlmoEarth family, and whether that covers
+  this case; when it does not, `must_state` gets a short sentence stating the
+  limit ("No recorded experiment grades a regression score read as a
+  probability." for a Studio band; "This ranking uses the logit margin; on
+  Ai2's suite one minus the top probability ranked errors better on 14 of 16
+  multi-class tasks." for multi-class logits, exp76), and the full text is
+  saved to `evidence_detail_path`. The old caveat that the measured evidence
+  is for the logit margin is dropped: on the suite the probability margin
+  beat the logit margin on all 16 multi-class tasks. A ranking of a scores
+  file carries the file's warnings whole in `scores_file_warnings` (the
+  provider now writes its `package_warnings` into the file) and the limit a
+  known one states in `must_state`, never the provider's "pass form='top1'",
+  an argument no agent tool takes. A scores file's rows are placed on the
+  file's own grid, never on a grid the model passed (`grid_note` says when
+  one was set aside; two files naming different grids are refused).
+  `olmoearth_scores_from_file` adds `model_and_raster` ("model ... at
+  revision a347b15; raster sha256 a7c40be9 ...": a hash was given as a
+  revision), a ranking with a grid adds `boundary_neighbours_means`
+  (neighbours of a different PREDICTED class, not true boundaries, not
+  error), and a comparison adds `boundary_means`. A spilled tool result
+  previews its summary fields and copies the contract whole (a result that
+  is not a dict keeps the raw JSON prefix), and its note no longer asks for
+  the saved path in the answer and says not to describe the file beyond the
+  preview. No number, ranking or parity-checked field changes.
+- **The estimation tools state the statistical rules as data: next steps,
+  facts and forbidden claims** (the exp86 rounds 6 and 7 blind audit). The
+  answers broke rules the tools had just applied: a looser alpha or a
+  Bonferroni re-run offered after the prefix rule certified nothing (every
+  p_value was at least 0.554), a zone offered from a confidence design, an
+  error rate offered for a regression declared 0.2 to 1.2 with no threshold,
+  "a third dated map" offered to settle which of two is right, and "~23%"
+  (69/300) and "127 unused labels" (300 - 173) worked out by hand. Every
+  output of `olmoearth_plan_label_sample`, `olmoearth_estimate_map_error` and
+  `olmoearth_certify_zone` now carries `next_steps`, written by code from the
+  design and the outcome (nothing certified under a random design: label
+  more windows under a new random design fixed in advance, or report the
+  whole-map estimate; never a looser alpha or another rule), and the output
+  contract's `forbidden_claims`, each id one of its fixed ids and listed once
+  per result: `post_hoc_alpha` and `rule_switch_after_failure` on every
+  certification (the latter says prefix accepts levels from the smallest
+  zone upward while p_value <= delta and stops at the first failure, and
+  bonferroni any level at p_value <= delta/J, with the p_values each rule
+  reads); `certify_from_nonrandom_design`; `error_rate_without_labels` on a
+  plan; `subset_labelling_sufficient` on a stratified plan only, whose sheet
+  lists the strata in turn, least confident first, so its first rows are one
+  stratum; and `simple_random_interval_for_stratified_design` on a stratified
+  estimate. A random plan's sheet is in the package's random draw order, so
+  it carries the fact `prefix_is_random_sample` instead (its first k rows,
+  k fixed before labelling, are a smaller random sample: unbiased, with a
+  wider interval; the sentence names the route that estimates them). An
+  estimate and a certification carry the fact `whole_map_estimate`
+  (estimate, low, high, design; the sentence adds the package's warning when
+  it gives one, such as starved strata or no labelled window wrong). A rate
+  over a Studio result's grid (plan, estimate and certification alike) and a
+  certified zone carry a `must_state` scope. At the largest Studio grid a
+  budget above the valid windows is planned at all of them with the fact
+  `unused_labels` (requested, planned, n) instead of refused; below it the
+  refusal says to keep the budget at grid 16, and inline or file scores
+  still refuse, stating the labels left over in the error and as an
+  `unused_labels` fact on the failed envelope (the registry carries a
+  refusal's `facts`, `must_state` and `forbidden_claims` beside its
+  unchanged error). `olmoearth_compare_results` names
+  `error_rate_for_unthresholded_regression` for a regression band that is not
+  a [0, 1] score, and `combined_statistic_across_properties` for results of
+  different properties (refused or allowed); `olmoearth_compare_review` names
+  `another_date_settles_it` for maps of different or overlapping periods;
+  both name `winner_without_labels` on every comparison, since neither takes
+  labels. The builders live in `olmoearth_agent.tools.statistical_rules`. No
+  number, draw or ranking changes: the six fixed-input parity calls of exp86
+  round 7, replayed, keep every key and value and pass against the package.
+- **The answer is checked against the run, not only its numbers** (the exp86
+  round 6 and 7 audits, for exp87). The blind audit found a false or
+  unsupported statement in 23 of 30 answers of each round; the number check
+  reads numbers only, and passed "~23%" (69/300, derived) against an
+  unrelated count of 23 in six rounds. The post-answer checks are now a list
+  in `harness/checks.py`, each taking the answer and the run's evidence and
+  returning violations (`{check, text, detail}`, `text` the sentence):
+  `numbers`; `direction`, which reads the tools' `facts` under the contract
+  the tools and the harness share (`dominant_change` with `reverse_n`,
+  `reverse_share` and `tied_with_reverse`; `more_confident_side` with `side`
+  A, B or neither and `share_a`, `share_b`, `share_equal`; `concentration`
+  with `grid`, `n_differing`, `top_band_share` of the northmost row band and
+  `max_band`; `margin_ratio` with the listed windows' and the whole review
+  set's range; `unused_labels`; `whole_map_estimate` and unknown ids are
+  shown, never checked): a dominant change stated backwards, or another
+  pair named the dominant change, read only in a sentence about change
+  between the maps (an arrow, "from X to Y", a change verb, a transition or
+  contrast; never what the maps are made of) and only for classes written
+  by name or as `class N` (a bare digit is never a class, so "2 to 4 rows"
+  is none), and no contradiction when the reverse ties the top count; the
+  other side named the more confident, unless the clause places it in a
+  region ("in the north"); a clause that puts the bulk of the differences
+  (mostly, most, concentrated, clustered, dominated, a strip, along) at the
+  north edge or the top rows when the northmost band holds under 10% of
+  them, at another edge when `max_band` is another band on that axis, or
+  in rows too few to hold half of them, never a window's own coordinates
+  ("the highest-ranked window is at row 12, col 40") or a count of a minor
+  part; a magnitude that compares the review windows' confidence with the
+  typical window's ("20x less confident", "orders of magnitude more
+  uncertain than typical windows") outside `margin_ratio`, not any "N
+  times" near a confidence word; a wrong count of unused labels. `actions`:
+  a file said to be saved that no tool of the run reports writing (a path
+  under the same key as the argument it echoes is an input; a key that
+  names an output, such as `out_path`, or another key, reports a write
+  though the caller chose the path; the harness's own spill file of a
+  result too large for the context is written too), a list said to be
+  saved in a file that is not one, items said to be listed above or below,
+  or the first N said to be listed, that the answer does not hold ("as
+  shown above" or "see above" points at prose and is none; on the web,
+  where the tool results are shown above the answer, only "above" is not
+  checked). `forbidden_claims`, a detector per id a tool names
+  (`post_hoc_alpha`, which allows the alpha the tool ran at, the alpha the
+  user asked for, and either split over k levels in a sentence about
+  levels; `rule_switch_after_failure`; `certify_from_nonrandom_design`,
+  which takes advice to draw a random or probability sample as correct;
+  the error rate without labels or for an unthresholded regression; a
+  subset said to suffice; a winner without labels; a statistic across
+  properties; another date said to settle it, where "the earlier map" or
+  "the later image" is map A or B, not a new date);
+  `simple_random_interval_for_stratified_design` has no detector (the
+  package's own interval is a Wilson interval on the design's effective
+  sample size, which no wording tells from a naive one) and is ignored like
+  any unknown id. And `must_state`, the statements a reported result
+  requires: the first three per result, of at most 25 words each. The
+  detectors hold back on a negated clause, a hedge or an example, and read
+  each sentence once into its brackets, clauses and word spans, so a 12 KB
+  listing written as one sentence is checked in milliseconds (about 2 s
+  before). When any check fires, one rewrite call (no tools; the
+  `thinking_coding` sampling, `REVISION_MODE`, with no presence penalty)
+  lists every violation; the checks run again, and each sentence still
+  flagged is shown with `[unverified: <check>]` after it, never deleted (a
+  required statement still missing is added at the end). Each check that
+  fires yields a `check` event (`action` `revise`, with the `draft`, then
+  `marked`); the number check keeps its `grounding_check`. The number
+  check's sources are the tool results, the paths the harness spilled
+  results to, the brief and the user's turns, never the saved preferences;
+  an earlier assistant turn is a source on the web only, where it was
+  checked when it was shown. A percent is supported only by a share: any
+  value in [0, 1] (so 0% and 100% pass against 0 and 1, as before), a
+  percent written in a string, or a value under a key naming a percent,
+  share or rate; a count above 1 under another key never. `LeadAgent` takes
+  `surface` (`"cli"`, the default, or `"web"`, which the bridge passes) and
+  `check_answer` (`OLMOEARTH_CHECK_ANSWER=0` switches every check but the
+  numbers off); `AgentResult` carries `revised`, `checks` and `marked`, the
+  CLI and the web UI name the checks. The LLM client reads a server's
+  reasoning from `reasoning`, then `reasoning_content` (round 7 recorded no
+  thinking), for the `thinking` event only.
+  `scripts/validate_answer_checks.py` runs the checks over recorded
+  answers; with the tools' keys simulated from exp86's recorded results
+  under the contract, rounds 6 and 7 get 27 flags in 21 of 60 answers: 22
+  on sentences the blind audit confirmed false (every confirmed E3 action
+  claim, 2 of 3 E2 directions, 4 of 10 E1 listing readings, 1 of 20 E5, 2
+  of 16 E6, 2 of 5 E4, 8 of 45 others), 2 on sentences its verifiers added,
+  2 on the same claims the audit confirmed in sibling answers, and 1
+  required statement the answer omits (the same flags as before these
+  fixes). On the unaudited rounds 1 to 5 the
+  fixed detectors add 4 flags, each the row 0 strip read off the head of an
+  index-ordered listing that the audit confirmed false in rounds 6 and 7
+  (two of the four scope it to the listing, "visible" or "the top of the
+  list"). The percent rule adds 13 flags over the 207 answers of rounds 1
+  to 7, all derived (11 of them "~23%"), and removes none. The `inferencex`
+  extra requires olmoearth-inferencex 1.3.1.
+
+### Fixed
+- **The tools state what round 9's model filled in from general knowledge**
+  (the audit of exp86 round 9, on agent c62538f). Most of round 9's material
+  errors sat where the tools said nothing. Offers are not restricted; the
+  tools now say what holds.
+  - Labels. A Studio model summary (`olmoearth_search_predictions`'
+    `models`, `olmoearth_review_set_from_result`'s `model`) carries
+    `trained_on_labels`, the `label_field_id` and the train/val/test `split`
+    when the fine-tuning wizard names a label field; the requester is never
+    read. `olmoearth_search_predictions`, `olmoearth_compare_results` and
+    `olmoearth_review_set_from_result` state the fact `labels_in_studio`:
+    which models were fine-tuned on a label field of their project, so labels
+    for it may exist in Studio, and that no tool of the run looked them up
+    for this area. The comparisons' `winner_without_labels` reason, and
+    `olmoearth_compare_results`' framings and `method`, say no labels (no
+    ground truth) were given to this comparison, never that none exist.
+    Round 9 (B3/studio run 1) answered "no ground-truth labels exist" of two
+    models each fine-tuned on a label field of the user's project.
+  - Review sets. `margin_summary`'s `listed`, `not_listed` and `review_set`
+    give the `ranks` they cover, `not_listed` names what it counts after
+    (`after`: the tool's own listing), and the `reading` says a table of fewer
+    rows leaves out more windows, with margins no higher. Round 9 (B2/studio
+    run 1) showed 5 of 8 listed windows and called the tool's "83 not listed"
+    "the other 83 windows", margins 0.516 to 0.991, where three unshown
+    windows had margins of 0.26 to 0.47. The fact `review_set_classes` counts
+    every window of the review set by predicted class, listed or not (named
+    by the scores file's class names, a Studio score's side of its threshold,
+    or the class number; ten by name, the rest together). Round 9
+    (B8/cluster run 2) said montane_forest and woodland_forest pairs
+    "dominate" from the 10 listed windows; the 819 hold 256 grassland_barren
+    and 246 shrubland_savanna against 125 woodland_forest and 84
+    montane_forest.
+  - Lists in files. The fact `list_file` names, by its full path, the file a
+    comparison's differing windows or a review set's full list was written
+    to, and what it holds ("All 3,807 differing windows are listed, in window
+    order, in <path>, each with both maps' class and margin."), and
+    `listing_note` and `listing_order` name the file, not the key that holds
+    its path. Round 9 (B7/files run 1): "All 1,570 differing windows are
+    listed in `differing_path` above".
+  - A margin is not a probability of error. The contract gains the fixed id
+    `margin_as_error_probability`, emitted with every ranking
+    (`olmoearth_review_set`, from rows or a scores file, and
+    `olmoearth_review_set_from_result`). Its reason forbids calling a window
+    "most likely wrong", "probably an error" or "likely mislabeled", and,
+    where the ranking evidence does not or may not cover the case, an order
+    by likelihood ("the likeliest spots for a wrong call"). The answer
+    checks' detector reads the same: a window called probably wrong ("they're
+    most likely mislabeled", "the argmax label is most likely wrong there",
+    "probably errors", "more likely wrong than right", a margin called a
+    probability of error) is flagged; an order ("the most likely places for
+    a wrong label", "the windows most likely to be wrong", "where it is most
+    likely wrong") only where the emitting result's
+    `evidence_covers_this_case` is "no" or "not known": the blind audit of
+    rounds 7 and 8 refuted two such orders of an OlmoEarth model's logits,
+    and the audit of round 9 confirmed one of a Studio score. A negated,
+    quoted or example claim, an error rate, "least decided", "most
+    uncertain", "checked first" and the tools' own sentences pass. Over the
+    1,824 sentences of rounds 6 to 9's 120 answers, with the id emitted in
+    the 24 runs that ranked a review set, it flags 4: round 9's three
+    audited claims (two material), and round 6's "where it is most likely
+    wrong" (no finding), an order that passes under the current tools but
+    is read there because round 6's result predates
+    `evidence_covers_this_case`. Emitted in all 120 runs, it adds round 8's
+    "where each model is likely wrong" (B3/studio run 2), a confirmed
+    finding.
+  - Boundary shares. `boundary_means` says the shares measure no contiguity
+    and do not show whether whole regions flip or only their edges; `where`
+    says the differing windows lie on map A's predicted-class boundaries more
+    (or no more) often than windows overall, "not whether whole regions
+    flip", in place of "mostly on class boundaries" and "spread across the
+    scene"; and the fact `boundary_share` states both shares with that
+    limit. Round 9 (B3/cluster run 3): "mostly boundary reclassification
+    rather than wholesale area flips", where the round's audit found blocks
+    of 696, 543 and 467 differing windows.
+  - The integrated check (outside the repo) replays the tool calls of
+    rounds 8 and 9 (30 runs each) on these tools. Answers built from the
+    tools' own sentences raise no violation, with or without the extended
+    notes. Round 8's recorded answers keep 14 of 17 material findings
+    flagged, with the same 8 other flags; round 9's are flagged on 2 of its
+    16 material findings (the two "most likely" claims) and on one
+    immaterial confirmed finding, and nowhere else.
+- **The comparison and review tools state what their outputs cannot support**
+  (the blind audit of exp86 rounds 7 and 8, round 8 on agent 6d25307).
+  - `olmoearth_compare_results`: every correlation it returns (a pair's, each
+    pair's of a group, each step's of a series, with
+    `allow_different_properties` too) is a `correlation` fact with `r`, `n`
+    and its 95% interval by Fisher's z (none below 4 cells), whose sentence
+    says the sample cannot say whether the maps co-vary when the interval
+    holds 0, the sign otherwise, and that a correlation says nothing about
+    where. `must_state` says so; `spatial_pattern_from_one_correlation` is
+    forbidden whenever a correlation is returned, and
+    `agreement_from_uncertain_correlation` when its interval holds 0 and
+    reaches 0.3 on a side; below 50 cells `next_steps` names a denser `grid`
+    (or says the mode's cap is reached). Round 8 read r = -0.0172 over 25
+    cells (interval -0.41 to 0.38) as "do not agree spatially at all" and
+    "one is high where the other is indifferent".
+  - A regression band with no threshold forbids a review set
+    (`review_set_for_unthresholded_regression`, beside the error-rate claim)
+    in `olmoearth_compare_results` (a pair or a series; not a group or an
+    ensemble, whose own ranking of where the results disagree needs no
+    threshold) and in `olmoearth_review_set_from_result`'s refusal, its reason
+    scoped to a margin-based review set of the band it names; both
+    comparisons forbid labelling only the low-confidence windows
+    (`subset_labelling_sufficient`: not a sample of the map; the plan tool's
+    designs draw from every window).
+  - Two dated maps (`olmoearth_compare_review` with dates, a temporal pair or
+    a series in `olmoearth_compare_results`) forbid
+    `one_reference_settles_two_dates`, and their dates sentence says labels
+    for one date grade only that date's map and each map needs its own
+    date's reference. A temporal pair also forbids another date as what
+    settles which map is right (`another_date_settles_it`); a series does not,
+    since the trend over more dates is its own question.
+  - Where the evidence does not, or may not, cover the case, no field
+    carries the experiment's figures or its dataset: `evidence_scope` names
+    the source (exp58 or exp70 of 2imi9/olmoearth_inferenceX) and says it does
+    not cover the case, the `more_confident_side` fact drops "51 to 70
+    percent", the Studio review set's caveat drops exp78's "1.8 to 5.8
+    times", a provider's multi-class limit reaches `must_state` only where
+    the suite covers the case, and `evidence_outside_its_scope` is forbidden.
+    Round 8 wrote "51-70% of the time in comparable cases" and called a
+    GEOID-Flood pair "Sen1Floods11 flood maps". Where it covers the case only
+    in part (an OlmoEarth model's multi-class logits; the suite measured the
+    probability margin), `evidence_scope` carries none of the suite's 24-task
+    figures, only exp76's about the logit margin itself (worse than one minus
+    the top probability on 14 of 16 multi-class tasks), and
+    `evidence_outside_its_scope` names the logit margin as what the suite did
+    not measure. The file keeps the full text.
+  - A review set listed short (`olmoearth_review_set`, and the largest
+    budget's in `olmoearth_review_set_from_result`) saves every window of it
+    to a CSV beside the evidence file (rank, window, row, col, margin, class
+    or score; no coordinates): `review_list_path`, `review_list_rows`, and a
+    `listing_note` that says `review_set_evidence.json` holds evidence text
+    only (as `olmoearth_compare_review`'s `listing_order` now does), where
+    round 8 said the full list was saved in it.
+  - `margin_ratio` gives `listed_n` and, past ten listed, the first ten's own
+    ratio (`first_n`, `first_low`, `first_high`); round 8 gave ten shown
+    windows the 50's "13 to 41 times" (theirs: 20.68 to 41.31).
+  - `olmoearth_compare_review` calls row band 0 the northmost (or southmost)
+    only for scores with window centres or a transform; otherwise it is the
+    grid's first rows and the result says the rows need not run north to
+    south (round 8 called row band 0 of F4's 400 chips stacked in dataset
+    order "the northmost band"). `top_band_share` and the other fields keep
+    their names; `spatial` and the fact add `row_order`.
+- **The estimation tools rank the weakest classes in code and never promise
+  a certified zone** (the blind audit of exp86 round 8, B5/files/2). One
+  answer named class 1 (user's accuracy 22.5%) and class 6 (45.1%) the
+  weakest while class 5 had none of its 10 map-labelled windows correct
+  (interval 0 to 27.8%), and another offered "a guaranteed-certifiable
+  region" from a random plan. `olmoearth_estimate_map_error` with reference
+  classes now carries the fact `weakest_classes`: the classes with at least
+  5 map-labelled windows ranked by user's accuracy (of the windows the map
+  puts in a class, the share the labels agree with; `correct` and
+  `labelled` from the confusion matrix, the estimate and its interval),
+  a sentence naming every class with none correct first and then the next
+  lowest up to three, but never every ranked class (of two, one is the
+  lowest; with one, no class is ranked against it and none is named the
+  lowest), the classes on fewer windows named as too few to rank, and a
+  class with enough windows but no estimate named as unranked; a next step
+  points to it when it names a lowest class. Every next step of
+  `olmoearth_plan_label_sample`, `olmoearth_estimate_map_error` and
+  `olmoearth_certify_zone` that names a random design for a certified zone
+  says it makes one possible, not certain (`olmoearth_certify_zone` may
+  certify nothing; on the same map's 300-label random design every level
+  failed), as do `design_requirement`, the confidence plan's `design_note`
+  and the certify tool's description, and each of those results emits the
+  forbidden claim `certification_guaranteed`. No number the package
+  returns changes.
+- **The answer checks catch exp86 round 8's audited claims** (the blind
+  audit of rounds 7 and 8, and the review of branch 2imi9/fix-r8).
+  `forbidden_claims` gains a detector for each of the contract's six new
+  ids, each run only when a tool of the run emits it:
+  `spatial_pattern_from_one_correlation` (where, or in what pattern, the
+  maps agree, read from one pooled correlation: "anywhere", "nowhere", "high
+  where the other is low", "large parts ... while the rest differs", its
+  label read with the clause; not a breakdown a tool computed by rows or
+  bands, a share such as "a large part of the disagreement", "agree
+  spatially", which says how much, not where, or one map's level in a place,
+  "KarstBinary is low almost everywhere": the clause must relate the two
+  maps); `agreement_from_uncertain_correlation` (that the maps do or do not
+  co-vary: "do not rise and fall together", "unrelated", "strongly agree"; a
+  negation does not exempt it, a statement of what the correlation can say
+  does: "only whether they rise and fall together is meaningful", and so do
+  the tools' own sentences, which say the sample cannot say whether the maps
+  co-vary, what an interval holds, or the sign the tool found);
+  `review_set_for_unthresholded_regression` (a review set, margins or the
+  least decided windows *offered*, in the review's own clause, unless a
+  threshold is stated as what the review needs, "once a threshold is named",
+  while "without a threshold, I can still build a review set" is read; and
+  only for the bands the reason names, so an offer that names only another
+  band of the run, by its map's or its property's name or as a [0, 1] score,
+  is not it); `one_reference_settles_two_dates` ("either date", "one or both
+  dates", "at least one, plus a date-matched second inference", and one
+  map's year named alone, read against the comparison's own `dates`; a
+  clause that restricts one date's labels to that date's map, as the tools'
+  must_state does, is the rule); `evidence_outside_its_scope` ("in
+  comparable cases", "of such windows", "behind this rule", "why these: on
+  Ai2's suite ...", and a name only the tool's `evidence_scope` holds, such
+  as round 8's "the two Sen1Floods11 flood maps", unless the sentence states
+  the scope; a bare "measurement" is the run's); `certification_guaranteed`
+  (a design, sample or plan in the promise's own clause:
+  "guaranteed-certifiable", "enough labels to certify", "a random design
+  will certify"; not a requirement, a hedged offer, or the test's own
+  guarantee, "the certified zone's error is at most alpha", "the guarantee
+  covers only that alpha"). `subset_labelling_sufficient` also catches a
+  sample of the least confident windows promised a sound rate ("a targeted
+  labeling sample from the lower-confidence windows ... defensible error
+  rates", round 8 B3/studio run 3, which the rewrite had kept unmarked),
+  unless the sentence names a stratified or weighted design; "not enough" is
+  no offer. A negation governs a claim only before it in its clause or
+  within six words after it (round 7's "... or treat this as a
+  change-detection layer rather than a contest" had exempted a one-date
+  offer). `actions`: a list, a ranking or the windows said to be saved in,
+  or listed in, a named file must be one a tool names as holding a list by
+  its key (`differing_path`, `labels_csv_path`); `review_set_evidence.json`,
+  which `evidence_detail_path` names and which holds evidence text only, is
+  no longer read as a list by the "review" in its name (round 8, B8/cluster
+  runs 2 and 3), and only a string that is a path counts as a file a tool
+  wrote or names (no whitespace, or a rooted path): the review tools'
+  `listing_note`, a note that names `review_set_evidence.json` in prose
+  under a key that names a listing, had made that file a list's. A list or
+  the windows right before a file ("the full ranked list is in <file>", "all
+  3,807 differing windows are in <file>") is read as the claim too.
+  `direction`: a `concentration` violation calls row band 0 the northmost
+  only when the fact's `row_order` runs north to south (a fact without the
+  key is read as north-up), and with row 0 south a compass place is not read
+  against row band 0. The detectors read a sentence in time linear in its
+  length: quotes, negations, clauses and offers are found once per sentence
+  and looked up by bisection, where the review-set and spatial detectors had
+  searched the whole clause once per match (14.7 s for one 130 KB listing
+  line with the id emitted; now well under a second with every id emitted).
+  On the recorded answers of rounds 6 to 8, with each id emitted wherever it
+  could apply, the detectors flag 43 sentences: 37 hold a confirmed audit
+  finding (in two, the finding is another claim of the same sentence), 3 a
+  finding the verifiers added, and 3 none, which read as true catches the
+  audits did not record; none is a false alarm. `actions` flags 5 sentences,
+  all confirmed findings (3 at c3d2e28). With round 8's 30 runs replayed on
+  these tools (every recorded call, Studio served from the run's recorded
+  responses; 5,508 of 5,508 numbers at shared paths reproduced), an answer
+  made of the results' own facts, must_state and notes raises no violation
+  in any run, and the checks flag 14 of round 8's 17 material findings in
+  the recorded answers; the other three are a margin ratio of the 50 listed
+  windows given for the 10 shown, a dataset name the tools no longer return,
+  and weakest classes named by eye, which `weakest_classes` now ranks.
+  Rounds 6 and 7, checked against their recorded results, gain and lose no
+  flag against c3d2e28.
+- **exp86 round 1's tool faults** (the trial's diagnosis, 24 September 2026):
+  - `olmoearth_plan_label_sample` held a Studio result's grid to 16 in
+    silence (20, 30 and 40 all gave the same 173 valid windows) and crashed
+    on the `[rows, cols]` form its schema advertised. The grid is N or
+    `[N, N]`, 2-16, stated in the schema, and the result's `sampling` gives
+    the grid used, the grid asked for and whether it was capped
+    (`olmoearth_review_set_from_result` states its cap the same way).
+  - Its budget error said "a finer grid" at the cap. It now states the
+    ceiling ("a Studio result sampled at 16x16 = 256 points has 173 valid
+    windows here, so at most 173 labels can be planned from it") and offers
+    only what works: a smaller budget, a finer grid only below 16 and only
+    when 256 points can reach the budget, or a direct model run through
+    `olmoearth_scores_from_file`.
+  - The second failure of a tool with the same error in a run (numbers
+    aside) replaces the generic hint with: stop retrying, tell the user the
+    limit, answer with what you have (`same_error_count`).
+  - Measured figures left the tool descriptions, which reach every model
+    call: `olmoearth_compare_review`'s "51-70%" (quoted as a finding in a run
+    that never called it; its `caveats` keep it), `olmoearth_review_set`'s
+    "all 24 tasks", `olmoearth_review_budget_ceiling`'s worked example and
+    `olmoearth_area_of_applicability`'s "13/27 scenes, sign p=1.00" (now in
+    its output's `error_ranking`). A test fails any description that states
+    one.
+  - `olmoearth_compare_results` reports `n_cells` beside `samples_requested`,
+    a pair's `n_cells_compared` and `n_cells_dropped`, and a `sampling_note`
+    (the answer had read 72 samples of a 6x6 grid as 72 cells).
+  - `olmoearth_certify_zone` gives a `verdict` and says that a level whose
+    `upper_bound` is below alpha is not thereby certified: certification is
+    the package's exact test under the rule (every brief 6 answer claimed
+    zones at alpha 0.10-0.15 where the package certifies none).
+- **exp86 round 2's tool faults** (the trial's diagnosis, 25 September 2026):
+  - `olmoearth_certify_zone` gives `levels_tested`: the number of levels and
+    their coverages, the per-level delta of each rule over them (bonferroni's
+    written out, e.g. "delta/18 = 0.1/18"), how many were accepted, whether
+    any certifies, and why these levels (`min_labels_to_certify`, `c_min`).
+    Every output, refusals included, says certification needs
+    `design='random'`. Round 2's only model number was a "delta/18" the model
+    counted itself, and one answer recommended a confidence design for
+    certification. The smallest alpha that would certify is not given: the
+    levels tested, and bonferroni's divisor, change with alpha.
+  - `olmoearth_compare_review`'s `date_a`, `date_b` and `labels_date` state
+    "YYYY-MM-DD, or a YYYY-MM-DD/YYYY-MM-DD period; not a bare year or
+    month", as `oe_inferencex.compare.dates_reading` reads a string; a bare
+    year or month is refused with the interval that means it. Every brief 3
+    cluster run had passed `'2023'` first.
+  - `margin_summary` (`olmoearth_review_set`,
+    `olmoearth_review_set_from_result`) labels its fields (`lowest_margin`,
+    `median_margin`, `highest_margin`, `margin_at_budget_cut`), gives the
+    listed and unlisted windows' margin ranges, and says the median is not a
+    lower end; an answer had read the median as the unlisted windows' floor.
+    Breaking: `min`, `median`, `max` and `cut_at_budget` are gone.
+  - A test drives the round-1 harness fixes end to end (the stop-retrying
+    hint and the forced answer at the turn cap) through the loop, the CLI and
+    the web bridge; round 2 never triggered them.
+- `pyyaml` is a declared dependency: without it `olmoearth_rslearn_compose`
+  returned no YAML.
+- **No-data entered the statistics of every grid sampler.** Studio's
+  pixel-value returns no-data as a value (`raw_value: -1.0` beside
+  `regression: {min_value: 0.0, max_value: 1.0}`), and only `None` was
+  dropped. In the trial, 11 of 36 points were `-1` in both maps and
+  `olmoearth_compare_results` reported correlation 0.946 ("karst in largely the
+  same places") where the valid points give -0.017 (agreement 0.306 -> 0.0).
+  One helper, `analysis.raster_compare.band_is_nodata`, now decides no-data (a
+  missing or NaN value, the model's `wizard_answers.nodata_value`, a value
+  outside the band's declared range, a classification band with no class) in
+  `olmoearth_compare_results`, `olmoearth_compare_group`,
+  `olmoearth_ensemble_uncertainty`, `olmoearth_trace_shifts`,
+  `olmoearth_review_set_from_result`, `olmoearth_pixel_value` and the web UI's
+  difference scan (`/api/pixel-value` returns `value: null, nodata: true`);
+  every sampling result reports `n_nodata_dropped`. The trial's 36 value pairs
+  are a regression test that keeps both numbers reproducible.
 
 ## [1.4.0] - 2026-08-14
 

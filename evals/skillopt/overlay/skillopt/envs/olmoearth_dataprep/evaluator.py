@@ -7,6 +7,7 @@ the 8 documented pitfalls it is (`pitfall_id`, 1-8) and the corrective
 ``hard`` (0/1) = pitfall_id correct AND action family correct.
 ``soft`` (0-1) = mean of (pitfall_id, action family).
 """
+
 from __future__ import annotations
 
 import re
@@ -16,16 +17,51 @@ from skillopt.utils import extract_json
 
 # action family -> keywords that identify it in a free-text fix
 _ACTION_KEYWORDS: dict[str, list[str]] = {
-    "fix_schema": ["schema", "rename", "oe_labels", "es_label", "sample_category",
-                   "field name", "field-name", "property name"],
-    "real_aoi": ["watershed", "basin", "nldi", "huc", "wbd", "polygon", "real aoi", "catchment"],
-    "per_metric_file": ["per metric", "per-metric", "one file per", "separate file",
-                        "split metric", "one import per"],
+    "fix_schema": [
+        "schema",
+        "rename",
+        "oe_labels",
+        "es_label",
+        "sample_category",
+        "field name",
+        "field-name",
+        "property name",
+    ],
+    "real_aoi": [
+        "watershed",
+        "basin",
+        "nldi",
+        "huc",
+        "wbd",
+        "polygon",
+        "real aoi",
+        "catchment",
+    ],
+    "per_metric_file": [
+        "per metric",
+        "per-metric",
+        "one file per",
+        "separate file",
+        "split metric",
+        "one import per",
+    ],
     "emit_json": [".json", "json extension", "octet-stream", "mime", "both extensions"],
     "equal_frequency": ["equal-frequency", "equal frequency", "equal_frequency"],
-    "spatial_split": ["spatial", "spatial-block", "spatial block", "block cv", "geographic split"],
+    "spatial_split": [
+        "spatial",
+        "spatial-block",
+        "spatial block",
+        "block cv",
+        "geographic split",
+    ],
     "shard": ["shard", "chunk", "split into", "10000", "10,000", "10k", "batch upload"],
-    "negative_class": ["negative", "background", "other class", "non-target", "stable class"],
+    "negative_class": [
+        "negative",
+        "background",
+        "other class",
+        "non-target",
+        "stable class",
+    ],
 }
 
 

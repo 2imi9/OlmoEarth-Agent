@@ -496,7 +496,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   endProgress();
 
   const m = absd.length;
-  if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return null; }
+  // Cells where either map had no value: off-raster, or Studio's no-data
+  // sentinel, which the bridge (serve.py api_pixel_value) returns as null.
+  const skipped = total - m;
+  if (!m) { status.textContent = 'No overlapping valid pixels to difference (' + skipped + ' no-data cells skipped).'; return null; }
   const tol = opts.tolerance || 0.1;
   const diffs = cells.filter((c) => c.diff != null).map((c) => c.diff);
   const meanAbs = absd.reduce((p, q) => p + q, 0) / m;
@@ -520,7 +523,8 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     v.mapTitle + ' over ' + m + ' sampled cells · mean |' + v.diffWord + '| <strong>' + meanAbs.toFixed(3) +
     '</strong>' + (v.kind === 'temporal' ? ' · net <strong>' + meanDiff.toFixed(3) + '</strong>' : '') +
     ' · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
-    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + '). ' + legendHtml(v.kind);
+    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + ')' +
+    (skipped ? ' · ' + skipped + ' no-data cells skipped' : '') + '. ' + legendHtml(v.kind);
 
   // Captured straight from the live scan (real values), so a saved comparison
   // is never fabricated. Offer to store it in the Results panel.
@@ -551,34 +555,94 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   return record;
 }
 
-/* A compact stat card from a compare `stats` object (real numbers only). */
-function statChips(s, caption) {
-  s = s || {};
-  const rows = [];
-  const add = (k, v) => { if (v !== undefined && v !== null) rows.push([k, v]); };
-  add('correlation', s.correlation);
-  add('agreement', s.agreement_fraction != null ? (s.agreement_fraction * 100).toFixed(0) + '%' : null);
-  add('mean |diff|', s.mean_abs_diff);
-  add('RMSE', s.rmse_between_models);
-  add('max |diff|', s.max_abs_diff);
-  add('samples', s.n_samples);
+/* A compact stat card from [label, value] rows; null/undefined values are
+   skipped (real numbers only, never a placeholder). */
+function chipCard(rows, caption) {
   const card = document.createElement('div');
   card.className = 'viz-statcard';
-  card.innerHTML = rows.map(([k, v]) =>
+  card.innerHTML = rows.filter(([, v]) => v !== undefined && v !== null).map(([k, v]) =>
     `<span class="viz-stat">${escapeHtml(k)}<b>${escapeHtml(String(v))}</b></span>`).join('') +
     (caption ? `<div class="viz-cap">${escapeHtml(caption)}</div>` : '');
   return card;
 }
 
-/* A compact stat card for olmoearth_compare_results, then the difference map
-   auto-scanned (so a quantitative compare appears with both the numbers and
-   the visual, no button needed). */
+const pctOf = (x) => (x != null ? (x * 100).toFixed(0) + '%' : null);
+
+/* A compact stat card from a compare `stats` object (real numbers only). */
+function statChips(s, caption) {
+  s = s || {};
+  return chipCard([
+    ['correlation', s.correlation],
+    ['agreement', pctOf(s.agreement_fraction)],
+    ['mean |diff|', s.mean_abs_diff],
+    ['RMSE', s.rmse_between_models],
+    ['max |diff|', s.max_abs_diff],
+    ['samples', s.n_samples],
+  ], caption);
+}
+
+/* olmoearth_compare_results in its group / series / ensemble modes: the
+   headline numbers the tool returned and its own headline + framing. (A pair
+   renders renderCompareCard: numbers plus the live difference scan.) */
+function renderCompareSummary(container, inner) {
+  const nar = inner.narration || {};
+  const cls = inner.value_type === 'classification';
+  let rows = [];
+  if (inner.mode === 'group') {
+    const e = inner.ensemble || {};
+    rows = [
+      ['results', (inner.result_ids || []).length],
+      [cls ? 'unanimous' : 'consensus', pctOf(cls ? e.unanimous_fraction : e.consensus_fraction)],
+      ['mean spread', e.mean_spread],
+      ['cells', e.n_points_used],
+    ];
+  } else if (inner.mode === 'series') {
+    const t = inner.trajectory || {};
+    rows = [
+      ['dates', (inner.dates || []).length],
+      ['mean net change', t.mean_total_change],
+      ['shifted', pctOf(cls ? t.net_changed_fraction : t.shifted_fraction)],
+      ['cells', t.n_points_used],
+    ];
+  } else if (inner.mode === 'ensemble') {
+    const sm = inner.summary || {};
+    rows = [
+      ['results', inner.n_results],
+      ['mean confidence', sm.mean_confidence],
+      [cls ? 'mean entropy' : 'mean CV', cls ? sm.mean_entropy : sm.mean_cv],
+      ['cells', inner.n_points],
+    ];
+  }
+  rows.push(['no-data dropped', inner.n_nodata_dropped]);
+  const caption = [nar.headline, nar.framing].filter(Boolean).join('. ');
+  container.appendChild(chipCard(rows, caption));
+  if (inner.warning) {
+    const warn = document.createElement('div');
+    warn.className = 'viz-cap';
+    warn.textContent = inner.warning;
+    container.appendChild(warn);
+  }
+}
+
+/* A compact stat card for olmoearth_compare_results' pair mode (which keeps
+   result_id_a / result_id_b), then the difference map auto-scanned (so a
+   quantitative compare appears with both the numbers and the visual, no
+   button needed). */
 function renderCompareCard(container, inner) {
   const s = inner.stats || {};
   const kind = inner.kind;
   const v = compareVocab(kind);
   container.appendChild(statChips(s, v.statCaption));
   container.appendChild(abLabel(inner.result_id_a, inner.result_id_b, kind));
+  if (inner.warning) {
+    // Two different properties (allow_different_properties): a B - A
+    // difference map would subtract two different quantities, so no scan.
+    const warn = document.createElement('div');
+    warn.className = 'viz-cap';
+    warn.textContent = inner.warning;
+    container.appendChild(warn);
+    return;
+  }
   if (inner.result_id_a && inner.result_id_b) {
     const out = document.createElement('div');
     out.className = 'viz-diff';
@@ -704,6 +768,11 @@ export function renderResultViz(container, ev) {
     // Quantitative compare: show the numbers + auto-scan the difference map.
     if (inner.comparable === true && inner.result_id_a && inner.result_id_b) {
       renderCompareCard(container, inner);
+      return true;
+    }
+    // The same tool's group / series / ensemble modes: a stat card.
+    if (ev.name === 'olmoearth_compare_results' && inner.comparable === true && inner.mode) {
+      renderCompareSummary(container, inner);
       return true;
     }
     // baseline-compare: grouped metric bars.

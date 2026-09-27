@@ -27,3 +27,8 @@ class ThreadState:
     turn_count: int = 0
     #: Append-only provenance log (rule §3.13); one entry per tool call.
     provenance: ProvenanceLog = field(default_factory=ProvenanceLog)
+    #: Deferred tool groups loaded in this run (``ToolRegistry.active_specs``).
+    loaded_groups: set[str] = field(default_factory=set)
+    #: Failed tool calls in this run: ``(tool, error with numbers masked)`` ->
+    #: count, so a repeated failure tells the model to stop retrying.
+    tool_failures: dict[tuple[str, str], int] = field(default_factory=dict)

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Tests for the olmoearth_negative_sampler tool, including a round-trip that
-runs the emitted GeoJSON through the vendored data-prep audit to prove the
+runs the emitted GeoJSON through the packaged data-prep audit to prove the
 presence-only hard FAIL becomes a PASS."""
 
 from __future__ import annotations
@@ -23,12 +23,13 @@ from olmoearth_agent.tools.registry import ToolContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _AUDIT_PATH = (
-    _REPO_ROOT / "vendor/olmoearth-skills/skills/olmoearth-data-prep/scripts/audit.py"
+    _REPO_ROOT
+    / "src/olmoearth_agent/skills/packages/olmoearth-data-prep/scripts/audit.py"
 )
 
 
 def _load_audit() -> ModuleType:
-    """Import the vendored stdlib-only audit.py by file path."""
+    """Import the packaged stdlib-only audit.py by file path."""
     spec = importlib.util.spec_from_file_location("dataprep_audit", _AUDIT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

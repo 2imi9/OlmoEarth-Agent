@@ -5,6 +5,7 @@ by the skill document, maps a plain-English EO task to a filled Studio wizard
 config, which is scored against the verified preset. Failures/successes feed
 the shared minibatch reflect engine, which proposes skill edits.
 """
+
 from __future__ import annotations
 
 import os
@@ -68,14 +69,20 @@ class OlmoEarthDataprepAdapter(EnvAdapter):
         return list(batch.payload or [])
 
     def build_train_env(self, batch_size: int, seed: int, **kwargs):
-        batch = self.dataloader.build_train_batch(batch_size=batch_size, seed=seed, **kwargs)
+        batch = self.dataloader.build_train_batch(
+            batch_size=batch_size, seed=seed, **kwargs
+        )
         return self.build_env_from_batch(batch, **kwargs)
 
     def build_eval_env(self, env_num: int, split: str, seed: int, **kwargs):
-        batch = self.dataloader.build_eval_batch(env_num=env_num, split=split, seed=seed, **kwargs)
+        batch = self.dataloader.build_eval_batch(
+            env_num=env_num, split=split, seed=seed, **kwargs
+        )
         return self.build_env_from_batch(batch, **kwargs)
 
-    def rollout(self, env_manager, skill_content: str, out_dir: str, **kwargs) -> list[dict]:
+    def rollout(
+        self, env_manager, skill_content: str, out_dir: str, **kwargs
+    ) -> list[dict]:
         items: list[dict] = env_manager
         return run_batch(
             items=items,
@@ -88,8 +95,12 @@ class OlmoEarthDataprepAdapter(EnvAdapter):
             task_timeout=self.exec_timeout + 60,
         )
 
-    def reflect(self, results: list[dict], skill_content: str, out_dir: str, **kwargs) -> list[dict | None]:
-        prediction_dir = kwargs.get("prediction_dir", os.path.join(out_dir, "predictions"))
+    def reflect(
+        self, results: list[dict], skill_content: str, out_dir: str, **kwargs
+    ) -> list[dict | None]:
+        prediction_dir = kwargs.get(
+            "prediction_dir", os.path.join(out_dir, "predictions")
+        )
         patches_dir = kwargs.get("patches_dir", os.path.join(out_dir, "patches"))
         return run_minibatch_reflect(
             results=results,

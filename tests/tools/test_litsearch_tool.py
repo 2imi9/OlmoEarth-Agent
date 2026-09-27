@@ -19,12 +19,13 @@ def _ctx() -> ToolContext:
     return ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
 
 
-def test_bundle_exposes_two_tools_with_object_schemas() -> None:
-    tools = build_litsearch_tools()
-    names = {t.spec.name for t in tools}
-    assert names == {"olmoearth_litsearch", "olmoearth_litsearch_resolve"}
-    for t in tools:
-        assert t.spec.parameters["type"] == "object"
+def test_bundle_is_one_tool_that_searches_or_resolves() -> None:
+    (tool,) = build_litsearch_tools()
+    assert tool.spec.name == "olmoearth_litsearch"
+    assert tool.spec.parameters["type"] == "object"
+    # The former olmoearth_litsearch_resolve is the identifier argument.
+    assert {"query", "identifier"} <= set(tool.spec.parameters["properties"])
+    assert tool.spec.parameters["required"] == []
 
 
 @pytest.mark.asyncio
@@ -68,13 +69,45 @@ async def test_resolve_bad_identifier_surfaces_via_dispatch() -> None:
     result = await registry.dispatch(
         ToolCall(
             id="c2",
-            name="olmoearth_litsearch_resolve",
+            name="olmoearth_litsearch",
             arguments={"identifier": "not-an-id"},
         ),
         _ctx(),
     )
     assert result["ok"] is False
     assert "could not parse" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_identifier_resolves_instead_of_searching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def fake_resolve(**kwargs: Any) -> dict[str, Any]:
+        seen.update(kwargs)
+        return {"found": True, "paper": {"id": "doi:10.1/x"}, "warnings": []}
+
+    async def no_search(**_kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("an identifier must not run a search")
+
+    monkeypatch.setattr(litsearch_tools, "resolve_identifier", fake_resolve)
+    monkeypatch.setattr(litsearch_tools, "search_literature", no_search)
+    (tool,) = build_litsearch_tools()
+    result = await tool.handler({"identifier": " 10.1/x "}, _ctx())
+    assert seen == {"identifier": "10.1/x", "include_abstract": True}
+    assert result["found"] is True
+
+
+@pytest.mark.asyncio
+async def test_neither_query_nor_identifier_names_both() -> None:
+    registry = ToolRegistry()
+    registry.register_all(build_litsearch_tools())
+    result = await registry.dispatch(
+        ToolCall(id="c3", name="olmoearth_litsearch", arguments={}), _ctx()
+    )
+    assert result["ok"] is False
+    assert "query" in result["error"] and "identifier" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -104,8 +137,13 @@ async def test_asta_source_routes_to_asta_backend(
 
     async def fake_asta(**kwargs: Any) -> dict[str, Any]:
         seen.update(kwargs)
-        return {"count": 1, "papers": [{"id": "CorpusId:1"}], "sources": ["asta"],
-                "warnings": [], "saved_to": "x.json"}
+        return {
+            "count": 1,
+            "papers": [{"id": "CorpusId:1"}],
+            "sources": ["asta"],
+            "warnings": [],
+            "saved_to": "x.json",
+        }
 
     monkeypatch.setattr(asta_mod, "asta_available", lambda: True)
     monkeypatch.setattr(asta_mod, "search_asta", fake_asta)

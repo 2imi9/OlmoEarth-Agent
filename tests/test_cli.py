@@ -50,9 +50,7 @@ async def test_run_brief_with_injected_deps() -> None:
     async def echo(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         return args
 
-    registry.register(
-        RegisteredTool(ToolSpec("echo", "echo", _EMPTY), echo)
-    )
+    registry.register(RegisteredTool(ToolSpec("echo", "echo", _EMPTY), echo))
     llm = _FakeLLM(
         [
             ChatResponse(
@@ -84,6 +82,22 @@ def test_main_returns_0_and_prints_answer(
     code = cli.main(["how many projects?"])
     assert code == 0
     assert "the answer" in capsys.readouterr().out
+
+
+def test_main_prints_an_answer_forced_by_the_turn_cap(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    async def fake_run(_brief: str, **_kw: Any) -> AgentResult:
+        return AgentResult(
+            final_content="what I have", turns=9, tool_calls=[], hit_max_turns=True
+        )
+
+    monkeypatch.setattr(cli, "run_brief", fake_run)
+    code = cli.main(["loop"])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out.strip() == "what I have"
+    assert "turn cap (8)" in captured.err
 
 
 def test_main_returns_1_on_no_answer(monkeypatch: pytest.MonkeyPatch) -> None:

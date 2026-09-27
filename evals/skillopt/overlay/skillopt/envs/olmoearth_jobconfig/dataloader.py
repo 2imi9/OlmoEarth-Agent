@@ -14,6 +14,7 @@ Each split directory (``train/``, ``val/``, ``test/``) holds an
 The base :class:`SplitDataLoader` already reads a JSON array from the first
 ``.json`` file in each split directory, so no custom loading is needed.
 """
+
 from __future__ import annotations
 
 from skillopt.datasets.base import SplitDataLoader

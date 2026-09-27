@@ -18,7 +18,7 @@ from olmoearth_agent.analysis.similarity import (
     similarity_search,
 )
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _VECTOR = {"type": "array", "items": {"type": "number"}}
 _COORD = {"type": "array", "items": {"type": "number"}}
@@ -90,5 +90,9 @@ def build_similarity_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_similarity_search,
+            capability=Capability(
+                does="the top-K vectors most similar to a query, in a corpus the "
+                "caller gives"
+            ),
         ),
     ]

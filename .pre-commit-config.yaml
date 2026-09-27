@@ -9,7 +9,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
+      # Two trailing spaces are a Markdown hard line break, and a diff's blank
+      # context line is a single space: keep both.
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+        exclude: \.patch$
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
@@ -20,17 +24,23 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
 
+  # The skill packages' scripts are standalone MIT-licensed helpers shipped as
+  # package data (src/olmoearth_agent/skills/packages/README.md); the Python
+  # style hooks skip them.
   - repo: https://github.com/psf/black
     rev: 24.8.0
     hooks:
       - id: black
+        exclude: ^src/olmoearth_agent/skills/packages/
 
+  # Ruff lints only; Black is the one formatter (ruff-format also ran here and
+  # the two disagreed on several files).
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.9
     hooks:
       - id: ruff
         args: [--fix]
-      - id: ruff-format
+        exclude: ^src/olmoearth_agent/skills/packages/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.11.2
@@ -38,6 +48,18 @@ repos:
       - id: mypy
         args: [--config-file=pyproject.toml]
         files: ^src/
+        exclude: ^src/olmoearth_agent/skills/packages/
+        # The hook runs in its own environment: without the typed libraries
+        # the package imports, mypy reports them missing and reads their
+        # values as Any. Same lower bounds as pyproject.toml: the core
+        # dependencies, the `claude` extra (anthropic) and the `serve` extra
+        # (fastapi, uvicorn). The untyped inferencex extra stays out.
+        additional_dependencies:
+          - httpx>=0.27
+          - openai>=1.50
+          - anthropic>=0.40
+          - fastapi>=0.110
+          - uvicorn>=0.29
 
   - repo: https://github.com/econchick/interrogate
     rev: 1.7.0

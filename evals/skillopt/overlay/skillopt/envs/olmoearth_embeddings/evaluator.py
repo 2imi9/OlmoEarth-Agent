@@ -8,6 +8,7 @@ skill's own ``recommend.py`` oracle (`decide()`).
 ``soft`` (0-1) = mean of decision, model, and (when applicable) classifier
     family — a smoother gradient.
 """
+
 from __future__ import annotations
 
 from typing import Any

@@ -4,9 +4,9 @@
 
 The decision logic (:func:`decide`, :func:`parse_task_string`) is a faithful
 port of the canonical
-``vendor/olmoearth-skills/skills/olmoearth-embeddings/scripts/recommend.py``
+``src/olmoearth_agent/skills/packages/olmoearth-embeddings/scripts/recommend.py``
 (the source of truth for the embeddings-vs-fine-tune call, also used by the
-SkillOpt harness). Keep the two in sync — change the vendored table and this
+SkillOpt harness). Keep the two in sync — change the packaged table and this
 port together. On top of the decision this module adds:
 
 * :func:`propose_config` — turns the decision into an actionable plan

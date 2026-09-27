@@ -90,7 +90,10 @@ async def test_nndm_cv_tool_rejects_output_path_traversal(tmp_path: Path) -> Non
     pred = [[x, y] for x in (-2.0, 2.0, 6.0) for y in (-2.0, 6.0)]
     with pytest.raises(PathTraversalError):
         await _tool("olmoearth_nndm_cv").handler(
-            {"points": points, "pred_points": pred,
-             "output_path": "../escaped_folds.json"},
+            {
+                "points": points,
+                "pred_points": pred,
+                "output_path": "../escaped_folds.json",
+            },
             _ctx(),
         )

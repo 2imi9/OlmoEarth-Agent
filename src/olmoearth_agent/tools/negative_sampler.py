@@ -32,7 +32,7 @@ from olmoearth_agent.analysis.negative_sampler import (
 from olmoearth_agent.evaluation.spatial_cv import Point
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.security.paths import safe_path
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 #: Negative-class names the data-prep audit's ``check_negative_class`` accepts.
 #: Mirrors ``NEGATIVE_CLASS_NAMES`` in the vendored ``audit.py`` (kept in sync; a
@@ -329,5 +329,10 @@ def build_negative_sampler_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_negative_sampler,
+            capability=Capability(
+                does="add sampled negatives (pseudo-absences) to a presence-only "
+                "label GeoJSON and write it",
+                needs=("positives_path inside the workspace",),
+            ),
         ),
     ]

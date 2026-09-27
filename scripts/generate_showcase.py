@@ -262,6 +262,14 @@ def _seed_provenance(state: ThreadState) -> None:
 
 
 async def main() -> None:
+    """Capture every showcase transcript and print the page to stdout.
+
+    Hands each skill's brief to the agent loop against the configured LLM
+    (``LLM_ENDPOINT``), with a Studio client when ``OLMOEARTH_API_KEY`` is set
+    (without it, the live-API sections become a short note), and prints the
+    Markdown of ``docs/SHOWCASE.md``: the header, then one section per
+    capture.
+    """
     llm = OlmoEarthLLM()
     sections: list[str] = []
 

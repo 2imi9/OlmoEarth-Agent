@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "OlmoEarth Agent contributors" }]
 keywords = ["olmoearth", "earth-observation", "agent", "geospatial", "vlm"]
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "openai>=1.50",  # OpenAI-compatible client used to talk to the llama.cpp LLM endpoint (see docs/serving.md)
     "httpx>=0.27",   # async HTTP client for the OlmoEarth Studio API
+    "pyyaml>=6.0",   # olmoearth_rslearn_compose emits its model.yaml with it (no YAML without)
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,14 @@ serve = [
 ]
 claude = [
     "anthropic>=0.40",  # native Claude backend (olmoearth_agent.llm.anthropic_client)
+]
+# Design-based error estimation (tools/estimation.py) and the scores provider
+# (tools/scores_file.py): the companion package brings numpy, so it stays
+# optional; the core package has no numpy. Its `geo` extra brings rasterio,
+# which reading a model run's scores GeoTIFF needs. Its own requires-python
+# stops below 3.14, hence the marker.
+inferencex = [
+    "olmoearth-inferencex[geo]>=1.3.1; python_version < '3.14'",
 ]
 dev = [
     "pytest>=8.0",
@@ -57,15 +66,21 @@ olmoearth-agent-serve = "olmoearth_agent.serve:main"
 packages = ["src/olmoearth_agent"]
 
 # --- Formatter / linter / type checker ---
+# The skill packages' scripts (src/olmoearth_agent/skills/packages/) are
+# standalone MIT-licensed helpers shipped as package data, maintained as moved
+# from 2imi9/OlmoEarth-Skills; black, ruff, mypy and interrogate skip them here
+# as the pre-commit hooks do, so a direct run agrees with the hooks.
 
 [tool.black]
 line-length = 88
 target-version = ["py311"]
+extend-exclude = "^/src/olmoearth_agent/skills/packages/"
 
 [tool.ruff]
 line-length = 88
 target-version = "py311"
 src = ["src", "tests"]
+extend-exclude = ["src/olmoearth_agent/skills/packages/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "S", "I", "PERF"]
@@ -84,6 +99,7 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 files = ["src/olmoearth_agent"]
+exclude = ["^src/olmoearth_agent/skills/packages/"]
 
 # The `serve` extra (FastAPI/uvicorn) is optional; don't fail type-checking
 # for contributors who haven't installed it.
@@ -91,13 +107,27 @@ files = ["src/olmoearth_agent"]
 module = ["fastapi.*", "uvicorn.*", "starlette.*"]
 ignore_missing_imports = true
 
+# The `inferencex` extra (olmoearth-inferencex, which brings numpy, and rasterio
+# through its geo extra) is optional and untyped. The core never imports numpy,
+# but openai's typing shims do under TYPE_CHECKING, and numpy >= 2.4's stubs use
+# 3.12-only syntax this 3.11 target cannot parse: skip following them rather
+# than fail on an installed extra.
+[[tool.mypy.overrides]]
+module = ["oe_inferencex", "oe_inferencex.*", "rasterio", "rasterio.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
 [tool.interrogate]
 # Set to the measured floor (81.6% as of 2026-07-15) so the pre-commit gate is
 # enforceable rather than aspirational -- at the old 90 nobody could commit
 # with hooks installed. Ratchet upward as serve.py helpers gain docstrings.
 fail-under = 81
 verbose = 2
-exclude = ["tests", "build", "docs"]
+exclude = ["tests", "build", "docs", "src/olmoearth_agent/skills/packages"]
 
 # --- Tests / coverage ---
 

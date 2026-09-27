@@ -11,9 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def classification_metrics(
-    y_true: list[Any], y_pred: list[Any]
-) -> dict[str, Any]:
+def classification_metrics(y_true: list[Any], y_pred: list[Any]) -> dict[str, Any]:
     """Compute per-class and overall classification metrics.
 
     Parameters

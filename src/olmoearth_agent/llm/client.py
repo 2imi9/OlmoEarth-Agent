@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Async OpenAI-compatible client for the vLLM-served Qwen3.6 backbone.
+"""Async OpenAI-compatible client for the agent's LLM backbone.
+
+The local default is llama.cpp serving Qwen3.6 (4-bit GGUF); vLLM on a GPU
+cluster also works (``docs/serving.md``).
 
 The client is intentionally small: build a payload, dispatch via the
 ``openai`` SDK, parse the completion. Everything agent-specific
@@ -146,6 +149,23 @@ def _extract_thinking(content: str | None) -> tuple[str | None, str | None]:
     return thinking, remainder or None
 
 
+#: The message fields a server puts its parsed reasoning in, tried in order.
+REASONING_FIELDS = ("reasoning", "reasoning_content")
+
+
+def _server_reasoning(message: Any) -> str | None:
+    """The reasoning a server split off the message's content, or ``None``.
+
+    Reads ``reasoning`` (current vLLM), then ``reasoning_content`` (older
+    vLLM, llama.cpp); the first non-empty string wins.
+    """
+    for name in REASONING_FIELDS:
+        value = getattr(message, name, None)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _coerce_arg(raw: str) -> Any:
     """Parse a text tool-call argument as JSON, falling back to the string."""
     text = raw.strip()
@@ -233,7 +253,7 @@ def _tool_to_openai(tool: ToolSpec) -> dict[str, Any]:
 
 
 class OlmoEarthLLM:
-    """Async client for the OlmoEarth Agent's vLLM-served LLM backbone.
+    """Async client for the OlmoEarth Agent's OpenAI-compatible LLM backbone.
 
     Pinned to ``unsloth/Qwen3.6-35B-A3B-GGUF`` defaults: ``thinking_general``
     sampling, ``preserve_thinking=True`` for multi-turn runs, and the
@@ -359,7 +379,12 @@ class OlmoEarthLLM:
             elif not self._openai_compat:
                 extra_body[key] = value
         if preserve_thinking and not self._openai_compat:
-            extra_body["chat_template_kwargs"] = {"preserve_thinking": True}
+            # Merged into the preset's template switches, never over them:
+            # the claim check's preset turns thinking off this way.
+            extra_body["chat_template_kwargs"] = {
+                **extra_body.get("chat_template_kwargs", {}),
+                "preserve_thinking": True,
+            }
         if extra_body:
             payload["extra_body"] = extra_body
         if tools is not None:
@@ -373,12 +398,14 @@ class OlmoEarthLLM:
         """Turn an OpenAI ``ChatCompletion`` into a :class:`ChatResponse`."""
         choice = completion.choices[0]
         message = choice.message
-        # When the server is started with `--reasoning-parser qwen3`, vLLM
-        # splits the <think> block into a `reasoning_content` field and
-        # leaves `content` clean. Otherwise the block is inline and we
-        # extract it ourselves. Handle both so the client works regardless
-        # of how the server was launched.
-        server_reasoning = getattr(message, "reasoning_content", None)
+        # When the server is started with a reasoning parser (vLLM's
+        # `--reasoning-parser qwen3`), it splits the <think> block into its
+        # own field and leaves `content` clean: `reasoning` in current vLLM
+        # (exp86 round 7 recorded no thinking because only the older name
+        # was read), `reasoning_content` in older vLLM and llama.cpp.
+        # Otherwise the block is inline and we extract it ourselves. The
+        # reasoning is for the trace only: it is never sent back to the model.
+        server_reasoning = _server_reasoning(message)
         if server_reasoning:
             thinking: str | None = server_reasoning
             content: str | None = message.content

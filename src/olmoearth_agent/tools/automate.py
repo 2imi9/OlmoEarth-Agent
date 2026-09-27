@@ -20,7 +20,7 @@ from typing import Any
 
 from olmoearth_agent.analysis.automate import COMPUTE_TIERS, automate
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 async def _automate(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
@@ -95,5 +95,9 @@ def build_automate_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_automate,
+            capability=Capability(
+                does="embeddings or fine-tuning, for a user training on their own "
+                "compute (not Studio)"
+            ),
         ),
     ]

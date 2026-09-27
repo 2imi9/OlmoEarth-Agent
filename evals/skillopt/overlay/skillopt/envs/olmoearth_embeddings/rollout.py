@@ -10,6 +10,7 @@ Public API
 - :func:`process_one` — run + score one task
 - :func:`run_batch`   — parallel, resume-aware execution of a list of tasks
 """
+
 from __future__ import annotations
 
 import json
@@ -109,11 +110,17 @@ def process_one(
             {"type": "message", "turn": 1, "content": response},
             {"role": "system", "content": _eval_detail(item, eval_result)},
         ]
-        with open(os.path.join(pred_dir, "target_system_prompt.txt"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(pred_dir, "target_system_prompt.txt"), "w", encoding="utf-8"
+        ) as f:
             f.write(system)
-        with open(os.path.join(pred_dir, "target_user_prompt.txt"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(pred_dir, "target_user_prompt.txt"), "w", encoding="utf-8"
+        ) as f:
             f.write(user)
-        with open(os.path.join(pred_dir, "conversation.json"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(pred_dir, "conversation.json"), "w", encoding="utf-8"
+        ) as f:
             json.dump(conversation, f, ensure_ascii=False, indent=2)
 
     except Exception as e:  # noqa: BLE001
@@ -147,8 +154,10 @@ def run_batch(
                     r = json.loads(line)
                     done_ids.add(str(r["id"]))
                     existing.append(r)
-                except Exception:  # noqa: BLE001
-                    pass
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    # A torn last line (an interrupted run) or a record without
+                    # an id: skip it, so that task runs again.
+                    continue
 
     pending = [it for it in items if str(it["id"]) not in done_ids]
     if not pending:
@@ -181,7 +190,12 @@ def run_batch(
     def _run_one(item: dict) -> dict:
         started_at[str(item["id"])] = time.time()
         return process_one(
-            item, out_root, skill_content, max_turns, exec_timeout, max_completion_tokens
+            item,
+            out_root,
+            skill_content,
+            max_turns,
+            exec_timeout,
+            max_completion_tokens,
         )
 
     with open(results_path, "a", encoding="utf-8") as outf:
@@ -193,7 +207,8 @@ def run_batch(
                 done, _ = wait(pending_futs, timeout=5, return_when=FIRST_COMPLETED)
                 now = time.time()
                 timed_out = [
-                    fut for fut in pending_futs - done
+                    fut
+                    for fut in pending_futs - done
                     if str(futs[fut]["id"]) in started_at
                     and now - started_at[str(futs[fut]["id"])] >= task_timeout
                 ]
@@ -203,7 +218,9 @@ def run_batch(
                     try:
                         res = fut.result()
                     except Exception as exc:  # noqa: BLE001
-                        res = _timeout_result(item, f"unexpected: {type(exc).__name__}: {exc}")
+                        res = _timeout_result(
+                            item, f"unexpected: {type(exc).__name__}: {exc}"
+                        )
                     results.append(res)
                     completed += 1
                     if res.get("hard", 0):

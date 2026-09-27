@@ -12,7 +12,7 @@ from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.reporting.narrative import build_narrative
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 async def _case_narrative(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -59,5 +59,9 @@ def build_narrative_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_case_narrative,
+            capability=Capability(
+                does="a Markdown report from prediction results and this run's "
+                "provenance"
+            ),
         ),
     ]

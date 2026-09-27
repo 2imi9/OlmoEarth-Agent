@@ -105,23 +105,92 @@ async def test_stream_skips_thinking_when_absent() -> None:
     assert "thinking" not in [e["type"] for e in events]
 
 
+class _ToolsForeverLLM:
+    """Calls a tool on every turn that offers tools; answers only when offered none.
+
+    exp86 round 1 (brief 4, Studio): the eighth turn still called a tool, and
+    the run ended with no answer at all.
+    """
+
+    def __init__(self, *, answer: str | None = "what I found so far") -> None:
+        self.answer = answer
+        self.calls: list[tuple[list[Message], Any]] = []
+
+    async def chat(
+        self, messages: list[Message], *, tools: Any = None, **_kw: Any
+    ) -> ChatResponse:
+        self.calls.append((list(messages), tools))
+        if tools or self.answer is None:
+            n = len(self.calls)
+            return ChatResponse(
+                content=None,
+                tool_calls=[ToolCall(id=f"c{n}", name="echo", arguments={"n": n})],
+                finish_reason="tool_calls",
+            )
+        return ChatResponse(
+            content=self.answer,
+            tool_calls=[],
+            thinking="the cap is reached",
+            finish_reason="stop",
+        )
+
+
 @pytest.mark.asyncio
-async def test_stream_hits_max_turns() -> None:
-    loop_response = ChatResponse(
-        content=None,
-        tool_calls=[ToolCall(id="c", name="echo", arguments={})],
-        finish_reason="tool_calls",
-    )
+async def test_stream_answers_without_tools_at_the_turn_cap() -> None:
+    llm = _ToolsForeverLLM()
     agent = LeadAgent(
-        _FakeLLM([loop_response] * 5),  # type: ignore[arg-type]
+        llm,  # type: ignore[arg-type]
         _echo_registry(),
         studio=None,  # type: ignore[arg-type]
     )
     events = await _collect(agent, "loop", max_turns=2)
     types = [e["type"] for e in events]
-    assert events[-1] == {"type": "max_turns", "turns": 2}
-    assert types.count("tool_call") == 2
-    assert types.count("tool_result") == 2
+    assert types.count("tool_call") == 2 and types.count("tool_result") == 2
+    # The cap is recorded, then one more call, without tools, gives the answer.
+    assert types[-3:] == ["max_turns", "thinking", "final"]
+    assert events[-3] == {"type": "max_turns", "turns": 2, "final_answer_forced": True}
+    final = events[-1]
+    assert final["content"] == "what I found so far"
+    assert final["forced_by_turn_cap"] is True and final["turn"] == 3
+    assert len(llm.calls) == 3
+    messages, tools = llm.calls[-1]
+    assert tools is None
+    # The model is told why, after the last turn's tool results.
+    assert messages[-1].role == "user"
+    assert "turn cap" in messages[-1].content
+    assert "could not" in messages[-1].content
+    assert messages[-2].role == "tool"
+
+
+@pytest.mark.asyncio
+async def test_stream_turn_cap_never_ends_without_an_answer() -> None:
+    """A model that asks for tools even when none are offered still ends in a final."""
+    llm = _ToolsForeverLLM(answer=None)
+    agent = LeadAgent(
+        llm,  # type: ignore[arg-type]
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+    )
+    events = await _collect(agent, "loop", max_turns=2)
+    types = [e["type"] for e in events]
+    assert types.count("tool_call") == 2  # the forced call's tool call is not run
+    assert types[-2:] == ["max_turns", "final"]
+    final = events[-1]
+    assert final["forced_by_turn_cap"] is True
+    assert "turn cap of 2" in final["content"]
+
+
+@pytest.mark.asyncio
+async def test_stream_final_says_when_it_was_not_forced() -> None:
+    agent = LeadAgent(
+        _FakeLLM(  # type: ignore[arg-type]
+            [ChatResponse(content="hi", tool_calls=[], finish_reason="stop")]
+        ),
+        _echo_registry(),
+        studio=None,  # type: ignore[arg-type]
+    )
+    events = await _collect(agent, "hello")
+    assert events[-1]["forced_by_turn_cap"] is False
 
 
 @pytest.mark.asyncio

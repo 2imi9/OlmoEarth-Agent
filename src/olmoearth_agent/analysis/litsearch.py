@@ -257,6 +257,25 @@ def parse_openalex_works(
 def build_arxiv_params(
     query: str, *, max_results: int, id_list: str | None = None
 ) -> dict[str, Any]:
+    """Build the query parameters for one arXiv Atom API request.
+
+    Parameters
+    ----------
+    query : str
+        Free-text search, sent as ``search_query=all:<query>``. Ignored when
+        ``id_list`` is given.
+    max_results : int
+        Page size (``max_results``); the caller applies the cap.
+    id_list : str or None, optional
+        One or more comma-separated arXiv ids to fetch directly instead of
+        searching (identifier resolution).
+
+    Returns
+    -------
+    dict of str to Any
+        Parameters for ``GET`` :data:`ARXIV_API`, first page, ordered by
+        relevance, descending.
+    """
     params: dict[str, Any] = {
         "start": 0,
         "max_results": max_results,
@@ -279,6 +298,31 @@ def build_openalex_params(
     mailto: str | None = None,
     extra_filter: str | None = None,
 ) -> dict[str, Any]:
+    """Build the query parameters for one OpenAlex ``/works`` request.
+
+    Parameters
+    ----------
+    query : str
+        Free-text search (``search``); omitted when empty, as when resolving
+        a DOI through ``extra_filter``.
+    max_results : int
+        Page size (``per-page``); the caller applies the cap.
+    year_from, year_to : int or None, optional
+        Inclusive publication-year bounds, sent as
+        ``from_publication_date:<year>-01-01`` and
+        ``to_publication_date:<year>-12-31``.
+    mailto : str or None, optional
+        Contact address for OpenAlex's polite pool; omitted when ``None``.
+    extra_filter : str or None, optional
+        One more OpenAlex filter clause (e.g. ``doi:10.1234/abc``), joined to
+        the year bounds with a comma.
+
+    Returns
+    -------
+    dict of str to Any
+        Parameters for ``GET`` :data:`OPENALEX_WORKS`; ``filter`` is present
+        only when at least one clause is.
+    """
     filters = []
     if year_from is not None:
         filters.append(f"from_publication_date:{int(year_from)}-01-01")
@@ -358,6 +402,29 @@ async def search_arxiv(
     include_abstract: bool = True,
     id_list: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Search arXiv, or fetch given ids, and parse the feed into records.
+
+    Parameters
+    ----------
+    fetch : Fetcher
+        Async getter returning ``(status, body)``; injected so tests need no
+        network.
+    query : str
+        Free-text search; ignored when ``id_list`` is given.
+    max_results : int
+        Page size, already capped by the caller.
+    include_abstract : bool, default True
+        Keep each record's abstract (truncated to the context budget).
+    id_list : str or None, optional
+        arXiv ids to fetch directly instead of searching.
+
+    Returns
+    -------
+    list of dict
+        Curated records (see :func:`parse_arxiv_atom`) in the API's relevance
+        order; empty on a non-200 answer or an unparseable feed. Transport
+        errors from ``fetch`` propagate.
+    """
     status, body = await fetch(
         ARXIV_API, build_arxiv_params(query, max_results=max_results, id_list=id_list)
     )
@@ -376,6 +443,34 @@ async def search_openalex(
     include_abstract: bool = True,
     extra_filter: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Search OpenAlex works and parse the response into records.
+
+    The polite-pool ``mailto`` is read from ``OLMOEARTH_OPENALEX_MAILTO``.
+
+    Parameters
+    ----------
+    fetch : Fetcher
+        Async getter returning ``(status, body)``; injected so tests need no
+        network.
+    query : str
+        Free-text search; may be empty when ``extra_filter`` selects the work.
+    max_results : int
+        Page size, already capped by the caller.
+    year_from, year_to : int or None, optional
+        Inclusive publication-year bounds.
+    include_abstract : bool, default True
+        Keep each record's abstract, rebuilt from OpenAlex's inverted index
+        and truncated to the context budget.
+    extra_filter : str or None, optional
+        One more OpenAlex filter clause, e.g. ``doi:<doi>`` to resolve a DOI.
+
+    Returns
+    -------
+    list of dict
+        Curated records (see :func:`parse_openalex_works`) in the API's
+        relevance order; empty on a non-200 answer or a body that is not
+        JSON. Transport errors from ``fetch`` propagate.
+    """
     import json as _json
 
     params = build_openalex_params(

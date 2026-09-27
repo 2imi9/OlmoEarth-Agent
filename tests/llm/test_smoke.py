@@ -79,6 +79,68 @@ async def test_server_side_reasoning_content(
 
 
 @pytest.mark.asyncio
+async def test_server_side_reasoning_field(
+    serving_config: ServingConfig,
+    mock_chat_response: Callable[..., None],
+) -> None:
+    """Current vLLM names the field ``reasoning``; exp86 round 7 lost it."""
+    mock_chat_response(content="the answer is 42", reasoning="current vLLM trace")
+    client = OlmoEarthLLM(serving_config)
+    response = await client.chat([Message(role="user", content="q")])
+    assert response.thinking == "current vLLM trace"
+    assert response.content == "the answer is 42"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reasoning", "reasoning_content", "expected"),
+    [
+        ("new", "old", "new"),  # ``reasoning`` first
+        ("", "old", "old"),  # an empty field falls back
+        ("  ", "old", "old"),
+    ],
+)
+async def test_reasoning_falls_back_to_reasoning_content(
+    serving_config: ServingConfig,
+    mock_chat_response: Callable[..., None],
+    reasoning: str,
+    reasoning_content: str,
+    expected: str,
+) -> None:
+    mock_chat_response(
+        content="42", reasoning=reasoning, reasoning_content=reasoning_content
+    )
+    client = OlmoEarthLLM(serving_config)
+    response = await client.chat([Message(role="user", content="q")])
+    assert response.thinking == expected and response.content == "42"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_is_never_sent_back(
+    serving_config: ServingConfig,
+    mock_chat_response: Callable[..., None],
+    last_request_body: Callable[[], dict[str, Any]],
+) -> None:
+    """The trace is logged, not replayed: an assistant message carries only
+    its content and tool calls."""
+    mock_chat_response(content="42", reasoning="private trace")
+    client = OlmoEarthLLM(serving_config)
+    first = await client.chat([Message(role="user", content="q")])
+    mock_chat_response(content="ok")
+    await client.chat(
+        [
+            Message(role="user", content="q"),
+            Message(role="assistant", content=first.content),
+            Message(role="user", content="and?"),
+        ]
+    )
+    body = last_request_body()
+    assistant = body["messages"][1]
+    assert assistant == {"role": "assistant", "content": "42"}
+    assert "private trace" not in json.dumps(body)
+
+
+@pytest.mark.asyncio
 async def test_tool_call_round_trip(
     serving_config: ServingConfig,
     mock_chat_response: Callable[..., None],

@@ -16,6 +16,7 @@ without it installed (and stay unit-testable offline).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from typing import Any
 
@@ -83,12 +84,28 @@ def _assistant_blocks(message: Message) -> list[dict[str, Any]]:
     return blocks or [{"type": "text", "text": ""}]
 
 
-def _messages_to_anthropic(messages: list[Message]) -> list[dict[str, Any]]:
+def _assistant_text_blocks(message: Message) -> list[dict[str, Any]]:
+    """Assistant turn -> text only, its tool calls written out as text."""
+    parts = [message.content] if message.content else []
+    parts.extend(
+        f"[called tool {call.name} with {json.dumps(call.arguments or {})}]"
+        for call in message.tool_calls or []
+    )
+    return [{"type": "text", "text": "\n".join(parts)}]
+
+
+def _messages_to_anthropic(
+    messages: list[Message], *, tool_blocks: bool = True
+) -> list[dict[str, Any]]:
     """Convert internal messages to Anthropic user/assistant turns.
 
     Consecutive ``role="tool"`` results are merged into a single following
     ``user`` turn: Anthropic wants every ``tool_result`` for an assistant's
     ``tool_use`` batch grouped in one user message, in order.
+
+    ``tool_blocks=False`` writes tool calls and results as text instead: a
+    request that defines no tools (the harness's answer call at the turn cap)
+    may not carry ``tool_use`` or ``tool_result`` blocks.
     """
     out: list[dict[str, Any]] = []
     pending: list[dict[str, Any]] = []
@@ -100,17 +117,27 @@ def _messages_to_anthropic(messages: list[Message]) -> list[dict[str, Any]]:
 
     for m in messages:
         if m.role == "tool":
-            pending.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": m.tool_call_id or "",
-                    "content": m.content or "",
-                }
-            )
+            if tool_blocks:
+                pending.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": m.tool_call_id or "",
+                        "content": m.content or "",
+                    }
+                )
+            else:
+                pending.append(
+                    {
+                        "type": "text",
+                        "text": f"[result of tool {m.name or m.tool_call_id or ''}]"
+                        f"\n{m.content or ''}",
+                    }
+                )
             continue
         flush()
         if m.role == "assistant":
-            out.append({"role": "assistant", "content": _assistant_blocks(m)})
+            blocks = _assistant_blocks(m) if tool_blocks else _assistant_text_blocks(m)
+            out.append({"role": "assistant", "content": blocks})
         else:  # user (system already split out upstream)
             out.append({"role": "user", "content": m.content or ""})
     flush()
@@ -247,18 +274,17 @@ class AnthropicLLM:
     ) -> ChatResponse:
         """Send a Messages request and return a parsed :class:`ChatResponse`."""
         system, rest = _split_system(list(messages))
+        tool_list = _tools_to_anthropic(tools) if tools is not None else []
         payload: dict[str, Any] = {
             "model": self.config.model,
             "max_tokens": max_tokens or self.config.max_output_tokens,
-            "messages": _messages_to_anthropic(rest),
+            "messages": _messages_to_anthropic(rest, tool_blocks=bool(tool_list)),
             **_sampling_for_anthropic(mode),
         }
         if system:
             payload["system"] = system
-        if tools is not None:
-            tool_list = _tools_to_anthropic(tools)
-            if tool_list:
-                payload["tools"] = tool_list
+        if tool_list:
+            payload["tools"] = tool_list
         completion = await self._client.messages.create(**payload)
         data = completion.model_dump()
         return _parse_anthropic_payload(

@@ -107,7 +107,7 @@ def build_raster_sld(
     Returns well-formed SLD XML.
     """
     entries = "\n".join(
-        f'          <ColorMapEntry color={quoteattr(color)} '
+        f"          <ColorMapEntry color={quoteattr(color)} "
         f'quantity="{quantity:.6g}" label="{quantity:.3g}"/>'
         for quantity, color in _ramp_entries(vmin, vmax, ramp)
     )
@@ -164,8 +164,8 @@ def build_qlr(
     return (
         "<qlr>\n"
         "  <layer-tree-group>\n"
-        f"    <layer-tree-layer name={quoteattr(layer_name)} providerKey=\"wms\" "
-        f"source={quoteattr(datasource)} checked=\"Qt::Checked\" expanded=\"1\" "
+        f'    <layer-tree-layer name={quoteattr(layer_name)} providerKey="wms" '
+        f'source={quoteattr(datasource)} checked="Qt::Checked" expanded="1" '
         f"id={quoteattr(layer_id)}>\n"
         "      <customproperties/>\n"
         "    </layer-tree-layer>\n"
@@ -235,7 +235,9 @@ def build_gdal_wms_xml(
     )
 
 
-def cog_recipe(*, descriptor: str = "layer.xml", out: str = "out_cog.tif") -> dict[str, Any]:
+def cog_recipe(
+    *, descriptor: str = "layer.xml", out: str = "out_cog.tif"
+) -> dict[str, Any]:
     """An honest, user-run recipe to materialize a COG (the agent has no GDAL).
 
     A true Cloud-Optimized GeoTIFF needs internal tiling, embedded overview
@@ -247,7 +249,7 @@ def cog_recipe(*, descriptor: str = "layer.xml", out: str = "out_cog.tif") -> di
     into a file.
     """
     command = (
-        'gdal_translate --config GDAL_HTTP_HEADERS '
+        "gdal_translate --config GDAL_HTTP_HEADERS "
         '"Authorization: Bearer $OLMOEARTH_API_KEY" '
         f"{descriptor} {out} -of COG -co COMPRESS=DEFLATE -co BLOCKSIZE=512 "
         "-co OVERVIEWS=AUTO"

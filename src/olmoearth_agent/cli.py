@@ -94,6 +94,20 @@ def main(argv: list[str] | None = None) -> int:
         for name, ok in result.tool_calls:
             mark = "ok" if ok else "FAIL"
             print(f"  [{mark}] {name}", file=sys.stderr)
+        for check in result.grounding_checks:
+            if check.get("action") == "revise":
+                listed = ", ".join(check.get("unsupported", []))
+                print(
+                    f"  [numbers] in no tool result, rewrite asked: {listed}",
+                    file=sys.stderr,
+                )
+        for check in result.checks:
+            if check.get("action") == "revise" and check.get("check") != "numbers":
+                n = len(check.get("violations", []))
+                print(
+                    f"  [{check.get('check')}] {n} sentence(s) flagged, rewrite asked",
+                    file=sys.stderr,
+                )
         if result.state is not None:
             print(
                 f"  ({result.turns} turn(s), "
@@ -104,6 +118,31 @@ def main(argv: list[str] | None = None) -> int:
     if result.final_content is None:
         print("(no answer, hit the turn cap)", file=sys.stderr)
         return 1
+    if result.hit_max_turns:
+        # The web UI shows the same note above the answer (webui/js/run.js).
+        print(
+            f"(reached the turn cap ({args.max_turns}): the answer was written "
+            "from what the tools returned, without further tool calls)",
+            file=sys.stderr,
+        )
+    for check in result.grounding_checks:
+        if check.get("action") == "shown":
+            # The web UI shows the same note above the answer (webui/js/run.js).
+            print(
+                "(numbers in the answer that no tool returned: "
+                + ", ".join(check.get("unsupported", []))
+                + ")",
+                file=sys.stderr,
+            )
+    for check in result.checks:
+        if check.get("action") == "marked" and check.get("check") != "numbers":
+            # The answer carries "[unverified: <check>]" after each sentence.
+            print(
+                f"(the {check.get('check')} check still flags "
+                f"{len(check.get('violations', []))} statement(s) of the answer; "
+                "each is marked [unverified])",
+                file=sys.stderr,
+            )
     print(result.final_content)
     return 0
 

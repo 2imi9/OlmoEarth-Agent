@@ -18,7 +18,7 @@ from olmoearth_agent.evaluation.nndm import nndm_loo
 from olmoearth_agent.evaluation.spatial_cv import cv_inflation_diagnostic
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.security.paths import safe_path
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 _POINTS_SCHEMA = {
     "type": "array",
@@ -113,6 +113,10 @@ def build_evaluate_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_cv_inflation_check,
+            capability=Capability(
+                does="whether random cross-validation would overstate accuracy "
+                "on label points the caller gives, against spatial blocks"
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -132,6 +136,11 @@ def build_evaluate_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_classification_metrics,
+            capability=Capability(
+                does="accuracy and per-class precision, recall, F1 and IoU from "
+                "ground-truth labels the caller gives",
+                needs=("y_true and y_pred of the same length",),
+            ),
         ),
         RegisteredTool(
             spec=ToolSpec(
@@ -181,5 +190,9 @@ def build_evaluate_tools() -> list[RegisteredTool]:
                 },
             ),
             handler=_nndm_cv,
+            capability=Capability(
+                does="NNDM leave-one-out folds for an accuracy estimate over a "
+                "prediction area, from points the caller gives"
+            ),
         ),
     ]

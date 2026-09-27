@@ -31,7 +31,7 @@ const SCENARIOS = {
   compare: {
     reasoning: "Two runs over the same area with no ground-truth labels, so I compare them to each other (agreement), not accuracy. That needs to sample both rasters - which requires your Studio key.",
     tool: 'olmoearth_compare_results',
-    args: '{\n  "result_id_a": "<first result>",\n  "result_id_b": "<second result>"\n}',
+    args: '{\n  "result_ids": ["<first result>", "<second result>"]\n}',
     result: [['note', 'demo mode: connect a Studio key to sample the real rasters']],
     answer: "This is the demo, so I can't sample your real rasters here. Connect your **Studio key** (top bar), then either drag two prediction results into the chat or ask me to compare two runs. I'll report model-vs-model **agreement** (correlation, mean difference, agreement %) and scan a live **difference map** - blue where one run scores higher, pink where the other does. No ground-truth labels are needed; that would be *accuracy*, which is a different tool.",
   },
@@ -276,7 +276,59 @@ export function handleRunEvent(body, ev, staticRender) {
     }
   } else if (ev.type === 'max_turns') {
     workflowOnFail(body, null);
-    body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+    // The harness now asks for an answer without tools at the cap (a `final`
+    // follows, forced_by_turn_cap); the same note goes to the CLI's stderr.
+    // An older saved chat has no such final, so it keeps the old message.
+    if (ev.final_answer_forced) {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">Reached the turn cap (' + escapeHtml(String(ev.turns)) + '): the answer below was written from what the tools returned, without further tool calls.</div>');
+    } else {
+      body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+    }
+  } else if (ev.type === 'grounding_check') {
+    // The harness checked the answer's numbers against the run's tool results
+    // (harness/grounding.py). 'revise': it asked the model to rewrite without
+    // them, noted in the steps; 'shown': the answer below still states them
+    // (the CLI prints the same note to stderr). A `final` follows either way.
+    const nums = (ev.unsupported || []).join(', ');
+    if (ev.action === 'shown') {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">Numbers in the answer below that no tool returned: ' + escapeHtml(nums) + '.</div>');
+    } else {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = 'Number check: ' + nums + ' found in no tool result; asked for a rewrite without them.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    }
+  } else if (ev.type === 'check' && ev.check !== 'numbers') {
+    // An answer check other than the numbers (harness/checks.py; the number
+    // check has its grounding_check above). 'revise': a rewrite was asked,
+    // noted in the steps; 'marked': the answer below carries
+    // "[unverified: <check>]" after each sentence still flagged. The claim
+    // check (harness/claim_check.py) reports every call: 'passed' flagged
+    // nothing and is not shown; 'failed_open' could not be read, and the
+    // answer was shown without it. 'appended': a statement a tool requires
+    // was added at the end of the answer, with no rewrite.
+    const n = (ev.violations || []).length;
+    const name = String(ev.check || 'answer');
+    if (ev.action === 'passed') {
+      // nothing to show
+    } else if (ev.action === 'marked') {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">The ' + escapeHtml(name) + ' check still flags ' + n + ' statement(s) of the answer below; each is marked [unverified: ' + escapeHtml(name) + '].</div>');
+    } else if (ev.action === 'failed_open' || ev.action === 'appended') {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = ev.action === 'appended'
+        ? 'Answer check (' + name + '): a statement the tool requires was added at the end.'
+        : 'Answer check (' + name + '): not run (' + String(ev.error || 'no reply') + '); the answer is shown unchecked for it.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = 'Answer check (' + name + '): ' + n + ' sentence(s) flagged; asked for a rewrite.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    }
   } else if (ev.type === 'error') {
     workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');

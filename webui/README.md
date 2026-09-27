@@ -3,7 +3,7 @@
 A front-end shell for the OlmoEarth Agent, styled after [Ai2 **Asta**](https://asta.allen.ai/)
 (dark-teal canvas, cream text, Manrope, a centered prompt hero, a left sidebar)
 and rebranded with **OlmoEarth** elements (the pink Ai2/OlmoEarth logo, the
-EO/Studio content, the 17-skill catalog).
+EO/Studio content, the skill catalog).
 
 By default it's a **static mock** (no build step, no framework, no tracking),
 so the chat, the projects tree, and the "what a run looks like" transcript are
@@ -13,7 +13,7 @@ agent**: a multi-turn **chat with saved history**, your **real Studio projects a
 a drill-down tree** (project → model/embeddings → predictions → results), and
 briefs streamed through `LeadAgent` over Server-Sent Events. Chat history is kept
 client-side (localStorage), same as the key. Type `/` in the composer to call a
-specific skill directly — a slash-command menu of the 17 skills (like Claude
+specific skill directly — a slash-command menu of the catalog's skills (like Claude
 Code's `/commands`).
 
 ![OlmoEarth Agent - demo](demo/olmoearth-agent-demo.gif)
@@ -65,7 +65,7 @@ Or just open `webui/index.html` in a browser.
 | `styles.css` | the design system (tokens at `:root`), no preprocessor |
 | `js/`        | the front-end as native **ES modules** (no build step), split by concern: `main.js` (entry + app-shell wiring), `api.js` (every bridge call + request credentials), `store.js` + `util.js`, and feature modules `skills.js`, `chat.js`, `run.js`, `markdown.js`, `projects.js`, `attach.js`, `llm.js`, `landing.js`, `aoi.js` (AOI draw-in-chat), `viz.js` (in-chat result visuals), `results.js` (saved results: comparisons + downloadable file outputs), `download.js` (chat-artifact downloads), `leaflet.js` (lazy Leaflet loader). Loaded via `<script type="module" src="js/main.js">`. |
 | `assets/OlmoEarth-logo.png` | the OlmoEarth wordmark (the sidebar crops it to just the symbol) |
-| `screenshots/` | reference renders (desktop, transcript, mobile) |
+| `screenshots/` | reference render (desktop) |
 
 ## Design
 
@@ -73,7 +73,7 @@ Palette and type were taken from Asta's *computed* styles (not guessed):
 dark teal **`#032629`**, cream **`#faf2e9`**, **Manrope**, and Asta's emerald
 **`#0FCB8C`** kept as a secondary accent. The **primary accent is OlmoEarth
 pink `#F0529C`** (the brand), so it reads as Asta's calm, minimal aesthetic but
-unmistakably OlmoEarth. See [`DESIGN_NOTES.md`](DESIGN_NOTES.md).
+unmistakably OlmoEarth.
 
 Responsive: the sidebar collapses to a hamburger and the card grid reflows to a
 single column below 880 px.
