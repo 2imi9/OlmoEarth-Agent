@@ -241,6 +241,30 @@ def test_skills_md_gives_each_opt_in_tool_its_reason() -> None:
     assert f"{OPT_IN_ENV}=1" in text
 
 
+def test_litsearch_is_opt_in_for_its_core_slot_as_the_route_to_asta() -> None:
+    """#15 is off only for the core slot it costs; it is the agent's route to Asta.
+
+    The owner's correction of 28 October 2026: no page gives "Asta covers it"
+    as the reason (the CHANGELOG keeps its history).
+    """
+    reason = OPT_IN_TOOLS["olmoearth_litsearch"]
+    assert "core slot every turn" in reason
+    assert "route to Ai2's Asta" in reason
+    root = _SKILLS_MD.parent
+    pages = [
+        root / "README.md",
+        _SKILLS_MD,
+        root / "PLAN.md",
+        root / "webui" / "js" / "skills.js",
+    ]
+    for path in pages:
+        text = path.read_text(encoding="utf-8")
+        for stale in ("Asta covers", "Explorer or Asta", "Explorer and Asta"):
+            assert stale not in text, (path.name, stale)
+    for path in pages[1:]:
+        assert "route to Ai2's Asta" in path.read_text(encoding="utf-8"), path.name
+
+
 def test_five_skills_are_opt_in_whole() -> None:
     whole = {s.name for s in SKILLS if s.opt_in_only}
     assert whole == {

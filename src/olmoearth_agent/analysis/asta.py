@@ -23,6 +23,13 @@ agent's Studio/LLM/cloud keys are dropped) but ``ASTA_*`` variables pass
 through — the CLI needs its own token. Note the CLI makes its own network
 calls, so the in-process egress guard does not cover it; the trust boundary
 is "the operator chose to install and authenticate the Asta CLI".
+
+Asta marks some papers' text as not legal to show (``legalToShow: false`` in
+its ``Paper`` model; checked against asta-plugins 0.120.0). Such a record
+keeps its metadata and scores; its abstract, snippets and relevance summary
+are dropped, and ``content_withheld`` says why. The CLI writes that text to
+its file whatever the flag says, so the file is rewritten without it before
+its path is returned.
 """
 
 from __future__ import annotations
@@ -56,6 +63,30 @@ _AUTHOR_CAP = 10
 _STDERR_TAIL = 600
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+#: A record's ``content_withheld`` when Asta's ``legalToShow`` is false.
+CONTENT_WITHHELD = "Asta marks this paper's text as not legal to show"
+#: The flag's name as the CLI writes it, and the name Asta's model accepts.
+_LEGAL_KEYS = ("legalToShow", "legal_to_show")
+#: A ``Paper``'s fields that hold the paper's text, as the CLI writes them and
+#: as Asta's model also accepts them. Each has a default in that model, so the
+#: CLI's file stays valid without them.
+_TEXT_KEYS = frozenset(
+    {
+        "abstract",
+        "snippets",
+        "relevanceJudgement",
+        "relevance_judgement",
+        "citationContexts",
+        "citation_contexts",
+    }
+)
+#: The search's warning when the CLI's file could not be rewritten without the
+#: withheld text (the result then has no ``saved_to``).
+ARTIFACT_NOT_REWRITTEN = (
+    "The CLI's file could not be rewritten without the text Asta marks not "
+    "legal to show, so its path is not returned."
+)
 
 
 class AstaUnavailableError(RuntimeError):
@@ -131,6 +162,55 @@ def _truncate(text: Any, limit: int) -> str | None:
     return cleaned if len(cleaned) <= limit else cleaned[:limit].rstrip() + "…"
 
 
+def _legal_to_show(paper: dict[str, Any]) -> bool:
+    """False when Asta marks the paper's text as not legal to show.
+
+    The CLI writes ``legalToShow`` (Asta's default is true); ``legal_to_show``
+    is honoured too. Only an explicit ``false`` withholds the text.
+    """
+    return not any(paper.get(key) is False for key in _LEGAL_KEYS)
+
+
+def _without_text(paper: Any) -> Any:
+    """``paper`` minus its text fields when Asta marks it not legal to show."""
+    if isinstance(paper, dict) and not _legal_to_show(paper):
+        return {key: value for key, value in paper.items() if key not in _TEXT_KEYS}
+    return paper
+
+
+def _withhold_in_artifact(path: Path, payload: dict[str, Any]) -> bool:
+    """Rewrite the CLI's file without the text of papers Asta may not show.
+
+    The CLI writes every ``Paper`` field whatever ``legalToShow`` says. Each
+    paper whose flag is false loses its abstract, snippets, relevance
+    judgement and citation contexts; every other field and paper is kept. The
+    file is written beside itself and moved over it (``os.replace`` within
+    one folder), so it is never left half-written, and a failed write leaves
+    no file beside it. A file with no such text is not touched.
+
+    Returns
+    -------
+    bool
+        True when the file holds no withheld text. False when the rewrite
+        failed: the file is then as the CLI wrote it.
+    """
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return True
+    kept = [_without_text(paper) for paper in results]
+    if kept == results:
+        return True
+    staged = path.with_name(path.name + ".tmp")
+    text = json.dumps({**payload, "results": kept}, indent=2)
+    try:
+        staged.write_text(text, encoding="utf-8")
+        os.replace(staged, path)
+    except OSError:
+        staged.unlink(missing_ok=True)
+        return False
+    return True
+
+
 def parse_asta_results(
     payload: dict[str, Any], *, max_results: int, include_abstract: bool
 ) -> list[dict[str, Any]]:
@@ -140,6 +220,12 @@ def parse_asta_results(
     asta results read like the other sources, and adds the asta-only signals:
     ``relevance_score``, ``relevance_summary`` (the AI judgement), and capped
     full-text ``snippets``.
+
+    A paper whose ``legalToShow`` (or ``legal_to_show``) is false keeps its
+    title, authors, year, venue, url, id and scores; its abstract, snippets
+    and relevance summary are dropped, and its record carries
+    ``content_withheld`` (:data:`CONTENT_WITHHELD`). Missing or true keeps the
+    text, and the record has no ``content_withheld``.
     """
     results = payload.get("results")
     if not isinstance(results, list):
@@ -150,47 +236,55 @@ def parse_asta_results(
     )
     records: list[dict[str, Any]] = []
     for paper in ranked[: max(1, min(int(max_results), MAX_RECORDS))]:
-        judgement = paper.get("relevanceJudgement") or {}
-        snippets = [
-            _truncate(s.get("text"), _SNIPPET_CHARS)
-            for s in (paper.get("snippets") or [])[:_SNIPPETS_PER_PAPER]
-            if isinstance(s, dict) and s.get("text")
-        ]
-        corpus_id = paper.get("corpusId")
-        records.append(
-            {
-                "id": f"CorpusId:{corpus_id}" if corpus_id is not None else None,
-                "title": _truncate(paper.get("title"), 300),
-                "authors": [
-                    a.get("name")
-                    for a in (paper.get("authors") or [])[:_AUTHOR_CAP]
-                    if isinstance(a, dict) and a.get("name")
-                ],
-                "year": paper.get("year"),
-                "venue": paper.get("venue") or None,
-                "doi": None,
-                "arxiv_id": None,
-                "url": paper.get("url")
-                or (
-                    f"https://www.semanticscholar.org/p/{corpus_id}"
-                    if corpus_id is not None
-                    else None
-                ),
-                "abstract": (
-                    _truncate(paper.get("abstract"), _ABSTRACT_CHARS)
-                    if include_abstract
-                    else None
-                ),
-                "cited_by_count": paper.get("citationCount"),
-                "pdf_url": None,
-                "source": "asta",
-                "relevance_score": paper.get("relevanceScore"),
-                "relevance_summary": _truncate(
-                    judgement.get("relevanceSummary"), _SUMMARY_CHARS
-                ),
-                "snippets": snippets,
-            }
+        shown = _legal_to_show(paper)
+        judgement: dict[str, Any] = (
+            (paper.get("relevanceJudgement") or {}) if shown else {}
         )
+        snippets = (
+            [
+                _truncate(s.get("text"), _SNIPPET_CHARS)
+                for s in (paper.get("snippets") or [])[:_SNIPPETS_PER_PAPER]
+                if isinstance(s, dict) and s.get("text")
+            ]
+            if shown
+            else []
+        )
+        corpus_id = paper.get("corpusId")
+        record: dict[str, Any] = {
+            "id": f"CorpusId:{corpus_id}" if corpus_id is not None else None,
+            "title": _truncate(paper.get("title"), 300),
+            "authors": [
+                a.get("name")
+                for a in (paper.get("authors") or [])[:_AUTHOR_CAP]
+                if isinstance(a, dict) and a.get("name")
+            ],
+            "year": paper.get("year"),
+            "venue": paper.get("venue") or None,
+            "doi": None,
+            "arxiv_id": None,
+            "url": paper.get("url")
+            or (
+                f"https://www.semanticscholar.org/p/{corpus_id}"
+                if corpus_id is not None
+                else None
+            ),
+            "abstract": (
+                _truncate(paper.get("abstract"), _ABSTRACT_CHARS)
+                if include_abstract and shown
+                else None
+            ),
+            "cited_by_count": paper.get("citationCount"),
+            "pdf_url": None,
+            "source": "asta",
+            "relevance_score": paper.get("relevanceScore"),
+            "relevance_summary": _truncate(
+                judgement.get("relevanceSummary"), _SUMMARY_CHARS
+            ),
+            "snippets": snippets,
+        }
+        if not shown:
+            record["content_withheld"] = CONTENT_WITHHELD
+        records.append(record)
     return records
 
 
@@ -205,7 +299,13 @@ async def search_asta(
     Returns ``{"count", "papers", "sources": ["asta"], "warnings",
     "saved_to"}`` — the same envelope as :func:`search_literature`, plus the
     path of the CLI's full JSON artifact (kept under the workspace root, so
-    follow-up analysis can reread it without re-searching).
+    follow-up analysis can reread it without re-searching). ``papers`` drops
+    the text of a paper Asta marks not legal to show
+    (:func:`parse_asta_results`), and so does the artifact: when it holds
+    such text, it is rewritten without that paper's abstract, snippets,
+    relevance judgement and citation contexts before its path is returned.
+    If that rewrite fails, the result has no ``saved_to`` and ``warnings``
+    holds :data:`ARTIFACT_NOT_REWRITTEN`.
 
     Raises
     ------
@@ -259,10 +359,14 @@ async def search_asta(
     papers = parse_asta_results(
         payload, max_results=max_results, include_abstract=include_abstract
     )
-    return {
+    result: dict[str, Any] = {
         "count": len(papers),
         "papers": papers,
         "sources": ["asta"],
         "warnings": [],
-        "saved_to": str(out_path),
     }
+    if _withhold_in_artifact(out_path, payload):
+        result["saved_to"] = str(out_path)
+    else:
+        result["warnings"].append(ARTIFACT_NOT_REWRITTEN)
+    return result

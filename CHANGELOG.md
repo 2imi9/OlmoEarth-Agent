@@ -438,6 +438,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the code.
 
 ### Changed
+- **Why `olmoearth_litsearch` is opt-in, corrected.** It is off only because
+  it costs a core slot every turn. It is the agent's own route to Ai2's Asta
+  (`asta literature find`), with arXiv and OpenAlex beside it, not a copy of
+  it. The trim entry below gave "Ai2's Asta covers it". The reason is
+  corrected in `skills/registry.py`, SKILLS.md, the README, PLAN.md and the
+  web UI. The tool stays opt-in; no count changed. Test:
+  `tests/skills/test_skill_registry.py`.
 - **The README is restructured into short bullets; no capability changed.**
   - Six bullets under the header say what the agent does with Studio and
     what it checks. The one naming olmoearth-inferencex covers the
@@ -903,6 +910,19 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **Litsearch's Asta records honour `legalToShow`.** Asta marks some papers'
+  text as not legal to show (`legalToShow: false`, in its `Paper` model
+  since the CLI's first commit). The Asta backend, added in 1.4.0, ignored
+  the flag; it now honours it. Such a record keeps its title, authors,
+  year, venue, url, id and scores. Its abstract, snippets and relevance
+  summary are dropped, and `content_withheld` says why. The CLI writes that
+  text to its JSON whatever the flag says, so the file (`saved_to`) is
+  rewritten without the paper's abstract, snippets, relevance judgement
+  and citation contexts; if that fails, `saved_to` is left out and a
+  warning says why. `legal_to_show` is honoured too; missing or true keeps
+  the text, and the file is left as written. The CLI's options and field
+  names still match 0.120.0. Tests: `tests/analysis/test_asta.py`,
+  `tests/tools/test_litsearch_tool.py`.
 - **The certificate tools no longer block the event loop.**
   - `certificate.build`, `certificate.verify` and `certificate.point` run in
     a worker thread (`asyncio.to_thread`), as the command line already did.

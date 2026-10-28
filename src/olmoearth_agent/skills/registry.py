@@ -318,8 +318,8 @@ SKILLS: list[SkillSpec] = [
         "to ground citations (key-free; deduped across sources).",
         ["olmoearth_litsearch"],
         opt_in={
-            "olmoearth_litsearch": "Ai2's Asta covers it, and it cost a core slot "
-            "every turn",
+            "olmoearth_litsearch": "it costs a core slot every turn; it is the "
+            "agent's own route to Ai2's Asta, not a copy of it",
         },
     ),
     SkillSpec(

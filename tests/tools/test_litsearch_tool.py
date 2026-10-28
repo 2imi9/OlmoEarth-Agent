@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
 from olmoearth_agent.tools import litsearch as litsearch_tools
 from olmoearth_agent.tools.litsearch import build_litsearch_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
@@ -156,3 +159,48 @@ async def test_asta_source_routes_to_asta_backend(
     assert seen["query"] == "karst detection"
     assert seen["max_results"] == 5
     assert result["sources"] == ["asta"]
+
+
+@pytest.mark.asyncio
+async def test_asta_source_withholds_text_asta_marks_not_legal_to_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No text of a paper Asta marks not legal to show, in the answer or its file."""
+    from olmoearth_agent.analysis import asta as asta_mod
+
+    paper = {
+        "corpusId": 9,
+        "title": "Withheld paper",
+        "abstract": "secret abstract",
+        "year": 2024,
+        "authors": [{"name": "E. Author", "id": "5"}],
+        "venue": "TGRS",
+        "url": None,
+        "citationCount": 3,
+        "relevanceScore": 0.7,
+        "relevanceJudgement": {"relevance": 2, "relevanceSummary": "secret summary"},
+        "snippets": [{"text": "secret snippet", "sectionTitle": None}],
+        "legalToShow": False,
+    }
+
+    async def fake_cli(argv: list[str]) -> tuple[int, str, str]:
+        out = Path(argv[argv.index("-o") + 1])
+        out.write_text(json.dumps({"query": "q", "results": [paper]}), "utf-8")
+        return 0, "", ""
+
+    monkeypatch.setenv(OUTPUT_ROOT_ENV, str(tmp_path))
+    monkeypatch.setattr(asta_mod, "asta_bin", lambda: "asta")
+    monkeypatch.setattr(asta_mod, "_run_cli", fake_cli)
+    (tool,) = build_litsearch_tools()
+    result = await tool.handler(
+        {"query": "karst", "source": "asta", "include_abstract": True}, _ctx()
+    )
+    (record,) = result["papers"]
+    assert record["content_withheld"] == asta_mod.CONTENT_WITHHELD
+    assert record["title"] == "Withheld paper"
+    assert record["url"] == "https://www.semanticscholar.org/p/9"
+    assert "secret" not in json.dumps(result["papers"])
+    # Nor does the CLI's file whose path the answer carries.
+    saved = Path(result["saved_to"])
+    assert tmp_path.resolve() in saved.resolve().parents
+    assert "secret" not in saved.read_text(encoding="utf-8")
