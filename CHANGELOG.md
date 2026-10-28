@@ -182,6 +182,66 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the code.
 
 ### Changed
+- **The default registry is the Studio run loop plus the verification
+  layer; 14 tools are opt-in.** `olmoearth_automate` (#3: for an annual
+  task, Ai2's v1.3 embeddings and its Explorer replace computing embeddings;
+  they are one vector per 10 m pixel per year, so a task that needs dates
+  within a year still needs the notebook), `olmoearth_change_detect` (#5: superseded by `olmoearth_compare_results`,
+  mode `series`, whose description now says it is the tool for a time
+  series), `olmoearth_cv_inflation_check` and `olmoearth_nndm_cv` (#7:
+  training-side checks, run outside Studio), `olmoearth_similarity_search`
+  (#8: Ai2's Explorer and AlphaEarth in Earth Engine search every pixel),
+  `olmoearth_area_of_applicability` (#9: no tool produces its input, and it
+  was measured not to rank errors better than the margin),
+  `olmoearth_cloud_mask_audit` (#10: no tool produces its input;
+  inferencex's condition layer records cloud where a run has SCL, through
+  its own CLI on a direct OlmoEarth run, not on a Studio result),
+  `olmoearth_litsearch` (#15: Ai2's Asta covers it, and it cost a core slot
+  every turn), `olmoearth_negative_sampler` (#16) and the four
+  `olmoearth_rslearn_*` tools (#17: model training outside Studio), and
+  `olmoearth_grade_review_rule` (#18: it needs per-unit error labels a
+  Studio user rarely has) leave the default registry. None is deleted:
+  `OLMOEARTH_OPT_IN_TOOLS=1` registers every one where it was, core or
+  deferred under its skill, read through the switch `olmoearth_run_python`
+  already had (`tools/registry.opted_in`, `1`/`true`/`yes`/`on`). Each catalog
+  row names its opt-in tools with the reason (`SkillSpec.opt_in`,
+  `skills/registry.OPT_IN_TOOLS`), and `SKILLS.md` lists them in a table the
+  tests compare with the code. By default the agent registers 27 tools, 26
+  of them sent on every turn (#6's `olmoearth_baseline_compare` waits for
+  its skill), against 41 and 29 before; a default turn's specs drop by about
+  1,425 tokens (chars / 4), and the test's bound goes from 8,000 to 6,600.
+  With the setting off, no text the default agent sends the model names an
+  opt-in tool (a test reads every default tool's description, the capability
+  card, the soul and the `SKILL.md` packages): `olmoearth_review_set`'s
+  description says "not OOD detection" without pointing at
+  `olmoearth_area_of_applicability`, and the soul no longer says the
+  `olmoearth_rslearn_*` tools come with the rslearn skill. The web UI's "/"
+  menu still lists the four skills that are opt-in whole; with the setting
+  off, the bridge (`serve.py`) runs a brief that picks one without pinning
+  it, instead of steering it at tools the registry does not hold.
+  `.env.example` documents the setting. The documents stop promising what
+  does not exist: `PLAN.md` §1 drops the data-layer catalog, the EO data
+  and STAC fetches, `features_search` and
+  `fetch_embedding` (and their dataclasses), says which rows are built, and
+  settles `/models` from the code (`StudioClient.search_models` and
+  `get_model`, live though absent from openapi v0.1.0); the JEPA change
+  detector in its separate repo is dropped from `README.md` and named as not
+  connected in `SKILLS.md`, `PLAN.md`, `docs/CANON.md` and
+  `webui/js/skills.js`; skill #12's external data-layer idea is dropped. The
+  README and the web UI say the agent checks what Studio returns where it
+  can: the review set, the label sample and the error rate need a map with
+  scores (a Studio `[0, 1]` score band, a regression band given a threshold,
+  or a direct model run's scores), so a Studio class map gets none of them
+  yet. The landing page's two example runs and the demo's change scenario
+  use `olmoearth_compare_results` (mode `series`) and
+  `olmoearth_plan_label_sample` instead of opt-in tools, and the examples
+  and in/out lines that need an opt-in tool are marked. The README, its
+  skills badge (14 default + 4 opt-in), `SKILLS.md`, `docs/CANON.md`,
+  `docs/SHOWCASE.md`, the web UI's landing page, "/" menu and skill cards
+  (an opt-in mark) agree on the counts, and the README and the web UI say
+  the agent is built in collaboration with Ai2. No kept tool's behaviour
+  changes (`olmoearth_review_set`'s description loses one pointer), and no
+  exp86 brief named a trimmed tool.
 - **The `inferencex` extra requires olmoearth-inferencex 1.20.1**
   (`olmoearth-inferencex[geo]>=1.20.1`; `uv.lock` is re-locked by the cluster
   job, not by hand). `olmoearth_scores_from_file` loads the feature-folder

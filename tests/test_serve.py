@@ -287,10 +287,61 @@ def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["forced_skill"] == ""
 
 
-def test_forced_skill_sends_its_deferred_tools_from_turn_one(
+def _forced_as_sent(monkeypatch: pytest.MonkeyPatch, slugs: Iterable[str]) -> list[str]:
+    """The ``forced_skill`` the agent is built with, per slug the UI sends."""
+    forwarded: list[str] = []
+
+    class _CapAgent:
+        def __init__(self, *_a: Any, **kw: Any) -> None:
+            forwarded.append(kw.get("forced_skill"))
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            yield {"type": "final", "turn": 1, "content": "ok"}
+
+    monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
+    with TestClient(serve.app) as client:
+        for slug in slugs:
+            client.post(
+                "/api/run",
+                json={"brief": "hi", "forced_skill": slug},
+                headers={"X-Olmoearth-Key": "k"},
+            )
+    return forwarded
+
+
+#: The "/" menu slugs of the four skills that are opt-in whole.
+_OPT_IN_WHOLE = ("similarity", "cloud-mask-audit", "litsearch", "negative-sampler")
+
+
+def test_an_opt_in_skill_is_not_forced_while_its_tools_are_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The web UI's "/" menu still reaches deferred tools (e.g. rslearn)."""
+    """Forcing a skill that is opt-in whole would pin the run to absent tools.
+
+    rslearn's tools are opt-in too, but its SKILL.md loads, so it stays forced.
+    """
+    monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
+    forwarded = _forced_as_sent(monkeypatch, (*_OPT_IN_WHOLE, "rslearn"))
+    assert forwarded == ["", "", "", "", "rslearn"]
+
+
+def test_an_opt_in_skill_is_forced_when_its_tools_are_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bridge reads the setting when it starts, as its registry does."""
+    monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", "1")
+    assert _forced_as_sent(monkeypatch, _OPT_IN_WHOLE) == list(_OPT_IN_WHOLE)
+
+
+def test_the_bridges_opt_in_whole_skills_are_the_catalogs() -> None:
+    """The bridge's list is the catalog's ``opt_in_only`` rows, by slug."""
+    assert set(serve._OPT_IN_ONLY_SKILLS) == set(_OPT_IN_WHOLE)
+
+
+def _offered_per_forced_skill(
+    monkeypatch: pytest.MonkeyPatch, slugs: Iterable[str]
+) -> dict[str, set[str]]:
+    """The tool specs the first turn offers, per forced skill ("" = none)."""
     offered: dict[str, set[str]] = {}
 
     class _Probe(serve.LeadAgent):
@@ -304,15 +355,42 @@ def test_forced_skill_sends_its_deferred_tools_from_turn_one(
 
     monkeypatch.setattr(serve, "LeadAgent", _Probe)
     with TestClient(serve.app) as client:
-        for slug in ("rslearn", ""):
+        for slug in slugs:
             client.post(
                 "/api/run",
                 json={"brief": "set up training", "forced_skill": slug},
                 headers={"X-Olmoearth-Key": "k"},
             )
+    return offered
+
+
+def test_forced_skill_sends_its_deferred_tools_from_turn_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The web UI's "/" menu still reaches deferred tools (e.g. rslearn, opted in).
+
+    The bridge builds its registry at startup, so the opt-in setting is read
+    when the test client starts.
+    """
+    monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", "1")
+    offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
     assert "olmoearth_rslearn_compose" in offered["rslearn"]
     assert "olmoearth_rslearn_compose" not in offered[""]
     assert "olmoearth_compare_results" in offered[""]
+
+
+def test_forced_skill_reaches_the_default_deferred_tool_and_no_opt_in_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the opt-in setting, forcing rslearn offers none of its tools."""
+    monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
+    offered = _offered_per_forced_skill(
+        monkeypatch, ("baseline-compare", "rslearn", "")
+    )
+    assert "olmoearth_baseline_compare" in offered["baseline-compare"]
+    assert "olmoearth_baseline_compare" not in offered[""]
+    assert not any(n.startswith("olmoearth_rslearn_") for n in offered["rslearn"])
+    assert offered["rslearn"] == offered[""]
 
 
 def test_skills_endpoint_exposes_per_skill_stages() -> None:

@@ -4,6 +4,8 @@
 
 from olmoearth_agent.skills.loader import SkillLoader, VendoredSkill
 from olmoearth_agent.skills.registry import (
+    OPT_IN_ENV,
+    OPT_IN_TOOLS,
     SKILLS,
     SkillSpec,
     build_default_registry,
@@ -11,6 +13,8 @@ from olmoearth_agent.skills.registry import (
 )
 
 __all__ = [
+    "OPT_IN_ENV",
+    "OPT_IN_TOOLS",
     "SKILLS",
     "SkillLoader",
     "SkillSpec",

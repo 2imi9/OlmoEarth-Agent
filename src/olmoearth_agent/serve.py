@@ -77,6 +77,16 @@ _VALID_FORCED_SKILLS = frozenset(
     s.name.removeprefix("olmoearth-") for s in SKILLS if s.number >= 1
 )
 
+#: The tools of each skill that is opt-in whole (``SkillSpec.opt_in_only``), by
+#: slug. None of these skills has a SKILL.md package, so with
+#: ``OLMOEARTH_OPT_IN_TOOLS`` off forcing one would steer the run at tools the
+#: registry does not hold; ``api_run`` drops such a slug.
+_OPT_IN_ONLY_SKILLS: dict[str, frozenset[str]] = {
+    s.name.removeprefix("olmoearth-"): frozenset(s.tools)
+    for s in SKILLS
+    if s.opt_in_only
+}
+
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
 
@@ -626,10 +636,18 @@ async def api_run(request: Request) -> StreamingResponse:
     # skill slug here, pinning the run to it. Malformed OR non-existent values are
     # ignored (not rejected) so a stray slug never breaks a run -- and a
     # well-formed but unknown slug is never injected into the prompt directive.
+    # A skill that is opt-in whole is dropped too while none of its tools is
+    # registered (OLMOEARTH_OPT_IN_TOOLS off when the bridge started): the
+    # run would be pinned to tools the model cannot call.
+    registry = app.state.registry
     forced_skill = str(body.get("forced_skill", "")).strip().lower()
     if (
         not _SKILL_SLUG_RE.match(forced_skill)
         or forced_skill not in _VALID_FORCED_SKILLS
+        or (
+            forced_skill in _OPT_IN_ONLY_SKILLS
+            and not _OPT_IN_ONLY_SKILLS[forced_skill] & set(registry.names())
+        )
     ):
         forced_skill = ""
 
@@ -647,7 +665,6 @@ async def api_run(request: Request) -> StreamingResponse:
     ):
         await llm.aclose()  # release the unused hosted client
         llm = app.state.llm
-    registry = app.state.registry
     skill_index: str = app.state.skill_index
     # Cross-thread memory: read per request so a preference remembered in one
     # conversation applies to the next without a server restart.

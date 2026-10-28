@@ -33,13 +33,17 @@ import tempfile
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import (
+    Capability,
+    RegisteredTool,
+    ToolContext,
+    opted_in,
+)
 
 #: Default wall-clock cap per call (seconds); override OLMOEARTH_RUN_PYTHON_TIMEOUT.
 _DEFAULT_TIMEOUT = 30.0
 #: Per-stream output cap (chars), so a noisy run can't flood the context window.
 _MAX_OUTPUT = 8000
-_TRUTHY = {"1", "true", "yes", "on"}
 
 #: Env-var name fragments / prefixes that mark a credential. Matched
 #: case-insensitively; any match is dropped from the subprocess environment so
@@ -66,7 +70,7 @@ _SECRET_PREFIXES = (
 
 def _enabled() -> bool:
     """True only if the operator opted into code execution."""
-    return os.environ.get("OLMOEARTH_RUN_PYTHON", "").strip().lower() in _TRUTHY
+    return opted_in("OLMOEARTH_RUN_PYTHON")
 
 
 def _scrubbed_env() -> dict[str, str]:

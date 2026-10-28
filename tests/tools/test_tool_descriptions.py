@@ -11,12 +11,14 @@ figure belongs in a tool's output, where it applies and grounds the number.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
+from unittest import mock
 
 import pytest
 
-from olmoearth_agent.skills import build_default_registry
+from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
 
 #: Forms a measured result takes; rules and limits ("2-8 results", "2-16",
 #: "0.05 = the most suspect 5%") are not in them.
@@ -43,8 +45,11 @@ def _texts(name: str, schema: Any, where: str = "") -> list[tuple[str, str]]:
 
 
 def _all_texts() -> list[tuple[str, str]]:
+    """Every description, the opt-in tools' included (they reach the model when on)."""
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
+        registry = build_default_registry()
     texts: list[tuple[str, str]] = []
-    for spec in build_default_registry().specs():
+    for spec in registry.specs():
         texts.append((spec.name, spec.description))
         texts.extend(_texts(spec.name, spec.parameters))
     return texts

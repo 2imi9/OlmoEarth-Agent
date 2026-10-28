@@ -15,10 +15,21 @@ when the model loads the skill, and the web UI's forced skill does before the
 first turn. Every other tool is *core* and is sent on every turn. A deferred
 tool stays callable: dispatching one loads its group, so its spec is sent from
 the next turn on.
+
+Opt-in tools. A tool behind an opt-in setting is not registered at all unless
+the operator sets that environment variable to a truthy value
+(:func:`opted_in`): ``OLMOEARTH_RUN_PYTHON`` for ``olmoearth_run_python``,
+and ``OLMOEARTH_OPT_IN_TOOLS`` for the tools left out of the default registry
+(``skills.registry.OPT_IN_TOOLS``). Unlike a deferred tool, an opt-in tool
+that is off cannot be called or loaded by the model, and no text the default
+agent sends it (tool descriptions, capability card, soul, SKILL.md packages)
+names one of ``OPT_IN_TOOLS``; ``tests/skills/test_skill_registry.py`` checks
+that.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
@@ -48,6 +59,33 @@ STOP_RETRYING_HINT = (
 )
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+#: The values that switch an opt-in setting on (case and spaces aside).
+OPT_IN_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def opted_in(variable: str) -> bool:
+    """True only if the operator set the opt-in variable ``variable`` on.
+
+    The one switch of every opt-in tool bundle (see the module docstring):
+    ``1``, ``true``, ``yes`` or ``on``; unset, empty or anything else is off.
+
+    Parameters
+    ----------
+    variable
+        The environment variable's name, e.g. ``OLMOEARTH_RUN_PYTHON``.
+
+    Returns
+    -------
+    bool
+        Whether the bundle behind ``variable`` is registered.
+
+    Examples
+    --------
+    >>> opted_in("OLMOEARTH_OPT_IN_TOOLS")  # doctest: +SKIP
+    False
+    """
+    return os.environ.get(variable, "").strip().lower() in OPT_IN_VALUES
 
 
 def note_failure(envelope: dict[str, Any], name: str, thread_state: Any) -> None:

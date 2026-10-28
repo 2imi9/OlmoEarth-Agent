@@ -14,7 +14,8 @@ const EXAMPLE_BRIEFS = {
     'Compare my two prediction runs over the same area and show the difference map.',
     'Did karst-positive area trend up across these 4 quarterly snapshots?',
     'Compare OlmoEarth vs AlphaEarth on a transfer region.',
-    'Flag predictions that fall outside my training data (area of applicability).',
+    'Which windows of my flood-probability result should a reviewer check first?',
+    'How wrong is this probability map? I can label 300 windows.',
   ],
   prep: [
     'I have 200 labels and a T4: embeddings or fine-tune?',

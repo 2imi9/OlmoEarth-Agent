@@ -1497,10 +1497,8 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "'evidence_scope' says in one sentence what was measured "
                     "and whether it covers this case. Ranks relative "
                     "suspicion, not a "
-                    "calibrated error probability; not OOD detection (that is "
-                    "olmoearth_area_of_applicability, skill "
-                    "olmoearth-uncertainty). Window indices and ids only, never "
-                    "coordinates."
+                    "calibrated error probability; not OOD detection. Window "
+                    "indices and ids only, never coordinates."
                 ),
                 parameters={
                     "type": "object",

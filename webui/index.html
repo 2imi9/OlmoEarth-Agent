@@ -194,8 +194,10 @@
               <p class="tagline">
                 A planetary-intelligence agent that drives
                 <a href="https://olmoearth.allenai.org/" target="_blank" rel="noopener">OlmoEarth Studio</a>
-                from natural-language briefs. It reasons, calls the right tools, runs predictions, and reports
-                honest, spatially-validated results across <strong>17 skills</strong>. A project from
+                from natural-language briefs, then checks what it returns where it can: for a map with scores, which
+                windows a reviewer should open first, and how wrong the map is, with the interval its labelled sample
+                earns (a Studio class map carries no score to check yet). <strong>18 skills</strong>,
+                14 on by default and 4 opt-in. Built in collaboration with
                 <a href="https://allenai.org/" target="_blank" rel="noopener">Ai2</a>.
               </p>
 
@@ -212,7 +214,7 @@
                 </button>
                 <button class="pill" type="button" onclick="document.getElementById('capabilities').scrollIntoView({behavior:'smooth'})">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M4 5h16v14H4zM4 9h16M9 9v10"/></svg>
-                  Browse the 17 skills
+                  Browse the 18 skills
                 </button>
                 <button class="pill" type="button" onclick="document.getElementById('run-complex').scrollIntoView({behavior:'smooth'})">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>
@@ -231,8 +233,8 @@
           <!-- Capabilities -->
           <section class="capabilities" id="capabilities">
             <div class="section-head">
-              <h2>Seventeen skills, six stages</h2>
-              <p>From label prep to a stakeholder brief. Each skill is a packaged tool the agent composes. <a href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md" target="_blank" rel="noopener">Full catalog →</a></p>
+              <h2>Eighteen skills, six stages</h2>
+              <p>From label prep to a stakeholder brief. Each skill is a packaged tool the agent composes. Cards marked opt-in, and the opt-in tools other cards name, need <code>OLMOEARTH_OPT_IN_TOOLS=1</code> on the bridge. <a href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md" target="_blank" rel="noopener">Full catalog →</a></p>
             </div>
             <div class="cap-grid" id="capGrid"><!-- cards injected by js/skills.js --></div>
           </section>
@@ -247,39 +249,36 @@
             <div class="transcript">
               <div class="msg user">
                 <span class="role">Brief</span>
-                <div class="bubble">Did karst-positive area trend up across these 4 quarterly snapshots, or just wobble?</div>
+                <div class="bubble">Did the karst vulnerability score trend up across these 4 quarterly results, or just wobble?</div>
               </div>
 
               <div class="msg agent">
                 <span class="role">OlmoEarth Agent</span>
                 <div class="think">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M12 3a6 6 0 00-4 10.5c.7.6 1 1 1 2h6c0-1 .3-1.4 1-2A6 6 0 0012 3z"/><path d="M9 18h6"/></svg>
-                  Four dates, that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.
+                  Four dated results of one model over one area, so a series is valid (two dates cannot tell a trend from a wobble). I'll trace them with the comparison tool in series mode; it orders them by date and samples each on one grid.
                 </div>
 
                 <div class="toolcall">
-                  <div class="tc-head"><span class="tc-dot"></span>called <code>olmoearth_change_detect</code></div>
+                  <div class="tc-head"><span class="tc-dot"></span>called <code>olmoearth_compare_results</code></div>
 <pre class="tc-args">{
-  "series": [
-    {"date": "2024-03-01", "value": 0.12},
-    {"date": "2024-06-01", "value": 0.18},
-    {"date": "2024-09-01", "value": 0.15},
-    {"date": "2024-12-01", "value": 0.27}
-  ],
-  "metric": "karst_positive_fraction"
+  "result_ids": ["&lt;March result&gt;", "&lt;June result&gt;", "&lt;September result&gt;", "&lt;December result&gt;"],
+  "mode": "series"
 }</pre>
                   <div class="tc-result">
-                    <span class="kv"><b>trend</b> oscillating</span>
-                    <span class="kv"><b>net_change</b> +0.15</span>
-                    <span class="kv"><b>reversals</b> 2</span>
-                    <span class="kv"><b>max step</b> Sep→Dec +0.12</span>
+                    <span class="kv"><b>ordering</b> by prediction date</span>
+                    <span class="kv"><b>windows</b> 9 (3×3 grid)</span>
+                    <span class="kv"><b>mean_total_change</b> +0.06</span>
+                    <span class="kv"><b>Jun→Sep</b> down</span>
+                    <span class="kv"><b>largest step</b> Sep→Dec</span>
                   </div>
                 </div>
 
                 <div class="answer">
-                  Net positive area rose <strong>+0.15</strong> over the year, but it didn't trend cleanly upward: there
-                  were <strong>2 reversals</strong> and the Sep→Dec quarter (<strong>+0.12</strong>) drove most of the gain.
-                  I'd call this <em>oscillating with an upward bias</em>, not a steady increase. Want the per-quarter chart or a stakeholder brief?
+                  Across the 9 sampled windows the model's karst score rose on net (<strong>+0.06</strong> on average), but not
+                  steadily: it fell from June to September, and the September→December step carried most of the rise. I'd call
+                  this <em>a wobble with an upward bias</em>. This is how the model's estimates moved between run dates, not
+                  verified ground change. Want the per-window trajectories, or a labelled sample to check how wrong the latest map is?
                 </div>
               </div>
             </div>
@@ -289,20 +288,20 @@
           <section class="run-example" id="run-complex">
             <div class="section-head">
               <h2>A more complex run</h2>
-              <p>When a brief needs several steps, the agent chains tools in order: it draws an AOI, finds a model, runs the prediction, and checks the accuracy is honest before reporting. Reasoning and tools are collapsed by default in a live chat; expanded here.</p>
+              <p>When a brief needs several steps, the agent chains tools in order: it draws an AOI, finds a model, runs the prediction, and plans the labelled sample an error rate needs instead of quoting one from nowhere. Reasoning and tools are collapsed by default in a live chat; expanded here.</p>
             </div>
 
             <div class="transcript">
               <div class="msg user">
                 <span class="role">Brief</span>
-                <div class="bubble">Map karst vulnerability over an area I'll draw, then confirm the accuracy isn't inflated.</div>
+                <div class="bubble">Map karst vulnerability over an area I'll draw, then tell me how wrong the map is. I can label 100 windows.</div>
               </div>
 
               <div class="msg agent">
                 <span class="role">OlmoEarth Agent</span>
                 <div class="think">
                   <svg viewBox="0 0 24 24" class="ic"><path d="M12 3a6 6 0 00-4 10.5c.7.6 1 1 1 2h6c0-1 .3-1.4 1-2A6 6 0 0012 3z"/><path d="M9 18h6"/></svg>
-                  No area was given, so I'll have you draw it, then discover a model, submit, poll to completion, fetch results, and run a spatial-CV inflation check before quoting any accuracy.
+                  No area was given, so I'll have you draw it, then discover a model, submit, poll to completion and fetch results. The result's band is a [0, 1] score, so I can plan which 100 windows to label; the error rate and its interval come from those labels, not from me.
                 </div>
 
                 <div class="toolcall">
@@ -330,12 +329,12 @@
                   <div class="tc-result"><span class="kv"><b>tiles</b> 1</span><span class="kv"><b>format</b> png</span></div>
                 </div>
                 <div class="toolcall">
-                  <div class="tc-head"><span class="tc-dot"></span>called <code>olmoearth_cv_inflation_check</code></div>
-                  <div class="tc-result"><span class="kv"><b>random CV</b> higher</span><span class="kv"><b>spatial CV</b> lower</span><span class="kv"><b>verdict</b> report spatial</span></div>
+                  <div class="tc-head"><span class="tc-dot"></span>called <code>olmoearth_plan_label_sample</code></div>
+                  <div class="tc-result"><span class="kv"><b>design</b> confidence</span><span class="kv"><b>budget</b> 100</span><span class="kv"><b>n_population</b> 256</span><span class="kv"><b>labels_csv_path</b> saved</span></div>
                 </div>
 
                 <div class="answer">
-                  Predicted karst vulnerability over your drawn area and fetched the result tiles. On accuracy: a random-split CV looks optimistic, but spatial-block CV is the honest number under spatial autocorrelation, so that's what I'd report (the gap is the inflation). Want a QGIS layer, an Area-of-Applicability OOD flag, or a stakeholder brief?
+                  Predicted karst vulnerability over your drawn area and fetched the result tiles. To say how wrong the map is, label the 100 windows I listed (the CSV is saved; mark each window the map gets wrong). The sample is stratified by the model's own confidence, so the share of wrong windows in it is not the map's error rate: send the labels back and I'll estimate that rate with the interval this design earns (<code>olmoearth_estimate_map_error</code>). Want a QGIS layer or a stakeholder brief meanwhile?
                 </div>
               </div>
             </div>

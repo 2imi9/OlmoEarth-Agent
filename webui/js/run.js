@@ -13,12 +13,14 @@ import { renderResultViz } from './viz.js';
    In demo mode a brief plays a canned agent loop with the same event shape as
    the live SSE stream. */
 const SCENARIOS = {
+  // Honest demo, like `compare`: change over time is the comparison tool's
+  // series mode, which samples real rasters, so the demo shows no statistics.
   change: {
-    reasoning: "Four dates, that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.",
-    tool: 'olmoearth_change_detect',
-    args: '{\n  "series": [\n    {"date": "2024-03-01", "value": 0.12},\n    {"date": "2024-06-01", "value": 0.18},\n    {"date": "2024-09-01", "value": 0.15},\n    {"date": "2024-12-01", "value": 0.27}\n  ],\n  "metric": "karst_positive_fraction"\n}',
-    result: [['trend', 'oscillating'], ['net_change', '+0.15'], ['reversals', '2'], ['max_step', 'Sep→Dec +0.12']],
-    answer: "Net positive area rose +0.15 over the year, but it didn't trend cleanly upward. There were 2 reversals, and the Sep→Dec quarter (+0.12) drove most of the gain. I'd call this oscillating with an upward bias, not a steady increase. Want the per-quarter chart or a stakeholder brief?",
+    reasoning: "Several dated results of one model over one area: a series (3 or more dates; two cannot tell a trend from a wobble). I'll trace them with the comparison tool in series mode, which orders them by date and samples each on one grid. That needs your Studio key.",
+    tool: 'olmoearth_compare_results',
+    args: '{\n  "result_ids": ["<first date>", "<second date>", "<third date>", "<fourth date>"],\n  "mode": "series"\n}',
+    result: [['note', 'demo mode: connect a Studio key to sample the real rasters']],
+    answer: "This is the demo, so I can't sample your real results here. Connect your **Studio key** (top bar), then name three to eight dated results of one model over the same area. I'll order them by date and report each step's correlation and mean shift, each window's trajectory, and the shift sizes against the field's range. That is how the model's estimates moved between run dates, not verified ground change.",
   },
   projects: {
     reasoning: "I'll load the account context first (per the run rules, never invent ids), then count the projects it returns.",

@@ -345,10 +345,18 @@ def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
         assert "olmoearth_review_set" in tool.spec.description
 
 
-def test_skill_18_routes_the_ood_question_back_to_skill_9() -> None:
-    """The routing is mutual, so neither skill silently answers the other's question."""
+def test_skill_18_says_it_is_not_ood_detection_and_routes_back_to_skill_9() -> None:
+    """Neither skill silently answers the other's question.
+
+    #9's Area of Applicability is opt-in (``OLMOEARTH_OPT_IN_TOOLS``), so this
+    description, sent on every turn, does not name it: off, the model would be
+    pointed at a tool it cannot call. #9's default signal, the ensemble mode,
+    is named.
+    """
     review = {t.spec.name: t for t in build_review_set_tools()}["olmoearth_review_set"]
-    assert "olmoearth_area_of_applicability" in review.spec.description
+    assert "not OOD detection" in review.spec.description
+    assert "olmoearth_area_of_applicability" not in review.spec.description
+    assert "olmoearth-uncertainty" not in review.spec.description
     assert "olmoearth_compare_results (mode='ensemble')" in review.spec.description
 
 

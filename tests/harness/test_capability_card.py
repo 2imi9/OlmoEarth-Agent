@@ -26,7 +26,7 @@ from olmoearth_agent.harness.capabilities import (
 )
 from olmoearth_agent.harness.soul import load_soul
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
-from olmoearth_agent.skills import build_default_registry
+from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
 from olmoearth_agent.tools.registry import (
     Capability,
     RegisteredTool,
@@ -93,7 +93,9 @@ def test_needs_and_cannot_are_on_the_tool_line() -> None:
 
 
 def test_a_loaded_group_is_listed_in_full() -> None:
-    registry = build_default_registry()
+    """With the opt-in tools on, as they are deferred groups then."""
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
+        registry = build_default_registry()
     card = capability_card(registry, loaded_groups=["olmoearth-evaluate"])
     assert "\n- olmoearth_nndm_cv(points, pred_points): " in card
     assert "\n- olmoearth_rslearn_compose" not in card
@@ -139,9 +141,31 @@ def test_covers_names_only_what_no_tool_can() -> None:
 
 
 def test_the_card_fits_its_budget() -> None:
-    """About 1,390 tokens (chars / 4) for the default registry's core tools."""
+    """About 1,390 tokens (chars / 4) for the default registry's core tools.
+
+    Measured before the trim of 27 October 2026, which took three core tools
+    and six deferred groups off the default card; opted in, it still fits.
+    """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
+        opted = capability_card(build_default_registry())
+    assert _tokens(card) < _tokens(opted) < CARD_TOKEN_BUDGET, _tokens(opted)
+
+
+def test_the_default_card_names_no_opt_in_tool_or_group() -> None:
+    """A trimmed tool is off the card, and so is the group it would load."""
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: ""}):
+        card = capability_card(build_default_registry())
+    for gone in (
+        "olmoearth_change_detect",
+        "olmoearth_litsearch",
+        "olmoearth_grade_review_rule",
+        "olmoearth-rslearn",
+        "olmoearth-similarity",
+    ):
+        assert gone not in card, gone
+    assert "olmoearth-baseline-compare" in card
 
 
 def test_an_undeclared_tool_is_listed_from_its_description() -> None:

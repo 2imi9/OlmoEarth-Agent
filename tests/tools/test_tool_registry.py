@@ -13,9 +13,46 @@ from olmoearth_agent.tools.registry import (
     RegisteredTool,
     ToolContext,
     ToolRegistry,
+    opted_in,
 )
 
 _EMPTY_SCHEMA = {"type": "object", "properties": {}, "required": []}
+
+_SWITCH = "OLMOEARTH_TEST_OPT_IN_SWITCH"
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "On", " 1 "])
+def test_an_opt_in_setting_is_on_for_the_truthy_values(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(_SWITCH, value)
+    assert opted_in(_SWITCH) is True
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "2", "enabled"])
+def test_an_opt_in_setting_is_off_otherwise(
+    value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(_SWITCH, value)
+    assert opted_in(_SWITCH) is False
+    monkeypatch.delenv(_SWITCH)
+    assert opted_in(_SWITCH) is False
+
+
+def test_run_python_and_the_trimmed_tools_share_the_one_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both opt-in bundles read their variable through opted_in, alike."""
+    from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
+    from olmoearth_agent.tools.system import build_system_tools
+
+    for value, on in (("yes", True), ("nope", False)):
+        monkeypatch.setenv("OLMOEARTH_RUN_PYTHON", value)
+        monkeypatch.setenv(OPT_IN_ENV, value)
+        names = build_default_registry().names()
+        assert (build_system_tools() != []) is on
+        assert ("olmoearth_run_python" in names) is on
+        assert ("olmoearth_litsearch" in names) is on
 
 
 def _spec(name: str) -> ToolSpec:

@@ -27,7 +27,7 @@ import pytest
 from olmoearth_agent.analysis.review_set import margins
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
-from olmoearth_agent.skills import build_default_registry
+from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.types import ApiEnvelope
@@ -36,8 +36,13 @@ _BOX = {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 
 
 
 def _registry() -> ToolRegistry:
-    """The default registry with the opt-in ``olmoearth_run_python`` enabled too."""
-    with mock.patch.dict(os.environ, {"OLMOEARTH_RUN_PYTHON": "1"}):
+    """The default registry with every opt-in tool enabled too.
+
+    ``olmoearth_run_python`` and the tools trimmed from the default registry
+    (``OLMOEARTH_OPT_IN_TOOLS``): an opt-in tool's card line is shown when it
+    is on, so its declarations are probed all the same.
+    """
+    with mock.patch.dict(os.environ, {"OLMOEARTH_RUN_PYTHON": "1", OPT_IN_ENV: "1"}):
         return build_default_registry()
 
 
@@ -58,12 +63,13 @@ def _stated() -> list[tuple[str, str]]:
 def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
     registry = _registry()
     assert "olmoearth_run_python" in registry.names()
+    assert "olmoearth_change_detect" in registry.names()  # opt-in, on here
     missing = [n for n in registry.names() if registry.capability_of(n) is None]
     assert missing == [], f"tools with no capability declared: {missing}"
 
 
 def test_every_declaration_is_one_short_line() -> None:
-    """The card lists 29 core tools in about 1,400 tokens; a line is a line."""
+    """The card's 26 default core tools fit 1,500 tokens; a line is a line."""
     registry = _registry()
     for name in registry.names():
         capability = registry.capability_of(name)

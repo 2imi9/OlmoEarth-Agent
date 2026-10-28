@@ -1,10 +1,10 @@
 # OlmoEarth Agent
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs. It exposes a compact set of functions covering Studio's HTTP API, EO data fetch, and geometry utilities; dispatches them as function-call tools, with an opt-in `system:python` subprocess for light glue code (not a preloaded in-process interpreter); and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs and verifies what it returns. It exposes a compact set of functions covering Studio's HTTP API, the verification layer (review sets, label samples, error rates and certified zones, through `olmoearth-inferencex`), and geometry utilities; dispatches them as function-call tools, with an opt-in `system:python` subprocess for light glue code (not a preloaded in-process interpreter); and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
 
-**Status:** v1.2.0, 2026-06-08. All 18 skills implemented; skill #5 `olmoearth-change-detection` also has an **out-of-process** JEPA engine in the separate [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) repo. Runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md). (The catalog was consolidated 19 -> 16: data-prep #1/#2, embeddings #4/#17, and change-detection #6/#19 were each one capability split across two rows.)
-**Scope:** Text-only LLM with function calling. Local default: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`, via llama.cpp); the bridge also accepts a hosted Claude / ChatGPT / Gemini backend (bring-your-own-key) selected at runtime. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them.
-**Skill catalog:** [`SKILLS.md`](SKILLS.md): 18 skills (Prep / Configure / Run / Analyze / Integrate / Report); skill #5 `olmoearth-change-detection` has an out-of-process JEPA engine (separate repo). The agent ships skills one PR at a time.
+**Status:** v1.4.0, 2026-08-14 (unreleased changes in [`CHANGELOG.md`](CHANGELOG.md)). All 18 skills implemented. In the unreleased version the default registry is the Studio run loop plus the verification layer; 14 tools that train models outside Studio, need inputs no Studio run produces, or repeat what Ai2's Explorer and Asta do are opt-in (`OLMOEARTH_OPT_IN_TOOLS=1`; [`SKILLS.md`](SKILLS.md#opt-in-tools)). Runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md). (The catalog was consolidated 19 -> 16: data-prep #1/#2, embeddings #4/#17, and change-detection #6/#19 were each one capability split across two rows.)
+**Scope:** Text-only LLM with function calling. Local default: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`, via llama.cpp); the bridge also accepts a hosted Claude / ChatGPT / Gemini backend (bring-your-own-key) selected at runtime. Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them. Not built, by decision: data-layer catalogs, basemaps and layer styling, STAC or Earth Engine fetches, embedding fetches, and label-free change maps; Google Earth and Ai2's own tools do these, and this agent verifies their outputs instead.
+**Skill catalog:** [`SKILLS.md`](SKILLS.md): 18 skills (Prep / Configure / Run / Analyze / Integrate / Report); skills #8, #10, #15 and #16 are opt-in whole. The JEPA latent-change detector in the separate [`olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change) repo is not connected. The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
 **Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0: fields and enums may change without notice.
 
@@ -12,17 +12,15 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 ## 1. Tool catalog
 
-The agent exposes the following functions. Code below the table renders the same content as CSV for easy copy-paste into a sheet.
+The agent exposes the following functions. Code below the table renders the same content as CSV for easy copy-paste into a sheet. Rows built as tools today: `python` (`olmoearth_run_python`, opt-in), `load_context`, `create_project`, `submit_prediction`, `poll_prediction` (`olmoearth_get_prediction`), `fetch_results`, `pixel_value`, `compare_results`, `review_set_from_result`, `scores_from_file`, `plan_label_sample`, `estimate_map_error` and `certify_zone`; an area is created by `olmoearth_request_aoi`, which the user draws. The other rows are the design target, not code. The registry also holds tools this table does not list (`SKILLS.md` names them).
 
 | Module | Type | Name | Args / Inputs | Returns | Description |
 |---|---|---|---|---|---|
 | `system` | Tool | `python` | `code: str` | `ExecutionResult` | Run Python for light glue between calls. **Opt-in** (`OLMOEARTH_RUN_PYTHON=1`; off by default): an isolated subprocess (`python -I`) with a wall-clock timeout + output cap, in a throwaway dir. **State does not persist across calls; use normal `import`s; the heavy geospatial/rslearn/GDAL stack is not guaranteed installed.** Surface long `rslearn` jobs to the user. *(A preloaded, import-free, state-persistent in-process interpreter is the original design target -- see `src/olmoearth_agent/tools/system.py`.)* |
 | `system` | Tool | `search` | `queries: list[str]` | `SearchResponse` | Web search for external references (docs, papers, code examples). |
-| `system` | Tool | `fetch` | `url: str`, `headers: dict = None` | `FetchResponse` | HTTP GET on documented endpoints (OlmoEarth Studio, Planetary Computer, NLDI, Earthdata). |
+| `system` | Tool | `fetch` | `url: str`, `headers: dict = None` | `FetchResponse` | HTTP GET on documented endpoints (OlmoEarth Studio, NLDI). |
 | `olmoearth` | Function | `load_context` | `limit: int = 50`, `offset: int = 0` | `StudioContext` | Returns the user's identity, organization and one page of projects (id, name, creation time) with the total count; `offset` pages. (Areas, datasets and recent predictions are the design target, not yet returned.) |
 | `olmoearth` | Function | `resolve_to_aoi` | `locations: list[str]` (max 30) | `AOIWrapper` | Place names, watershed IDs (HUC-8/10/12), county FIPS, or free text -> polygon geometries. |
-| `olmoearth` | Function | `search_dataset_spec` | `query: str` | `DatasetRetrievalSpecs` | Searches Studio catalog + Planetary Computer STAC for datasets matching the query. Returns both analyzable rasters and visual-only layers. |
-| `olmoearth` | Function | `get_data_in_locations` | `spec: DataRetrievalSpec`, `aoi: AOIWrapper`, `time_range: TimeRange` | `DataBundle` | Fetches EO data per spec, filtered to AOIs and time range. |
 | `olmoearth` | Function | `create_project` | `name: str`, `description: str` | `ProjectRef` | Wraps `POST /projects`. |
 | `olmoearth` | Function | `create_area` | `project: ProjectRef`, `aoi: AOIWrapper` | `AreaRef` | Wraps `POST /areas`. |
 | `olmoearth` | Function | `create_dataset` | `project: ProjectRef`, `area: AreaRef`, `bands: list[str]`, `time_range: TimeRange` | `DatasetRef` | Configures a Studio dataset. |
@@ -39,11 +37,7 @@ The agent exposes the following functions. Code below the table renders the same
 | `olmoearth` | Function | `plan_label_sample` | `scores \| scores_path \| result_id`, `budget: int`, `design: Literal["confidence","proportional","random"] = "confidence"`, `grid: int \| [rows, cols]` (a `result_id`: N or `[N, N]`, 2-16, default 10) | `FilePath` (design) | Which windows to label for an error-rate estimate (`oe_inferencex.estimate.sample_for_estimation`, optional `inferencex` extra). A review set is not a sample. A Studio result's grid above 16 is capped, and the result's `sampling` states the grid used and the cap. |
 | `olmoearth` | Function | `estimate_map_error` | `design_path: FilePath`, `wrong: list[int] \| labels_path`, `reference: list[int] \| None` | `ErrorEstimate` | Error rate with the interval the design earns and its `method`; per-class accuracy; windows labelled without a design are checked as a random sample (a review set is refused). |
 | `olmoearth` | Function | `certify_zone` | `design_path: FilePath` (random design), `wrong`, `alpha: float`, `delta: float = 0.1`, `rule: Literal["prefix","bonferroni"]` | `CertifiedZone` | The largest most-confident share of the map with error rate at most `alpha` (`oe_inferencex.estimate.certify_zone`); a stratified design is refused. A certified zone's `meaning` ends with the package's `ISSUED_NOTE` (what delta counts), verbatim. |
-| `olmoearth` | Function | `features_search` | `ref: PredictionRef`, `class_name: str \| None = None`, `limit: int = 100` | `list[FeatureMatch]` | Wraps `POST /prediction-results/features/search`. Returns vector features filtered by class. Used by skill #5. |
-| `olmoearth` | Function | `fetch_embedding` | `aoi: AOIWrapper`, `model_size: Literal["nano","tiny","base","large"]`, `time_range: TimeRange` | `EmbeddingVector` | Pulls OlmoEarth embeddings (Nano/Tiny/Base/Large) for an AOI. Used by skills #4, #9. |
 | `olmoearth` | Function | `save_view` | `bundle: ResultBundle`, `name: str` | `FilePath` | Publishes layer back to the user's Studio project. |
-| `eo` | Function | `search_stac` | `collection: str`, `aoi: AOIWrapper`, `time_range: TimeRange`, `cloud_lt: float = 0.2` | `STACItems` | Planetary Computer / Earthdata STAC query. |
-| `eo` | Function | `sign_assets` | `items: STACItems` | `STACItems` | Planetary Computer asset signing. |
 | `eo` | Function | `window_tile` | `aoi: AOIWrapper`, `size_m: int = 256` | `list[Window]` | Tiles AOI into fixed-size windows for rslearn dataset configs. |
 | `utils` | Function | `add_area` | `aoi: AOIWrapper` | `AOIWrapper` | Adds an `area_sq_meters` field. |
 | `utils` | Function | `add_buffer` | `aoi: AOIWrapper`, `distance_m: float` | `AOIWrapper` | Buffers geometries outward. |
@@ -59,11 +53,9 @@ Same catalog as CSV:
 Module,Type,Name,Arguments,Return Type,Description
 system,Tool,python,code (str),ExecutionResult,Opt-in (OLMOEARTH_RUN_PYTHON=1) light-Python glue; isolated subprocess (python -I) with timeout + output cap; state does NOT persist across calls; normal imports allowed; heavy geospatial stack not guaranteed installed.
 system,Tool,search,queries (list[str]),SearchResponse,Web search for external references.
-system,Tool,fetch,url (str) | headers (dict),FetchResponse,HTTP GET on documented endpoints.
+system,Tool,fetch,url (str) | headers (dict),FetchResponse,HTTP GET on documented endpoints (OlmoEarth Studio / NLDI).
 olmoearth,Function,load_context,limit (int = 50) | offset (int = 0),StudioContext,Returns identity/organization and one page of projects with the total count (areas/datasets/recent predictions: design target).
 olmoearth,Function,resolve_to_aoi,locations (list[str] max 30),AOIWrapper,Place names / watershed IDs / county FIPS / free text -> polygon geometries.
-olmoearth,Function,search_dataset_spec,query (str),DatasetRetrievalSpecs,Searches Studio catalog + Planetary Computer STAC; returns analyzable rasters + visual-only layers.
-olmoearth,Function,get_data_in_locations,spec (DataRetrievalSpec) | aoi (AOIWrapper) | time_range (TimeRange),DataBundle,Fetches EO data per spec filtered to AOIs and time range.
 olmoearth,Function,create_project,name (str) | description (str),ProjectRef,POST /projects.
 olmoearth,Function,create_area,project (ProjectRef) | aoi (AOIWrapper),AreaRef,POST /areas.
 olmoearth,Function,create_dataset,project (ProjectRef) | area (AreaRef) | bands (list[str]) | time_range (TimeRange),DatasetRef,Configures a Studio dataset.
@@ -80,11 +72,7 @@ olmoearth,Function,scores_from_file,run_dir (str; under OLMOEARTH_SCORES_ROOT) |
 olmoearth,Function,plan_label_sample,scores | scores_path | result_id; budget (int); design ("confidence"|"proportional"|"random"); grid (int | [rows cols]; result_id: 2-16),FilePath,Which windows to label for an error-rate estimate (inferencex extra); a review set is not a sample; a capped Studio grid is stated.
 olmoearth,Function,estimate_map_error,design_path (FilePath) | wrong (list[int]) or labels_path | reference (list[int] | None),ErrorEstimate,Error rate with the design's interval and method; per-class accuracy; a review set is refused as a sample.
 olmoearth,Function,certify_zone,design_path (FilePath; random design) | wrong | alpha (float) | delta (float = 0.1) | rule ("prefix"|"bonferroni"),CertifiedZone,Largest most-confident share with error rate at most alpha; stratified designs refused.
-olmoearth,Function,features_search,ref (PredictionRef) | class_name (str | None) | limit (int = 100),list[FeatureMatch],POST /prediction-results/features/search (skill 5).
-olmoearth,Function,fetch_embedding,aoi (AOIWrapper) | model_size ("nano"|"tiny"|"base"|"large") | time_range (TimeRange),EmbeddingVector,Pulls OlmoEarth embeddings (skills 4/9).
 olmoearth,Function,save_view,bundle (ResultBundle) | name (str),FilePath,Publishes layer back to user's Studio project.
-eo,Function,search_stac,collection (str) | aoi (AOIWrapper) | time_range (TimeRange) | cloud_lt (float = 0.2),STACItems,Planetary Computer / Earthdata STAC query.
-eo,Function,sign_assets,items (STACItems),STACItems,Planetary Computer asset signing.
 eo,Function,window_tile,aoi (AOIWrapper) | size_m (int = 256),list[Window],Tiles AOI into fixed-size windows.
 utils,Function,add_area,aoi (AOIWrapper),AOIWrapper,Adds area_sq_meters field.
 utils,Function,add_buffer,aoi (AOIWrapper) | distance_m (float),AOIWrapper,Buffers geometries outward.
@@ -180,38 +168,11 @@ class DataPrepLabelSchema:
     oe_labels: list[str]
 
 @dataclasses.dataclass
-class DataRetrievalSpec:
-    """lookup_strategy in {'STUDIO_DATASET', 'PLANETARY_COMPUTER_STAC',
-                          'EARTHDATA_CMR', 'NLDI', 'NHD', 'HUC'}."""
-    data_type: str
-    description: str
-    lookup_keys: list[str]
-    lookup_strategy: str
-
-@dataclasses.dataclass
-class DatasetRetrievalSpecs:
-    error: Union[ToolExecutionError, None] = None
-    specs: list[DataRetrievalSpec] | None = None
-
-@dataclasses.dataclass
-class STACItems:
-    error: Union[ToolExecutionError, None] = None
-    item_ids: list[str] | None = None
-    asset_urls: dict[str, str] | None = None
-    signed: bool = False
-
-@dataclasses.dataclass
 class Window:
     """Geographic window for tiling AOIs into rslearn dataset rows."""
     bbox: tuple[float, float, float, float]
     size_m: int
     crs: str = "EPSG:4326"
-
-@dataclasses.dataclass
-class DataBundle:
-    error: Union[ToolExecutionError, None] = None
-    items: list[STACItems] | None = None
-    local_paths: list[str] | None = None
 
 @dataclasses.dataclass
 class PredictionRef:
@@ -253,23 +214,6 @@ class PixelValueResult:
     lat: float
     value: float | int | None
     class_name: str | None = None
-
-@dataclasses.dataclass
-class FeatureMatch:
-    """One match from /prediction-results/features/search."""
-    feature_id: str
-    class_name: str
-    score: float
-    bbox: tuple[float, float, float, float] | None = None
-
-@dataclasses.dataclass
-class EmbeddingVector:
-    """OlmoEarth embedding for an AOI at one time slice."""
-    aoi_id: str
-    model_size: Literal["nano", "tiny", "base", "large"]
-    time: str           # ISO-8601
-    dim: int            # vector dimensionality
-    values: list[float] # length == dim
 
 @dataclasses.dataclass
 class ProvenanceManifest:
@@ -323,8 +267,8 @@ The tool catalog above is the contract. Everything in this section is implementa
 |---|---|
 | LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) 4-bit `UD-IQ4_XS`: text-only with function calling (model has a native vision encoder; we don't use it -- multimodal is parked, §7.1). Served via **llama.cpp** (`ghcr.io/ggml-org/llama.cpp:server-cuda -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS --jinja -ngl 999 -c 16384 --parallel 1 --no-mmap`); see [`docs/serving.md`](docs/serving.md) and [`docs/CANON.md`](docs/CANON.md). Agent sessions set `chat_template_kwargs.preserve_thinking=True`. NVFP4 dropped (doesn't fit 24 GB; CANON C4/C7). |
 | Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow): LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
-| Skills | 18 skills in [`SKILLS.md`](SKILLS.md) (skill #5 `olmoearth-change-detection` has an out-of-process JEPA engine, separate repo), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). The `SKILL.md` packages for skills #1-#3 and #17 ship inside the Python package, in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/), moved from the now-frozen [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills). Trigger-heavy `SKILL.md` frontmatter. |
-| Tooling protocol | In-process tool registry (`ToolRegistry`); outbound HTTP via `httpx`, gated by the per-capability egress allowlist + SSRF guard in `security/egress.py` (Studio, Planetary Computer, Earthdata, arXiv/OpenAlex, HF datasets-server, cloud-LLM endpoints). External MCP connectors are a parked option (§7), not the current transport. |
+| Skills | 18 skills in [`SKILLS.md`](SKILLS.md) (14 tools opt-in, behind `OLMOEARTH_OPT_IN_TOOLS=1`), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). The `SKILL.md` packages for skills #1-#3 and #17 ship inside the Python package, in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/), moved from the now-frozen [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills). Trigger-heavy `SKILL.md` frontmatter. |
+| Tooling protocol | In-process tool registry (`ToolRegistry`); outbound HTTP via `httpx`, gated by the per-capability egress allowlist + SSRF guard in `security/egress.py` (Studio, cloud-LLM endpoints, a local LLM on loopback, and for opt-in tools arXiv/OpenAlex and the HF datasets-server). External MCP connectors are a parked option (§7), not the current transport. |
 | Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. Provenance manifest (rule §3.13) is the audit substrate. |
 
 The Studio API itself:
@@ -340,7 +284,7 @@ The Studio API itself:
 **Studio gap-closure findings** (resolved 2026-05-27 from an `openapi.json` v0.1.0 schema dive; supersedes the v0.1/v0.2 UNVERIFIED notes):
 
 - **Webhooks / push notifications: CLOSED, none exist.** No `/webhooks`, `/notifications`, `/events`, `/subscriptions` or `/callbacks` paths; no `Webhook` / `Notification` / `Callback` / `Subscription` / `Event` schemas; no top-level `webhooks` key; no `callbacks` field on any operation; no `webhook_url`/`notification_url`/`callback_url` property on `PredictionWrite`. **`GET /api/v1/predictions/{id}` polling is the only completion-detection path.** No documented polling interval or backoff guidance; the client picks its own. Operational rule §3.9 (async-by-ref) stands.
-- **Fine-tuned model reference: PARTIALLY CLOSED.** `PredictionWrite.model_id` is a required UUID (`{"type": "string", "format": "uuid", "description": "ID of the model to run"}`). Same field appears on `PredictionRead.model_id` and `PredictionSearchRequest.model_id`. **However:** there is no `/api/v1/models` path, no `Model` / `ModelRead` / `ModelWrite` schema, and the `model-management/` docs page is a content stub. **How a client obtains a `model_id` (especially for a fine-tuned model) is not in the public surface.** Likely paths: (a) the Studio UI hands out the UUID after the user runs a fine-tune flow, (b) a fine-tune is a side-effect of a `Prediction` whose `model_id` references a base model. **Still UNVERIFIED: needs partner conversation with Ai2.**
+- **Fine-tuned model reference: CLOSED by live probe, not by the spec.** `PredictionWrite.model_id` is a required UUID (`{"type": "string", "format": "uuid", "description": "ID of the model to run"}`). Same field appears on `PredictionRead.model_id` and `PredictionSearchRequest.model_id`. openapi v0.1.0 has no `/models` path and no `Model` / `ModelRead` / `ModelWrite` schema, and the `model-management/` docs page is a content stub, **but the live API serves `POST /models/search` and `GET /models/{id}`** (`GET /models` with no id is 404; verified 2026-05-30). The code uses both (`studio/client.py`): `StudioClient.search_models` lists the account's models (the web bridge labels the project tree's model level with it), and `StudioClient.get_model` reads one model record (`tools/sampling.model_summary`: name, `model_type` fine-tuned vs embeddings, `prediction_type`, no-data value, and whether a label field was trained on). The agent gets a reusable `model_id` from `olmoearth_search_predictions` (each prediction names its model, with that summary beside it); it never invents one.
 - **Rate limits / quotas / payload caps: CLOSED, undocumented at the API surface.** No `x-rateLimit-*` extensions, no `429` responses, no `Retry-After` headers, no `quota_*` fields on `UserReadMe` / `Project*`. The only quota documented anywhere is "max 10 API keys per account" from the auth doc. Pagination caps exist but are not rate limits: `PredictionSearchRequest.limit <= 10000`, `DatasetSearchRequest.limit <= 1000`. `ApiErrorCode` enum is `["not_found_error", "permission_error", "server_error", "unauthorized_error", "validation_error", "not_implemented_error"]`, explicitly **no** `rate_limited_error`, reinforcing this. Operational rule §3.5 (cost guard) is precautionary; we keep it.
 
 **Other findings worth surfacing** (newly verified during the schema dive):
@@ -355,8 +299,7 @@ The Studio API itself:
 - **`*-management/` doc pages are content stubs.** `/dataset-management/`, `/job-management/`, `/model-management/`, `/prediction-management/` all return real pages but with one-line descriptions and a link to the API browser, no prose docs.
 
 **Remaining UNVERIFIED items:**
-- How to obtain a `model_id` for a fine-tuned model from the public API (above).
-- Whether the API will gain webhooks / a `/models` listing in a future minor version (spec is `0.1.0` and explicitly pre-1.0).
+- Whether the live `/models` endpoints (above) will enter the documented spec, or change, in a future minor version, and whether the API will gain webhooks (spec is `0.1.0` and explicitly pre-1.0).
 - Server-side rate limits exist almost certainly; empirical probing is out of scope for this doc-only PR.
 - `PredictionResultRead.source` is a free-form string ("Source of the imagery") with no documented enum; value range unknown.
 
@@ -420,7 +363,7 @@ Skills-first. Each P0-P3 phase is a single PR; each Skill-* row is one PR (per [
 | **Vendored skills (now #1-#3)** | vendored - PR #9 | submodule `vendor/olmoearth-skills` + SkillLoader (data-prep, studio-job-config, embeddings); the packages have since moved into `src/olmoearth_agent/skills/packages/` and the submodule is gone | Agent loads a SKILL.md via progressive disclosure |
 | **Skills #6, #7, #9, #10, #11, #12, #13, #15** | done - PRs #16-#21 | One PR per skill | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
 
-P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 18 skills are now shipped** (skill #5 `olmoearth-change-detection` also has an out-of-process JEPA engine in a separate repo; see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is live-smoke verification on real data.
+P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 18 skills are now shipped**, and in the unreleased version the default registry is the Studio run loop plus the verification layer, with 14 tools opt-in (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is the verification layer on Studio results (which of two maps is more accurate, class maps' error rates) and live-smoke verification on real data.
 
 ---
 
@@ -454,4 +397,4 @@ https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF | https://huggingface.co/Qwe
 
 ---
 
-*Skills are the unit of progress; multimodal and self-improvement tracks are parked (§7). All 18 skills are shipped (skill #5 also has an out-of-process JEPA engine; see [`CHANGELOG.md`](CHANGELOG.md)); current work is live-smoke verification and refinement.*
+*Skills are the unit of progress; multimodal and self-improvement tracks are parked (§7). All 18 skills are shipped, 14 tools of them opt-in (see [`CHANGELOG.md`](CHANGELOG.md)); current work is the verification layer, live-smoke verification and refinement.*
