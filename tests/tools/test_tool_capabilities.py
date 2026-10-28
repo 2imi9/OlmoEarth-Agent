@@ -352,7 +352,56 @@ async def _from_result_needs_threshold(_tmp: Path) -> None:
 async def _from_result_refuses_classes(_tmp: Path) -> None:
     studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
     out = await _call("olmoearth_review_set_from_result", {"result_id": "lc"}, studio)
-    _refused(out, "no margin can be recovered from a hard class")
+    _refused(out, "A class map has no confidence to rank or certify")
+
+
+class _ClassMapStudio(_Studio):
+    """A Studio class map: water west of longitude 2, forest east of it."""
+
+    async def pixel_value(self, _result_id: str, lon: float, _lat: float) -> Any:
+        label = "water" if lon < 2 else "forest"
+        band = {
+            "property_name": "landcover",
+            "raw_value": 1 if label == "water" else 2,
+            "classification": {"label": label},
+        }
+        return {"bands": [band]}
+
+
+@probe(
+    "olmoearth_plan_label_sample",
+    "'random' or 'class' for a Studio class map (no confidence)",
+)
+async def _plan_takes_random_or_class_for_a_class_map(_tmp: Path) -> None:
+    """The ranking designs read a confidence a class map does not have."""
+    studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
+    for design in ("confidence", "proportional"):
+        out = await _call(
+            "olmoearth_plan_label_sample",
+            {"result_id": "lc", "budget": 20, "design": design},
+            studio,
+        )
+        _refused(out, "A class map has no confidence to rank or certify")
+        assert out["result"]["designs_for_a_class_map"] == ["random", "class"]
+
+
+@probe("olmoearth_certify_zone", "certify a class map (no confidence to rank)")
+async def _certify_refuses_a_class_map(_tmp: Path) -> None:
+    """A random design of a Studio class map is planned, and refused a zone."""
+    studio = _ClassMapStudio(
+        results={"lc": _result("lc", "landcover", _CLASSIFICATION)}
+    )
+    plan = await _call(
+        "olmoearth_plan_label_sample",
+        {"result_id": "lc", "grid": 3, "budget": 4, "design": "random"},
+        studio,
+    )
+    assert plan["ok"] is True, plan
+    out = await _call(
+        "olmoearth_certify_zone",
+        {"design_path": plan["result"]["design_path"], "wrong": [0] * 4, "alpha": 0.1},
+    )
+    _refused(out, "A class map has no confidence to rank or certify")
 
 
 @probe("olmoearth_compare_review", "both inferences over the same windows")

@@ -1026,6 +1026,87 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
 # --------------------------------------------------------------------------- a Studio result as review windows
 
 
+def grid_block(grid: int, grid_requested: int | None) -> dict[str, Any]:
+    """The grid a Studio result was sampled on, the grid asked for, and any hold.
+
+    Parameters
+    ----------
+    grid
+        The side used (see :func:`result_grid`).
+    grid_requested
+        The side asked for, or ``None`` when the default was used.
+
+    Returns
+    -------
+    dict
+        ``grid`` (``"NxN"``), ``grid_requested``, ``grid_capped`` and, when
+        the side was held to the range, ``grid_note``.
+    """
+    capped = grid_requested is not None and grid_requested != grid
+    block: dict[str, Any] = {
+        "grid": f"{grid}x{grid}",
+        "grid_requested": grid_requested,
+        "grid_capped": capped,
+    }
+    if capped:
+        verb = "capped at" if grid == FROM_RESULT_MAX_GRID else "raised to"
+        block["grid_note"] = (
+            f"grid {grid_requested} was {verb} {grid}: a Studio "
+            f"result is sampled on {FROM_RESULT_GRID_RANGE} points a side "
+            "(each point is one pixel-value call), so the grid used is "
+            f"{grid}x{grid} = {grid * grid} points"
+        )
+    return block
+
+
+def sampling_block(
+    grid: int,
+    grid_requested: int | None,
+    *,
+    n_sampled: int,
+    n_valid: int,
+    n_nodata: int,
+    n_failed: int,
+    nodata_rule: str = _NODATA_RULE,
+) -> dict[str, Any]:
+    """What was sampled of a Studio result: a grid of points, never every pixel.
+
+    Shared by the review set of a result (:class:`SampledScores`) and the
+    labelled sample of a Studio class map
+    (:mod:`olmoearth_agent.tools.estimation`).
+
+    Parameters
+    ----------
+    grid, grid_requested
+        As :func:`grid_block` takes them.
+    n_sampled, n_valid, n_nodata, n_failed
+        The windows sampled, those holding a usable value, and those dropped
+        as no-data or as a failed pixel-value call.
+    nodata_rule
+        How a sample is judged no-data, as the calling tool applies it.
+
+    Returns
+    -------
+    dict
+        :func:`grid_block`'s keys, the counts, ``what_a_window_is`` and
+        ``nodata_rule``.
+    """
+    return {
+        **grid_block(grid, grid_requested),
+        "n_windows_sampled": n_sampled,
+        "n_valid": n_valid,
+        "n_nodata_dropped": n_nodata,
+        "n_failed_dropped": n_failed,
+        "what_a_window_is": (
+            f"a grid of sampled points, not every pixel: the result's extent "
+            f"is cut into {grid} x {grid} cells and each window is "
+            "ONE pixel-value sample at its cell centre, so a window stands for "
+            "its cell only as far as that pixel does"
+        ),
+        "nodata_rule": nodata_rule,
+    }
+
+
 @dataclass
 class SampledScores:
     """A Studio result sampled on a grid and turned into two-class window scores."""
@@ -1050,38 +1131,18 @@ class SampledScores:
 
     def grid_block(self) -> dict[str, Any]:
         """The grid used, the grid asked for, and whether it was held to the range."""
-        capped = self.grid_requested is not None and self.grid_requested != self.grid
-        block: dict[str, Any] = {
-            "grid": f"{self.grid}x{self.grid}",
-            "grid_requested": self.grid_requested,
-            "grid_capped": capped,
-        }
-        if capped:
-            verb = "capped at" if self.grid == FROM_RESULT_MAX_GRID else "raised to"
-            block["grid_note"] = (
-                f"grid {self.grid_requested} was {verb} {self.grid}: a Studio "
-                f"result is sampled on {FROM_RESULT_GRID_RANGE} points a side "
-                "(each point is one pixel-value call), so the grid used is "
-                f"{self.grid}x{self.grid} = {self.grid * self.grid} points"
-            )
-        return block
+        return grid_block(self.grid, self.grid_requested)
 
     def sampling_block(self) -> dict[str, Any]:
         """What was sampled, stated so a grid of points is not read as every pixel."""
-        return {
-            **self.grid_block(),
-            "n_windows_sampled": self.n_sampled,
-            "n_valid": len(self.windows),
-            "n_nodata_dropped": self.n_nodata,
-            "n_failed_dropped": self.n_failed,
-            "what_a_window_is": (
-                f"a grid of sampled points, not every pixel: the result's extent "
-                f"is cut into {self.grid} x {self.grid} cells and each window is "
-                "ONE pixel-value sample at its cell centre, so a window stands for "
-                "its cell only as far as that pixel does"
-            ),
-            "nodata_rule": _NODATA_RULE,
-        }
+        return sampling_block(
+            self.grid,
+            self.grid_requested,
+            n_sampled=self.n_sampled,
+            n_valid=len(self.windows),
+            n_nodata=self.n_nodata,
+            n_failed=self.n_failed,
+        )
 
     def to_file(self) -> dict[str, Any]:
         """The scores-file payload (coordinates stay in the file, never in chat)."""
@@ -1117,14 +1178,56 @@ def _refusal(
     return out
 
 
-_CLASSIFICATION_REFUSAL = (
-    "this result's band is a classification: Studio returns the hard class "
-    "only, and no margin can be recovered from a hard class, so there is no "
-    "ranking to make from one result. With two or more results of the same "
-    "area, use olmoearth_compare_results with mode='ensemble' (disagreement "
-    "between them); "
-    "with per-class scores from wherever inference ran, use olmoearth_review_set."
+#: The rankings that remain for a classification band, whose hard class has no
+#: margin: disagreement between results, or scores from wherever inference ran.
+_CLASSIFICATION_ROUTES = (
+    "With two or more results of the same area, olmoearth_compare_results "
+    "with mode='ensemble' ranks windows by the disagreement between them; with "
+    "per-class scores from wherever inference ran, olmoearth_review_set ranks "
+    "them by margin."
 )
+
+
+#: The key of a classification refusal under which :func:`sample_result_scores`
+#: hands the grid it already sampled to a caller that asked for it
+#: (``keep_class_reads``); the caller pops it, and no result carries it.
+CLASS_READS = "_class_reads"
+
+
+@dataclass
+class ClassReads:
+    """A classification band's grid samples, kept so they are not sampled twice.
+
+    A result that declares no band type is found to be a classification only
+    after its grid is sampled; the labelled sample of a Studio class map
+    (:mod:`olmoearth_agent.tools.estimation`) reads its classes from these
+    reads instead of sampling the grid again. ``reads[i]`` is window ``i``'s
+    ``(value, categorical, status)`` (row-major, as ``cells``), read through
+    the result's no-data context; ``model`` is the model behind the result.
+    """
+
+    property_name: str | None
+    cells: list[tuple[int, int, float, float]]
+    reads: list[tuple[Any, bool, str]]
+    model: dict[str, Any] | None
+
+
+def _classification_refusal(result_id: str, name: str | None) -> dict[str, Any]:
+    """A classification band refused: the class-map sentence and the routes left.
+
+    Studio returns the band's class only, so no margin can be recovered and
+    nothing ranks or certifies its windows; ``class_map`` marks the refusal
+    for :mod:`olmoearth_agent.tools.estimation`, whose random and class
+    designs measure such a map from labels instead.
+    """
+    return _refusal(
+        result_id,
+        name,
+        rules.CLASS_MAP_NO_CONFIDENCE,
+        use_instead="olmoearth_compare_results",
+        other_routes=_CLASSIFICATION_ROUTES,
+        class_map=True,
+    )
 
 
 async def sample_result_scores(
@@ -1135,16 +1238,22 @@ async def sample_result_scores(
     property_name: str | None = None,
     threshold: float | None = None,
     grid_requested: int | None = None,
+    keep_class_reads: bool = False,
 ) -> SampledScores | dict[str, Any]:
     """Sample one Studio result on a grid and build per-window two-class scores.
 
     ``grid`` is the side used (see :func:`result_grid`); ``grid_requested``,
     the side asked for, is carried so the result can say when they differ.
     Returns :class:`SampledScores`, or a refusal dict (``ranked: False``) when
-    the band cannot be ranked: a classification band, a regression band that
-    is not a ``[0, 1]`` score and no ``threshold``, a missing extent, or fewer
-    than two valid windows. The band type is read from the result's declared
-    outputs before sampling, so a refusal usually costs no pixel-value call.
+    the band cannot be ranked: a classification band (marked ``class_map``:
+    :data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`
+    is its reason), a regression band that is not a ``[0, 1]`` score and no
+    ``threshold``, a missing extent, or fewer than two valid windows. The band
+    type is read from the result's declared outputs before sampling, so a
+    refusal usually costs no pixel-value call. A result that declares no band
+    type is sampled first; with ``keep_class_reads``, a classification band
+    found that way is refused with the grid's reads under
+    :data:`CLASS_READS` (a :class:`ClassReads`), which the caller pops.
     """
     record = await ctx.studio.get_prediction_result(result_id)
     bbox = result_bbox(record)
@@ -1156,12 +1265,7 @@ async def sample_result_scores(
     name = default_property(record, property_name) or property_name
     decl = nodata.declared.get(str(name)) if name else None
     if decl and decl.get("value_type") == "classification":
-        return _refusal(
-            result_id,
-            name,
-            _CLASSIFICATION_REFUSAL,
-            use_instead="olmoearth_compare_results",
-        )
+        return _classification_refusal(result_id, name)
     rng: tuple[float, float] | None = None
     if decl and decl.get("value_type") == "regression":
         rng = declared_range(None, decl)
@@ -1193,12 +1297,12 @@ async def sample_result_scores(
         band = select_band(first, name) or {}
         name = band.get("property_name") or name
         if band.get("classification") is not None:
-            return _refusal(
-                result_id,
-                name,
-                _CLASSIFICATION_REFUSAL,
-                use_instead="olmoearth_compare_results",
-            )
+            refusal = _classification_refusal(result_id, name)
+            if keep_class_reads:
+                # The grid is sampled: a class map's labelled sample reads
+                # its classes from here instead of sampling it again.
+                refusal[CLASS_READS] = ClassReads(name, cells, reads, nodata.model)
+            return refusal
         rng = declared_range(band)
         if rng != (0.0, 1.0) and threshold is None:
             return _refusal(
@@ -1269,9 +1373,15 @@ def _refused_regression(refusal: dict[str, Any]) -> dict[str, Any]:
     A refusal that names a ``declared_range`` is a regression band that is not
     a ``[0, 1]`` score and came with no threshold: it has no margins to review
     by and no error rate (exp86 round 8, brief 3 on Studio: the most ambiguous
-    windows of KarstNumber, declared 0.2 to 1.2, offered for review). Any other
-    refusal is returned as it is.
+    windows of KarstNumber, declared 0.2 to 1.2, offered for review). A
+    classification band's refusal (``class_map``) forbids a certified zone of
+    it (:func:`~olmoearth_agent.tools.statistical_rules.zone_for_a_class_map`).
+    Any other refusal is returned as it is.
     """
+    if refusal.get("class_map"):
+        return rules.add_contract(
+            refusal, forbidden_claims=[rules.zone_for_a_class_map()]
+        )
     if "declared_range" not in refusal:
         return refusal
     rng = refusal.get("declared_range")

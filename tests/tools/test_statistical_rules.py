@@ -109,6 +109,7 @@ CONTRACT_IDS = {
     "certification_guaranteed",
     "margin_as_error_probability",
     "more_accurate_without_its_test",
+    "zone_for_a_class_map",
 }
 
 

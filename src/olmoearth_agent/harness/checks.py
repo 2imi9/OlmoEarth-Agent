@@ -3412,6 +3412,128 @@ def _margin_as_error_probability(s: str, record: ToolRecord, run: RunEvidence) -
     return False
 
 
+#: A certified, certifiable or trusted zone, certification or a certificate,
+#: or the tool that certifies: what no class map has.
+_CLASS_MAP_ZONE_RE = re.compile(
+    r"\bcertif\w*|\bolmoearth_certify_zone\b|\btrusted\s+(?:zones?|regions?|areas?)\b",
+    re.I,
+)
+
+
+#: What a class map lacks, named in a requirement that is true of it:
+#: "certification needs per-window probabilities". A requirement that names
+#: only a design, labels, alpha or a budget ("a certified zone of this map
+#: needs 200 random labels") is the promise ``zone_for_a_class_map`` forbids.
+_WHAT_A_CLASS_MAP_LACKS_RE = re.compile(
+    r"\b(?:probabilit\w*|confidences?|scores?|margins?|rank\w*|softmax|logits?)\b",
+    re.I,
+)
+#: A class map named by its kind: "the class map", "this classification result".
+_CLASS_MAP_NAME_RE = re.compile(
+    r"\bclass(?:ification)?[\s-]+maps?\b"
+    r"|\bclassification\s+(?:results?|bands?|outputs?|layers?)\b",
+    re.I,
+)
+
+
+def _claim_records(run: RunEvidence, claim_id: str) -> list[ToolRecord]:
+    """The run's successful records whose result forbids ``claim_id``."""
+    out: list[ToolRecord] = []
+    for record, item in run.contract("forbidden_claims"):
+        found = item.get("id") if isinstance(item, Mapping) else item
+        if found == claim_id and all(r is not record for r in out):
+            out.append(record)
+    return out
+
+
+def _scores_map_in_run(run: RunEvidence) -> bool:
+    """Whether the run also holds a map with scores, of which a zone can be certified.
+
+    Every result about such a map that names certification forbids
+    ``certification_guaranteed`` (its plan, its estimate, its certify call,
+    a certified zone included); no class-map result does, and a two-map
+    design's refused certify call is about two maps' classes, not scores.
+    """
+    for record in _claim_records(run, "certification_guaranteed"):
+        result = record.result
+        two_maps = (
+            isinstance(result, Mapping) and result.get("design") == "disagreement"
+        )
+        if not two_maps:
+            return True
+    return False
+
+
+def _class_map_ids(run: RunEvidence) -> list[str]:
+    """The result ids the run's class-map calls read (their ``result_id``)."""
+    ids: list[str] = []
+    for record in _claim_records(run, "zone_for_a_class_map"):
+        rid = record.arguments.get("result_id")
+        if isinstance(rid, str) and rid.strip() and rid.strip() not in ids:
+            ids.append(rid.strip())
+    return ids
+
+
+def _names_a_class_map(p: _Parse, start: int, end: int, ids: list[str]) -> bool:
+    """Whether the clause around ``s[start:end]`` names a class map.
+
+    By its kind ("the class map", "the classification result") or by the
+    result id a class-map call of the run read.
+    """
+    if p.in_clause(_CLASS_MAP_NAME_RE, start, end):
+        return True
+    lo, hi, _ = p.region(start, end)
+    return any(
+        re.search(rf"(?<![\w-]){re.escape(rid)}(?![\w-])", p.s[lo:hi]) for rid in ids
+    )
+
+
+def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """A certified zone, certification or a certificate offered for a class map.
+
+    A class map has no confidence to rank its windows by, so no zone of it
+    can be certified, whatever the design, budget or alpha
+    (``olmoearth_certify_zone`` refuses it). "A class map has no confidence
+    to rank or certify", "no zone of it can be certified",
+    "olmoearth_certify_zone refuses it" (a negation in the clause), a
+    requirement that names what a class map lacks ("certification needs
+    per-window probabilities") and a quoted or example mention pass; "with
+    200 random labels I can certify the top 30%", "the top half is
+    certified", "next, olmoearth_certify_zone on these labels" and a
+    requirement that names only a design, labels or alpha ("a certified
+    zone of this map needs 200 random labels") are flagged.
+
+    The claim is the run's, not one sentence's: in a run whose maps are all
+    class maps, any such mention is read as about one. A run that also holds
+    a map with scores (:func:`_scores_map_in_run`) can certify that map, so
+    there only a clause that names a class map, by its kind or by the result
+    id a class-map call read (:func:`_names_a_class_map`), is read: "the
+    flood map's top 40% is certified" passes, "the class map's top half is
+    certified" is flagged, and a class map named by neither ("its top half")
+    is not read.
+    """
+    p = _parse(s)
+    scoped = _scores_map_in_run(run)
+    ids = _class_map_ids(run) if scoped else []
+    for m in _CLASS_MAP_ZONE_RE.finditer(s):
+        start, end = m.start(), m.end()
+        if (
+            p.negated(start, end)
+            or _negated_close(p, start, end)
+            or p.example_before(start)
+            or p.quoted(start)
+            or (
+                p.in_clause(_REQUIREMENT_RE, start, end, own=True)
+                and p.in_clause(_WHAT_A_CLASS_MAP_LACKS_RE, start, end, own=True)
+            )
+        ):
+            continue
+        if scoped and not _names_a_class_map(p, start, end, ids):
+            continue
+        return True
+    return False
+
+
 #: A detector per ``forbidden_claims`` id: does one sentence make that claim
 #: about the result of that tool, in this run? An id without one (the
 #: contract's ``simple_random_interval_for_stratified_design``: the package's
@@ -3435,6 +3557,7 @@ FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] =
     "certification_guaranteed": _certification_guaranteed,
     "margin_as_error_probability": _margin_as_error_probability,
     "more_accurate_without_its_test": _more_accurate_without_its_test,
+    "zone_for_a_class_map": _zone_for_a_class_map,
 }
 
 

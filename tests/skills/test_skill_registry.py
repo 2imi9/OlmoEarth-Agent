@@ -425,7 +425,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         assert deferred not in opted_core, deferred
 
 
-def test_a_default_turn_carries_under_6850_spec_tokens(
+def test_a_default_turn_carries_under_7000_spec_tokens(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Measured as the audit did: len(JSON of the specs) / 4.
@@ -444,9 +444,17 @@ def test_a_default_turn_carries_under_6850_spec_tokens(
     names, or neither, by the sign test or interval) and 76 to
     olmoearth_compare_results (its pointer to the route), less the 101 of
     olmoearth_load_skill's note on #6's group, now opt-in: 977 characters,
-    244 tokens. 6,575 + 244 = 6,819, so the bound is 6,850. These are counts
-    by hand, not measurements. Opted in, a turn carries the opt-in specs again.
+    244 tokens. 6,575 + 244 = 6,819, so the bound was 6,850. The class-map
+    step adds, counted the same way, 476 characters to
+    olmoearth_plan_label_sample (the class design in its enum and
+    description, the sentence on a Studio class map, and min_per_class with
+    its "(all of a smaller class)", width, expected_error_rate and
+    class_share), 80 to olmoearth_estimate_map_error (the valid interval
+    first) and 17 to olmoearth_certify_zone (a class map refused): 573
+    characters, 143 tokens. 6,819 + 143 = 6,962; the bound moves by the same
+    143, from 6,850 to 6,993, so it is 7,000. These are counts by hand, not
+    measurements. Opted in, a turn carries the opt-in specs again.
     """
     default = _turn_chars(build_default_registry())
-    assert default / 4 < 6_850
+    assert default / 4 < 7_000
     assert _turn_chars(_opted_in(monkeypatch)) > default

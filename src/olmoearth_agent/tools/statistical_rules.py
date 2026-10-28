@@ -80,6 +80,10 @@ MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
 #: where the grading names neither map, the map it does not name, or a
 #: winner read off point metrics with no design, interval or test.
 MORE_ACCURATE_WITHOUT_ITS_TEST = "more_accurate_without_its_test"
+#: A certified, certifiable or trusted zone, or a certificate, offered or
+#: stated for a class map: it has no confidence to rank its windows by, so no
+#: zone of it can be certified, whatever the design, budget or alpha.
+ZONE_FOR_A_CLASS_MAP = "zone_for_a_class_map"
 
 #: The contract's fixed ids: every forbidden claim a tool emits is one of them.
 FIXED_IDS = (
@@ -101,6 +105,7 @@ FIXED_IDS = (
     CERTIFICATION_GUARANTEED,
     MARGIN_AS_ERROR_PROBABILITY,
     MORE_ACCURATE_WITHOUT_ITS_TEST,
+    ZONE_FOR_A_CLASS_MAP,
 )
 
 
@@ -260,7 +265,9 @@ def labels_in_studio_fact(
     )
 
 
-def subset_labelling_sufficient(design: str) -> dict[str, str]:
+def subset_labelling_sufficient(
+    design: str, *, by_class: bool = False
+) -> dict[str, str]:
     """Only a stratified sheet's full set of rows is its design.
 
     The package draws a stratified sample stratum by stratum, the least
@@ -268,7 +275,20 @@ def subset_labelling_sufficient(design: str) -> dict[str, str]:
     rows are the least confident windows only. Emitted only for a design with
     at least two strata: a random design's sheet is in random order, and a
     prefix of it is a smaller random sample (:func:`prefix_is_random_sample`).
+    With ``by_class`` the strata are the map's classes (the class design), so
+    the sheet runs class by class and its first rows are one class only.
     """
+    if by_class:
+        return forbidden(
+            SUBSET_LABELLING_SUFFICIENT,
+            "label every window in the sheet; labelling only its first rows "
+            "biases the estimate: the sheet lists the class design's strata, "
+            "the map's classes, in turn, each class's windows in random order, "
+            "so its first rows are one class only, a rate over them describes "
+            "that class and not the map, and the classes after them get no "
+            "labels; olmoearth_estimate_map_error refuses a design with any "
+            "window unlabelled",
+        )
     return forbidden(
         SUBSET_LABELLING_SUFFICIENT,
         "label every window in the sheet; labelling only its first rows biases "
@@ -370,6 +390,73 @@ def certification_guaranteed(detail: str | None = None) -> dict[str, str]:
         "certified (or 'certifiable') region, or a zone of any size"
         + (f"; {detail}" if detail else ""),
     )
+
+
+# --------------------------------------------------------------------------- a class map
+
+#: What a class map gets, in one sentence, stated by every tool that refuses
+#: one: the review-set tools, ``olmoearth_certify_zone`` and a ranking design
+#: of ``olmoearth_plan_label_sample``. A Studio classification band's
+#: pixel-value carries the class only, with no probability: nothing ranks its
+#: windows, so it has no review set and no certified zone, and a random or
+#: class-design sample of it still measures its error rate and per-class
+#: accuracy, as labels where it differs from another map of one time say
+#: which of the two is more accurate.
+CLASS_MAP_NO_CONFIDENCE = (
+    "A class map has no confidence to rank or certify, so it gets no review "
+    "set and no certified zone; it can still be measured "
+    "(olmoearth_plan_label_sample with design='random' or 'class', then "
+    "olmoearth_estimate_map_error) or compared with another map of the same "
+    "time (olmoearth_plan_label_sample with design='disagreement')."
+)
+
+
+def zone_for_a_class_map(detail: str | None = None) -> dict[str, str]:
+    """No certified zone, and no certificate, for a class map.
+
+    A certified zone is the most confident share of a map whose error rate an
+    exact test bounds; a class map has no confidence to order its windows by,
+    so ``olmoearth_certify_zone`` refuses its designs, random ones included.
+    Emitted by every result about a class map: its plan, its estimate, the
+    refusals. ``detail`` says what this result adds.
+    """
+    return forbidden(
+        ZONE_FOR_A_CLASS_MAP,
+        "a class map has no confidence to rank its windows by, so no zone of it "
+        "can be certified (olmoearth_certify_zone refuses it) whatever the "
+        "design, budget or alpha: no certified, certifiable or trusted zone "
+        "and no certificate may be offered or stated for it; labels give it "
+        "an error rate and per-class accuracy, each with its interval"
+        + (f"; {detail}" if detail else ""),
+    )
+
+
+def valid_interval_must_state(
+    estimate: float | None,
+    low: float,
+    high: float,
+    design: str,
+    n_labelled: int,
+    *,
+    class_map: bool,
+) -> str:
+    """The sentence an answer stating an error rate conveys: valid interval and design.
+
+    Written from ``oe_inferencex.estimate.estimate_error_rate(valid=True)``'s
+    ``valid_interval`` (its own point, and its ends), never re-derived: the
+    interval valid at every sample size, the design it rests on and the
+    number of labels; for a class map, that it has no certified zone. At
+    most 25 words, as the contract's ``must_state`` is. ``estimate`` is
+    ``None`` when the package gives the point as a range.
+    """
+    head = (
+        f"Error rate {percent(estimate)}: " if estimate is not None else "Error rate: "
+    )
+    sentence = (
+        f"{head}valid 95% interval {percent(low)} to {percent(high)}, {design} "
+        f"design, {n_labelled} labels"
+    )
+    return sentence + ("; a class map has no certified zone." if class_map else ".")
 
 
 def post_hoc_alpha(alpha: float | None) -> dict[str, str]:

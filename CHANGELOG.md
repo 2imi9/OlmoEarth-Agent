@@ -10,6 +10,74 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **A Studio class map gets its error rate and per-class accuracy from
+  labels, the interval valid at every sample size first; ranking and
+  certified zones stay refused for it.** A classification result gives each
+  window's class and no probability. `olmoearth_plan_label_sample` now reads
+  such a result as a class map (each window's class through
+  `olmoearth_compare_results`' own sampler, `read_pair` and `sample_pair`
+  with one result, coded as the two-map design codes classes) for
+  `design='random'` and the new `design='class'`: the class design of
+  Olofsson et al. (2014), olmoearth-inferencex's condition design with each
+  window's map class as its condition and `class_floor` = `min_per_class`
+  (50 by default, the package's `CLASS_FLOOR`; a class with fewer windows
+  gets all of them), its sample marked
+  `condition.by = "map class"` as `oe-inferencex sample --design class` marks
+  it (the class design is offered for a scores map too, on its arg-max
+  class). The rate is of the result's sampled grid points (at most 16 x 16,
+  one pixel each), not every pixel. A class-map or class-design plan carries
+  the package's label budgets, computed before any file is written:
+  `plan.plan_error_rate`, the random labels for a whole-map interval no
+  wider than a stated `width` (0.10 by default) at the `expected_error_rate`
+  (the package's 50% unless given, which the `label_budget` fact then names
+  an assumption), and, for a stated `class_share`, `plan.plan_class`, the
+  random labels that flag a class of that share drawn by the map at half of
+  it, all classes' intervals together at 95% (not a per-class accuracy
+  budget). Both plan a random sample; under the class design the
+  `label_budget` fact says so and gives the package's own, conditional
+  reading of the union bound (wider than a random sample's interval when the
+  classes' error rates are close, narrower possible when they are far
+  apart). The confidence and proportional designs are refused for a class
+  map, with the reason (no confidence margin to stratify by): before any
+  pixel is sampled when the result declares its band type, and after the
+  grid is sampled otherwise. A class map whose result declares no band type
+  is read from that same sampling (`review_set.ClassReads`), not sampled a
+  second time. The class design's labelling instructions say what the
+  package's `CLASS_BLIND_NOTE` says: its rows run class by class, so to label
+  blind hide map_class and stratum and show the rows shuffled.
+  `olmoearth_estimate_map_error` on a class map's labels (the class seen in
+  each window, as `map_class` writes classes, or `wrong`; a class the map
+  never writes gets its own row, references that all lie outside the map's
+  classes are refused, `wrong` must agree with the classes, on the sheet as
+  in the arguments: a `reference_class` filled on some windows only is
+  refused, naming the first window without one, and a `wrong` column filled
+  beside a full `reference_class` is held to it) reports
+  `estimate_error_rate(valid=True)`'s `valid_interval` first, then the
+  design's interval, each named (`intervals`), with the package's
+  `VALID_NOTE` word for word (under the random design the two are the same
+  exact interval; under the class design the second is the union bound over
+  the classes, which covers at least 95% too), and with reference classes
+  `estimate_per_class(valid=True)` the same way per class; the class design's
+  results are worded by the package's `common.wording.class_wording`.
+  `olmoearth_certify_zone`, `olmoearth_review_set_from_result` and a ranking
+  design refuse a class map in one sentence
+  (`statistical_rules.CLASS_MAP_NO_CONFIDENCE`): it has no confidence to rank
+  or certify, and can still be measured or compared with another map of the
+  same time. A new fixed forbidden-claim id, `zone_for_a_class_map`
+  (`statistical_rules.py`, `harness/checks.py`), forbids offering or stating
+  a certified zone of a class map. The answer check applies it to every
+  sentence of the answer: with only class maps in the run, any certification
+  wording not negated is flagged; in a run that also holds a map with scores
+  (a result that forbids `certification_guaranteed`), only a clause that
+  names a class map, by its kind or by the result id a class-map call read,
+  is read, so a certified zone of the scores map passes. A requirement passes only when it names what a
+  class map lacks ("certification needs per-window probabilities"); "a
+  certified zone of this map needs 200 random labels" is flagged. The
+  estimate's `must_state` requires the valid interval and the design
+  (`rules.valid_interval_must_state`). The spec-size test's bound for a
+  default turn goes from 6,850 to 7,000 tokens. The soul, the README's
+  verification table, `SKILLS.md` and `PLAN.md` §1 say so. Tests:
+  `tests/tools/test_class_map_tool.py`, `tests/harness/test_answer_checks.py`.
 - **Which of two maps is more accurate: the two-map route, through
   olmoearth-inferencex 1.20.1's own functions; #6's untested winner is
   opt-in.** Where two maps of the same windows at the same time give the
@@ -292,8 +360,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   README and the web UI say the agent checks what Studio returns where it
   can: the review set, the label sample and the error rate need a map with
   scores (a Studio `[0, 1]` score band, a regression band given a threshold,
-  or a direct model run's scores), so a Studio class map gets none of them
-  yet. The landing page's two example runs and the demo's change scenario
+  or a direct model run's scores), so a Studio class map got none of them at
+  that step (its error rate and per-class accuracy from labels came later in
+  this release: see the class-map entry above). The landing page's two example runs and the demo's change scenario
   use `olmoearth_compare_results` (mode `series`) and
   `olmoearth_plan_label_sample` instead of opt-in tools, and the examples
   and in/out lines that need an opt-in tool are marked. The README, its

@@ -1336,6 +1336,33 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "Whether map B is better needs a larger sample.",
         ],
     ),
+    # The class-map step: a class map has no confidence to rank by, so no
+    # zone of it is certified, whatever the design; saying so is no claim. A
+    # requirement is no claim only when it names what a class map lacks: one
+    # that names labels, a design or alpha is the promise itself.
+    "zone_for_a_class_map": (
+        [
+            "With 200 random labels I can certify the most reliable 30% of this "
+            "map.",
+            "The top half of the class map is certified at alpha 0.05.",
+            "Next, olmoearth_certify_zone on these labels gives a trusted zone.",
+            "A certificate for this map can be issued from the same labels.",
+            "A certified zone of this map needs 200 random labels.",
+            "Certifying it needs design='random'.",
+            "Certifying the top 30% takes an alpha fixed now.",
+        ],
+        [
+            "A class map has no confidence to rank or certify.",
+            "No zone of this class map can be certified.",
+            "Certification needs per-window probabilities, which Studio does not "
+            "return.",
+            "A certified zone needs a confidence score per window.",
+            "olmoearth_certify_zone refuses a class map.",
+            "Error rate 12.5%: valid 95% interval 6.1% to 21.7%, random design, "
+            "80 labels; a class map has no certified zone.",
+            "The error rate is 12.5%, with the interval valid at every sample size.",
+        ],
+    ),
 }
 
 
@@ -1413,6 +1440,72 @@ def test_a_forbidden_claim_is_flagged_and_its_negation_is_not(claim_id: str) -> 
         assert violations[0]["detail"] == f"{claim_id} (tool): the tool says so"
     for sentence in fine:
         assert check_forbidden_claims(sentence, run) == [], sentence
+
+
+def _class_map_beside_a_certified_scores_map() -> tuple[ToolRecord, ToolRecord]:
+    """A class map's plan (result lc-1) and a certified zone of a scores map."""
+    class_map = _record(
+        "olmoearth_plan_label_sample",
+        {"forbidden_claims": [{"id": "zone_for_a_class_map", "why": "x"}]},
+        result_id="lc-1",
+        design="random",
+    )
+    certified = _record(
+        "olmoearth_certify_zone",
+        {
+            "certified": True,
+            "design": "random",
+            "forbidden_claims": [{"id": "certification_guaranteed", "why": "x"}],
+        },
+        design_path="flood.json",
+        alpha=0.05,
+    )
+    return class_map, certified
+
+
+def test_zone_for_a_class_map_reads_only_a_class_map_beside_a_scores_map() -> None:
+    """A run that measures a class map and certifies a scores map: a certified
+    zone of the scores map is no claim about the class map; one of the class
+    map, named by its kind or by its result id, still is."""
+    class_map, certified = _class_map_beside_a_certified_scores_map()
+    run = _run(class_map, certified)
+    for fine in (
+        "The flood map's 40% most confident windows are certified at alpha 0.05.",
+        "For a certified zone of the flood map, olmoearth_certify_zone takes the "
+        "same design_path.",
+        "The flood map is certified; the class map has no certified zone.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    for flagged in (
+        "The class map's top half is certified at alpha 0.05.",
+        "The top half of lc-1 is certified at alpha 0.05.",
+        "A certified zone of the land-cover classification result needs 200 "
+        "random labels.",
+    ):
+        violations = check_forbidden_claims(flagged, run)
+        assert [v["text"] for v in violations] == [flagged], flagged
+        assert violations[0]["detail"].startswith("zone_for_a_class_map"), flagged
+
+
+def test_zone_for_a_class_map_reads_every_sentence_when_only_class_maps_ran() -> None:
+    """With no map with scores in the run, a certified zone is read as one of
+    a class map wherever the answer offers it; a two-map design's refused
+    certify call holds no scores map either."""
+    class_map, _certified = _class_map_beside_a_certified_scores_map()
+    two_maps = _record(
+        "olmoearth_certify_zone",
+        {
+            "certified": False,
+            "design": "disagreement",
+            "forbidden_claims": [{"id": "certification_guaranteed", "why": "x"}],
+        },
+        design_path="two_maps.json",
+    )
+    sentence = "The flood map's 40% most confident windows are certified at alpha 0.05."
+    for run in (_run(class_map), _run(class_map, two_maps)):
+        violations = check_forbidden_claims(sentence, run)
+        assert [v["text"] for v in violations] == [sentence]
+        assert violations[0]["detail"].startswith("zone_for_a_class_map")
 
 
 def test_the_alpha_the_user_asked_for_is_not_post_hoc() -> None:

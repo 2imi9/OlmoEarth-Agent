@@ -369,7 +369,10 @@ async def read_pair(ctx: ToolContext, ids: list[str]) -> ResultPair | dict[str, 
 
     No pixel is sampled yet, so a refusal on the dates the predictions give
     costs no pixel-value call. Returns the refusal (``comparable: False``)
-    when the results share no extent.
+    when the results share no extent. One result (``ids`` of length one) is
+    read the same way, its own extent the shared one: the labelled sample of
+    a Studio class map reads its map through here and :func:`sample_pair`,
+    as the two-map design reads each of its maps.
     """
     records = list(
         await asyncio.gather(*[ctx.studio.get_prediction_result(r) for r in ids])
@@ -391,7 +394,8 @@ async def sample_pair(
     The models are looked up once (their ``nodata_value``), each result's
     no-data context is built, and :func:`_sample_on_grid` samples both:
     results of different properties, or of a number and a class, are
-    refused, and every sample is read through the same no-data rule.
+    refused, and every sample is read through the same no-data rule. A pair
+    of one result (:func:`read_pair`'s note) samples that result alone.
     """
     model_ids = [
         str(p["model_id"]) if p and p.get("model_id") else None

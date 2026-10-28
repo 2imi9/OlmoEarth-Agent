@@ -26,6 +26,7 @@ from olmoearth_agent.analysis.raster_compare import grid_windows
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
+from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 
@@ -260,9 +261,14 @@ async def test_a_classification_band_is_refused_before_sampling(
         ctx = ToolContext(studio=studio, state=ThreadState())
         out = await _tool().handler({"result_id": "lc"}, ctx)
     assert out["ranked"] is False
-    assert "no margin can be recovered from a hard class" in out["reason"]
+    # One sentence: a class map has no confidence to rank or certify, and is
+    # still measured (random or class design) or compared with another map.
+    assert out["reason"] == rules.CLASS_MAP_NO_CONFIDENCE
+    assert out["class_map"] is True
     assert out["use_instead"] == "olmoearth_compare_results"
-    assert "mode='ensemble'" in out["reason"]
+    assert "mode='ensemble'" in out["other_routes"]
+    assert "olmoearth_review_set" in out["other_routes"]
+    assert [c["id"] for c in out["forbidden_claims"]] == [rules.ZONE_FOR_A_CLASS_MAP]
     assert not any("pixel-value" in str(r.url) for r in httpx_mock.get_requests())
 
 
