@@ -10,6 +10,28 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **The verification layer on a real map, with no Studio key and no LLM
+  (`make verify-demo`).** `scripts/verify_demo_tile.py` calls the agent's
+  default verification tools, in the agent's order, on the expert-annotated
+  Dynamic World tile that olmoearth-inferencex ships (Zenodo record 4766508,
+  CC BY 4.0; 40 m windows, the expert's class per window).
+  - The calls: the tile as a direct run's scores (a GeoTIFF placed
+    approximately on the tile's recorded centre, in its UTM zone; the package
+    writes no certificate for a raster with no georeference), the review set
+    at 5%, a random plan of 300 with `seed_from_map` at alpha 0.1, the
+    estimate, the certified zone, the certificate and its check (a copy of
+    the map must verify; a copy with one label flipped must not), a
+    class-design plan and its estimate, the report and the provenance
+    summary.
+  - The class plan takes 300 windows, or the package's floor when the map
+    needs more (50 per map class), counted before any label is read.
+  - It writes `docs/VERIFICATION_DEMO.md` (each call's result as the tool
+    returned it; whether each interval covers the true error rate of the
+    tile's annotated windows, from every window's expert label, which a user
+    does not have) and `docs/verification_demo.json` (every envelope).
+  - A failed call, a certificate check that goes the wrong way, or a page
+    that cannot be built stops the run (exit 1); without the `inferencex`
+    extra it says what to install (exit 2).
 - **A direct OlmoEarth run's files go the whole verification route, and its
   certified zone can be packed into a certificate anyone holding the map can
   check (#18).** `olmoearth_scores_from_file` also reads what `oe-inferencex

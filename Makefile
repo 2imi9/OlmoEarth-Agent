@@ -14,7 +14,7 @@ WEB_PORT := 8080
 # Live-agent bridge (FastAPI) port: the same UI wired to your real Studio account.
 BRIDGE_PORT := 8088
 
-.PHONY: help setup serve down agent web bridge up
+.PHONY: help setup serve down agent web bridge up verify-demo
 
 help: ## List the available targets.
 	@echo "OlmoEarth Agent make targets:"
@@ -25,6 +25,9 @@ help: ## List the available targets.
 	@echo "  make agent   - run a brief: make agent Q=\"<your brief>\""
 	@echo "  make web     - serve the static DEMO web UI on http://localhost:$(WEB_PORT) (no backend)"
 	@echo "  make bridge  - serve the LIVE web UI on http://localhost:$(BRIDGE_PORT) (your Studio account)"
+	@echo "  make verify-demo - the verification tools on a real map, no Studio key and no LLM;"
+	@echo "                     writes docs/VERIFICATION_DEMO.md (needs the inferencex extra: make setup)"
+	@echo "                     options: make verify-demo ARGS=\"--work DIR --docs DIR\""
 	@echo ""
 	@echo "Two ways to run the live UI:"
 	@echo "  - Local model (offline): make up        # auto-starts the LLM, then the UI"
@@ -55,6 +58,9 @@ bridge: ## Serve the LIVE web UI (port 8088). Local LLM optional: pick a cloud p
 	@echo "  - No local model / no 17.7 GB download? Open the UI, go to Settings -> LLM backend,"
 	@echo "    pick a cloud provider (Claude / ChatGPT / Gemini) and paste a key. The UI nudges you if the local model is down."
 	uv run olmoearth-agent-serve --port $(BRIDGE_PORT)
+
+verify-demo: ## The verification tools on olmoearth-inferencex's expert-annotated Dynamic World tile (no Studio key, no LLM); writes docs/VERIFICATION_DEMO.md.
+	uv run python scripts/verify_demo_tile.py $(ARGS)
 
 up: setup serve ## LOCAL one-command bring-up: setup, start the LLM, then serve the live UI.
 	@echo ""

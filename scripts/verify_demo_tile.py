@@ -1,0 +1,1472 @@
+# SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
+# Copyright (c) 2026 OlmoEarth Agent contributors
+"""Generate docs/VERIFICATION_DEMO.md: the verification layer on a real map.
+
+No Studio key and no LLM. The agent's own verification tools are called
+through its default tool registry (``registry.dispatch``), in the order the
+agent calls them, on the expert-annotated Dynamic World tile that
+olmoearth-inferencex ships for its demo
+(``oe_inferencex/sample/dynamic_world_tile.npz``: the means of Dynamic
+World's published class probabilities over 40 m windows of 4 x 4 pixels,
+and the expert's class per window; Zenodo record 4766508, CC BY 4.0, Brown
+et al., Scientific Data, 2022). The error rate checked is that of each 40 m
+window's arg-max class, not Dynamic World's 10 m accuracy. Each call is
+recorded as the lead agent records it (the run's ``ThreadState``
+provenance), so the report and the provenance summary read them as they read
+an agent's run. Nothing is typed in: every figure of the calls table and the
+report is a tool's result, formatted as the tools format their own, and only
+the truth check is this script's, computed from the expert label of every
+window, which a real user does not have. Run, on a cluster or any machine
+with ``uv sync --all-extras``:
+
+    make verify-demo
+    # or: uv run python scripts/verify_demo_tile.py [--work DIR] [--docs DIR]
+
+The tile goes in as a direct run (a GeoTIFF of its probabilities, NaN where
+the expert annotated nothing or a probability is not finite, and a
+``manifest.json``), read by ``olmoearth_scores_from_file`` with windows of
+one pixel: a sample a certificate rests on is drawn from the map's own raster
+(``seed_from_map``), so the scores file must be the one that tool writes. The
+calls, in order:
+
+1. ``olmoearth_scores_from_file``; 2. ``olmoearth_review_set`` at a 5%
+budget; 3. ``olmoearth_plan_label_sample``, ``design='random'``, 300
+windows, ``seed_from_map`` at alpha 0.1 (delta and rule the defaults); the
+plan's sheet is then labelled from the expert annotation, as a labeller
+would; 4. ``olmoearth_estimate_map_error``; 5. ``olmoearth_certify_zone``;
+6. ``olmoearth_write_certificate``; 7. ``olmoearth_verify_certificate``
+against a copy of the map, which must verify; 8. the same against a copy of
+the certificate with one label flipped, which must not verify (if the tool
+refuses that copy, the page says so); 9. and 10. the class design, planned,
+labelled and estimated, with seed 0 and 300 windows, or the package's floor
+when the map needs more (50 labels per map class, or all the windows of a
+smaller class: :func:`class_design_budget`, counted from the map before any
+label is read); 11. ``olmoearth_case_narrative``; 12.
+``olmoearth_provenance_summary``. With no zone certified, 7 and 8 do not run
+and the page says so.
+
+It writes docs/VERIFICATION_DEMO.md and docs/verification_demo.json (every
+envelope, sorted keys, the work folder written ``<work>``). The run's own
+files stay in the work folder, which ``OLMOEARTH_SCORES_ROOT`` and
+``OLMOEARTH_OUTPUT_ROOT`` are set to: by default a fresh folder under
+``./olmoearth_outputs/``, which git ignores. Every call's envelope is also
+written to the work folder's ``envelopes.json`` as the run goes, so a run
+that stops keeps them. Any other call that does not succeed, a certificate
+check that goes the wrong way, or a page that cannot be built stops the run
+with exit status 1, and a failed call's envelope is printed.
+
+Needs the standard library, numpy, the agent and olmoearth-inferencex
+(>= 1.20.1), with rasterio, which the package's ``geo`` extra brings to
+write the GeoTIFF: the agent's ``inferencex`` extra installs both, on Python
+3.11 to 3.13. Without them the command says what to install and exits 2.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import csv
+import hashlib
+import importlib.resources
+import importlib.util
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+import traceback
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from olmoearth_agent.analysis.review_set import attainable_ceiling
+from olmoearth_agent.harness.state import ThreadState
+from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.reporting.narrative import ACCURACY_HEADING, INTERVAL_NAMES
+from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
+from olmoearth_agent.skills.registry import OPT_IN_TOOLS, build_default_registry
+from olmoearth_agent.tools import inferencex
+from olmoearth_agent.tools.registry import ToolContext
+from olmoearth_agent.tools.review_set import SCORES_ROOT_ENV, load_scores_file
+from olmoearth_agent.tools.statistical_rules import percent
+
+#: The command that writes the page, and the script it runs.
+COMMAND = "make verify-demo"
+SCRIPT_COMMAND = "uv run python scripts/verify_demo_tile.py"
+
+#: The page's first line: generated, by which command.
+FIRST_LINE = (
+    f"*Generated by `{COMMAND}` (`{SCRIPT_COMMAND}`): edit the script, not this "
+    "page.*"
+)
+HEADING = "The verification layer on a real map"
+#: The command's description (``--help``).
+DESCRIPTION = (
+    "The agent's verification tools on the Dynamic World tile that "
+    "olmoearth-inferencex ships; writes docs/VERIFICATION_DEMO.md and "
+    "docs/verification_demo.json."
+)
+
+#: The run's settings (the revision plan's step 7). The class design plans
+#: ``BUDGET`` too, or the package's floor when the map needs more
+#: (:func:`class_design_budget`); it is not an option, so it cannot be
+#: changed after a result is read.
+BUDGET = 300
+REVIEW_BUDGET = 0.05
+ALPHA = 0.1
+CLASS_SEED = 0
+#: Windows of one pixel: the tile is already pooled to 40 m windows.
+PATCH = 1
+#: Dynamic World's pixel, in metres: a window of ``window_m`` metres is
+#: ``window_m / PIXEL_M`` pixels on a side.
+PIXEL_M = 10
+
+#: What the run needs beyond the core agent, all from the agent's
+#: ``inferencex`` extra. numpy and rasterio are imported where they are
+#: used, so that without them :func:`main` says what to install.
+NEEDS = ("numpy", "rasterio", "oe_inferencex")
+#: How to install them.
+INSTALL = (
+    "make setup, or uv sync --all-extras (the inferencex extra installs nothing "
+    "on Python 3.14 or later: use 3.11 to 3.13)"
+)
+
+#: The tile inside the installed package (``oe_inferencex.demo.SAMPLE``).
+SAMPLE_DIR = "sample"
+SAMPLE_FILE = "dynamic_world_tile.npz"
+
+#: Under the work folder: the tile as a direct run, a copy of its map, and a
+#: copy of the certificate with one label flipped.
+RUN_DIR = "dynamic_world_tile"
+RASTER = "scores.tif"
+MAP_COPY = "map_copy"
+TAMPERED = "tampered_certificate"
+#: Every call's envelope so far, rewritten after each call (:class:`Run`).
+ENVELOPES = "envelopes.json"
+
+#: The model the run's manifest names (one word, so the tools name it whole).
+MODEL_ID = "dynamic-world"
+
+#: The report's title: no figure in it, as olmoearth_case_narrative requires.
+TITLE = "One Dynamic World tile, checked by the verification tools"
+
+#: How the work folder is written on the page and in the envelopes.
+WORK = "<work>"
+
+#: The files written into the docs folder, by default the repository's.
+PAGE = "VERIFICATION_DEMO.md"
+DOCUMENT = "verification_demo.json"
+DOCS = Path(__file__).resolve().parents[1] / "docs"
+
+#: The tools, by name.
+SCORES = "olmoearth_scores_from_file"
+REVIEW = "olmoearth_review_set"
+PLAN = "olmoearth_plan_label_sample"
+ESTIMATE = "olmoearth_estimate_map_error"
+CERTIFY = "olmoearth_certify_zone"
+WRITE = "olmoearth_write_certificate"
+VERIFY = "olmoearth_verify_certificate"
+NARRATIVE = "olmoearth_case_narrative"
+PROVENANCE = "olmoearth_provenance_summary"
+
+#: What the truth check is computed from.
+TRUTH_SOURCE = (
+    "the expert label of every window of the population, which a real user does "
+    "not have"
+)
+
+#: The keys of an interval as the page and the truth check read them.
+_INTERVAL_KEYS = ("interval", "low", "high", "method")
+
+#: A tile's date, from its name (``label_dw_..._-20190609.tif``).
+_DATE = re.compile(r"(\d{4})(\d{2})(\d{2})\.tif$")
+
+CALLS_LEAD = (
+    "Each row is one call, in the order made, with its key arguments and its key "
+    "result; every figure is the tool's, as it returned it (rates as the tools "
+    "write them). The estimates, the zone and the certificate read the labels "
+    "from each plan's own sheet (`labels_path`), which this script filled for "
+    "the windows the plan drew, as a labeller would: the expert's class in "
+    "`reference_class`, and `wrong` 1 where it differs from the sheet's "
+    "`map_class`."
+)
+#: Added to :data:`CALLS_LEAD` only when the tampered copy was checked.
+TAMPER_LEAD = (
+    "The second `olmoearth_verify_certificate` call is the deliberate check: a "
+    "copy of the certificate with one label flipped, against the same copy of "
+    "the map; it must not verify."
+)
+TRUTH_LEAD = (
+    "This check is the script's, not the agent's. It is computed from "
+    f"{TRUTH_SOURCE}; the tools saw only the labels of the windows each plan "
+    "drew."
+)
+ONE_DRAW = (
+    "One run is one draw: an interval that covers the truth here, or misses it, "
+    "is not evidence about how often such an interval covers it (its coverage "
+    "rate). The same holds for the zone: its statement may fail on up to delta "
+    "of all draws (olmoearth-inferencex's `ISSUED_NOTE`), so one zone at or "
+    "under alpha here does not show that the guarantee holds, and one over it "
+    "does not show that it fails."
+)
+REPORT_LEAD = (
+    "The report's accuracy section, verbatim from `olmoearth_case_narrative`'s "
+    f"Markdown (paths written with `{WORK}`):"
+)
+PROVENANCE_LEAD = (
+    "What repeats each verification call (its design, budget, seed, maps, labels "
+    "and zone settings), as `olmoearth_provenance_summary` returned it:"
+)
+TRUTH_HEADER = (
+    "| Check | Tools' figure | Truth (expert label of every window) | Holds |"
+)
+
+
+class DemoError(RuntimeError):
+    """The run cannot go on: a folder, the tile or a tool result is not as expected."""
+
+
+# --------------------------------------------------------------------------- the tile
+
+
+@dataclass
+class Tile:
+    """A tile of class probabilities and its expert annotation.
+
+    ``probs`` is ``(classes, H, W)`` float32, ``expert`` ``(H, W)`` with -1
+    where the expert marked nothing, and ``meta`` the tile's record (its
+    ``classes``, ``tile`` name, ``window_m``, ``zenodo_record`` and
+    ``licence``).
+    """
+
+    probs: Any
+    expert: Any
+    meta: dict[str, Any]
+
+    @property
+    def classes(self) -> list[str]:
+        """The class of each channel, as the tile names them."""
+        return [str(c) for c in self.meta["classes"]]
+
+    def kept(self) -> Any:
+        """The windows kept: annotated by the expert, every probability finite.
+
+        As ``oe_inferencex.demo.run`` reads the tile: a window with a
+        probability that is not finite is no-data, and the expert's -1 marks
+        a window under half annotated.
+        """
+        import numpy as np
+
+        return (self.expert >= 0) & np.isfinite(self.probs).all(axis=0)
+
+    def map_class(self) -> Any:
+        """The map's class of each window: the arg-max of its probabilities."""
+        import numpy as np
+
+        finite = np.where(np.isfinite(self.probs), self.probs, -np.inf)
+        return finite.argmax(axis=0)
+
+
+def sample_path() -> Path:
+    """The Dynamic World tile in the installed olmoearth-inferencex.
+
+    Found through the package, as ``oe_inferencex.demo.SAMPLE`` finds it,
+    never from a copy in this repository.
+    """
+    ref = importlib.resources.files("oe_inferencex") / SAMPLE_DIR / SAMPLE_FILE
+    path = Path(str(ref))
+    if not path.is_file():
+        msg = (
+            f"olmoearth-inferencex has no {SAMPLE_DIR}/{SAMPLE_FILE} at {path}: "
+            f"reinstall the agent's inferencex extra with {INSTALL}"
+        )
+        raise DemoError(msg)
+    return path
+
+
+def load_tile() -> Tile:
+    """The tile, read as ``oe_inferencex.demo`` reads it (float32, int16)."""
+    import numpy as np
+
+    with np.load(sample_path()) as z:
+        meta = json.loads(str(z["meta"]))
+        probs = z["probs"].astype(np.float32)
+        expert = z["expert"].astype(np.int16)
+    return Tile(probs=probs, expert=expert, meta=meta)
+
+
+def credit(meta: dict[str, Any]) -> str:
+    """The tile's credit, word for word as ``oe-inferencex demo`` prints it."""
+    return (
+        "Map and expert labels: Dynamic World test tiles, Zenodo record "
+        f"{meta['zenodo_record']}, {meta['licence']} (Brown et al., Scientific "
+        "Data, 2022)."
+    )
+
+
+def tile_date(meta: dict[str, Any]) -> str:
+    """The date of the tile's imagery, from its name (``...-20190609.tif``)."""
+    found = _DATE.search(str(meta.get("tile") or ""))
+    if found is None:
+        raise DemoError("the tile's name gives no date (...-YYYYMMDD.tif)")
+    return "-".join(found.groups())
+
+
+@dataclass
+class Truth:
+    """What a real user does not have: the expert's verdict on every window.
+
+    ``kept`` and ``wrong`` are flat (row-major) over the tile's grid; a
+    window outside the population is never wrong.
+    """
+
+    grid: tuple[int, int]
+    kept: Any
+    wrong: Any
+
+    @property
+    def n(self) -> int:
+        """Windows in the population."""
+        return int(self.kept.sum())
+
+    @property
+    def n_wrong(self) -> int:
+        """Windows of the population the map gets wrong."""
+        return int(self.wrong.sum())
+
+    @property
+    def rate(self) -> float:
+        """The population's true error rate."""
+        return self.n_wrong / self.n
+
+
+def truth_of(tile: Tile) -> Truth:
+    """The tile's truth: the windows kept, and those the map gets wrong."""
+    kept = tile.kept()
+    wrong = kept & (tile.map_class() != tile.expert)
+    h, w = (int(s) for s in kept.shape)
+    return Truth(grid=(h, w), kept=kept.ravel(), wrong=wrong.ravel())
+
+
+def _sha256(path: Path) -> str:
+    """Hex sha256 of a file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def tile_grid(meta: dict[str, Any], height: int, width: int) -> tuple[str, Any]:
+    """The CRS and transform the tile's GeoTIFF is written on.
+
+    The tile keeps only its centre (``lon``, ``lat``, read from the source
+    raster) and its window size, so the grid is rebuilt from them: the UTM
+    zone of the centre, north up (the source raster's rows, as the package
+    stores them), windows of ``window_m`` metres centred there. It places the
+    tile approximately, not on the source raster's own grid. A raster with no
+    georeference is no map a direct run writes, and olmoearth-inferencex
+    writes no certificate for it (its zone mask is not a plain GeoTIFF).
+    """
+    from rasterio.transform import from_origin
+    from rasterio.warp import transform as reproject
+
+    try:
+        lon, lat = float(meta["lon"]), float(meta["lat"])
+        size = float(meta["window_m"])
+    except (KeyError, TypeError, ValueError) as exc:
+        msg = f"the tile's metadata gives no centre or window size: {exc!r}"
+        raise DemoError(msg) from exc
+    zone = int((lon + 180.0) // 6.0) + 1
+    crs = f"EPSG:{(32600 if lat >= 0 else 32700) + zone}"
+    xs, ys = reproject("EPSG:4326", crs, [lon], [lat])
+    west = xs[0] - width * size / 2.0
+    north = ys[0] + height * size / 2.0
+    return crs, from_origin(west, north, size, size)
+
+
+def write_run(tile: Tile, run_dir: Path) -> Path:
+    """Write the tile as a direct run: a scores GeoTIFF and its ``manifest.json``.
+
+    The raster holds the class probabilities, NaN on every channel where a
+    window is not kept (:meth:`Tile.kept`), so the scores file that
+    ``olmoearth_scores_from_file`` writes holds the kept windows only. It is
+    georeferenced on :func:`tile_grid`. The manifest names each channel's
+    class, says the values are probabilities and records the raster's
+    digest, which the tool checks.
+
+    Returns
+    -------
+    Path
+        ``run_dir``.
+    """
+    import numpy as np
+    import rasterio
+
+    run_dir.mkdir(parents=True)
+    values = np.where(tile.kept()[None], tile.probs, np.nan).astype(np.float32)
+    count, height, width = (int(s) for s in values.shape)
+    crs, transform = tile_grid(tile.meta, height, width)
+    raster = run_dir / RASTER
+    profile = {
+        "driver": "GTiff",
+        "height": height,
+        "width": width,
+        "count": count,
+        "dtype": "float32",
+        "nodata": float("nan"),
+        "crs": crs,
+        "transform": transform,
+    }
+    with rasterio.open(raster, "w", **profile) as dst:
+        dst.write(values)
+    manifest = {
+        "what": (
+            "One Dynamic World tile as a direct run, one pixel per window: the "
+            "means of its published class probabilities over each window, as "
+            "olmoearth-inferencex ships them, NaN where the expert annotated "
+            "nothing or a probability is not finite (scripts/verify_demo_tile.py)"
+        ),
+        "scores": {
+            "file": RASTER,
+            "sha256": _sha256(raster),
+            "values": "probabilities",
+            "shape": [count, height, width],
+            "dtype": "float32",
+            "nodata": "NaN",
+        },
+        "classes": {str(i): name for i, name in enumerate(tile.classes)},
+        "model": {"id": MODEL_ID},
+        "source": credit(tile.meta),
+    }
+    text = json.dumps(manifest, indent=1)
+    (run_dir / "manifest.json").write_text(text, encoding="utf-8")
+    return run_dir
+
+
+def check_population(tile: Tile, scores: dict[str, Any]) -> None:
+    """Refuse a scores file whose population is not the tile's kept windows."""
+    kept = tile.kept()
+    grid = [int(s) for s in kept.shape]
+    if scores.get("grid") != grid or scores.get("n_valid") != int(kept.sum()):
+        msg = (
+            f"olmoearth_scores_from_file read {scores.get('n_valid')} valid windows "
+            f"on a grid of {scores.get('grid')}; the tile keeps {int(kept.sum())} "
+            f"of {grid}"
+        )
+        raise DemoError(msg)
+
+
+def label_plan(tile: Tile, plan: dict[str, Any]) -> dict[str, str]:
+    """Label a plan's windows as a labeller would; return the arguments that pass them.
+
+    Only the windows the plan drew, read from its own sheet
+    (``labels_csv_path``): each row's ``reference_class`` is the expert's
+    class at that window and ``wrong`` is 1 where it differs from the
+    sheet's ``map_class``. The sheet's ``map_class`` is held to the tile's
+    map, so the labels grade the map the truth check grades.
+
+    Returns
+    -------
+    dict
+        ``design_path`` and ``labels_path``, as the estimate, the zone and
+        the certificate take them.
+    """
+    sheet = Path(str(plan["labels_csv_path"]))
+    with open(sheet, encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fields = list(reader.fieldnames or [])
+        rows = list(reader)
+    width = int(tile.expert.shape[1])
+    mapped = tile.map_class()
+    for row in rows:
+        r, c = divmod(int(row["window_index"]), width)
+        seen, shown = int(tile.expert[r, c]), int(row["map_class"])
+        if seen < 0 or shown != int(mapped[r, c]):
+            msg = (
+                f"window {row['window_index']} of {sheet.name}: the expert's class "
+                f"{seen} and the sheet's map class {shown} are not the tile's"
+            )
+            raise DemoError(msg)
+        row["reference_class"] = str(seen)
+        row["wrong"] = str(int(seen != shown))
+    with open(sheet, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    return {"design_path": str(plan["design_path"]), "labels_path": str(sheet)}
+
+
+def flip_one_label(bundle: Path, dest: Path) -> Path:
+    """A copy of a certificate's bundle with its first label flipped.
+
+    The bundle's ``labels.csv`` is the package's sheet with the labels: the
+    first row's ``wrong`` goes from 0 to 1, or from 1 to 0; nothing else
+    changes. Returns the copy's ``certificate.json``.
+    """
+    shutil.copytree(bundle, dest)
+    labels = dest / "labels.csv"
+    with open(labels, encoding="utf-8", newline="") as fh:
+        rows = list(csv.reader(fh))
+    if len(rows) < 2 or "wrong" not in rows[0]:
+        msg = f"the certificate's {labels.name} has no 'wrong' column or no row"
+        raise DemoError(msg)
+    at = rows[0].index("wrong")
+    rows[1][at] = "0" if rows[1][at].strip() == "1" else "1"
+    with open(labels, "w", encoding="utf-8", newline="") as fh:
+        csv.writer(fh).writerows(rows)
+    return dest / "certificate.json"
+
+
+# --------------------------------------------------------------------------- the run
+
+
+@dataclass
+class Call:
+    """One dispatched call: the run's step, the tool, its arguments and envelope."""
+
+    step: str
+    tool: str
+    arguments: dict[str, Any]
+    envelope: dict[str, Any]
+
+    @property
+    def result(self) -> dict[str, Any]:
+        """The tool's result (the envelope's ``result``), or an empty dict."""
+        result = self.envelope.get("result")
+        return result if isinstance(result, dict) else {}
+
+
+class CallFailed(RuntimeError):
+    """A call that did not succeed: the run stops and prints its envelope."""
+
+    def __init__(self, call: Call) -> None:
+        """Keep the call, whose envelope the command prints.
+
+        The message names the envelope's error, so a log that shows only the
+        exception still says why the call failed.
+        """
+        error = call.envelope.get("error")
+        if error is None and isinstance(call.envelope.get("result"), dict):
+            error = call.envelope["result"].get("reason")
+        super().__init__(f"{call.tool} did not succeed: {error}")
+        self.call = call
+
+
+def succeeded(envelope: dict[str, Any]) -> bool:
+    """Whether a call ran and computed: ``ok``, with the extra installed.
+
+    A tool whose optional package is missing answers ``ok`` with
+    ``available`` false, which measured nothing.
+    """
+    result = envelope.get("result")
+    return (
+        envelope.get("ok") is True
+        and isinstance(result, dict)
+        and result.get("available") is not False
+    )
+
+
+class Run:
+    """One run of the agent's tools, recorded as the lead agent records it.
+
+    Each call goes through the default registry's ``dispatch`` and into the
+    run's ``ThreadState`` provenance (``ProvenanceLog.record_tool_call``), as
+    ``tests/tools/test_narrative_tool.py``'s ``_Run`` records it, so the
+    report and the provenance summary read the calls as they read an
+    agent's. Only the default tools are called: an opt-in one is refused.
+    With ``log``, every envelope so far is written there after each call
+    (as :func:`envelopes_document` writes them, paths as they are), so a run
+    that stops, whatever stops it, keeps its calls on disk.
+    """
+
+    def __init__(self, log: Path | None = None) -> None:
+        """A fresh run: its own state, the default registry, no calls yet."""
+        self.state = ThreadState()
+        self.registry = build_default_registry()
+        self.calls: list[Call] = []
+        #: The index of each step's call in :attr:`calls`.
+        self.steps: dict[str, int] = {}
+        self.log = log
+
+    async def dispatch(self, step: str, tool: str, args: dict[str, Any]) -> Call:
+        """Dispatch one call and record it, whether it succeeded or not."""
+        if tool in OPT_IN_TOOLS or tool not in self.registry.names():
+            raise DemoError(f"{tool} is not one of the agent's default tools")
+        envelope: dict[str, Any] = await self.registry.dispatch(
+            ToolCall(id=str(len(self.calls)), name=tool, arguments=args),
+            ToolContext(studio=None, state=self.state),  # type: ignore[arg-type]
+        )
+        self.state.provenance.record_tool_call(tool, args, envelope)
+        call = Call(step=step, tool=tool, arguments=dict(args), envelope=envelope)
+        self.steps[step] = len(self.calls)
+        self.calls.append(call)
+        self.write_log()
+        return call
+
+    def write_log(self) -> None:
+        """Write every call so far to :attr:`log`, when there is one."""
+        if self.log is None:
+            return
+        records = [_call_record(n, c) for n, c in enumerate(self.calls, start=1)]
+        text = json.dumps({"calls": records}, indent=1, sort_keys=True, default=str)
+        self.log.write_text(text + "\n", encoding="utf-8")
+
+    async def call(self, step: str, tool: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Dispatch one call that must succeed; return its result."""
+        call = await self.dispatch(step, tool, args)
+        if not succeeded(call.envelope):
+            raise CallFailed(call)
+        return call.result
+
+
+@dataclass
+class Demo:
+    """A finished run: its calls, work folder, package version and tamper note."""
+
+    run: Run
+    work: Path
+    version: str | None
+    #: ``None`` when both certificate checks ran; else why the second did not.
+    tamper: str | None
+    #: How the class design's budget was fixed (:func:`class_design_budget`).
+    class_budget: dict[str, int] = field(default_factory=dict)
+
+    def result(self, step: str) -> dict[str, Any]:
+        """The result of the step's call (empty when that step did not run)."""
+        index = self.run.steps.get(step)
+        return {} if index is None else self.run.calls[index].result
+
+    def number(self, step: str) -> int | None:
+        """The step's call number on the page, from 1."""
+        index = self.run.steps.get(step)
+        return None if index is None else index + 1
+
+
+def use_roots(work: Path) -> None:
+    """Point the scores root and the workspace root at the run's work folder."""
+    os.environ[SCORES_ROOT_ENV] = str(work)
+    os.environ[OUTPUT_ROOT_ENV] = str(work)
+
+
+def class_design_budget(scores_path: str, planned: int = BUDGET) -> dict[str, int]:
+    """The class design's budget, fixed from the map alone, before any label.
+
+    The package gives every map class ``CLASS_FLOOR`` labels, or all its
+    windows if it has fewer, and refuses a budget below their sum
+    (``oe_inferencex.estimate.class_allocation``). The budget is ``planned``,
+    or that sum when ``planned`` is below it. The classes are counted from
+    the scores file's own ``map_class``, which ``olmoearth_plan_label_sample``
+    reads as the design's strata, and the floor per class is the package's
+    ``CLASS_FLOOR``, the tool's default ``min_per_class``.
+
+    Returns
+    -------
+    dict
+        ``planned``, ``per_class`` (the package's floor per class), ``floor``
+        (their sum over the map's classes) and ``budget``, the larger of
+        ``planned`` and ``floor``.
+    """
+    per_class = int(inferencex.load("estimate").CLASS_FLOOR)
+    classes = load_scores_file(scores_path).meta.get("map_class")
+    if not isinstance(classes, list) or not classes:
+        raise DemoError("the scores file has no map_class to count the classes of")
+    sizes = Counter(int(c) for c in classes)
+    floor = sum(min(n, per_class) for n in sizes.values())
+    return {
+        "planned": int(planned),
+        "per_class": per_class,
+        "floor": floor,
+        "budget": max(int(planned), floor),
+    }
+
+
+async def check_certificate(
+    run: Run, written: dict[str, Any], raster: Path, work: Path
+) -> str | None:
+    """Check the certificate against a copy of the map, then a tampered copy.
+
+    The first check reads a copy of the map this script writes, so it is a
+    real check, not the certificate against the file it names; it must
+    verify. The second reads a copy of the certificate with one label
+    flipped in its bundled ``labels.csv`` (:func:`flip_one_label`), against
+    the same copy of the map; it must not verify. Both are calls of
+    ``olmoearth_verify_certificate`` within its rules (a certificate and a
+    plain GeoTIFF under the scores root).
+
+    Returns
+    -------
+    str or None
+        ``None`` when both checks ran; else why the tampered copy was not
+        checked.
+
+    Raises
+    ------
+    DemoError
+        When the certificate does not verify against the copy of the map,
+        or the tampered copy verifies.
+    """
+    if not written.get("certificate_written"):
+        return (
+            "No zone was certified, so no certificate was written and neither "
+            "certificate check ran."
+        )
+    certificate = Path(str(written["certificate_path"]))
+    copy = work / MAP_COPY / raster.name
+    copy.parent.mkdir(parents=True)
+    shutil.copyfile(raster, copy)
+    checked = await run.call(
+        "verify",
+        VERIFY,
+        {"certificate_path": str(certificate), "map_path": str(copy)},
+    )
+    if checked.get("verified") is not True:
+        failed = ", ".join(str(f) for f in checked.get("failed_checks") or [])
+        msg = (
+            "the certificate did not verify against a copy of the map it "
+            f"certifies (failed or not checked: {failed or 'none named'})"
+        )
+        raise DemoError(msg)
+    tampered = flip_one_label(certificate.parent, work / TAMPERED)
+    check = await run.dispatch(
+        "tamper",
+        VERIFY,
+        {"certificate_path": str(tampered), "map_path": str(copy)},
+    )
+    if not succeeded(check.envelope):
+        return (
+            "olmoearth_verify_certificate refused the tampered copy, so it was not "
+            f"checked: {check.envelope.get('error')}"
+        )
+    if check.result.get("verified") is not False:
+        raise DemoError("a copy of the certificate with one label flipped verified")
+    return None
+
+
+async def run_demo(
+    tile: Tile,
+    work: Path,
+    *,
+    budget: int = BUDGET,
+    review_budget: float = REVIEW_BUDGET,
+    alpha: float = ALPHA,
+    class_seed: int = CLASS_SEED,
+) -> Demo:
+    """Call the verification tools on ``tile``, in the order the agent calls them.
+
+    The scores root and the workspace root are set to ``work``, which must
+    be new or empty (a plan drawn from the map is drawn once per folder).
+    The order is the module docstring's; the labels of each plan are the
+    expert's, given through the plan's own sheet (:func:`label_plan`). The
+    class design plans ``budget``, or the package's floor when the map needs
+    more (:func:`class_design_budget`), fixed from the scores file before
+    any label is read. Every envelope goes to ``work``'s
+    :data:`ENVELOPES` as the run goes.
+
+    Raises
+    ------
+    CallFailed
+        When a call does not succeed (the tampered certificate's check
+        aside, whose refusal the page states).
+    DemoError
+        When the scores file's population is not the tile's kept windows,
+        when a sheet's map class is not the tile's, when the certificate
+        does not verify against a copy of the map, or when the tampered
+        certificate verifies.
+    """
+    use_roots(work)
+    run = Run(log=work / ENVELOPES)
+    run_dir = write_run(tile, work / RUN_DIR)
+    scores = await run.call(
+        "scores",
+        SCORES,
+        {"run_dir": str(run_dir), "patch": PATCH},
+    )
+    check_population(tile, scores)
+    scores_path = str(scores["scores_path"])
+    # Both budgets are fixed from the map before any label is read.
+    class_budget = class_design_budget(scores_path, budget)
+    await run.call(
+        "review",
+        REVIEW,
+        {"scores_path": scores_path, "budget": review_budget},
+    )
+    plan = await run.call(
+        "plan",
+        PLAN,
+        {
+            "scores_path": scores_path,
+            "budget": budget,
+            "design": "random",
+            "seed_from_map": True,
+            "alpha": alpha,
+        },
+    )
+    labels = label_plan(tile, plan)
+    n_classes = len(tile.classes)
+    await run.call("estimate", ESTIMATE, {**labels, "n_classes": n_classes})
+    await run.call("certify", CERTIFY, {**labels, "alpha": alpha})
+    date = tile_date(tile.meta)
+    written = await run.call("certificate", WRITE, {**labels, "date": date})
+    tamper = await check_certificate(run, written, run_dir / RASTER, work)
+    class_plan = await run.call(
+        "class_plan",
+        PLAN,
+        {
+            "scores_path": scores_path,
+            "budget": class_budget["budget"],
+            "design": "class",
+            "seed": class_seed,
+        },
+    )
+    class_labels = label_plan(tile, class_plan)
+    await run.call(
+        "class_estimate",
+        ESTIMATE,
+        {**class_labels, "n_classes": n_classes},
+    )
+    await run.call("narrative", NARRATIVE, {"title": TITLE, "results": []})
+    await run.call("provenance", PROVENANCE, {})
+    package = scores.get("package") or {}
+    version = package.get("version") if isinstance(package, dict) else None
+    return Demo(
+        run=run, work=work, version=version, tamper=tamper, class_budget=class_budget
+    )
+
+
+# ------------------------------------------------------------------- the truth check
+
+
+def interval_entries(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every interval of an estimate, as the report reads them.
+
+    A class design's estimate lists the valid interval and the design's
+    (``intervals``); a random design's gives the design's alone.
+    """
+    entries = result.get("intervals")
+    if not (isinstance(entries, list) and entries):
+        entries = [{**result, "interval": "design"}]
+    return [{k: e.get(k) for k in _INTERVAL_KEYS} for e in entries]
+
+
+def covers(entry: dict[str, Any], rate: float) -> bool | None:
+    """Whether an interval holds ``rate``; ``None`` without both ends."""
+    low, high = entry.get("low"), entry.get("high")
+    if low is None or high is None:
+        return None
+    return bool(float(low) <= rate <= float(high))
+
+
+def review_windows(result: dict[str, Any]) -> list[int]:
+    """Every window of the review set, by grid index, as the tool listed them.
+
+    From its list file (``review_list_path``) when the listing was cut
+    short, else from the listing itself.
+    """
+    path = result.get("review_list_path")
+    if path:
+        with open(str(path), encoding="utf-8", newline="") as fh:
+            windows = [int(row["window_index"]) for row in csv.DictReader(fh)]
+    else:
+        windows = [int(row["window_index"]) for row in result.get("review") or []]
+    if len(windows) != int(result.get("n_review") or 0):
+        msg = f"the review set lists {len(windows)} windows of {result.get('n_review')}"
+        raise DemoError(msg)
+    return windows
+
+
+def zone_truth(truth: Truth, demo: Demo) -> dict[str, Any]:
+    """The certified zone's true error rate against its alpha.
+
+    The zone's windows are read from the zone file ``olmoearth_certify_zone``
+    wrote (``zone_path``), its alpha and delta from the same file: the
+    statement "error rate at most alpha" may fail on up to delta of draws.
+    """
+    result = demo.result("certify")
+    number = demo.number("certify")
+    if not result.get("certified") or not result.get("zone_path"):
+        return {"call": number, "certified": False}
+    zone = json.loads(Path(str(result["zone_path"])).read_text(encoding="utf-8"))
+    windows = [int(i) for i in zone["window_indices"]]
+    if not windows or not truth.kept[windows].all():
+        raise DemoError("the certified zone holds windows outside the population")
+    wrong = int(truth.wrong[windows].sum())
+    rate = wrong / len(windows)
+    alpha = float(zone["alpha"])
+    return {
+        "call": number,
+        "certified": True,
+        "alpha": alpha,
+        "delta": float(zone["delta"]),
+        "n_zone": len(windows),
+        "n_wrong": wrong,
+        "error_rate": rate,
+        "at_most_alpha": bool(rate <= alpha),
+    }
+
+
+def truth_check(truth: Truth, demo: Demo) -> dict[str, Any]:
+    """The demo's own check of the tools' results against the truth.
+
+    Computed from the expert label of every window of the population, which
+    a real user does not have: the population's true error rate; whether
+    each interval the estimates returned covers it; the review set's share
+    of the population's errors against the attainable ceiling,
+    ``min(1, budget / error rate)`` at the review set's own share of the
+    population; and the certified zone's true error rate against its alpha.
+    Nothing in it is copied from a tool's verdict.
+
+    Returns
+    -------
+    dict
+        ``computed_from``, ``population``, ``intervals``, ``review_set`` and
+        ``zone``, as JSON.
+    """
+    out: dict[str, Any] = {
+        "computed_from": TRUTH_SOURCE,
+        "population": {
+            "grid": list(truth.grid),
+            "n_windows": truth.n,
+            "n_wrong": truth.n_wrong,
+            "error_rate": truth.rate,
+        },
+    }
+    intervals: list[dict[str, Any]] = []
+    for step in ("estimate", "class_estimate"):
+        result = demo.result(step)
+        if not result:
+            continue
+        design = result.get("plan_design") or result.get("design")
+        for entry in interval_entries(result):
+            entry.update(call=demo.number(step), design=design)
+            entry["covers"] = covers(entry, truth.rate)
+            intervals.append(entry)
+    out["intervals"] = intervals
+    review = demo.result("review")
+    windows = review_windows(review)
+    inside = int(truth.wrong[windows].sum())
+    out["review_set"] = {
+        "call": demo.number("review"),
+        "budget": review.get("budget"),
+        "n_review": len(windows),
+        "errors_inside": inside,
+        "share_of_errors": inside / truth.n_wrong if truth.n_wrong else None,
+        "ceiling": attainable_ceiling(len(windows) / truth.n, truth.rate),
+    }
+    out["zone"] = zone_truth(truth, demo)
+    return out
+
+
+# --------------------------------------------------------------------------- the page
+
+
+def placeholder(text: str, work: Path) -> str:
+    """``text`` with the work folder written :data:`WORK`: no absolute path kept."""
+    spellings = {str(work), os.path.abspath(work), os.path.realpath(work)}
+    for spelling in sorted(spellings, key=len, reverse=True):
+        text = text.replace(spelling, WORK)
+    return text
+
+
+def scrubbed(value: Any, work: Path) -> Any:
+    """``value`` with the work folder written :data:`WORK` in every string in it.
+
+    Applied to the data before it is serialised: JSON escapes a backslash
+    (a Windows path) or, by default, a non-ASCII character, so the folder's
+    spelling in serialised text is not the one :func:`placeholder` looks for.
+    """
+    if isinstance(value, dict):
+        return {scrubbed(k, work): scrubbed(v, work) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [scrubbed(v, work) for v in value]
+    if isinstance(value, str | os.PathLike):
+        return placeholder(os.fspath(value), work)
+    return value
+
+
+def json_text(value: Any, work: Path, **dumps: Any) -> str:
+    """``value`` as JSON, the work folder written :data:`WORK` (:func:`scrubbed`)."""
+    return placeholder(json.dumps(scrubbed(value, work), default=str, **dumps), work)
+
+
+def cell(text: Any) -> str:
+    """Text for one cell of a Markdown table."""
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+def report_section(markdown: str) -> str:
+    """The report's accuracy section, from its heading to the next section."""
+    if ACCURACY_HEADING not in markdown:
+        msg = f"the report has no accuracy section ({ACCURACY_HEADING!r})"
+        raise DemoError(msg)
+    start = markdown.index(ACCURACY_HEADING)
+    end = markdown.find("\n## ", start + len(ACCURACY_HEADING))
+    section = markdown[start:] if end < 0 else markdown[start:end]
+    return section.rstrip() + "\n"
+
+
+def _plan_of(demo: Demo, design_path: Any) -> str:
+    """The plan that wrote ``design_path``, as the calls table names it."""
+    for n, call in enumerate(demo.run.calls, start=1):
+        if call.tool == PLAN and call.result.get("design_path") == design_path:
+            return f"the design file of call {n}"
+    return "a design file"
+
+
+def _rate_text(block: dict[str, Any]) -> str:
+    """A point estimate as the report writes it, or the range given in its place."""
+    if block.get("estimate") is not None:
+        return percent(block["estimate"])
+    span = block.get("estimate_range")
+    if isinstance(span, list) and len(span) == 2:
+        return f"between {percent(span[0])} and {percent(span[1])}"
+    return "not given"
+
+
+def _interval_text(entry: dict[str, Any]) -> str:
+    """One interval, named as the report names it, with its ends and method."""
+    name = INTERVAL_NAMES.get(str(entry["interval"]), str(entry["interval"]))
+    ends = f"{percent(entry['low'])} to {percent(entry['high'])}"
+    return f"{name.lower()}: {ends} (method: {entry['method']})"
+
+
+def _args_text(demo: Demo, call: Call) -> str:
+    """The call's key arguments, in words."""
+    a = call.arguments
+    origin = _plan_of(demo, a.get("design_path"))
+    if call.tool == SCORES:
+        name = Path(str(a["run_dir"])).name
+        return f"run_dir `{name}` (the tile as a direct run), patch {a['patch']}"
+    if call.tool == REVIEW:
+        number = demo.number("scores")
+        return f"the scores file of call {number}, budget {a['budget']:g}"
+    if call.tool == PLAN:
+        how = (
+            f"seed_from_map, alpha {a['alpha']:g}"
+            if a.get("seed_from_map")
+            else f"seed {a.get('seed', 0)}"
+        )
+        text = f"design '{a['design']}', budget {a['budget']}, {how}"
+        fixed = demo.class_budget
+        if call.step == "class_plan" and fixed and fixed["budget"] > fixed["planned"]:
+            text += (
+                f" ({fixed['planned']} planned, raised to the package's floor, "
+                f"min(windows, {fixed['per_class']}) summed over the map's "
+                f"classes: {fixed['floor']}, counted before any label)"
+            )
+        return text
+    if call.tool == ESTIMATE:
+        return f"{origin}; labels_path, its sheet; n_classes {a.get('n_classes')}"
+    if call.tool == CERTIFY:
+        return f"{origin}; the same labels; alpha {a['alpha']:g}"
+    if call.tool == WRITE:
+        return f"{origin}; the same labels; date {a['date']}"
+    if call.tool == VERIFY and call.step == "tamper":
+        return "a copy of that certificate with one label flipped; the same copy"
+    if call.tool == VERIFY:
+        number = demo.number("certificate")
+        return f"the certificate of call {number}; map_path, a copy of the map"
+    if call.tool == NARRATIVE:
+        return f"title '{a['title']}', no Studio results"
+    return "none"
+
+
+def _result_text(demo: Demo, call: Call) -> str:
+    """The call's key result, every figure as the tool returned it."""
+    if not succeeded(call.envelope):
+        return f"refused: {call.envelope.get('error')}"
+    r = call.result
+    if call.tool == SCORES:
+        grid = f"{r['grid'][0]} x {r['grid'][1]}"
+        return (
+            f"{r['n_valid']:,} valid windows of a {grid} grid, {r['n_nodata']:,} "
+            f"no-data; scores file `{r['scores_file']}`"
+        )
+    if call.tool == REVIEW:
+        return f"{r['n_review']:,} windows to check first, of {r['n_windows']:,}"
+    if call.tool == PLAN:
+        drawn = f"{r['budget']:,} windows to label of {r['n_population']:,}"
+        if r.get("min_per_class") is not None:
+            drawn += f", at least {r['min_per_class']} per map class"
+        seed = f"seed {r['seed']}"
+        if r.get("seed_from_map"):
+            seed += ", taken from the map"
+        name = Path(str(r["design_path"])).name
+        return f"{drawn}; {seed}; design file `{name}`"
+    if call.tool == ESTIMATE:
+        point = r.get("valid_interval") or r
+        head = f"error rate {_rate_text(point)} from {r['n_labelled']:,} labels"
+        tail = "; ".join(_interval_text(e) for e in interval_entries(r))
+        return f"{head} of {r['n_population']:,} windows; {tail}"
+    if call.tool == CERTIFY:
+        return str(r.get("verdict"))
+    if call.tool == WRITE:
+        if not r.get("certificate_written"):
+            return f"no certificate: {r.get('reason')}"
+        return (
+            f"certificate written: {r['n_zone']:,} windows, coverage "
+            f"{r['coverage']:g}; verified by olmoearth-inferencex before writing"
+        )
+    if call.tool == VERIFY:
+        text = "verified: yes" if r.get("verified") else "verified: no"
+        failed = [str(f) for f in r.get("failed_checks") or []]
+        if failed:
+            text += f" (failed or not checked: {', '.join(failed)})"
+        return text
+    if call.tool == NARRATIVE:
+        measured = "yes" if (r.get("accuracy") or {}).get("measured") else "no"
+        return f"the report (error rate measured: {measured}), below"
+    entries = r.get("entry_count")
+    calls = r.get("verification_calls") or []
+    return f"{entries} calls recorded; {len(calls)} verification calls, below"
+
+
+def _call_row(demo: Demo, n: int, call: Call) -> str:
+    """One row of the calls table."""
+    args, result = cell(_args_text(demo, call)), cell(_result_text(demo, call))
+    return f"| {n} | `{call.tool}` | {args} | {result} |"
+
+
+def _interval_row(entry: dict[str, Any], rate: str) -> str:
+    """One interval's row of the truth table."""
+    name = INTERVAL_NAMES.get(str(entry["interval"]), str(entry["interval"]))
+    check = f"{name}, {entry['design']} design (call {entry['call']})"
+    ends = f"{percent(entry['low'])} to {percent(entry['high'])}"
+    holds = {True: "covers", False: "misses"}.get(entry["covers"], "not given")
+    return f"| {check} | {ends} | {rate} | {holds} |"
+
+
+def _review_row(truth: dict[str, Any]) -> str:
+    """The review set's row of the truth table."""
+    review, n_wrong = truth["review_set"], truth["population"]["n_wrong"]
+    check = (
+        f"Review set at budget {review['budget']:g} (call {review['call']}): its "
+        "share of the map's errors"
+    )
+    found = (
+        f"{review['errors_inside']:,} of the {n_wrong:,} errors "
+        f"({percent(review['share_of_errors'])}); the attainable ceiling, "
+        f"min(1, budget / error rate): {percent(review['ceiling'])}"
+    )
+    return f"| {check} | {review['n_review']:,} windows | {found} | - |"
+
+
+def _zone_row(truth: dict[str, Any]) -> str:
+    """The certified zone's row of the truth table."""
+    zone = truth["zone"]
+    if not zone.get("certified"):
+        return f"| Certified zone (call {zone['call']}) | no zone certified | - | - |"
+    check = (
+        f"Certified zone (call {zone['call']}): its error rate at most "
+        f"alpha={zone['alpha']:g}, a statement that may fail on up to "
+        f"delta={zone['delta']:g} of draws"
+    )
+    rate = percent(zone["error_rate"])
+    found = f"{zone['n_wrong']:,} of {zone['n_zone']:,} wrong: {rate}"
+    holds = "yes" if zone["at_most_alpha"] else "no"
+    return f"| {check} | {zone['n_zone']:,} windows | {found} | {holds} |"
+
+
+def truth_table(truth: dict[str, Any]) -> list[str]:
+    """The truth check as a table: each check, the tools' figure, the truth."""
+    pop = truth["population"]
+    rate = percent(pop["error_rate"])
+    wrong = f"{pop['n_wrong']:,} of {pop['n_windows']:,} windows wrong: {rate}"
+    rows = [
+        TRUTH_HEADER,
+        "|---|---|---|---|",
+        f"| The population's error rate | - | {wrong} | - |",
+    ]
+    rows += [_interval_row(entry, rate) for entry in truth["intervals"]]
+    rows += [_review_row(truth), _zone_row(truth)]
+    return rows
+
+
+def intro(demo: Demo, truth: dict[str, Any], tile: Tile) -> list[str]:
+    """The page's opening: what map, what population, then how it was run.
+
+    The first paragraph says what the error rate checked is of: the 40 m
+    window map olmoearth-inferencex ships (the mean of Dynamic World's
+    probabilities over each window, graded against the expert's majority
+    class of the window), not Dynamic World's 10 m pixels. The second says
+    how the tools were called, and gives the credit.
+    """
+    pop = truth["population"]
+    n_grid = int(pop["grid"][0]) * int(pop["grid"][1])
+    version = demo.version or "(version not reported)"
+    window_m = int(tile.meta.get("window_m") or 0)
+    side = window_m // PIXEL_M
+    what = (
+        f"The map is one Dynamic World tile (southern Peru, {tile_date(tile.meta)}) "
+        f"as olmoearth-inferencex {version} ships it: Dynamic World's class "
+        f"probabilities averaged over {window_m} m windows ({side} x {side} of its "
+        f"{PIXEL_M} m pixels), with the expert's class for each window, the "
+        "majority class of its annotated pixels where at least half of it was "
+        "annotated. The population is the "
+        f"{pop['n_windows']:,} of the tile's {n_grid:,} windows that the expert "
+        "annotated and whose probabilities are finite, one window each (one pixel "
+        "of the GeoTIFF this script wrote, placed on the tile's recorded centre in "
+        "its UTM zone, approximately, not on the source raster's own grid). The "
+        "error rate checked is that of "
+        "each window's arg-max class over them, not Dynamic World's 10 m "
+        "accuracy, and the certificate is of that GeoTIFF."
+    )
+    how = (
+        "No Studio key and no LLM: this script called the agent's verification "
+        "tools through its default tool registry, in the order the agent calls "
+        "them, and recorded each call as the lead agent does. The tile went in as "
+        "a direct run read by olmoearth_scores_from_file with windows of one "
+        "pixel, since a certificate's sample is drawn from the map's own raster. "
+        "Every tool called is in the agent's default registry; none needed "
+        "OLMOEARTH_OPT_IN_TOOLS. Paths are written relative to the run's work "
+        f"folder, `{WORK}`. {credit(tile.meta)} olmoearth-inferencex averaged the "
+        "probabilities over windows and stores them as float16 (its "
+        "sample/NOTICE.txt)."
+    )
+    return [what, "", how]
+
+
+def calls_lead(demo: Demo) -> str:
+    """The lead of the calls table; the tampered copy's sentence only if it ran.
+
+    With no zone certified, or a refusal of the tampered copy, the page's
+    note under the table says what happened instead.
+    """
+    index = demo.run.steps.get("tamper")
+    if demo.tamper is None and index is not None:
+        if succeeded(demo.run.calls[index].envelope):
+            return f"{CALLS_LEAD} {TAMPER_LEAD}"
+    return CALLS_LEAD
+
+
+def truth_heading(tile: Tile) -> str:
+    """The truth check's heading: the true error rate of the tile's windows."""
+    window_m = tile.meta.get("window_m")
+    return (
+        "## Does each interval cover the true error rate of the tile's "
+        f"{window_m} m windows"
+    )
+
+
+def build_page(demo: Demo, truth: dict[str, Any], tile: Tile) -> str:
+    """The page: what was run, each call's key result, the truth check, the report.
+
+    Every figure of the calls table and the report is a tool's result,
+    formatted as the tools format their own (``statistical_rules.percent``);
+    the truth check's are this script's, from the expert labels. Paths are
+    written relative to the work folder (:data:`WORK`).
+    """
+    calls = enumerate(demo.run.calls, start=1)
+    lines = [FIRST_LINE, "", f"# {HEADING}", "", *intro(demo, truth, tile), ""]
+    lines += ["## What each tool returned", "", calls_lead(demo), ""]
+    lines += ["| # | Tool | Key arguments | Key result |", "|---|---|---|---|"]
+    lines += [_call_row(demo, n, call) for n, call in calls]
+    if demo.tamper:
+        lines += ["", demo.tamper]
+    lines += [
+        "",
+        truth_heading(tile),
+        "",
+        TRUTH_LEAD,
+        "",
+        *truth_table(truth),
+        "",
+        ONE_DRAW,
+        "",
+        "## The report",
+        "",
+        REPORT_LEAD,
+        "",
+        report_section(demo.result("narrative").get("markdown") or ""),
+    ]
+    verification = demo.result("provenance").get("verification_calls") or []
+    lines += [
+        "## Verification calls (`olmoearth_provenance_summary`)",
+        "",
+        PROVENANCE_LEAD,
+        "",
+        "```json",
+        json_text(verification, demo.work, indent=1),
+        "```",
+    ]
+    text = "\n".join(lines).rstrip() + "\n"
+    return placeholder(text, demo.work)
+
+
+def _call_record(n: int, call: Call) -> dict[str, Any]:
+    """One call as the envelopes file holds it."""
+    return {
+        "n": n,
+        "step": call.step,
+        "tool": call.tool,
+        "arguments": call.arguments,
+        "envelope": call.envelope,
+    }
+
+
+def envelopes_document(demo: Demo, truth: dict[str, Any]) -> str:
+    """The raw envelopes, in call order, and the truth check, as sorted JSON.
+
+    The work folder is written :data:`WORK` in the data before it is
+    serialised (:func:`json_text`), so the file holds no absolute path of
+    the run, however JSON escapes it; the page can be checked against it
+    figure by figure.
+    """
+    payload = {
+        "generated_by": f"{COMMAND} ({SCRIPT_COMMAND})",
+        "work_folder": WORK,
+        "olmoearth_inferencex": demo.version,
+        "class_budget": demo.class_budget,
+        "calls": [_call_record(n, c) for n, c in enumerate(demo.run.calls, start=1)],
+        "truth_check": truth,
+    }
+    return json_text(payload, demo.work, indent=1, sort_keys=True) + "\n"
+
+
+# ----------------------------------------------------------------------- the command
+
+
+@dataclass
+class Generated:
+    """What one generation produced: the run, its truth check, both files."""
+
+    demo: Demo
+    truth: dict[str, Any]
+    page: str
+    document: str
+    page_path: Path
+    document_path: Path
+
+
+def generate(tile: Tile, work: Path, docs: Path, **options: Any) -> Generated:
+    """Run the tools on ``tile`` in ``work``; write the page and the envelopes.
+
+    ``options`` go to :func:`run_demo` (its budgets, alpha and seed). The
+    page and the envelopes go to ``docs``; nothing is written there when a
+    call fails or the page cannot be built. Every call's envelope is in
+    ``work``'s :data:`ENVELOPES` all the same, written as the run went.
+    """
+    demo = asyncio.run(run_demo(tile, work, **options))
+    truth = truth_check(truth_of(tile), demo)
+    page = build_page(demo, truth, tile)
+    document = envelopes_document(demo, truth)
+    docs.mkdir(parents=True, exist_ok=True)
+    page_path, document_path = docs / PAGE, docs / DOCUMENT
+    page_path.write_text(page, encoding="utf-8")
+    document_path.write_text(document, encoding="utf-8")
+    return Generated(demo, truth, page, document, page_path, document_path)
+
+
+def work_folder(given: Path | None) -> Path:
+    """The run's work folder: ``given``, new or empty, else a fresh one.
+
+    The fresh one is under ``./olmoearth_outputs/`` (the path guard's
+    default workspace, which git ignores).
+    """
+    if given is None:
+        base = Path.cwd() / "olmoearth_outputs"
+        base.mkdir(parents=True, exist_ok=True)
+        return Path(tempfile.mkdtemp(prefix="verify_demo_", dir=base)).resolve()
+    work = given.resolve()
+    if work.exists() and (not work.is_dir() or any(work.iterdir())):
+        msg = (
+            f"{work} is not a new or empty folder: a plan drawn from the map is "
+            "drawn once per folder, so give a new one"
+        )
+        raise DemoError(msg)
+    work.mkdir(parents=True, exist_ok=True)
+    return work
+
+
+def install_hint() -> str | None:
+    """Why the run cannot start in this environment, as one line, or ``None``.
+
+    The run needs :data:`NEEDS`, which the agent's ``inferencex`` extra
+    installs, and olmoearth-inferencex no older than the agent's
+    ``inferencex.MIN_VERSION``. Checked before any folder is made, so a
+    core install gets the line that fixes it, not a traceback.
+    """
+    absent = [name for name in NEEDS if importlib.util.find_spec(name) is None]
+    old = inferencex.older_version()
+    if not absent and old is None:
+        return None
+    found: list[str] = []
+    if absent:
+        found.append(f"{', '.join(absent)} not installed")
+    if old is not None:
+        found.append(f"olmoearth-inferencex {old} installed")
+    return (
+        "verify_demo_tile needs the agent's inferencex extra: "
+        f"{inferencex.DISTRIBUTION} >= {inferencex.MIN_VERSION} with rasterio "
+        f"({'; '.join(found)}). Install it with {INSTALL}."
+    )
+
+
+def _envelopes_note(work: Path) -> str:
+    """Where the run's envelopes are, when it wrote any; else nothing."""
+    log = work / ENVELOPES
+    return f"; the calls' envelopes are in {log}" if log.is_file() else ""
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Generate the page.
+
+    0 on success; 1 when a call fails, a check goes the wrong way or the
+    page cannot be built (the calls made so far stay in the work folder's
+    :data:`ENVELOPES`); 2 without the inferencex extra, or for a work or
+    docs folder that cannot be used, before anything is written.
+    """
+    parser = argparse.ArgumentParser(description=DESCRIPTION)
+    parser.add_argument(
+        "--work",
+        type=Path,
+        default=None,
+        help="A new or empty folder for the run's files (default: a fresh "
+        "folder under ./olmoearth_outputs/).",
+    )
+    parser.add_argument(
+        "--docs",
+        type=Path,
+        default=DOCS,
+        help=f"Where {PAGE} and {DOCUMENT} go (default: the repository's docs/).",
+    )
+    args = parser.parse_args(argv)
+    hint = install_hint()
+    if hint is not None:
+        print(hint, file=sys.stderr)
+        return 2
+    if args.docs.exists() and not args.docs.is_dir():
+        print(f"verify_demo_tile: {args.docs} is not a folder", file=sys.stderr)
+        return 2
+    try:
+        work = work_folder(args.work)
+    except DemoError as exc:
+        print(f"verify_demo_tile: {exc}", file=sys.stderr)
+        return 2
+    try:
+        made = generate(load_tile(), work, args.docs)
+    except CallFailed as exc:
+        print(f"{exc.call.tool} did not succeed; its envelope:", file=sys.stderr)
+        envelope = json.dumps(exc.call.envelope, indent=1, sort_keys=True, default=str)
+        print(envelope, file=sys.stderr)
+        note = _envelopes_note(work)
+        if note:
+            print(f"the run is in {work}{note}", file=sys.stderr)
+        return 1
+    except DemoError as exc:
+        print(f"verify_demo_tile: {exc}{_envelopes_note(work)}", file=sys.stderr)
+        return 1
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        # After the calls (or between them): the envelopes are already on
+        # disk, so say where, then show where it broke.
+        note = _envelopes_note(work)
+        print(
+            f"verify_demo_tile: the page could not be built: {exc!r}{note}",
+            file=sys.stderr,
+        )
+        traceback.print_exc(file=sys.stderr)
+        return 1
+    print(f"wrote {made.page_path} and {made.document_path}; the run is in {work}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
