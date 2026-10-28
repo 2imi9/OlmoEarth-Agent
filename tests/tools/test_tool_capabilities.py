@@ -427,6 +427,39 @@ async def _plan_needs_a_budget_it_can_place(_tmp: Path) -> None:
     _refused(out, "more than the 10 valid windows")
 
 
+@probe(
+    "olmoearth_plan_label_sample",
+    "for 'disagreement', two maps of one time on one window grid",
+)
+async def _plan_two_maps_needs_one_time_and_one_grid(tmp: Path) -> None:
+    """The dates are read before any pixel is sampled (_Studio would raise)."""
+    studio = _Studio(
+        results={r: _result(r, "landcover", _CLASSIFICATION, f"p{r}") for r in "ab"},
+        predictions={
+            "pa": {"model_id": "m1", "start_time": "2022-06-01T00:00:00Z"},
+            "pb": {"model_id": "m2", "start_time": "2023-06-01T00:00:00Z"},
+        },
+    )
+    apart = await _call(
+        "olmoearth_plan_label_sample",
+        {"result_id": "a", "result_id_b": "b", "budget": 20, "design": "disagreement"},
+        studio,
+    )
+    _refused(apart, "the two maps are not of one time")
+    for name, grid in (("a.json", [2, 2]), ("b.json", [1, 4])):
+        (tmp / name).write_text(json.dumps({"grid": grid, "scores": _logits(4)}))
+    grids = await _call(
+        "olmoearth_plan_label_sample",
+        {
+            "scores_path": str(tmp / "a.json"),
+            "scores_path_b": str(tmp / "b.json"),
+            "budget": 2,
+            "design": "disagreement",
+        },
+    )
+    _refused(grids, "not of one window grid")
+
+
 async def _plan(
     design: str = "confidence", n: int = 400, budget: int = 60
 ) -> dict[str, Any]:
@@ -438,17 +471,43 @@ async def _plan(
     return out["result"]
 
 
+async def _two_map_plan(tmp: Path) -> dict[str, Any]:
+    """A two-map plan of two 4 x 4 scores files that differ on 6 windows."""
+    a = [[1.0, 0.0]] * 16
+    b = [[0.0, 1.0] if i % 3 == 0 else [1.0, 0.0] for i in range(16)]
+    for name, rows in (("map_a.json", a), ("map_b.json", b)):
+        (tmp / name).write_text(json.dumps({"grid": [4, 4], "scores": rows}))
+    out = await _call(
+        "olmoearth_plan_label_sample",
+        {
+            "scores_path": str(tmp / "map_a.json"),
+            "scores_path_b": str(tmp / "map_b.json"),
+            "budget": 4,
+            "design": "disagreement",
+        },
+    )
+    assert out["ok"] is True, out
+    return out["result"]
+
+
 @probe(
     "olmoearth_estimate_map_error",
-    "a 0/1 label on every window of a planned design, or on windows drawn at random",
+    "a label on every window of a planned design (a class for 'disagreement'), "
+    "or on random windows",
 )
-async def _estimate_needs_every_label(_tmp: Path) -> None:
+async def _estimate_needs_every_label(tmp: Path) -> None:
     plan = await _plan()
     out = await _call(
         "olmoearth_estimate_map_error",
         {"design_path": plan["design_path"], "wrong": [0] * 59},
     )
     _refused(out, "59 labels for the 60 windows of the design")
+    two = await _two_map_plan(tmp)
+    blank = await _call(
+        "olmoearth_estimate_map_error",
+        {"design_path": two["design_path"], "reference": ["0", "1", "?", ""]},
+    )
+    _refused(blank, "1 of 4 design windows have no reference_class yet")
 
 
 @probe(

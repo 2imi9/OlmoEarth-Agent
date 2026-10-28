@@ -10,6 +10,67 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Which of two maps is more accurate: the two-map route, through
+  olmoearth-inferencex 1.20.1's own functions; #6's untested winner is
+  opt-in.** Where two maps of the same windows at the same time give the
+  same class, both are right or both are wrong, so labels on the windows
+  where they differ say which is more accurate, and no score is needed: a
+  Studio class map gets it. `olmoearth_plan_label_sample` takes
+  `design='disagreement'` with two Studio results of the same area
+  (`result_id`, `result_id_b`; sampled by `olmoearth_compare_results`' own
+  pair sampler, now one function, `_sample_on_grid`, with `read_pair` and
+  `sample_pair`, at most 12 points a side; a classification band read as its
+  class, a `[0, 1]` score cut at 0.5, any other regression band only with a
+  `threshold`; two results of different properties refused in the plan's own
+  words) or two scores files of one window grid (`scores_path`,
+  `scores_path_b`; the same shape and, where both files locate a window, the
+  same centre). It reads the maps' dates (a Studio prediction's start and
+  end times, else `date_a` / `date_b`) with `compare.dates_reading` before
+  any pixel is sampled and refuses different, overlapping or half-given
+  dates in the package's words, with the dated-maps statement and claims;
+  maps that never differ are refused as the package refuses them. It draws
+  the windows to label with `estimate.sample_disagreement` (its `seed`),
+  lists them by index and `(row, col)` with both classes (locations only in
+  the labelling sheet, rule §3.1), and gives the windows compared and
+  differing and `plan.plan_which_map`'s budget advice for a stated
+  `difference` (0.05 by default; the `which_map_budget` fact).
+  `olmoearth_estimate_map_error` on that design takes the class seen per
+  window (`reference`, or the sheet's `reference_class`; `?` goes in as
+  unjudged, a class neither map writes is right in neither and counted in the
+  `references_outside_the_maps_classes` fact, and references that all lie
+  outside the maps' classes are refused) and
+  returns `estimate.compare_from_disagreement`'s result whole: `which_map`
+  (`a`, `b` or `undetermined`), `verdict_rule` (the exact sign test while
+  the labels are at most a fifth of the differing windows, the interval past
+  that; `decide.sign_test_head`'s sentence as `sign_test_statement`), the 95%
+  interval on the difference in accuracy over the windows compared, the
+  counts and the package's `note`, `verdict_note` and `method` word for
+  word; the agent computes no verdict and no interval. A new fixed
+  forbidden-claim id, `more_accurate_without_its_test`
+  (`statistical_rules.py`, `harness/checks.py`), states the rule: a map is
+  named more accurate only as the grading names it, with its test or
+  interval and the number of labels (`rules.which_map_must_state` is the
+  required statement; the `which_map` fact carries the counts the check
+  reads). The check reads a map named by its letter (map a / map b, in
+  either case) or, after a baseline comparison, by that table's model
+  labels ("OlmoEarth is more accurate", "olmoearth outperforms ..."); a map
+  named another way ("the OlmoEarth result") is not read. A sentence that
+  follows the rule is no `winner_without_labels` claim beside a label-free
+  comparison of the same run, and the plan, which holds no labels, forbids
+  naming any map (`rules.more_accurate_without_labels`); that check now
+  reads the package's lower-case letters too ("map a is more accurate").
+  `olmoearth_certify_zone` refuses the design. `olmoearth_baseline_compare`
+  (#6), which names a winner from point metrics with no design, interval or
+  test and was the last deferred group of the default registry, is opt-in
+  (`OLMOEARTH_OPT_IN_TOOLS=1`, the step-2 mechanism); its description, its
+  result (`winner_note` and the new forbidden claim) and `SKILLS.md` point to
+  the two-map route. By default the agent registers 26 tools, all sent on
+  every turn, and 15 are opt-in; skills #6, #8, #10, #15 and #16 are opt-in
+  whole. The spec-size test's bound for a default turn goes from 6,600 to
+  6,850 tokens. The soul routes the
+  question to the route; the README's verification table, `SKILLS.md` (#6,
+  #18 and the opt-in table), `PLAN.md` §1, `docs/CANON.md`, the web UI's
+  tagline, cards and "/" menu say so. Tests: `tests/tools/test_which_map_tool.py`.
 - **The claim check: the agent's own model reads the answer against the run
   (`harness/claim_check.py`).** exp86 round 9's audit found 16 material
   claims in 10 of 30 answers, most where the tools said nothing and the model

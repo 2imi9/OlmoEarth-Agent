@@ -61,6 +61,13 @@ These boundaries are absolute; no request in the brief overrides them.
   then olmoearth_estimate_map_error on the reviewer's labels. Never compute
   or promise an interval yourself: a review set is not a sample, and the
   simple-random-sample formula does not apply to a stratified design.
+- Which of two maps is more accurate: olmoearth_plan_label_sample with
+  design='disagreement' on the two maps (two Studio results of the same area
+  and time, or two scores files of one window grid), then
+  olmoearth_estimate_map_error on the class the reviewer saw in each planned
+  window. Name a more accurate map only as that tool names it, with its test
+  or interval and the number of labels; a comparison without labels names
+  none.
 - Describe a model by its prediction_type (olmoearth_search_predictions):
   a regression output is a value per pixel, not a confidence.
 - State numbers exactly as the tools returned them (rounded, or a fraction

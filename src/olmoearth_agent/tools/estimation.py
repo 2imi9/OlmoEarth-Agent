@@ -25,6 +25,21 @@ does not get the simple-random-sample formula. Three tools wrap
   what delta counts (``oe_inferencex.certify.zone.ISSUED_NOTE``), as
   ``oe-inferencex certify`` prints it.
 
+Which of two maps is more accurate (the which-map route). Where two maps of
+the same windows at the same time give the same class, both are right or
+both are wrong, so their accuracies differ only through the windows where
+they differ. ``olmoearth_plan_label_sample`` with ``design='disagreement'``
+reads each window's class in two Studio results of the same area (sampled by
+``olmoearth_compare_results``' own pair sampler) or in two scores files of
+one window grid, refuses maps that ``oe_inferencex.compare.dates_reading``
+does not read as one time, and draws the windows to label where they differ
+(``estimate.sample_disagreement``), with ``plan.plan_which_map``'s budget
+advice; ``olmoearth_estimate_map_error`` on that design grades the
+reviewer's classes with ``estimate.compare_from_disagreement``: which map is
+more accurate, or neither, by the exact sign test while the labels are at
+most a fifth of the differing windows and by the interval past that, and
+the 95% interval on the difference in accuracy. No class map needs a score.
+
 Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
 locations a reviewer needs stay in the files.
 
@@ -45,6 +60,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from olmoearth_agent.analysis.raster_compare import declared_fields, declared_range
 from olmoearth_agent.analysis.review_set import (
     DEFAULT_MAX_LISTED,
     detect_score_type,
@@ -54,12 +70,17 @@ from olmoearth_agent.analysis.review_set import (
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
+from olmoearth_agent.tools.compare import PAIR_MAX_GRID, read_pair, sample_pair
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.review_set import (
+    DATE_FORMS,
     FROM_RESULT_DEFAULT_GRID,
     FROM_RESULT_GRID_RANGE,
     FROM_RESULT_MAX_GRID,
+    FROM_RESULT_MIN_GRID,
+    PARTLY_DATED_MUST_STATE,
     SampledScores,
+    _check_date_form,
     load_json_file,
     load_scores_file,
     read_roots,
@@ -69,9 +90,24 @@ from olmoearth_agent.tools.review_set import (
     write_json_file,
     write_root,
 )
+from olmoearth_agent.tools.sampling import (
+    NODATA_RULE,
+    OK,
+    default_property,
+    prediction_period,
+)
 
-#: Designs offered (the package's tile design needs tile ids the agent lacks).
-DESIGNS = ("confidence", "proportional", "random")
+#: The design of two maps: a random sample of the windows where their classes
+#: differ (``oe_inferencex.estimate.sample_disagreement``), for which of the
+#: two is more accurate.
+TWO_MAP_DESIGN = "disagreement"
+
+#: The designs of one map (the package's tile design needs tile ids the agent
+#: lacks).
+ONE_MAP_DESIGNS = ("confidence", "proportional", "random")
+
+#: Designs offered.
+DESIGNS = (*ONE_MAP_DESIGNS, TWO_MAP_DESIGN)
 
 #: Rules offered for the certified zone (the package's "plugin" has no guarantee).
 ZONE_RULES = ("prefix", "bonferroni")
@@ -749,6 +785,15 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     design = str(args.get("design", "confidence"))
     if design not in DESIGNS:
         raise ValueError(f"design must be one of {list(DESIGNS)}, got {design!r}")
+    if design == TWO_MAP_DESIGN:
+        return await _plan_two_maps(args, ctx, estimate)
+    if args.get("result_id_b") or args.get("scores_path_b"):
+        # A map b with a one-map design would be dropped without a word.
+        raise ValueError(
+            "result_id_b and scores_path_b are map b of design='disagreement' "
+            "(which of two maps is more accurate): pass design='disagreement', "
+            "or leave them out to plan a sample of one map"
+        )
     budget = int(args["budget"])
     seed = int(args.get("seed", 0))
     max_listed = int(args.get("max_listed", DEFAULT_MAX_LISTED))
@@ -998,6 +1043,8 @@ async def _estimate_map_error(
         return inferencex.missing_extra("Estimating a map's error rate")
     if args.get("design_path"):
         design = _load_design(str(args["design_path"]))
+        if design.get("design") == TWO_MAP_DESIGN:
+            return _grade_two_maps(args, design, estimate)
         sample = design["sample"]
         indices = [int(i) for i in sample["indices"]]
         wrong, reference = _labels(args, indices)
@@ -1184,6 +1231,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
         return inferencex.missing_extra("Certifying a trusted zone")
     design = _load_design(str(args["design_path"]))
     if design.get("design") != "random":
+        two_maps = design.get("design") == TWO_MAP_DESIGN
         refused: dict[str, Any] = {
             "available": True,
             "certified": False,
@@ -1191,11 +1239,17 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             "reason": (
                 "a certified zone needs a simple random sample of the map: its "
                 "guarantee rests on the labels inside each candidate zone being a "
-                "random sample of that zone, which a stratified design is not. "
-                "Plan one with olmoearth_plan_label_sample(design='random')."
+                "random sample of that zone, which "
+                + (
+                    "a sample of the windows where two maps differ is not (it says "
+                    "which map is more accurate, not where either is right). "
+                    if two_maps
+                    else "a stratified design is not. "
+                )
+                + "Plan one with olmoearth_plan_label_sample(design='random')."
             ),
             "design_requirement": DESIGN_REQUIREMENT,
-            "next_steps": _certify_next_steps(None),
+            "next_steps": _certify_next_steps(None, two_maps=two_maps),
         }
         alpha_asked = args.get("alpha")
         return rules.add_contract(
@@ -1326,21 +1380,31 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     )
 
 
-def _certify_next_steps(out: dict[str, Any] | None) -> list[str]:
+def _certify_next_steps(
+    out: dict[str, Any] | None, *, two_maps: bool = False
+) -> list[str]:
     """What follows a certification, from the design and the outcome.
 
-    ``out`` is ``None`` for a refused (stratified) design. Nothing certified
-    under a random design: label more windows under a NEW random design fixed
-    in advance, or report the whole-map estimate; never a looser alpha and
-    never another rule (exp86 rounds 1 to 7, brief 6). Every step that
-    names a new random design says it makes a certified zone possible, not
-    certain (exp86 round 8, B5/files/2: "a guaranteed-certifiable region").
+    ``out`` is ``None`` for a refused (stratified, or two-map) design; with
+    ``two_maps`` its labels say which of the two maps is more accurate.
+    Nothing certified under a random design: label more windows under a NEW
+    random design fixed in advance, or report the whole-map estimate; never a
+    looser alpha and never another rule (exp86 rounds 1 to 7, brief 6). Every
+    step that names a new random design says it makes a certified zone
+    possible, not certain (exp86 round 8, B5/files/2: "a
+    guaranteed-certifiable region").
     """
     if out is None:
         return [
-            "Estimate the map's error rate from these labels: "
-            "olmoearth_estimate_map_error with this design_path and the same "
-            "labels gives the estimate and the interval this design earns.",
+            (
+                "Grade these labels instead: olmoearth_estimate_map_error with "
+                "this design_path and the class the reviewer saw in each window "
+                "says which of the two maps is more accurate, or neither."
+                if two_maps
+                else "Estimate the map's error rate from these labels: "
+                "olmoearth_estimate_map_error with this design_path and the same "
+                "labels gives the estimate and the interval this design earns."
+            ),
             "A certified zone needs a new plan: olmoearth_plan_label_sample with "
             "design='random', every drawn window labelled, and alpha, delta and "
             "rule fixed before labelling. " + rules.POSSIBLE_NOT_CERTAIN,
@@ -1434,6 +1498,916 @@ def _levels_tested(
     }
 
 
+# --------------------------------------------------------------------------- which of two maps is more accurate
+
+#: The difference in accuracy a two-map plan's budget advice is for, unless
+#: the caller states one (``oe_inferencex.plan.plan_which_map``).
+DEFAULT_DIFFERENCE = 0.05
+
+#: The dates readings under which the two-map design is refused: the maps are
+#: not known to describe one time (``oe_inferencex.compare.dates_reading``).
+NOT_ONE_TIME = ("different_time", "overlapping_time", "partly_stated")
+
+#: Stated with a two-map plan or grade whose maps' dates were not given.
+UNSTATED_DATES_MUST_STATE = (
+    "The maps' dates were not given: a window where they differ is an error in "
+    "one map only if both show one time."
+)
+
+#: The inputs of a two-map plan, stated when they are wrong.
+TWO_MAP_INPUTS = (
+    "design='disagreement' compares two maps of one time: pass two Studio "
+    "results of the same area (result_id for map a, result_id_b for map b) or "
+    "two scores files of one window grid (scores_path and scores_path_b)"
+)
+
+#: How the reviewer labels a two-map sheet (as ``oe-inferencex sample
+#: --other`` writes it: the class seen, or ? where it cannot be judged).
+HOW_TO_LABEL_TWO_MAPS = (
+    "For each window, in this order, write in reference_class the class you see "
+    "there at the time both maps describe, written as class_a and class_b write "
+    "classes, or ? where it cannot be judged (keep the row); hide class_a and "
+    "class_b to label blind. Fill the CSV (it holds each window's location "
+    "when the maps give one) or pass reference in the same order; then call "
+    "olmoearth_estimate_map_error with design_path."
+)
+
+
+@dataclass
+class TwoMaps:
+    """Two maps on one window grid: each window's class in each map.
+
+    ``class_a`` and ``class_b`` are codes into ``classes`` (the classes as the
+    maps write them), ``-1`` where a map holds no class; ``source`` names each
+    map (``map_a``, ``map_b``); ``dates`` is the package's reading of their
+    dates. ``centres`` (window -> lon, lat) are for the labelling sheet only.
+    """
+
+    class_a: list[int]
+    class_b: list[int]
+    classes: list[Any]
+    grid: tuple[int, int] | None
+    source: dict[str, dict[str, Any]]
+    dates: dict[str, Any]
+    centres: dict[int, tuple[float, float]] = field(default_factory=dict)
+    sampling: dict[str, Any] | None = None
+    assumption: str | None = None
+    notes: list[str] = field(default_factory=list)
+    studio: bool = False
+
+
+def _class_value(value: Any) -> Any:
+    """A class as a map writes it: a whole number as an int, anything else as given."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _class_key(value: Any) -> str:
+    """How a class is matched: its text, case and outer spaces aside; ``3.0`` is ``3``."""
+    text = str(_class_value(value)).strip().lower()
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return str(int(number)) if number.is_integer() else text
+
+
+def _key_order(key: str) -> tuple[int, float, str]:
+    """Numbers first, by value, then names, so codes follow a map's own class ids."""
+    try:
+        return (0, float(key), key)
+    except ValueError:
+        return (1, 0.0, key)
+
+
+def _code_classes(
+    values_a: list[Any], values_b: list[Any]
+) -> tuple[list[int], list[int], list[Any]]:
+    """Both maps' window classes as codes into one table (``-1`` where a map holds none).
+
+    A class is one entry however each map writes it (:func:`_class_key`), so
+    two maps that write ``water`` and ``Water`` agree there.
+    """
+    first: dict[str, Any] = {}
+    for value in [*values_a, *values_b]:
+        if value is not None:
+            first.setdefault(_class_key(value), _class_value(value))
+    keys = sorted(first, key=_key_order)
+    code = {key: i for i, key in enumerate(keys)}
+
+    def codes(values: list[Any]) -> list[int]:
+        """One map's classes as codes, ``-1`` where it holds none."""
+        return [code[_class_key(v)] if v is not None else -1 for v in values]
+
+    return codes(values_a), codes(values_b), [first[key] for key in keys]
+
+
+def _dates_refusal(reading: dict[str, Any]) -> ValueError:
+    """Why two maps not known to describe one time get no two-map design.
+
+    Across dates a window where the maps differ can be a change on the ground,
+    right in one map and wrong in the other whatever either model did; the
+    reviewer writes one class per window, seen at one date, so the labels
+    would grade both maps against that date (the package's Usage, "Across
+    dates the identity fails").
+    """
+    status = reading.get("status")
+    said = str(reading.get("reading") or "").rstrip(".")
+    if status == "partly_stated":
+        return rules.refusal(
+            f"the two-map design needs both maps' dates, and {said} "
+            f"(dates_reading: {status}); pass the other map's date as date_a or "
+            f"date_b ({DATE_FORMS})",
+            must_state=[PARTLY_DATED_MUST_STATE],
+            forbidden_claims=[rules.one_reference_settles_two_dates(partly=True)],
+        )
+    return rules.refusal(
+        f"the two maps are not of one time: {said} (dates_reading: {status}). "
+        "Labels on the windows where they differ would grade both maps against "
+        "the one date the labels show, counting a change on the ground as an "
+        "error of the other map, so they cannot say which map is more accurate; "
+        "each map needs a sample of its own, labelled at its own date",
+        must_state=[rules.DATED_MAPS_MUST_STATE],
+        forbidden_claims=[
+            *rules.across_dates(reading),
+            rules.one_reference_settles_two_dates(reading.get("a"), reading.get("b")),
+        ],
+    )
+
+
+def _two_map_dates(periods: list[str | None], args: dict[str, Any]) -> dict[str, Any]:
+    """The package's reading of the two maps' dates; refused unless one time is possible.
+
+    A Studio result's date is its prediction's period (start and end times);
+    ``date_a`` / ``date_b`` give a map's date where none is read (a scores
+    file, or a prediction with no times). Different, overlapping or half-given
+    dates are refused (:func:`_dates_refusal`); none given at all is read as
+    unstated, which the plan and the grade then state.
+    """
+    dates_pkg = inferencex.load("compare")
+    dates: list[str | None] = []
+    sources: list[str | None] = []
+    for side, period in zip(("a", "b"), periods):
+        given = args.get(f"date_{side}")
+        _check_date_form(given, f"date_{side}")
+        if period:
+            dates.append(period)
+            sources.append("the Studio prediction's start and end times")
+        elif given:
+            dates.append(str(given).strip())
+            sources.append(f"date_{side}")
+        else:
+            dates.append(None)
+            sources.append(None)
+    try:
+        reading = dict(dates_pkg.dates_reading(dates[0], dates[1]))
+    except (TypeError, ValueError) as exc:
+        msg = f"the maps' dates could not be read: {exc}; dates are {DATE_FORMS}"
+        raise ValueError(msg) from None
+    reading["source_a"], reading["source_b"] = sources
+    if reading.get("status") in NOT_ONE_TIME:
+        raise _dates_refusal(reading)
+    return reading
+
+
+def _unthresholded_refusal(
+    bands: list[tuple[str | None, tuple[float, float] | None]],
+) -> ValueError:
+    """A regression band with no decision has no class to compare."""
+    named = "; ".join(
+        f"{name!r} (declared range {list(rng) if rng else 'none'})"
+        for name, rng in bands
+    )
+    return rules.refusal(
+        f"the two-map design compares each window's class, and {named} is a "
+        "regression band with no decision: pass threshold (the value at which "
+        "the map's decision flips; class 1 above it), or compare class maps",
+        forbidden_claims=[rules.unthresholded_regression(bands)],
+    )
+
+
+def _window_class(value: Any, categorical: bool, cut: float) -> Any:
+    """A sampled value as a class: its class, or 1 above ``cut`` and 0 at or below."""
+    if categorical:
+        return _class_value(value)
+    return 1 if float(value) > cut else 0
+
+
+async def _studio_two_maps(args: dict[str, Any], ctx: ToolContext) -> TwoMaps:
+    """Two Studio results' classes on one grid, by compare_results' pair sampler.
+
+    The dates are read from the results' predictions before any pixel is
+    sampled, and so is a regression band's declared range; a band with no
+    decision (not ``[0, 1]``, no ``threshold``) is refused. A ``[0, 1]`` score
+    is cut at 0.5, as the estimation tools decide it; ``threshold`` cuts
+    either band there. The grid is held to the pair mode's cap.
+    """
+    ids = [str(args["result_id"]).strip(), str(args["result_id_b"]).strip()]
+    if ids[0] == ids[1]:
+        msg = (
+            f"map a and map b are the same result ({ids[0]}): one map always "
+            "agrees with itself; pass two results"
+        )
+        raise ValueError(msg)
+    pair = await read_pair(ctx, ids)
+    if isinstance(pair, dict):
+        raise ValueError(str(pair.get("reason")))
+    dates = _two_map_dates([prediction_period(p) for p in pair.predictions], args)
+    prop = args.get("property_name")
+    threshold = float(args["threshold"]) if args.get("threshold") is not None else None
+    if threshold is None:
+        undecided: list[tuple[str | None, tuple[float, float] | None]] = []
+        for record in pair.records:
+            name = default_property(record, prop)
+            decl = declared_fields(record).get(str(name)) if name else None
+            if decl and decl.get("value_type") == "regression":
+                rng = declared_range(None, decl)
+                if rng != (0.0, 1.0) and (name, rng) not in undecided:
+                    undecided.append((name, rng))
+        if undecided:
+            raise _unthresholded_refusal(undecided)
+    side, requested = result_grid(args.get("grid"))
+    grid = min(side, PAIR_MAX_GRID)
+    sampled = await sample_pair(ctx, pair, prop=prop, grid=grid)
+    if isinstance(sampled, dict):
+        reason = str(sampled.get("reason"))
+        if "property_a" in sampled:
+            # Pair mode's refusal offers allow_different_properties, which
+            # this design has no use for: one property's classes are compared.
+            names = [
+                (sampled.get(k) or {}).get("property_name")
+                for k in ("property_a", "property_b")
+            ]
+            reason = (
+                f"the two results measure different properties ({names[0]!r} and "
+                f"{names[1]!r}): the two-map design compares one property's "
+                "classes in both maps; pass results of one property, or pin "
+                "property_name"
+            )
+        raise rules.refusal(
+            reason,
+            forbidden_claims=sampled.get("forbidden_claims") or [],
+        )
+    if not sampled.categorical and threshold is None and sampled.unthresholded:
+        raise _unthresholded_refusal(sampled.unthresholded)
+    cut = 0.5 if threshold is None else threshold
+    values: list[list[Any]] = [[], []]
+    for read_a, read_b in zip(sampled.reads[0], sampled.reads[1]):
+        both = read_a[2] == OK and read_b[2] == OK
+        for k, (value, categorical, _status) in enumerate((read_a, read_b)):
+            values[k].append(_window_class(value, categorical, cut) if both else None)
+    class_a, class_b, classes = _code_classes(values[0], values[1])
+    n_points = grid * grid
+    n_compared = sum(1 for a, b in zip(class_a, class_b) if a >= 0 and b >= 0)
+    capped = requested is not None and requested != grid
+    sampling: dict[str, Any] = {
+        "grid": f"{grid}x{grid}",
+        "grid_requested": requested,
+        "grid_capped": capped,
+        "n_windows_sampled": n_points,
+        "n_windows_compared": n_compared,
+        "n_windows_dropped": n_points - n_compared,
+        "what_a_window_is": (
+            "a grid of sampled points, not every pixel: the results' shared "
+            f"extent is cut into {grid} x {grid} cells and each window is ONE "
+            "pixel-value sample of each result at its cell centre; a window is "
+            "compared where both results hold a class there"
+        ),
+        "nodata_rule": NODATA_RULE,
+    }
+    if capped:
+        sampling["grid_note"] = (
+            f"grid {requested} was held to {grid}: two Studio results are "
+            f"sampled on {FROM_RESULT_MIN_GRID}-{PAIR_MAX_GRID} points a side "
+            "(each point is one pixel-value call per result), so the grid used "
+            f"is {grid}x{grid} = {n_points} points"
+        )
+    assumption = None
+    if not sampled.categorical:
+        assumption = (
+            f"the regression bands are read as two classes: 1 above {cut:g}, 0 at "
+            "or below it"
+            + (
+                " (a [0, 1] score decided at 0.5, as the estimation tools decide "
+                "it; pass threshold for another cut)"
+                if threshold is None
+                else ""
+            )
+        )
+    source = {
+        f"map_{side_name}": {
+            "result_id": rid,
+            "property_name": name,
+            "model": (model or {}).get("name"),
+        }
+        for side_name, rid, name, model in zip(
+            ("a", "b"), sampled.ids, sampled.names, sampled.models
+        )
+    }
+    return TwoMaps(
+        class_a=class_a,
+        class_b=class_b,
+        classes=classes,
+        grid=(grid, grid),
+        source=source,
+        dates=dates,
+        centres={r * grid + c: (lon, lat) for r, c, lon, lat in sampled.cells},
+        sampling=sampling,
+        assumption=assumption,
+        studio=True,
+    )
+
+
+#: How far apart (in degrees) one window's centre may lie in two scores files
+#: of one grid: about 0.1 m, rounding only.
+CENTRE_TOLERANCE_DEG = 1e-6
+
+
+def _moved_window(
+    a: dict[int, tuple[float, float]], b: dict[int, tuple[float, float]]
+) -> int | None:
+    """The first window both files locate whose centres differ, or ``None``.
+
+    Only windows both files carry a centre for are compared: a window that is
+    no-data in one map has none there, and a file without a georeference has
+    none at all, so it cannot be checked this way.
+    """
+    for index in sorted(a.keys() & b.keys()):
+        (lon_a, lat_a), (lon_b, lat_b) = a[index], b[index]
+        if (
+            abs(lon_a - lon_b) > CENTRE_TOLERANCE_DEG
+            or abs(lat_a - lat_b) > CENTRE_TOLERANCE_DEG
+        ):
+            return index
+    return None
+
+
+async def _file_two_maps(args: dict[str, Any], ctx: ToolContext) -> TwoMaps:
+    """Two scores files' window classes (``map_class``, or the arg-max), on one grid.
+
+    The files must have one grid: the same shape and, where both give a
+    window's centre (``centres_lon_lat``), the same centre for it.
+    """
+    paths = [str(args["scores_path"]), str(args["scores_path_b"])]
+    if os.path.realpath(paths[0]) == os.path.realpath(paths[1]):
+        msg = (
+            "map a and map b are the same scores file: one map always agrees "
+            "with itself; pass two files"
+        )
+        raise ValueError(msg)
+    pops: list[Population] = []
+    for path in paths:
+        pop = await _population({"scores_path": path}, ctx)
+        if isinstance(pop, dict):  # only a Studio result is refused this way
+            raise ValueError(str(pop.get("reason")))
+        pops.append(pop)
+    if len(pops[0].margin) != len(pops[1].margin) or pops[0].grid != pops[1].grid:
+        shapes = [
+            f"{p.grid[0]}x{p.grid[1]}" if p.grid else f"{len(p.margin)} windows"
+            for p in pops
+        ]
+        msg = (
+            f"the two scores files are not of one window grid ({shapes[0]} and "
+            f"{shapes[1]}): the two-map design compares the same windows in both "
+            "maps"
+        )
+        raise ValueError(msg)
+    moved = _moved_window(pops[0].centres, pops[1].centres)
+    if moved is not None:
+        msg = (
+            "the two scores files are not of one window grid: their grids have "
+            f"the same shape, but window {moved} has another centre in each file, "
+            "so they cover different ground; the two-map design compares the same "
+            "windows in both maps"
+        )
+        raise ValueError(msg)
+    dates = _two_map_dates([None, None], args)
+    values = [
+        [
+            pop.map_class[i] if math.isfinite(pop.margin[i]) else None
+            for i in range(len(pop.margin))
+        ]
+        for pop in pops
+    ]
+    class_a, class_b, classes = _code_classes(values[0], values[1])
+    keep = ("scores_path", "result_id", "property_name", "model")
+    return TwoMaps(
+        class_a=class_a,
+        class_b=class_b,
+        classes=classes,
+        grid=pops[0].grid,
+        source={
+            f"map_{side}": {k: v for k, v in pop.source.items() if k in keep}
+            for side, pop in zip(("a", "b"), pops)
+        },
+        dates=dates,
+        centres=dict(pops[0].centres),
+    )
+
+
+async def _two_maps(args: dict[str, Any], ctx: ToolContext) -> TwoMaps:
+    """The two maps of a two-map plan: two Studio results, or two scores files."""
+    studio = [args.get("result_id"), args.get("result_id_b")]
+    files = [args.get("scores_path"), args.get("scores_path_b")]
+    if args.get("scores") is not None or (any(studio) and any(files)):
+        raise ValueError(TWO_MAP_INPUTS)
+    if all(studio):
+        maps = await _studio_two_maps(args, ctx)
+    elif all(files):
+        maps = await _file_two_maps(args, ctx)
+    else:
+        raise ValueError(TWO_MAP_INPUTS)
+    pairs = list(zip(maps.class_a, maps.class_b))
+    compared = [(a, b) for a, b in pairs if a >= 0 and b >= 0]
+    if compared and not {a for a, _b in compared} & {b for _a, b in compared}:
+        maps.notes.append(
+            "map a's classes and map b's share none on the windows compared, so "
+            "every window differs: check that the two maps write the same classes "
+            "before labelling"
+        )
+    return maps
+
+
+def _write_pairs_csv(
+    name: str, to_label: list[dict[str, Any]], centres: dict[int, tuple[float, float]]
+) -> str:
+    """The reviewer's two-map sheet: each window's two classes, reference_class blank."""
+    target = write_root() / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fields = ["order", "window_index", "row", "col", "class_a", "class_b"]
+    if centres:
+        fields += ["lon", "lat"]
+    fields.append("reference_class")
+    with open(target, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for entry in to_label:
+            line = dict(entry)
+            centre = centres.get(int(entry["window_index"]))
+            if centre:
+                line["lon"], line["lat"] = centre
+            writer.writerow(line)
+    return str(target)
+
+
+def _budget_advice_fact(advice: dict[str, Any], planned: int) -> dict[str, Any]:
+    """The ``which_map_budget`` fact: ``plan_which_map``'s advice, in a sentence.
+
+    The package plans, before any label, how many labels among the differing
+    windows name the more accurate map with the probability asked for when
+    the accuracies differ by the difference stated; the sentence repeats its
+    numbers and, when it advises no budget, its own reason.
+    """
+    diff = float(advice.get("difference", DEFAULT_DIFFERENCE))
+    n_pop, n_dis = advice.get("n_population"), advice.get("n_disagree")
+    labels = advice.get("labels")
+    prob = advice.get("probability_at_labels")
+    if labels is None or not isinstance(prob, (int, float)):
+        why = str(advice.get("refusal") or "it advises none").rstrip(".")
+        sentence = (
+            f"No label budget is advised for a difference in accuracy of {diff:g} "
+            f"over the {n_pop} windows compared: the package says {why}."
+        )
+    else:
+        sentence = (
+            f"Planned before any label, for maps whose accuracies over the {n_pop} "
+            f"windows compared differ by {diff:g}: {labels} labels drawn among the "
+            f"{n_dis} windows where they differ name the more accurate map with "
+            f"probability {float(prob):.3g} at {advice.get('planned_for')}; this "
+            f"plan draws {planned}."
+        )
+    return rules.fact(
+        "which_map_budget",
+        sentence,
+        difference=diff,
+        labels=labels,
+        probability=prob,
+        power=advice.get("power"),
+        n_population=n_pop,
+        n_disagree=n_dis,
+        planned=planned,
+    )
+
+
+async def _plan_two_maps(
+    args: dict[str, Any], ctx: ToolContext, estimate: Any
+) -> dict[str, Any]:
+    """Handler for ``olmoearth_plan_label_sample`` with ``design='disagreement'``."""
+    try:
+        plan_pkg = inferencex.load("plan")
+    except inferencex.InferencexMissingError:
+        return inferencex.missing_extra("Planning a labelled sample of two maps")
+    budget = int(args["budget"])
+    if budget < 1:
+        raise ValueError(f"budget {budget} must be at least 1")
+    seed = int(args.get("seed", 0))
+    max_listed = int(args.get("max_listed", DEFAULT_MAX_LISTED))
+    difference = float(args.get("difference", DEFAULT_DIFFERENCE))
+    if not 0.0 < difference < 1.0:
+        msg = (
+            "difference is a difference in accuracy, between 0 and 1 (0.05 is "
+            f"5 points), got {difference:g}"
+        )
+        raise ValueError(msg)
+    maps = await _two_maps(args, ctx)
+    valid = [a >= 0 and b >= 0 for a, b in zip(maps.class_a, maps.class_b)]
+    n_compared = sum(valid)
+    if not n_compared:
+        msg = (
+            f"no window holds a class in both maps (each of the {len(valid)} "
+            "windows is no-data or failed in one of them), so none can be compared"
+        )
+        raise ValueError(msg)
+    try:
+        sample = estimate.sample_disagreement(
+            maps.class_a, maps.class_b, budget, valid=valid, seed=seed
+        )
+    except ValueError as exc:
+        # The package's words: the maps never differ, so nothing is to label.
+        raise ValueError(f"{exc} ({n_compared} windows compared)") from None
+    n_pop, n_dis = int(sample["n_population"]), int(sample["n_disagree"])
+    indices = [int(i) for i in sample["indices"].tolist()]
+    planned = len(indices)
+    to_label: list[dict[str, Any]] = []
+    for order, idx in enumerate(indices):
+        entry: dict[str, Any] = {"order": order, "window_index": idx}
+        if maps.grid:
+            entry["row"], entry["col"] = divmod(idx, maps.grid[1])
+        entry["class_a"] = maps.classes[maps.class_a[idx]]
+        entry["class_b"] = maps.classes[maps.class_b[idx]]
+        to_label.append(entry)
+    advice = _jsonable(plan_pkg.plan_which_map(n_pop, n_dis, difference))
+
+    # A digest of both maps' classes keeps two plans of different maps apart.
+    digest = hashlib.sha256(
+        json.dumps([maps.class_a, maps.class_b, _jsonable(maps.classes)]).encode()
+    ).hexdigest()
+    origin = slug(
+        "_".join(str(s.get("result_id") or "scores") for s in maps.source.values()),
+        24,
+    )
+    stem = f"design_{origin}_{digest[:8]}_{TWO_MAP_DESIGN}_{planned}_s{seed}"
+    payload = {
+        "format": DESIGN_FORMAT,
+        "package": {"name": inferencex.DISTRIBUTION, "version": inferencex.version()},
+        "design": TWO_MAP_DESIGN,
+        "budget": planned,
+        "budget_requested": budget,
+        "seed": seed,
+        "sample": _jsonable(sample),
+        "class_a": [maps.class_a[i] for i in indices],
+        "class_b": [maps.class_b[i] for i in indices],
+        "classes": _jsonable(maps.classes),
+        "population": {
+            "n_windows": len(maps.class_a),
+            "n_valid": n_pop,
+            "grid": list(maps.grid) if maps.grid else None,
+            "source": maps.source,
+            "studio": maps.studio,
+            "dates": maps.dates,
+        },
+        "budget_advice": advice,
+        "to_label": to_label,
+    }
+    design_path = write_json_file(f"{stem}.json", payload)
+    csv_path = _write_pairs_csv(f"{stem}_to_label.csv", to_label, maps.centres)
+    out: dict[str, Any] = {
+        "available": True,
+        "design": TWO_MAP_DESIGN,
+        "budget": planned,
+        "budget_requested": budget,
+        "n_population": n_pop,
+        "n_disagree": n_dis,
+        "seed": seed,
+        "map_a": maps.source["map_a"],
+        "map_b": maps.source["map_b"],
+        "dates": maps.dates,
+        "design_path": design_path,
+        "labels_csv_path": csv_path,
+        "windows": to_label[:max_listed],
+        "n_windows_listed": min(planned, max_listed),
+        "how_to_label": HOW_TO_LABEL_TWO_MAPS,
+        "design_note": (
+            f"Windows drawn at random among the {n_dis} of the {n_pop} windows "
+            f"compared where the two maps' classes differ (seed {seed}): where the "
+            "maps agree, both are right or both are wrong, so only the windows "
+            "where they differ can say which map is more accurate."
+        ),
+        "budget_advice": advice,
+    }
+    if maps.sampling:
+        out["sampling"] = maps.sampling
+    if maps.assumption:
+        out["assumption"] = maps.assumption
+    if maps.notes:
+        out["notes"] = list(maps.notes)
+    out["next_steps"] = [
+        f"Write in reference_class, for every one of the {planned} windows in "
+        f"{csv_path}, the class seen there at the time both maps describe, or ? "
+        "where it cannot be judged; hide class_a and class_b to label blind.",
+        "Then olmoearth_estimate_map_error with design_path and the filled sheet "
+        "(labels_path) says which map is more accurate, by the exact sign test "
+        "while the labels are at most a fifth of the differing windows and by the "
+        "interval past that, with the difference in accuracy and its 95% interval.",
+        "The number of windows to label is fixed now, before any label is read: "
+        "labelling more after reading these is a second test.",
+    ]
+    facts = [_budget_advice_fact(advice, planned)]
+    must_state = [
+        rules.NOT_EITHER_ACCURACY,
+        *_two_map_scope(maps.studio, maps.dates, n_pop),
+    ]
+    if budget > planned:
+        unused = budget - planned
+        facts.append(
+            rules.fact(
+                "unused_labels",
+                f"Of the {budget} labels requested, {planned} are planned: the two "
+                f"maps differ on {n_dis} of the {n_pop} windows compared, and the "
+                f"plan labels every one of them, so {unused} labels have no window "
+                "to go to.",
+                n=unused,
+                requested=budget,
+                planned=planned,
+            )
+        )
+        must_state.append(
+            f"The plan holds {planned} windows, not the {budget} requested."
+        )
+    return rules.add_contract(
+        out,
+        facts=facts,
+        must_state=must_state,
+        forbidden_claims=[
+            rules.more_accurate_without_labels(n_dis, n_pop),
+            rules.error_rate_without_labels(),
+        ],
+    )
+
+
+def _two_map_scope(studio: bool, dates: dict[str, Any], n_compared: Any) -> list[str]:
+    """What a two-map plan or grade covers: unstated dates, and a Studio grid's points."""
+    said: list[str] = []
+    if dates.get("status") == "unstated":
+        said.append(UNSTATED_DATES_MUST_STATE)
+    if studio:
+        said.append(
+            f"The comparison covers the {n_compared} sampled grid points where both "
+            "Studio results hold a class (one pixel each), not every pixel."
+        )
+    return said
+
+
+def _two_map_references(args: dict[str, Any], indices: list[int]) -> list[str]:
+    """The class the reviewer saw in each design window, in order (``?``: not judged)."""
+    if args.get("wrong") is not None:
+        msg = (
+            "a design='disagreement' plan is graded from the class the reviewer "
+            "saw in each window (reference, or the sheet's reference_class), not "
+            "from wrong"
+        )
+        raise ValueError(msg)
+    reference = args.get("reference")
+    if reference is None and args.get("labels_path"):
+        sheet = _read_labels_csv(str(args["labels_path"]))
+        reference = [sheet[i][1] if i in sheet else "" for i in indices]
+    if reference is None:
+        msg = (
+            "pass reference (the class seen in each window, in the design's "
+            "order; ? where it cannot be judged) or labels_path (the design's "
+            "sheet with reference_class filled in)"
+        )
+        raise ValueError(msg)
+    refs = ["" if r is None else str(r).strip() for r in reference]
+    if len(refs) != len(indices):
+        msg = f"{len(refs)} references for the {len(indices)} windows of the design"
+        raise ValueError(msg)
+    missing = [i for i, r in zip(indices, refs) if not r]
+    if missing:
+        msg = (
+            f"{len(missing)} of {len(indices)} design windows have no "
+            f"reference_class yet (first: window {missing[0]}); write the class "
+            "seen in every drawn window, or ? where it cannot be judged"
+        )
+        raise ValueError(msg)
+    return refs
+
+
+def _which_map_fact(res: dict[str, Any]) -> dict[str, Any]:
+    """The ``which_map`` fact: the package's verdict, what it rests on, and its counts.
+
+    Written from ``compare_from_disagreement``'s result: the map its
+    ``verdict`` names (or neither), by the exact sign test (with its p-value
+    when a map leads) or the interval, the labelled windows among the
+    differing ones and how many are right in each map, and the 95% interval
+    on the difference in accuracy over the windows compared. The answer
+    checks read ``more_accurate`` and the counts (``harness/checks.py``).
+    """
+    verdict = res.get("verdict")
+    n, n_dis, n_pop = (
+        int(res["n_labelled"]),
+        int(res["n_disagree"]),
+        int(res["n_population"]),
+    )
+    a, b, c, u = (
+        int(res[k]) for k in ("n_a_right", "n_b_right", "n_neither", "n_unjudged")
+    )
+    diff = res["difference"]
+    lo, hi = 100.0 * float(diff["low"]), 100.0 * float(diff["high"])
+    level = f"{100.0 * float(res.get('conf', 0.95)):g}%"
+    p_value = (res.get("sign_test") or {}).get("p_value")
+    counts = f"a right on {a}, b on {b}, neither on {c}" + (
+        f", {u} not judged and counted for each map both ways" if u else ""
+    )
+    if res.get("verdict_rule") == "sign":
+        lead = a > b + u or b > a + u  # else no test was run: p is a placeholder
+        p_text = (
+            f", p = {float(p_value):.3g}"
+            if isinstance(p_value, (int, float)) and (lead or not u)
+            else ""
+        )
+        basis = (
+            f"the exact sign test on the {n} labelled windows of the {n_dis} where "
+            f"the maps differ ({counts}{p_text})"
+        )
+    else:
+        basis = (
+            f"the {level} interval on the difference, from {n} labelled windows of "
+            f"the {n_dis} where the maps differ ({counts})"
+        )
+    if verdict in ("a", "b"):
+        other = "b" if verdict == "a" else "a"
+        head = f"Map {verdict} is more accurate than map {other} by {basis}"
+    else:
+        head = f"Neither map is shown more accurate by {basis}"
+    sentence = (
+        f"{head}; the difference in accuracy, a minus b, over the {n_pop} windows "
+        f"compared lies between {lo:+.1f} and {hi:+.1f} points ({level} interval)."
+    )
+    return rules.fact(
+        "which_map",
+        sentence,
+        more_accurate=verdict if verdict in ("a", "b") else None,
+        rule=res.get("verdict_rule"),
+        n_labelled=n,
+        n_disagree=n_dis,
+        n_population=n_pop,
+        n_a_right=a,
+        n_b_right=b,
+        n_neither=c,
+        n_unjudged=u,
+        low=diff.get("low"),
+        high=diff.get("high"),
+        p_value=p_value,
+    )
+
+
+def _no_reference_in_the_maps_classes(
+    n_judged: int, outside: list[str], classes: list[Any]
+) -> ValueError:
+    """Why references that all lie outside the maps' classes are not graded.
+
+    Graded as given, each would be right in neither map, so the labels would
+    name neither map whatever the maps did. Almost always the classes are
+    written otherwise (codes for names, say) rather than absent from both maps.
+    """
+    msg = (
+        f"none of the {n_judged} judged references ({', '.join(outside)}) is a "
+        f"class either map writes ({', '.join(str(c) for c in classes)}): graded "
+        "as given, every window would count as right in neither map and the "
+        "labels would name neither map more accurate whatever the maps did. "
+        "Write each window's class as class_a and class_b write classes, or ? "
+        "where it cannot be judged"
+    )
+    return ValueError(msg)
+
+
+def _grade_two_maps(
+    args: dict[str, Any], design: dict[str, Any], estimate: Any
+) -> dict[str, Any]:
+    """``olmoearth_estimate_map_error`` on a ``design='disagreement'`` plan.
+
+    Every number is ``compare_from_disagreement``'s, on the design's sample
+    and the two maps' classes it recorded: the reviewer's classes are matched
+    to the maps' (:func:`_class_key`), a ``?`` goes in as unjudged, and a
+    class neither map writes is right in neither (said in the
+    ``references_outside_the_maps_classes`` fact; references that all lie
+    outside the maps' classes are refused). The answer's contract: the
+    ``which_map`` fact, the verdict sentence with its test or interval and
+    its labels (``rules.which_map_must_state``), and no map named more
+    accurate beyond what the package names (``more_accurate_without_its_test``).
+    """
+    sample = design["sample"]
+    indices = [int(i) for i in sample["indices"]]
+    references = _two_map_references(args, indices)
+    classes = list(design.get("classes") or [])
+    code_of = {_class_key(value): code for code, value in enumerate(classes)}
+    unjudged = [r == "?" for r in references]
+    codes = [
+        -1 if skip else code_of.get(_class_key(r), -1)
+        for r, skip in zip(references, unjudged)
+    ]
+    judged = [r for r, skip in zip(references, unjudged) if not skip]
+    n_outside = sum(1 for r in judged if _class_key(r) not in code_of)
+    outside = sorted({r for r in judged if _class_key(r) not in code_of})
+    if judged and n_outside == len(judged):
+        raise _no_reference_in_the_maps_classes(len(judged), outside, classes)
+    res = _jsonable(
+        estimate.compare_from_disagreement(
+            sample, design["class_a"], design["class_b"], codes, unjudged=unjudged
+        )
+    )
+    population = design.get("population") or {}
+    source = population.get("source") or {}
+    verdict = res.get("verdict")
+    n = int(res["n_labelled"])
+    out: dict[str, Any] = {"available": True, "design_path": str(args["design_path"])}
+    out.update(res)
+    out["which_map"] = verdict or "undetermined"
+    out["map_a"], out["map_b"] = source.get("map_a"), source.get("map_b")
+    out["more_accurate_map"] = source.get(f"map_{verdict}") if verdict else None
+    # The package that holds estimate (>= 1.20.1) holds decide too.
+    decide = inferencex.load("decide")
+    head = decide.sign_test_head(res)
+    if head:
+        # The package's own sentence for a verdict of the exact sign test.
+        out["sign_test_statement"] = head
+    if outside:
+        out["references_outside_the_maps_classes"] = outside
+    out["report"] = (
+        "Report which_map with the test or interval it rests on (verdict_rule: "
+        "the exact sign test while the labels are at most a fifth of the "
+        "differing windows, the interval past that) and the number of labels "
+        "(n_labelled), and the difference in accuracy, a minus b, with its 95% "
+        "interval over the windows compared, as returned; note and verdict_note "
+        "are the package's own words."
+    )
+    if verdict in ("a", "b"):
+        rule_words = (
+            "the exact sign test"
+            if res.get("verdict_rule") == "sign"
+            else "the interval"
+        )
+        other = "b" if verdict == "a" else "a"
+        out["next_steps"] = [
+            f"Report that map {verdict} is more accurate with what names it, as "
+            f"the fact which_map states it: the test or interval and the {n} "
+            "labels.",
+            "Report the difference in accuracy, a minus b, with its 95% interval "
+            f"as returned: it is over the {res.get('n_population')} windows "
+            "compared and says nothing of either map's own accuracy.",
+        ]
+        detail = (
+            f"these {n} labels name map {verdict} by {rule_words}; map {other} is "
+            f"not more accurate by them, and map {verdict} is named with that test "
+            f"or interval and the {n} labels"
+        )
+    else:
+        out["next_steps"] = [
+            f"Report that these {n} labels name neither map more accurate, with "
+            "the difference in accuracy, a minus b, and its 95% interval as "
+            "returned.",
+            decide.comparison_second_look(),
+            "More labels need a new plan (olmoearth_plan_label_sample with "
+            "design='disagreement' and a larger budget), its size fixed before "
+            "any of its labels is read.",
+        ]
+        detail = (
+            f"these {n} labels of the {res.get('n_disagree')} windows where the "
+            "maps differ name neither map, so neither may be called more "
+            "accurate, better or right from them"
+        )
+    must_state = [
+        rules.which_map_must_state(res),
+        rules.NOT_EITHER_ACCURACY,
+        *_two_map_scope(
+            bool(population.get("studio")),
+            population.get("dates") or {},
+            res.get("n_population"),
+        ),
+    ]
+    facts = [_which_map_fact(res)]
+    if outside:
+        facts.append(
+            rules.fact(
+                "references_outside_the_maps_classes",
+                f"Judged windows given a class neither map writes: {n_outside} of "
+                f"{len(judged)} ({', '.join(outside)}); each counts as right in "
+                "neither map, so check its spelling against class_a and class_b.",
+                n=n_outside,
+                n_judged=len(judged),
+                classes=outside,
+            )
+        )
+    return rules.add_contract(
+        out,
+        facts=facts,
+        must_state=must_state,
+        forbidden_claims=[rules.more_accurate_without_its_test(detail)],
+    )
+
+
 _DESIGN_PATH = {"type": "string", "description": "From olmoearth_plan_label_sample."}
 _WRONG = {
     "type": "array",
@@ -1465,10 +2439,34 @@ def build_estimation_tools() -> list[RegisteredTool]:
             "description": "Inline scores: N (N x N) or [rows, cols] of the rows. "
             f"A Studio result_id: N, {FROM_RESULT_GRID_RANGE} (N x N sampled "
             f"points, default {FROM_RESULT_DEFAULT_GRID}; [N, N] also taken); a "
-            "larger N is capped, and the result's 'sampling' says so.",
+            "larger N is capped, and the result's 'sampling' says so. Two "
+            f"results: at most {PAIR_MAX_GRID}.",
         },
         "property_name": {"type": "string"},
         "threshold": {"type": "number"},
+    }
+    # Map b and the budget advice of design='disagreement' (which of two maps
+    # is more accurate).
+    two_map_props: dict[str, Any] = {
+        "result_id_b": {
+            "type": "string",
+            "description": "Map b of design='disagreement'.",
+        },
+        "scores_path_b": {
+            "type": "string",
+            "description": "Map b's scores file, same window grid.",
+        },
+        "date_a": {
+            "type": "string",
+            "description": "Map a's date where Studio gives none: YYYY-MM-DD or "
+            "start/end.",
+        },
+        "date_b": {"type": "string"},
+        "difference": {
+            "type": "number",
+            "default": DEFAULT_DIFFERENCE,
+            "description": "Accuracy difference the budget advice is for.",
+        },
     }
     return [
         RegisteredTool(
@@ -1487,13 +2485,17 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "targeted review set is not a sample (its error rate is "
                     "inflated), and the simple-random-sample interval does not "
                     "apply to a stratified or targeted design. The interval "
-                    "comes from olmoearth_estimate_map_error. Needs the "
-                    "inferencex extra."
+                    "comes from olmoearth_estimate_map_error. Which of two maps "
+                    "is more accurate: design='disagreement' on two Studio "
+                    "results (result_id, result_id_b) or scores files "
+                    "(scores_path, scores_path_b) of one time; it draws windows "
+                    "where they differ. Needs the inferencex extra."
                 ),
                 parameters={
                     "type": "object",
                     "properties": {
                         **source_props,
+                        **two_map_props,
                         "budget": {
                             "type": "integer",
                             "description": "Windows the reviewer can label.",
@@ -1502,7 +2504,8 @@ def build_estimation_tools() -> list[RegisteredTool]:
                             "type": "string",
                             "enum": list(DESIGNS),
                             "default": "confidence",
-                            "description": "'random' if a certified zone is wanted.",
+                            "description": "'random' if a certified zone is "
+                            "wanted; 'disagreement' for two maps.",
                         },
                         "seed": {"type": "integer", "default": 0},
                         "max_listed": {
@@ -1517,12 +2520,13 @@ def build_estimation_tools() -> list[RegisteredTool]:
             handler=_plan_label_sample,
             capability=Capability(
                 does="choose which windows to label for an error rate "
-                "(design 'confidence', or 'random' for a certified zone) and "
-                "save the design",
+                "('confidence', or 'random' for a certified zone) or where two "
+                "maps differ ('disagreement'); save the design",
                 needs=(
                     "threshold, for a Studio regression band not in [0, 1]",
                     "a budget of at most the valid windows (a Studio result at "
                     "grid 16 plans them all)",
+                    "for 'disagreement', two maps of one time on one window grid",
                 ),
             ),
         ),
@@ -1539,7 +2543,11 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "a random sample (a review set is refused: its rate is "
                     "inflated). Report estimate, low, high and method as "
                     "returned; never substitute p +/- 1.96 sqrt(p(1-p)/n). "
-                    "Needs the inferencex extra."
+                    "A design='disagreement' plan takes reference (the class "
+                    "seen in each window, '?' if it cannot be judged) and says "
+                    "which map is more accurate, or neither, by the package's "
+                    "sign test or interval, with the accuracy difference's "
+                    "interval. Needs the inferencex extra."
                 ),
                 parameters={
                     "type": "object",
@@ -1549,9 +2557,10 @@ def build_estimation_tools() -> list[RegisteredTool]:
                         "labels_path": _LABELS_PATH,
                         "reference": {
                             "type": "array",
-                            "items": {"type": "integer"},
+                            "items": {"type": ["integer", "string"]},
                             "description": "Optional true class per window "
-                            "(design order), for per-class accuracy.",
+                            "(design order), for per-class accuracy; for "
+                            "'disagreement', the class seen ('?': unjudged).",
                         },
                         "n_classes": {"type": "integer"},
                         "window_indices": {
@@ -1574,10 +2583,11 @@ def build_estimation_tools() -> list[RegisteredTool]:
             handler=_estimate_map_error,
             capability=Capability(
                 does="the map's error rate with its design's interval, from the "
-                "reviewer's 0/1 labels; per-class accuracy with reference classes",
+                "reviewer's 0/1 labels; per-class accuracy; which of two maps is "
+                "more accurate",
                 needs=(
-                    "a 0/1 label on every window of a planned design, or on "
-                    "windows drawn at random",
+                    "a label on every window of a planned design (a class for "
+                    "'disagreement'), or on random windows",
                 ),
                 cannot=(
                     "use a review set, or windows chosen by margin, as the sample",

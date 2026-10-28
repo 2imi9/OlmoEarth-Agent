@@ -3,7 +3,8 @@
 """Shared pixel-value sampling for every tool that reads a result on a grid.
 
 Two tools sample Studio's ``pixel-value`` endpoint on a grid
-(``olmoearth_compare_results``, in all four of its modes, and
+(``olmoearth_compare_results``, in all four of its modes and for the two-map
+design of ``olmoearth_plan_label_sample``, and
 ``olmoearth_review_set_from_result``). They share three things that used to be
 copied per tool and are now one implementation each:
 
@@ -17,7 +18,10 @@ copied per tool and are now one implementation each:
   range as the only no-data rule).
 
 :func:`prediction_meta` reads a result's date and model from its prediction,
-once, for both the no-data context and the comparison's choice of mode.
+once, for both the no-data context and the comparison's choice of mode;
+:func:`prediction_of` is that one lookup, and :func:`prediction_period` the
+period a prediction's map describes (its start and end times), which the
+two-map label plan reads its dates from.
 """
 
 from __future__ import annotations
@@ -163,6 +167,42 @@ async def model_summary(
     return summary
 
 
+async def prediction_of(
+    ctx: ToolContext, record: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The prediction a result came from (``GET /predictions/{id}``), or ``None``.
+
+    Best effort: a missing ``prediction_id``, a failed lookup or a record that
+    is not an object gives ``None`` and never fails the calling tool.
+    """
+    prediction_id = record.get("prediction_id")
+    if not prediction_id:
+        return None
+    try:
+        prediction = await ctx.studio.get_prediction(str(prediction_id))
+    except Exception:  # best effort, as above
+        return None
+    return prediction if isinstance(prediction, dict) else None
+
+
+def prediction_period(prediction: dict[str, Any] | None) -> str | None:
+    """The period a prediction's map describes, as ``start/end``, or the one time given.
+
+    Studio runs a prediction over the imagery of ``[start_time, end_time]``;
+    ``oe_inferencex.compare.dates_reading`` reads ``start/end`` as that
+    period (an ISO date or date-time each). ``None`` when the prediction
+    gives neither time, or is unknown.
+    """
+    if not prediction:
+        return None
+    raw_start, raw_end = prediction.get("start_time"), prediction.get("end_time")
+    start: str | None = str(raw_start).strip() if raw_start else None
+    end: str | None = str(raw_end).strip() if raw_end else None
+    if start and end and start != end:
+        return f"{start}/{end}"
+    return start or end
+
+
 async def prediction_meta(
     ctx: ToolContext, record: dict[str, Any]
 ) -> tuple[str | None, str | None]:
@@ -173,12 +213,8 @@ async def prediction_meta(
     effort: a missing ``prediction_id`` or a failed lookup gives
     ``(None, None)`` and never fails the calling tool.
     """
-    prediction_id = record.get("prediction_id")
-    if not prediction_id:
-        return None, None
-    try:
-        prediction = await ctx.studio.get_prediction(str(prediction_id))
-    except Exception:  # best effort, as above
+    prediction = await prediction_of(ctx, record)
+    if prediction is None:
         return None, None
     date = prediction.get("start_time") or prediction.get("end_time")
     model_id = prediction.get("model_id")

@@ -41,12 +41,18 @@ beside the claims it cannot support: a place (it is pooled over every cell)
 and, when its interval holds both no relation and a moderate one, whether the
 maps co-vary at all (exp86 round 8 read r = -0.0172 over 25 cells as "do not
 agree spatially at all").
+
+The grid sampler (:func:`_sample_on_grid`) is also the pair sampler of the
+two-map label plan (``olmoearth_plan_label_sample``, design
+``'disagreement'``): :func:`read_pair` reads two results and their
+predictions, and :func:`sample_pair` samples them as pair mode does, so the
+windows the plan draws from are the windows a pair compares.
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from math import cos, radians
 from typing import Any
@@ -87,6 +93,7 @@ from olmoearth_agent.tools.sampling import (
     default_property,
     model_summary,
     prediction_meta,
+    prediction_of,
     read_sample,
     result_nodata_context,
     sample_records,
@@ -110,10 +117,24 @@ _LIMITS: dict[str, tuple[int, int, int, int]] = {
     "ensemble": (4, 10, 2, MAX_RESULTS),
 }
 
+#: The largest grid side two results are sampled on, as a pair (each window
+#: is one pixel-value call per result); the two-map label plan holds to it.
+PAIR_MAX_GRID = _LIMITS["pair"][1]
+
+#: Why results with no shared extent are refused, in every mode and the plan.
+NO_SHARED_EXTENT = (
+    "the results share no common extent (their overlap is empty, or one is "
+    "missing bounds); every result must cover the same area"
+)
+
 
 @dataclass
 class _Sampled:
-    """One comparison's inputs and samples, in the order the mode reads them."""
+    """One comparison's inputs and samples, in the order the mode reads them.
+
+    ``cells`` are the grid's ``(row, col, lon, lat)``, row-major: the
+    locations stay here and in files, never in a result (rule §3.1).
+    """
 
     ids: list[str]
     records: list[dict[str, Any]]
@@ -123,11 +144,49 @@ class _Sampled:
     names: list[str | None]
     prop: str | None
     grid: int
+    cells: list[tuple[int, int, float, float]] = field(default_factory=list)
 
     @property
     def n_points(self) -> int:
         """Grid windows sampled per result."""
         return self.grid * self.grid
+
+
+@dataclass
+class ResultPair:
+    """Two Studio results read for a two-map design, before any pixel is sampled.
+
+    ``predictions`` are the predictions they came from (``None`` where the
+    lookup failed): their start and end times are the dates the maps
+    describe, and they name the models.
+    """
+
+    ids: list[str]
+    records: list[dict[str, Any]]
+    bbox: list[float]
+    predictions: list[dict[str, Any] | None]
+
+
+@dataclass
+class PairSample:
+    """Two Studio results sampled on one grid by the comparison's own sampler.
+
+    ``reads[k][i]`` is result ``k``'s ``(value, categorical, status)`` at
+    window ``i`` (row-major, row 0 north) of the ``grid`` x ``grid`` cells;
+    ``cells`` hold their locations (for files only). ``categorical`` is True
+    when the bands carry classes; ``unthresholded`` names the regression
+    bands whose declared range is not ``[0, 1]`` (no decision without a
+    threshold).
+    """
+
+    ids: list[str]
+    names: list[str | None]
+    grid: int
+    cells: list[tuple[int, int, float, float]]
+    reads: list[list[tuple[Any, bool, str]]]
+    models: list[dict[str, Any] | None]
+    categorical: bool
+    unthresholded: list[tuple[str | None, tuple[float, float] | None]]
 
 
 def _refuse(reason: str, **extra: Any) -> dict[str, Any]:
@@ -240,6 +299,138 @@ def _mixed_types(reads: list[list[tuple[Any, bool, str]]]) -> bool:
         if status == OK
     }
     return len(kinds) > 1
+
+
+async def _models_of(
+    ctx: ToolContext, model_ids: list[str | None]
+) -> list[dict[str, Any] | None]:
+    """Each model's summary (best effort), looked up once, in ``model_ids``' order."""
+    cache: dict[str, dict[str, Any] | None] = {}
+    for model_id in dict.fromkeys(m for m in model_ids if m):
+        await model_summary(ctx, model_id, cache)
+    return [cache.get(m) if m else None for m in model_ids]
+
+
+async def _sample_on_grid(
+    ctx: ToolContext,
+    ids: list[str],
+    records: list[dict[str, Any]],
+    nodata: list[ResultNodata],
+    bbox: list[float],
+    *,
+    prop: str | None,
+    grid: int,
+    mode: str,
+    allow_different: bool,
+    check_types: bool = True,
+) -> _Sampled | dict[str, Any]:
+    """Sample every result at the centres of one ``grid`` x ``grid`` grid over ``bbox``.
+
+    The one sampler of every mode and of the two-map label plan. Results of
+    different properties are refused before any sampling, from what the
+    records declare, and again from the bands sampled, unless
+    ``allow_different``; samples that mix numbers with classes are refused
+    unless ``check_types`` is off (an ensemble given its ``value_type``).
+    Returns the samples, or the refusal in ``mode``'s shape.
+    """
+    names = [default_property(rec, prop) for rec in records]
+    if len({n for n in names if n}) > 1 and not allow_different:
+        return _property_refusal(mode, ids, names, nodata)
+    cells = grid_windows(bbox, grid)
+    points = [(lon, lat) for _r, _c, lon, lat in cells]
+    sem = asyncio.Semaphore(SAMPLE_CONCURRENCY)
+    sampled = list(
+        await asyncio.gather(*[sample_records(ctx, rid, points, sem) for rid in ids])
+    )
+    reads = [
+        [read_sample(r, prop, nd) for r in row] for row, nd in zip(sampled, nodata)
+    ]
+    names = [
+        _sampled_property(row_reads, row, prop) or name
+        for row_reads, row, name in zip(reads, sampled, names)
+    ]
+    if len({n for n in names if n}) > 1 and not allow_different:
+        return _property_refusal(mode, ids, names, nodata)
+    if check_types and _mixed_types(reads):
+        # Results disagree on band type: a clean refusal, not a float()
+        # traceback after the sampling budget is spent.
+        return _refuse(
+            "sampled values mix numeric and categorical bands across the "
+            "results (they disagree on value_type); pass property_name to pin "
+            "one field",
+            mode=mode,
+            result_ids=ids,
+        )
+    return _Sampled(ids, records, nodata, sampled, reads, names, prop, grid, cells)
+
+
+async def read_pair(ctx: ToolContext, ids: list[str]) -> ResultPair | dict[str, Any]:
+    """Read two Studio results for a two-map design: records, shared extent, predictions.
+
+    No pixel is sampled yet, so a refusal on the dates the predictions give
+    costs no pixel-value call. Returns the refusal (``comparable: False``)
+    when the results share no extent.
+    """
+    records = list(
+        await asyncio.gather(*[ctx.studio.get_prediction_result(r) for r in ids])
+    )
+    bbox = intersect_bboxes([result_bbox(rec) for rec in records])
+    if bbox is None:
+        return _refuse(NO_SHARED_EXTENT, mode="pair", result_ids=ids)
+    predictions = list(
+        await asyncio.gather(*[prediction_of(ctx, rec) for rec in records])
+    )
+    return ResultPair(ids, records, bbox, predictions)
+
+
+async def sample_pair(
+    ctx: ToolContext, pair: ResultPair, *, prop: str | None, grid: int
+) -> PairSample | dict[str, Any]:
+    """Sample two results on one grid over their shared extent, as pair mode does.
+
+    The models are looked up once (their ``nodata_value``), each result's
+    no-data context is built, and :func:`_sample_on_grid` samples both:
+    results of different properties, or of a number and a class, are
+    refused, and every sample is read through the same no-data rule.
+    """
+    model_ids = [
+        str(p["model_id"]) if p and p.get("model_id") else None
+        for p in pair.predictions
+    ]
+    models = await _models_of(ctx, model_ids)
+    nodata = [
+        await result_nodata_context(ctx, rec, model=model, lookup_model=False)
+        for rec, model in zip(pair.records, models)
+    ]
+    s = await _sample_on_grid(
+        ctx,
+        pair.ids,
+        pair.records,
+        nodata,
+        pair.bbox,
+        prop=prop,
+        grid=grid,
+        mode="pair",
+        allow_different=False,
+    )
+    if isinstance(s, dict):
+        return s
+    first = next((r for row in s.reads for r in row if r[2] == OK), None)
+    categorical = bool(first and first[1])
+    return PairSample(
+        ids=s.ids,
+        names=s.names,
+        grid=grid,
+        cells=s.cells,
+        reads=s.reads,
+        models=models,
+        categorical=categorical,
+        unthresholded=(
+            []
+            if categorical
+            else _unthresholded_regression(s, {"value_type": "regression"})
+        ),
+    )
 
 
 def _different_properties(
@@ -672,12 +863,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     )
     bbox = intersect_bboxes([result_bbox(rec) for rec in records])
     if bbox is None:
-        return _refuse(
-            "the results share no common extent (their overlap is empty, or "
-            "one is missing bounds); every result must cover the same area",
-            mode=mode,
-            result_ids=ids,
-        )
+        return _refuse(NO_SHARED_EXTENT, mode=mode, result_ids=ids)
 
     # Date and model of each result from its prediction, before any sampling:
     # they choose the mode, order a series, and give the model's nodata_value.
@@ -748,10 +934,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
                 ordering = "chronological"
 
     # Each model is looked up once, and only now that no refusal above applies.
-    cache: dict[str, dict[str, Any] | None] = {}
-    for model_id in dict.fromkeys(m for m in model_ids if m):
-        await model_summary(ctx, model_id, cache)
-    models = [cache.get(m) if m else None for m in model_ids]
+    models = await _models_of(ctx, model_ids)
     ids = [ids[i] for i in order]
     records = [records[i] for i in order]
     dates = [metas[i][0] for i in order]
@@ -763,45 +946,29 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     ]
 
     # Different properties are refused BEFORE any slow sampling, from what the
-    # records declare; the sampled bands re-check it below.
+    # records declare; the sampled bands re-check it (_sample_on_grid).
     allow_different = mode in ("pair", "group") and bool(
         args.get("allow_different_properties", False)
     )
-    names = [default_property(rec, prop) for rec in records]
-    if len({n for n in names if n}) > 1 and not allow_different:
-        return _property_refusal(mode, ids, names, nodata)
-
     grid_default, grid_max, _lo, _hi = _LIMITS[mode]
     grid = max(2, min(grid_max, int(args.get("grid", grid_default))))
-    cells = grid_windows(bbox, grid)
-    points = [(lon, lat) for _r, _c, lon, lat in cells]
-    sem = asyncio.Semaphore(SAMPLE_CONCURRENCY)
-    sampled = list(
-        await asyncio.gather(*[sample_records(ctx, rid, points, sem) for rid in ids])
-    )
-    reads = [
-        [read_sample(r, prop, nd) for r in row] for row, nd in zip(sampled, nodata)
-    ]
-    names = [
-        _sampled_property(row_reads, row, prop) or name
-        for row_reads, row, name in zip(reads, sampled, names)
-    ]
-    different = len({n for n in names if n}) > 1
-    if different and not allow_different:
-        return _property_refusal(mode, ids, names, nodata)
     value_type = args.get("value_type") if mode == "ensemble" else None
-    if not value_type and _mixed_types(reads):
-        # Results disagree on band type: a clean refusal, not a float()
-        # traceback after the sampling budget is spent.
-        return _refuse(
-            "sampled values mix numeric and categorical bands across the "
-            "results (they disagree on value_type); pass property_name to pin "
-            "one field",
-            mode=mode,
-            result_ids=ids,
-        )
-
-    s = _Sampled(ids, records, nodata, sampled, reads, names, prop, grid)
+    sampled_grid = await _sample_on_grid(
+        ctx,
+        ids,
+        records,
+        nodata,
+        bbox,
+        prop=prop,
+        grid=grid,
+        mode=mode,
+        allow_different=allow_different,
+        check_types=not value_type,
+    )
+    if isinstance(sampled_grid, dict):
+        return sampled_grid
+    s = sampled_grid
+    different = len({n for n in s.names if n}) > 1
     # Negative tolerance would make "agree" empty and, in a series, push
     # shifted_fraction past 1.0: clamp to the floor.
     tolerance = max(0.0, float(args.get("tolerance", 0.1)))
@@ -836,7 +1003,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         if mode in MARGIN_REVIEW_MODES:
             claims.append(rules.review_set_for_unthresholded_regression(unthresholded))
     if different:
-        claims += rules.different_properties(names)
+        claims += rules.different_properties(s.names)
     claims.append(rules.winner_without_labels())  # no labels here; listed once
     # "Which is right" points to labelling; exp86 round 8 (brief 3 on Studio,
     # run 3) offered a sample of each map's low-confidence windows only.
@@ -1052,7 +1219,9 @@ def build_compare_tools() -> list[RegisteredTool]:
                     "How do these Studio prediction results differ? One tool "
                     "for 2-8 results over their shared area, with no ground "
                     "truth: agreement or estimate movement, never accuracy "
-                    "(with labels: olmoearth_classification_metrics). Samples "
+                    "(with labels: olmoearth_classification_metrics; which is "
+                    "more accurate: olmoearth_plan_label_sample, "
+                    "design='disagreement'). Samples "
                     "each result on one grid of windows; no-data (e.g. -1 on a "
                     "[0, 1] score) is dropped and counted; results of different "
                     "properties are refused. mode: pair (2: difference, RMSE, "

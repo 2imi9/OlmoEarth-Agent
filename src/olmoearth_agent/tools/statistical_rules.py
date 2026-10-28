@@ -75,6 +75,11 @@ CERTIFICATION_GUARANTEED = "certification_guaranteed"
 #: review, it is no probability of error (exp86 round 9, B8/cluster and
 #: B2/studio).
 MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
+#: A map named more accurate (or better, or right) without the test or
+#: interval of the which-map grading that names it and its number of labels:
+#: where the grading names neither map, the map it does not name, or a
+#: winner read off point metrics with no design, interval or test.
+MORE_ACCURATE_WITHOUT_ITS_TEST = "more_accurate_without_its_test"
 
 #: The contract's fixed ids: every forbidden claim a tool emits is one of them.
 FIXED_IDS = (
@@ -95,6 +100,7 @@ FIXED_IDS = (
     EVIDENCE_OUTSIDE_ITS_SCOPE,
     CERTIFICATION_GUARANTEED,
     MARGIN_AS_ERROR_PROBABILITY,
+    MORE_ACCURATE_WITHOUT_ITS_TEST,
 )
 
 
@@ -592,6 +598,105 @@ def winner_without_labels(detail: str | None = None) -> dict[str, str]:
     """
     return forbidden(
         WINNER_WITHOUT_LABELS, NO_LABELS_GIVEN + (f"; {detail}" if detail else "")
+    )
+
+
+# --------------------------------------------------------------------------- which of two maps is more accurate
+
+#: The route that names a more accurate map: the package's grading of labels
+#: on a random sample of the windows where two maps of one time differ
+#: (``oe_inferencex.estimate.sample_disagreement`` and
+#: ``compare_from_disagreement``).
+WHICH_MAP_ROUTE = (
+    "olmoearth_plan_label_sample with design='disagreement', then "
+    "olmoearth_estimate_map_error on the class the reviewer saw in each "
+    "planned window"
+)
+
+#: Stated with every two-map plan and grade: the package's note
+#: (``WHICH_MAP_NOTE``) in one sentence of the contract's length.
+NOT_EITHER_ACCURACY = (
+    "This says which map is more accurate, not either map's accuracy; that "
+    "needs a random sample of each map."
+)
+
+
+def more_accurate_without_labels(n_disagree: int, n_population: int) -> dict[str, str]:
+    """A two-map plan holds no labels, so it names no more accurate map.
+
+    The plan is the label-free half of the which-map route: how often two
+    maps differ, or which is more confident, says nothing about which is
+    right. ``winner_without_labels``' reason for the comparisons says they
+    take no labels; a plan's labels are still to come, so its reason says so.
+    """
+    return forbidden(
+        WINNER_WITHOUT_LABELS,
+        f"this plan holds no labels yet: that the two maps differ on {n_disagree} "
+        f"of the {n_population} windows compared says nothing about which is more "
+        "accurate, better or right, and neither does which is more confident; "
+        "only olmoearth_estimate_map_error on the reviewer's classes for the "
+        "planned windows names one, by the package's test or interval, and it "
+        "may name neither",
+    )
+
+
+def more_accurate_without_its_test(detail: str) -> dict[str, str]:
+    """A map is more accurate only as the package's which-map grading names it.
+
+    The rule for an answer that names a more accurate map: it names the map
+    the package's verdict names, and states the test or interval that verdict
+    rests on (the exact sign test while the labels are at most a fifth of the
+    differing windows, the interval past that) and the number of labels
+    (``harness/checks.py`` reads a sentence that names a map without them
+    against the run's ``which_map`` facts). ``detail`` says what this result
+    names.
+    """
+    return forbidden(
+        MORE_ACCURATE_WITHOUT_ITS_TEST,
+        "a map is more accurate only as the package's grading of labels on the "
+        f"windows where two maps differ names it ({WHICH_MAP_ROUTE}): the exact "
+        "sign test while the labels are at most a fifth of the differing "
+        "windows, the interval past that; an answer that names a more accurate "
+        "map states that test or interval and the number of labels" + f"; {detail}",
+    )
+
+
+def which_map_must_state(result: Mapping[str, Any]) -> str:
+    """The sentence an answer about which of two maps is more accurate conveys.
+
+    Written from ``oe_inferencex.estimate.compare_from_disagreement``'s
+    result, never re-derived: the map its ``verdict`` names (or neither), the
+    rule that decided (``verdict_rule``: the exact sign test, with its
+    p-value, or the interval), the number of labels, and the difference in
+    accuracy, a minus b, as its interval over the windows compared, in
+    points. At most 25 words, as the contract's ``must_state`` is.
+    """
+    v = result.get("verdict")
+    n = int(result["n_labelled"])
+    difference = result["difference"]
+    lo, hi = 100.0 * float(difference["low"]), 100.0 * float(difference["high"])
+    level = f"{100.0 * float(result.get('conf', 0.95)):g}%"
+    sign = result.get("verdict_rule") == "sign"
+    if v in ("a", "b"):
+        if sign:
+            p = float((result.get("sign_test") or {}).get("p_value", 1.0))
+            return (
+                f"Map {v} is more accurate: exact sign test on {n} labels, p = "
+                f"{p:.3g}; a minus b: {lo:+.1f} to {hi:+.1f} points, {level} "
+                "interval."
+            )
+        return (
+            f"Map {v} is more accurate: the {level} interval on a minus b, from "
+            f"{n} labels, is {lo:+.1f} to {hi:+.1f} points."
+        )
+    if sign:
+        return (
+            f"These {n} labels name neither map more accurate (exact sign test); "
+            f"a minus b: {lo:+.1f} to {hi:+.1f} points, {level} interval."
+        )
+    return (
+        f"These {n} labels name neither map more accurate: the {level} interval "
+        f"on a minus b is {lo:+.1f} to {hi:+.1f} points."
     )
 
 

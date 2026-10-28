@@ -26,7 +26,8 @@ from olmoearth_agent.tools.registry import ToolRegistry
 _SKILLS_MD = Path(__file__).resolve().parents[2] / "SKILLS.md"
 
 #: The tools trimmed from the default registry on 27 October 2026 (the agent
-#: is a verification layer for Studio): written out, so a change to the
+#: is a verification layer for Studio), and #6's baseline comparison, whose
+#: winner has no test (the which-map step): written out, so a change to the
 #: catalog's opt_in rows has to change this list too.
 TRIMMED = (
     "olmoearth_automate",
@@ -43,6 +44,7 @@ TRIMMED = (
     "olmoearth_litsearch",
     "olmoearth_grade_review_rule",
     "olmoearth_change_detect",
+    "olmoearth_baseline_compare",
 )
 
 #: Every tool the default registry keeps (the plan's Keep rows), by name.
@@ -58,7 +60,6 @@ KEPT = (
     "olmoearth_pixel_value",
     "olmoearth_export_data",
     "olmoearth_compare_results",
-    "olmoearth_baseline_compare",
     "olmoearth_classification_metrics",
     "olmoearth_review_set",
     "olmoearth_review_set_from_result",
@@ -172,9 +173,9 @@ def test_each_kept_tool_is_in_the_default_registry(
 def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     default_env: None,
 ) -> None:
-    """27 tools; the opt-in python tool is off too."""
+    """26 tools; the opt-in python tool is off too."""
     assert sorted(build_default_registry().names()) == sorted(KEPT)
-    assert len(KEPT) == 27
+    assert len(KEPT) == 26
 
 
 def test_opting_in_restores_every_tool_where_it_was(
@@ -195,20 +196,37 @@ def test_opting_in_restores_every_tool_where_it_was(
     assert registry.group_of("olmoearth_rslearn_compose") == "olmoearth-rslearn"
     aoa = registry.group_of("olmoearth_area_of_applicability")
     assert aoa == "olmoearth-uncertainty"
+    baseline = registry.group_of("olmoearth_baseline_compare")
+    assert baseline == "olmoearth-baseline-compare"
     assert registry.group_of("olmoearth_classification_metrics") is None
 
 
-def test_only_baseline_compare_waits_for_its_skill_by_default(
-    default_env: None,
-) -> None:
+def test_no_tool_waits_for_its_skill_by_default(default_env: None) -> None:
+    """#6's baseline comparison was the last default deferred group; it is opt-in.
+
+    olmoearth_load_skill then names no deferred group, and opted in it names
+    them again, #6's among them.
+    """
     registry = build_default_registry()
-    groups = registry.groups()
-    assert groups == {"olmoearth-baseline-compare": ["olmoearth_baseline_compare"]}
+    assert registry.groups() == {}
     load = registry.spec_of("olmoearth_load_skill")
     assert load is not None
-    assert "olmoearth-baseline-compare (baseline_compare)" in load.description
-    for gone in ("olmoearth-rslearn", "olmoearth-evaluate", "olmoearth-similarity"):
+    assert "not sent until their skill is loaded" not in load.description
+    for gone in (
+        "olmoearth-baseline-compare",
+        "olmoearth-rslearn",
+        "olmoearth-evaluate",
+        "olmoearth-similarity",
+    ):
         assert gone not in load.description
+
+
+def test_opted_in_the_load_tool_names_the_baseline_comparisons_group(
+    default_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    load = _opted_in(monkeypatch).spec_of("olmoearth_load_skill")
+    assert load is not None
+    assert "olmoearth-baseline-compare (baseline_compare)" in load.description
 
 
 def test_skills_md_gives_each_opt_in_tool_its_reason() -> None:
@@ -221,9 +239,10 @@ def test_skills_md_gives_each_opt_in_tool_its_reason() -> None:
     assert f"{OPT_IN_ENV}=1" in text
 
 
-def test_four_skills_are_opt_in_whole() -> None:
+def test_five_skills_are_opt_in_whole() -> None:
     whole = {s.name for s in SKILLS if s.opt_in_only}
     assert whole == {
+        "olmoearth-baseline-compare",
         "olmoearth-similarity",
         "olmoearth-cloud-mask-audit",
         "olmoearth-litsearch",
@@ -319,7 +338,6 @@ def test_default_registry_exposes_foundational_and_provenance_tools(
         "olmoearth_get_prediction_result",
         "olmoearth_pixel_value",
         "olmoearth_compare_results",
-        "olmoearth_baseline_compare",
         "olmoearth_classification_metrics",
         "olmoearth_case_narrative",
         "olmoearth_export_data",
@@ -394,6 +412,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
     # Opted in, the self-run training and caller-array tools stay deferred.
     opted_core = {s.name for s in _opted_in(monkeypatch).active_specs()}
     for deferred in (
+        "olmoearth_baseline_compare",
         "olmoearth_automate",
         "olmoearth_rslearn_recommend",
         "olmoearth_rslearn_validate",
@@ -406,7 +425,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         assert deferred not in opted_core, deferred
 
 
-def test_a_default_turn_carries_under_6600_spec_tokens(
+def test_a_default_turn_carries_under_6850_spec_tokens(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Measured as the audit did: len(JSON of the specs) / 4.
@@ -418,9 +437,16 @@ def test_a_default_turn_carries_under_6600_spec_tokens(
     1,206 characters, olmoearth_litsearch 2,186, olmoearth_grade_review_rule
     1,978, and 358 from olmoearth_load_skill's list of deferred groups, less 28
     added to olmoearth_compare_results (the tool for a time series): 5,700
-    characters, 1,425 tokens. 8,000 - 1,425 = 6,575, so the bound is 6,600.
-    Opted in, a turn carries those specs again.
+    characters, 1,425 tokens. 8,000 - 1,425 = 6,575. The which-map step adds
+    the two-map design, counted the same way: 704 characters to
+    olmoearth_plan_label_sample (map b, the dates, the difference, the
+    design), 298 to olmoearth_estimate_map_error (the class seen; the map it
+    names, or neither, by the sign test or interval) and 76 to
+    olmoearth_compare_results (its pointer to the route), less the 101 of
+    olmoearth_load_skill's note on #6's group, now opt-in: 977 characters,
+    244 tokens. 6,575 + 244 = 6,819, so the bound is 6,850. These are counts
+    by hand, not measurements. Opted in, a turn carries the opt-in specs again.
     """
     default = _turn_chars(build_default_registry())
-    assert default / 4 < 6_600
+    assert default / 4 < 6_850
     assert _turn_chars(_opted_in(monkeypatch)) > default

@@ -984,7 +984,15 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
         ],
     ),
     "winner_without_labels": (
-        ["C2 is more accurate.", "Map B is the better map."],
+        [
+            "C2 is more accurate.",
+            "Map B is the better map.",
+            # the which-map step: map A named from a comparison without labels
+            "Map A is more accurate.",
+            # ... and in olmoearth-inferencex's own lower-case letters
+            "Map a is more accurate.",
+            "map b is the better map.",
+        ],
         [
             "The more confident side is right on only about half of such windows.",
             "Neither map is right by these results alone.",
@@ -1312,7 +1320,83 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "Which of them are wrong is known only once they are labelled.",
         ],
     ),
+    # The which-map step: no grading of this run names a map, so every map
+    # named more accurate is flagged; a question or a condition is none.
+    "more_accurate_without_its_test": (
+        [
+            "Map A is more accurate.",
+            "map b is the better map where they differ.",
+            "Side B (result r2) is right.",
+        ],
+        [
+            "The labels cannot tell which map is more accurate.",
+            "Neither map is shown more accurate by these 40 labels.",
+            "If map A is more accurate, the interval lies above 0.",
+            "Map A is not shown to be more accurate.",
+            "Whether map B is better needs a larger sample.",
+        ],
+    ),
 }
+
+
+def _graded(more_accurate: str | None) -> ToolRecord:
+    """A which-map grading of 40 labels (25 right in map a, 8 in map b)."""
+    fact = {
+        "id": "which_map",
+        "sentence": "s",
+        "more_accurate": more_accurate,
+        "n_labelled": 40,
+        "n_a_right": 25,
+        "n_b_right": 8,
+    }
+    claim = {"id": "more_accurate_without_its_test", "why": "x"}
+    return _record(
+        "olmoearth_estimate_map_error", {"facts": [fact], "forbidden_claims": [claim]}
+    )
+
+
+def test_a_more_accurate_map_is_named_with_its_test_and_its_labels() -> None:
+    """The which-map rule: the map the grading names, with the exact sign test or
+    the interval it rests on and the number of labels (or both counts right)."""
+    run = _run(_graded("a"))
+    for fine in (
+        "Map a is more accurate: exact sign test on 40 labels, p = 0.0123;",
+        "Map A is more accurate by the 95% interval from 40 labels.",
+        "map a is more accurate than map b (exact sign test on the labelled "
+        "windows where one map is right: a right on 25, b on 8, p = 0.00449)",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    for flagged in (
+        "Map A is more accurate.",
+        "Map A is more accurate, by the sign test.",
+        "Map A is more accurate on 40 labels.",
+        "Map B is more accurate by the exact sign test on 40 labels.",
+    ):
+        violations = check_forbidden_claims(flagged, run)
+        assert [v["text"] for v in violations] == [flagged], flagged
+    # A grading that names neither map leaves no map to name.
+    undetermined = _run(_graded(None))
+    claim = "Map A is more accurate by the exact sign test on 40 labels."
+    assert [v["text"] for v in check_forbidden_claims(claim, undetermined)] == [claim]
+
+
+def test_a_graded_map_is_no_winner_beside_a_label_free_comparison() -> None:
+    """A label-free comparison and a grading in one run: the map the grading
+    names, stated with its test and labels, rests on labels."""
+    compare = _record(
+        "olmoearth_compare_results",
+        {"forbidden_claims": [{"id": "winner_without_labels", "why": "x"}]},
+    )
+    run = _run(compare, _graded("a"))
+    graded = "Map A is more accurate by the exact sign test on 40 labels."
+    assert check_forbidden_claims(graded, run) == []
+    for flagged in (
+        "Map A is more accurate.",
+        "Map B is more accurate by the exact sign test on 40 labels.",
+    ):
+        violations = check_forbidden_claims(flagged, run)
+        assert [v["text"] for v in violations] == [flagged], flagged
+        assert violations[0]["detail"].startswith("winner_without_labels")
 
 
 def test_every_forbidden_id_has_a_detector_and_cases() -> None:

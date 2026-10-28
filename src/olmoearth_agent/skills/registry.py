@@ -189,15 +189,25 @@ SKILLS: list[SkillSpec] = [
             "mode='series'",
         },
     ),
+    # #6 names a winner from point metrics, with no design, interval or test;
+    # which of two maps is more accurate is #18's two-map route
+    # (olmoearth_plan_label_sample, design='disagreement', then
+    # olmoearth_estimate_map_error).
     SkillSpec(
         6,
         "olmoearth-baseline-compare",
         "Run",
         "implemented",
-        "OlmoEarth vs a baseline foundation model (e.g. AlphaEarth) "
+        "Opt-in. OlmoEarth vs a baseline foundation model (e.g. AlphaEarth) "
         "side-by-side on transfer regions; bring-your-own exported "
-        "embeddings/predictions (no live GEE connection).",
+        "embeddings/predictions (no live GEE connection). Its winner is a point "
+        "metric with no test; #18's two-map route says which map is more "
+        "accurate.",
         ["olmoearth_baseline_compare"],
+        opt_in={
+            "olmoearth_baseline_compare": "names a winner from point metrics, with "
+            "no design, interval or test",
+        },
     ),
     SkillSpec(
         7,
@@ -379,7 +389,9 @@ SKILLS: list[SkillSpec] = [
         "map is: a labelled sample drawn by a design, its error rate with the "
         "interval that design earns, per-class accuracy and a certified zone "
         "(the optional olmoearth-inferencex extra). A review set is not a "
-        "sample.",
+        "sample. Which of two class maps of one time is more accurate: labels "
+        "on a random sample of the windows where they differ, graded by the "
+        "exact sign test and an interval on the difference.",
         [
             "olmoearth_review_set",
             "olmoearth_review_set_from_result",
@@ -481,9 +493,9 @@ def build_default_registry() -> ToolRegistry:
     # model themselves; Studio trains on Ai2's compute (soul.md).
     add(build_automate_tools(), group="olmoearth-embeddings")
     add(build_rslearn_tools(), group="olmoearth-rslearn")
-    # Caller-array tools (#6, and the opt-in #7 spatial CV, #8, #9 AOA, #10):
+    # Caller-array tools (the opt-in #6, #7 spatial CV, #8, #9 AOA, #10):
     # their inputs are arrays the user supplies inline, which no agent tool
-    # produces.
+    # produces. With the opt-in tools off, no group is deferred.
     add(build_baseline_compare_tools(), group="olmoearth-baseline-compare")
     add(
         (t for t in evaluate if t.spec.name not in _EVALUATE_CORE),

@@ -26,6 +26,10 @@ themselves. Besides numbers, they read three keys a tool's result may carry
   and a fact without the key is read as north-up), ``margin_ratio``
   (``listed_low``, ``listed_high``, ``review_set_low``, ``review_set_high``,
   ``versus``) and ``unused_labels`` (``requested``, ``planned``, ``n``).
+  The forbidden-claim check reads ``which_map`` (``more_accurate``,
+  ``n_labelled``, ``n_a_right``, ``n_b_right``): a map named more accurate
+  with the test or interval and the labels of a grading that names it is
+  the which-map rule followed, not a claim without labels.
   ``whole_map_estimate`` and any other id are shown, never checked.
 - ``must_state``: at most :data:`MUST_STATE_MAX` short sentences (at most
   :data:`MUST_STATE_MAX_WORDS` words each) the answer must convey whenever
@@ -2271,8 +2275,11 @@ def _subset_sufficient(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     )
 
 
+#: A map named by its letter after "map" or "side" in either case ("map a",
+#: the package's own words, or "Map B"), or a bare capital letter: a bare
+#: "a" is the article.
 _WINNER_SUBJECT = (
-    r"(?:\b(?:[Mm]ap|[Ss]ide)\s+[AB]\b|\b[AB]\b|\bC\d+\b|"
+    r"(?:\b(?:[Mm]ap|[Ss]ide)\s+[ABab]\b|\b[AB]\b|\bC\d+\b|"
     r"\b[Tt]he\s+(?:first|second|newer|older|later|earlier|pre|post|\d{4})"
     r"[\w-]*\s+map\b)"
 )
@@ -2286,15 +2293,175 @@ def _winner(s: str, record: ToolRecord, run: RunEvidence) -> bool:
         re.I,
     ):
         return False
-    return bool(
-        re.search(
-            rf"{_WINNER_SUBJECT}(?:\s*\([^)]{{0,40}}\))?\s+(?:is|was|looks|seems|"
-            r"appears)\s+(?:probably\s+|likely\s+|clearly\s+)?(?:the\s+)?"
-            r"(?:right|correct|more\s+accurate|closer\s+to\s+(?:the\s+)?truth|"
-            r"the\s+winner|more\s+reliable|the\s+better\s+(?:map|one))\b",
-            s,
-        )
+    m = re.search(
+        rf"{_WINNER_SUBJECT}(?:\s*\([^)]{{0,40}}\))?\s+(?:is|was|looks|seems|"
+        r"appears)\s+(?:probably\s+|likely\s+|clearly\s+)?(?:the\s+)?"
+        r"(?:right|correct|more\s+accurate|closer\s+to\s+(?:the\s+)?truth|"
+        r"the\s+winner|more\s+reliable|the\s+better\s+(?:map|one))\b",
+        s,
     )
+    if m is None:
+        return False
+    # A map a which-map grading of this run named, stated with its test or
+    # interval and its labels, rests on labels: a label-free comparison of the
+    # same run does not make it a claim without them.
+    named = re.match(r"(?:(?:[Mm]ap|[Ss]ide)\s+)?([ABab])\b", m.group())
+    return not (named and _rests_on_a_grading(s, named.group(1).lower(), run))
+
+
+#: A map named more accurate, better or right, by its letter: "map a is more
+#: accurate" (olmoearth-inferencex's own words), "Map B (result r2) is the
+#: better map", "side A was right".
+_MORE_ACCURATE_RE = re.compile(
+    r"\b(?:map|side)\s+(?P<map>[ab])\b(?:\s*\([^)]{0,60}\))?\s+(?:is|was|looks|"
+    r"seems|appears)\s+(?:probably\s+|likely\s+|clearly\s+)?(?:the\s+)?"
+    r"(?:more\s+accurate|right|correct|closer\s+to\s+(?:the\s+)?truth|winner|"
+    r"more\s+reliable|better(?:\s+(?:map|one))?)\b",
+    re.I,
+)
+#: What a model of a baseline comparison is named more accurate by: the
+#: claims above, or "outperforms" / "beats" ("OlmoEarth clearly outperforms
+#: the AlphaEarth baseline", skill #6's showcase answer).
+_MODEL_MORE_ACCURATE = (
+    r"(?:\s+(?:model|map|predictions?|results?|side|baseline))?"
+    r"(?:\s*\([^)]{0,60}\))?"
+    r"(?:\s+(?:is|was|looks|seems|appears)\s+(?:probably\s+|likely\s+|clearly\s+)?"
+    r"(?:the\s+)?(?:more\s+accurate|right|correct|closer\s+to\s+(?:the\s+)?truth|"
+    r"winner|more\s+reliable|better(?:\s+(?:map|one|model))?)"
+    r"|\s+(?:clearly\s+)?(?:outperform(?:s|ed)?|beats?))\b"
+)
+#: The tool whose model labels name the maps of a baseline comparison.
+_BASELINE_COMPARE = "olmoearth_baseline_compare"
+#: A map's letter inside a claim naming a model ("OlmoEarth (map a) is ...").
+_LETTER_RE = re.compile(r"\b(?:map|side)\s+([ab])\b", re.I)
+#: What a which-map verdict rests on, named: the exact sign test, or the
+#: interval (or its level, "at 95% confidence").
+_WHICH_MAP_BASIS_RE = re.compile(r"\bsign\s+test\b|\binterval\b|\bconfidence\b", re.I)
+#: A hedge before a claim that a map is more accurate: a condition, a
+#: question it would answer.
+_WINNER_HEDGE_RE = re.compile(
+    r"\b(?:if|whether|would|could|might|once|after|unless|until)\b", re.I
+)
+
+
+def _states_count(s: str, n: Any) -> bool:
+    """Whether ``s`` states the count ``n`` as a whole number (``40``, ``1,204``)."""
+    if not isinstance(n, int) or isinstance(n, bool):
+        return False
+    return any(
+        re.search(rf"(?<![\w.,]){re.escape(form)}(?![\w]|[.,]\d)", s)
+        for form in {str(n), f"{n:,}"}
+    )
+
+
+def _rests_on_a_grading(s: str, letter: str, run: RunEvidence) -> bool:
+    """Whether a sentence naming map ``letter`` more accurate states the grading that names it.
+
+    The rule of the which-map route (``olmoearth_estimate_map_error`` on a
+    ``design='disagreement'`` plan): a map named more accurate is the map a
+    ``which_map`` fact of this run names (``more_accurate``), stated with the
+    test or interval its verdict rests on and the number of labels: the
+    fact's ``n_labelled``, or both its counts of windows right in a map
+    (``n_a_right`` and ``n_b_right``, which the package's sign-test sentence
+    gives).
+    """
+    if not _WHICH_MAP_BASIS_RE.search(s):
+        return False
+    for _record, fact in run.facts("which_map"):
+        if fact.get("more_accurate") != letter:
+            continue
+        if _states_count(s, fact.get("n_labelled")) or all(
+            _states_count(s, fact.get(k)) for k in ("n_a_right", "n_b_right")
+        ):
+            return True
+    return False
+
+
+def _baseline_labels(run: RunEvidence) -> list[str]:
+    """The model labels of this run's baseline comparisons, longest first.
+
+    ``olmoearth_baseline_compare`` names its two maps by label
+    (``model_a`` / ``model_b``; ``olmoearth`` and ``alphaearth`` unless the
+    caller gives others). A label of one character is left out: "a" is the
+    article.
+    """
+    labels: set[str] = set()
+    for rec in run.tools:
+        if rec.name != _BASELINE_COMPARE or not rec.ok:
+            continue
+        result = rec.result
+        if not isinstance(result, Mapping):
+            continue
+        for side in ("model_a", "model_b"):
+            model = result.get(side)
+            label = model.get("label") if isinstance(model, Mapping) else None
+            if isinstance(label, str) and len(label.strip()) > 1:
+                labels.add(label.strip())
+    return sorted(labels, key=lambda x: (-len(x), x))
+
+
+def _more_accurate_matches(
+    s: str, run: RunEvidence
+) -> list[tuple[re.Match[str], str | None]]:
+    """Each map named more accurate in ``s``, with its letter (``None``: a model label).
+
+    A map is named by its letter ("map a", "side B"), or, after a baseline
+    comparison in this run, by one of its model labels ("OlmoEarth is more
+    accurate", "olmoearth clearly outperforms the AlphaEarth baseline"); a
+    label's claim that names a letter too ("OlmoEarth (map a) is ...") takes
+    that letter.
+    """
+    found: list[tuple[re.Match[str], str | None]] = [
+        (m, m.group("map").lower()) for m in _MORE_ACCURATE_RE.finditer(s)
+    ]
+    labels = _baseline_labels(run)
+    if labels:
+        names = "|".join(re.escape(label) for label in labels)
+        model_re = re.compile(
+            rf"(?<![\w-])(?:{names})(?![\w-]){_MODEL_MORE_ACCURATE}", re.I
+        )
+        for m in model_re.finditer(s):
+            letter = _LETTER_RE.search(m.group())
+            found.append((m, letter.group(1).lower() if letter else None))
+    return found
+
+
+def _more_accurate_without_its_test(
+    s: str, record: ToolRecord, run: RunEvidence
+) -> bool:
+    """A map named more accurate (better, right) that no grading of this run names so.
+
+    Forbidden by every which-map grading (a map its verdict does not name,
+    any map when it names neither, the named map without its test and
+    labels) and by the opt-in baseline comparison, whose winner is a point
+    metric. The map is read by its letter, or by a baseline comparison's
+    model labels (:func:`_more_accurate_matches`); a map named another way
+    ("the OlmoEarth result") is not read. A claim under a negation, a hedge
+    ("if map A is more accurate"), in an example or in quotes is no claim;
+    one that states the grading that names its letter
+    (:func:`_rests_on_a_grading`) is the rule followed, and a model label
+    with no letter has no grading to state.
+    """
+    p: _Parse | None = None
+    graded: dict[str, bool] = {}
+    for m, letter in _more_accurate_matches(s, run):
+        p = p or _parse(s)
+        if (
+            p.negated(m.start(), m.end())
+            or p.example_before(m.start())
+            or p.quoted(m.start())
+        ):
+            continue
+        lo, _hi = p.span(m.start(), m.end())
+        if p.find(_WINNER_HEDGE_RE, lo, m.start()) is not None:
+            continue
+        if letter is None:
+            return True
+        if letter not in graded:
+            graded[letter] = _rests_on_a_grading(s, letter, run)
+        if not graded[letter]:
+            return True
+    return False
 
 
 def _combined_statistic(s: str, record: ToolRecord, run: RunEvidence) -> bool:
@@ -3267,6 +3434,7 @@ FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] =
     "evidence_outside_its_scope": _evidence_outside_scope,
     "certification_guaranteed": _certification_guaranteed,
     "margin_as_error_probability": _margin_as_error_probability,
+    "more_accurate_without_its_test": _more_accurate_without_its_test,
 }
 
 

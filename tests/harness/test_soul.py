@@ -34,6 +34,17 @@ def test_soul_routes_review_and_estimation_questions_to_their_tools() -> None:
     assert "a review set is not a sample" in text
 
 
+def test_soul_routes_which_map_is_more_accurate_to_the_two_map_design() -> None:
+    """The which-map step: labels where two maps of one time differ, graded by
+    the package; a more accurate map is named with its test and labels."""
+    text = " ".join(load_soul().split())
+    assert "Which of two maps is more accurate: olmoearth_plan_label_sample" in text
+    assert "design='disagreement'" in text
+    assert "with its test or interval and the number of labels" in text
+    assert "a comparison without labels names none" in text
+    assert "olmoearth_baseline_compare" not in text
+
+
 def test_soul_routes_a_direct_model_runs_map_to_the_scores_provider() -> None:
     """A cluster run's raster goes through the provider, never Studio sampling."""
     text = load_soul()

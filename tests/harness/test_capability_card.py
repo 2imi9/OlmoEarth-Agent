@@ -154,18 +154,26 @@ def test_the_card_fits_its_budget() -> None:
 
 
 def test_the_default_card_names_no_opt_in_tool_or_group() -> None:
-    """A trimmed tool is off the card, and so is the group it would load."""
+    """A trimmed tool is off the card, and so is the group it would load.
+
+    #6's baseline comparison was the last default deferred group; opt-in
+    since the which-map step, it is off the default card too.
+    """
     with mock.patch.dict(os.environ, {OPT_IN_ENV: ""}):
         card = capability_card(build_default_registry())
     for gone in (
         "olmoearth_change_detect",
         "olmoearth_litsearch",
         "olmoearth_grade_review_rule",
+        "olmoearth_baseline_compare",
+        "olmoearth-baseline-compare",
         "olmoearth-rslearn",
         "olmoearth-similarity",
     ):
         assert gone not in card, gone
-    assert "olmoearth-baseline-compare" in card
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
+        opted = capability_card(build_default_registry())
+    assert "olmoearth-baseline-compare" in opted
 
 
 def test_an_undeclared_tool_is_listed_from_its_description() -> None:

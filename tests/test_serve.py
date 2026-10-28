@@ -309,8 +309,14 @@ def _forced_as_sent(monkeypatch: pytest.MonkeyPatch, slugs: Iterable[str]) -> li
     return forwarded
 
 
-#: The "/" menu slugs of the four skills that are opt-in whole.
-_OPT_IN_WHOLE = ("similarity", "cloud-mask-audit", "litsearch", "negative-sampler")
+#: The "/" menu slugs of the five skills that are opt-in whole.
+_OPT_IN_WHOLE = (
+    "baseline-compare",
+    "similarity",
+    "cloud-mask-audit",
+    "litsearch",
+    "negative-sampler",
+)
 
 
 def test_an_opt_in_skill_is_not_forced_while_its_tools_are_off(
@@ -322,7 +328,7 @@ def test_an_opt_in_skill_is_not_forced_while_its_tools_are_off(
     """
     monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
     forwarded = _forced_as_sent(monkeypatch, (*_OPT_IN_WHOLE, "rslearn"))
-    assert forwarded == ["", "", "", "", "rslearn"]
+    assert forwarded == [""] * len(_OPT_IN_WHOLE) + ["rslearn"]
 
 
 def test_an_opt_in_skill_is_forced_when_its_tools_are_on(
@@ -373,21 +379,30 @@ def test_forced_skill_sends_its_deferred_tools_from_turn_one(
     when the test client starts.
     """
     monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", "1")
-    offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
+    offered = _offered_per_forced_skill(
+        monkeypatch, ("rslearn", "baseline-compare", "")
+    )
     assert "olmoearth_rslearn_compose" in offered["rslearn"]
     assert "olmoearth_rslearn_compose" not in offered[""]
+    assert "olmoearth_baseline_compare" in offered["baseline-compare"]
+    assert "olmoearth_baseline_compare" not in offered[""]
     assert "olmoearth_compare_results" in offered[""]
 
 
-def test_forced_skill_reaches_the_default_deferred_tool_and_no_opt_in_one(
+def test_forced_skill_reaches_no_opt_in_tool_without_the_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without the opt-in setting, forcing rslearn offers none of its tools."""
+    """Without the opt-in setting, forcing rslearn or #6 offers none of their tools.
+
+    #6's baseline comparison was the default's one deferred tool; opt-in since
+    the which-map step, a forced #6 is dropped and the run goes unpinned (so
+    no run is recorded under its slug).
+    """
     monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
     offered = _offered_per_forced_skill(
         monkeypatch, ("baseline-compare", "rslearn", "")
     )
-    assert "olmoearth_baseline_compare" in offered["baseline-compare"]
+    assert "baseline-compare" not in offered
     assert "olmoearth_baseline_compare" not in offered[""]
     assert not any(n.startswith("olmoearth_rslearn_") for n in offered["rslearn"])
     assert offered["rslearn"] == offered[""]

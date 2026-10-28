@@ -108,6 +108,7 @@ CONTRACT_IDS = {
     "evidence_outside_its_scope",
     "certification_guaranteed",
     "margin_as_error_probability",
+    "more_accurate_without_its_test",
 }
 
 
