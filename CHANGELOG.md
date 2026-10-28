@@ -910,6 +910,45 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **Six fixes from a blind audit of agent trial 12** (27 false statements in
+  30 answers, none marked by the harness).
+  - **A class plan names each stratum's class.** Its result lists
+    `per_stratum` (class, name, windows, labels). A map missing a class has
+    no stratum for it, so stratum h need not be class h; the trial's
+    answers gave class 4 the 471 windows of class 5. A Studio class map's
+    class is the one the map writes; the internal code is `code`.
+  - **Maps of different times get no disagreement design.**
+    `olmoearth_compare_review` says so (`not_for_these_maps`) and offers
+    only each map's own sample. New forbidden claim
+    `two_map_design_across_dates`. `another_date_settles_it` now also
+    catches "a same-date third inference" and another unlabelled map.
+  - **Preconditions stated.** `seed_from_map` needs a scores file
+    `olmoearth_scores_from_file` wrote from a model run's GeoTIFF (plan
+    description, parameter, capability card, system prompt). A plan's
+    sheet needs every row labelled; the first k rows are a fallback only,
+    for a stop that does not depend on the labels, and give no zone or
+    certificate. "A partial labelling is fine" is flagged.
+  - **Producer's accuracy beside user's.** A new fact, `user_vs_producer`,
+    names each class whose two intervals do not overlap, or which the map
+    draws too little or too much. A class the map finds only in part gets
+    a `must_state` on its producer's accuracy, so "class 4 does well" on
+    user's accuracy alone is caught.
+  - **No zone certified: the whole-map rate is not the reason.** The
+    whole-map estimate says it describes the whole map and names the
+    smallest zone tested. New forbidden claim `whole_map_rate_for_a_zone`.
+    `certification_guaranteed` now also catches "to get a certified zone,
+    plan a new random design" and "a certifiable zone".
+  - **How the differing windows cluster.** `olmoearth_compare_review`
+    counts 8-connected patches and interior windows (every neighbour
+    differs too). A conclusion is drawn only from the interior share: at
+    half or more, whole areas differ. New forbidden claim `mostly_edges`,
+    read only then.
+  - Known limits: `weakest_classes` still names a numeric class map's class
+    by its code (the written class beside it), and
+    `whole_map_rate_for_a_zone`, read one sentence at a time, flags "That
+    is above the 5% bar, so no zone certified." after the zone's evidence.
+  - Tests in `tests/tools`, `tests/harness`, `tests/analysis`,
+    `tests/reporting`; the demo page is regenerated.
 - **Litsearch's Asta records honour `legalToShow`.** Asta marks some papers'
   text as not legal to show (`legalToShow: false`, in its `Paper` model
   since the CLI's first commit). The Asta backend, added in 1.4.0, ignored

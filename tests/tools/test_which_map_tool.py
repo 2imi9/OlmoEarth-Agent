@@ -297,7 +297,15 @@ async def test_the_plan_refuses_two_maps_of_different_times() -> None:
             rules.ONE_REFERENCE_SETTLES_TWO_DATES,
             rules.ANOTHER_DATE_SETTLES_IT,
             rules.WINNER_WITHOUT_LABELS,
+            # agent trial 12: a disagreement design offered across dates
+            rules.TWO_MAP_DESIGN_ACROSS_DATES,
         } <= ids
+        (why,) = [
+            c["why"]
+            for c in out["forbidden_claims"]
+            if c["id"] == rules.TWO_MAP_DESIGN_ACROSS_DATES
+        ]
+        assert "no labels on the differing windows say which map" in why
         assert out["must_state"] == [rules.DATED_MAPS_MUST_STATE]
 
 
@@ -368,7 +376,14 @@ async def test_the_plan_gives_the_packages_budget_advice_and_no_coordinates() ->
         "The plan holds 15 windows, not the 20 requested.",
     ]
     ids = [c["id"] for c in plan["forbidden_claims"]]
-    assert ids == [rules.WINNER_WITHOUT_LABELS, rules.ERROR_RATE_WITHOUT_LABELS]
+    # Its grading reads the whole sheet, as every design file's does.
+    assert ids == [
+        rules.WINNER_WITHOUT_LABELS,
+        rules.ERROR_RATE_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
+    ]
+    subset = plan["forbidden_claims"][2]["why"]
+    assert subset.startswith("write a class, or ? where it cannot be judged")
     winner = plan["forbidden_claims"][0]["why"]
     assert winner.startswith("this plan holds no labels yet")
     # Rule 3.1: the result holds no location; the reviewer's sheet does.

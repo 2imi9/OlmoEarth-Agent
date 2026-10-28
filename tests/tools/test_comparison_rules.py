@@ -73,13 +73,17 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         date_a="2022-01-01/2022-12-31", date_b="2023-01-01/2023-12-31"
     )
     assert apart["dates"]["status"] == "different_time"
+    # Agent trial 12: a two-map design across dates is forbidden too, and the
+    # result says what does not apply to these maps.
     assert _ids(apart) == {
         rules.ANOTHER_DATE_SETTLES_IT,
         rules.ONE_REFERENCE_SETTLES_TWO_DATES,
         rules.WINNER_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
         rules.EVIDENCE_OUTSIDE_ITS_SCOPE,
+        rules.TWO_MAP_DESIGN_ACROSS_DATES,
     }
+    assert apart["not_for_these_maps"] == rules.NOT_FOR_MAPS_OF_DIFFERENT_TIMES
     another = _why(apart, rules.ANOTHER_DATE_SETTLES_IT)
     assert "(2022-01-01/2022-12-31 and 2023-01-01/2023-12-31)" in another
     assert "cannot tell which" in another
@@ -97,7 +101,9 @@ async def test_a_comparison_across_dates_is_not_settled_by_another_date() -> Non
         rules.WINNER_WITHOUT_LABELS,
         rules.SUBSET_LABELLING_SUFFICIENT,
         rules.EVIDENCE_OUTSIDE_ITS_SCOPE,
+        rules.TWO_MAP_DESIGN_ACROSS_DATES,
     }
+    assert overlap["not_for_these_maps"] == rules.NOT_FOR_MAPS_OF_DIFFERENT_TIMES
     # The reason covers the overlapping periods, not only disjoint ones.
     assert "different or overlapping periods" in _why(
         overlap, rules.ANOTHER_DATE_SETTLES_IT

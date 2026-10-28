@@ -765,6 +765,17 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
 #: 8, brief 3 on the cluster and brief 7 on files).
 DIFFERENT_TIMES_MUST_STATE = rules.DATED_MAPS_MUST_STATE
 
+#: The next step of a comparison of maps of different or overlapping times,
+#: and the only one that applies: each map's own sample, labelled against a
+#: reference of that map's own date (agent trial 12 offered a disagreement
+#: design and another unlabelled map instead).
+EACH_MAP_ITS_OWN_SAMPLE = (
+    "Measure each map on its own: olmoearth_plan_label_sample on one map's "
+    "scores alone, its windows labelled against a reference of that map's own "
+    "date, then olmoearth_estimate_map_error with that plan's design_path; the "
+    "same for the other map at its date."
+)
+
 #: Stated with a comparison where only one map's date was given.
 PARTLY_DATED_MUST_STATE = (
     "Only one map's date was given, so a difference cannot be told from a change "
@@ -1001,6 +1012,18 @@ async def _compare_review(args: dict[str, Any], _ctx: ToolContext) -> dict[str, 
                 )
             )
             add_must_state(out, [DIFFERENT_TIMES_MUST_STATE])
+            # Agent trial 12: a disagreement design offered across dates
+            # (B3/cluster run 5, B7/files run 11), and another unlabelled map or
+            # "a same-date third inference" to tell change from error (B7/files
+            # runs 7 and 12). Only each map's own sample applies.
+            out["not_for_these_maps"] = rules.NOT_FOR_MAPS_OF_DIFFERENT_TIMES
+            out["next_steps"] = [EACH_MAP_ITS_OWN_SAMPLE]
+            rules.add_contract(
+                out,
+                forbidden_claims=[
+                    rules.two_map_design_across_dates(dates.get("a"), dates.get("b"))
+                ],
+            )
         elif dates.get("status") == "partly_stated":
             out["which_side_is_right"] = (
                 "not graded: only one map's date was given, so an error cannot be "

@@ -33,7 +33,10 @@ themselves. Besides numbers, they read three keys a tool's result may carry
   whether ``whole_map_estimate`` is in the run (``accuracy_not_measured``
   and ``error_rate_without_labels`` hold only while it is not, and while no
   ``olmoearth_classification_metrics`` call computed an accuracy); that and
-  any other id are shown, never checked.
+  any other id are shown, never checked. ``mostly_edges`` reads every
+  listing comparison's own ``differing_interior`` (the share of its
+  differing windows whose every neighbour on the grid differs too), and
+  ``whole_map_rate_for_a_zone`` the alpha the zone call ran at.
 - ``must_state``: at most :data:`MUST_STATE_MAX` short sentences (at most
   :data:`MUST_STATE_MAX_WORDS` words each) the answer must convey whenever
   it reports that result.
@@ -70,6 +73,7 @@ from functools import cached_property, lru_cache, partial
 from typing import Any
 
 from olmoearth_agent.analysis.output_contract import NOT_A_SOURCE
+from olmoearth_agent.analysis.review_set import MOSTLY_EDGES, MOSTLY_INTERIOR
 from olmoearth_agent.harness.grounding import NumberPool, tokenize
 
 logger = logging.getLogger(__name__)
@@ -2447,13 +2451,140 @@ def _low_confidence_sample_sound(s: str) -> bool:
     return False
 
 
+#: Part of a plan's sheet offered as enough: "A partial labelling is fine",
+#: "labelling just the first k rows" (agent trial 12, N2/cluster run 23, of a
+#: seed_from_map plan drawn for a certificate), "the first 100 rows are fine".
+#: The word that may stand between the verb and "fine" is no negation: "is
+#: not fine" is the rule, and a negation inside the match does not count as
+#: one around it (the step 11 review). "Labelling only the first rows"
+#: counts only when offered as enough ("is enough", "still gives an unbiased
+#: ..."): the plan's own reason, "labelling only its first rows biases the
+#: estimate", and "would cover class 0 only" are warnings (the step 11 review).
+_PARTIAL_SHEET_RE = re.compile(
+    r"\bpartial(?:ly)?\s+(?:labell?ing|labell?ed\s+sheet|sheet)\s+(?:is|would\s+be|"
+    r"will\s+be|works?)\s+(?:(?!(?:not|never|no)\b)\w+\s+)?(?:fine|ok(?:ay)?|"
+    r"enough|sufficient|acceptable)\b"
+    r"|(?P<only>\blabell?ing\s+(?:just|only)\s+(?:the\s+)?first\s+(?:\w+\s+)?(?:rows?|"
+    r"windows?|lines?)\b[^.;:]{0,60}?\b(?:(?:is|are|would\s+be|will\s+be)\s+"
+    r"(?:(?!(?:not|never|no)\b)\w+\s+)?(?:fine|ok(?:ay)?|enough|sufficient|"
+    r"acceptable|unbiased|valid)|works?|suffices?|(?:still\s+)?gives?\s+"
+    r"(?:you\s+)?an?\s+unbiased)\b)"
+    r"|\bfirst\s+(?:k|n|\d+)\s+(?:rows?|windows?)\b[^.;]{0,60}?\b(?:is|are|"
+    r"would\s+be)\s+(?:(?!(?:not|never|no)\b)\w+\s+)?(?:fine|enough|sufficient|"
+    r"ok(?:ay)?)\b",
+    re.I,
+)
+#: "Labelling only the first rows" scoped to part of the map: "would work
+#: for the least confident windows alone" paraphrases a stratified plan's
+#: own reason, and offers nothing for the map (the step 11 checkers).
+_PART_OF_THE_MAP_RE = re.compile(
+    r"\bleast\s+confident\b|\bstratum\b|\bone\s+class\b|\balone\b", re.I
+)
+#: What keeps a sentence about part of the sheet the rule: every row first,
+#: or the first rows as a fallback with no certified zone or certificate
+#: ("Label every row of the sheet; if you must stop early, ...").
+_EVERY_ROW_RE = re.compile(
+    r"\bevery\s+(?:\w+\s+){0,3}?(?:rows?|windows?)\b"
+    r"|\ball\s+(?:the\s+)?(?:\d+\s+)?(?:rows?|windows?)\b|\bwhole\s+sheet\b"
+    r"|\bstops?\s+early\b|\bfallback\b|\bno\s+(?:certified\s+zone|certificate)\b",
+    re.I,
+)
+#: A stop decided by what the labels show ("once the errors look rare"):
+#: optional stopping, under which the first rows are no random sample of a
+#: size fixed before the labels, so it voids :data:`_EVERY_ROW_RE`'s pass.
+#: Read only beside a stop (:data:`_STOP_VERB_RE`): "a zone certifies only
+#: if the labels show few errors" hedges an outcome (the step 11 review).
+#: "Even if the labels look clean, keep going" is no stop (the step 11
+#: checkers).
+_STOP_ON_THE_LABELS_RE = re.compile(
+    r"(?<!\beven\s)\b(?:once|when|because|as\s+soon\s+as|if)\s+(?:the\s+)?(?:errors?|"
+    r"mistakes?|labels?|results?)\s+(?:so\s+far\s+)?(?:looks?|seems?|appears?|"
+    r"shows?)\b",
+    re.I,
+)
+#: A stop of the labelling, in the clause of :data:`_STOP_ON_THE_LABELS_RE`:
+#: "end" only as a verb on the labelling ("ends the labelling"), not the
+#: noun ("keep going to the end of the sheet", the step 11 checkers).
+_STOP_VERB_RE = re.compile(
+    r"\b(?:stop\w*|halt\w*|quit\w*|ceas\w*)\b"
+    r"|\bend(?:s|ed|ing)?\s+(?:the\s+)?label\w*",
+    re.I,
+)
+#: Such a stop named as a fault, the rule itself: "Stopping once the errors
+#: look rare would bias the estimate" (the step 11 checkers).
+_STOP_AS_A_FAULT_RE = re.compile(
+    r"\bbias\w*|\binvalid\w*|\bvoid\w*|\boptional\s+stopping\b", re.I
+)
+
+
+def _a_plan_forbids_a_partial_sheet(run: RunEvidence) -> bool:
+    """Whether a plan of the run, with its design file, forbids part of its sheet.
+
+    Read over the whole run: :func:`check_forbidden_claims` hands a detector
+    the first record that lists a claim, and a comparison listed before the
+    plan forbids ``subset_labelling_sufficient`` too (the step 11 review).
+    """
+    for record, item in run.contract("forbidden_claims"):
+        claim_id = item.get("id") if isinstance(item, Mapping) else item
+        a_plan = bool(record.result.get("design_path"))
+        if a_plan and claim_id == "subset_labelling_sufficient":
+            return True
+    return False
+
+
+def _partial_sheet_enough(s: str, run: RunEvidence) -> bool:
+    """Part of a plan's sheet offered as enough, about a plan that wrote a design file.
+
+    The routes that read a design file (``design_path``: the estimate, and
+    for a random plan the certified zone and a ``seed_from_map`` plan's
+    certificate) need every row of its sheet labelled; a random sheet's
+    first rows are a smaller random sample only as a fallback when labelling
+    stops early for a reason that does not depend on the labels (the plan's
+    ``prefix_is_random_sample``). A sentence that states every row, or the
+    fallback with no certificate, passes, unless it stops on what the labels
+    show (:data:`_STOP_ON_THE_LABELS_RE`); so does a negated one ("a partial
+    labelling is not fine"). A stop on the labels named as a fault ("would
+    bias the estimate") is the rule, not such a stop, and "labelling only
+    the first rows" scoped to part of the map ("for the least confident
+    windows alone") offers nothing for the map (the step 11 checkers).
+    """
+    if not _a_plan_forbids_a_partial_sheet(run):
+        return False
+    p = _parse(s)
+    # "not because the errors look rare" states the rule, and "only if the
+    # labels show few errors", with no stop, hedges an outcome
+    on_the_labels = any(
+        not p.negated(m.start(), m.end())
+        and p.in_clause(_STOP_VERB_RE, m.start(), m.end())
+        and not p.in_clause(_STOP_AS_A_FAULT_RE, m.start(), m.end())
+        for m in _STOP_ON_THE_LABELS_RE.finditer(s)
+    )
+    if _EVERY_ROW_RE.search(s) and not on_the_labels:
+        return False
+    return any(
+        not (
+            p.negated(m.start(), m.end())
+            or p.quoted(m.start())
+            or (
+                m.group("only") is not None
+                and p.in_clause(_PART_OF_THE_MAP_RE, m.start(), m.end())
+            )
+        )
+        for m in _PARTIAL_SHEET_RE.finditer(s)
+    )
+
+
 def _subset_sufficient(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     """A part of the sample offered as enough, or a sample of the least
     confident windows offered as a sound error rate.
 
     "Not enough" is no offer: "the more confident side is right only 51-70%
     of the time, not enough to pick a winner" (round 3, B3/cluster run 3).
+    About a plan, part of its sheet offered as enough is one too
+    (:func:`_partial_sheet_enough`).
     """
+    if _partial_sheet_enough(s, run):
+        return True
     return _low_confidence_sample_sound(s) or any(
         _unnegated(
             r"\b(?:first|top|only|just)\s+(?:the\s+)?(?:\d+|few|some|handful)\b"
@@ -2676,39 +2807,92 @@ _THE_MAPS_BEFORE_RE = re.compile(
 )
 
 
+#: What another date is offered to settle: which map is right, change from
+#: error, whether the differences persist (agent trial 12, B7/files run 7:
+#: "to see whether differences persist across models").
+_SETTLE_WORDS_RE = re.compile(
+    r"\b(?:settle\w*|check\w*|trajectory|show|tell|resolve\w*|decide|"
+    r"verdict|confirm\w*|reversal\w*|separate|disambiguat\w*|persist\w*)\b"
+    r"|\bwhich\s+(?:map|one|side|of|is\s+(?:right|correct|more))\b"
+    r"|\bchange\s+from\s+error\b",
+    re.I,
+)
+#: Map A or B named by a copula, an apposition or a verb of origin: "Map B
+#: is a later inference" (the step 11 review), "map B comes from a later
+#: inference", "Map B is from a later model run" (the step 11 checkers).
+#: Read on the clause up to the match. Not "with": "compare map A with a
+#: later image" offers one.
+_MAP_IS_A_RE = re.compile(
+    r"\bmap\s+[ab]\b(?:\s*,\s*|[^.;:]{0,30}?\b(?:is|was|comes?\s+from|from|by|"
+    r"as)\s+)an?\s+$",
+    re.I,
+)
+#: The words a new date's map may carry between its determiner and its noun:
+#: "another unlabeled map", "a third independent inference".
+_ANOTHER_ADJECTIVE = (
+    r"(?:unlabell?ed|independent|same[\s-]date|same[\s-]period|date[\s-]matched|"
+    r"dated|new|second|separate|fresh|matching)"
+)
+#: Another date, map, image or model run: "a third dated map", "another
+#: unlabeled map", "a same-date third inference" (B7/files runs 7 and 12).
+_ANOTHER_DATE_PATTERN = (
+    r"\b(third|another|additional|extra|later|earlier|intermediate)\s+"
+    rf"(?:{_ANOTHER_ADJECTIVE}\s+){{0,2}}"
+    r"(?P<noun>date|map|image|acquisition|scene|time\s*(?:point|step)|snapshot|"
+    r"epoch|inference|prediction|model\s+run|model\s+output)s?\b"
+)
+#: A reference at the maps' own dates, right after the noun: "another
+#: acquisition per date", "another image from each map's own date" (the
+#: step 11 checkers).
+_AT_EACH_DATE_RE = re.compile(
+    r"\s*(?:per|for\s+each|at\s+each|of\s+each|from\s+each|dated\s+to\s+each|"
+    r"on\s+the\s+same|at\s+the\s+same)\s+(?:map'?s?\s+(?:own\s+)?)?"
+    r"(?:date|period|year)",
+    re.I,
+)
+#: Another map or model run: unlabelled whatever its date, so no reference.
+_MAP_NOUNS = ("map", "inference", "prediction", "model")
+
+
 def _another_date(s: str, record: ToolRecord, run: RunEvidence) -> bool:
-    """Another date offered as what settles which map is right.
+    """Another date, map or model run offered as what settles which map is right.
 
     "The earlier map" or "the later image" names map A or B, not a new date;
-    a reference at the maps' own dates is what does settle it.
+    a reference at the maps' own dates is what does settle it ("another
+    acquisition per date", imagery a reviewer labels), and only a labelled
+    reference: another map, inference or model run is unlabelled at any
+    date. Agent trial 12 offered "another unlabeled map of the same period to
+    see whether differences persist across models" (B7/files run 7) and "a
+    same-date third inference to separate change from error" (run 12).
+
+    What it settles must be in the offer's own clause, or a label a colon
+    ends before it: "Another unlabelled map would only add a third opinion,
+    but which map is right needs labels" and "The more confident side is
+    just another prediction, so it does not decide which map is right" offer
+    nothing (the step 11 review). A bare relative "which" settles nothing,
+    and "Map B is a later inference" or "map B comes from a later
+    inference" names map B. A negation just after the offer governs it too:
+    "Another unlabelled map would only show where three maps disagree" (the
+    step 11 checkers).
     """
-    if not re.search(
-        r"\b(?:settle\w*|check\w*|trajectory|show|tell|resolve\w*|decide|which|"
-        r"verdict|confirm\w*|reversal\w*|separate|disambiguat\w*)\b",
-        s,
-        re.I,
-    ):
+    if not _SETTLE_WORDS_RE.search(s):
         return False
-    return any(
-        # A reference at the maps' own dates ("another acquisition per date")
-        # is what separates change from error; another date is not.
-        not re.match(
-            r"\s*(?:per|for\s+each|at\s+each|on\s+the\s+same|at\s+the\s+same)\s+"
-            r"(?:date|period|year)",
-            s[m.end() :],
-            re.I,
-        )
-        and not (
-            m.group(1).lower() in ("later", "earlier")
-            and _THE_MAPS_BEFORE_RE.search(s[max(0, m.start() - 12) : m.start()])
-        )
-        for m in _unnegated(
-            r"\b(third|another|additional|extra|later|earlier|intermediate)\s+"
-            r"(?:dated\s+)?(?:date|map|image|acquisition|scene|time\s*(?:point|step)|"
-            r"snapshot|epoch)s?\b",
-            s,
-        )
-    )
+    p = _parse(s)
+    for m in _unnegated(_ANOTHER_DATE_PATTERN, s):
+        if not p.in_clause_or_label(_SETTLE_WORDS_RE, m.start(), m.end()):
+            continue
+        if _negated_close(p, m.start(), m.end()):
+            continue
+        a_map = m.group("noun").lower().split()[0] in _MAP_NOUNS
+        if not a_map and _AT_EACH_DATE_RE.match(s, m.end()):
+            continue
+        if m.group(1).lower() in ("later", "earlier"):
+            lo, _hi = p.span(m.start(), m.end())
+            before = s[lo : m.start()]
+            if _THE_MAPS_BEFORE_RE.search(before) or _MAP_IS_A_RE.search(before):
+                continue
+        return True
+    return False
 
 
 def _quoted(s: str, start: int) -> bool:
@@ -3472,7 +3656,9 @@ def _certification_guaranteed(s: str, record: ToolRecord, run: RunEvidence) -> b
     guarantee. The design, sample or plan must be in the promise's own
     clause: "a looser alpha would certify the top zone, but the guarantee
     covers only an alpha fixed before seeing the labels" promises nothing of
-    a design (``post_hoc_alpha`` reads it).
+    a design (``post_hoc_alpha`` reads it). A certified zone as a plan's
+    purpose, or a "certifiable zone" offered from one, is a promise too
+    (:func:`_certification_purpose`, agent trial 12).
     """
     p = _parse(s)
     for m in _CERTIFY_PROMISE_RE.finditer(s):
@@ -3498,6 +3684,97 @@ def _certification_guaranteed(s: str, record: ToolRecord, run: RunEvidence) -> b
         ):
             continue
         return True
+    return _certification_purpose(p)
+
+
+#: A certified zone as what a plan or design gets: "To get a certified zone,
+#: plan a new random design fixed in advance" (agent trial 12, B6/files run
+#: 9), or a "certifiable zone" offered from a plan ("If you also want a
+#: certifiable zone, tell me now and I'll draw a second random plan",
+#: B4/cluster run 18).
+_CERTIFY_PURPOSE_RE = re.compile(
+    r"\bto\s+(?:get|obtain|reach|achieve|earn|secure|have|produce)\s+(?:you\s+)?"
+    r"(?:a|an|the|some|your)\s+(?:\w+\s+)?certified\s+(?:zones?|regions?|areas?|"
+    r"parts?|shares?)\b"
+    r"|\b(?:a|an|the|some|your)\s+(?:\w+\s+)?certifiable\s+(?:zones?|regions?|"
+    r"areas?|parts?|shares?)\b",
+    re.I,
+)
+#: An "if" about what the user wants, which is no hedge on what the labels
+#: will show: "If you also want a certifiable zone, ...".
+_USER_WISH_RE = re.compile(
+    r"\bif\s+(?:you|the\s+user)\s+(?:also\s+|still\s+|ever\s+|really\s+)?"
+    r"(?:want|wants|need|needs|wish|wishes|prefer|prefers|would\s+like|'d\s+like|"
+    r"like|ask|require)\b",
+    re.I,
+)
+
+
+#: An outcome left open, besides :data:`_CONDITIONAL_RE`'s hedges: "possible,
+#: not certain", "it may certify nothing", "depends on the errors", "if its
+#: errors are few". Read anywhere in the sentence, so it names the outcome:
+#: a bare "could" past a dash ("— then you could label those windows") is
+#: about the user's labelling (the step 11 checkers).
+_OUTCOME_OPEN_RE = re.compile(
+    r"\bnot\s+(?:certain|guaranteed)\b|\bcertif\w*\s+nothing\b|\bdepend\w*"
+    r"|\bpossibl\w*|\b(?:may|might|could)\s+(?:not\s+)?(?:be\s+)?certif\w*"
+    r"|\bif\s+(?:its|the)\s+(?:errors|labels)\b",
+    re.I,
+)
+#: A requirement in other words than :data:`_REQUIREMENT_RE`'s, read for a
+#: purpose only: "the labels must come from a random design", "only a random
+#: design qualifies", "the only kind that can yield a certifiable zone" (the
+#: step 11 checkers).
+_PURPOSE_REQUIREMENT_RE = re.compile(
+    r"\bmust\b|\bha(?:s|ve)\s+to\b|\bthe\s+only\b|\bonly\s+(?:a|an|with|from)\b",
+    re.I,
+)
+#: A choice left to the user, no hedge on the outcome: "whether you label in
+#: Studio or as a CSV" (the step 11 checkers).
+_USER_CHOICE_RE = re.compile(
+    r"\bwhether\s+(?:you|the\s+user)\s+(?:label|use|work|choose|prefer|want)\w*", re.I
+)
+
+
+def _certification_purpose(p: _Parse) -> bool:
+    """A certified or certifiable zone offered as what a plan or design gets.
+
+    The plan or design must be in the purpose's clause. A requirement ("to
+    get a certified zone you would need a new random-design label plan fixed
+    in advance", "the labels must come from a random design") or an outcome
+    left open ("possible, not certain", "if its errors are few", "it may
+    certify nothing") anywhere in the sentence passes: the step 11 review
+    found "To get a certified zone, plan a new random design fixed before
+    labelling: a random design makes a certified zone possible, not
+    certain." flagged, its hedge past the colon. Any other hedge
+    (:data:`_CONDITIONAL_RE`) counts only in the purpose's own clause: "—
+    then you could label those windows" is about the user's labelling, not
+    the outcome (the step 11 checkers). An "if" about what the user wants,
+    or a "whether" about how they label, is no such hedge, and is read past.
+    """
+    if not _CERTIFY_PURPOSE_RE.search(p.s):
+        return False
+    rest = _USER_WISH_RE.sub(lambda w: " " * len(w.group()), p.s)
+    rest = _USER_CHOICE_RE.sub(lambda w: " " * len(w.group()), rest)
+    if (
+        _REQUIREMENT_RE.search(rest)
+        or _PURPOSE_REQUIREMENT_RE.search(rest)
+        or _OUTCOME_OPEN_RE.search(rest)
+    ):
+        return False
+    for m in _CERTIFY_PURPOSE_RE.finditer(p.s):
+        if (
+            _negated_close(p, m.start(), m.end())
+            or p.example_before(m.start())
+            or p.quoted(m.start())
+        ):
+            continue
+        lo, hi, _ = p.region(m.start(), m.end())
+        # a hedge in the purpose's own clause, read past the user's wishes
+        if _CONDITIONAL_RE.search(rest, lo, hi):
+            continue
+        if _DESIGN_WORD_RE.search(p.s[lo:hi]):
+            return True
     return False
 
 
@@ -3725,6 +4002,272 @@ def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     return False
 
 
+#: A disagreement design, plan, sample or budget offered: "a
+#: disagreement-based labeling budget" (agent trial 12, B3/cluster run 5),
+#: "olmoearth_plan_label_sample (design="disagreement")" (B7/files run 11),
+#: "label the windows where they differ to see which is more accurate".
+_DISAGREEMENT_OFFER_RE = re.compile(
+    r"\bdisagreement[\s-]+based\b"
+    r"|\bdesign\s*=\s*['\"]?disagreement\b"
+    r"|\b(?:a|an|the|this|that|one)\s+(?:\w+\s+)?disagreement\s+(?:samples?|"
+    r"sampling|plans?|designs?|budgets?|labell?ing)\b"
+    r"|\blabel\w*\s+(?:\w+\s+){0,3}?windows?\s+where\s+(?:they|the\s+(?:two\s+)?"
+    r"maps|both\s+maps)\s+(?:differ|disagree)\w*\s+to\s+(?:\w+\s+){0,3}?which\s+"
+    r"(?:map\s+|one\s+)?is\s+(?:more\s+accurate|right|better)\b",
+    re.I,
+)
+#: The design scoped to maps of one time, its rule: "needs two maps of one
+#: time", "another map of the same time (... design='disagreement')".
+_ONE_TIME_RE = re.compile(
+    r"\b(?:of|at|from|for)\s+(?:one|the\s+same|a\s+single)\s+(?:time|date|period)\b"
+    r"|\bsame[\s-](?:time|date|period)\b",
+    re.I,
+)
+#: A refusal in other words than :data:`_NEGATION_RE`'s, or in a later
+#: clause (the step 11 review): "olmoearth_plan_label_sample rejects it",
+#: "is unavailable", "rule out", "..., but not for maps of different times".
+_REFUSED_RE = re.compile(
+    r"\brefus\w*|\breject\w*|\bunavailable\b|\bnot\s+available\b"
+    r"|\brul(?:e|es|ed|ing)\s+(?:it\s+|them\s+)?out\b|\bdoes\s+not\s+apply\b"
+    r"|\bnot\s+for\s+(?:these|this|maps|two|the)\b",
+    re.I,
+)
+
+
+#: The design's flaw across dates stated, which offers nothing: "a
+#: disagreement sample would mix real change with map error", "would be
+#: biased here, because some differing windows may have changed on the
+#: ground" (the step 11 checkers; the tool's own reason).
+_DESIGN_FLAW_RE = re.compile(
+    r"\bbias\w*|\bconfound\w*|\bmix\w*|\bchanged?\s+on\s+the\s+ground\b"
+    r"|\bchange\b[^.;]{0,30}\berror\b",
+    re.I,
+)
+
+
+def _refused_with_it(p: _Parse, start: int, end: int) -> bool:
+    """Whether a refusal stands in the offer's own clause or after it.
+
+    A refusal in an earlier clause is of something else: "the plan was
+    refused without dates, so I can draw a disagreement sample" offers it.
+    """
+    lo, _hi, _inside = p.region(start, end)
+    return any(
+        not _negated_close(p, r.start(), r.end()) for r in _REFUSED_RE.finditer(p.s, lo)
+    )
+
+
+def _two_map_design_across_dates(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """A disagreement design, plan, sample or budget offered across dates.
+
+    Labels on the windows where two maps of different times differ cannot
+    say which is more accurate, since the ground may have changed there, and
+    olmoearth_plan_label_sample refuses the design for them when given their
+    dates. A negated or refused mention passes ("the disagreement design is
+    not available for these maps", "olmoearth_plan_label_sample refused
+    design='disagreement'", "... is unavailable for these maps", "...
+    says which map is more accurate, but olmoearth_plan_label_sample refuses
+    it for these two maps": :func:`_refused_with_it`), and so does one
+    scoped to maps of one time, which is the design's rule, or one whose
+    clause states the design's flaw across dates ("would mix real change
+    with map error", :data:`_DESIGN_FLAW_RE`).
+    """
+    p = _parse(s)
+    for m in _DISAGREEMENT_OFFER_RE.finditer(s):
+        if (
+            p.negated(m.start(), m.end())
+            or _negated_close(p, m.start(), m.end())
+            or p.quoted(m.start())
+            or p.in_clause(_ONE_TIME_RE, m.start(), m.end())
+            or p.in_clause(_DESIGN_FLAW_RE, m.start(), m.end())
+            or _refused_with_it(p, m.start(), m.end())
+        ):
+            continue
+        return True
+    return False
+
+
+#: Worse than the bar: "far above the 5% bar", "nowhere near the 5% bar",
+#: "above alpha", or a percent equal to the alpha in force ("well above 5%").
+_ABOVE_THE_BAR_RE = re.compile(
+    r"\b(?:above|exceed\w*|higher\s+than|greater\s+than|worse\s+than|over|"
+    r"nowhere\s+near|far\s+from|not\s+(?:even\s+)?(?:near|close\s+to))\s+"
+    r"(?:(?:the|your|its|this|that|our|an?)\s+)?"
+    r"(?:(?P<pct>\d+(?:\.\d+)?)\s*%(?:\s+(?P<bar1>bar|alpha|α|threshold|target|"
+    r"requirement|cut-?off|maximum|limit)\b)?"
+    r"|(?P<bar2>bar|alpha|α|threshold|target|requirement|cut-?off|maximum|limit)\b)",
+    re.I,
+)
+#: Every part of the map: "anywhere on the map", "everywhere". Not "across
+#: the map" or "throughout": "300 labels, drawn at random across the map"
+#: states the sample, not that every part is above the bar (the step 11
+#: review).
+_EVERYWHERE_RE = re.compile(
+    r"\b(?:anywhere|everywhere|every\s+part|any\s+part|all\s+(?:of\s+)?the\s+map)\b",
+    re.I,
+)
+#: The whole-map rate named: "the whole-map error", "the overall error
+#: rate". Not a bare "overall", which opens sentences ("Overall, the smallest
+#: zone tested ...", the step 11 review).
+_WHOLE_MAP_RE = re.compile(
+    r"\bwhole[\s-]+(?:map|population)\b"
+    r"|\boverall\s+(?:the\s+)?(?:map'?s?\s+)?(?:error|rate|accuracy)\b"
+    r"|\bthe\s+map'?s\s+error\s+rate\b|\bmap[\s-]+wide\b",
+    re.I,
+)
+#: An explanation or a prediction: "This is expected", "so this outcome is
+#: expected rather than unlucky", "consistent with that".
+_EXPLAINS_RE = re.compile(
+    r"\b(?:expected|unsurprising|no\s+surprise|not\s+surprising|consistent\s+with|"
+    r"in\s+line\s+with|which\s+is\s+why|that(?:'s|\s+is)\s+why|explain\w*|because|"
+    r"since|hence|therefore|thus|unlucky|so\s+(?:this|the|that|it|no|nothing|none|"
+    r"certification|a\s+zone))\b",
+    re.I,
+)
+#: The evidence on the most confident part, the tool's own: "the smallest
+#: zone tested", "coverage 0.15", "the most confident 15% of the map", "each
+#: level's upper bound" (the step 11 review).
+_ZONE_EVIDENCE_RE = re.compile(
+    r"\b(?:smallest|first)\s+(?:\w+\s+)?(?:zones?|parts?)\b|\bzones?\s+tested\b"
+    r"|\bcoverage\b|\bmost\s+confident\b|\btop\s+\d|\blevels?\b|\bupper\s+bound\b"
+    r"|\b\d+(?:\.\d+)?\s*%\s+(?:zones?|of\s+the\s+map)\b",
+    re.I,
+)
+
+
+def _above_the_bar(p: _Parse, record: ToolRecord) -> list[re.Match[str]]:
+    """Where the sentence sets a rate above the alpha bar, not negated."""
+    alpha = _alpha_used(record)
+    found: list[re.Match[str]] = []
+    for m in _ABOVE_THE_BAR_RE.finditer(p.s):
+        if not (m.group("bar1") or m.group("bar2")):
+            pct = m.group("pct")
+            if pct is None or alpha is None or abs(float(pct) / 100 - alpha) > 1e-9:
+                continue
+        if _negated_close(p, m.start(), m.end()) or p.quoted(m.start()):
+            continue
+        found.append(m)
+    return found
+
+
+def _whole_map_rate_for_a_zone(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """The whole-map rate set against alpha to explain why no zone certified.
+
+    Agent trial 12 (B6/files runs 8, 9 and 13), on a certify call that
+    certified nothing: "nowhere near the 5% bar anywhere on the map", "the
+    same 300 labels put the whole-map error at 23.0% ..., far above the 5%
+    bar you want" after "This is expected:", "well above the 5% bar, so this
+    outcome is expected rather than unlucky". The zones tested are the map's
+    most confident windows; the smallest held 3 wrong of 46 labels. A rate
+    set above the bar is flagged when the sentence says every part of the
+    map is ("anywhere", "everywhere"), or explains or predicts by it while
+    naming the whole map in the clause that sets it above the bar, or
+    without naming the zone evidence. Stating the whole-map rate, or the
+    smallest zone's count against the bar, passes, and so does a negated
+    "every part" or explanation: "it neither explains nor predicts that no
+    zone certified", the rule's own reason reworded (the step 11 review).
+    The whole map named in another clause, to set it aside, does not
+    outweigh the zone's evidence: "The smallest zone tested had 3 wrong of
+    46 labels, above the 5% bar, so it did not certify, whatever the
+    whole-map rate says" passes (the step 11 checkers).
+
+    Known limits, read one sentence at a time: a second sentence that sets
+    the first one's zone evidence above the bar by an anaphor ("That is
+    above the 5% bar, so no zone certified.") is flagged, since the same
+    words follow a whole-map rate as well; and an explanation word about the
+    rate itself ("The whole-map error rate of 23.0% is above the 5% bar, as
+    expected for a rate that also counts the least confident windows") is
+    read as one about the outcome.
+    """
+    p = _parse(s)
+    above = _above_the_bar(p, record)
+    if not above:
+        return False
+
+    def said(pattern: re.Pattern[str]) -> bool:
+        """Whether ``pattern`` matches where no negation governs it."""
+        return any(
+            not _negated_close(p, m.start(), m.end()) for m in pattern.finditer(s)
+        )
+
+    if said(_EVERYWHERE_RE):
+        return True
+    if not said(_EXPLAINS_RE):
+        return False
+    if any(p.in_clause(_WHOLE_MAP_RE, m.start(), m.end()) for m in above):
+        return True
+    return not _ZONE_EVIDENCE_RE.search(s)
+
+
+#: Differences called mostly at edges: "mostly edges", "mostly along the
+#: boundaries", "mainly boundary" (agent trial 12, B3/cluster run 25).
+_MOSTLY_EDGES_RE = re.compile(
+    r"\b(?:mostly|mainly|largely|predominantly|primarily|chiefly)\s+"
+    r"(?:(?:at|on|along|near|around)\s+)?(?:the\s+)?(?:(?:predicted[\s-])?class[\s-]+)?"
+    r"(?:edges?|boundar(?:y|ies)|borders?)\b",
+    re.I,
+)
+
+
+#: A reading offered as an appearance, not made: "which might look like
+#: mostly edges" (the step 11 review), "the boundary shares alone would
+#: suggest ...", "at first glance the differences seem ..." (the step 11
+#: checkers).
+_LOOKS_LIKE_RE = re.compile(
+    r"\b(?:look\w*\s+like|seem\w*|appear\w*|suggest\w*|impl(?:y|ies)|read\s+as)\b",
+    re.I,
+)
+
+
+def _interior_share(record: ToolRecord) -> float | None:
+    """A comparison's share of differing windows whose every grid neighbour differs."""
+    result = record.result
+    if not isinstance(result, Mapping):
+        return None
+    block = result.get("differing_interior")
+    share = block.get("share") if isinstance(block, Mapping) else None
+    return float(share) if isinstance(share, (int, float)) else None
+
+
+def _mostly_edges(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """Differences called mostly edges or boundaries while most are interior.
+
+    Read against the counts of every comparison of the run that lists the
+    claim, not only the first (the step 11 review: a second pair's sentence
+    was read on the first pair's counts): flagged only while, in each of
+    them, at least :data:`~olmoearth_agent.analysis.review_set.MOSTLY_INTERIOR`
+    of the differing windows are interior, every neighbour on the grid
+    differing too (``differing_interior``; a result that lists the claim
+    without the counts is read as at the gate). A patch's size is not read:
+    a long strip along a class edge forms one large patch. Agent trial 12
+    (B3/cluster run 25) wrote "78.3% of differing windows touch a
+    predicted-class boundary in map A (vs 53.9% overall) - mostly edges" of
+    a pair with 57% of them in patches of 100 or more but 12% interior, so
+    the sentence was not shown false there. A negated, quoted or hedged
+    mention ("might look like mostly edges"), a question and an example
+    pass, as the module's other detectors leave them.
+    """
+    for listing in _claim_records(run, MOSTLY_EDGES) or [record]:
+        share = _interior_share(listing)
+        if share is not None and share < MOSTLY_INTERIOR:
+            return False
+    if s.rstrip().endswith("?"):
+        return False
+    p = _parse(s)
+    for m in _MOSTLY_EDGES_RE.finditer(s):
+        a, b = m.start(), m.end()
+        if (
+            _negated_close(p, a, b)
+            or p.quoted(a)
+            or p.example_before(a)
+            or p.in_clause(_CONDITIONAL_RE, a, b)
+            or p.in_clause(_LOOKS_LIKE_RE, a, b)
+        ):
+            continue
+        return True
+    return False
+
+
 #: A detector per ``forbidden_claims`` id: does one sentence make that claim
 #: about the result of that tool, in this run? An id without one (the
 #: contract's ``simple_random_interval_for_stratified_design``: the package's
@@ -3750,6 +4293,9 @@ FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] =
     "more_accurate_without_its_test": _more_accurate_without_its_test,
     "zone_for_a_class_map": _zone_for_a_class_map,
     "accuracy_not_measured": _accuracy_not_measured,
+    "two_map_design_across_dates": _two_map_design_across_dates,
+    "whole_map_rate_for_a_zone": _whole_map_rate_for_a_zone,
+    "mostly_edges": _mostly_edges,
 }
 
 

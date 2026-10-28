@@ -52,6 +52,14 @@ def test_soul_routes_a_direct_model_runs_map_to_the_scores_provider() -> None:
     assert "olmoearth_scores_from_file" in text
 
 
+def test_soul_says_which_scores_file_seed_from_map_takes() -> None:
+    """Agent trial 12 (N4/files run 6) offered seed_from_map on a scores file
+    no model run's GeoTIFF wrote."""
+    text = " ".join(load_soul().split())  # the rule wraps across lines
+    assert "seed_from_map takes only that scores file" in text
+    assert "never another scores file, inline scores or a Studio result" in text
+
+
 def test_soul_states_numbers_as_the_tools_returned_them() -> None:
     """exp86 round 1: derived ratios ("3/46 ~ 6.5%"), a wrong subtraction ("47
     dropped") and a figure quoted from a tool's description ("51-70%")."""

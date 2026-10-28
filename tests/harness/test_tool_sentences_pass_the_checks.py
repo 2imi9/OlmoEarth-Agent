@@ -47,6 +47,8 @@ _NOTES = (
     "next_steps",
     "design_note",
     "design_requirement",
+    "not_for_these_maps",
+    "strata_meaning",
 )
 
 
@@ -291,6 +293,48 @@ async def test_a_plan_its_estimate_and_its_certification_pass(design: str) -> No
     cert_args = {"design_path": plan["design_path"], "wrong": wrong, "alpha": 0.05}
     certified = await _call("olmoearth_certify_zone", cert_args)
     _assert_passes("olmoearth_certify_zone", cert_args, certified)
+
+
+@pytest.mark.asyncio
+async def test_agent_trial_12s_fixes_in_the_tools_own_words_pass() -> None:
+    """The class plan's per-stratum note, the user_vs_producer fact and its
+    must_state, and a zone call that certified nothing (its whole-map
+    estimate naming the smallest zone tested, beside
+    whole_map_rate_for_a_zone): an answer made of them is not flagged."""
+    pytest.importorskip("oe_inferencex.estimate")
+    # The map calls 1,200 windows class 0, 400 class 1 and 400 class 2; 300
+    # of the windows it calls 2 are class 1 on the ground.
+    map_class = [0] * 1200 + [1] * 400 + [2] * 400
+    truth = [0] * 1200 + [1] * 400 + [2 if i % 4 == 0 else 1 for i in range(400)]
+    rows = [[3.0 if k == c else 0.0 for k in range(3)] for c in map_class]
+    plan_args = {"scores": rows, "budget": 300, "design": "class"}
+    plan = await _call("olmoearth_plan_label_sample", plan_args)
+    assert "per_stratum" in plan
+    _assert_passes("olmoearth_plan_label_sample", plan_args, plan)
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    reference = [truth[i] for i in idx]
+    est_args = {
+        "design_path": plan["design_path"],
+        "wrong": [int(r != map_class[i]) for r, i in zip(reference, idx)],
+        "reference": reference,
+        "n_classes": 3,
+    }
+    estimate = await _call("olmoearth_estimate_map_error", est_args)
+    assert "user_vs_producer" in {f["id"] for f in estimate["facts"]}
+    _assert_passes("olmoearth_estimate_map_error", est_args, estimate)
+    random_args = {"scores": _map(), "budget": 300, "design": "random"}
+    random_plan = await _call("olmoearth_plan_label_sample", random_args)
+    _assert_passes("olmoearth_plan_label_sample", random_args, random_plan)
+    cert_args = {
+        "design_path": random_plan["design_path"],
+        "wrong": [int(k % 3 == 0) for k in range(300)],
+        "alpha": 0.05,
+    }
+    nothing = await _call("olmoearth_certify_zone", cert_args)
+    assert nothing["certified"] is False
+    ids = {c["id"] for c in nothing["forbidden_claims"]}
+    assert rules.WHOLE_MAP_RATE_FOR_A_ZONE in ids
+    _assert_passes("olmoearth_certify_zone", cert_args, nothing)
 
 
 @pytest.mark.asyncio

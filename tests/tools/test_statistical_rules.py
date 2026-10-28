@@ -24,14 +24,28 @@ from typing import Any
 import pytest
 from pytest_httpx import HTTPXMock
 
+from olmoearth_agent.analysis.output_contract import MUST_STATE_MAX_WORDS
 from olmoearth_agent.analysis.review_set import margins
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall, ToolSpec
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import (
+    CLASS_MAP,
+    DESIGN_INTERVALS,
+    DESIGN_INTERVALS_NOMINAL,
+    DRAWN_EXACT,
+    DRAWN_ON_ITS_OWN_INTERVAL,
+    MAX_MISSED_STATED,
+    STRATA_MEANING,
+    USER_VS_PRODUCER_OPENING,
+    Population,
+    _file_class_names,
     _jsonable,
+    _per_stratum,
+    _user_vs_producer,
     _weakest_classes,
+    _whole_map_estimate,
     build_estimation_tools,
 )
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
@@ -111,6 +125,9 @@ CONTRACT_IDS = {
     "more_accurate_without_its_test",
     "zone_for_a_class_map",
     "accuracy_not_measured",
+    "two_map_design_across_dates",
+    "whole_map_rate_for_a_zone",
+    "mostly_edges",
 }
 
 
@@ -362,9 +379,12 @@ async def test_a_plan_states_its_next_steps_by_design() -> None:
         rules.CERTIFICATION_GUARANTEED,
     ]
     assert "facts" not in stratified
-    # A random sheet's first rows are a smaller random sample: no subset claim.
+    # A random sheet's first rows are a smaller random sample, a fallback only:
+    # its design file's routes need every row (agent trial 12, N2/cluster run
+    # 23), so every plan forbids calling part of the sheet enough.
     assert _ids(random_plan) == [
         rules.ERROR_RATE_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
         rules.CERTIFICATION_GUARANTEED,
     ]
     assert [f["id"] for f in random_plan["facts"]] == ["prefix_is_random_sample"]
@@ -405,9 +425,11 @@ async def test_a_stratified_sheet_lists_its_strata_least_confident_first() -> No
 @pytest.mark.asyncio
 async def test_a_random_sheets_first_rows_are_a_smaller_random_sample() -> None:
     """exp87 build review: a random design's sheet is in the package's random
-    draw order, so its first k rows are a simple random sample of size k; the
-    plan states that fact instead of forbidding a prefix, and the route it
-    names estimates one."""
+    draw order, so its first k rows are a simple random sample of size k, and
+    the route the plan names estimates one. Agent trial 12 (N2/cluster run
+    23) read that fallback, stated first, as "A partial labelling is fine":
+    the sentence now leads with every row, which the design file's routes
+    need, and the plan forbids calling part of the sheet enough."""
     plan = await _plan("random")
     rows = _sheet(plan)
     drawn = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
@@ -417,11 +439,34 @@ async def test_a_random_sheets_first_rows_are_a_smaller_random_sample() -> None:
     assert prefix["n_rows"] == 300
     assert prefix["estimate_prefix_with"] == "window_indices and scores"
     sentence = prefix["sentence"]
-    assert "labelling only its first k rows" in sentence
-    assert "with k fixed before any label is seen" in sentence
+    # Only the routes this plan has: a plain random plan gets a certified
+    # zone but no certificate, which needs seed_from_map (the step 11 review).
+    assert sentence.startswith(
+        "With design_path, olmoearth_estimate_map_error and "
+        "olmoearth_certify_zone need every one of the sheet's 300 rows labelled."
+    )
+    assert "olmoearth_write_certificate" not in sentence
+    fallback = sentence.index("Only as a fallback if labelling stops early")
+    assert sentence.index("every one of the sheet's") < fallback
+    # A stop that does not depend on the labels, never one decided by what
+    # they show (optional stopping; the step 11 review).
+    assert rules.STOP_NOT_ON_THE_LABELS in sentence
+    assert "never because of what they show" in sentence
+    assert "the first k rows labelled before the stop" in sentence
     assert "the estimate stays unbiased and its interval widens" in sentence
     assert "window_indices with the same scores" in sentence
-    assert "with design_path it needs every row labelled" in sentence
+    assert sentence.endswith("they give no certified zone.")
+    assert "certificate" not in sentence  # not a certificate's plan
+    why = _why(plan, rules.SUBSET_LABELLING_SUFFICIENT)
+    assert why.startswith(
+        "label every row of the sheet: with design_path, "
+        "olmoearth_estimate_map_error and olmoearth_certify_zone need every row"
+    )
+    assert "olmoearth_write_certificate" not in why
+    assert "a partial labelling is not fine for this plan" in why
+    assert "only as a fallback when labelling stops early" in why
+    assert rules.STOP_NOT_ON_THE_LABELS in why
+    assert why.endswith("and no certified zone")
     # The route works: the first 100 rows, estimated as a random sample.
     scores, truth = _map(2000, seed=11)
     first = order[:100]
@@ -453,9 +498,26 @@ async def test_a_single_stratum_design_is_a_random_draw_in_effect() -> None:
     assert "random sample in effect" in out["note"]
     assert _ids(out) == [
         rules.ERROR_RATE_WITHOUT_LABELS,
+        rules.SUBSET_LABELLING_SUFFICIENT,
         rules.CERTIFICATION_GUARANTEED,
     ]
-    assert _fact(out, "prefix_is_random_sample")["n_rows"] == 40
+    prefix = _fact(out, "prefix_is_random_sample")
+    assert prefix["n_rows"] == 40
+    # Its sheet is in random order in effect: the random design's reason.
+    why = _why(out, rules.SUBSET_LABELLING_SUFFICIENT)
+    assert "only as a fallback" in why
+    # But it is a confidence design, which olmoearth_certify_zone refuses, and
+    # no certificate's plan: only the estimate reads its design file (the
+    # step 11 review).
+    assert prefix["sentence"].startswith(
+        "With design_path, olmoearth_estimate_map_error needs every one of the "
+        "sheet's 40 rows labelled."
+    )
+    for text in (prefix["sentence"], why):
+        assert "olmoearth_certify_zone" not in text, text
+        assert "olmoearth_write_certificate" not in text, text
+        assert "certified zone" not in text, text
+    assert prefix["sentence"].endswith("its interval widens.")
 
 
 @pytest.mark.asyncio
@@ -470,6 +532,449 @@ async def test_a_plan_from_a_scores_file_names_the_file_route(tmp_path: Path) ->
     prefix = _fact(plan, "prefix_is_random_sample")
     assert prefix["estimate_prefix_with"] == "window_indices and scores_path"
     assert "window_indices with the same scores_path" in prefix["sentence"]
+
+
+def _one_hot(classes: list[int], width: int = 5) -> list[list[float]]:
+    """One score row per window, its arg-max the window's class."""
+    rows = []
+    for c in classes:
+        row = [0.0] * width
+        row[c] = 3.0
+        rows.append(row)
+    return rows
+
+
+#: A map that draws no window of class 3: 20, 100, 80 and 200 windows of
+#: classes 0, 1, 2 and 4 (agent trial 12's map had condition values [0, 1, 2,
+#: 4, 5, 6, 7, 8]).
+_NO_CLASS_3 = [0] * 20 + [1] * 100 + [2] * 80 + [4] * 200
+
+
+@pytest.mark.asyncio
+async def test_a_class_plan_names_each_stratums_class(tmp_path: Path) -> None:
+    """Agent trial 12 (N1/files, three runs) read stratum h as class h on a
+    map with no class 3, so class 4 got stratum 4's 471 windows instead of its
+    own 5,180. The class plan's result names each stratum's class, windows and
+    labels, pairwise the package's sample, and drops the bare strata_sizes and
+    allocation."""
+    args = {"budget": 200, "design": "class", "min_per_class": 20}
+    plan = await _result(
+        "olmoearth_plan_label_sample", {"scores": _one_hot(_NO_CLASS_3), **args}
+    )
+    sample = json.loads(Path(plan["design_path"]).read_text())["sample"]
+    assert sample["condition"]["values"] == [0, 1, 2, 4]
+    per_stratum = plan["per_stratum"]
+    assert [s["stratum"] for s in per_stratum] == [0, 1, 2, 3]
+    assert [s["class"] for s in per_stratum] == sample["condition"]["values"]
+    assert [s["windows"] for s in per_stratum] == sample["sizes"]
+    assert sample["sizes"] == [20, 100, 80, 200]
+    assert [s["labels"] for s in per_stratum] == sample["allocation"]
+    assert sum(s["labels"] for s in per_stratum) == 200
+    assert "strata_sizes" not in plan and "allocation" not in plan
+    assert all("class_name" not in s for s in per_stratum)  # inline scores
+    # Each listed window's stratum is the class per_stratum gives it.
+    by_stratum = {s["stratum"]: s["class"] for s in per_stratum}
+    assert plan["windows"]
+    for window in plan["windows"]:
+        assert by_stratum[window["stratum"]] == window["map_class"]
+    assert "stratum h need not be class h" in plan["design_note"]
+    # A scores file that names its classes names each stratum's, and the
+    # design file keeps the names for the estimate's per-class facts.
+    names = {"0": "water", "1": "trees", "2": "grass", "3": "flooded", "4": "crops"}
+    path = tmp_path / "named.json"
+    path.write_text(json.dumps({"scores": _one_hot(_NO_CLASS_3), "classes": names}))
+    named = await _result(
+        "olmoearth_plan_label_sample", {"scores_path": str(path), **args}
+    )
+    assert [s.get("class_name") for s in named["per_stratum"]] == [
+        "water",
+        "trees",
+        "grass",
+        "crops",
+    ]
+    design = json.loads(Path(named["design_path"]).read_text())
+    assert design["population"]["class_names"] == names
+
+
+def test_a_scores_files_class_names_leave_out_what_is_no_code_and_name() -> None:
+    """The step 11 review: "²" passes ``str.isdigit`` but ``int`` cannot read
+    it, so one such key made every plan from that scores file fail. The
+    names only label strata and classes: a bad entry is left out."""
+    assert _file_class_names({"²": "x", "-1": "y", "0": 5, "1": " trees "}) == {
+        1: "trees"
+    }
+    # an Arabic-Indic three: str.isdecimal and int both read it
+    assert _file_class_names({"\u0663": "grass"}) == {3: "grass"}
+    assert _file_class_names(["water", "", None]) == {0: "water"}
+    assert _file_class_names("water") == {}
+    assert _file_class_names(None) == {}
+
+
+@pytest.mark.asyncio
+async def test_a_plan_on_a_scores_file_with_a_bad_class_key_still_runs(
+    tmp_path: Path,
+) -> None:
+    """A scores file whose ``classes`` holds keys that are no class code
+    still plans; only the classes it names are named."""
+    names = {"²": "water", "1": "trees", "x": "grass", "-2": "crops"}
+    path = tmp_path / "odd.json"
+    path.write_text(json.dumps({"scores": _one_hot(_NO_CLASS_3), "classes": names}))
+    plan = await _result(
+        "olmoearth_plan_label_sample",
+        {
+            "scores_path": str(path),
+            "budget": 200,
+            "design": "class",
+            "min_per_class": 20,
+        },
+    )
+    assert [s.get("class_name") for s in plan["per_stratum"]] == [
+        None,
+        "trees",
+        None,
+        None,
+    ]
+    design = json.loads(Path(plan["design_path"]).read_text())
+    assert design["population"]["class_names"] == {"1": "trees"}
+
+
+@pytest.mark.asyncio
+async def test_a_confidence_plan_keeps_its_strata_and_says_what_they_are() -> None:
+    """The confidence and proportional designs' strata are the package's
+    quantile strata of the margin, stratum 0 the least confident: their sizes
+    and labels stay as lists, with what they list."""
+    for design in ("confidence", "proportional"):
+        plan = await _plan(design)
+        sample = json.loads(Path(plan["design_path"]).read_text())["sample"]
+        assert plan["strata_sizes"] == sample["sizes"]
+        assert plan["allocation"] == sample["allocation"]
+        assert plan["strata_meaning"] == STRATA_MEANING
+        assert "stratum 0 the least confident" in plan["strata_meaning"]
+        assert "per_stratum" not in plan
+    random_plan = await _plan("random")
+    keys = {"strata_sizes", "allocation", "strata_meaning", "per_stratum"}
+    assert not keys & set(random_plan)
+
+
+def _under_drawn() -> tuple[list[int], list[int]]:
+    """2,000 windows the map calls class 0 (1,200), 1 (400) and 2 (400).
+
+    On the ground the windows the map calls 0 and 1 are right, and 300 of the
+    400 it calls 2 are class 1: class 1's user's accuracy is 1 and its
+    producer's 400 of 700, its share drawn too little (20% of the map for 35%
+    of the ground); class 0's are both 1, its share drawn as it is.
+    """
+    map_class = [0] * 1200 + [1] * 400 + [2] * 400
+    truth = [0] * 1200 + [1] * 400 + [2 if i % 4 == 0 else 1 for i in range(400)]
+    return map_class, truth
+
+
+def _missed(c: Any, producer: dict[str, Any]) -> str:
+    """The must_state sentence of a class whose producer's accuracy lies below:
+    the producer's side only (the step 11 review), the class named once."""
+    return (
+        f"Class {c}: the map finds only {rules.percent(producer['low'])} to "
+        f"{rules.percent(producer['high'])} of the class's ground "
+        "(producer's accuracy); it misses the rest."
+    )
+
+
+def test_a_class_right_where_mapped_but_under_drawn_is_named() -> None:
+    """Agent trial 12 (N3/files, three runs) called class 4 well mapped on its
+    user's accuracy (93.3%) while the same result gave it a valid producer's
+    accuracy of 60.2% to 76.8% and its share drawn too little. On a per-class
+    table of the package (estimate_per_class(valid=True), a class design),
+    the fact names the class with both intervals as the package gives them,
+    asks for one must_state, and leaves out a class whose intervals overlap
+    and whose share is drawn within."""
+    map_class, truth = _under_drawn()
+    sample = dict(
+        estimate.sample_for_estimation(
+            [3.0] * len(map_class),
+            300,
+            design="condition",
+            seed=4,
+            condition=map_class,
+            class_floor=50,
+        )
+    )
+    # marked as the agent's class design marks it (the package reads its
+    # strata as the map's classes)
+    sample["condition"] = {**sample["condition"], "by": "map class"}
+    reference = [truth[i] for i in sample["indices"].tolist()]
+    table = _jsonable(
+        estimate.estimate_per_class(
+            sample, reference, map_class, n_classes=3, valid=True
+        )
+    )
+    rows = table["per_class"]
+    user = rows["1"]["valid"]["user_accuracy"]
+    producer = rows["1"]["valid"]["producer_accuracy"]
+    assert producer["high"] < user["low"]  # the package's intervals, apart
+    fact, stated = _user_vs_producer(table, {0: "trees", 1: "water", 2: "grass"})
+    assert fact is not None and fact["id"] == "user_vs_producer"
+    named = {entry["class"]: entry for entry in fact["classes"]}
+    one = named[1]
+    assert one["producer_below_user"] is True and one["intervals"] == "valid"
+    for key in ("estimate", "low", "high"):
+        assert one["user_accuracy"][key] == user[key], key
+        assert one["producer_accuracy"][key] == producer[key], key
+    # The class design's exact flag, which holds for all classes together,
+    # is read before the valid one, which holds on its own (the step 11
+    # review).
+    share = rows["1"]["reference_share_exact"]
+    assert rows["1"]["drawn"] == "too little"
+    assert one["drawn"]["flag"] == "too little"
+    assert one["drawn"]["map_share"] == rows["1"]["map_share"]
+    assert one["drawn"]["reference_share"]["interval"] == "exact"
+    assert one["drawn"]["reference_share"]["low"] == share["low"]
+    assert one["drawn"]["reference_share"]["high"] == share["high"]
+    sentence = fact["sentence"]
+    assert sentence.startswith(USER_VS_PRODUCER_OPENING)
+    assert "each holding on its own at 95% and not jointly" in sentence
+    assert "Class 1 (water): what the map calls class 1 is right " in sentence
+    assert "of the ground that is class 1" in sentence
+    for value in (user["low"], user["high"], producer["low"], producer["high"]):
+        assert rules.percent(value) in sentence
+    assert "the map draws class 1 too little" in sentence
+    assert f"of the ground ({DRAWN_EXACT})" in sentence
+    # Class 0: right where mapped and found where it is, drawn within.
+    assert rows["0"]["drawn"] == "within"
+    assert 0 not in named
+    assert "Class 0" not in sentence and "class 0" not in sentence
+    # One must_state, for the class the map finds less of than it calls, from
+    # the producer's side only: the user's numbers are in every answer.
+    assert stated == [_missed(1, producer)]
+    assert rules.percent(user["low"]) not in stated[0]
+    assert "user's" not in stated[0]
+    assert all(len(s.split()) <= 25 for s in stated)
+    assert _user_vs_producer({"per_class": {}}) == (None, [])
+
+
+def test_a_drawn_flag_is_read_on_the_exact_interval_where_there_is_one() -> None:
+    """The step 11 review: the valid share interval holds on its own, not for
+    all classes together, so over many classes one is flagged by chance. The
+    exact flag (random and class designs) is read first; without it the valid
+    flag is read and said to be on that interval alone."""
+    valid_only = {
+        "map_share": 0.2,
+        "valid": {
+            "reference_share": {
+                "estimate": 0.35,
+                "low": 0.3,
+                "high": 0.4,
+                "drawn": "too little",
+            },
+        },
+    }
+    fact, stated = _user_vs_producer({"per_class": {"1": valid_only}})
+    assert fact is not None and stated == []  # no user's/producer's pair
+    (entry,) = fact["classes"]
+    assert entry["drawn"]["flag"] == "too little"
+    assert entry["drawn"]["reference_share"]["interval"] == "valid"
+    assert f"the ground ({DRAWN_ON_ITS_OWN_INTERVAL})." in fact["sentence"]
+    # Both given: the exact flag, here within, wins, and nothing is named.
+    both = {
+        **valid_only,
+        "reference_share_exact": {"estimate": 0.25, "low": 0.15, "high": 0.36},
+        "drawn": "within",
+    }
+    assert _user_vs_producer({"per_class": {"1": both}}) == (None, [])
+    # And the exact flag is named as such when it parts.
+    exact = {**both, "drawn": "too much"}
+    fact, _ = _user_vs_producer({"per_class": {"1": exact}})
+    assert fact is not None
+    assert fact["classes"][0]["drawn"]["reference_share"]["interval"] == "exact"
+    assert f"the ground ({DRAWN_EXACT})." in fact["sentence"]
+
+
+def test_at_most_two_classes_get_a_must_state() -> None:
+    """The valid interval's sentence comes first and the contract holds three,
+    so at most two classes get one (the step 11 review: the docs said
+    three)."""
+    assert MAX_MISSED_STATED == 2
+
+    def apart(high: float) -> dict[str, Any]:
+        return {
+            "valid": {
+                "user_accuracy": {"estimate": 0.95, "low": 0.9, "high": 1.0},
+                "producer_accuracy": {
+                    "estimate": high - 0.1,
+                    "low": high - 0.2,
+                    "high": high,
+                },
+            },
+        }
+
+    table = {"per_class": {str(c): apart(0.5 + 0.1 * c) for c in range(4)}}
+    fact, stated = _user_vs_producer(table)
+    assert fact is not None and len(fact["classes"]) == 4
+    # the lowest producer's accuracy first
+    assert [s.split(":")[0] for s in stated] == ["Class 0", "Class 1"]
+
+
+def _apart(producer_high: float) -> dict[str, Any]:
+    """A per-class row whose valid producer's interval lies below its user's."""
+    return {
+        "valid": {
+            "user_accuracy": {"estimate": 0.95, "low": 0.9, "high": 1.0},
+            "producer_accuracy": {
+                "estimate": producer_high - 0.1,
+                "low": producer_high - 0.2,
+                "high": producer_high,
+            },
+        },
+    }
+
+
+def test_a_class_map_names_its_classes_as_it_writes_them() -> None:
+    """The step 11 review: a Studio class map's classes are coded 0 to K-1
+    over the classes present, so a map writing ids [1, 2, 3, 5] codes its
+    class 5 as 3. per_stratum, the user_vs_producer sentences, the drawn
+    clause and the must_state name the class as the map writes it, the code
+    kept as "code"."""
+    written = [1, 2, 3, 5]
+    pop = Population(
+        margin=[0.0] * 8,
+        p1=[float("nan")] * 8,
+        map_class=[0, 0, 1, 1, 2, 2, 3, 3],
+        grid=None,
+        score_kind=CLASS_MAP,
+        classes=list(written),
+    )
+    sample = {
+        "condition": {"values": [0, 1, 2, 3]},
+        "sizes": [2, 2, 2, 2],
+        "allocation": [1, 1, 2, 2],
+    }
+    strata = _per_stratum(sample, pop)
+    assert [(s["stratum"], s["class"], s["code"]) for s in strata] == [
+        (0, 1, 0),
+        (1, 2, 1),
+        (2, 3, 2),
+        (3, 5, 3),
+    ]
+    sizes = [(s["windows"], s["labels"]) for s in strata]
+    assert sizes == [(2, 1), (2, 1), (2, 2), (2, 2)]
+    assert all("class_name" not in s for s in strata)
+    # Code 3 is class 5: its producer's accuracy lies below its user's, and
+    # the map draws it too little.
+    row = {
+        **_apart(0.6),
+        "map_share": 0.2,
+        "reference_share_exact": {"estimate": 0.35, "low": 0.3, "high": 0.4},
+        "drawn": "too little",
+    }
+    fact, stated = _user_vs_producer({"per_class": {"3": row}}, written=written)
+    assert fact is not None
+    (entry,) = fact["classes"]
+    assert (entry["class"], entry["code"]) == (5, 3)
+    sentence = fact["sentence"]
+    assert "Class 5: what the map calls class 5 is right " in sentence
+    assert "of the ground that is class 5" in sentence
+    assert "the map draws class 5 too little" in sentence
+    assert "class 3" not in sentence.lower()
+    producer = row["valid"]["producer_accuracy"]
+    assert stated == [_missed(5, producer)]
+    assert "class 3" not in stated[0].lower()
+    # A scores map's class is its id, with its file's name beside it.
+    fact, stated = _user_vs_producer({"per_class": {"3": row}}, {3: "water"})
+    assert fact is not None and fact["classes"][0]["class"] == 3
+    assert "code" not in fact["classes"][0]
+    assert "Class 3 (water): what the map calls class 3" in fact["sentence"]
+    assert stated == [_missed(3, producer)]
+
+
+def test_a_written_class_of_several_words_keeps_the_must_state_short() -> None:
+    """The step 11 checkers: a Studio class map writes its classes as labels,
+    often of several words, and a must_state that named the class twice took
+    "Permanent water bodies" to 26 words, so the contract raised and the
+    estimate failed. Named once, each such label fits and passes the contract
+    as the tool adds it; a label too long even so is left to the fact."""
+    row = _apart(0.6)
+    producer = row["valid"]["producer_accuracy"]
+    labels = (
+        "Permanent water bodies",
+        "Bare / sparse vegetation",
+        "Emergent Herbaceous Wetlands",
+    )
+    for label in labels:
+        fact, stated = _user_vs_producer({"per_class": {"0": row}}, written=[label])
+        assert fact is not None and fact["classes"][0]["class"] == label
+        assert f"Class {label}: what the map calls class {label}" in fact["sentence"]
+        assert stated == [_missed(label, producer)]
+        assert stated[0].count(label) == 1
+        assert all(len(s.split()) <= MUST_STATE_MAX_WORDS for s in stated), label
+        out = rules.add_contract({}, must_state=stated)
+        assert out["must_state"] == stated
+    too_long = "a class label written with far more words than the contract allows"
+    fact, stated = _user_vs_producer({"per_class": {"0": row}}, written=[too_long])
+    assert fact is not None and fact["classes"][0]["producer_below_user"] is True
+    assert f"Class {too_long}: what the map calls" in fact["sentence"]
+    assert stated == []
+
+
+def test_a_ranking_designs_intervals_are_named_nominal() -> None:
+    """The step 11 review: where the package's valid intervals were not
+    computed (too large), a class is read on the design's, which under the
+    confidence and proportional designs are Wilson's on the effective
+    sample size, nominal, never a plain 95% interval."""
+    row = {
+        "valid": {
+            "user_accuracy": {"estimate": 0.95, "low": None, "high": None},
+            "producer_accuracy": {"estimate": 0.5, "low": None, "high": None},
+        },
+        "user_accuracy": {"estimate": 0.95, "low": 0.9, "high": 1.0},
+        "producer_accuracy": {"estimate": 0.5, "low": 0.4, "high": 0.6},
+    }
+    for design, label in (
+        ("confidence", DESIGN_INTERVALS_NOMINAL),
+        ("proportional", DESIGN_INTERVALS_NOMINAL),
+        ("random", DESIGN_INTERVALS),
+    ):
+        fact, _ = _user_vs_producer({"design": design, "per_class": {"1": row}})
+        assert fact is not None and fact["classes"][0]["intervals"] == "design"
+        assert f"Class 1{label}: " in fact["sentence"], design
+    assert "nominal" in DESIGN_INTERVALS_NOMINAL
+    assert "nominal" not in DESIGN_INTERVALS
+
+
+@pytest.mark.asyncio
+async def test_an_estimate_states_what_a_classs_users_accuracy_leaves_out() -> None:
+    """Through the tool: the user_vs_producer fact, its must_state after the
+    valid interval's, and each ranked class's producer's accuracy and drawn
+    flag beside its user's accuracy, from the package's rows."""
+    map_class, truth = _under_drawn()
+    plan = await _result(
+        "olmoearth_plan_label_sample",
+        {"scores": _one_hot(map_class, width=3), "budget": 300, "design": "class"},
+    )
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    reference = [truth[i] for i in idx]
+    out = await _result(
+        "olmoearth_estimate_map_error",
+        {
+            "design_path": plan["design_path"],
+            "wrong": [int(r != map_class[i]) for r, i in zip(reference, idx)],
+            "reference": reference,
+            "n_classes": 3,
+        },
+    )
+    rows = out["per_class"]["per_class"]
+    user = rows["1"]["valid"]["user_accuracy"]
+    producer = rows["1"]["valid"]["producer_accuracy"]
+    contrast = _fact(out, "user_vs_producer")
+    assert 1 in {entry["class"] for entry in contrast["classes"]}
+    assert 0 not in {entry["class"] for entry in contrast["classes"]}
+    assert out["must_state"][1:] == [_missed(1, producer)]
+    assert rules.percent(user["low"]) not in out["must_state"][1]
+    _holds_to_the_contract(out)
+    weakest = _fact(out, "weakest_classes")
+    (one,) = [r for r in weakest["ranked"] if r["class"] == 1]
+    assert one["producer_accuracy"]["interval"] == "valid"
+    assert one["producer_accuracy"]["low"] == producer["low"]
+    assert one["producer_accuracy"]["high"] == producer["high"]
+    assert one["drawn"]["flag"] == "too little"
 
 
 @pytest.mark.asyncio
@@ -1020,6 +1525,7 @@ async def test_nothing_certified_says_what_follows_and_what_does_not() -> None:
         rules.POST_HOC_ALPHA,
         rules.RULE_SWITCH_AFTER_FAILURE,
         rules.CERTIFICATION_GUARANTEED,
+        rules.WHOLE_MAP_RATE_FOR_A_ZONE,
     ]
     assert "alpha=0.05 was fixed for this call" in _why(out, rules.POST_HOC_ALPHA)
     switch = _why(out, rules.RULE_SWITCH_AFTER_FAILURE)
@@ -1042,6 +1548,79 @@ async def test_nothing_certified_says_what_follows_and_what_does_not() -> None:
     )
     assert "not a certification" in whole["sentence"]
     assert "must_state" not in out
+    # Agent trial 12 (B6/files runs 8, 9, 13) explained the failure by the
+    # whole-map rate: it describes the whole map, and the evidence on the
+    # most confident part is the smallest zone tested, quoted from the
+    # result's own first level, nothing computed anew.
+    first = levels[0]
+    assert whole["sentence"].endswith(
+        "It describes the whole map, not its most confident part: the smallest "
+        f"zone tested, at coverage {first['coverage']:g} of the map, held "
+        f"{first['n_labelled_inside']} labels with {first['n_wrong_inside']} "
+        "wrong."
+    )
+    assert whole["smallest_zone_tested"] == {
+        "coverage": first["coverage"],
+        "n_labelled_inside": first["n_labelled_inside"],
+        "n_wrong_inside": first["n_wrong_inside"],
+    }
+    why = _why(out, rules.WHOLE_MAP_RATE_FOR_A_ZONE)
+    assert why.startswith(
+        "the whole-map error rate describes the whole map, not its most confident "
+        "part: set against alpha=0.05 it neither explains nor predicts"
+    )
+    assert why.endswith(
+        f"coverage {first['coverage']:g}: {first['n_labelled_inside']} labels, "
+        f"{first['n_wrong_inside']} wrong"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_certified_zone_carries_no_whole_map_rate_claim() -> None:
+    """The whole-map-rate claim and its sentence are of a call that certified
+    nothing: a certified zone's whole-map estimate is as before."""
+    plan = await _plan("random")
+    out = await _result(
+        "olmoearth_certify_zone",
+        {
+            "design_path": plan["design_path"],
+            "wrong": _labels_of(plan),
+            "alpha": 0.1,
+            "rule": "bonferroni",
+        },
+    )
+    assert out["certified"] is True
+    assert rules.WHOLE_MAP_RATE_FOR_A_ZONE not in _ids(out)
+    whole = _fact(out, "whole_map_estimate")
+    assert "most confident part" not in whole["sentence"]
+    assert "smallest_zone_tested" not in whole
+
+
+def test_the_whole_map_rate_claim_with_no_level_tested() -> None:
+    """A call that tested no level names no zone's counts, and points at the
+    field of its own result that says why: olmoearth_write_certificate's has
+    no levels_tested, so it names its note, or nothing (the step 11 review)."""
+    claim = rules.whole_map_rate_for_a_zone(0.05, None)
+    assert claim["id"] == rules.WHOLE_MAP_RATE_FOR_A_ZONE
+    assert claim["why"].endswith("; no zone was tested (levels_tested says why)")
+    noted = rules.whole_map_rate_for_a_zone(0.05, None, "note")
+    assert noted["why"].endswith("; no zone was tested (note says why)")
+    bare = rules.whole_map_rate_for_a_zone(0.05, None, None)
+    assert bare["why"].endswith("; no zone was tested")
+    for field in ("levels_tested", "note", None):
+        sentence = _whole_map_estimate(
+            {"estimate": 0.2, "low": 0.1, "high": 0.3, "n_labelled": 40},
+            certify=True,
+            uncertified=[],
+            why_field=field,
+        )["sentence"]
+        said = f" ({field} says why)" if field else ""
+        assert sentence.endswith(f"no zone was tested{said}.")
+    level = {"coverage": 0.15, "n_labelled_inside": 46, "n_wrong_inside": 3}
+    trial = rules.whole_map_rate_for_a_zone(0.05, level)
+    assert trial["why"].endswith(
+        "the smallest zone tested, coverage 0.15: 46 labels, 3 wrong"
+    )
 
 
 @pytest.mark.asyncio

@@ -786,6 +786,24 @@ def test_the_plan_schema_states_the_studio_grid_range() -> None:
     assert "2-16" in spec.parameters["properties"]["grid"]["description"]
 
 
+def test_the_plan_says_which_scores_file_seed_from_map_takes() -> None:
+    """Agent trial 12 (N4/files run 6) offered seed_from_map, before any call,
+    on a scores file no model run's GeoTIFF wrote: the description, the
+    parameter and the capability card's line say which file it takes."""
+    (tool,) = [
+        t
+        for t in build_estimation_tools()
+        if t.spec.name == "olmoearth_plan_label_sample"
+    ]
+    seed = tool.spec.parameters["properties"]["seed_from_map"]["description"]
+    for text in (tool.spec.description, seed):
+        assert "olmoearth_scores_from_file wrote from a model run's" in text, text
+    assert "any other scores file, inline scores or Studio" in tool.spec.description
+    assert tool.capability is not None
+    needs = "seed_from_map: a scores file from a model run's GeoTIFF"
+    assert needs in tool.capability.needs
+
+
 @pytest.mark.asyncio
 async def test_the_review_set_from_a_result_states_a_capped_grid(
     httpx_mock: HTTPXMock,

@@ -158,7 +158,11 @@ def test_the_card_fits_its_budget() -> None:
     1,600. The fixes of 28 October add 18 characters to
     olmoearth_estimate_map_error's line (", the valid interval first, then
     its design's" for " with its design's interval"): 5 tokens, on both
-    cards, within the budget.
+    cards, within the budget. The fixes of agent trial 12 leave
+    olmoearth_plan_label_sample's line at 425 characters: seed_from_map's
+    need (57 with its separator) in place of "; save the design" (17),
+    "(no confidence)" (16), "for 'disagreement', " (4 net), "a Studio result
+    at grid 16 plans them all" shortened (17) and ", or" (3).
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)

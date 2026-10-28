@@ -320,7 +320,21 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
     sampled = await asyncio.to_thread(
         estimate.estimate_error_rate, design["sample"], wrong
     )
-    whole = _whole_map_estimate(_jsonable(sampled), certify=True)
+    # Nothing certified: as olmoearth_certify_zone says it, the whole-map rate
+    # is not the most confident part's, and the evidence on that part is the
+    # smallest zone tested (agent trial 12, B6; the step 11 review found this
+    # result without it).
+    certified = zone.get("coverage") is not None
+    levels = list(_jsonable(mine.get("levels") or []))
+    # This result has no levels_tested: the package's note says why no level
+    # was tested (the step 11 review).
+    why_field = "note" if zone.get("note") else None
+    whole = _whole_map_estimate(
+        _jsonable(sampled),
+        certify=True,
+        uncertified=None if certified else levels,
+        why_field=why_field,
+    )
     out: dict[str, Any] = {
         "available": True,
         "design_path": design_path,
@@ -333,7 +347,7 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
         "n_labelled": zone.get("n_labelled"),
         "n_population": zone.get("n_population"),
         "labels_sha256": labels_sha256(wrong),
-        "certified": zone.get("coverage") is not None,
+        "certified": certified,
     }
     if not out["certified"]:
         out.update(
@@ -354,7 +368,12 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
             must_state=[
                 "No zone was certified on these labels; no certificate was written."
             ],
-            forbidden_claims=[rules.post_hoc_alpha(alpha)],
+            forbidden_claims=[
+                rules.post_hoc_alpha(alpha),
+                rules.whole_map_rate_for_a_zone(
+                    alpha, levels[0] if levels else None, why_field
+                ),
+            ],
         )
     item = await asyncio.to_thread(_build, cert, zone_path, bundle, date)
     props = item["properties"]

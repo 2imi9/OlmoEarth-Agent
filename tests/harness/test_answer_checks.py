@@ -37,6 +37,7 @@ from olmoearth_agent.harness.checks import (
     run_checks,
     sentences,
 )
+from olmoearth_agent.tools.estimation import _user_vs_producer
 
 
 def _record(name: str, result: dict[str, Any], **arguments: Any) -> ToolRecord:
@@ -1021,6 +1022,12 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "A third dated map would settle which is right.",
             "Label a sample against a reference for each year, or run a third date "
             "and look at the trajectory.",
+            # agent trial 12, B7/files runs 7 and 12: another unlabelled map or
+            # inference, whatever its date, is no reference
+            "Compare these against another unlabeled map of the same period to see "
+            "whether differences persist across models.",
+            "or use a same-date third inference to separate change from error",
+            "Another map at the same date would tell change from error.",
         ],
         [
             "Another date does not settle it.",
@@ -1032,6 +1039,30 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "imagery and the earlier map against 2022 imagery.",
             "A reference dated to either the earlier image or the later image "
             "would settle it.",
+            # agent trial 12: the rule, stated
+            "Each map needs a reference of its own date.",
+            "Labels dated to each map's date would settle it.",
+            # the tools' not_for_these_maps, its second sentence
+            "another unlabelled map or inference, of any date, cannot tell change "
+            "from error.",
+            # the step 11 review: what settles it sits in another clause, a
+            # relative "which", and map B named by a copula
+            "Another unlabelled map would only add a third opinion, but which map "
+            "is right needs labels of each map's date.",
+            "Map B is a later inference, which is why a difference may be a change "
+            "on the ground.",
+            "The more confident side is just another prediction, so it does not "
+            "decide which map is right.",
+            # the step 11 checkers: map B named by a verb of origin, "would
+            # only show", and imagery of each map's own date
+            "Because map B comes from a later inference, check each map against "
+            "labels of its own date.",
+            "Map B is from a later model run that may tell flooded fields from "
+            "open water differently.",
+            "Another unlabelled map would only show where three maps disagree; it "
+            "cannot say which is right.",
+            "Another image from each map's own date, labelled by a reviewer, would "
+            "settle which map is right.",
         ],
     ),
     # exp86 round 8 (B3/studio): r = -0.02 over 25 cells, 95% interval -0.41
@@ -1257,8 +1288,38 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             # a bound beside the promise is no bound of the test (the fix-r8 review)
             "A random design guarantees you a certified zone, and the guarantee "
             "holds only at alpha 0.05.",
+            # agent trial 12, B6/files run 9 and B4/cluster run 18: a certified
+            # zone as a new plan's purpose, and an "if" about the user's wish,
+            # which is no hedge on the outcome
+            "To get a certified zone, plan a **new** random design fixed in advance "
+            "— `olmoearth_plan_label_sample(design='random')` with a larger budget "
+            "and your chosen alpha/delta before any new labels are seen — then "
+            "label those windows and certify again.",
+            "If you also want a certifiable zone, tell me now and I'll draw a second "
+            "`random` plan before any labelling starts.",
+            # the step 11 checkers: a "could" past the dash is about the user's
+            # labelling, not a hedge on the outcome
+            "To get a certified zone, plan a new random design fixed in advance — "
+            "then you could label those windows and certify again.",
         ],
         [
+            # agent trial 12: the tool's words
+            "A new random plan makes a certified zone possible, not certain.",
+            "If you want a certified zone, a new random plan could give one if its "
+            "labels show few errors.",
+            # the step 11 review: the hedge after a colon or a ", but" (the
+            # plan's next steps joined)
+            "To get a certified zone, plan a new random design fixed before "
+            "labelling: a random design makes a certified zone possible, not "
+            "certain.",
+            "To get a certified zone, plan a new random design fixed in advance, "
+            "but it may certify nothing.",
+            # the step 11 checkers: a requirement worded with "must" or "only"
+            "To get a certified zone, the labels must come from a random design "
+            "fixed before labelling.",
+            "To get a certified zone, only a random design fixed before labelling "
+            "qualifies.",
+            "A random plan is the only kind that can yield a certifiable zone.",
             # the test's own guarantee (the fix-r8 review)
             "The random-design test guarantees that the certified zone's error is "
             "at most alpha, except with probability delta.",
@@ -1394,6 +1455,138 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "If it is 94% accurate, the flood extent holds.",
         ],
     ),
+    # Agent trial 12 (B3/cluster run 5, B7/files run 11): a disagreement design
+    # offered for two maps of different times, which the plan refuses.
+    "two_map_design_across_dates": (
+        [
+            "or plan a disagreement-based labeling budget to focus review effort.",
+            "after which I could run `olmoearth_plan_label_sample` "
+            '(design="disagreement") and `olmoearth_estimate_map_error` on the '
+            "reviewer's per-window judgments",
+            "Label the windows where they differ to see which is more accurate.",
+            "I can draw a disagreement sample of 100 windows for you to label.",
+            # a refusal in an earlier clause is of something else (the step 11
+            # review)
+            "The plan was refused without dates, so I can draw a disagreement "
+            "sample.",
+        ],
+        [
+            "The disagreement design is not available for these maps: they "
+            "describe different times.",
+            # the step 11 review: a refusal in a later clause, or in other words
+            "design='disagreement' says which map is more accurate, but "
+            "olmoearth_plan_label_sample refuses it for these two maps of different "
+            "times.",
+            "A disagreement design would answer which map is more accurate, but not "
+            "for maps of different times.",
+            "The disagreement design is unavailable for these maps because they "
+            "describe different times.",
+            "olmoearth_plan_label_sample rejects design='disagreement' for maps of "
+            "different times.",
+            "Two maps of different times rule out a disagreement design.",
+            "olmoearth_plan_label_sample refused design='disagreement' because the "
+            "maps are of different times.",
+            # the tools' not_for_these_maps, and the class-map note
+            "design='disagreement' (which map is more accurate) needs two maps of "
+            "one time, so olmoearth_plan_label_sample refuses it for these two maps "
+            "given these dates as date_a and date_b (do not call it without them);",
+            "A class map can be compared with another map of the same time "
+            "(olmoearth_plan_label_sample with design='disagreement').",
+            "Measure each map on its own, against a reference of its own date.",
+            # the step 11 checkers: the design's flaw across dates, the tool's
+            # own reason
+            "Because these maps are from 2022 and 2024, a disagreement sample "
+            "would mix real change with map error.",
+            "For maps two years apart, a disagreement design mixes change on the "
+            "ground with map error, so each map gets its own sample.",
+            "A disagreement-based estimate would be biased here, because some "
+            "differing windows may have changed on the ground.",
+        ],
+    ),
+    # Agent trial 12 (B6/files runs 8, 9 and 13): the whole-map rate set
+    # against the alpha bar as why no zone certified (the run's alpha is 0.05).
+    "whole_map_rate_for_a_zone": (
+        [
+            "nowhere near the 5% bar anywhere on the map",
+            "This is expected: the same 300 labels put the whole-map error at "
+            "**23.0%** (95% interval 18.4%–28.1%, exact hypergeometric interval on "
+            "the finite population of 15813 windows), far above the 5% bar you "
+            "want.",
+            "well above the 5% bar, so this outcome is expected rather than "
+            "unlucky.",
+            "The map is above alpha everywhere.",
+            "Overall the error rate is far above 5%, so no zone could certify.",
+        ],
+        [
+            "The whole-map error rate is 23.0% (18.4% to 28.1%).",
+            "No zone certified at alpha 0.05: the smallest zone tested, 15% of the "
+            "map, had 3 wrong of 46 labels.",
+            "The whole-map rate describes the whole map, not its most confident "
+            "part.",
+            # the zone's own count against the bar is the tool's evidence
+            "The smallest zone tested held 3 wrong of 46 labels, above the 5% bar "
+            "at that sample size, so no zone certified.",
+            "The whole-map rate is not why no zone certified: it is above the 5% "
+            "bar, but the zones tested are the most confident windows.",
+            # the step 11 review: the rule's own reason reworded, its "every
+            # part" or explanation negated
+            "The whole-map error rate (23.0%) is above alpha, but it neither "
+            "explains nor predicts that no zone certified.",
+            "The whole-map error rate (23.0%) is above alpha, but that does not "
+            "explain why no zone certified.",
+            "The 23.0% whole-map rate is far above the 5% bar, but it does not "
+            "explain why no zone certified.",
+            "The whole-map rate is above the 5% bar, but that does not mean every "
+            "part of the map is.",
+            # the zone's evidence in other words, an opening "Overall," and the
+            # sample drawn "across the map"
+            "Since the most confident 15% of the map still had 3 wrong of 46 "
+            "labels, its upper bound is above the 5% bar, and no zone certified.",
+            "Each level's upper bound is above alpha = 0.05, so nothing certified.",
+            "The most confident windows still held 3 errors in 46 labels, above "
+            "the 5% bar, so no zone certified.",
+            "Overall, the smallest zone tested had 3 wrong of 46 labels, above the "
+            "5% bar at that size, so no zone certified.",
+            "The 300 labels, drawn at random across the map, put the whole-map "
+            "error rate at 23.0%, above the 5% bar.",
+            # the step 11 checkers: the whole map named in another clause, to
+            # set it aside, beside the zone's evidence
+            "The smallest zone tested had 3 wrong of 46 labels, above the 5% bar, "
+            "so it did not certify, whatever the whole-map rate says.",
+            "Since the smallest zone tested held 3 wrong of 46 labels, its bound "
+            "stayed above the 5% bar, while the whole-map rate of 23.0% plays no "
+            "part in the test.",
+        ],
+    ),
+    # Agent trial 12 (B3/cluster run 25): the boundary shares read as "mostly
+    # edges"; with no interior counts in the record the claim is read as made.
+    "mostly_edges": (
+        [
+            "78.3% of differing windows touch a predicted-class boundary in map A "
+            "(vs 53.9% overall) — mostly edges, though not proven to be "
+            "region-level flips",
+            "The differences are mostly along class boundaries.",
+            "These are mainly boundary changes.",
+        ],
+        [
+            "The differences are not mostly edges: 57% lie in patches of 100 "
+            "windows or more.",
+            "78.3% of the differing windows touch a predicted-class boundary of map "
+            "A, against 53.9% of all windows.",
+            "Most differing windows lie in 8-connected patches of 100 or more.",
+            # the step 11 review: a question, a hedge and an example
+            "Mostly edges or whole regions? The patch counts answer it.",
+            "78.3% of the differing windows touch a boundary of map A, which might "
+            "look like mostly edges, but 57% of them lie in patches of 100 windows "
+            "or more.",
+            "A boundary share invites readings such as mostly edges.",
+            # the step 11 checkers: an appearance, then contradicted
+            "The boundary shares alone would suggest the differences lie mostly on "
+            "class edges, but 62.0% of them have every neighbour differing too.",
+            "At first glance the differences seem mostly at edges, but most "
+            "differing windows lie inside solid patches.",
+        ],
+    ),
 }
 
 
@@ -1471,6 +1664,119 @@ def test_a_forbidden_claim_is_flagged_and_its_negation_is_not(claim_id: str) -> 
         assert violations[0]["detail"] == f"{claim_id} (tool): the tool says so"
     for sentence in fine:
         assert check_forbidden_claims(sentence, run) == [], sentence
+
+
+#: Agent trial 12, N2/cluster run 23, of a seed_from_map plan drawn for a
+#: certificate.
+_PARTIAL_LABELLING = (
+    "A partial labelling is fine: labelling just the first k rows (k fixed in "
+    "advance) still gives an unbiased error rate with a wider interval."
+)
+
+
+def test_part_of_a_plans_sheet_offered_as_enough_is_flagged() -> None:
+    """A plan writes a design file, whose routes (the estimate, the zone, the
+    certificate) need every row of its sheet; the first rows of a random
+    sheet are a fallback only. Read about a plan's result (one with a
+    design_path), not about a comparison's subset claim."""
+    claim = [{"id": "subset_labelling_sufficient", "why": "x"}]
+    plan = _record(
+        "olmoearth_plan_label_sample",
+        {"design_path": "/w/design_random_300_smap.json", "forbidden_claims": claim},
+    )
+    run = _run(plan)
+    flagged = check_forbidden_claims(_PARTIAL_LABELLING, run)
+    assert [v["text"] for v in flagged] == [_PARTIAL_LABELLING]
+    for fine in (
+        "Label every row of the sheet; if you must stop early, the first k rows "
+        "still give an unbiased estimate, but no certificate.",
+        # The step 11 review: the word before "fine" was read as any word, so
+        # this negated sentence was flagged.
+        "A partial labelling is not fine for a certificate.",
+        "The first 100 rows are not enough for a certificate.",
+        "The first 100 rows are fine only as a fallback, with no certificate.",
+        "If labelling stops early for lack of time, not because the errors look "
+        "rare, the first 100 rows are fine as a fallback with no certificate.",
+        # The step 11 review: a warning about the first rows offers nothing
+        # (the plan's own reason, reworded), and an outcome hedge ("only if
+        # the labels show few errors") is no stop decided by the labels.
+        "Label every window in the sheet; labelling only the first rows biases "
+        "the estimate.",
+        "Labelling just the first 50 rows would cover class 0 only.",
+        "Labelling only the first 100 rows voids the certificate.",
+        "Label every row; a partial labelling is fine only as a fallback, and a "
+        "zone certifies only if the labels show few errors.",
+        # The step 11 checkers: a stop on the labels named as a fault (the
+        # prefix fact's own words), "even if" with the noun "end", and the
+        # first rows scoped to the least confident windows.
+        "Stopping once the errors look rare would bias the estimate, so a partial "
+        "labelling is fine only as a fallback for a stop forced by time.",
+        "Even if the labels look clean, keep going to the end of the sheet: a "
+        "partial labelling is fine only as a fallback for a stop forced by time.",
+        "Labelling only the first rows would work for the least confident "
+        "windows alone; the map's rate needs every row.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    for also in (
+        "Labelling only the first 100 rows is enough.",
+        "The first 100 rows are fine for the certificate.",
+        # A stop decided by what the labels show (optional stopping) voids
+        # the fallback's pass (the step 11 review).
+        "If labelling stops early once the errors look rare, the first 100 rows "
+        "are enough.",
+    ):
+        assert _flagged(check_forbidden_claims, also, run) == [also], also
+    compared = _run(_record("olmoearth_compare_review", {"forbidden_claims": claim}))
+    assert check_forbidden_claims(_PARTIAL_LABELLING, compared) == []
+    # A comparison listed before the plan lists the claim first; the plan of
+    # the run still counts (the step 11 review).
+    both = _run(_record("olmoearth_compare_review", {"forbidden_claims": claim}), plan)
+    flagged = check_forbidden_claims(_PARTIAL_LABELLING, both)
+    assert [v["text"] for v in flagged] == [_PARTIAL_LABELLING]
+
+
+#: Agent trial 12, B3/cluster run 25.
+_MOSTLY_EDGES = (
+    "78.3% of differing windows touch a predicted-class boundary in map A (vs "
+    "53.9% overall) — mostly edges, though not proven to be region-level flips"
+)
+
+
+def test_mostly_edges_is_read_against_every_comparisons_interior_share() -> None:
+    """Flagged while at least half of the differing windows are interior,
+    every neighbour on the grid differing too. A patch's size is not read: a
+    long strip along a class edge forms a large patch, and the trial's pair
+    had 57% of its differing windows in patches of 100 or more but only 12%
+    interior, so its sentence is not shown false there (the step 11 review).
+    Every comparison of the run that lists the claim is read, not only the
+    first: the sentence is flagged only when each is at or above the gate."""
+
+    def compared(interior: float, in_patches: float = 0.57) -> ToolRecord:
+        result = {
+            "differing_in_patches_ge_100": {
+                "n": 1,
+                "share": in_patches,
+                "min_windows": 100,
+            },
+            "differing_interior": {"n": 1, "share": interior},
+            "forbidden_claims": [{"id": "mostly_edges", "why": "x"}],
+        }
+        return _record("olmoearth_compare_review", result)
+
+    flagged = check_forbidden_claims(_MOSTLY_EDGES, _run(compared(0.6)))
+    assert [v["text"] for v in flagged] == [_MOSTLY_EDGES]
+    assert flagged[0]["detail"].startswith("mostly_edges (olmoearth_compare_review)")
+    # Trial 12's own numbers: 12% interior, 57% in patches of 100 or more.
+    assert check_forbidden_claims(_MOSTLY_EDGES, _run(compared(0.12, 0.57))) == []
+    assert check_forbidden_claims(_MOSTLY_EDGES, _run(compared(0.5))) != []
+    assert check_forbidden_claims(_MOSTLY_EDGES, _run(compared(0.49, 1.0))) == []
+    # Two comparisons (A/B, then A/C), in either order.
+    other = "For A and C the differences are mostly along class boundaries."
+    for pair in ((0.6, 0.2), (0.2, 0.6)):
+        run = _run(*(compared(share) for share in pair))
+        assert check_forbidden_claims(other, run) == [], pair
+    both = _run(compared(0.6), compared(0.7))
+    assert _flagged(check_forbidden_claims, other, both) == [other]
 
 
 def test_an_accuracy_figure_is_read_against_a_run_that_measured_one() -> None:
@@ -2160,6 +2466,42 @@ def test_only_the_contracts_must_state_sentences_are_read(
 
 def test_an_answer_that_does_not_report_the_result_is_not_held_to_it() -> None:
     assert check_must_state("I could not compare the maps.", _stating()) == []
+
+
+#: Agent trial 12 (N3/files, three runs; step 11, fix 4): class 4 called well
+#: mapped on its user's accuracy alone.
+_N3_SENTENCES = (
+    "The map does well on its two dominant classes (4 and 7 ...)",
+    "| 4 | 93.3% (97/104) | 86.7% – 97.2% | strong |",
+    "the two dominant classes (4 and 7) are well mapped (~93–94% correct)",
+)
+
+
+def test_users_accuracy_alone_does_not_state_what_the_map_misses() -> None:
+    """The step 11 review: with both sides' numbers in it, the must_state was
+    half user's accuracy, so every N3 answer, which reported that row, held
+    half its key terms and passed. Written from the producer's side, each
+    trial sentence, in a short answer that also states class 4's user's
+    accuracy, is flagged; an answer that states the producer's accuracy and
+    that the map misses ground of the class is not."""
+    # What the same result gave class 4: its valid intervals.
+    user = {"estimate": 0.933, "low": 0.867, "high": 0.972}
+    producer = {"estimate": 0.69, "low": 0.602, "high": 0.768}
+    valid = {"user_accuracy": user, "producer_accuracy": producer}
+    per_class = {"per_class": {"4": {"valid": valid}}}
+    _contrast, stated = _user_vs_producer(per_class)
+    (missed,) = stated
+    result = {"per_class": per_class, "must_state": [missed]}
+    run = _run(_record("olmoearth_estimate_map_error", result))
+    users = "Class 4's user's accuracy is 93.3% (86.7% to 97.2%)."
+    for sentence in _N3_SENTENCES:
+        answer = f"{users}\n\n{sentence}"
+        assert _flagged(check_must_state, answer, run) == [missed], sentence
+    stating = (
+        f"{users} Its producer's accuracy is only 60.2% to 76.8%: the map misses "
+        "ground that is class 4."
+    )
+    assert check_must_state(stating, run) == []
 
 
 # --- all of them -----------------------------------------------------------------

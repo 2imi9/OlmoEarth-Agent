@@ -89,6 +89,20 @@ ZONE_FOR_A_CLASS_MAP = "zone_for_a_class_map"
 #: olmoearth_certify_zone on labels of the map); the stakeholder report
 #: refuses a title or result typed with one.
 ACCURACY_NOT_MEASURED = "accuracy_not_measured"
+#: A disagreement design, plan, sample or budget offered for two maps of
+#: different times (agent trial 12, B3/cluster run 5 and B7/files run 11):
+#: labels where they differ cannot say which is more accurate across dates.
+TWO_MAP_DESIGN_ACROSS_DATES = "two_map_design_across_dates"
+#: The whole-map error rate set against alpha to explain or predict that no
+#: zone certified, or to say every part of the map is above alpha (agent
+#: trial 12, B6/files runs 8, 9 and 13): it describes the whole map, not its
+#: most confident part.
+WHOLE_MAP_RATE_FOR_A_ZONE = "whole_map_rate_for_a_zone"
+#: Two maps' differences called mostly edges or boundaries while most
+#: differing windows lie in large 8-connected patches (agent trial 12,
+#: B3/cluster run 25): a boundary share counts neighbours, not regions. The
+#: comparison emits it (``analysis.review_set.mostly_edges``).
+MOSTLY_EDGES = "mostly_edges"
 
 #: The contract's fixed ids: every forbidden claim a tool emits is one of them.
 FIXED_IDS = (
@@ -112,6 +126,9 @@ FIXED_IDS = (
     MORE_ACCURATE_WITHOUT_ITS_TEST,
     ZONE_FOR_A_CLASS_MAP,
     ACCURACY_NOT_MEASURED,
+    TWO_MAP_DESIGN_ACROSS_DATES,
+    WHOLE_MAP_RATE_FOR_A_ZONE,
+    MOSTLY_EDGES,
 )
 
 
@@ -316,19 +333,118 @@ def labels_in_studio_fact(
     )
 
 
-def subset_labelling_sufficient(
-    design: str, *, by_class: bool = False
-) -> dict[str, str]:
-    """Only a stratified sheet's full set of rows is its design.
+#: When the first rows of a random sheet stand in for it: a stop that does not
+#: depend on the labels already read. A stop decided by what they show (the
+#: errors look rare) is optional stopping, and the prefix is then no random
+#: sample of a size fixed before the labels (the step 11 review).
+STOP_NOT_ON_THE_LABELS = (
+    "for a reason that does not depend on the labels already read (time, "
+    "labour), never because of what they show"
+)
 
-    The package draws a stratified sample stratum by stratum, the least
-    confident (stratum 0) first, and the sheet keeps that order, so its first
-    rows are the least confident windows only. Emitted only for a design with
-    at least two strata: a random design's sheet is in random order, and a
-    prefix of it is a smaller random sample (:func:`prefix_is_random_sample`).
-    With ``by_class`` the strata are the map's classes (the class design), so
-    the sheet runs class by class and its first rows are one class only.
+
+def _design_file_routes(
+    design: str, *, certificate: bool, class_map: bool
+) -> tuple[str, str]:
+    """The tools that read a plan's design file, and what its first rows lack.
+
+    olmoearth_estimate_map_error reads every plan's design file;
+    olmoearth_certify_zone only a random design's of a map with confidence
+    (it refuses any other design and a class map); olmoearth_write_certificate
+    only a plan drawn with ``seed_from_map`` (``certificate``; it refuses any
+    other as ``NOT_FROM_MAP``). The step 11 review found every random-order
+    plan, a plain random one and a single-stratum confidence one included,
+    told the three tools needed its rows, which offered it routes the tools
+    refuse.
+
+    Returns
+    -------
+    tuple of str
+        The tools with their verb (``"... needs"`` or ``"... need"``), and
+        what a prefix of the sheet gives none of (``"certified zone or
+        certificate"``, ``"certified zone"``, ``"certificate"`` or ``""``).
     """
+    names = ["olmoearth_estimate_map_error"]
+    lacks: list[str] = []
+    if design == "random" and not class_map:
+        names.append("olmoearth_certify_zone")
+        lacks.append("certified zone")
+    if certificate:
+        names.append("olmoearth_write_certificate")
+        lacks.append("certificate")
+    verb = "needs" if len(names) == 1 else "need"
+    return f"{_names(names)} {verb}", " or ".join(lacks)
+
+
+def subset_labelling_sufficient(
+    design: str,
+    *,
+    by_class: bool = False,
+    random_order: bool = False,
+    route: str | None = None,
+    certificate: bool = False,
+    class_map: bool = False,
+) -> dict[str, str]:
+    """Every row of a plan's sheet is its design: a part is not enough.
+
+    Emitted with every plan, since every plan writes a design file and the
+    routes that read one (``design_path``) need every row labelled. The
+    package draws a stratified sample stratum by stratum, the least
+    confident (stratum 0) first, and the sheet keeps that order, so its first
+    rows are the least confident windows only. With ``by_class`` the strata
+    are the map's classes (the class design), so the sheet runs class by
+    class and its first rows are one class only.
+
+    With ``random_order`` (a random design, or a stratified one with a single
+    non-empty stratum) the sheet is in the package's random draw order: its
+    first rows are a smaller random sample (:func:`prefix_is_random_sample`),
+    but only as a fallback when labelling stops early for a reason that does
+    not depend on the labels read (:data:`STOP_NOT_ON_THE_LABELS`), estimated
+    through ``window_indices`` and ``route`` (the scores argument; ``None``
+    for a Studio result the plan sampled itself), with none of what the
+    full sheet's other routes give. Agent trial 12 (N2/cluster run 23) said
+    "A partial labelling is fine" of a ``seed_from_map`` plan drawn for a
+    certificate (``certificate``). The reason names only the routes this
+    plan has (:func:`_design_file_routes`): the certified zone for a random
+    design of a map with confidence (not a class map, ``class_map``), the
+    certificate for a ``seed_from_map`` plan. ``design`` "disagreement" is
+    the two-map design, graded only on its whole sheet.
+    """
+    if design == "disagreement":
+        return forbidden(
+            SUBSET_LABELLING_SUFFICIENT,
+            "write a class, or ? where it cannot be judged, on every row of the "
+            "sheet: olmoearth_estimate_map_error grades a design='disagreement' "
+            "plan only on its whole sheet, and a part of it labelled is no plan "
+            "of its own",
+        )
+    if random_order:
+        tools, lacks = _design_file_routes(
+            design, certificate=certificate, class_map=class_map
+        )
+        why = (
+            f"label every row of the sheet: with design_path, {tools} every row "
+            "labelled, so a partial labelling is not fine for this plan"
+        )
+        if certificate:
+            why += (
+                "; it was drawn with seed_from_map for a certificate, which needs "
+                "every row"
+            )
+        if route:
+            why += (
+                "; only as a fallback when labelling stops early, "
+                f"{STOP_NOT_ON_THE_LABELS}, are the first k rows labelled before "
+                "the stop a smaller random sample, estimated with window_indices "
+                f"and the same {route}, with a wider interval"
+                + (f" and no {lacks}" if lacks else "")
+            )
+        else:
+            why += (
+                "; a Studio result sampled by the plan has no scores to pass as "
+                "window_indices, so only the full sheet is estimated"
+            )
+        return forbidden(SUBSET_LABELLING_SUFFICIENT, why)
     if by_class:
         return forbidden(
             SUBSET_LABELLING_SUFFICIENT,
@@ -352,33 +468,62 @@ def subset_labelling_sufficient(
     )
 
 
-def prefix_is_random_sample(n_rows: int, route: str | None) -> dict[str, Any]:
-    """The ``prefix_is_random_sample`` fact: a random sheet's first rows are a random sample.
+def prefix_is_random_sample(
+    n_rows: int,
+    route: str | None,
+    *,
+    design: str = "random",
+    certificate: bool = False,
+    class_map: bool = False,
+) -> dict[str, Any]:
+    """The ``prefix_is_random_sample`` fact: every row, a prefix only as a fallback.
 
-    The package draws a random design without replacement in a random order
-    (``Generator.choice``, shuffled) and the sheet keeps that order, so its
-    first ``k`` rows, ``k`` fixed before any label is seen, are a simple
-    random sample of size ``k``: the estimate stays unbiased and its interval
-    widens. ``route`` is the scores argument (``"scores"`` or
-    ``"scores_path"``) that olmoearth_estimate_map_error takes with those rows
-    as ``window_indices``; with ``design_path`` it needs every row labelled,
-    and a Studio result sampled by the plan itself has no scores to pass.
+    The routes that read the design file (``design_path``) need every row
+    labelled, and the sentence names only the ones this plan has
+    (:func:`_design_file_routes`): olmoearth_estimate_map_error always,
+    olmoearth_certify_zone for a ``design`` "random" of a map with
+    confidence (not ``class_map``), olmoearth_write_certificate for a plan
+    drawn with ``seed_from_map`` (``certificate``). The sentence leads with
+    that requirement; agent trial 12 (N2/cluster run 23) read the fallback,
+    stated first, as "A partial labelling is fine" on a ``seed_from_map``
+    plan drawn for a certificate (``certificate``, which the sentence then
+    names). The package draws a random design without replacement in a
+    random order and the sheet keeps that order, so only as a fallback when
+    labelling stops early for a reason that does not depend on the labels
+    read (:data:`STOP_NOT_ON_THE_LABELS`; a stop decided by what they show
+    is optional stopping) are its first ``k`` rows a simple random sample of
+    size ``k``: the estimate stays unbiased and its interval widens, and they
+    give none of the certified zone and certificate the plan's other routes
+    give. ``route`` is the scores argument (``"scores"`` or
+    ``"scores_path"``) that olmoearth_estimate_map_error takes with those
+    rows as ``window_indices``; a Studio result sampled by the plan itself
+    has no scores to pass.
     """
-    sentence = (
-        f"The sheet's {n_rows} rows are in the package's random draw order, so "
-        "labelling only its first k rows, with k fixed before any label is seen, "
-        "is a smaller random sample: the estimate stays unbiased and its "
-        "interval widens."
+    tools, lacks = _design_file_routes(
+        design, certificate=certificate, class_map=class_map
     )
-    if route:
+    sentence = (
+        f"With design_path, {tools} every one of the sheet's {n_rows} rows labelled."
+    )
+    if certificate:
         sentence += (
-            " olmoearth_estimate_map_error takes those rows as window_indices "
-            f"with the same {route}; with design_path it needs every row labelled."
+            " This plan was drawn with seed_from_map for a certificate, which "
+            "needs every row labelled."
+        )
+    if route:
+        tail = f", and they give no {lacks}." if lacks else "."
+        sentence += (
+            " Only as a fallback if labelling stops early, "
+            f"{STOP_NOT_ON_THE_LABELS}: the sheet is in the package's random draw "
+            "order, so the first k rows labelled before the stop are a smaller "
+            "random sample; olmoearth_estimate_map_error takes them as "
+            f"window_indices with the same {route}, the estimate stays unbiased "
+            "and its interval widens" + tail
         )
     else:
         sentence += (
-            " olmoearth_estimate_map_error with design_path needs every row "
-            "labelled, so these tools estimate only the full sheet."
+            " Only the full sheet is estimated: a Studio result sampled by the "
+            "plan has no scores to pass as window_indices."
         )
     return fact(
         "prefix_is_random_sample",
@@ -440,6 +585,49 @@ def certification_guaranteed(detail: str | None = None) -> dict[str, str]:
         "none, and no design, sample size, budget or plan can promise a "
         "certified (or 'certifiable') region, or a zone of any size"
         + (f"; {detail}" if detail else ""),
+    )
+
+
+def says_why(field: str | None) -> str:
+    """The pointer " (FIELD says why)" to a result's field giving a reason, or ""."""
+    return f" ({field} says why)" if field else ""
+
+
+def whole_map_rate_for_a_zone(
+    alpha: float,
+    smallest: Mapping[str, Any] | None = None,
+    why_field: str | None = "levels_tested",
+) -> dict[str, str]:
+    """The whole-map rate neither explains nor predicts that no zone certified.
+
+    Emitted by ``olmoearth_certify_zone`` when nothing is certified. Agent
+    trial 12 (B6/files runs 8, 9 and 13) explained the failure by the
+    whole-map rate: "nowhere near the 5% bar anywhere on the map", "far
+    above the 5% bar you want", "well above the 5% bar, so this outcome is
+    expected". The zones tested are the map's most confident windows, and
+    the smallest of them, which the prefix rule tests first, held 3 wrong of
+    46 labels. ``smallest`` is the result's first level (``coverage``,
+    ``n_labelled_inside``, ``n_wrong_inside``), as the package gives it, or
+    ``None`` when no level was tested; ``why_field`` is then the result's
+    field that says why (``levels_tested`` in olmoearth_certify_zone's,
+    ``note`` in olmoearth_write_certificate's, which has no
+    ``levels_tested``: the step 11 review), or ``None`` for none.
+    """
+    if smallest:
+        evidence = (
+            "; the evidence on the most confident part is the smallest zone "
+            f"tested, coverage {float(smallest.get('coverage') or 0.0):g}: "
+            f"{smallest.get('n_labelled_inside')} labels, "
+            f"{smallest.get('n_wrong_inside')} wrong"
+        )
+    else:
+        evidence = "; no zone was tested" + says_why(why_field)
+    return forbidden(
+        WHOLE_MAP_RATE_FOR_A_ZONE,
+        "the whole-map error rate describes the whole map, not its most "
+        f"confident part: set against alpha={alpha:g} it neither explains nor "
+        "predicts that no zone certified, and it does not show that every part "
+        "of the map is above alpha" + evidence,
     )
 
 
@@ -869,6 +1057,46 @@ def across_dates(dates: dict[str, Any]) -> list[dict[str, str]]:
             )
         ),
     ]
+
+
+#: What two maps of different or overlapping times do not get, stated by
+#: ``olmoearth_compare_review`` as ``not_for_these_maps`` (agent trial 12:
+#: B3/cluster run 5 offered "a disagreement-based labeling budget"; B7/files
+#: runs 7 and 12 offered another unlabelled map of the same period and "a
+#: same-date third inference to separate change from error").
+NOT_FOR_MAPS_OF_DIFFERENT_TIMES = (
+    "design='disagreement' (which map is more accurate) needs two maps of one "
+    "time, so olmoearth_plan_label_sample refuses it for these two maps given "
+    "these dates as date_a and date_b (do not call it without them); another "
+    "unlabelled map or inference, of any date, cannot tell change from error."
+)
+
+
+def two_map_design_across_dates(
+    a: str | None = None, b: str | None = None
+) -> dict[str, str]:
+    """No disagreement design, plan, sample or budget for maps of different times.
+
+    Agent trial 12 offered "a disagreement-based labeling budget" (B3/cluster
+    run 5) and "olmoearth_plan_label_sample (design="disagreement") ... on the
+    reviewer's per-window judgments" (B7/files run 11) for two maps that
+    olmoearth_compare_review had read as of different times, a design
+    olmoearth_plan_label_sample refuses for them when given their dates (a
+    scores file's come only from ``date_a`` and ``date_b``; without them the
+    plan reads the dates as unstated and draws it). ``a`` and ``b`` are the
+    maps' dates when known.
+    """
+    when = f" ({a} and {b})" if a and b else ""
+    return forbidden(
+        TWO_MAP_DESIGN_ACROSS_DATES,
+        "design='disagreement' needs two maps of one time; for maps of different "
+        f"times{when} no labels on the differing windows say which map is more "
+        "accurate, since a window where they differ may have changed on the "
+        "ground: olmoearth_plan_label_sample refuses the design for them when "
+        "given their dates, so no disagreement design, plan, sample or labelling "
+        "budget may be offered; "
+        "each map gets a sample of its own, labelled at its own date",
+    )
 
 
 # --------------------------------------------------------------------------- claims about a correlation

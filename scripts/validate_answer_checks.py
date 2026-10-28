@@ -316,7 +316,11 @@ def adapt(d: Path, records: list[ToolRecord]) -> list[ToolRecord]:
             extra = _review_contract(result)
         elif record.name == "olmoearth_plan_label_sample":
             facts = []
-            planned = sum(result.get("allocation") or []) or result.get("budget")
+            # A class design gives its labels per stratum (per_stratum), the
+            # other stratified designs as allocation.
+            per_stratum = result.get("per_stratum") or []
+            allocated = result.get("allocation") or [s["labels"] for s in per_stratum]
+            planned = sum(allocated) or result.get("budget")
             if isinstance(first_budget, int | float) and isinstance(
                 planned, int | float
             ):

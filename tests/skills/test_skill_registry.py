@@ -502,7 +502,16 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     interval valid at every sample size first for every design, 48, in
     place of the 80 of the sentence on a class map's or 'class' sample, and
     "each interval and its method" for "estimate, low, high and method", 2
-    fewer): 8 tokens. 7,561 - 8 = 7,553, under the same bound. These are
+    fewer): 8 tokens. 7,561 - 8 = 7,553, under the same bound. The fixes of
+    agent trial 12 move, counted the same way, olmoearth_plan_label_sample
+    alone: its description 41 characters shorter (seed_from_map's
+    precondition in place of its old sentence, the design's parenthesis
+    shortened but still "'random' when a certified zone is wanted", "The
+    interval comes from olmoearth_estimate_map_error" and "it draws windows
+    where they differ" left out), its design parameter 3 shorter
+    ("'disagreement': two maps") and its seed_from_map parameter 62 longer
+    (the precondition): 18 characters, 5 tokens. 7,553 + 5 = 7,558, under
+    the same bound. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

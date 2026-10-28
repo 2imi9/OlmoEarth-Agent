@@ -279,9 +279,16 @@ async def test_a_class_map_is_planned_under_the_class_design() -> None:
     assert sample["condition"]["by"] == "map class"
     assert sample["condition"]["min_per_class"] == 5
     assert sample["condition"]["names"] == CLASSES
-    # Each class at least 5 labels (crop all 7), the rest by size.
-    assert plan["strata_sizes"] == [7, 32, 24]
-    assert plan["allocation"] == direct["allocation"] == [7, 12, 11]
+    # Each class at least 5 labels (crop all 7), the rest by size, each
+    # stratum named by its class as the map writes it, with the agent's code
+    # (agent trial 12 read stratum h as class h).
+    assert direct["allocation"] == [7, 12, 11]
+    assert plan["per_stratum"] == [
+        {"stratum": 0, "class": "crop", "code": 0, "windows": 7, "labels": 7},
+        {"stratum": 1, "class": "forest", "code": 1, "windows": 32, "labels": 12},
+        {"stratum": 2, "class": "water", "code": 2, "windows": 24, "labels": 11},
+    ]
+    assert "strata_sizes" not in plan and "allocation" not in plan
     assert plan["min_per_class"] == 5
     assert plan["class_blind_note"] == estimate.CLASS_BLIND_NOTE
     assert "at least 5 labels" in plan["design_note"]
@@ -308,6 +315,66 @@ async def test_a_class_map_is_planned_under_the_class_design() -> None:
 def _why(result: dict[str, Any], claim_id: str) -> str:
     (why,) = [c["why"] for c in result["forbidden_claims"] if c["id"] == claim_id]
     return str(why)
+
+
+def _numeric(row: int, col: int) -> int | None:
+    """The map with numeric classes, one id missing: water 1, forest 2 (3 in
+    rows 0 and 1), crop 5; 24, 24, 8 and 7 windows."""
+    label = _map_class(row, col)
+    if label is None:
+        return None
+    if label == "forest" and row < 2:
+        return 3
+    return {"water": 1, "forest": 2, "crop": 5}[label]
+
+
+class _NumericStudio(_Studio):
+    """The same result, its classes numeric ids with no label (Studio's
+    classification object then carries the value only)."""
+
+    async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
+        out = await super().get_prediction_result(result_id)
+        values = [{"value": v} for v in (1, 2, 3, 5)]
+        out["result_metadata"]["classification_fields"] = [
+            {"property_name": "landcover", "allowed_values": values}
+        ]
+        return out
+
+    async def pixel_value(self, result_id: str, lon: float, lat: float) -> Any:
+        self.pixel_calls += 1
+        row, col, _lo, _la = min(
+            self.cells, key=lambda c: (c[2] - lon) ** 2 + (c[3] - lat) ** 2
+        )
+        value = _numeric(row, col)
+        band: dict[str, Any] = {"property_name": "landcover"}
+        if value is None:
+            band.update(raw_value=None, classification=None)
+        else:
+            band.update(
+                raw_value=value, classification={"value": value, "color": "#000000"}
+            )
+        return {"bands": [band]}
+
+
+@pytest.mark.asyncio
+async def test_a_numeric_class_maps_strata_name_the_classes_it_writes() -> None:
+    """The step 11 review: a class map writing ids [1, 2, 3, 5] is coded 0 to
+    3 over its classes, so stratum 3 is code 3, which is class 5. per_stratum
+    names each stratum's class as the map writes it, the code beside it."""
+    args = {"result_id": "lc", "grid": GRID, "budget": 30, "design": "class"}
+    out = await _call(PLAN, {**args, "seed": 3, "min_per_class": 5}, _NumericStudio())
+    assert out["ok"] is True, out
+    plan = out["result"]
+    sample = _design(plan)["sample"]
+    strata = plan["per_stratum"]
+    assert [s["class"] for s in strata] == [1, 2, 3, 5]
+    assert [s["code"] for s in strata] == [0, 1, 2, 3]
+    assert [s["windows"] for s in strata] == [24, 24, 8, 7] == sample["sizes"]
+    assert [s["labels"] for s in strata] == sample["allocation"]
+    assert plan["map_classes"] == {"0": 1, "1": 2, "2": 3, "3": 5}
+    # Each listed window shows its class as the map writes it.
+    for window in plan["windows"]:
+        assert window["map_class"] == _numeric(*divmod(window["window_index"], GRID))
 
 
 @pytest.mark.asyncio

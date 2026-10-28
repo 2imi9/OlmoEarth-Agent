@@ -17,7 +17,10 @@ at every sample size; the design's own, exact or by the union bound, or
 nominal and approximate where the package's method is a Wilson interval; or,
 for windows labelled without a design, the interval they would earn as a
 simple random sample, which nothing establishes), the number of labels, the
-design and its seed; each certified zone with what alpha bounds and
+design and its seed, and the classes whose producer's and user's accuracy
+intervals do not overlap, or whose share the map draws too little or too
+much (the tool's ``user_vs_producer`` fact); each certified zone with what
+alpha bounds and
 olmoearth-inferencex's note on what delta counts (``ISSUED_NOTE``), word for
 word, and a zone tried after an earlier one on the same design file with
 another alpha, delta, rule or labels as a second look, not a certified zone;
@@ -142,6 +145,10 @@ _PACKAGE_SCOPE_PART = (
 )
 #: A must_state sentence of the tool's, as the section introduces it.
 _TOOL_LIMIT = "- Limit stated by the tool: {}"
+#: How the section introduces the ``user_vs_producer`` fact: what each class's
+#: user's accuracy leaves out (agent trial 12, N3/files: classes called well
+#: mapped on their user's accuracy alone).
+USER_VS_PRODUCER_LEAD = "What each class's user's accuracy leaves out"
 
 #: Windows labelled without a design: what the package's check of them is not.
 NO_DESIGN_LIMIT = (
@@ -630,6 +637,11 @@ def _error_rate(
     weakest = _fact(result, "weakest_classes")
     if weakest and weakest.get("sentence"):
         lines.append(f"- Per class: {weakest['sentence']}")
+    # What a class's user's accuracy leaves out: its producer's accuracy and
+    # the share the map draws, as the tool states them (agent trial 12, N3).
+    contrast = _fact(result, "user_vs_producer")
+    if contrast and contrast.get("sentence"):
+        lines.append(f"- {USER_VS_PRODUCER_LEAD}: {contrast['sentence']}")
     table_notes, class_notes = _per_class_notes(
         result, (weakest or {}).get("lowest") or []
     )

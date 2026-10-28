@@ -21,6 +21,7 @@ from olmoearth_agent.reporting.narrative import (
     NEITHER_MAP_MEASURED,
     NO_DESIGN_LIMIT,
     NOT_MEASURED,
+    USER_VS_PRODUCER_LEAD,
     ZONE_MEANING,
     accuracy_section,
     build_narrative,
@@ -336,6 +337,36 @@ def test_a_wilson_interval_is_named_nominal_never_a_plain_level() -> None:
         "- Interval this design earns (95%): 7.0% to 14.0% (method: exact "
         "hypergeometric interval)."
     ) in lines
+
+
+def test_the_section_states_what_a_classs_users_accuracy_leaves_out() -> None:
+    """Agent trial 12 (N3/files) called a class well mapped on its user's
+    accuracy alone: the section states the tool's user_vs_producer fact right
+    after the ranking, and its must_state as a limit; with no such fact it
+    states nothing of the kind."""
+    contrast = {
+        "id": "user_vs_producer",
+        "sentence": "Beside each class's user's accuracy: Class 4: what the map "
+        "calls class 4 is right 93.3% (86.7% to 97.2%) of the time, but it finds "
+        "only 69.0% (60.2% to 76.8%) of the ground that is class 4.",
+    }
+    stated = (
+        "Class 4: the map finds only 60.2% to 76.8% of the class's ground "
+        "(producer's accuracy); it misses the rest."
+    )
+    result = {
+        **_CLASS_ESTIMATE,
+        "facts": [*_CLASS_ESTIMATE["facts"], contrast],
+        "must_state": [*_CLASS_ESTIMATE["must_state"], stated],
+    }
+    lines, _ = accuracy_section([_call(_GRADE, result, design_path="/w/class.json")])
+    at = lines.index("- Per class: Class 2 is the lowest.")
+    assert lines[at + 1] == f"- {USER_VS_PRODUCER_LEAD}: {contrast['sentence']}"
+    assert f"- Limit stated by the tool: {stated}" in lines
+    plain, _ = accuracy_section(
+        [_call(_GRADE, _CLASS_ESTIMATE, design_path="/w/class.json")]
+    )
+    assert not [line for line in plain if USER_VS_PRODUCER_LEAD in line]
 
 
 def test_a_zone_tried_again_on_the_same_labels_is_a_second_look() -> None:

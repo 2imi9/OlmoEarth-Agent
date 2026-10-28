@@ -187,6 +187,25 @@ async def test_a_certificate_round_trip_reproduces(_scores_root: Path) -> None:
     assert listed == drawn[: len(listed)]
     assert design["certificate"]["seed_rule"] == "from_map"
     assert sheet.parent.parent.name == "certificates"
+    # A certificate's plan needs every row of its sheet labelled (agent trial
+    # 12, N2/cluster run 23 said "A partial labelling is fine" of one).
+    prefix = next(f for f in plan["facts"] if f["id"] == "prefix_is_random_sample")
+    needs = "drawn with seed_from_map for a certificate, which needs every row"
+    assert needs in prefix["sentence"]
+    (why,) = [
+        c["why"]
+        for c in plan["forbidden_claims"]
+        if c["id"] == "subset_labelling_sufficient"
+    ]
+    assert needs in why
+    # Its routes are all three, and a prefix gets neither the zone nor the
+    # certificate (the plain random plan's sentence names no certificate).
+    assert prefix["sentence"].startswith(
+        "With design_path, olmoearth_estimate_map_error, olmoearth_certify_zone "
+        "and olmoearth_write_certificate need every one of the sheet's "
+    )
+    assert prefix["sentence"].endswith("they give no certified zone or certificate.")
+    assert why.endswith("and no certified zone or certificate")
 
     wrong = [0] * BUDGET
     zone = await _ok(
@@ -428,6 +447,22 @@ async def test_nothing_certified_writes_no_certificate(_scores_root: Path) -> No
     )
     assert out["certified"] is False and out["certificate_written"] is False
     assert "nothing to put in a certificate" in out["reason"]
+    # As olmoearth_certify_zone says it (agent trial 12, B6; the step 11
+    # review): the whole-map rate describes the whole map, not its most
+    # confident part, and the result forbids reading it against alpha as the
+    # reason nothing was certified.
+    whole = next(f for f in out["facts"] if f["id"] == "whole_map_estimate")
+    sentence = whole["sentence"]
+    assert "It describes the whole map, not its most confident part: " in sentence
+    assert "smallest_zone_tested" in whole
+    claims = {c["id"]: c["why"] for c in out["forbidden_claims"]}
+    assert set(claims) == {"post_hoc_alpha", "whole_map_rate_for_a_zone"}
+    assert f"alpha={ALPHA:g}" in claims["whole_map_rate_for_a_zone"]
+    # This result has no levels_tested, so nothing points at one (the step 11
+    # review); with no level tested, its note says why.
+    assert "levels_tested" not in out
+    assert "levels_tested" not in sentence
+    assert "levels_tested" not in claims["whole_map_rate_for_a_zone"]
     sheet = Path(plan["seed_from_map"]["package_sheet"])
     assert not (sheet.parent / "certificate").exists()
     with open(sheet, encoding="utf-8", newline="") as fh:

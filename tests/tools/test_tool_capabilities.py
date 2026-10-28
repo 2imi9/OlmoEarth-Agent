@@ -368,10 +368,7 @@ class _ClassMapStudio(_Studio):
         return {"bands": [band]}
 
 
-@probe(
-    "olmoearth_plan_label_sample",
-    "'random' or 'class' for a Studio class map (no confidence)",
-)
+@probe("olmoearth_plan_label_sample", "'random' or 'class' for a Studio class map")
 async def _plan_takes_random_or_class_for_a_class_map(_tmp: Path) -> None:
     """The ranking designs read a confidence a class map does not have."""
     studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
@@ -467,7 +464,7 @@ async def _plan_needs_threshold(_tmp: Path) -> None:
 
 @probe(
     "olmoearth_plan_label_sample",
-    "a budget of at most the valid windows (a Studio result at grid 16 plans them all)",
+    "a budget of at most the valid windows (Studio grid 16 plans all)",
 )
 async def _plan_needs_a_budget_it_can_place(_tmp: Path) -> None:
     out = await _call(
@@ -478,7 +475,40 @@ async def _plan_needs_a_budget_it_can_place(_tmp: Path) -> None:
 
 @probe(
     "olmoearth_plan_label_sample",
-    "for 'disagreement', two maps of one time on one window grid",
+    "seed_from_map: a scores file from a model run's GeoTIFF",
+)
+async def _plan_seeds_from_map_only_a_model_runs_scores_file(tmp: Path) -> None:
+    """Agent trial 12 (N4/files run 6) offered seed_from_map on a scores file
+    no model run's GeoTIFF wrote; inline scores and such a file are refused."""
+    inline = await _call(
+        "olmoearth_plan_label_sample",
+        {
+            "scores": _logits(40),
+            "budget": 10,
+            "design": "random",
+            "seed_from_map": True,
+            "alpha": 0.1,
+        },
+    )
+    _refused(inline, "olmoearth_scores_from_file wrote from a model run's output")
+    path = tmp / "class_scores.json"
+    path.write_text(json.dumps({"grid": [5, 8], "scores": _logits(40)}))
+    other = await _call(
+        "olmoearth_plan_label_sample",
+        {
+            "scores_path": str(path),
+            "budget": 10,
+            "design": "random",
+            "seed_from_map": True,
+            "alpha": 0.1,
+        },
+    )
+    _refused(other, "is refused for any other scores file")
+
+
+@probe(
+    "olmoearth_plan_label_sample",
+    "'disagreement': two maps of one time on one window grid",
 )
 async def _plan_two_maps_needs_one_time_and_one_grid(tmp: Path) -> None:
     """The dates are read before any pixel is sampled (_Studio would raise)."""

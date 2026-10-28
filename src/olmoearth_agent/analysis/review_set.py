@@ -1943,6 +1943,219 @@ BOUNDARY_SHARE_MEANS = (
     "shares measure no contiguity: they do not show whether whole regions flip "
     "or only their edges."
 )
+#: Appended to :data:`BOUNDARY_SHARE_MEANS` when windows differ, which is
+#: when the comparison carries these counts (the step 11 review: a
+#: comparison with no differing window named fields it did not have).
+CONTIGUITY_COUNTED_APART = (
+    "The contiguity is counted apart: n_patches, largest_patches, "
+    "differing_in_patches_ge_100 and differing_interior count the 8-connected "
+    "patches the differing windows form on the grid."
+)
+
+#: The patch size the contiguity counts name: agent trial 12 (B3/cluster run
+#: 25) called a pair's differences "mostly edges" where a recount found 57% of
+#: its differing windows in 8-connected patches of 100 windows or more.
+PATCH_MIN = 100
+#: How many of the largest patches the counts list.
+LARGEST_PATCHES = 5
+#: The share of the differing windows that are interior (every neighbour on
+#: the grid differs too) at or above which most of them lie inside solid
+#: patches, the contiguity fact says so, and "mostly edges" is flagged
+#: (``harness/checks.py``, ``mostly_edges``). A patch's size cannot tell a
+#: flipped area from a long strip along a class edge, which also forms one
+#: patch of 100 windows or more: trial 12's pair (run 25) had 57% of its
+#: differing windows in such patches, but only 12% interior, and 78% touched
+#: a boundary of map A (the step 11 review).
+MOSTLY_INTERIOR = 0.5
+#: The contract's fixed id (``statistical_rules.MOSTLY_EDGES``).
+MOSTLY_EDGES = "mostly_edges"
+
+
+def differing_patches(
+    differing: Sequence[int], grid: tuple[int, int]
+) -> dict[str, Any]:
+    """The 8-connected patches the differing windows form on the grid: plain counts.
+
+    ``differing`` are row-major grid indices. Two differing windows are in one
+    patch when they touch, sides or corners (8-connectivity), as the boundary
+    reading's neighbours do. Returns ``n_patches``, ``largest_patches`` (the
+    :data:`LARGEST_PATCHES` largest sizes, largest first),
+    ``differing_in_patches_ge_100`` (``n`` and ``share`` of the differing
+    windows in patches of at least ``min_windows``, :data:`PATCH_MIN`),
+    ``differing_interior`` (``n`` and ``share`` of the differing windows
+    whose every 8-neighbour on the grid differs too; a window on the grid's
+    edge counts its neighbours on the grid only) and ``patch_connectivity``
+    8. Nothing is estimated: every window is counted.
+
+    Examples
+    --------
+    >>> block = [r * 6 + c for r in range(3) for c in range(3)]
+    >>> out = differing_patches(block + [23, 35], (6, 6))
+    >>> out["n_patches"], out["largest_patches"]
+    (3, [9, 1, 1])
+    >>> out["differing_in_patches_ge_100"]
+    {'n': 0, 'share': 0.0, 'min_windows': 100}
+    >>> out["differing_interior"]  # the block sits on the grid's corner
+    {'n': 4, 'share': 0.363636}
+    """
+    rows, cols = int(grid[0]), int(grid[1])
+    cells = {int(w) for w in differing}
+
+    def around(w: int) -> list[int]:
+        """Window ``w``'s 8-neighbours on the grid."""
+        r, c = divmod(w, cols)
+        return [
+            (r + dr) * cols + c + dc
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+            if (dr or dc) and 0 <= r + dr < rows and 0 <= c + dc < cols
+        ]
+
+    def interior(w: int) -> bool:
+        """Whether every neighbour of ``w`` on the grid differs too."""
+        near = around(w)
+        return bool(near) and all(n in cells for n in near)
+
+    left = set(cells)
+    sizes: list[int] = []
+    while left:
+        stack = [left.pop()]
+        size = 0
+        while stack:
+            w = stack.pop()
+            size += 1
+            for n in around(w):
+                if n in left:
+                    left.remove(n)
+                    stack.append(n)
+        sizes.append(size)
+    sizes.sort(reverse=True)
+    total = sum(sizes)
+    big = sum(s for s in sizes if s >= PATCH_MIN)
+    inner = sum(1 for w in cells if interior(w))
+    return {
+        "n_patches": len(sizes),
+        "largest_patches": sizes[:LARGEST_PATCHES],
+        "differing_in_patches_ge_100": {
+            "n": big,
+            "share": round(big / total, 6) if total else None,
+            "min_windows": PATCH_MIN,
+        },
+        "differing_interior": {
+            "n": inner,
+            "share": round(inner / total, 6) if total else None,
+        },
+        "patch_connectivity": 8,
+    }
+
+
+def _mostly_interior(patches: dict[str, Any]) -> bool:
+    """Whether most differing windows are interior (:data:`MOSTLY_INTERIOR`)."""
+    share = patches["differing_interior"]["share"]
+    return bool(share is not None and share >= MOSTLY_INTERIOR)
+
+
+def contiguity_fact(patches: dict[str, Any], n_differing: int) -> dict[str, Any]:
+    """The ``contiguity`` fact: the patches the differing windows form, counted.
+
+    One sentence of :func:`differing_patches`' counts, so an answer that says
+    where the differences lie in kind (edges or whole regions) states them
+    rather than reading a boundary share (``mostly_edges``). It draws a
+    conclusion only from the interior share: at or above
+    :data:`MOSTLY_INTERIOR`, whole areas differ, not only edges; below it,
+    the counts do not show which, since a long strip along a class edge
+    forms a large patch too.
+    """
+    big = patches["differing_in_patches_ge_100"]
+    inner = patches["differing_interior"]
+    largest = [f"{s:,}" for s in patches["largest_patches"]]
+    if len(largest) == 1:
+        listed = largest[0]
+    else:
+        listed = ", ".join(largest[:-1]) + " and " + largest[-1]
+    if big["n"]:
+        held = (
+            f"{big['n']:,} of them ({_pct(big['share'])}) lie in patches of at "
+            f"least {PATCH_MIN} windows"
+        )
+    else:
+        held = f"none lies in a patch of {PATCH_MIN} windows or more"
+    if inner["n"]:
+        interior = (
+            f"{inner['n']:,} ({_pct(inner['share'])}) have every neighbour on the "
+            "grid differing too"
+        )
+    else:
+        interior = "none has every neighbour on the grid differing too"
+    if _mostly_interior(patches):
+        reading = (
+            "most differing windows lie inside solid patches, so whole areas "
+            "differ, not only edges"
+        )
+    else:
+        reading = "these counts do not show whether the differences are edges or areas"
+    n = patches["n_patches"]
+    formed = f"{n:,} 8-connected patch{'' if n == 1 else 'es'}"
+    hold = "holds" if len(largest) == 1 else "hold"
+    sentence = (
+        f"The {n_differing:,} differing windows form {formed} on the grid; the "
+        f"largest {hold} {listed} windows, {held}, and {interior}; {reading}."
+    )
+    return {
+        "id": "contiguity",
+        "sentence": sentence,
+        "n_differing": n_differing,
+        "n_patches": patches["n_patches"],
+        "largest_patches": list(patches["largest_patches"]),
+        "n_in_patches_ge_100": big["n"],
+        "share_in_patches_ge_100": big["share"],
+        "n_interior": inner["n"],
+        "share_interior": inner["share"],
+    }
+
+
+def mostly_edges(
+    patches: dict[str, Any], n_differing: int, *, boundary: bool = False
+) -> dict[str, str]:
+    """The ``mostly_edges`` claim of a comparison, with its contiguity counts.
+
+    Agent trial 12 (B3/cluster run 25) wrote "78.3% of differing windows
+    touch a predicted-class boundary in map A (vs 53.9% overall) - mostly
+    edges"; the boundary shares count neighbours, not regions. A patch's
+    size cannot tell a flipped area from a long strip along a class edge
+    (the trial's pair: 57% of its differing windows in 8-connected patches
+    of 100 or more, 12% interior), so the harness flags "mostly edges" while
+    the interior share is at least :data:`MOSTLY_INTERIOR`. ``boundary``:
+    whether the comparison carries the boundary shares (not when its rows
+    leave windows out), which the reason then names (the step 11 review).
+    """
+    inner = patches["differing_interior"]
+    share = _pct(inner["share"]) if inner["share"] is not None else "none"
+    shares = (
+        "the boundary shares count windows with a neighbour of another class, "
+        "not regions; "
+        if boundary
+        else ""
+    )
+    if _mostly_interior(patches):
+        reading = (
+            "most differing windows lie inside solid patches, so the differences "
+            "are not mostly at edges or boundaries"
+        )
+    else:
+        reading = (
+            "the counts do not show whether the differences are edges or areas, "
+            "so state them (the contiguity fact) rather than a reading of them"
+        )
+    return {
+        "id": MOSTLY_EDGES,
+        "why": f"{shares}a patch's size cannot tell a flipped area from a strip "
+        f"along a class edge, and the interior windows can: {share} of the "
+        f"{n_differing:,} differing windows have every neighbour on the grid "
+        f"differing too (largest patches: {patches['largest_patches']}); "
+        f"{reading}",
+    }
+
 
 #: The ``where`` of a comparison whose differing windows touch map A's predicted
 #: boundaries more often than windows overall, and otherwise. Round 9 read
@@ -2031,7 +2244,8 @@ def compare_scores(
         The counts (``n_differing``, ``share_differing``), the directed
         ``class_changes`` and undirected ``class_pairs``, each side's share of
         the differing windows on which it is the more confident, the
-        ``spatial`` breakdown when a grid is known, the listing
+        ``spatial`` breakdown and the patches the differing windows form
+        (:func:`differing_patches`) when a grid is known, the listing
         (``differing``), the one-sentence ``evidence_scope`` and the output
         contract (``facts``, ``must_state``, ``forbidden_claims``).
     """
@@ -2176,8 +2390,19 @@ def compare_scores(
         concentration = concentration_fact(out["spatial"], len(diff))
         if concentration:
             facts.append(concentration)
+    claims = [dict(c) for c in COMPARISON_FORBIDDEN] + evidence_outside_scope(scope)
+    if grid is not None and diff:
+        # The contiguity the boundary shares do not measure, counted on the
+        # same grid: the 8-connected patches of the differing windows.
+        patches = differing_patches(where_diff, (rows_, cols_))
+        out.update(patches)
+        # The boundary note points at these counts, and the claim names the
+        # boundary shares, only where the result has them (the step 11 review).
+        has_shares = "boundary_share_overall" in out
+        if has_shares:
+            out["boundary_means"] += " " + CONTIGUITY_COUNTED_APART
+        facts.append(contiguity_fact(patches, len(diff)))
+        claims.append(mostly_edges(patches, len(diff), boundary=has_shares))
     out["facts"] = facts
-    out["forbidden_claims"] = [
-        dict(c) for c in COMPARISON_FORBIDDEN
-    ] + evidence_outside_scope(scope)
+    out["forbidden_claims"] = claims
     return out

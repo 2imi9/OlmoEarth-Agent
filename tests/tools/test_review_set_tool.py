@@ -23,9 +23,11 @@ from olmoearth_agent.analysis.review_set import (
 )
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import (
+    EACH_MAP_ITS_OWN_SAMPLE,
     build_review_set_tools,
     review_set_classes_fact,
 )
@@ -491,11 +493,15 @@ async def test_compare_review_counts_differences_and_declines_the_side_question(
     assert "exp58" in result["evidence_scope"]
     assert "51 to 70" not in result["evidence_scope"]  # exp86 round 8
     assert result["must_state"] == [MUST_STATE_NO_WINNER]
+    # With a grid, the differing windows' patches are counted, and "mostly
+    # edges" is read against them (agent trial 12, B3/cluster run 25).
     assert [c["id"] for c in result["forbidden_claims"]] == [
         "evidence_outside_its_scope",
+        "mostly_edges",
         "winner_without_labels",
         "subset_labelling_sufficient",
     ]
+    assert (result["n_patches"], result["largest_patches"]) == (1, [2])
     # exp86 round 9 (B3/cluster run 3): "mostly on class boundaries" read as
     # "boundary reclassification rather than wholesale area flips"
     assert result["where"] in (WHERE_MORE_ON_BOUNDARIES, WHERE_NOT_MORE_ON_BOUNDARIES)
@@ -532,6 +538,7 @@ async def test_compare_review_lists_ten_inline_and_saves_every_differing_window(
         "more_confident_side",
         "boundary_share",
         "concentration",
+        "contiguity",
         "list_file",
     ]
     assert out["spatial"]["top_band_share"] == 0.25  # every row band holds 8 of 32
@@ -675,6 +682,7 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
         "one_reference_settles_two_dates",
         "subset_labelling_sufficient",
         "evidence_outside_its_scope",
+        "two_map_design_across_dates",
     }
     partly = await tool.handler(  # type: ignore[attr-defined]
         {"scores_a": a, "scores_b": b, "date_a": "2024-03-01"}, _ctx()
@@ -691,6 +699,65 @@ async def test_compare_review_across_dates_states_the_scope_limit() -> None:
         _ctx(),
     )
     assert same["must_state"] == [MUST_STATE_NO_WINNER]
+
+
+@pytest.mark.asyncio
+async def test_compare_review_across_dates_offers_only_each_maps_own_sample() -> None:
+    """Agent trial 12 offered, for two maps the tool read as of different
+    times, "a disagreement-based labeling budget" (B3/cluster run 5), the
+    disagreement design "on the reviewer's per-window judgments" (B7/files run
+    11), another unlabelled map of the same period and "a same-date third
+    inference to separate change from error" (runs 7 and 12). The result says
+    the design is refused for these maps and that another map or inference
+    cannot tell change from error, and its next step is each map's own
+    sample, labelled at that map's own date."""
+    pytest.importorskip("oe_inferencex.compare")
+    a = [[0.2, 0.8], [0.7, 0.3], [0.4, 0.6]]
+    b = [[0.2, 0.8], [0.3, 0.7], [0.4, 0.6]]
+    tool = _tools()["olmoearth_compare_review"]
+    for date_b, status in (
+        ("2024-09-01", "different_time"),
+        ("2024-03-01/2024-12-31", "overlapping_time"),
+    ):
+        apart = await tool.handler(  # type: ignore[attr-defined]
+            {
+                "scores_a": a,
+                "scores_b": b,
+                "date_a": "2024-01-01/2024-06-30",
+                "date_b": date_b,
+            },
+            _ctx(),
+        )
+        assert apart["dates"]["status"] == status
+        assert apart["not_for_these_maps"] == rules.NOT_FOR_MAPS_OF_DIFFERENT_TIMES
+        note = apart["not_for_these_maps"]
+        assert "olmoearth_plan_label_sample refuses it for these two maps" in note
+        # The plan reads a scores file's dates only from date_a and date_b
+        # (the step 11 review): without them it draws the design.
+        assert "given these dates as date_a and date_b" in note
+        assert "(do not call it without them)" in note
+        assert "cannot tell change from error" in note
+        assert apart["next_steps"] == [EACH_MAP_ITS_OWN_SAMPLE]
+        assert "on one map's scores alone" in apart["next_steps"][0]
+        assert "disagreement" not in apart["next_steps"][0]
+        (why,) = [
+            c["why"]
+            for c in apart["forbidden_claims"]
+            if c["id"] == rules.TWO_MAP_DESIGN_ACROSS_DATES
+        ]
+        assert why.startswith("design='disagreement' needs two maps of one time")
+        assert (
+            "olmoearth_plan_label_sample refuses the design for them when given "
+            "their dates" in why
+        )
+    for dates in ({"date_a": "2024-03-01", "date_b": "2024-03-01"}, {}):
+        one_time = await tool.handler(  # type: ignore[attr-defined]
+            {"scores_a": a, "scores_b": b, **dates}, _ctx()
+        )
+        assert "not_for_these_maps" not in one_time
+        assert "next_steps" not in one_time
+        ids = {c["id"] for c in one_time["forbidden_claims"]}
+        assert rules.TWO_MAP_DESIGN_ACROSS_DATES not in ids
 
 
 @pytest.mark.asyncio

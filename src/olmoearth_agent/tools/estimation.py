@@ -118,8 +118,13 @@ import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
+from olmoearth_agent.analysis.output_contract import (
+    MUST_STATE_MAX,
+    MUST_STATE_MAX_WORDS,
+    word_count,
+)
 from olmoearth_agent.analysis.raster_compare import declared_fields, declared_range
 from olmoearth_agent.analysis.review_set import (
     DEFAULT_MAX_LISTED,
@@ -384,7 +389,9 @@ class Population:
     A class map (``score_kind`` :data:`CLASS_MAP`) has no confidence: its
     ``margin`` is 0 wherever a window holds a class, which only marks the
     population, its ``p1`` NaN, and ``classes`` the class each code stands
-    for, as the map writes it.
+    for, as the map writes it. ``class_names`` names a scores map's class
+    codes where its scores file does (``olmoearth_scores_from_file`` writes
+    them); it only labels a plan's strata (:meth:`class_name`).
     """
 
     margin: list[float]
@@ -395,11 +402,21 @@ class Population:
     source: dict[str, Any] = field(default_factory=dict)
     centres: dict[int, tuple[float, float]] = field(default_factory=dict)
     classes: list[Any] | None = None
+    class_names: dict[int, str] = field(default_factory=dict)
 
     @property
     def n_valid(self) -> int:
         """Windows with a finite margin (the population the package samples)."""
         return sum(1 for m in self.margin if math.isfinite(m))
+
+    def class_name(self, code: Any) -> str | None:
+        """Class ``code``'s name, as the map or its scores file writes it, if known."""
+        if not isinstance(code, int) or code < 0:
+            return None
+        if self.classes is not None and code < len(self.classes):
+            name = str(self.classes[code]).strip()
+            return name or None
+        return self.class_names.get(code)
 
 
 def population_from_rows(
@@ -493,6 +510,27 @@ def _from_sampled(sampled: SampledScores) -> Population:
     )
 
 
+def _file_class_names(raw: Any) -> dict[int, str]:
+    """A scores file's ``classes`` (code to name, as a mapping or a list) by code.
+
+    The names only label strata and classes, so an entry that is no class
+    code and name is left out rather than refused: a key ``int`` cannot read
+    ("-1", or "²", which ``str.isdigit`` passes but ``str.isdecimal``, the
+    digits ``int`` reads, does not), or a name that is not a non-empty
+    string.
+    """
+    pairs: list[tuple[Any, Any]] = []
+    if isinstance(raw, dict):
+        pairs = list(raw.items())
+    elif isinstance(raw, list):
+        pairs = list(enumerate(raw))
+    return {
+        int(str(key).strip()): name.strip()
+        for key, name in pairs
+        if str(key).strip().isdecimal() and isinstance(name, str) and name.strip()
+    }
+
+
 async def _population(
     args: dict[str, Any], ctx: ToolContext, *, class_map: bool = False
 ) -> Population | dict[str, Any]:
@@ -521,7 +559,7 @@ async def _population(
         if isinstance(meta.get("provenance"), str):
             source["provenance"] = meta["provenance"]
             source["model"] = meta.get("model")
-        return population_from_rows(
+        pop = population_from_rows(
             loaded.scores,
             grid=loaded.grid,
             windows=loaded.windows,
@@ -531,6 +569,8 @@ async def _population(
             p1=meta.get("p1"),
             map_class=meta.get("map_class"),
         )
+        pop.class_names = _file_class_names(meta.get("classes"))
+        return pop
     if args.get("result_id"):
         # N or [N, N], held to 2-16 and stated in the result, never silently.
         grid, grid_requested = result_grid(args.get("grid"))
@@ -897,7 +937,11 @@ def _plan_next_steps(
 
 
 def _whole_map_estimate(
-    est: dict[str, Any], *, certify: bool = False
+    est: dict[str, Any],
+    *,
+    certify: bool = False,
+    uncertified: list[dict[str, Any]] | None = None,
+    why_field: str | None = "levels_tested",
 ) -> dict[str, Any]:
     """The ``whole_map_estimate`` fact from the package's error-rate estimate.
 
@@ -905,6 +949,17 @@ def _whole_map_estimate(
     contract's); the sentence also names the labelled count, the population,
     the method and, when the package gives one, its warning (a stratified
     design with starved strata, or with no or every labelled window wrong).
+
+    ``uncertified`` is the levels of a certify call that certified nothing
+    (``[]`` when it tested none): the sentence adds that the rate describes
+    the whole map, not its most confident part, and gives the evidence on
+    that part as the result does, the smallest zone tested with its coverage,
+    labels and wrong count (field ``smallest_zone_tested``). Agent trial 12
+    (B6/files runs 8, 9 and 13) read the whole-map rate against alpha as why
+    no zone certified (``whole_map_rate_for_a_zone``). When none was tested,
+    ``why_field`` is the result's field that says why (``levels_tested`` in
+    olmoearth_certify_zone's, ``note`` in olmoearth_write_certificate's, which
+    has no ``levels_tested``: the step 11 review), or ``None`` for none.
     """
     cov = est.get("nominal_coverage")
     level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
@@ -923,12 +978,282 @@ def _whole_map_estimate(
             "not a certification."
         )
     fields = ("estimate", "low", "high", "design")
-    return rules.fact("whole_map_estimate", sentence, **{k: est.get(k) for k in fields})
+    found: dict[str, Any] = {k: est.get(k) for k in fields}
+    if uncertified is not None:
+        sentence += " It describes the whole map, not its most confident part: "
+        if uncertified:
+            first = uncertified[0]
+            sentence += (
+                "the smallest zone tested, at coverage "
+                f"{float(first.get('coverage') or 0.0):g} of the map, held "
+                f"{first.get('n_labelled_inside')} labels with "
+                f"{first.get('n_wrong_inside')} wrong."
+            )
+            found["smallest_zone_tested"] = {
+                k: first.get(k)
+                for k in ("coverage", "n_labelled_inside", "n_wrong_inside")
+            }
+        else:
+            sentence += "no zone was tested" + rules.says_why(why_field) + "."
+            found["smallest_zone_tested"] = None
+    return rules.fact("whole_map_estimate", sentence, **found)
 
 
 def _names(items: list[str]) -> str:
     """``a``, ``a and b``, ``a, b and c``."""
     return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+#: The package's flags for a class's share as the map draws it, against the
+#: interval of its share on the ground (``estimate_per_class``'s ``drawn``).
+DRAWN_FLAGS = ("too little", "too much", "within")
+
+#: How the ``user_vs_producer`` fact opens. The package's valid per-class
+#: intervals hold each on its own at 95%, not jointly (its
+#: ``PER_CLASS_VALID_NOTE``), so over many classes one can be named by chance.
+USER_VS_PRODUCER_OPENING = (
+    "Beside each class's user's accuracy, from olmoearth-inferencex's "
+    "per-class rows (intervals valid at every sample size, each holding on its "
+    "own at 95% and not jointly, unless said): "
+)
+#: How a drawn flag says which interval it is read on: the exact one holds
+#: for all classes together (random and class designs), the valid one alone.
+DRAWN_EXACT = "exact intervals, holding for all classes together at 95%"
+DRAWN_ON_ITS_OWN_INTERVAL = "flagged on that interval alone"
+#: How a class whose valid intervals the package did not compute names the
+#: design's it is read on instead: exact under the random and class designs,
+#: Wilson's on the effective sample size under the confidence and
+#: proportional ones, which the package calls nominal.
+DESIGN_INTERVALS = " (the design's intervals)"
+DESIGN_INTERVALS_NOMINAL = (
+    " (the design's nominal intervals, not valid at every sample size)"
+)
+
+#: Most classes whose producer's accuracy lies below their user's accuracy
+#: get a ``must_state`` sentence: after the valid interval's sentence the
+#: contract's :data:`~olmoearth_agent.analysis.output_contract.MUST_STATE_MAX`
+#: leaves room for two, one beside a Studio result's scope.
+MAX_MISSED_STATED = MUST_STATE_MAX - 1
+
+
+def _bounded(q: Any) -> TypeGuard[dict[str, Any]]:
+    """Whether ``q`` is a per-class quantity of the package with both ends given."""
+    if not isinstance(q, dict):
+        return False
+    low, high = q.get("low"), q.get("high")
+    return isinstance(low, (int, float)) and isinstance(high, (int, float))
+
+
+def _quantity(q: dict[str, Any], interval: str) -> dict[str, Any]:
+    """A per-class quantity's point and ends, as the package gives them, named."""
+    out: dict[str, Any] = {k: q.get(k) for k in ("estimate", "low", "high")}
+    if q.get("estimate") is None and q.get("estimate_range") is not None:
+        out["estimate_range"] = q.get("estimate_range")
+    out["interval"] = interval
+    return out
+
+
+def _producer_accuracy(row: dict[str, Any]) -> dict[str, Any] | None:
+    """A class's producer's accuracy: its valid interval when given, else the design's.
+
+    The design's is the exact interval where the package gives one
+    (``producer_accuracy_exact``: the random and class designs), else its
+    ``producer_accuracy``. ``interval`` says which.
+    """
+    valid = row.get("valid")
+    valid = valid if isinstance(valid, dict) else {}
+    if _bounded(valid.get("producer_accuracy")):
+        return _quantity(valid["producer_accuracy"], "valid")
+    for key in ("producer_accuracy_exact", "producer_accuracy"):
+        if _bounded(row.get(key)):
+            return _quantity(row[key], "design")
+    return None
+
+
+def _drawn(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Whether the map draws a class too little, too much or within its share.
+
+    The exact flag where the package gives one (``drawn`` with
+    ``reference_share_exact``: the random and class designs), whose intervals
+    hold for all classes together at 95%; else the flag of the valid
+    interval of the class's share on the ground
+    (``valid.reference_share.drawn``), which holds on its own and not
+    jointly, so the package flags a share outside it "on that interval
+    alone" (its ``PER_CLASS_VALID_NOTE``). With the map's share
+    (``map_share``) and that interval, each the package's; the interval's
+    ``interval`` says which (the step 11 review: a valid flag over eight or
+    more classes wrongly names one with a chance well above 5%).
+    """
+    valid = row.get("valid")
+    valid = valid if isinstance(valid, dict) else {}
+    share = valid.get("reference_share")
+    exact = row.get("reference_share_exact")
+    if _bounded(exact) and row.get("drawn") in DRAWN_FLAGS:
+        flag, ref = row["drawn"], _quantity(exact, "exact")
+    elif _bounded(share) and share.get("drawn") in DRAWN_FLAGS:
+        flag, ref = share["drawn"], _quantity(share, "valid")
+    else:
+        return None
+    return {"flag": flag, "map_share": row.get("map_share"), "reference_share": ref}
+
+
+def _class_pair(
+    row: dict[str, Any],
+) -> tuple[str, dict[str, Any], dict[str, Any]] | None:
+    """A class's user's and producer's accuracy: both valid, else both the design's."""
+    valid = row.get("valid")
+    valid = valid if isinstance(valid, dict) else {}
+    user, producer = valid.get("user_accuracy"), valid.get("producer_accuracy")
+    if _bounded(user) and _bounded(producer):
+        return "valid", user, producer
+    user = row.get("user_accuracy")
+    producer = row.get("producer_accuracy_exact")
+    if not _bounded(producer):
+        producer = row.get("producer_accuracy")
+    if _bounded(user) and _bounded(producer):
+        return "design", user, producer
+    return None
+
+
+def _share_text(q: dict[str, Any]) -> str:
+    """``93.3% (86.7% to 97.2%)``, or ``86.7% to 97.2%`` when no point is given."""
+    ends = f"{rules.percent(q.get('low'))} to {rules.percent(q.get('high'))}"
+    point = q.get("estimate")
+    if isinstance(point, (int, float)):
+        return f"{rules.percent(point)} ({ends})"
+    return ends
+
+
+def _missed_must_state(k: Any, producer: dict[str, Any]) -> str | None:
+    """The ``must_state`` of a class the map finds less of than it calls.
+
+    From the producer's side only: every answer that reports the estimate
+    gives the user's accuracy already, and with both sides' numbers in it
+    such an answer held half of the sentence's key terms without a word on
+    what the map misses (the step 11 review, on trial 12's N3 answers).
+
+    The class is named once: a class map's class as it writes it can be a
+    Studio label of several words ("Permanent water bodies"), and the
+    contract holds at most :data:`MUST_STATE_MAX_WORDS` words a sentence.
+    ``None`` for a name so long the sentence would still hold more: that
+    class is then left to the ``user_vs_producer`` fact, which names it.
+    """
+    sentence = (
+        f"Class {k}: the map finds only {rules.percent(producer['low'])} to "
+        f"{rules.percent(producer['high'])} of the class's ground "
+        "(producer's accuracy); it misses the rest."
+    )
+    return sentence if word_count(sentence) <= MUST_STATE_MAX_WORDS else None
+
+
+def _user_vs_producer(
+    per_class: dict[str, Any],
+    names: dict[int, str] | None = None,
+    *,
+    written: list[Any] | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """The ``user_vs_producer`` fact and the ``must_state`` sentences it asks for.
+
+    Agent trial 12 (N3/files, three runs) called classes 4 and 7 well mapped
+    on their user's accuracy (93.3%, 97 of 104) while the same result gave
+    class 4 a valid producer's accuracy of 69.0% (60.2% to 76.8%) and its
+    share drawn too little (32.8% of the map against 45.7%, 40.0% to
+    51.4%, on the ground). From the package's per-class rows only, the fact
+    names every class whose user's and producer's accuracy intervals do not
+    overlap (both valid where the package gives both, else both the
+    design's, named nominal under the confidence and proportional designs
+    as :func:`_weakest_classes` names them), and every class the map draws
+    too little or too much (:func:`_drawn`: the exact flag that holds for
+    all classes together where the package gives one), each in one sentence
+    with its intervals. The valid intervals hold each on its own, not
+    jointly, and the sentence says so. A class whose producer's interval
+    lies wholly below its user's gets a ``must_state`` sentence
+    (:func:`_missed_must_state`; a written class too long for the contract's
+    words gets none and stays in the fact), the lowest producer's accuracy
+    first, at most :data:`MAX_MISSED_STATED` (the caller keeps fewer beside a
+    Studio result's scope), so an answer that reports the estimate also
+    states what the map misses of that class.
+
+    ``names`` gives a scores map's class names by class id, shown beside the
+    id. ``written`` is a class map's classes by code, as the map writes them
+    (as :func:`_weakest_classes` takes them): each class is then named as
+    written, in the sentences and the ``must_state``, with its internal code
+    as ``code`` (the step 11 review: a map writing ids [1, 2, 3, 5] codes
+    them 0 to 3, and "class 3" named its class 5). ``(None, [])`` when no
+    class qualifies.
+    """
+    table = per_class.get("per_class")
+    if not isinstance(table, dict):
+        return None, []
+    nominal = per_class.get("design") in NOMINAL_DESIGNS
+    sentences: list[str] = []
+    classes: list[dict[str, Any]] = []
+    missed: list[tuple[float, int, str]] = []
+    for key in sorted(table, key=int):
+        row, c = table[key], int(key)
+        if not isinstance(row, dict):
+            continue
+        # A class as the map writes it: its id, or a class map's written class.
+        k = written[c] if written is not None and c < len(written) else c
+        said: list[str] = []
+        entry: dict[str, Any] = {"class": k}
+        if written is not None:
+            entry["code"] = c
+        pair = _class_pair(row)
+        if pair is not None:
+            kind, user, producer = pair
+            ua, pa = _share_text(user), _share_text(producer)
+            if producer["high"] < user["low"]:
+                said.append(
+                    f"what the map calls class {k} is right {ua} of the time, but "
+                    f"it finds only {pa} of the ground that is class {k}"
+                )
+                entry["producer_below_user"] = True
+                point = producer.get("estimate")
+                lowest = point if isinstance(point, (int, float)) else producer["high"]
+                limit = _missed_must_state(k, producer)
+                if limit is not None:
+                    missed.append((float(lowest), c, limit))
+            elif user["high"] < producer["low"]:
+                said.append(
+                    f"the map finds {pa} of the ground that is class {k}, but what "
+                    f"it calls class {k} is right only {ua} of the time"
+                )
+                entry["user_below_producer"] = True
+            if said:
+                entry["intervals"] = kind
+                entry["user_accuracy"] = _quantity(user, kind)
+                entry["producer_accuracy"] = _quantity(producer, kind)
+        drawn = _drawn(row)
+        if drawn is not None and drawn["flag"] != "within":
+            ref = drawn["reference_share"]
+            # The exact flag holds for all classes together; the valid one
+            # on its own interval only (the package's PER_CLASS_VALID_NOTE).
+            exact = ref["interval"] == "exact"
+            which = DRAWN_EXACT if exact else DRAWN_ON_ITS_OWN_INTERVAL
+            said.append(
+                f"the map draws class {k} {drawn['flag']}: on "
+                f"{rules.percent(drawn['map_share'])} of the windows, against "
+                f"{_share_text(ref)} of the ground ({which})"
+            )
+            entry["drawn"] = drawn
+        if not said:
+            continue
+        name = (names or {}).get(c) if written is None else None
+        label = f"Class {k}" + (f" ({name})" if name else "")
+        if entry.get("intervals") == "design":
+            # The package's valid intervals were not computed (too large);
+            # under the confidence and proportional designs the design's are
+            # nominal, never a plain 95% interval (the step 11 review).
+            label += DESIGN_INTERVALS_NOMINAL if nominal else DESIGN_INTERVALS
+        sentences.append(f"{label}: " + "; ".join(said) + ".")
+        classes.append(entry)
+    if not sentences:
+        return None, []
+    sentence = USER_VS_PRODUCER_OPENING + " ".join(sentences)
+    missed.sort()
+    stated = [text for _high, _c, text in missed[:MAX_MISSED_STATED]]
+    return rules.fact("user_vs_producer", sentence, classes=classes), stated
 
 
 def _weakest_classes(
@@ -965,6 +1290,14 @@ def _weakest_classes(
     confidence and proportional designs the design's interval is Wilson's
     on the effective sample size, which the package calls nominal, and is
     named so, never as a plain 95% interval.
+
+    Each ranked entry also carries, from the package's row, the class's
+    producer's accuracy (``producer_accuracy``: the valid interval when
+    given, else the design's) and whether the map draws the class too
+    little, too much or within its share on the ground (``drawn``, with the
+    map's share and that share's interval): agent trial 12 (N3/files) called
+    a class well mapped on its user's accuracy alone. The sentence is
+    unchanged; :func:`_user_vs_producer` states them.
     """
     table = per_class.get("per_class")
     if not isinstance(table, dict) or not table:
@@ -1003,6 +1336,15 @@ def _weakest_classes(
             ):
                 entry["valid_low"] = valid_ua["low"]
                 entry["valid_high"] = valid_ua["high"]
+            # What the map misses beside what it calls the class: the
+            # producer's accuracy and whether the map draws the class too
+            # little or too much, from the package's row (agent trial 12, N3).
+            producer = _producer_accuracy(row)
+            if producer is not None:
+                entry["producer_accuracy"] = producer
+            drawn = _drawn(row)
+            if drawn is not None:
+                entry["drawn"] = drawn
             ranked.append(entry)
         elif labelled or row.get("map_share") or row.get("n_labelled_reference_class"):
             # a class neither the map nor the labels hold is not in this map
@@ -1201,6 +1543,52 @@ def _class_names(pop: Population, condition: list[int]) -> dict[int, str]:
     return names
 
 
+#: What a confidence or proportional plan's ``strata_sizes`` and
+#: ``allocation`` are, in its result (``designs.confidence_strata``).
+STRATA_MEANING = (
+    "The strata are olmoearth-inferencex's quantile strata of the confidence "
+    "margin, stratum 0 the least confident; strata_sizes and allocation list "
+    "their windows and labels in that order."
+)
+
+
+def _per_stratum(sample: dict[str, Any], pop: Population) -> list[dict[str, Any]]:
+    """Each stratum of a class design with its class, windows and labels.
+
+    The package's condition design (the class design is one) takes as strata
+    the condition values present in the population, in ascending order
+    (``common.sampling._condition_index``), so a map that holds no window of
+    a class has no stratum for it and every later stratum's index runs ahead
+    of its class: on agent trial 12's map, ``condition.values`` were [0, 1,
+    2, 4, 5, 6, 7, 8] and the model read stratum 4 (class 5, 471 windows) as
+    class 4 (5,180). Stratum ``h`` is ``condition["values"][h]``, its windows
+    ``sizes[h]`` and its labels ``allocation[h]``, each the package's; the
+    name is the scores file's where known. A Studio class map's condition
+    values are the agent's internal codes (:func:`_code_classes`: 0 to K-1
+    over the classes present, sorted), so its ``class`` is the class as the
+    map writes it (``pop.classes[code]``) and the code is ``code``: a map
+    writing ids [1, 2, 3, 5] has codes 0 to 3, and code 3 is its class 5
+    (the step 11 review).
+    """
+    values = list(sample["condition"]["values"])
+    written = pop.classes if pop.score_kind == CLASS_MAP else None
+    rows: list[dict[str, Any]] = []
+    for h, (size, labels) in enumerate(zip(sample["sizes"], sample["allocation"])):
+        value = values[h] if h < len(values) else None
+        entry: dict[str, Any] = {"stratum": h, "class": value}
+        if written is not None and isinstance(value, int) and 0 <= value < len(written):
+            entry["class"] = _jsonable(written[value])
+            entry["code"] = value
+        else:
+            name = pop.class_name(value)
+            if name is not None:
+                entry["class_name"] = name
+        entry["windows"] = int(size)
+        entry["labels"] = int(labels)
+        rows.append(entry)
+    return rows
+
+
 def _draw(
     estimate: Any, pop: Population, design: str, budget: int, seed: int, floor: int
 ) -> dict[str, Any]:
@@ -1262,9 +1650,11 @@ def _scores_raster(pop: Population) -> tuple[str, dict[str, Any]]:
     raster = meta.get("raster") if isinstance(meta.get("raster"), dict) else {}
     if not path or meta.get("score_kind") != "window_confidence" or not raster:
         msg = (
-            "seed_from_map draws from the map itself: pass scores_path from "
-            "olmoearth_scores_from_file of a direct run (a Studio result has no "
-            "raster to digest)"
+            "seed_from_map draws from the map itself: it needs a scores file "
+            "that olmoearth_scores_from_file wrote from a model run's output "
+            "GeoTIFF (score_kind window_confidence), passed as scores_path, and "
+            "is refused for any other scores file, inline scores or a Studio "
+            "result (no raster to digest)"
         )
         raise ValueError(msg)
     if not raster.get("path"):
@@ -1865,6 +2255,10 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     }
     if class_map:
         population["classes"] = _jsonable(pop.classes)
+    elif pop.class_names:
+        # A scores file's class names, which the estimate's per-class facts
+        # name each class by.
+        population["class_names"] = {str(k): v for k, v in pop.class_names.items()}
     payload = {
         "format": DESIGN_FORMAT,
         "package": {"name": inferencex.DISTRIBUTION, "version": inferencex.version()},
@@ -1919,9 +2313,16 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             ),
         },
     }
-    if "sizes" in sample:
+    if "sizes" in sample and isinstance(sample.get("condition"), dict):
+        # The class design's strata are the classes the map holds, in
+        # ascending order: a map missing a class shifts every later stratum,
+        # so stratum h need not be class h (agent trial 12, N1/files: class 4
+        # given stratum 4's 471 windows instead of its own 5,180).
+        out["per_stratum"] = _per_stratum(sample, pop)
+    elif "sizes" in sample:
         out["strata_sizes"] = _jsonable(sample["sizes"])
         out["allocation"] = _jsonable(sample["allocation"])
+        out["strata_meaning"] = STRATA_MEANING
     if design == "confidence":
         out["design_note"] = (
             "Strata by confidence margin, labels allocated from the model's own "
@@ -1939,7 +2340,9 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             "olmoearth_estimate_map_error gives each class's user's accuracy an "
             "exact interval; for the whole map it reports first the interval "
             "valid at every sample size, then the design's union bound over the "
-            "classes."
+            "classes. per_stratum gives each stratum's class, as the map writes "
+            "it, windows and labels: the strata are the classes the map holds, "
+            "in order, so stratum h need not be class h."
         )
         # The package's own note on labelling this design's sheet blind.
         out["class_blind_note"] = str(estimate.CLASS_BLIND_NOTE)
@@ -1988,16 +2391,37 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             facts.append(_class_budget_fact(advice[1], design))
     claims = [rules.error_rate_without_labels()]
     # The sheet keeps the package's draw order: a random draw's order is
-    # random, so its first rows are a smaller random sample; a stratified
-    # draw lists the strata in turn, least confident first (the class design:
-    # class by class), so its first rows are one stratum (a single non-empty
-    # stratum is a random draw in effect).
-    if design == "random" or sum(1 for n in sample.get("sizes", []) if n) < 2:
-        facts.append(rules.prefix_is_random_sample(budget, _scores_route(pop)))
-    else:
-        claims.append(
-            rules.subset_labelling_sufficient(design, by_class=design == CLASS_DESIGN)
+    # random, so its first rows are a smaller random sample, a fallback only;
+    # a stratified draw lists the strata in turn, least confident first (the
+    # class design: class by class), so its first rows are one stratum (a
+    # single non-empty stratum is a random draw in effect). Every plan writes
+    # a design file, whose routes need every row labelled (agent trial 12,
+    # N2/cluster run 23: "A partial labelling is fine" of a certificate's plan).
+    random_order = (
+        design == "random" or sum(1 for n in sample.get("sizes", []) if n) < 2
+    )
+    route = _scores_route(pop)
+    for_certificate = certificate is not None
+    if random_order:
+        facts.append(
+            rules.prefix_is_random_sample(
+                budget,
+                route,
+                design=design,
+                certificate=for_certificate,
+                class_map=class_map,
+            )
         )
+    claims.append(
+        rules.subset_labelling_sufficient(
+            design,
+            by_class=design == CLASS_DESIGN,
+            random_order=random_order,
+            route=route,
+            certificate=for_certificate,
+            class_map=class_map,
+        )
+    )
     if class_map:
         # No design certifies a class map: it has no confidence to rank by.
         claims.append(rules.zone_for_a_class_map())
@@ -2523,10 +2947,27 @@ def _estimate_valid_first(
         class_map=class_map,
     )
     scope = _studio_scope(population.get("source") or {}, res.get("n_population"))
+    facts = [_valid_first_estimate(res, valid)] + ([weakest] if weakest else [])
+    missed: list[str] = []
+    if per_class:
+        # What each class's user's accuracy leaves out (agent trial 12, N3):
+        # the classes the map finds less of than it calls, or draws too
+        # little or too much, from the package's rows; the must_state ones
+        # come after the valid interval and the scope, within the contract's
+        # cap. A class map's classes as it writes them, never its internal
+        # codes (the step 11 review); a scores map's ids with its file's names.
+        if class_map:
+            contrast, missed = _user_vs_producer(per_class, written=names or [])
+        else:
+            labels_of = _file_class_names(population.get("class_names"))
+            contrast, missed = _user_vs_producer(per_class, labels_of)
+        if contrast is not None:
+            facts.append(contrast)
+    room = max(0, MUST_STATE_MAX - 1 - len(scope))
     return rules.add_contract(
         out,
-        facts=[_valid_first_estimate(res, valid)] + ([weakest] if weakest else []),
-        must_state=[stated, *scope],
+        facts=facts,
+        must_state=[stated, *scope, *missed[:room]],
         forbidden_claims=claims,
     )
 
@@ -2887,7 +3328,14 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     sampled = await asyncio.to_thread(
         estimate.estimate_error_rate, design["sample"], wrong
     )
-    whole = _whole_map_estimate(_jsonable(sampled), certify=True)
+    # Nothing certified: the whole-map rate is not the most confident part's,
+    # and the evidence on that part is the smallest zone tested (agent trial
+    # 12, B6/files runs 8, 9 and 13: "nowhere near the 5% bar anywhere").
+    levels = list(out.get("levels") or [])
+    uncertified = None if out["certified"] else levels
+    whole = _whole_map_estimate(
+        _jsonable(sampled), certify=True, uncertified=uncertified
+    )
     out["next_steps"] = _certify_next_steps(out)
     if fixed and out["certified"]:
         out["next_steps"].append(
@@ -2895,6 +3343,11 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             "olmoearth_write_certificate with this design_path, the same labels "
             "and the map's date."
         )
+    zone_claims = (
+        []
+        if out["certified"]
+        else [rules.whole_map_rate_for_a_zone(alpha, levels[0] if levels else None)]
+    )
     return rules.add_contract(
         out,
         facts=[whole],
@@ -2925,6 +3378,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 f"certified nothing at alpha={alpha:g}, and a new one with a "
                 "larger budget may certify nothing either"
             ),
+            *zone_claims,
         ],
     )
 
@@ -3182,6 +3636,7 @@ def _dates_refusal(reading: dict[str, Any]) -> ValueError:
         forbidden_claims=[
             *rules.across_dates(reading),
             rules.one_reference_settles_two_dates(reading.get("a"), reading.get("b")),
+            rules.two_map_design_across_dates(reading.get("a"), reading.get("b")),
         ],
     )
 
@@ -3692,6 +4147,8 @@ async def _plan_two_maps(
         forbidden_claims=[
             rules.more_accurate_without_labels(n_dis, n_pop),
             rules.error_rate_without_labels(),
+            # Its grading reads the whole sheet, as every design file's does.
+            rules.subset_labelling_sufficient(TWO_MAP_DESIGN),
         ],
     )
 
@@ -4029,25 +4486,24 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 name="olmoearth_plan_label_sample",
                 description=(
                     "How wrong is my map / how to spend N labels: chooses which "
-                    "windows to label for an honest error rate "
-                    "(olmoearth-inferencex design: 'confidence' by default, "
-                    "'random' when a certified zone is wanted) from scores "
-                    "inline, a scores file (from olmoearth_scores_from_file "
-                    "or olmoearth_review_set_from_result) or a Studio "
+                    "windows to label for an honest error rate ('confidence' by "
+                    "default, 'random' when a certified zone is wanted) from "
+                    "scores inline, a scores file (olmoearth_scores_from_file, "
+                    "olmoearth_review_set_from_result) or a Studio "
                     "result_id; "
                     "saves the design and lists windows by index and (row, "
                     "col). Do not design your own mix or promise an interval: a "
                     "targeted review set is not a sample (its error rate is "
                     "inflated), and the simple-random-sample interval does not "
-                    "apply to a stratified or targeted design. The interval "
-                    "comes from olmoearth_estimate_map_error. Which of two maps "
+                    "apply to a stratified or targeted design. Which of two maps "
                     "is more accurate: design='disagreement' on two Studio "
                     "results (result_id, result_id_b) or scores files "
-                    "(scores_path, scores_path_b) of one time; it draws windows "
-                    "where they differ. A Studio class map takes 'random' or "
-                    "'class' only. 'random' with seed_from_map on a direct "
-                    "run's scores file takes the seed from the map, for a "
-                    "certificate. Needs the inferencex extra."
+                    "(scores_path, scores_path_b) of one time. A Studio class "
+                    "map takes 'random' or 'class' only. seed_from_map "
+                    "('random', for a certificate) needs a scores file "
+                    "olmoearth_scores_from_file wrote from a model run's "
+                    "GeoTIFF; any other scores file, inline scores or Studio "
+                    "result is refused. Needs the inferencex extra."
                 ),
                 parameters={
                     "type": "object",
@@ -4064,7 +4520,7 @@ def build_estimation_tools() -> list[RegisteredTool]:
                             "default": "confidence",
                             "description": "'random' if a certified zone is "
                             "wanted; 'class': strata by map class; "
-                            "'disagreement' for two maps.",
+                            "'disagreement': two maps.",
                         },
                         "min_per_class": {
                             "type": "integer",
@@ -4087,9 +4543,10 @@ def build_estimation_tools() -> list[RegisteredTool]:
                         "seed_from_map": {
                             "type": "boolean",
                             "default": False,
-                            "description": "Seed from the map's digest, for "
-                            "olmoearth_write_certificate; fixes alpha, delta, "
-                            "rule now.",
+                            "description": "Only a scores file "
+                            "olmoearth_scores_from_file wrote from a model run's "
+                            "GeoTIFF; seed from the map's digest, for a "
+                            "certificate; fixes alpha, delta, rule.",
                         },
                         "alpha": {"type": "number"},
                         "delta": {"type": "number", "default": DEFAULT_DELTA},
@@ -4110,14 +4567,15 @@ def build_estimation_tools() -> list[RegisteredTool]:
             handler=_plan_label_sample,
             capability=Capability(
                 does="choose windows to label for an error rate ('confidence', "
-                "'class', or 'random' for a certified zone) or where two maps "
-                "differ ('disagreement'); save the design",
+                "'class'; 'random' for a certified zone) or where two maps "
+                "differ ('disagreement')",
                 needs=(
                     "threshold, for a Studio regression band not in [0, 1]",
-                    "a budget of at most the valid windows (a Studio result at "
-                    "grid 16 plans them all)",
-                    "for 'disagreement', two maps of one time on one window grid",
-                    "'random' or 'class' for a Studio class map (no confidence)",
+                    "a budget of at most the valid windows (Studio grid 16 plans "
+                    "all)",
+                    "'disagreement': two maps of one time on one window grid",
+                    "'random' or 'class' for a Studio class map",
+                    "seed_from_map: a scores file from a model run's GeoTIFF",
                 ),
             ),
         ),

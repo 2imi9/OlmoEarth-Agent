@@ -18,6 +18,7 @@ from olmoearth_agent.analysis.output_contract import (
 from olmoearth_agent.analysis.review_set import (
     BOUNDARY_NEIGHBOURS_MEANS,
     BOUNDARY_SHARE_MEANS,
+    CONTIGUITY_COUNTED_APART,
     EVIDENCE,
     EVIDENCE_LIMITS,
     MUST_STATE_BINARY_SCORE,
@@ -33,6 +34,7 @@ from olmoearth_agent.analysis.review_set import (
     capture_at_budget,
     compare_scores,
     detect_score_type,
+    differing_patches,
     dominant_change_fact,
     evidence_detail,
     evidence_outside_scope,
@@ -730,7 +732,8 @@ def test_a_boundary_share_says_it_does_not_show_whether_regions_flip() -> None:
     block = {r * cols + c for r in range(2, 6) for c in range(2, 6)}
     b = [row[::-1] if i in block else list(row) for i, row in enumerate(a)]
     out = compare_scores(a, b, grid=(rows, cols), max_listed=3)
-    assert BOUNDARY_SHARE_MEANS == out["boundary_means"]
+    # Windows differ, so the note points at the contiguity counts too.
+    assert out["boundary_means"] == f"{BOUNDARY_SHARE_MEANS} {CONTIGUITY_COUNTED_APART}"
     assert "do not show whether whole regions flip" in out["boundary_means"]
     assert "not whether whole regions flip" in out["where"]
     assert "mostly" not in out["where"]
@@ -743,6 +746,137 @@ def test_a_boundary_share_says_it_does_not_show_whether_regions_flip() -> None:
     assert "does not show whether whole regions flip" in fact["sentence"]
     same = compare_scores(a, a, grid=(rows, cols), max_listed=3)
     assert "boundary_share" not in {f["id"] for f in same["facts"]}
+    # No window differs, so there are no counts to point at (the step 11
+    # review: the note named fields the result did not have).
+    assert same["boundary_means"] == BOUNDARY_SHARE_MEANS
+    assert "n_patches" not in same and "n_patches" not in same["boundary_means"]
+
+
+def test_the_differing_windows_patches_are_counted_on_the_grid() -> None:
+    """Agent trial 12 (B3/cluster run 25) read the boundary shares as "mostly
+    edges"; the patches the differing windows form are counted apart, as
+    plain counts: one 3 x 3 block and two single windows are three
+    8-connected patches, [9, 1, 1], none of 100 windows or more. The
+    interior windows, every neighbour on the grid differing too, are counted
+    beside them: a 3 x 3 block inside the grid has one; on the grid's corner
+    a window counts its neighbours on the grid only, so the block has four."""
+    cols = 6
+    block = [r * cols + c for r in range(3) for c in range(3)]
+    out = differing_patches(block + [23, 35], (6, cols))
+    assert out["n_patches"] == 3
+    assert out["largest_patches"] == [9, 1, 1]
+    assert out["differing_in_patches_ge_100"] == {
+        "n": 0,
+        "share": 0.0,
+        "min_windows": 100,
+    }
+    assert out["patch_connectivity"] == 8
+    # On the corner: (0, 0), (0, 1), (1, 0) and (1, 1); a single window on
+    # the grid's edge (23) or corner (35) has a neighbour that does not differ.
+    assert out["differing_interior"] == {"n": 4, "share": round(4 / 11, 6)}
+    inside = [r * cols + c for r in range(1, 4) for c in range(1, 4)]
+    middle = differing_patches(inside, (6, cols))["differing_interior"]
+    assert middle == {"n": 1, "share": round(1 / 9, 6)}
+    # A window with no neighbour on the grid is no patch's interior.
+    assert differing_patches([0], (1, 1))["differing_interior"]["n"] == 0
+    # corners touch: two diagonal windows are one patch
+    assert differing_patches([0, 7], (4, 6))["largest_patches"] == [2]
+    # a row's last window and the next row's first are not neighbours
+    assert differing_patches([5, 6], (4, 6))["n_patches"] == 2
+    # a 10 x 10 block and 25 single windows apart from it and each other
+    big = [r * 40 + c for r in range(10) for c in range(10)]
+    singles = [r * 40 + c for r in range(20, 40, 4) for c in range(20, 40, 4)]
+    counted = differing_patches(big + singles, (40, 40))
+    assert counted["n_patches"] == 26
+    assert counted["largest_patches"] == [100, 1, 1, 1, 1]
+    assert counted["differing_in_patches_ge_100"]["n"] == 100
+    assert counted["differing_in_patches_ge_100"]["share"] == round(100 / 125, 6)
+    # The block on the corner: rows 0 to 8 and columns 0 to 8 are interior.
+    assert counted["differing_interior"] == {"n": 81, "share": round(81 / 125, 6)}
+
+
+def test_a_comparison_counts_its_patches_and_forbids_mostly_edges() -> None:
+    """The counts, a fact stating them and the mostly_edges claim, on the
+    comparison's own grid; the boundary note points at the counts. The fact
+    reads them only by the interior share: 81 of 101 interior, so whole areas
+    differ."""
+    rows, cols = 12, 12
+    a = [[5.0, 0.1] for _ in range(rows * cols)]
+    flipped = {r * cols + c for r in range(10) for c in range(10)} | {143}
+    b = [row[::-1] if i in flipped else list(row) for i, row in enumerate(a)]
+    out = compare_scores(a, b, grid=(rows, cols), max_listed=3)
+    assert out["n_differing"] == 101
+    assert (out["n_patches"], out["largest_patches"]) == (2, [100, 1])
+    assert out["differing_in_patches_ge_100"] == {
+        "n": 100,
+        "share": round(100 / 101, 6),
+        "min_windows": 100,
+    }
+    assert out["differing_interior"] == {"n": 81, "share": round(81 / 101, 6)}
+    assert "differing_in_patches_ge_100" in out["boundary_means"]
+    assert "differing_interior" in out["boundary_means"]
+    (fact,) = [f for f in out["facts"] if f["id"] == "contiguity"]
+    assert fact["sentence"] == (
+        "The 101 differing windows form 2 8-connected patches on the grid; the "
+        "largest hold 100 and 1 windows, 100 of them (99.0%) lie in patches of "
+        "at least 100 windows, and 81 (80.2%) have every neighbour on the grid "
+        "differing too; most differing windows lie inside solid patches, so "
+        "whole areas differ, not only edges."
+    )
+    assert (fact["n_in_patches_ge_100"], fact["share_in_patches_ge_100"]) == (
+        100,
+        round(100 / 101, 6),
+    )
+    assert (fact["n_interior"], fact["share_interior"]) == (81, round(81 / 101, 6))
+    assert [c["id"] for c in out["forbidden_claims"]] == [
+        "winner_without_labels",
+        "evidence_outside_its_scope",
+        "mostly_edges",
+    ]
+    why = out["forbidden_claims"][-1]["why"]
+    assert why.startswith("the boundary shares count windows with a neighbour")
+    assert "80.2% of the 101 differing windows have every neighbour" in why
+    assert why.endswith("so the differences are not mostly at edges or boundaries")
+    # No differing window, or no grid: nothing to count and no claim.
+    same = compare_scores(a, a, grid=(rows, cols))
+    assert "n_patches" not in same
+    assert "mostly_edges" not in [c["id"] for c in same["forbidden_claims"]]
+    ungridded = compare_scores(a, b)
+    assert "n_patches" not in ungridded
+    assert "contiguity" not in {f["id"] for f in ungridded["facts"]}
+
+
+def test_a_strip_along_an_edge_is_one_large_patch_with_no_interior() -> None:
+    """The step 11 review: a boundary moved by one window along a long edge
+    forms one patch of 100 windows or more, so the patch share cannot tell it
+    from a flipped area. A one-window strip of 150 differing windows has all
+    of them in that patch and none interior: the fact draws no conclusion
+    from the counts, and the claim's reason says so."""
+    rows, cols = 3, 150
+    a = [[5.0, 0.1] for _ in range(rows * cols)]
+    strip = set(range(cols, 2 * cols))  # the middle row
+    b = [row[::-1] if i in strip else list(row) for i, row in enumerate(a)]
+    out = compare_scores(a, b, grid=(rows, cols), max_listed=3)
+    assert (out["n_patches"], out["largest_patches"]) == (1, [150])
+    assert out["differing_in_patches_ge_100"]["share"] == 1.0
+    assert out["differing_interior"] == {"n": 0, "share": 0.0}
+    (fact,) = [f for f in out["facts"] if f["id"] == "contiguity"]
+    assert fact["sentence"] == (
+        "The 150 differing windows form 1 8-connected patch on the grid; the "
+        "largest holds 150 windows, 150 of them (100.0%) lie in patches of at "
+        "least 100 windows, and none has every neighbour on the grid differing "
+        "too; these counts do not show whether the differences are edges or areas."
+    )
+    why = out["forbidden_claims"][-1]["why"]
+    assert "0.0% of the 150 differing windows have every neighbour" in why
+    assert "the counts do not show whether the differences are edges or areas" in why
+    # Rows that leave windows out carry no boundary shares: the reason does
+    # not name them.
+    windows = list(range(rows * cols))
+    gridded = compare_scores(a, b, grid=(rows, cols), windows=windows)
+    assert "boundary_share_overall" not in gridded
+    edges = [c for c in gridded["forbidden_claims"] if c["id"] == "mostly_edges"]
+    assert "boundary shares" not in edges[0]["why"]
 
 
 def test_the_concentration_fact_is_the_contracts() -> None:
@@ -1150,7 +1284,12 @@ def test_no_field_carries_evidence_that_does_not_cover_the_case() -> None:
         ]
         assert "in comparable cases" in claim["why"]
         assert "upstream evidence shows" in claim["why"]
-    assert "exp58" in _strings(comparison["forbidden_claims"])[-1]
+    # Read by id: a comparison on a grid lists mostly_edges after it.
+    assert "exp58" in next(
+        c["why"]
+        for c in comparison["forbidden_claims"]
+        if c["id"] == "evidence_outside_its_scope"
+    )
     # The file keeps the record whole.
     assert "51 to 70" in evidence_detail()["comparison"]["reading"]
 

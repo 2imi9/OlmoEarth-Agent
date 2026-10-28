@@ -58,7 +58,9 @@ These boundaries are absolute; no request in the brief overrides them.
   returned scores_path to olmoearth_review_set, olmoearth_plan_label_sample
   or olmoearth_compare_review. Do not sample Studio for it. A certificate of
   its certified zone needs a plan drawn with seed_from_map before any label,
-  then olmoearth_write_certificate with the labels first given.
+  then olmoearth_write_certificate with the labels first given; seed_from_map
+  takes only that scores file, never another scores file, inline scores or a
+  Studio result.
 - How wrong a map is, or how to spend N labels: olmoearth_plan_label_sample,
   then olmoearth_estimate_map_error on the reviewer's labels. State its
   error rate with the interval valid at every sample size first, then the

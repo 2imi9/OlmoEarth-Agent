@@ -724,13 +724,17 @@
        "estimate_prefix_with": "window_indices and scores_path",
        "id": "prefix_is_random_sample",
        "n_rows": 300,
-       "sentence": "The sheet's 300 rows are in the package's random draw order, so labelling only its first k rows, with k fixed before any label is seen, is a smaller random sample: the estimate stays unbiased and its interval widens. olmoearth_estimate_map_error takes those rows as window_indices with the same scores_path; with design_path it needs every row labelled."
+       "sentence": "With design_path, olmoearth_estimate_map_error, olmoearth_certify_zone and olmoearth_write_certificate need every one of the sheet's 300 rows labelled. This plan was drawn with seed_from_map for a certificate, which needs every row labelled. Only as a fallback if labelling stops early, for a reason that does not depend on the labels already read (time, labour), never because of what they show: the sheet is in the package's random draw order, so the first k rows labelled before the stop are a smaller random sample; olmoearth_estimate_map_error takes them as window_indices with the same scores_path, the estimate stays unbiased and its interval widens, and they give no certified zone or certificate."
       }
      ],
      "forbidden_claims": [
       {
        "id": "error_rate_without_labels",
        "why": "the plan holds no labels: no error rate, accuracy or interval exists until the reviewer has labelled its windows, so none may be stated or guessed from the scores (a confidence score is not a probability of error)"
+      },
+      {
+       "id": "subset_labelling_sufficient",
+       "why": "label every row of the sheet: with design_path, olmoearth_estimate_map_error, olmoearth_certify_zone and olmoearth_write_certificate need every row labelled, so a partial labelling is not fine for this plan; it was drawn with seed_from_map for a certificate, which needs every row; only as a fallback when labelling stops early, for a reason that does not depend on the labels already read (time, labour), never because of what they show, are the first k rows labelled before the stop a smaller random sample, estimated with window_indices and the same scores_path, with a wider interval and no certified zone or certificate"
       },
       {
        "id": "certification_guaranteed",
@@ -1162,50 +1166,130 @@
         {
          "class": 5,
          "correct": 0,
+         "drawn": {
+          "flag": "too much",
+          "map_share": 0.02978561942705369,
+          "reference_share": {
+           "estimate": 0.0,
+           "high": 0.01922468854739771,
+           "interval": "exact",
+           "low": 0.0
+          }
+         },
          "estimate": 0.0,
          "high": 0.4564755838641189,
          "labelled": 6,
          "low": 0.0,
+         "producer_accuracy": {
+          "estimate": null,
+          "high": 1.0,
+          "interval": "design",
+          "low": 0.0
+         },
          "valid_high": 0.4564755838641189,
          "valid_low": 0.0
         },
         {
          "class": 1,
          "correct": 3,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.02731929425156517,
+          "reference_share": {
+           "estimate": 0.05333333333333334,
+           "high": 0.09922215898311516,
+           "interval": "exact",
+           "low": 0.02428381711250237
+          }
+         },
          "estimate": 0.3,
          "high": 0.6481481481481481,
          "labelled": 10,
          "low": 0.06944444444444445,
+         "producer_accuracy": {
+          "estimate": 0.15822377145455235,
+          "high": 0.4662480376766092,
+          "interval": "valid",
+          "low": 0.019169329073482417
+         },
          "valid_high": 0.6481481481481481,
          "valid_low": 0.06944444444444445
         },
         {
          "class": 6,
          "correct": 19,
+         "drawn": {
+          "flag": "too much",
+          "map_share": 0.15512552962752166,
+          "reference_share": {
+           "estimate": 0.06333333333333334,
+           "high": 0.11193321950294062,
+           "interval": "exact",
+           "low": 0.03117687978245747
+          }
+         },
          "estimate": 0.3958333333333333,
          "high": 0.5458622095393396,
          "labelled": 48,
          "low": 0.25927435792906645,
+         "producer_accuracy": {
+          "estimate": 1.0,
+          "high": 1.0,
+          "interval": "valid",
+          "low": 0.7229647630619683
+         },
          "valid_high": 0.5458622095393396,
          "valid_low": 0.25927435792906645
         },
         {
          "class": 4,
          "correct": 88,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.3275785745905268,
+          "reference_share": {
+           "estimate": 0.3933333333333333,
+           "high": 0.47378739012205145,
+           "interval": "exact",
+           "low": 0.3167646872826156
+          }
+         },
          "estimate": 0.9565217391304348,
          "high": 0.9878378378378379,
          "labelled": 92,
          "low": 0.8930501930501931,
+         "producer_accuracy": {
+          "estimate": 0.7636384137472234,
+          "high": 0.8361323984999186,
+          "interval": "valid",
+          "low": 0.6752288160614112
+         },
          "valid_high": 0.9878378378378379,
          "valid_low": 0.8930501930501931
         },
         {
          "class": 7,
          "correct": 133,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.45070511604376146,
+          "reference_share": {
+           "estimate": 0.49,
+           "high": 0.5704799848226143,
+           "interval": "exact",
+           "low": 0.40985265288054135
+          }
+         },
          "estimate": 0.9568345323741008,
          "high": 0.983723866984706,
          "labelled": 139,
          "low": 0.9089378420092605,
+         "producer_accuracy": {
+          "estimate": 0.9002854328802441,
+          "high": 0.9478084962913015,
+          "interval": "valid",
+          "low": 0.8321243523316061
+         },
          "valid_high": 0.983723866984706,
          "valid_low": 0.9089378420092605
         }
@@ -1228,6 +1312,69 @@
          "labelled": 1
         }
        ]
+      },
+      {
+       "classes": [
+        {
+         "class": 4,
+         "intervals": "valid",
+         "producer_accuracy": {
+          "estimate": 0.7636384137472234,
+          "high": 0.8361323984999186,
+          "interval": "valid",
+          "low": 0.6752288160614112
+         },
+         "producer_below_user": true,
+         "user_accuracy": {
+          "estimate": 0.9565217391304348,
+          "high": 0.9878378378378379,
+          "interval": "valid",
+          "low": 0.8930501930501931
+         }
+        },
+        {
+         "class": 5,
+         "drawn": {
+          "flag": "too much",
+          "map_share": 0.02978561942705369,
+          "reference_share": {
+           "estimate": 0.0,
+           "high": 0.01922468854739771,
+           "interval": "exact",
+           "low": 0.0
+          }
+         }
+        },
+        {
+         "class": 6,
+         "drawn": {
+          "flag": "too much",
+          "map_share": 0.15512552962752166,
+          "reference_share": {
+           "estimate": 0.06333333333333334,
+           "high": 0.11193321950294062,
+           "interval": "exact",
+           "low": 0.03117687978245747
+          }
+         },
+         "intervals": "valid",
+         "producer_accuracy": {
+          "estimate": 1.0,
+          "high": 1.0,
+          "interval": "valid",
+          "low": 0.7229647630619683
+         },
+         "user_accuracy": {
+          "estimate": 0.3958333333333333,
+          "high": 0.5458622095393396,
+          "interval": "valid",
+          "low": 0.25927435792906645
+         },
+         "user_below_producer": true
+        }
+       ],
+       "id": "user_vs_producer",
+       "sentence": "Beside each class's user's accuracy, from olmoearth-inferencex's per-class rows (intervals valid at every sample size, each holding on its own at 95% and not jointly, unless said): Class 4 (crops): what the map calls class 4 is right 95.7% (89.3% to 98.8%) of the time, but it finds only 76.4% (67.5% to 83.6%) of the ground that is class 4. Class 5 (shrub_and_scrub): the map draws class 5 too much: on 3.0% of the windows, against 0.0% (0.0% to 1.9%) of the ground (exact intervals, holding for all classes together at 95%). Class 6 (built): the map finds 100.0% (72.3% to 100.0%) of the ground that is class 6, but what it calls class 6 is right only 39.6% (25.9% to 54.6%) of the time; the map draws class 6 too much: on 15.5% of the windows, against 6.3% (3.1% to 11.2%) of the ground (exact intervals, holding for all classes together at 95%)."
       }
      ],
      "forbidden_claims": [
@@ -1266,7 +1413,8 @@
      "low": 0.14760007588692847,
      "method": "exact hypergeometric interval (simple random sample of a finite map)",
      "must_state": [
-      "Error rate 19.0%: valid 95% interval 14.8% to 23.9%, random design, 300 labels."
+      "Error rate 19.0%: valid 95% interval 14.8% to 23.9%, random design, 300 labels.",
+      "Class 4: the map finds only 67.5% to 83.6% of the class's ground (producer's accuracy); it misses the rest."
      ],
      "n_labelled": 300,
      "n_population": 15813,
@@ -1883,7 +2031,12 @@
        "high": 0.23853791184468476,
        "id": "whole_map_estimate",
        "low": 0.14760007588692847,
-       "sentence": "The map's error rate is estimated at 19.0% (95% interval 14.8% to 23.9%) from 300 labelled windows of a population of 15813; method: exact hypergeometric interval (simple random sample of a finite map). It is the estimate for the whole population from the same labels, not a certification."
+       "sentence": "The map's error rate is estimated at 19.0% (95% interval 14.8% to 23.9%) from 300 labelled windows of a population of 15813; method: exact hypergeometric interval (simple random sample of a finite map). It is the estimate for the whole population from the same labels, not a certification. It describes the whole map, not its most confident part: the smallest zone tested, at coverage 0.1 of the map, held 33 labels with 1 wrong.",
+       "smallest_zone_tested": {
+        "coverage": 0.1,
+        "n_labelled_inside": 33,
+        "n_wrong_inside": 1
+       }
       }
      ],
      "forbidden_claims": [
@@ -1898,6 +2051,10 @@
       {
        "id": "certification_guaranteed",
        "why": "a random design makes a certified zone possible, never certain: olmoearth_certify_zone certifies a zone only where the labels drawn in it hold few enough errors for its exact test, so it may certify none, and no design, sample size, budget or plan can promise a certified (or 'certifiable') region, or a zone of any size; this random design of 300 labels certified nothing at alpha=0.1, and a new one with a larger budget may certify nothing either"
+      },
+      {
+       "id": "whole_map_rate_for_a_zone",
+       "why": "the whole-map error rate describes the whole map, not its most confident part: set against alpha=0.1 it neither explains nor predicts that no zone certified, and it does not show that every part of the map is above alpha; the evidence on the most confident part is the smallest zone tested, coverage 0.1: 33 labels, 1 wrong"
       }
      ],
      "labels_sha256": "9d870b5b6fde",
@@ -2154,13 +2311,22 @@
        "high": 0.23853791184468476,
        "id": "whole_map_estimate",
        "low": 0.14760007588692847,
-       "sentence": "The map's error rate is estimated at 19.0% (95% interval 14.8% to 23.9%) from 300 labelled windows of a population of 15813; method: exact hypergeometric interval (simple random sample of a finite map). It is the estimate for the whole population from the same labels, not a certification."
+       "sentence": "The map's error rate is estimated at 19.0% (95% interval 14.8% to 23.9%) from 300 labelled windows of a population of 15813; method: exact hypergeometric interval (simple random sample of a finite map). It is the estimate for the whole population from the same labels, not a certification. It describes the whole map, not its most confident part: the smallest zone tested, at coverage 0.1 of the map, held 33 labels with 1 wrong.",
+       "smallest_zone_tested": {
+        "coverage": 0.1,
+        "n_labelled_inside": 33,
+        "n_wrong_inside": 1
+       }
       }
      ],
      "forbidden_claims": [
       {
        "id": "post_hoc_alpha",
        "why": "alpha=0.1 was fixed for this call; the guarantee holds only for an alpha fixed before the labels were seen. Proposing or evaluating another alpha after seeing these bounds (e.g. that a looser alpha would certify some share of the map) is not a certification: another alpha tests other levels, a level whose upper_bound is below an alpha is not thereby accepted, and trying alphas until one certifies is not covered"
+      },
+      {
+       "id": "whole_map_rate_for_a_zone",
+       "why": "the whole-map error rate describes the whole map, not its most confident part: set against alpha=0.1 it neither explains nor predicts that no zone certified, and it does not show that every part of the map is above alpha; the evidence on the most confident part is the smallest zone tested, coverage 0.1: 33 labels, 1 wrong"
       }
      ],
      "labels_held_in": "<work>/certificates/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix/sample.csv",
@@ -2191,22 +2357,12 @@
    "envelope": {
     "ok": true,
     "result": {
-     "allocation": [
-      10,
-      50,
-      50,
-      50,
-      50,
-      50,
-      50,
-      50
-     ],
      "available": true,
      "budget": 360,
      "budget_requested": 360,
      "class_blind_note": "the rows run class by class, and the `map_class`, `condition` and `stratum` columns all name the map's class: to label blind, hide those three and show the windows in a shuffled order, then write each label on its own row, keeping the CSV's row order",
      "design": "class",
-     "design_note": "Strata are the map's classes (Olofsson et al. 2014): each class gets at least 50 labels, or all its windows if it has fewer, and the rest of the budget goes to the classes in proportion to their size. Each class's labels are a simple random sample of it, so olmoearth_estimate_map_error gives each class's user's accuracy an exact interval; for the whole map it reports first the interval valid at every sample size, then the design's union bound over the classes.",
+     "design_note": "Strata are the map's classes (Olofsson et al. 2014): each class gets at least 50 labels, or all its windows if it has fewer, and the rest of the budget goes to the classes in proportion to their size. Each class's labels are a simple random sample of it, so olmoearth_estimate_map_error gives each class's user's accuracy an exact interval; for the whole map it reports first the interval valid at every sample size, then the design's union bound over the classes. per_stratum gives each stratum's class, as the map writes it, windows and labels: the strata are the classes the map holds, in order, so stratum h need not be class h.",
      "design_path": "<work>/design_scores_971becd8_class_360_s0.json",
      "facts": [
       {
@@ -2274,21 +2430,69 @@
       "Then olmoearth_estimate_map_error with design_path and the filled sheet (labels_path) gives the error rate with the interval valid at every sample size first, then the interval this design earns, and each class's accuracy.",
       "This class design gives an estimate, not a certification: olmoearth_certify_zone refuses it. A certified zone needs a separate plan with design='random', fixed before labelling. A random design makes a certified zone possible, not certain: olmoearth_certify_zone may certify nothing."
      ],
+     "per_stratum": [
+      {
+       "class": 0,
+       "class_name": "water",
+       "labels": 10,
+       "stratum": 0,
+       "windows": 10
+      },
+      {
+       "class": 1,
+       "class_name": "trees",
+       "labels": 50,
+       "stratum": 1,
+       "windows": 432
+      },
+      {
+       "class": 2,
+       "class_name": "grass",
+       "labels": 50,
+       "stratum": 2,
+       "windows": 86
+      },
+      {
+       "class": 4,
+       "class_name": "crops",
+       "labels": 50,
+       "stratum": 3,
+       "windows": 5180
+      },
+      {
+       "class": 5,
+       "class_name": "shrub_and_scrub",
+       "labels": 50,
+       "stratum": 4,
+       "windows": 471
+      },
+      {
+       "class": 6,
+       "class_name": "built",
+       "labels": 50,
+       "stratum": 5,
+       "windows": 2453
+      },
+      {
+       "class": 7,
+       "class_name": "bare",
+       "labels": 50,
+       "stratum": 6,
+       "windows": 7127
+      },
+      {
+       "class": 8,
+       "class_name": "snow_and_ice",
+       "labels": 50,
+       "stratum": 7,
+       "windows": 54
+      }
+     ],
      "population": {
       "score_kind": "window_confidence",
       "what_the_rate_will_be_of": "the valid windows of this population: every valid window of the model run's map, each graded on its majority class (map_class)"
      },
      "seed": 0,
-     "strata_sizes": [
-      10,
-      432,
-      86,
-      5180,
-      471,
-      2453,
-      7127,
-      54
-     ],
      "windows": [
       {
        "col": 57,
@@ -2742,80 +2946,208 @@
         {
          "class": 0,
          "correct": 0,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.0006323910706380826,
+          "reference_share": {
+           "estimate": 0.0,
+           "high": 0.14298362107127047,
+           "interval": "exact",
+           "low": 0.0
+          }
+         },
          "estimate": 0.0,
          "high": 0.0,
          "labelled": 10,
          "low": 0.0,
+         "producer_accuracy": {
+          "estimate": null,
+          "high": 1.0,
+          "interval": "design",
+          "low": 0.0
+         },
          "valid_high": 0.0,
          "valid_low": 0.0
         },
         {
          "class": 8,
          "correct": 0,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.003414911781445646,
+          "reference_share": {
+           "estimate": 0.0,
+           "high": 0.14298362107127047,
+           "interval": "exact",
+           "low": 0.0
+          }
+         },
          "estimate": 0.0,
          "high": 0.018518518518518517,
          "labelled": 50,
          "low": 0.0,
+         "producer_accuracy": {
+          "estimate": null,
+          "high": 1.0,
+          "interval": "design",
+          "low": 0.0
+         },
          "valid_high": 0.018518518518518517,
          "valid_low": 0.0
         },
         {
          "class": 2,
          "correct": 0,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.00543856320748751,
+          "reference_share": {
+           "estimate": 0.0,
+           "high": 0.14298362107127047,
+           "interval": "exact",
+           "low": 0.0
+          }
+         },
          "estimate": 0.0,
          "high": 0.046511627906976744,
          "labelled": 50,
          "low": 0.0,
+         "producer_accuracy": {
+          "estimate": null,
+          "high": 1.0,
+          "interval": "design",
+          "low": 0.0
+         },
          "valid_high": 0.046511627906976744,
          "valid_low": 0.0
         },
         {
          "class": 5,
          "correct": 0,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.02978561942705369,
+          "reference_share": {
+           "estimate": 0.0,
+           "high": 0.14298362107127047,
+           "interval": "exact",
+           "low": 0.0
+          }
+         },
          "estimate": 0.0,
          "high": 0.06581740976645435,
          "labelled": 50,
          "low": 0.0,
+         "producer_accuracy": {
+          "estimate": null,
+          "high": 1.0,
+          "interval": "design",
+          "low": 0.0
+         },
          "valid_high": 0.06581740976645435,
          "valid_low": 0.0
         },
         {
          "class": 1,
          "correct": 14,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.02731929425156517,
+          "reference_share": {
+           "estimate": 0.0402441029532663,
+           "high": 0.2074875102763549,
+           "interval": "exact",
+           "low": 0.008916714095996965
+          }
+         },
          "estimate": 0.28,
          "high": 0.4166666666666667,
          "labelled": 50,
          "low": 0.16898148148148148,
+         "producer_accuracy": {
+          "estimate": 0.19007511235425376,
+          "high": 0.9740932642487047,
+          "interval": "valid",
+          "low": 0.040799344592179924
+         },
          "valid_high": 0.4166666666666667,
          "valid_low": 0.16898148148148148
         },
         {
          "class": 6,
          "correct": 20,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.15512552962752166,
+          "reference_share": {
+           "estimate": 0.06205021185100867,
+           "high": 0.22007209258205274,
+           "interval": "exact",
+           "low": 0.02946942389173465
+          }
+         },
          "estimate": 0.4,
          "high": 0.5466775377089278,
          "labelled": 50,
          "low": 0.2653893192009784,
+         "producer_accuracy": {
+          "estimate": 1.0,
+          "high": 1.0,
+          "interval": "valid",
+          "low": 0.39588413968199565
+         },
          "valid_high": 0.5466775377089278,
          "valid_low": 0.2653893192009784
         },
         {
          "class": 4,
          "correct": 48,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.3275785745905268,
+          "reference_share": {
+           "estimate": 0.40214127616518053,
+           "high": 0.5360146714728388,
+           "interval": "exact",
+           "low": 0.2978561942705369
+          }
+         },
          "estimate": 0.96,
          "high": 0.994980694980695,
          "labelled": 50,
          "low": 0.8633204633204633,
+         "producer_accuracy": {
+          "estimate": 0.7820023714196752,
+          "high": 0.8779721570850796,
+          "interval": "valid",
+          "low": 0.6305627043871961
+         },
          "valid_high": 0.994980694980695,
          "valid_low": 0.8633204633204633
         },
         {
          "class": 7,
          "correct": 49,
+         "drawn": {
+          "flag": "within",
+          "map_share": 0.45070511604376146,
+          "reference_share": {
+           "estimate": 0.4955644090305445,
+           "high": 0.6072851451337508,
+           "interval": "exact",
+           "low": 0.384557010055018
+          }
+         },
          "estimate": 0.98,
          "high": 0.9994387540339554,
          "labelled": 50,
          "low": 0.893924512417567,
+         "producer_accuracy": {
+          "estimate": 0.8912888126630222,
+          "high": 0.969339020962192,
+          "interval": "valid",
+          "low": 0.7771848899774583
+         },
          "valid_high": 0.9994387540339554,
          "valid_low": 0.893924512417567
         }
@@ -3679,42 +4011,42 @@
      },
      "freshness": [],
      "gated": false,
-     "markdown": "# One Dynamic World tile, checked by the verification tools\n\n## Results\n\n## How accurate is this map\n\nEvery figure in this section is a result of this request's verification tools (olmoearth-inferencex), as the tool returned it; none was typed or worked out for this report.\n\n### Error rate (`olmoearth_estimate_map_error`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- Error rate: 19.0%, estimated from 300 labels on a population of 15,813 windows.\n- Interval valid at every sample size (95%): 14.8% to 23.9% (method: simple random sample; valid at every sample size: one stratum is labelled in part, and the interval is its exact hypergeometric interval at 95%, with any stratum labelled in full added exactly).\n- Interval this design earns (95%): 14.8% to 23.9% (method: exact hypergeometric interval (simple random sample of a finite map)).\n- Labels, design and seed: 300 labels on the random design, seed 255910144374513572839021736587088638387; design file `<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json`.\n- Per class: Ranked by user's accuracy (of the windows the map puts in a class, the share the labels agree with) over the 5 classes with at least 5 map-labelled windows, the lowest are class 5 (0 of 6 correct; 0.0%, 95% interval valid at every sample size 0.0% to 45.6%, 95% interval this design earns 0.0% to 45.6%), class 1 (3 of 10 correct; 30.0%, 95% interval valid at every sample size 6.9% to 64.8%, 95% interval this design earns 6.9% to 64.8%) and class 6 (19 of 48 correct; 39.6%, 95% interval valid at every sample size 25.9% to 54.6%, 95% interval this design earns 25.9% to 54.6%). Classes 0, 2 and 8 have fewer than 5 map-labelled windows (0, 4 and 1), too few to rank.\n- olmoearth-inferencex's note on class 5: fewer than 30 labelled windows (6 the map calls this class, 0 the reference does); the exact intervals are wide, and the normal-theory ones, below about ten, not to be trusted\n- olmoearth-inferencex's note on class 1: fewer than 30 labelled windows (10 the map calls this class, 16 the reference does); the exact intervals are wide, and the normal-theory ones, below about ten, not to be trusted\n- olmoearth-inferencex's note on class 6: fewer than 30 labelled windows (48 the map calls this class, 19 the reference does); the exact intervals are wide, and the normal-theory ones, below about ten, not to be trusted\n- Limit stated by the tool: Error rate 19.0%: valid 95% interval 14.8% to 23.9%, random design, 300 labels.\n- olmoearth-inferencex's note: --valid: the first interval covers the whole-map rate at least 95% of the time for every map and every number of labels, with no normal approximation: strata labelled in full enter exactly, one stratum labelled in part takes its exact hypergeometric interval, and two or more take the betting interval for a stratified sample drawn without replacement, the method grade uses. The line below it is the interval estimate prints without --valid, unchanged: under the confidence and proportional designs Wilson's on the design's effective sample size, which is nominal (in the research record it covered 91.3% at 100 labels on a 200-window map, exp105; 92.7% near a census, 300 of 306 labelled; and at least 93% on the other graded cells, exp78); under `--design condition`, `class` and `profile` the union bound over the strata, which holds too; under a random sample the same exact interval. The valid interval was 1.6 to 1.7 times as wide as the confidence design's Wilson interval and 0.6 times the class design's union bound on the demo tile (aicr job 1554014).\n- olmoearth-inferencex's note: map class(es) [0] have no labelled window; the error-adjusted reference shares (in the JSON) are short by their weight (0.001 of the map); the exact intervals printed are not\n- olmoearth-inferencex's note: --valid: each interval on a line marked valid holds at 95% on its own, for every map and every number of labels: the user's accuracy over the windows the map calls the class in each stratum (exact where they lie in one stratum labelled in part), the producer's accuracy from two such intervals at 97.5% each (a box), and the share over the strata. They do not hold jointly, and a share the map draws outside its own interval is flagged on that interval alone. The line below each is the table estimate prints without --valid, unchanged.\n- olmoearth-inferencex's note on scope (its first sentences, before another map's figures and the command line's options): This is the error rate of the whole map. If part of the map was predicted from other inputs, that part's rate can differ widely from it.\n\n### Error rate (`olmoearth_estimate_map_error`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- Error rate: 17.4%, estimated from 360 labels on a population of 15,813 windows.\n- Interval valid at every sample size (95%): 11.8% to 25.2% (method: stratified by map class; valid at every sample size: the betting interval for a stratified sample drawn without replacement (the interval grade gives; the technical report's Theorem 1), the strata labelled in full added exactly).\n- Interval this design earns (95%): 11.4% to 30.7% (method: stratified by map class; sum of each class's exact interval at 1 - 0.05/L, weighted by its share of the map (union bound); covers at least 95% by construction).\n- Labels, design and seed: 360 labels on the class design, seed 0; design file `<work>/design_scores_971becd8_class_360_s0.json`.\n- Per class: Ranked by user's accuracy (of the windows the map puts in a class, the share the labels agree with) over the 8 classes with at least 5 map-labelled windows, the lowest are class 0 (0 of 10 correct; 0.0%, 95% interval valid at every sample size 0.0% to 0.0%, 95% interval this design earns 0.0% to 0.0%), class 8 (0 of 50 correct; 0.0%, 95% interval valid at every sample size 0.0% to 1.9%, 95% interval this design earns 0.0% to 1.9%), class 2 (0 of 50 correct; 0.0%, 95% interval valid at every sample size 0.0% to 4.7%, 95% interval this design earns 0.0% to 4.7%) and class 5 (0 of 50 correct; 0.0%, 95% interval valid at every sample size 0.0% to 6.6%, 95% interval this design earns 0.0% to 6.6%).\n- olmoearth-inferencex's note on class 0: fewer than 30 labelled windows (10 the map calls this class, 0 the reference does); the exact intervals are wide\n- olmoearth-inferencex's note on class 8: fewer than 30 labelled windows (50 the map calls this class, 0 the reference does); the exact intervals are wide\n- olmoearth-inferencex's note on class 2: fewer than 30 labelled windows (50 the map calls this class, 0 the reference does); the exact intervals are wide\n- olmoearth-inferencex's note on class 5: fewer than 30 labelled windows (50 the map calls this class, 0 the reference does); the exact intervals are wide\n- Limit stated by the tool: Error rate 17.4%: valid 95% interval 11.8% to 25.2%, class design, 360 labels.\n- olmoearth-inferencex's note: Each class's interval is its own 95% statement; the intervals do not hold jointly at 95%. The whole-map rate weights each class by its share of the map and can hide a class that is much worse. Each class's own interval is exact. The whole-map interval takes each class's exact interval at 1 - 0.05/L, where L is the number of classes not labelled in full, and weights it by the class's share of the map, so it covers at least 95% by construction; it is wider than the usual stratified interval. What the design buys is each class's own accuracy: every class gets at least its floor of labels, or all its windows, and the rest go in proportion to class size (Olofsson et al. 2014). If only the whole-map rate is needed, --design random can give a narrower interval.\n- olmoearth-inferencex's note: --valid: the first interval covers the whole-map rate at least 95% of the time for every map and every number of labels, with no normal approximation: strata labelled in full enter exactly, one stratum labelled in part takes its exact hypergeometric interval, and two or more take the betting interval for a stratified sample drawn without replacement, the method grade uses. The line below it is the interval estimate prints without --valid, unchanged: under the confidence and proportional designs Wilson's on the design's effective sample size, which is nominal (in the research record it covered 91.3% at 100 labels on a 200-window map, exp105; 92.7% near a census, 300 of 306 labelled; and at least 93% on the other graded cells, exp78); under `--design condition`, `class` and `profile` the union bound over the strata, which holds too; under a random sample the same exact interval. The valid interval was 1.6 to 1.7 times as wide as the confidence design's Wilson interval and 0.6 times the class design's union bound on the demo tile (aicr job 1554014).\n- olmoearth-inferencex's note: --valid: each interval on a line marked valid holds at 95% on its own, for every map and every number of labels: the user's accuracy over the windows the map calls the class in each stratum (exact where they lie in one stratum labelled in part), the producer's accuracy from two such intervals at 97.5% each (a box), and the share over the strata. They do not hold jointly, and a share the map draws outside its own interval is flagged on that interval alone. The line below each is the table estimate prints without --valid, unchanged.\n\n### Certified zone (`olmoearth_certify_zone`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- No zone is certified at alpha=0.1, delta=0.1 under rule 'prefix': no share of the map is shown to be wrong at most alpha=0.1 of the time.\n- Labels, design and seed: 300 labels on the random design, seed 255910144374513572839021736587088638387; design file `<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json`.\n- olmoearth-inferencex's note: no zone certified at alpha=0.1, delta=0.1 with 300 labels; the smallest testable zone (10% of the map) held 33 labels with 1 wrong\n- olmoearth-inferencex's note on scope (its first sentences, before another map's figures and the command line's options): The zone's error rate is certified over all its windows together. Where part of the map was predicted from other inputs, that part of the zone can be wrong more often than the rest. If the model was not trained on those inputs, its errors there can be confident ones and fall inside the zone (exp88).\n\n### Certificate (`olmoearth_write_certificate`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- No certificate: No zone is certified at alpha=0.1, delta=0.1 under rule 'prefix' on these labels, so there is nothing to put in a certificate.\n- Labels, design and seed: 300 labels on the random design, seed 255910144374513572839021736587088638387; design file `<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json`.\n- Limit stated by the tool: No zone was certified on these labels; no certificate was written.\n\n## Provenance\n- `olmoearth_scores_from_file` (args sha c6ea5a5ee3b6)\n- `olmoearth_review_set` (args sha 1f29530f6fa6)\n- `olmoearth_plan_label_sample` (args sha 2ef74e8ba13f)\n- `olmoearth_estimate_map_error` (args sha d17a3f97bfc9)\n- `olmoearth_certify_zone` (args sha ea10e43c25a4)\n- `olmoearth_write_certificate` (args sha 35f2ba3f6767)\n- `olmoearth_plan_label_sample` (args sha 8e72901c4486)\n- `olmoearth_estimate_map_error` (args sha d83cc860e407)\n",
+     "markdown": "# One Dynamic World tile, checked by the verification tools\n\n## Results\n\n## How accurate is this map\n\nEvery figure in this section is a result of this request's verification tools (olmoearth-inferencex), as the tool returned it; none was typed or worked out for this report.\n\n### Error rate (`olmoearth_estimate_map_error`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- Error rate: 19.0%, estimated from 300 labels on a population of 15,813 windows.\n- Interval valid at every sample size (95%): 14.8% to 23.9% (method: simple random sample; valid at every sample size: one stratum is labelled in part, and the interval is its exact hypergeometric interval at 95%, with any stratum labelled in full added exactly).\n- Interval this design earns (95%): 14.8% to 23.9% (method: exact hypergeometric interval (simple random sample of a finite map)).\n- Labels, design and seed: 300 labels on the random design, seed 255910144374513572839021736587088638387; design file `<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json`.\n- Per class: Ranked by user's accuracy (of the windows the map puts in a class, the share the labels agree with) over the 5 classes with at least 5 map-labelled windows, the lowest are class 5 (0 of 6 correct; 0.0%, 95% interval valid at every sample size 0.0% to 45.6%, 95% interval this design earns 0.0% to 45.6%), class 1 (3 of 10 correct; 30.0%, 95% interval valid at every sample size 6.9% to 64.8%, 95% interval this design earns 6.9% to 64.8%) and class 6 (19 of 48 correct; 39.6%, 95% interval valid at every sample size 25.9% to 54.6%, 95% interval this design earns 25.9% to 54.6%). Classes 0, 2 and 8 have fewer than 5 map-labelled windows (0, 4 and 1), too few to rank.\n- What each class's user's accuracy leaves out: Beside each class's user's accuracy, from olmoearth-inferencex's per-class rows (intervals valid at every sample size, each holding on its own at 95% and not jointly, unless said): Class 4 (crops): what the map calls class 4 is right 95.7% (89.3% to 98.8%) of the time, but it finds only 76.4% (67.5% to 83.6%) of the ground that is class 4. Class 5 (shrub_and_scrub): the map draws class 5 too much: on 3.0% of the windows, against 0.0% (0.0% to 1.9%) of the ground (exact intervals, holding for all classes together at 95%). Class 6 (built): the map finds 100.0% (72.3% to 100.0%) of the ground that is class 6, but what it calls class 6 is right only 39.6% (25.9% to 54.6%) of the time; the map draws class 6 too much: on 15.5% of the windows, against 6.3% (3.1% to 11.2%) of the ground (exact intervals, holding for all classes together at 95%).\n- olmoearth-inferencex's note on class 5: fewer than 30 labelled windows (6 the map calls this class, 0 the reference does); the exact intervals are wide, and the normal-theory ones, below about ten, not to be trusted\n- olmoearth-inferencex's note on class 1: fewer than 30 labelled windows (10 the map calls this class, 16 the reference does); the exact intervals are wide, and the normal-theory ones, below about ten, not to be trusted\n- olmoearth-inferencex's note on class 6: fewer than 30 labelled windows (48 the map calls this class, 19 the reference does); the exact intervals are wide, and the normal-theory ones, below about ten, not to be trusted\n- Limit stated by the tool: Error rate 19.0%: valid 95% interval 14.8% to 23.9%, random design, 300 labels.\n- Limit stated by the tool: Class 4: the map finds only 67.5% to 83.6% of the class's ground (producer's accuracy); it misses the rest.\n- olmoearth-inferencex's note: --valid: the first interval covers the whole-map rate at least 95% of the time for every map and every number of labels, with no normal approximation: strata labelled in full enter exactly, one stratum labelled in part takes its exact hypergeometric interval, and two or more take the betting interval for a stratified sample drawn without replacement, the method grade uses. The line below it is the interval estimate prints without --valid, unchanged: under the confidence and proportional designs Wilson's on the design's effective sample size, which is nominal (in the research record it covered 91.3% at 100 labels on a 200-window map, exp105; 92.7% near a census, 300 of 306 labelled; and at least 93% on the other graded cells, exp78); under `--design condition`, `class` and `profile` the union bound over the strata, which holds too; under a random sample the same exact interval. The valid interval was 1.6 to 1.7 times as wide as the confidence design's Wilson interval and 0.6 times the class design's union bound on the demo tile (aicr job 1554014).\n- olmoearth-inferencex's note: map class(es) [0] have no labelled window; the error-adjusted reference shares (in the JSON) are short by their weight (0.001 of the map); the exact intervals printed are not\n- olmoearth-inferencex's note: --valid: each interval on a line marked valid holds at 95% on its own, for every map and every number of labels: the user's accuracy over the windows the map calls the class in each stratum (exact where they lie in one stratum labelled in part), the producer's accuracy from two such intervals at 97.5% each (a box), and the share over the strata. They do not hold jointly, and a share the map draws outside its own interval is flagged on that interval alone. The line below each is the table estimate prints without --valid, unchanged.\n- olmoearth-inferencex's note on scope (its first sentences, before another map's figures and the command line's options): This is the error rate of the whole map. If part of the map was predicted from other inputs, that part's rate can differ widely from it.\n\n### Error rate (`olmoearth_estimate_map_error`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- Error rate: 17.4%, estimated from 360 labels on a population of 15,813 windows.\n- Interval valid at every sample size (95%): 11.8% to 25.2% (method: stratified by map class; valid at every sample size: the betting interval for a stratified sample drawn without replacement (the interval grade gives; the technical report's Theorem 1), the strata labelled in full added exactly).\n- Interval this design earns (95%): 11.4% to 30.7% (method: stratified by map class; sum of each class's exact interval at 1 - 0.05/L, weighted by its share of the map (union bound); covers at least 95% by construction).\n- Labels, design and seed: 360 labels on the class design, seed 0; design file `<work>/design_scores_971becd8_class_360_s0.json`.\n- Per class: Ranked by user's accuracy (of the windows the map puts in a class, the share the labels agree with) over the 8 classes with at least 5 map-labelled windows, the lowest are class 0 (0 of 10 correct; 0.0%, 95% interval valid at every sample size 0.0% to 0.0%, 95% interval this design earns 0.0% to 0.0%), class 8 (0 of 50 correct; 0.0%, 95% interval valid at every sample size 0.0% to 1.9%, 95% interval this design earns 0.0% to 1.9%), class 2 (0 of 50 correct; 0.0%, 95% interval valid at every sample size 0.0% to 4.7%, 95% interval this design earns 0.0% to 4.7%) and class 5 (0 of 50 correct; 0.0%, 95% interval valid at every sample size 0.0% to 6.6%, 95% interval this design earns 0.0% to 6.6%).\n- olmoearth-inferencex's note on class 0: fewer than 30 labelled windows (10 the map calls this class, 0 the reference does); the exact intervals are wide\n- olmoearth-inferencex's note on class 8: fewer than 30 labelled windows (50 the map calls this class, 0 the reference does); the exact intervals are wide\n- olmoearth-inferencex's note on class 2: fewer than 30 labelled windows (50 the map calls this class, 0 the reference does); the exact intervals are wide\n- olmoearth-inferencex's note on class 5: fewer than 30 labelled windows (50 the map calls this class, 0 the reference does); the exact intervals are wide\n- Limit stated by the tool: Error rate 17.4%: valid 95% interval 11.8% to 25.2%, class design, 360 labels.\n- olmoearth-inferencex's note: Each class's interval is its own 95% statement; the intervals do not hold jointly at 95%. The whole-map rate weights each class by its share of the map and can hide a class that is much worse. Each class's own interval is exact. The whole-map interval takes each class's exact interval at 1 - 0.05/L, where L is the number of classes not labelled in full, and weights it by the class's share of the map, so it covers at least 95% by construction; it is wider than the usual stratified interval. What the design buys is each class's own accuracy: every class gets at least its floor of labels, or all its windows, and the rest go in proportion to class size (Olofsson et al. 2014). If only the whole-map rate is needed, --design random can give a narrower interval.\n- olmoearth-inferencex's note: --valid: the first interval covers the whole-map rate at least 95% of the time for every map and every number of labels, with no normal approximation: strata labelled in full enter exactly, one stratum labelled in part takes its exact hypergeometric interval, and two or more take the betting interval for a stratified sample drawn without replacement, the method grade uses. The line below it is the interval estimate prints without --valid, unchanged: under the confidence and proportional designs Wilson's on the design's effective sample size, which is nominal (in the research record it covered 91.3% at 100 labels on a 200-window map, exp105; 92.7% near a census, 300 of 306 labelled; and at least 93% on the other graded cells, exp78); under `--design condition`, `class` and `profile` the union bound over the strata, which holds too; under a random sample the same exact interval. The valid interval was 1.6 to 1.7 times as wide as the confidence design's Wilson interval and 0.6 times the class design's union bound on the demo tile (aicr job 1554014).\n- olmoearth-inferencex's note: --valid: each interval on a line marked valid holds at 95% on its own, for every map and every number of labels: the user's accuracy over the windows the map calls the class in each stratum (exact where they lie in one stratum labelled in part), the producer's accuracy from two such intervals at 97.5% each (a box), and the share over the strata. They do not hold jointly, and a share the map draws outside its own interval is flagged on that interval alone. The line below each is the table estimate prints without --valid, unchanged.\n\n### Certified zone (`olmoearth_certify_zone`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- No zone is certified at alpha=0.1, delta=0.1 under rule 'prefix': no share of the map is shown to be wrong at most alpha=0.1 of the time.\n- Labels, design and seed: 300 labels on the random design, seed 255910144374513572839021736587088638387; design file `<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json`.\n- olmoearth-inferencex's note: no zone certified at alpha=0.1, delta=0.1 with 300 labels; the smallest testable zone (10% of the map) held 33 labels with 1 wrong\n- olmoearth-inferencex's note on scope (its first sentences, before another map's figures and the command line's options): The zone's error rate is certified over all its windows together. Where part of the map was predicted from other inputs, that part of the zone can be wrong more often than the rest. If the model was not trained on those inputs, its errors there can be confident ones and fall inside the zone (exp88).\n\n### Certificate (`olmoearth_write_certificate`)\n\n- Map: scores file `<work>/scores_run_dynamic-world_cbd2b294_p1.json`.\n- No certificate: No zone is certified at alpha=0.1, delta=0.1 under rule 'prefix' on these labels, so there is nothing to put in a certificate.\n- Labels, design and seed: 300 labels on the random design, seed 255910144374513572839021736587088638387; design file `<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json`.\n- Limit stated by the tool: No zone was certified on these labels; no certificate was written.\n\n## Provenance\n- `olmoearth_scores_from_file` (args sha 97d9996cccfa)\n- `olmoearth_review_set` (args sha b520d3969f18)\n- `olmoearth_plan_label_sample` (args sha acad6984f6dc)\n- `olmoearth_estimate_map_error` (args sha 24aa65a66235)\n- `olmoearth_certify_zone` (args sha 36a05fb94b93)\n- `olmoearth_write_certificate` (args sha 3b6fea3a75bb)\n- `olmoearth_plan_label_sample` (args sha 56a6ef345252)\n- `olmoearth_estimate_map_error` (args sha d79e0334f697)\n",
      "not_a_source": [
       "markdown"
      ],
      "provenance": [
       {
        "api_call": "olmoearth_scores_from_file",
-       "args_sha": "c6ea5a5ee3b6"
+       "args_sha": "97d9996cccfa"
       },
       {
        "api_call": "olmoearth_review_set",
-       "args_sha": "1f29530f6fa6"
+       "args_sha": "b520d3969f18"
       },
       {
        "api_call": "olmoearth_plan_label_sample",
-       "args_sha": "2ef74e8ba13f"
+       "args_sha": "acad6984f6dc"
       },
       {
        "api_call": "olmoearth_estimate_map_error",
-       "args_sha": "d17a3f97bfc9"
+       "args_sha": "24aa65a66235"
       },
       {
        "api_call": "olmoearth_certify_zone",
-       "args_sha": "ea10e43c25a4"
+       "args_sha": "36a05fb94b93"
       },
       {
        "api_call": "olmoearth_write_certificate",
-       "args_sha": "35f2ba3f6767"
+       "args_sha": "3b6fea3a75bb"
       },
       {
        "api_call": "olmoearth_plan_label_sample",
-       "args_sha": "8e72901c4486"
+       "args_sha": "56a6ef345252"
       },
       {
        "api_call": "olmoearth_estimate_map_error",
-       "args_sha": "d83cc860e407"
+       "args_sha": "d79e0334f697"
       }
      ],
      "result_count": 0,
@@ -3742,8 +4074,8 @@
       "olmoearth_case_narrative"
      ],
      "entry_count": 9,
-     "replay_script": "# Auto-generated replay skeleton: OlmoEarth Agent provenance\n# run_id: 9e9f001d-dfa4-4fe1-a532-a915818f26c1\n# 9 tool call(s)\n#\n# Each step lists the tool, the argument hash, and the result\n# summary. Re-run by dispatching these tools in order through a\n# fresh ToolRegistry (see olmoearth_agent.harness.LeadAgent).\n\n#  1. olmoearth_scores_from_file  args_sha256=c6ea5a5ee3b6  result={'ok': True}  ids=-\n#  2. olmoearth_review_set  args_sha256=1f29530f6fa6  result={'ok': True}  ids=-\n#  3. olmoearth_plan_label_sample  args_sha256=2ef74e8ba13f  result={'ok': True}  ids=-\n#  4. olmoearth_estimate_map_error  args_sha256=d17a3f97bfc9  result={'ok': True}  ids=-\n#  5. olmoearth_certify_zone  args_sha256=ea10e43c25a4  result={'ok': True}  ids=-\n#  6. olmoearth_write_certificate  args_sha256=35f2ba3f6767  result={'ok': True}  ids=-\n#  7. olmoearth_plan_label_sample  args_sha256=8e72901c4486  result={'ok': True}  ids=-\n#  8. olmoearth_estimate_map_error  args_sha256=d83cc860e407  result={'ok': True}  ids=-\n#  9. olmoearth_case_narrative  args_sha256=994bd981b4df  result={'ok': True}  ids=-\n\n# Verification calls: the same design, budget and seed (and the\n# same inputs) draw the same sample again; a plan with\n# seed_from_map=True took its seed from the map, and is drawn\n# again with seed_from_map and its alpha, delta and rule.\n#  1. olmoearth_plan_label_sample  design=random  budget=300  seed=255910144374513572839021736587088638387  seed_from_map=True  scores_path=<work>/scores_run_dynamic-world_cbd2b294_p1.json  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  alpha=0.1\n#  2. olmoearth_estimate_map_error  design=random  seed=255910144374513572839021736587088638387  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  labels_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix_to_label.csv  n_labelled=300\n#  3. olmoearth_certify_zone  design=random  seed=255910144374513572839021736587088638387  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  labels_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix_to_label.csv  alpha=0.1  delta=0.1  rule=prefix  n_labelled=300\n#  4. olmoearth_write_certificate  design=random  seed=255910144374513572839021736587088638387  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  labels_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix_to_label.csv  alpha=0.1  delta=0.1  rule=prefix  date=2019-06-09  n_labelled=300\n#  5. olmoearth_plan_label_sample  design=class  budget=360  seed=0  scores_path=<work>/scores_run_dynamic-world_cbd2b294_p1.json  min_per_class=50  design_path=<work>/design_scores_971becd8_class_360_s0.json\n#  6. olmoearth_estimate_map_error  design=class  seed=0  design_path=<work>/design_scores_971becd8_class_360_s0.json  labels_path=<work>/design_scores_971becd8_class_360_s0_to_label.csv  n_labelled=360\n",
-     "run_id": "9e9f001d-dfa4-4fe1-a532-a915818f26c1",
+     "replay_script": "# Auto-generated replay skeleton: OlmoEarth Agent provenance\n# run_id: cfa3f6c4-f52b-4368-adef-bcc3f069f833\n# 9 tool call(s)\n#\n# Each step lists the tool, the argument hash, and the result\n# summary. Re-run by dispatching these tools in order through a\n# fresh ToolRegistry (see olmoearth_agent.harness.LeadAgent).\n\n#  1. olmoearth_scores_from_file  args_sha256=97d9996cccfa  result={'ok': True}  ids=-\n#  2. olmoearth_review_set  args_sha256=b520d3969f18  result={'ok': True}  ids=-\n#  3. olmoearth_plan_label_sample  args_sha256=acad6984f6dc  result={'ok': True}  ids=-\n#  4. olmoearth_estimate_map_error  args_sha256=24aa65a66235  result={'ok': True}  ids=-\n#  5. olmoearth_certify_zone  args_sha256=36a05fb94b93  result={'ok': True}  ids=-\n#  6. olmoearth_write_certificate  args_sha256=3b6fea3a75bb  result={'ok': True}  ids=-\n#  7. olmoearth_plan_label_sample  args_sha256=56a6ef345252  result={'ok': True}  ids=-\n#  8. olmoearth_estimate_map_error  args_sha256=d79e0334f697  result={'ok': True}  ids=-\n#  9. olmoearth_case_narrative  args_sha256=994bd981b4df  result={'ok': True}  ids=-\n\n# Verification calls: the same design, budget and seed (and the\n# same inputs) draw the same sample again; a plan with\n# seed_from_map=True took its seed from the map, and is drawn\n# again with seed_from_map and its alpha, delta and rule.\n#  1. olmoearth_plan_label_sample  design=random  budget=300  seed=255910144374513572839021736587088638387  seed_from_map=True  scores_path=<work>/scores_run_dynamic-world_cbd2b294_p1.json  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  alpha=0.1\n#  2. olmoearth_estimate_map_error  design=random  seed=255910144374513572839021736587088638387  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  labels_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix_to_label.csv  n_labelled=300\n#  3. olmoearth_certify_zone  design=random  seed=255910144374513572839021736587088638387  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  labels_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix_to_label.csv  alpha=0.1  delta=0.1  rule=prefix  n_labelled=300\n#  4. olmoearth_write_certificate  design=random  seed=255910144374513572839021736587088638387  design_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json  labels_path=<work>/design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix_to_label.csv  alpha=0.1  delta=0.1  rule=prefix  date=2019-06-09  n_labelled=300\n#  5. olmoearth_plan_label_sample  design=class  budget=360  seed=0  scores_path=<work>/scores_run_dynamic-world_cbd2b294_p1.json  min_per_class=50  design_path=<work>/design_scores_971becd8_class_360_s0.json\n#  6. olmoearth_estimate_map_error  design=class  seed=0  design_path=<work>/design_scores_971becd8_class_360_s0.json  labels_path=<work>/design_scores_971becd8_class_360_s0_to_label.csv  n_labelled=360\n",
+     "run_id": "cfa3f6c4-f52b-4368-adef-bcc3f069f833",
      "verification_calls": [
       {
        "alpha": 0.1,
