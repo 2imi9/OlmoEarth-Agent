@@ -438,6 +438,23 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the code.
 
 ### Changed
+- **The README is restructured into short bullets; no capability changed.**
+  - Six bullets under the header say what the agent does with Studio and
+    what it checks. The one naming olmoearth-inferencex covers the
+    verification statistics only; the agent computes some figures itself
+    (the comparison's correlation interval, the rule grader's sign test).
+  - "What it checks": one table row per route (tools, needs, gives), the
+    limits kept: sampled grid points, not every pixel; which designs give
+    an approximate, exact or always-valid interval; no review set or zone
+    for a class map; two maps of one time; a certificate adds no guarantee.
+  - Below it, `make verify-demo`'s figures as `docs/VERIFICATION_DEMO.md`
+    states them, with the one-draw caveat and the fact that no zone, so no
+    certificate, came out on that tile.
+  - "What it does", the tools paragraph and Quick start are bullets; every
+    command and environment variable kept. The egress note says `enforce`
+    does not cover the opt-in `system:python` subprocess.
+  - The old "about 300 labels" for a scores file is dropped: no tool gives
+    that figure.
 - **The default registry is the Studio run loop plus the verification
   layer; 14 tools are opt-in.** `olmoearth_automate` (#3: for an annual
   task, Ai2's v1.3 embeddings and its Explorer replace computing embeddings;

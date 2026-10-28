@@ -11,25 +11,47 @@
 
 </div>
 
+- It drives OlmoEarth Studio from a plain-language brief: it finds a model, runs predictions and compares results.
+- It checks a map: which windows to review first (maps with scores only), and how wrong the map is, with the interval its labels earn.
+- It tests which of two maps of one time is more accurate, and packs a direct OlmoEarth run's certified zone into a certificate anyone with the map can check.
+- It checks each answer against the tool results before showing it.
+- It runs on a local Qwen3.6 model, or on your own cloud API key (Claude, ChatGPT or Gemini).
+- Its verification statistics (error rates and their intervals, the two-map test, certified zones and certificates) come from [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX), the `inferencex` extra.
+
 <div align="center">
 
 ![OlmoEarth Agent live demo](webui/demo/olmoearth-agent-demo.gif)
 
 </div>
 
-<div align="center"><sub>Connect a Studio key, send a brief, and the agent loop streams its reasoning, tool calls, results, and a plain-English answer -- in a multi-turn chat with saved history, a collapsible Studio project tree, and Markdown answers. Need an area of interest? <strong>Draw it on a map</strong> right in the chat and it is stored as a Studio area. &nbsp; | &nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
+<div align="center"><sub>Connect a Studio key and send a brief: the agent streams its reasoning, tool calls, results and a plain-English answer in a multi-turn chat. Draw an area of interest on a map in the chat, and it is stored as a Studio area. &nbsp; | &nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
 
 <div align="center"><sub>Demo recorded on <a href="https://github.com/2imi9/OlmoEarth-Agent/releases/tag/v1.2.0">v1.2.0</a>.</sub></div>
 
 ---
 
-OlmoEarth Agent runs [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from a natural-language brief and checks what Studio returns where it can. It finds a model, submits and polls predictions, and compares results. For a map that carries scores (a Studio result whose band is a `[0, 1]` score, a regression band given a threshold, or a direct model run's scores), it then says which windows a reviewer should check first, which windows to label, and how wrong the map is, with the interval that sample earns (the verification layer, through [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX)). A Studio class map carries no score, so it gets no review set and no certified zone; labels on a random or class-design sample still give its error rate and per-class accuracy over its sampled grid points (at most 16 x 16, one pixel each), not every pixel. Two maps of the same area and time get the which-of-two-maps route: two Studio results (class maps, no score needed), or two scores files of one window grid from `olmoearth_scores_from_file` (not plain class-map rasters). Labels on the windows where they differ say which map is more accurate when the exact sign test (or, past a fifth of those windows, the interval) can tell; otherwise they name neither. The difference in accuracy comes with a 95% interval. Two Studio results are compared on sampled grid points (at most 12 x 12, one pixel each), so often every differing point gets labelled, and the verdict covers those points, not every pixel. For scores files with many differing windows, olmoearth-inferencex suggests about 100 labels. Every tool call goes into a provenance manifest. Tools for training models outside Studio, and most tools whose inputs no Studio run produces, are opt-in. It runs on a local **Qwen3.6-35B-A3B** model served with llama.cpp by default (no hosted LLM required), and can optionally use your own **cloud API** key via the web UI's model-backend picker.
+## What it checks
+
+| Route | Needs | Gives |
+|---|---|---|
+| **Which windows to check first**<br>`olmoearth_review_set`, `olmoearth_review_set_from_result` | A map with scores: a Studio `[0, 1]` score band (another regression band needs a `threshold`), a direct run's scores, or your own. No labels. | The windows to open first at your review budget, least confident first. Boundary-first is optional. |
+| **How wrong one map is**<br>`olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error` / `olmoearth_certify_zone` | A map with scores and labels on a planned sample. A Studio result is sampled on at most 16 x 16 points (256 windows), so its figures cover those points, not every pixel. | The error rate. Its interval is approximate under the default confidence design, exact under a random one, valid at every sample size under the class design. Per-class accuracy where labels name the class. A random design can certify a zone. |
+| **A Studio class map**<br>`olmoearth_plan_label_sample` (`design='random'` or `'class'`), then `olmoearth_estimate_map_error` | A classification result (classes, no scores) and labels on a random or class-stratified sample. The plan gives olmoearth-inferencex's label budget for a random sample. | The error rate and per-class accuracy, the interval valid at every sample size first. They cover the sampled grid points (at most 16 x 16, one pixel each), not every pixel. No review set, no certified zone. |
+| **A direct OlmoEarth run and its certificate**<br>`olmoearth_scores_from_file`, `olmoearth_write_certificate`, `olmoearth_verify_certificate` | `oe-inferencex from-olmoearth`'s `scores_<EPSG>.tif` and `olmoearth_output.json`, or `score_area.py`'s raster and `manifest.json`, with probabilities or logits (class ids are refused). A certificate needs a `seed_from_map` random plan; its labels are fixed once first graded. | Every window of the run, for the review set, estimate and two-map route. Its certified zone in a certificate anyone with the map can recheck; its labels, the map's date and single draw are the issuer's word. It adds no guarantee. |
+| **Which of two maps is more accurate**<br>`olmoearth_plan_label_sample` (`design='disagreement'`; `date_a` / `date_b` date a scores file), then `olmoearth_estimate_map_error` | Two maps of one area and time: two Studio results, or two scores files of one window grid (not class-map rasters). Labels where they differ; the plan advises how many. Different, overlapping or one-sided dates are refused; missing dates are noted. | Which map is more accurate, or neither (exact sign test; the interval past a fifth of the differing windows), and the accuracy difference with a 95% interval. Studio results cover at most 12 x 12 sampled points, not every pixel. |
+
+See it on a real map: `make verify-demo` runs the verification tools on the expert-annotated Dynamic World tile that olmoearth-inferencex ships. It needs the `inferencex` extra (`make setup`, Python 3.11 to 3.13), no Studio key and no LLM. [docs/VERIFICATION_DEMO.md](docs/VERIFICATION_DEMO.md) shows each result:
+
+- **The map.** 15,813 expert-annotated 40 m windows of one tile (southern Peru, 2019-06-09). Their true error rate is 19.3%, from every window's expert label, which a user does not have. It is not Dynamic World's 10 m accuracy.
+- **The estimates.** 300 random labels give 19.0%, interval 14.8% to 23.9%. 360 class-design labels give 17.4%, valid interval 11.8% to 25.2%. Each interval the page checks covers 19.3%. That is one draw, not evidence of how often such intervals cover the truth.
+- **The review set.** At a 5% budget it lists 791 windows to check first. Against every window's expert label (the script's check, not the tool's), they hold 17.5% of the errors; the attainable ceiling is 26.0%.
+- **No certificate on this tile.** No zone was certified at alpha 0.1 with 300 labels, so no certificate was written. The certificate round trip and a tampered copy are tested on a synthetic tile, not on this map.
 
 ## Quick start
 
-> **Prerequisites:** [uv](https://docs.astral.sh/uv/) and an OlmoEarth Studio API key (Studio UI -> profile -> **API Keys**). The **local model** path also needs [Docker](https://docs.docker.com/get-docker/); the **cloud-API** path needs neither Docker nor a download.
+> **Prerequisites:** [uv](https://docs.astral.sh/uv/) and an OlmoEarth Studio API key (Studio UI -> profile -> **API Keys**). The **local model** path also needs [Docker](https://docs.docker.com/get-docker/). The **cloud-API** path needs neither Docker nor a download.
 
-Pick the backbone for the agent's reasoning - both drive the same live UI:
+Pick the LLM behind the agent. Both drive the same live UI.
 
 **A. Cloud API** (Claude / ChatGPT / Gemini) - no Docker, no 17.7 GB download:
 
@@ -38,45 +60,56 @@ make setup      # uv sync --all-extras
 make bridge     # live web UI on http://localhost:8088 (no local model needed)
 ```
 
-Open **http://localhost:8088**, paste your Studio key, then go to **Settings -> LLM backend**, pick a provider, and paste that provider's API key. Both keys stay client-side and are sent per request, never stored server-side. Send a brief.
+Open **http://localhost:8088** and paste your Studio key. In **Settings -> LLM backend**, pick a provider and paste its API key. Both keys stay client-side, are sent per request and are never stored server-side. Send a brief.
 
-**B. Local model** (fully offline, free) - one command auto-starts the LLM and the UI:
+**B. Local model** (fully offline, free) - one command starts the LLM and the UI:
 
 ```bash
 make setup      # uv sync --all-extras
 make up         # start the 4-bit Qwen3.6 LLM (first run pulls ~17.7 GB), then the live UI
 ```
 
-Open **http://localhost:8088**, paste your Studio key, and send a brief. (`make up` is just `make serve` then `make bridge`; run them separately if you prefer.)
+Open **http://localhost:8088**, paste your Studio key, and send a brief. `make up` is `make serve` then `make bridge`; you can run them separately.
 
-**Prefer the terminal?** Run a one-shot brief against the local model instead of the web UI:
+**Prefer the terminal?** Run a one-shot brief against the local model:
 
 ```bash
 export OLMOEARTH_API_KEY=...   # Studio UI -> profile -> API Keys
 make serve && make agent       # make agent runs a sample brief; ask your own with Q="..."
 ```
 
-`make help` lists every target; `make down` stops the LLM; `make web` serves a backend-free **demo** UI on `:8080`. `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`. No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands; see [`docs/serving.md`](docs/serving.md) for the cloud-API setup and the raw `docker compose` invocations.
+- `make help` lists every target; `make down` stops the LLM.
+- `make web` serves a backend-free **demo** UI on `:8080`.
+- `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`.
+- No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands.
+- [`docs/serving.md`](docs/serving.md) has the cloud-API setup and the raw `docker compose` invocations.
 
 ## What it does
 
-The LLM reads the brief, plans, and emits a tool call; the harness dispatches it as a function-call tool, feeds the result back, and iterates until it can answer. (An opt-in `system:python` subprocess is available for light glue between calls.) The harness records a provenance manifest for every tool call. The agent's persona and guardrails live in a versioned soul artifact (`harness/soul.md`; swap via `OLMOEARTH_SOUL_PATH`), followed in the system prompt by a capability card built from the tools' code (what each tool does, needs and cannot do, and what no tool can do; `harness/capabilities.py`); tool arguments are schema-validated at dispatch; oversized tool results spill to workspace files instead of the context window; the answer is checked against the run before it is shown (its numbers against the tool results and the user's messages, its directions, places and magnitudes against the facts the tools computed, its claims of files saved or items listed against what the run did, and the claims the tools forbid or require; and, by the agent's own model, against the run's record for statements no tool output supports and offers no tool can carry out), every problem found goes into one request to rewrite the answer, and a sentence that still fails is shown marked `[unverified: <check>]` (`harness/checks.py`, `harness/claim_check.py`; off with `OLMOEARTH_CHECK_NUMBERS=0` and `OLMOEARTH_CHECK_ANSWER=0`; the model's own reading is opt-in with `OLMOEARTH_CHECK_CLAIMS=1`); and durable user preferences (default project / area / sources, saved via `olmoearth_remember`) carry across conversations.
+- **The loop.** The LLM reads the brief and calls a tool. The harness runs it, feeds the result back, and repeats until the model can answer. Every tool call goes into a provenance manifest. An opt-in `system:python` subprocess (`OLMOEARTH_RUN_PYTHON=1`) handles light glue between calls.
+- **Soul and capability card.** The persona and guardrails live in a versioned soul file (`harness/soul.md`; swap it with `OLMOEARTH_SOUL_PATH`). The system prompt adds a capability card built from the tools' code: what each tool does, needs and cannot do, and what no tool can do (`harness/capabilities.py`).
+- **Checked arguments.** Tool arguments are schema-validated at dispatch.
+- **Result spill.** Oversized tool results go to workspace files, not the context window.
+- **Answer checks** (`harness/checks.py`). Before an answer is shown, the harness checks:
+  - its numbers, against the tool results and the user's messages;
+  - its directions, places and magnitudes, against the facts the tools computed;
+  - its claims of files saved or items listed, against what the run did;
+  - the claims the tools forbid or require.
+- **Rewrite and marking.** One request asks the model to fix every problem found. A sentence that still fails is marked `[unverified: <check>]`. `OLMOEARTH_CHECK_NUMBERS=0` turns off the number check; `OLMOEARTH_CHECK_ANSWER=0` turns off the rest.
+- **Claim check (opt-in).** With `OLMOEARTH_CHECK_CLAIMS=1`, the agent's own model also reads the answer against the run's record. It flags statements no tool output supports and offers no tool can carry out, in the same rewrite and marking (`harness/claim_check.py`).
+- **Memory.** Durable user preferences (default project, area, sources), saved with `olmoearth_remember`, carry across conversations.
 
-> **Production posture:** the per-capability egress allowlist defaults to `audit` (log-only) so a first run never breaks. For any deployment beyond your own laptop, set `OLMOEARTH_EGRESS=enforce` -- unknown hosts are then refused, not just logged (add self-hosted endpoints via `OLMOEARTH_EGRESS_ALLOW`).
+> **Production posture:** the per-capability egress allowlist defaults to `audit` (log only), so a first run never breaks. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`: unknown hosts are then refused, not just logged. It checks the hosts the agent's own code calls; the opt-in `system:python` subprocess is not network-isolated, so `enforce` does not cover it. Add self-hosted endpoints with `OLMOEARTH_EGRESS_ALLOW`.
 
-The capability set ships as **18 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) that ship inside the Python package and load on demand with `olmoearth_load_skill`.
+The capability set ships as **18 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
 
-The agent registers 28 tools by default: the Studio run loop, the comparison and verification tools, and the plumbing (provenance, export, QGIS, memory). All 28 are sent on every turn. Another 15 opt-in tools stay in the code but off the default list: they train models outside Studio, need inputs no Studio run produces, repeat what Ai2's Explorer and Asta already do, or name a winner with no test (#6's baseline comparison: which map is more accurate is the two-map route below). Skills #6, #8, #10, #15 and #16 are opt-in whole, and so is #18's rule grader. To register them, start the agent or the bridge with `OLMOEARTH_OPT_IN_TOOLS=1` (e.g. `OLMOEARTH_OPT_IN_TOOLS=1 make bridge`); [`SKILLS.md`](SKILLS.md#opt-in-tools) gives each one's reason. Without the setting, the web UI's "/" menu still lists the five opt-in skills, and the bridge runs a brief that picks one without pinning it.
+- The agent registers 28 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 28 are sent on every turn.
+- Another 15 opt-in tools stay off. They train models outside Studio, need inputs no Studio run produces, repeat Ai2's Explorer or Asta, or name a winner with no test.
+- Skills #6, #8, #10, #15 and #16 are opt-in whole, as is #18's rule grader. [`SKILLS.md`](SKILLS.md#opt-in-tools) gives each tool's reason and what the "/" menu does without the setting.
 
-| Verification route | Needs | Gives |
-|---|---|---|
-| Which windows to check first | a map with scores | the review set at a budget (`olmoearth_review_set`, `olmoearth_review_set_from_result`) |
-| How wrong one map is | a map with scores, labels on a planned sample (about 300 for a scores file; a Studio result's grid holds at most 256 windows) | the error rate with the interval its design earns, per-class accuracy, a certified zone (`olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error` / `olmoearth_certify_zone`) |
-| A map from a direct OlmoEarth run, not Studio | `oe-inferencex from-olmoearth`'s `scores_<EPSG>.tif` and `olmoearth_output.json`, or `score_area.py`'s raster and `manifest.json`, holding probabilities or logits (class ids are refused, with how to get probabilities). For a certificate: a `seed_from_map` random plan and its labels, fixed once given | every window of the run's raster, for the review set, the error estimate and the two-map route (`olmoearth_scores_from_file`). A certified zone packed into a certificate anyone holding the map can check, and that check (`olmoearth_write_certificate`, `olmoearth_verify_certificate`). The certificate restates the zone; it adds no stronger guarantee |
-| How wrong a Studio class map is | a classification result (classes, no scores), labels on a random sample or a sample stratified by map class (`design='random'` or `'class'`; olmoearth-inferencex's label budget for a random sample's interval width) | the error rate and per-class accuracy over the sampled grid points (at most 16 x 16, one pixel each), not every pixel: the interval valid at every sample size first, then the design's (`olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error`); no review set and no certified zone without probabilities |
-| Which of two maps is more accurate | two maps of the same area and time (two Studio results, or two scores files of one window grid), labels on the windows where they differ (about 100 for scores files; two Studio results are sampled on at most 12 x 12 points, so often every differing point) | which map is more accurate, or neither, by the exact sign test (the interval past a fifth of the differing windows), and the difference in accuracy with a 95% interval, over the windows compared (for Studio results, the sampled points) (`olmoearth_plan_label_sample` with `design='disagreement'`, then `olmoearth_estimate_map_error`); refused when the dates differ (a Studio prediction's start and end times, or `date_a` / `date_b` for scores files); with no dates given, the result says so |
-
-See it on a real map: `make verify-demo` runs the review set, estimate, certified zone and certificate tools on the expert-annotated Dynamic World tile that olmoearth-inferencex ships. It needs the `inferencex` extra (`make setup`, Python 3.11 to 3.13), no Studio key and no LLM. [docs/VERIFICATION_DEMO.md](docs/VERIFICATION_DEMO.md) shows each result and whether each interval covers the true error rate of the tile's annotated 40 m windows (not Dynamic World's 10 m accuracy).
+```bash
+OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same setting works for make agent
+```
 
 <details>
 <summary><strong>The 18 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report); <em>opt-in</em> marks what needs <code>OLMOEARTH_OPT_IN_TOOLS=1</code></summary>
@@ -104,7 +137,7 @@ See it on a real map: `make verify-demo` runs the review set, estimate, certifie
 
 </details>
 
-See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for captured runs of skills #1-#16 with real outputs, driven by the live Qwen3.6 backbone (captured with an earlier tool set; some of them call tools that are now opt-in, see [`SKILLS.md`](SKILLS.md#opt-in-tools)). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses, and operational rules are in [`PLAN.md`](PLAN.md).
+[**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) has captured runs of skills #1-#16 with real outputs, driven by the live Qwen3.6 backbone. They were captured with an earlier tool set; some call tools that are now opt-in ([`SKILLS.md`](SKILLS.md#opt-in-tools)). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses and operational rules are in [`PLAN.md`](PLAN.md).
 
 ## Stack
 
@@ -125,6 +158,7 @@ See [**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) for captured runs of skills #1-#1
 
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
 - [**SKILLS.md**](SKILLS.md): the 18-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**docs/VERIFICATION_DEMO.md**](docs/VERIFICATION_DEMO.md): the verification tools on a real map, written by `make verify-demo`
 - [**docs/SHOWCASE.md**](docs/SHOWCASE.md): captured runs of skills #1-#16
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) | [**CHANGELOG.md**](CHANGELOG.md) | [**AGENTS.md**](AGENTS.md)
