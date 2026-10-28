@@ -285,3 +285,67 @@ async def test_a_plan_its_estimate_and_its_certification_pass(design: str) -> No
     cert_args = {"design_path": plan["design_path"], "wrong": wrong, "alpha": 0.05}
     certified = await _call("olmoearth_certify_zone", cert_args)
     _assert_passes("olmoearth_certify_zone", cert_args, certified)
+
+
+def _passes(
+    name: str, arguments: dict[str, Any], result: dict[str, Any], said: list[str]
+) -> None:
+    """``said`` as the answer to a run of one call: no check flags it."""
+    run = RunEvidence(
+        tools=[ToolRecord(name, arguments, {"ok": True, "result": result})],
+        user_messages=["Which part of this map can I trust, and how do you know?"],
+    )
+    found = run_checks("\n\n".join(said), run)
+    assert found == {}, json.dumps(found, indent=1)
+
+
+@pytest.mark.asyncio
+async def test_a_certified_zones_note_on_what_delta_counts_passes() -> None:
+    """olmoearth-inferencex 1.20.1's ISSUED_NOTE, which a certified zone's
+    meaning ends with: an answer that repeats it beside the zone's must_state
+    is not flagged (certification_guaranteed and post_hoc_alpha included)."""
+    zone_module = pytest.importorskip("oe_inferencex.certify.zone")
+    plan = await _call(
+        "olmoearth_plan_label_sample",
+        {"scores": _map(), "budget": 300, "design": "random"},
+    )
+    args = {"design_path": plan["design_path"], "wrong": [0] * 300, "alpha": 0.1}
+    out = await _call("olmoearth_certify_zone", args)
+    assert out["certified"] is True
+    assert out["meaning"].endswith(zone_module.ISSUED_NOTE)
+    _passes(
+        "olmoearth_certify_zone",
+        args,
+        out,
+        list(out.get("must_state", [])) + [zone_module.ISSUED_NOTE],
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_suites_evidence_scope_passes_where_it_covers_the_case(
+    tmp_path: Path,
+) -> None:
+    """The scope sentence of a case the suite covers in kind (an OlmoEarth
+    model's two-class probability margin) states the margin against a random
+    order and the controls' near chance (the red team of 30 September 2026);
+    an answer that repeats it with the ranking's facts is not flagged."""
+    rng = random.Random(12)
+    rows = [[p, 1.0 - p] for p in (rng.random() for _ in range(400))]
+    (tmp_path / "two.json").write_text(
+        json.dumps(
+            {
+                "grid": [20, 20],
+                "scores": rows,
+                "score_type": "probability",
+                "model": {"repo": "allenai/OlmoEarth-v1-Base"},
+            }
+        )
+    )
+    args = {"scores_path": str(tmp_path / "two.json"), "budget": 0.1, "max_listed": 10}
+    out = await _call("olmoearth_review_set", args)
+    assert out["evidence_covers_this_case"] == "yes"
+    scope = out["evidence_scope"]
+    assert "random order" in scope and "near chance" in scope
+    facts = [f["sentence"] for f in out.get("facts", []) if f.get("sentence")]
+    said = facts + list(out.get("must_state", [])) + [scope]
+    _passes("olmoearth_review_set", args, out, said)

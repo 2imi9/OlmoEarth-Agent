@@ -869,6 +869,32 @@ async def test_certify_zone_states_the_levels_and_bonferronis_per_level_delta() 
 
 
 @pytest.mark.asyncio
+async def test_a_certified_zone_states_what_delta_counts_verbatim() -> None:
+    """olmoearth-inferencex 1.20.1's ISSUED_NOTE (oe_inferencex.certify.zone):
+    delta counts all samples, those that certify nothing included, so a
+    certified zone is not a 1 - delta chance of being right. certify_zone's
+    result does not carry it; `oe-inferencex certify` prints it with a
+    certified zone, and so does this tool's meaning, word for word."""
+    zone_module = pytest.importorskip("oe_inferencex.certify.zone")
+    note = zone_module.ISSUED_NOTE
+    design_path, wrong = await _random_zone_inputs()
+    args = {"design_path": design_path, "wrong": wrong}
+    certified = (
+        await _call(
+            "olmoearth_certify_zone", {**args, "alpha": 0.1, "rule": "bonferroni"}
+        )
+    )["result"]
+    assert certified["certified"] is True
+    assert certified["meaning"].endswith(" " + note)
+    assert certified["meaning"].count(note) == 1
+    assert f"the {certified['n_zone']} most confident windows" in certified["verdict"]
+    # Nothing certified: no zone, so no statement about one (as the package).
+    none = (await _call("olmoearth_certify_zone", {**args, "alpha": 0.05}))["result"]
+    assert none["certified"] is False
+    assert note not in json.dumps(none, default=str)
+
+
+@pytest.mark.asyncio
 async def test_certify_zone_with_too_few_labels_tests_no_level() -> None:
     design_path, wrong = await _random_zone_inputs(budget=20)
     out = (

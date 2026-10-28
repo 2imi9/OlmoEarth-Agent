@@ -8,8 +8,9 @@ the moment a prediction map lands: *which windows do I check first, and
 how much of the error do I catch if I only check 5% of them?*
 
 The signal is the model's own **top-1 minus top-2 margin**. That choice is
-not an aesthetic one. The companion research repository
-`2imi9/olmoearth_inferenceX <https://github.com/2imi9/olmoearth_inferenceX>`_
+not an aesthetic one. The companion package's research record
+`2imi9/olmoearth_inferenceX-record
+<https://github.com/2imi9/olmoearth_inferenceX-record>`_
 measured it against every alternative it could build -- ensemble
 disagreement, cross-model disagreement, feature-space typicality /
 distance-to-training-data, two-view disagreement, flip-and-rotate
@@ -21,7 +22,10 @@ case at hand (:func:`ranking_evidence_scope`, :func:`comparison_evidence_scope`)
 the full text stays in :func:`evidence_detail`, which the tools save to a file
 and name by path. exp86 rounds 6 and 7 found answers widening the inline
 blocks to cases no experiment grades (a regression band read as a
-probability; "every no-model control" for a suite with two).
+probability; "every no-model control" for a suite with two). Beating those
+two controls on all 24 of the suite's tasks says little on its own: a red
+team of 30 September 2026 found them near chance there, so the suite's
+evidence is stated against a random order instead (:data:`SUITE_MEASURED`).
 
 A result also carries the shared output contract the harness checks an
 answer against: ``facts`` (one-sentence statements computed by code, each
@@ -73,18 +77,50 @@ SPATIAL_BANDS = 4
 #: Largest grid this tool will accept (keeps a pure-Python sort honest).
 MAX_WINDOWS = 200_000
 
-#: Measured verdicts from 2imi9/olmoearth_inferenceX, carried so a tool
-#: result can cite evidence rather than assert authority. Each entry names
-#: the claim id in that repository's ledger (``docs/claims.yaml``).
+#: Measured verdicts from the research record 2imi9/olmoearth_inferenceX-record,
+#: carried so a tool result can cite evidence rather than assert authority.
+#: Each entry names the claim id in that repository's ledger
+#: (``docs/claims.yaml``). The suite's entries follow the red team of 30
+#: September 2026: its two no-model controls are near chance, so the margin's
+#: lead over them says little, and the evidence is the margin against a random
+#: order (the 3,560 cells of exp79 and the 10% review of exp70).
 EVIDENCE: dict[str, str] = {
+    "exp79-margin-beats-random-everywhere": (
+        "The ranking's evidence. In every one of exp79's 3,560 cells (16 "
+        "encoders, OlmoEarth's four sizes among them, on the tasks of Ai2's "
+        "published embedding suite: each encoder's 20 to 24 tasks, ten probe "
+        "seeds each) the margin's AUROC for errors is above 0.5 and its excess "
+        "AURC is below a random order's. The lowest AUROC, 0.503 (Clay Large on "
+        "Nandi Sentinel-1), is close to chance."
+    ),
+    "suite-review-at-ten-percent": (
+        "On the suite's 24 tasks with OlmoEarth Base (exp70), reviewing the 10% "
+        "of units with the lowest margin finds a median 0.214 of the errors, "
+        "against 0.10 for a "
+        "random 10% and a median 0.410 for a perfect order. It finds more than "
+        "10% of the errors on every task; the lowest is 0.115, on Nandi "
+        "Sentinel-1."
+    ),
     "suite-margin-wins-every-task": (
-        "The headline result. On all 24 scored tasks of Ai2's own published "
-        "embedding suite -- tasks Ai2 chose for their own paper, 14 distinct "
-        "sources, 6,435,473 graded units, accuracy 0.333 to 0.979 -- the "
-        "model's own margin beat the best no-model control on every one. "
-        "Excess-AURC leads 0.0157 to 0.2278, median 0.1158; one-sided exact "
-        "sign test 24/24, p = 6e-08. One of the two controls is embedding "
-        "distance, i.e. a feature-space-typicality score."
+        "With OlmoEarth Base (exp70), on all 24 scored tasks of Ai2's own "
+        "published embedding suite -- tasks Ai2 chose for their own paper, 14 "
+        "distinct sources, 6,435,473 graded units, accuracy 0.333 to 0.979 -- "
+        "the model's own margin "
+        "ranked errors better than the better of the two no-model controls "
+        "computable from the embeddings (distance to the training mean, and "
+        "how rare the probe's predicted class is). Excess-AURC leads 0.0157 to "
+        "0.2278, median 0.1158; one-sided exact sign test 24/24, p = 6e-08. "
+        "This says little on its own: the two controls are near chance on the "
+        "suite (suite-controls-are-near-chance), so it mostly shows that the "
+        "margin beats a random order."
+    ),
+    "suite-controls-are-near-chance": (
+        "Found by the red team of 30 September 2026. Taking a random order's "
+        "excess AURC as the gap to close, the better of the suite's two "
+        "no-model controls closes a median 0.094 of it and does no better than "
+        "a random order on 9 of the 24 tasks, while the margin closes a median "
+        "0.680. The embedding-distance control ranks errors below chance "
+        "(AUROC under 0.5) on 21 of the 24 tasks."
     ),
     "shrug-signals-rejected": (
         "Ensemble mutual information (the disagreement component) and -NCDD "
@@ -164,12 +200,22 @@ COMPARISON_EVIDENCE = (
 # --------------------------------------------------------------------------- evidence, scoped to the case
 
 #: What the ranking evidence measured and on what: the opening of every
-#: ranking's ``evidence_scope`` (claim ``suite-margin-wins-every-task``; the
-#: suite's margin is of the probe's probabilities, as exp70 computes it).
+#: ranking's ``evidence_scope`` (claims ``suite-review-at-ten-percent`` and
+#: ``exp79-margin-beats-random-everywhere``; the suite's margin is of the
+#: probe's probabilities, as exp70 computes it). Against a random order, not
+#: the suite's two no-model controls, which a red team of 30 September 2026
+#: found near chance (``suite-controls-are-near-chance``): beating them on 24
+#: of 24 tasks says little on its own. Each figure names the encoders it
+#: covers: exp70 is one encoder, OlmoEarth Base; exp79 is 16.
 SUITE_MEASURED = (
-    "Ai2's 24-task embedding suite (exp70: window level, OlmoEarth family) found "
-    "the top-1 minus top-2 probability margin ranked errors better than the best "
-    "no-model control on all 24 tasks"
+    "Ai2's 24-task embedding suite (exp70: OlmoEarth Base; exp79: 16 encoders, "
+    "OlmoEarth's four sizes among them, ten probe seeds each; its two no-model "
+    "controls are near chance, so the margin's lead over them says little) "
+    "found the top-1 minus top-2 probability margin ranked errors better than a "
+    "random order: with OlmoEarth Base its 10% review set found more than 10% "
+    "of the errors on all 24 tasks (a median 21.4%, against 10% for a random "
+    "10%), and its AUROC for errors was above 0.5 in all 3,560 cells of the 16 "
+    "encoders"
 )
 
 #: What the comparison evidence measured and on what (claim
@@ -206,14 +252,14 @@ PARTLY_COVERED = "in part"
 #: Where the ranking evidence was measured, named without its numbers or its
 #: dataset (the suite and its figures stay in :func:`evidence_detail`).
 RANKING_SOURCE = (
-    "The ranking evidence (exp70 of 2imi9/olmoearth_inferenceX) was measured on "
-    "OlmoEarth models' class-score margins"
+    "The ranking evidence (exp70 of 2imi9/olmoearth_inferenceX-record) was "
+    "measured on OlmoEarth models' class-score margins"
 )
 
 #: Where the side-picking evidence was measured, named the same way.
 COMPARISON_SOURCE = (
-    "The side-picking evidence (exp58 of 2imi9/olmoearth_inferenceX) was measured "
-    "on other pairs of maps with labels"
+    "The side-picking evidence (exp58 of 2imi9/olmoearth_inferenceX-record) was "
+    "measured on other pairs of maps with labels"
 )
 
 #: Forbidden with every result whose evidence does not, or may not, cover the
@@ -366,8 +412,9 @@ def ranking_evidence_scope(
     # Logits: the suite's finding is about the probability margin, so none of
     # its figures is stated; exp76's figure about the logit margin itself is.
     return {
-        "sentence": "The ranking evidence (exp70 of 2imi9/olmoearth_inferenceX) "
-        "measured OlmoEarth models' probability margin, not the logit margin this "
+        "sentence": "The ranking evidence (exp70 of "
+        "2imi9/olmoearth_inferenceX-record) measured OlmoEarth models' "
+        "probability margin, not the logit margin this "
         f"ranking uses over {n_classes} classes, so it covers this case only in "
         "part; on 14 of 16 multi-class suite tasks the logit margin ranked errors "
         "worse than one minus the top probability (exp76).",
@@ -411,8 +458,9 @@ def evidence_outside_scope(scope: dict[str, Any]) -> list[dict[str, str]]:
                 "why": "the ranking evidence (exp70) measured the probability "
                 "margin, and this ranking uses the logit margin, which the suite "
                 "did not measure as a ranker against no-model controls: its "
-                "finding that the margin ranked errors better than every control "
-                "does not carry over to this ranking, neither 'in comparable "
+                "findings about the probability margin (it ranked errors better "
+                "than a random order, and than two controls near chance on the "
+                "suite) do not carry over to this ranking, neither 'in comparable "
                 "cases' nor as 'the evidence behind this ranking'; the only "
                 "figure about this form is exp76's (the logit margin ranked "
                 "errors worse than one minus the top probability on 14 of 16 "
@@ -447,7 +495,9 @@ def evidence_detail() -> dict[str, Any]:
     """The full evidence text a result's ``evidence_scope`` stands for, for a file."""
     return {
         "format": "olmoearth-agent/review-evidence@1",
-        "source": "2imi9/olmoearth_inferenceX, docs/claims.yaml (claim ids below)",
+        "source": (
+            "2imi9/olmoearth_inferenceX-record, docs/claims.yaml (claim ids below)"
+        ),
         "ranking": {
             "measured": SUITE_MEASURED + ".",
             "claims": dict(EVIDENCE),
@@ -656,7 +706,7 @@ def boundary_counts(classes: Sequence[int], rows: int, cols: int) -> list[int]:
 
 
 # --------------------------------------------------------------------------- estimators
-# Ports of oe_inferencex.metrics (pure numpy there, pure Python here). Ties
+# Ports of oe_inferencex.common.metrics (pure numpy there, pure Python here). Ties
 # are resolved by expectation under random tie-breaking so no result depends
 # on the raster order of the input -- which matters because the boundary
 # indicator has only nine levels and therefore ties heavily.

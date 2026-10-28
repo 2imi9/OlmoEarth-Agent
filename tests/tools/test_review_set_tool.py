@@ -187,9 +187,11 @@ async def test_review_set_scopes_its_evidence_and_saves_the_full_text() -> None:
     out = result["result"]
     assert "evidence" not in out and "caveats" not in out
     # Inline scores name no model: the scope names its source, not its figures.
-    assert "exp70 of 2imi9/olmoearth_inferenceX" in out["evidence_scope"]
+    # The research record moved to its own repository on 14 October 2026.
+    assert "exp70 of 2imi9/olmoearth_inferenceX-record" in out["evidence_scope"]
     detail = json.loads(Path(out["evidence_detail_path"]).read_text())
     assert "suite-margin-wins-every-task" in detail["ranking"]["claims"]
+    assert "exp79-margin-beats-random-everywhere" in detail["ranking"]["claims"]
     assert "shrug-signals-rejected" in detail["ranking"]["claims"]
     assert any("predictive entropy" in c.lower() for c in detail["ranking"]["limits"])
     assert [f["id"] for f in out["facts"]] == ["margin_ratio", "review_set_classes"]

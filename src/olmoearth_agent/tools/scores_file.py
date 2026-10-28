@@ -4,16 +4,18 @@
 
 Studio's API returns map tiles and a point lookup, never per-class scores. A
 model run outside Studio (for instance ``scripts/score_area.py`` of the
-companion repository on a GPU cluster) writes what Studio does not: a
+research record, ``2imi9/olmoearth_inferenceX-record``, on a GPU cluster)
+writes what Studio does not: a
 georeferenced ``(C, H, W)`` float32 raster of logits or probabilities, NaN
 where there is no prediction, and a ``manifest.json`` that names the model,
 its revision, the classes and whether the values are logits.
 
 ``olmoearth_scores_from_file`` reads such a directory under
 ``OLMOEARTH_SCORES_ROOT``, pools the raster to windows exactly as the
-package's ``oe-inferencex assess`` does (``oe_inferencex.assess.
+package's ``oe-inferencex assess`` does (``oe_inferencex.review.assess.
 assess_prediction`` with ``is_logit`` from the manifest and the no-data mask of
-the package's own GeoTIFF reader), and writes one scores file that
+the package's own GeoTIFF reader, ``oe_inferencex.common.raster.read_raster``),
+and writes one scores file that
 ``olmoearth_review_set``, ``olmoearth_plan_label_sample``,
 ``olmoearth_estimate_map_error`` and ``olmoearth_compare_review`` read.
 
@@ -32,7 +34,9 @@ of the margin and of the class vote unless ``include_fill_class`` is set.
 
 Reading the GeoTIFF needs the optional ``inferencex`` extra (numpy and
 rasterio through ``olmoearth-inferencex[geo]``); without it the tool answers
-with the install line. No coordinates in the result (rule §3.1): windows are a
+with the install line. A raster the package's reader cannot read is a refusal
+(it exits a command-line run; here its message becomes the tool's error). No
+coordinates in the result (rule §3.1): windows are a
 grid ``(row, col)`` and index; each valid window's location stays in the file,
 for the labelling sheet.
 """
@@ -99,21 +103,24 @@ _PIXEL_CONFIDENCE = {
     (False, False): "twice the probability's distance from 0.5 (a binary map)",
 }
 
-_INSTALL_REASON = (
-    "Reading a model run's scores raster needs the optional package "
-    "olmoearth-inferencex (>= 1.3.0) with rasterio (its geo extra), which is "
-    "not installed in this environment. Nothing was read; do not rank the "
-    "map's windows by hand."
-)
-
 
 def _missing(detail: str) -> dict[str, Any]:
-    """The answer when the extra (or rasterio under it) is not importable."""
+    """The answer when the extra (or rasterio under it) is not importable.
+
+    A release older than ``inferencex.MIN_VERSION`` has no ``review.assess``
+    or ``common.raster``: the reason names its version and the upgrade line.
+    """
+    status, install = inferencex.unavailable()
     return {
         "available": False,
-        "reason": _INSTALL_REASON,
+        "reason": (
+            "Reading a model run's scores raster needs the optional package "
+            f"olmoearth-inferencex (>= {inferencex.MIN_VERSION}) with rasterio "
+            f"(its geo extra), {status}. Nothing was read; do not rank the map's "
+            "windows by hand."
+        ),
         "missing": detail,
-        "install": inferencex.INSTALL_HINT,
+        "install": install,
     }
 
 
@@ -312,8 +319,18 @@ def _centres(np: Any, geo: Any, idx: Any, cols: int, patch: int) -> list[Any] | 
 
 
 def _check_size(rasterio: Any, path: Path, patch: int) -> None:
-    """Refuse a raster too large to read, or with more windows than a ranking takes."""
-    with rasterio.open(path) as src:
+    """Refuse a raster too large to read, or with more windows than a ranking takes.
+
+    A file rasterio cannot open is refused in the words of the package's own
+    reader (``read_raster``), which this check runs before.
+    """
+    try:
+        src = rasterio.open(path)
+    except rasterio.errors.RasterioIOError as exc:
+        raise ValueError(
+            f"{path.name}: not a raster rasterio can read ({exc})"
+        ) from None
+    with src:
         count, height, width = src.count, src.height, src.width
     if count * height * width > MAX_VALUES:
         raise ValueError(
@@ -333,11 +350,49 @@ def _check_size(rasterio: Any, path: Path, patch: int) -> None:
         )
 
 
+def read_scores_raster(raster_io: Any, path: Path) -> tuple[Any, Any, Any]:
+    """The raster, its valid-pixel mask and its georeference, read by the package.
+
+    ``raster_io`` is ``oe_inferencex.common.raster``. Its ``read_raster`` marks a
+    pixel no-data where any channel is not finite, where every channel holds
+    the raster's no-data value, or where GDAL's mask says so. It is the
+    command line's reader and ends a bad file with ``SystemExit`` ("no such
+    file", "not a raster rasterio can read"); that is a refusal here, raised as
+    ``ValueError`` so the registry answers with it and the agent keeps running.
+
+    Parameters
+    ----------
+    raster_io
+        The package's raster module, as :func:`inferencex.load` returns it.
+    path
+        The scores raster.
+
+    Returns
+    -------
+    tuple
+        ``(array, valid, geo)`` as ``read_raster`` returns them.
+
+    Examples
+    --------
+    >>> read_scores_raster(raster_io, Path("run/scores.tif"))  # doctest: +SKIP
+    """
+    try:
+        array, valid, geo = raster_io.read_raster(str(path))
+    except SystemExit as exc:
+        reason = str(exc) or f"{path.name}: the package's reader could not read it"
+        raise ValueError(f"the scores raster was not read: {reason}") from None
+    return array, valid, geo
+
+
 async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_scores_from_file``."""
     try:
-        assess = inferencex.load("assess")
-        cli = inferencex.load("cli")
+        # The feature-folder paths of olmoearth-inferencex >= 1.19.0. The
+        # 1.18.1 path `assess` still resolves through the package's alias
+        # finder, and `cli.read_raster` through the CLI's own import of
+        # `common.raster`; neither is the module's own.
+        assess = inferencex.load("review.assess")
+        raster_io = inferencex.load("common.raster")
     except inferencex.InferencexMissingError as exc:
         return _missing(f"olmoearth-inferencex: {exc}")
     try:
@@ -366,9 +421,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
             "does not describe this file, so its classes and values cannot be trusted"
         )
     _check_size(rasterio, raster, patch)
-    # The package's own GeoTIFF reader: a pixel is valid when every channel is
-    # finite and none equals the raster's no-data value.
-    array, valid, geo = cli.read_raster(str(raster))
+    array, valid, geo = read_scores_raster(raster_io, raster)
     shape = list((manifest.get("scores") or {}).get("shape") or [])
     if shape and shape != list(array.shape) and shape[1:] != list(array.shape):
         raise ValueError(

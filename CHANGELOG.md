@@ -182,6 +182,41 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the code.
 
 ### Changed
+- **The `inferencex` extra requires olmoearth-inferencex 1.20.1**
+  (`olmoearth-inferencex[geo]>=1.20.1`; `uv.lock` is re-locked by the cluster
+  job, not by hand). `olmoearth_scores_from_file` loads the feature-folder
+  modules of 1.19.0, `review.assess` and `common.raster.read_raster` (the
+  1.18.1 path `assess` still resolves through the package's alias finder, and
+  `cli.read_raster` through the CLI's own import of `common.raster`). A raster
+  the package's reader cannot read is refused in the reader's words (`not a
+  raster rasterio can read`): `read_raster` would end a bad file with
+  `SystemExit`, which the registry does not catch, so the call is wrapped; the
+  size check, which opens the raster first, already answered such a file with
+  rasterio's own error and now answers in the same words. A certified zone's
+  `meaning` from `olmoearth_certify_zone` ends with the package's
+  `ISSUED_NOTE` word for word, which says that delta counts all samples, those
+  that certify nothing included, and that among the samples that do certify a
+  zone the share wrong can be larger (most of all when the zone's true error
+  rate is just above alpha), so a certified zone is not a 1 - delta chance of
+  being right. When an installed release older than 1.20.1 lacks a module a
+  tool loads (before 1.19.0 none of the feature folders existed), the
+  missing-extra answer names that version and the upgrade line (`pip install
+  -U 'olmoearth-agent[inferencex]'`) instead of saying the package is not
+  installed (`tools/inferencex.py`, `MIN_VERSION`, `unavailable`). The
+  research record moved to `2imi9/olmoearth_inferenceX-record` on 14 October
+  2026: `score_area.py`, the evidence sources and the claims ledger are linked
+  there. Skill #18's evidence no longer rests on the margin beating the suite's
+  no-model controls on 24 of 24 tasks, which the red team of 30 September 2026
+  found near chance (the better of the two no better than a random order on 9
+  of the 24 tasks; embedding distance below chance on 21): it is the margin
+  against a random order, an AUROC for errors above 0.5 in all 3,560 cells of
+  exp79 (16 encoders, OlmoEarth's four sizes among them) and, with OlmoEarth
+  Base, a 10% review set holding a median 21.4% of the errors against 10% for
+  a random 10% (exp70), in `analysis/review_set.py` (`EVIDENCE`,
+  `SUITE_MEASURED`, each figure naming the encoders it covers), `SKILLS.md`
+  and `webui/js/skills.js`. The README's skill #18 row names the 1.20.1
+  requirement, the Python versions the extra installs on (3.11 to 3.13) and
+  the tools that need it.
 - **The lead-agent loop is a middleware chain with LangChain 1.x's hook
   interface** (`harness/middleware.py`; the owner chose on 25 September 2026
   to build the layer rather than migrate, so that a later migration is a

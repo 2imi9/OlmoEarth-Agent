@@ -752,7 +752,7 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
             "b": date_b,
             "labels": labels_date,
             "reason": "the dates were not assessed: reading what a difference "
-            "means across dates needs olmoearth-inferencex (>= 1.3.0)",
+            "means across dates needs olmoearth-inferencex (>= 1.20.1)",
             "install": inferencex.INSTALL_HINT,
         }
     reading: dict[str, Any] = dict(compare.dates_reading(date_a, date_b, labels_date))

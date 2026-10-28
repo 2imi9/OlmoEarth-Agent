@@ -8,7 +8,7 @@ overstates the error rate (1.8 to 5.8 times the true rate on the companion
 package's exp78). An error rate needs a labelled **sample drawn by a design**,
 and its interval is the one that design earns -- a stratified or targeted draw
 does not get the simple-random-sample formula. Three tools wrap
-``oe_inferencex.estimate`` (``olmoearth-inferencex`` >= 1.3.0, the optional
+``oe_inferencex.estimate`` (``olmoearth-inferencex`` >= 1.20.1, the optional
 ``inferencex`` extra, imported lazily):
 
 - ``olmoearth_plan_label_sample`` -- choose which windows to label
@@ -21,7 +21,9 @@ does not get the simple-random-sample formula. Three tools wrap
   ``estimate_from_indices``, which refuses a review set;
 - ``olmoearth_certify_zone`` -- the largest most-confident share of the map
   whose error rate is at most ``alpha`` (``certify_zone``), random designs
-  only.
+  only; a certified zone's ``meaning`` ends with the package's statement of
+  what delta counts (``oe_inferencex.certify.zone.ISSUED_NOTE``), as
+  ``oe-inferencex certify`` prints it.
 
 Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
 locations a reviewer needs stay in the files.
@@ -1177,6 +1179,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     """Handler for ``olmoearth_certify_zone``."""
     try:
         estimate = inferencex.load("estimate")
+        zone_module = inferencex.load("certify.zone")
     except inferencex.InferencexMissingError:
         return inferencex.missing_extra("Certifying a trusted zone")
     design = _load_design(str(args["design_path"]))
@@ -1250,11 +1253,15 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             f"{zone['coverage']:g} of the population) under rule '{rule}' at "
             f"alpha={alpha:g}, delta={delta:g}"
         )
+        # What delta counts, verbatim in the package's words: certify_zone's
+        # result does not carry it, and `oe-inferencex certify` prints it with
+        # every zone it certifies. A certified zone is not a 1 - delta chance
+        # of being right.
         out["meaning"] = (
             "The zone is the n_zone most confident windows of the design's "
             f"population; its error rate is at most alpha={alpha:g}, a statement "
             f"that fails on at most delta={delta:g} of random draws. Nothing "
-            "outside the zone is certified."
+            "outside the zone is certified. " + str(zone_module.ISSUED_NOTE)
         )
     else:
         out["verdict"] = (

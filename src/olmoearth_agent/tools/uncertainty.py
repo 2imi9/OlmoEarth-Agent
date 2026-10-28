@@ -17,7 +17,8 @@ Scope boundary with skill #18 (``olmoearth-review-set``). These signals
 answer *is this prediction in a regime I should trust* -- self-consistency
 across distinct results, and distance from the training distribution. They
 do **not** rank which windows are wrong: upstream
-(`2imi9/olmoearth_inferenceX <https://github.com/2imi9/olmoearth_inferenceX>`_)
+(`2imi9/olmoearth_inferenceX-record
+<https://github.com/2imi9/olmoearth_inferenceX-record>`_)
 measured ensemble disagreement and feature-space typicality against the
 model's own top-1-minus-top-2 margin on seven expert-labelled testbeds and
 neither ranked errors better than the margin. When per-class scores exist,

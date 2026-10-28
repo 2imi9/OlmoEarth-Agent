@@ -35,6 +35,7 @@ from olmoearth_agent.analysis.review_set import (
     detect_score_type,
     dominant_change_fact,
     evidence_detail,
+    evidence_outside_scope,
     excess_aurc,
     grade_rule,
     margin_ratio_fact,
@@ -288,6 +289,54 @@ def test_the_full_evidence_text_is_kept_for_the_file() -> None:
     assert detail["ranking"]["limits"] == list(EVIDENCE_LIMITS)
     assert "51 to 70" in detail["comparison"]["reading"]
     assert "exp76" in detail["ranking"]["multi_class"]
+
+
+def test_the_suites_evidence_is_stated_against_a_random_order() -> None:
+    """The red team of 30 September 2026 found the suite's two no-model
+    controls near chance (claim suite-controls-are-near-chance), so beating
+    them on 24 of 24 tasks says little. The evidence is the margin against a
+    random order (exp79's 3,560 cells, exp70's 10% review), cited from the
+    research record, and no text says the margin beat every, or the best,
+    no-model control."""
+    covered = ranking_evidence_scope(
+        score_kind="probability", n_classes=2, model="allenai/OlmoEarth-v1-Base"
+    )
+    assert covered["covers"] == "yes"
+    detail = evidence_detail()
+    for text in (covered["sentence"], detail["ranking"]["measured"]):
+        assert "random order" in text and "near chance" in text
+        assert "3,560 cells" in text and "21.4%" in text
+        assert "every no-model control" not in text
+        assert "best no-model control" not in text
+        # Each figure names the encoders it covers: exp70 is OlmoEarth Base
+        # alone (the record's comparisons.md), exp79 is 16 encoders.
+        assert "exp70: OlmoEarth Base;" in text
+        assert "exp79: 16 encoders, OlmoEarth's four sizes among them" in text
+        assert "with OlmoEarth Base its 10% review set" in text
+        assert "3,560 cells of the 16 encoders" in text
+    claims = detail["ranking"]["claims"]
+    assert "OlmoEarth Base (exp70)" in claims["suite-review-at-ten-percent"]
+    assert "OlmoEarth Base (exp70)" in claims["suite-margin-wins-every-task"]
+    assert {
+        "exp79-margin-beats-random-everywhere",
+        "suite-review-at-ten-percent",
+        "suite-controls-are-near-chance",
+    } <= set(claims)
+    assert "near chance" in claims["suite-margin-wins-every-task"]
+    assert "best no-model control" not in claims["suite-margin-wins-every-task"]
+    near_chance = claims["suite-controls-are-near-chance"]
+    assert "9 of the 24" in near_chance and "21 of the 24" in near_chance
+    assert "0.214" in claims["suite-review-at-ten-percent"]
+    assert "3,560" in claims["exp79-margin-beats-random-everywhere"]
+    assert detail["source"].startswith("2imi9/olmoearth_inferenceX-record")
+    assert "olmoearth_inferenceX-record" in RANKING_SOURCE
+    (claim,) = evidence_outside_scope(
+        ranking_evidence_scope(
+            score_kind="logit", n_classes=9, model="allenai/OlmoEarth-v1-FT-AWF-Base"
+        )
+    )
+    assert "every control" not in claim["why"]
+    assert "near chance" in claim["why"]
 
 
 @pytest.mark.parametrize(
@@ -997,7 +1046,7 @@ def test_ties_are_broken_as_the_companion_package_breaks_them() -> None:
     out = review_set(scores, budget=0.75, error_rate=None, max_listed=4)
     assert [w["window_index"] for w in out["review"]] == [3, 1, 0]
     np = pytest.importorskip("numpy")
-    assess = pytest.importorskip("oe_inferencex.assess")
+    assess = pytest.importorskip("oe_inferencex.review.assess")
     margin = np.array([abs(r[0] - r[1]) for r in scores])
     package = [int(i) for i in assess.review_order(-margin)][:3]
     assert package == [3, 1, 0]

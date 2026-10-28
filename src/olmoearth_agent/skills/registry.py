@@ -290,7 +290,7 @@ SKILLS: list[SkillSpec] = [
     # raw_value/classification (no probabilities, no logits), which is exactly
     # why #9 reached for ensemble disagreement -- with hard classes it is the
     # only signal available. Given real scores the ordering flips: upstream
-    # (2imi9/olmoearth_inferenceX) measured ensemble disagreement, cross-model
+    # (2imi9/olmoearth_inferenceX-record) measured ensemble disagreement, cross-model
     # disagreement, two-view disagreement and feature-space typicality against
     # the margin on seven expert-labelled testbeds and none of them won. So the
     # two skills are complementary, not rivals: #9 for hard-class Studio

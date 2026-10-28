@@ -2,13 +2,14 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """The scores provider, ``olmoearth_scores_from_file``, on stub model runs.
 
-Each fixture is written the way the companion repository's
-``scripts/score_area.py`` writes a run (and its ``tests/test_score_area.py``
-builds one with a stub model): a georeferenced ``(10, H, W)`` float32 raster,
-NaN where there is no prediction, and a ``manifest.json`` naming the model,
-the classes (channel 9 ``nodata_value_9``, the label fill value) and whether
-the values are logits. Nothing here needs the cluster. The reference for every
-ranking is ``oe_inferencex.assess.assess_prediction`` on the same raster.
+Each fixture is written the way the research record's
+(``2imi9/olmoearth_inferenceX-record``) ``scripts/score_area.py`` writes a run
+(and its ``tests/test_score_area.py`` builds one with a stub model): a
+georeferenced ``(10, H, W)`` float32 raster, NaN where there is no prediction,
+and a ``manifest.json`` naming the model, the classes (channel 9
+``nodata_value_9``, the label fill value) and whether the values are logits.
+Nothing here needs the cluster. The reference for every ranking is
+``oe_inferencex.review.assess.assess_prediction`` on the same raster.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import pytest
 
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.tools import scores_file
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
@@ -33,7 +35,8 @@ from olmoearth_agent.tools.scores_file import build_scores_file_tools, model_and
 try:
     import numpy as np
     import rasterio
-    from oe_inferencex import assess, cli
+    from oe_inferencex import cli
+    from oe_inferencex.review import assess
     from rasterio.transform import Affine
 
     HAVE_EXTRA = True
@@ -628,13 +631,83 @@ async def test_a_manifest_that_does_not_describe_the_raster_is_refused(
     assert out["ok"] is False and "larger than" in out["error"]
 
 
+def _bad_raster_run(root: Path, name: str, content: bytes | None) -> Path:
+    """A run whose scores.tif is gone (``None``) or holds ``content``, not a raster.
+
+    The manifest records no sha256, so the read gets as far as the raster.
+    """
+    run = _write_run(
+        root,
+        name,
+        _logits(13, 16, 16),
+        np.ones((16, 16), bool),
+        manifest_edit={"scores": {"file": "scores.tif", "values": "logits"}},
+    )
+    path = run / "scores.tif"
+    if content is None:
+        path.unlink()
+    else:
+        path.write_bytes(content)
+    return run
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_missing_raster_is_refused(_scores_root: Path) -> None:
+    _bad_raster_run(_scores_root, "gone", None)
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "gone"})
+    assert out["ok"] is False
+    assert "no raster 'scores.tif'" in out["error"]
+
+
+@needs_extra
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size_check", [True, False])
+async def test_a_file_that_is_not_a_raster_is_refused_not_an_exit(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch, size_check: bool
+) -> None:
+    """The package's ``read_raster`` (``oe_inferencex.common.raster``) ends a file
+    it cannot read with ``SystemExit``, which the registry does not catch: it
+    would end the agent. The tool refuses instead, in the reader's words. With
+    the size check off, the file reaches the package's reader itself."""
+    _bad_raster_run(_scores_root, "text", b"not a GeoTIFF, just text\n")
+    if not size_check:
+        monkeypatch.setattr(scores_file, "_check_size", lambda *_args: None)
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "text"})
+    assert out["ok"] is False
+    assert out["error"].startswith("ValueError: ")
+    assert "not a raster rasterio can read" in out["error"]
+    if not size_check:
+        assert "the scores raster was not read" in out["error"]
+
+
+@needs_extra
+def test_the_packages_reader_exit_becomes_a_refusal(tmp_path: Path) -> None:
+    """``read_scores_raster`` turns the reader's ``SystemExit`` into the
+    ``ValueError`` the registry answers with, for a missing file and a file
+    that is not a raster alike, and passes a good raster through unchanged."""
+    from oe_inferencex.common import raster as raster_io
+
+    missing = tmp_path / "missing.tif"
+    with pytest.raises(ValueError, match="no such file"):
+        scores_file.read_scores_raster(raster_io, missing)
+    text = tmp_path / "text.tif"
+    text.write_bytes(b"not a GeoTIFF\n")
+    with pytest.raises(ValueError, match="not a raster rasterio can read"):
+        scores_file.read_scores_raster(raster_io, text)
+    run = _write_run(tmp_path, "good", _logits(14, 16, 16), np.ones((16, 16), bool))
+    array, valid, geo = scores_file.read_scores_raster(raster_io, run / "scores.tif")
+    assert array.shape == (10, 16, 16) and bool(valid.all())
+    assert geo is not None and str(geo["crs"]).endswith("32737")
+
+
 @pytest.mark.asyncio
 async def test_missing_extra_is_a_clear_answer_not_a_crash(
     _scores_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Simulate an install without olmoearth-inferencex, then without rasterio."""
     with monkeypatch.context() as m:
-        m.setitem(sys.modules, "oe_inferencex.assess", None)
+        m.setitem(sys.modules, "oe_inferencex.review.assess", None)
         out = await _ok("olmoearth_scores_from_file", {"run_dir": "anything"})
     assert out["available"] is False
     assert out["install"] == "pip install 'olmoearth-agent[inferencex]'"
