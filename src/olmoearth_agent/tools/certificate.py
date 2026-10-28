@@ -45,14 +45,29 @@ path, is checked only against a copy under it, given as a plain GeoTIFF or
 ``.npy`` (GDAL would follow the paths inside a VRT). The tools need nothing
 beyond the ``inferencex`` extra (rasterio comes with it), so they are default
 tools.
+
+The package's calls run in a worker thread (``asyncio.to_thread``), as
+:func:`inferencex.run_cli_async` runs its command line: ``certificate.build``
+and ``certificate.verify`` read and digest the map and draw the sample and
+certify again, ``certificate.point`` reads the certificate (the zone is the
+one verify built again), and ``certify_zone`` orders every window of the
+map; run inline, each would hold the event loop that serves the web
+bridge's other sessions for the whole call. An exception raised in the
+thread reaches the handler as it would inline, so every refusal is the
+same. Since another session's call can run meanwhile, ``certificate.build``
+runs under a lock that first checks no certificate was written for the plan
+(:func:`_build`): the package's build replaces a bundle, and a certificate
+is written once.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 import os
 import stat
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -173,6 +188,80 @@ def _same_zone(np: Any, work: Path, mine: dict[str, Any]) -> bool:
     return theirs == ours
 
 
+def _agents_zone(
+    estimate: Any,
+    design: dict[str, Any],
+    indices: list[int],
+    wrong: list[int],
+    plan: tuple[float, float, str],
+) -> dict[str, Any]:
+    """``olmoearth_certify_zone``'s computation on these labels (run off the loop).
+
+    ``certify_zone`` orders every window of the map by confidence, so it
+    runs in a worker thread, the stored margin read back with it.
+    """
+    alpha, delta, rule = plan
+    return dict(
+        estimate.certify_zone(
+            _margin(design["population"]["margin"]),
+            indices,
+            wrong,
+            alpha,
+            delta=delta,
+            rule=rule,
+        )
+    )
+
+
+#: One lock per bundle folder, held while its certificate is built
+#: (:func:`_build`): the check that none was written for the plan and the
+#: package's build are one step. A build of another plan does not wait.
+_BUILD_LOCKS: dict[Path, threading.Lock] = {}
+_BUILD_LOCKS_GUARD = threading.Lock()
+
+
+def _build_lock(bundle: Path) -> threading.Lock:
+    """The lock of this bundle folder (the plan's, resolved by ``plan_work_dir``)."""
+    with _BUILD_LOCKS_GUARD:
+        return _BUILD_LOCKS.setdefault(bundle, threading.Lock())
+
+
+def _already_written(bundle: Path) -> str:
+    """The refusal of a second certificate on one plan's sample."""
+    return (
+        "a certificate on this sample is already written, at "
+        f"{bundle / 'certificate.json'}; it is written once, with the labels "
+        "first given, and never replaced. Check it with "
+        "olmoearth_verify_certificate"
+    )
+
+
+def _build(cert: Any, zone_path: Path, bundle: Path, date: str) -> dict[str, Any]:
+    """``certificate.build`` (run off the loop); a refusal of it as the tool's.
+
+    The package verifies the bundle before it hands it over, reading and
+    digesting the map, so this runs in a worker thread; what it raises is
+    the refusal the tool gives. The handler checks that no certificate was
+    written before it runs ``certify``, but another session's call on the
+    same plan can pass that check while this one awaits, and the package's
+    build replaces a bundle ("a bundle written again keeps nothing of the
+    earlier one"). So the check is made again here, under the bundle's lock
+    (:func:`_build_lock`) with the build: of two calls, the second is
+    refused as the early check refuses it, and the first certificate stays.
+    """
+    with _build_lock(bundle):
+        if (bundle / "certificate.json").exists():
+            raise ValueError(_already_written(bundle))
+        try:
+            item: dict[str, Any] = cert.build(str(zone_path), str(bundle), date)
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            reason = cert.printable(str(exc))
+            raise ValueError(
+                f"olmoearth-inferencex wrote no certificate: {reason}"
+            ) from None
+    return item
+
+
 async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_write_certificate``."""
     try:
@@ -193,13 +282,8 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
         raise ValueError(f"the plan's sheet {CERT_SAMPLE} is gone; plan again")
     bundle = work / BUNDLE_DIR
     if (bundle / "certificate.json").exists():
-        msg = (
-            "a certificate on this sample is already written, at "
-            f"{bundle / 'certificate.json'}; it is written once, with the labels "
-            "first given, and never replaced. Check it with "
-            "olmoearth_verify_certificate"
-        )
-        raise ValueError(msg)
+        # the fast refusal; _build checks again under its lock
+        raise ValueError(_already_written(bundle))
     indices = [int(i) for i in design["sample"]["indices"]]
     wrong, _reference = _labels(args, indices)
     date = _map_date(args, block)  # asked before anything runs
@@ -211,19 +295,17 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
     await inferencex.run_cli_async(["certify", str(sheet)], cwd=work)
     zone_path = work / ZONE_JSON
     zone = json.loads(zone_path.read_text(encoding="utf-8"))
-    mine = estimate.certify_zone(
-        _margin(design["population"]["margin"]),
-        indices,
-        wrong,
-        alpha,
-        delta=delta,
-        rule=rule,
+    mine = await asyncio.to_thread(
+        _agents_zone, estimate, design, indices, wrong, (alpha, delta, rule)
     )
     ours = (mine.get("n_zone"), mine.get("coverage"))
     theirs = (zone.get("n_zone"), zone.get("coverage"))
-    if ours != theirs or (
-        zone.get("coverage") is not None and not _same_zone(np, work, mine)
-    ):
+    # The zone mask is on the map's window grid: compared off the loop too.
+    same = ours == theirs and (
+        zone.get("coverage") is None
+        or await asyncio.to_thread(_same_zone, np, work, mine)
+    )
+    if not same:
         msg = (
             "the package's certify on the plan's sheet gives another zone "
             f"({zone.get('n_zone')} windows) than olmoearth_certify_zone on these "
@@ -235,10 +317,10 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
     issued = str(zone_module.ISSUED_NOTE)
     # The whole-map estimate from the same labels, as olmoearth_certify_zone
     # gives it: the report states it, and tells two label sets apart by it.
-    whole = _whole_map_estimate(
-        _jsonable(estimate.estimate_error_rate(design["sample"], wrong)),
-        certify=True,
+    sampled = await asyncio.to_thread(
+        estimate.estimate_error_rate, design["sample"], wrong
     )
+    whole = _whole_map_estimate(_jsonable(sampled), certify=True)
     out: dict[str, Any] = {
         "available": True,
         "design_path": design_path,
@@ -274,13 +356,7 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
             ],
             forbidden_claims=[rules.post_hoc_alpha(alpha)],
         )
-    try:
-        item = cert.build(str(zone_path), str(bundle), date)
-    except (ValueError, TypeError, KeyError, OSError) as exc:
-        reason = cert.printable(str(exc))
-        raise ValueError(
-            f"olmoearth-inferencex wrote no certificate: {reason}"
-        ) from None
+    item = await asyncio.to_thread(_build, cert, zone_path, bundle, date)
     props = item["properties"]
     path = str(bundle / "certificate.json")
     out.update(
@@ -414,6 +490,8 @@ def window_lookup(
     ``certificate.point`` takes a pixel, the window's first, ``row * patch``
     and ``col * patch``. Nothing is looked up when the zone could not be built
     again; a window outside the map, or in no whole window, is said so.
+    ``olmoearth_verify_certificate`` runs it in a worker thread (it reads the
+    certificate; the zone mask is verify's, passed in).
 
     Parameters
     ----------
@@ -507,8 +585,12 @@ async def _verify_certificate(
     own_copy = map_path is not None and not any(
         _same_file(map_path, named) for named in named_maps
     )
+    # verify digests the map and draws the sample and certify again: in a
+    # worker thread, and its refusal reaches this handler as it would inline.
     try:
-        res = cert.verify(str(path), None if map_path is None else str(map_path))
+        res = await asyncio.to_thread(
+            cert.verify, str(path), None if map_path is None else str(map_path)
+        )
     except cert.Unreadable as exc:
         raise ValueError(cert.printable(str(exc))) from None
     checks = {
@@ -538,7 +620,9 @@ async def _verify_certificate(
         "issued_note": str(zone_module.ISSUED_NOTE),
     }
     if window is not None:
-        out["window_lookup"] = window_lookup(cert, path, res, list(window))
+        out["window_lookup"] = await asyncio.to_thread(
+            window_lookup, cert, path, res, list(window)
+        )
     where = f"the map read ({out['map_read']})" if out["map_read"] else "the map"
     if verified:
         sentence = (

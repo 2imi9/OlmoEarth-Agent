@@ -526,19 +526,34 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
         {"design_path": plan["design_path"], "wrong": _labels_of(plan)},
     )
     whole = _fact(out, "whole_map_estimate")
-    # The output contract's fields, and no others.
-    assert set(whole) == {"id", "sentence", "estimate", "low", "high", "design"}
+    # The output contract's fields, then the valid-first estimate's: the
+    # interval valid at every sample size, and the design's beside it.
+    assert set(whole) == {
+        "id",
+        "sentence",
+        "estimate",
+        "low",
+        "high",
+        "design",
+        "interval",
+        "design_low",
+        "design_high",
+    }
+    valid = out["valid_interval"]
     for key in ("estimate", "low", "high"):
-        assert whole[key] == out[key], key
-    assert whole["design"] == "confidence"
+        assert whole[key] == valid[key], key
+    assert (whole["design_low"], whole["design_high"]) == (out["low"], out["high"])
+    assert whole["design"] == "confidence" and whole["interval"] == "valid"
     assert "warning" not in out and "warns" not in whole["sentence"]
     _holds_to_the_contract(out)
     assert (
-        f"estimated at {rules.percent(out['estimate'])} (95% interval "
-        f"{rules.percent(out['low'])} to {rules.percent(out['high'])}) from 300 "
-        "labelled windows of a population of 2000" in whole["sentence"]
-    )
-    assert out["method"] in whole["sentence"]
+        f"estimated at {rules.percent(valid['estimate'])} from 300 labelled "
+        "windows of a population of 2000: the 95% interval valid at every "
+        f"sample size is {rules.percent(valid['low'])} to "
+        f"{rules.percent(valid['high'])} ({valid['method']}); the interval this "
+        f"design earns is {rules.percent(out['low'])} to "
+        f"{rules.percent(out['high'])} (method: {out['method']})."
+    ) in whole["sentence"]
     assert _ids(out) == [
         rules.SIMPLE_RANDOM_INTERVAL,
         rules.CERTIFY_FROM_NONRANDOM_DESIGN,
@@ -548,7 +563,16 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
     assert "'confidence'" in _why(out, rules.CERTIFY_FROM_NONRANDOM_DESIGN)
     steps = " ".join(out["next_steps"])
     assert "No zone can be certified from this confidence design" in steps
-    assert "must_state" not in out  # inline scores, not a sampled grid
+    # Inline scores, not a sampled grid: the valid interval and the design only.
+    stated = rules.valid_interval_must_state(
+        valid["estimate"],
+        valid["low"],
+        valid["high"],
+        "confidence",
+        300,
+        class_map=False,
+    )
+    assert out["must_state"] == [stated]
 
     random_plan = await _plan("random")
     srs = await _result(
@@ -563,16 +587,26 @@ async def test_an_estimate_states_the_whole_map_estimate_and_its_design_rules() 
 @pytest.mark.asyncio
 async def test_the_whole_map_estimate_carries_the_packages_warning() -> None:
     """No labelled window wrong: the package warns that the stratified
-    interval falls back to the simple-random bound; the fact says so."""
+    interval falls back to the simple-random bound; the fact says so, as a
+    warning of the interval this design earns, after both intervals: the
+    interval valid at every sample size takes no variance, and a reader must
+    not attach the warning to it."""
     plan = await _plan("confidence")
     out = await _result(
         "olmoearth_estimate_map_error",
         {"design_path": plan["design_path"], "wrong": [0] * 300},
     )
     assert out["warning"].startswith("no labelled window was wrong")
+    assert "warning" not in out["valid_interval"]
     sentence = _fact(out, "whole_map_estimate")["sentence"]
-    assert f"The package warns: {out['warning'].rstrip('.')}." in sentence
-    assert sentence.index("method:") < sentence.index("The package warns")
+    warned = (
+        "The package warns, of the interval this design earns: "
+        f"{out['warning'].rstrip('.')}."
+    )
+    assert sentence.endswith(warned)
+    assert "The package warns:" not in sentence
+    assert sentence.index("valid at every sample size") < sentence.index(warned)
+    assert sentence.index("method:") < sentence.index(warned)
 
 
 @pytest.mark.asyncio
@@ -664,13 +698,15 @@ def test_the_weakest_classes_are_ranked_by_code_zero_correct_first() -> None:
         {"class": 8, "labelled": 1, "correct": 0},
     ]
     sentence = fact["sentence"]
+    # The confidence design's per-class interval is Wilson's on the effective
+    # sample size, which the package calls nominal: named so.
     assert sentence.startswith(
         "Ranked by user's accuracy (of the windows the map puts in a class, the "
         "share the labels agree with) over the 5 classes with at least 5 "
         "map-labelled windows, the lowest are class 5 (0 of 10 correct; 0.0%, "
-        "95% interval 0.0% to 27.8%), class 1 (2 of 9 correct; 22.5%, 95% "
-        "interval 6.5% to 55.0%) and class 6 (20 of 44 correct; 45.1%, 95% "
-        "interval 32.3% to 58.6%)."
+        "nominal 95% interval 0.0% to 27.8%), class 1 (2 of 9 correct; 22.5%, "
+        "nominal 95% interval 6.5% to 55.0%) and class 6 (20 of 44 correct; "
+        "45.1%, nominal 95% interval 32.3% to 58.6%)."
     )
     assert (
         "Classes 0, 2 and 8 have fewer than 5 map-labelled windows (0, 2 and 1), "
@@ -746,7 +782,7 @@ def test_every_class_with_none_correct_is_named_before_the_next_lowest() -> None
         }
     )
     assert missing is not None and missing["lowest"] == [1, 0]
-    assert "class 0 (5 of 6 correct; 80.0%, interval 40.0% to n/a)" in (
+    assert "class 0 (5 of 6 correct; 80.0%, nominal interval 40.0% to n/a)" in (
         missing["sentence"]
     )
 
@@ -818,6 +854,51 @@ def test_a_class_with_enough_windows_but_no_estimate_is_listed() -> None:
     assert 2 not in [r["class"] for r in fact["ranked"]]
 
 
+def test_each_class_is_stated_with_its_valid_interval_first() -> None:
+    """estimate_per_class(valid=True) gives each class's user's accuracy an
+    interval valid at every sample size (its row's ``valid``): the sentence
+    states it before the design's, each ranked entry carries it, and the
+    ranking stays on the package's estimate. Under a random design the
+    design's interval is exact; under the confidence design it is named
+    nominal. A class whose valid interval the package did not compute keeps
+    the design's alone."""
+
+    def valid(low: float | None, high: float | None) -> dict[str, Any]:
+        ua = {"estimate": low, "low": low, "high": high, "form": "exact"}
+        return {"user_accuracy": ua}
+
+    per_class = _rare_positive((281, 295), (0, 5))
+    per_class["per_class"]["0"]["valid"] = valid(0.918, 0.976)
+    per_class["per_class"]["1"]["valid"] = valid(0.0, 0.522)
+    fact = _weakest_classes(per_class)
+    assert fact is not None and fact["lowest"] == [1]
+    one = next(r for r in fact["ranked"] if r["class"] == 1)
+    assert (one["estimate"], one["low"], one["high"]) == (0.0, 0.0, 0.9)
+    assert (one["valid_low"], one["valid_high"]) == (0.0, 0.522)
+    assert (
+        "the lowest is class 1 (0 of 5 correct; 0.0%, 95% interval valid at every "
+        "sample size 0.0% to 52.2%, 95% interval this design earns 0.0% to 90.0%)."
+    ) in fact["sentence"]
+    assert "nominal" not in fact["sentence"]
+
+    per_class["design"] = "confidence"
+    nominal = _weakest_classes(per_class)
+    assert nominal is not None
+    assert (
+        "class 1 (0 of 5 correct; 0.0%, 95% interval valid at every sample size "
+        "0.0% to 52.2%, nominal 95% interval this design earns 0.0% to 90.0%)"
+    ) in nominal["sentence"]
+
+    per_class["per_class"]["1"]["valid"] = valid(None, None)
+    uncomputed = _weakest_classes(per_class)
+    assert uncomputed is not None
+    lone = next(r for r in uncomputed["ranked"] if r["class"] == 1)
+    assert "valid_low" not in lone and "valid_high" not in lone
+    assert "class 1 (0 of 5 correct; 0.0%, nominal 95% interval 0.0% to 90.0%)" in (
+        uncomputed["sentence"]
+    )
+
+
 @pytest.mark.asyncio
 async def test_an_estimate_with_reference_classes_ranks_its_weakest() -> None:
     """Through the tool: a map class every label contradicts comes first, and
@@ -847,13 +928,32 @@ async def test_an_estimate_with_reference_classes_ranks_its_weakest() -> None:
     for r in fact["ranked"]:
         assert r["correct"] == confusion[r["class"]][r["class"]]
         assert r["labelled"] == sum(confusion[r["class"]])
-        ua = out["per_class"]["per_class"][str(r["class"])]["user_accuracy"]
+        row = out["per_class"]["per_class"][str(r["class"])]
+        ua = row["user_accuracy"]
+        # ranked on the package's estimate, the design's interval beside it
         assert (r["estimate"], r["low"], r["high"]) == (
             ua["estimate"],
             ua["low"],
             ua["high"],
         )
+        # and the interval valid at every sample size, estimate --valid's
+        valid_ua = row["valid"]["user_accuracy"]
+        assert (r["valid_low"], r["valid_high"]) == (valid_ua["low"], valid_ua["high"])
     assert fact["too_few_to_rank"] == [{"class": 3, "labelled": 0, "correct": 0}]
+    # The lowest class's valid interval first, then the confidence design's,
+    # named nominal (Wilson's on the effective sample size), never a plain
+    # 95% interval.
+    lowest = fact["ranked"][0]
+    assert lowest["class"] == 2
+    first = (
+        f"class 2 ({lowest['correct']} of {lowest['labelled']} correct; "
+        f"{rules.percent(lowest['estimate'])}, 95% interval valid at every sample "
+        f"size {rules.percent(lowest['valid_low'])} to "
+        f"{rules.percent(lowest['valid_high'])}, nominal 95% interval this design "
+        f"earns {rules.percent(lowest['low'])} to {rules.percent(lowest['high'])})"
+    )
+    assert first in fact["sentence"]
+    assert ", 95% interval this design earns" not in fact["sentence"]
     assert any("weakest_classes" in s for s in out["next_steps"])
     _holds_to_the_contract(out)
     # Without reference classes there is no table, and no ranking.

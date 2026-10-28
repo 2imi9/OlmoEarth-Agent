@@ -155,7 +155,10 @@ def test_the_card_fits_its_budget() -> None:
     holds the default one, three more core lines and the deferred groups'
     line, was estimated near 1,460 tokens before it (an estimate from the
     declarations' text, not a measurement), so the budget moves from 1,500 to
-    1,600.
+    1,600. The fixes of 28 October add 18 characters to
+    olmoearth_estimate_map_error's line (", the valid interval first, then
+    its design's" for " with its design's interval"): 5 tokens, on both
+    cards, within the budget.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)

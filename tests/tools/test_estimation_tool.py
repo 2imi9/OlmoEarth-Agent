@@ -16,6 +16,7 @@ import json
 import random
 import re
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -29,7 +30,12 @@ from olmoearth_agent.analysis.review_set import margins
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
-from olmoearth_agent.tools.estimation import build_estimation_tools
+from olmoearth_agent.tools import statistical_rules as rules
+from olmoearth_agent.tools.estimation import (
+    NOMINAL_DESIGN_HOW,
+    _jsonable,
+    build_estimation_tools,
+)
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 
@@ -138,6 +144,118 @@ def design_p1(scores: list[list[float]]) -> list[float]:
         top = max(row)
         out.append(1.0 / sum(math.exp(v - top) for v in row))
     return out
+
+
+@pytest.mark.asyncio
+async def test_a_confidence_design_reports_the_valid_interval_first() -> None:
+    """The plan's default design: estimate_error_rate(valid=True) on the same
+    sample and labels, field for field. The interval valid at every sample
+    size comes first; the design's own, Wilson's on the effective sample
+    size, second, named, and reported as nominal (the package's VALID_NOTE),
+    never as exact."""
+    scores, truth = _map()
+    plan = (
+        await _call("olmoearth_plan_label_sample", {"scores": scores, "budget": 300})
+    )["result"]
+    assert plan["design"] == "confidence"
+    sample = json.loads(Path(plan["design_path"]).read_text())["sample"]
+    wrong = [truth[i] for i in sample["indices"]]
+    out = await _call(
+        "olmoearth_estimate_map_error",
+        {"design_path": plan["design_path"], "wrong": wrong},
+    )
+    assert out["ok"] is True, out
+    result = out["result"]
+    direct = _jsonable(estimate.estimate_error_rate(sample, wrong, valid=True))
+    for key, value in direct.items():
+        assert result[key] == value, key
+    valid = direct["valid_interval"]
+    assert valid["guarantee"] == "valid" and "Wilson" in direct["method"]
+    keys = list(result)
+    assert keys.index("valid_interval") < keys.index("estimate")
+    assert keys.index("valid_interval") < keys.index("low")
+    first, second = result["intervals"]
+    assert (first["interval"], second["interval"]) == ("valid", "design")
+    for key in ("estimate", "low", "high", "method"):
+        assert first[key] == valid[key], key
+        assert second[key] == direct[key], key
+    assert result["plan_design"] == "confidence"
+    assert result["valid_note"] == estimate.VALID_NOTE
+    assert result["report"].startswith(NOMINAL_DESIGN_HOW)
+    assert "nominal" in result["report"] and "never call it exact" in result["report"]
+    # The fact and the contract: the valid interval first, the design's beside.
+    (whole,) = [f for f in result["facts"] if f["id"] == "whole_map_estimate"]
+    assert (whole["estimate"], whole["low"], whole["high"]) == (
+        valid["estimate"],
+        valid["low"],
+        valid["high"],
+    )
+    assert (whole["design_low"], whole["design_high"]) == (
+        direct["low"],
+        direct["high"],
+    )
+    sentence = whole["sentence"]
+    assert sentence.index("valid at every sample") < sentence.index("this design earns")
+    stated = rules.valid_interval_must_state(
+        valid["estimate"],
+        valid["low"],
+        valid["high"],
+        "confidence",
+        300,
+        class_map=False,
+    )
+    assert result["must_state"] == [stated]
+    assert [c["id"] for c in result["forbidden_claims"]] == [
+        rules.SIMPLE_RANDOM_INTERVAL,
+        rules.CERTIFY_FROM_NONRANDOM_DESIGN,
+        rules.CERTIFICATION_GUARANTEED,
+    ]
+    assert result["next_steps"][0].startswith(
+        "Report the interval valid at every sample size first"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_estimate_and_a_zone_compute_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """estimate_error_rate(valid=True), whose per-class table takes seconds per
+    class under a stratified design, and certify_zone, which orders every
+    window of the map, run in a worker thread, never on the handler's own
+    thread (the event loop's); a refusal raised there is the same refusal."""
+    scores, truth = _map(400)
+    plan = (
+        await _call(
+            "olmoearth_plan_label_sample",
+            {"scores": scores, "budget": 60, "design": "random"},
+        )
+    )["result"]
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    labels = {"design_path": plan["design_path"], "wrong": [truth[i] for i in idx]}
+    loop_thread = threading.current_thread()
+    threads: list[tuple[str, threading.Thread]] = []
+
+    def recording(name: str, real: Any) -> Any:
+        def call(*args: Any, **kwargs: Any) -> Any:
+            threads.append((name, threading.current_thread()))
+            return real(*args, **kwargs)
+
+        return call
+
+    for name in ("estimate_error_rate", "certify_zone"):
+        monkeypatch.setattr(estimate, name, recording(name, getattr(estimate, name)))
+    out = await _call("olmoearth_estimate_map_error", labels)
+    assert out["ok"] is True, out
+    zone = await _call("olmoearth_certify_zone", {**labels, "alpha": 0.3})
+    assert zone["ok"] is True, zone
+    called = {name for name, _t in threads}
+    assert called == {"estimate_error_rate", "certify_zone"}
+    assert all(t is not loop_thread for _name, t in threads), threads
+    short = await _call(
+        "olmoearth_estimate_map_error", {**labels, "wrong": labels["wrong"][:59]}
+    )
+    assert short["ok"] is False
+    assert "59 labels for the 60 windows of the design" in short["error"]
 
 
 @pytest.mark.asyncio

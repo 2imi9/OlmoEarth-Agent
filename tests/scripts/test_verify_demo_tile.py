@@ -242,18 +242,24 @@ def test_the_page_states_each_figure_as_the_tool_returned_it(
     review = demo.result("review")
     shown = f"{review['n_review']:,} windows to check first, of {review['n_windows']:,}"
     assert shown in row("review")
-    est = demo.result("estimate")
-    line = row("estimate")
-    assert f"error rate {percent(est['estimate'])} from {est['n_labelled']:,}" in line
-    # A table cell escapes a "|" in the package's words (script.cell).
-    ends = f"{percent(est['low'])} to {percent(est['high'])}"
-    assert script.cell(f"{ends} (method: {est['method']})") in line
-    line = row("class_estimate")
-    intervals = demo.result("class_estimate")["intervals"]
-    assert [e["interval"] for e in intervals] == ["valid", "design"]
-    for entry in intervals:
-        ends = f"{percent(entry['low'])} to {percent(entry['high'])}"
-        assert script.cell(f"{ends} (method: {entry['method']})") in line
+    # Every design's estimate gives the interval valid at every sample size
+    # first, then the design's (under the random design the same exact one).
+    for step in ("estimate", "class_estimate"):
+        est, line = demo.result(step), row(step)
+        point = est["valid_interval"]
+        shown = f"error rate {percent(point['estimate'])} from {est['n_labelled']:,}"
+        assert shown in line
+        intervals = est["intervals"]
+        assert [e["interval"] for e in intervals] == ["valid", "design"]
+        for entry in intervals:
+            # A table cell escapes a "|" in the package's words (script.cell).
+            ends = f"{percent(entry['low'])} to {percent(entry['high'])}"
+            assert script.cell(f"{ends} (method: {entry['method']})") in line
+    random_valid, random_design = demo.result("estimate")["intervals"]
+    assert (random_valid["low"], random_valid["high"]) == (
+        random_design["low"],
+        random_design["high"],
+    )
     zone = demo.result("certify")
     assert row("certify").endswith(f"| {script.cell(zone['verdict'])} |")
     written = demo.result("certificate")
@@ -305,12 +311,25 @@ def test_the_truth_check_is_computed_from_the_truth(
         "error_rate": rate,
     }
 
-    # The intervals are the tools' own: the random design's, then the class
-    # design's valid interval and its own.
+    # The intervals are the tools' own, each one the tool returns, named as
+    # the tool names it: the random design's valid interval and its own, then
+    # the class design's valid interval and its own.
     estimate, by_class = demo.result("estimate"), demo.result("class_estimate")
-    expected = [estimate, *by_class["intervals"]]
+    expected = [*estimate["intervals"], *by_class["intervals"]]
     got = [(e["low"], e["high"]) for e in truth["intervals"]]
     assert got == [(e["low"], e["high"]) for e in expected]
+    assert [e["interval"] for e in truth["intervals"]] == [
+        "valid",
+        "design",
+        "valid",
+        "design",
+    ]
+    assert [e["design"] for e in truth["intervals"]] == [
+        "random",
+        "random",
+        "class",
+        "class",
+    ]
     for entry in truth["intervals"]:
         assert entry["covers"] is (entry["low"] <= rate <= entry["high"])
         name = INTERVAL_NAMES[entry["interval"]]

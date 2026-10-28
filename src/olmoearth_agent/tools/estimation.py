@@ -14,11 +14,12 @@ does not get the simple-random-sample formula. Three tools wrap
 - ``olmoearth_plan_label_sample`` -- choose which windows to label
   (``sample_for_estimation``; the confidence design by default, ``random``
   when a certified zone is wanted) and save the design to a file;
-- ``olmoearth_estimate_map_error`` -- the error rate with the design's
-  interval and ``method`` (``estimate_error_rate``), per-class accuracy with
-  reference classes (``estimate_per_class``; the fact ``weakest_classes``
-  ranks them), or, for windows labelled with no design,
-  ``estimate_from_indices``, which refuses a review set;
+- ``olmoearth_estimate_map_error`` -- the error rate with the interval
+  valid at every sample size first, then the design's interval and
+  ``method`` (``estimate_error_rate(valid=True)``, whatever the design),
+  per-class accuracy with reference classes (``estimate_per_class(valid=True)``;
+  the fact ``weakest_classes`` ranks them), or, for windows labelled with no
+  design, ``estimate_from_indices``, which refuses a review set;
 - ``olmoearth_certify_zone`` -- the largest most-confident share of the map
   whose error rate is at most ``alpha`` (``certify_zone``), random designs
   only; a certified zone's ``meaning`` ends with the package's statement of
@@ -57,11 +58,13 @@ result's sampled grid points (at most 16 x 16, one pixel each), not every
 pixel. ``olmoearth_estimate_map_error`` on its labels reports
 ``estimate_error_rate(valid=True)``'s interval valid at every sample size
 first, then the design's own, each named, with the package's notes word for
-word: under the random design the two are the same exact interval, under
-the class design the second is the union bound over the classes, and both
-cover at least 95% at every sample size. With reference classes,
-``estimate_per_class(valid=True)`` the same way per class; the class
-design's results are worded as the package words them
+word, as for every design of one map: under the random design the two are
+the same exact interval, under the class design the second is the union
+bound over the classes, and both cover at least 95% at every sample size
+(under a scores map's confidence and proportional designs the second is
+Wilson's on the effective sample size, which the package calls nominal).
+With reference classes, ``estimate_per_class(valid=True)`` the same way per
+class; the class design's results are worded as the package words them
 (``common.wording.class_wording``). ``olmoearth_certify_zone`` and the
 review-set tools refuse a class map in one sentence
 (:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`).
@@ -84,6 +87,19 @@ packs the zone into a certificate.
 Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
 locations a reviewer needs stay in the files.
 
+These package calls run in a worker thread (``asyncio.to_thread``), as
+the command line does (:func:`inferencex.run_cli_async`): the estimate of a
+design file of one map (its valid per-class table takes seconds per class
+under a stratified design), the zone (``certify_zone`` orders every window
+of the map) and the map-seeded draw. Run inline, each would hold the event
+loop that serves the web bridge's other sessions; an exception raised in the
+thread reaches the handler as it would inline. A plain plan's draw, the
+which-map grading and windows labelled without a design still run on the
+event loop. The estimate fixes a ``seed_from_map`` plan's labels from its
+worker thread, so the package's sheet is read, checked and written under one
+lock (:func:`fill_sheet`): two sessions grading one plan cannot both write
+it, and no reader sees it half written.
+
 Every output also carries ``next_steps``, written by code from the design and
 the outcome, and the output contract's ``facts``, ``must_state`` and
 ``forbidden_claims`` (:mod:`olmoearth_agent.tools.statistical_rules`): exp86's
@@ -93,11 +109,13 @@ offered to certify from a stratified design, and worked out 69/300 by hand.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import hashlib
 import json
 import math
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -171,6 +189,11 @@ CLASS_MAP_DESIGNS = ("random", CLASS_DESIGN)
 #: The designs whose interval is not the simple random sample's, and which
 #: certify nothing.
 STRATIFIED_DESIGNS = ("confidence", "proportional", CLASS_DESIGN)
+
+#: The designs whose own interval the package calls nominal: Wilson's on the
+#: design's effective sample size, for the whole map and for each class's
+#: user's accuracy (its ``VALID_NOTE``); approximate, never exact.
+NOMINAL_DESIGNS = ("confidence", "proportional")
 
 #: The design of windows labelled without one (``window_indices``): the
 #: package estimates them as a simple random sample once its check finds they
@@ -827,7 +850,8 @@ def _plan_next_steps(
     """
     estimate_step = (
         "Then olmoearth_estimate_map_error with design_path and the filled sheet "
-        "(labels_path) gives the error rate and the interval this design earns."
+        "(labels_path) gives the error rate with the interval valid at every "
+        "sample size first, then the interval this design earns."
     )
     if pop.score_kind == CLASS_MAP or design == CLASS_DESIGN:
         estimate_step = (
@@ -932,6 +956,15 @@ def _weakest_classes(
     map misses, is another quantity in the table. ``names`` (a class map's
     classes, by code) puts each ranked class's name beside its count.
     ``None`` without a per-class table.
+
+    A table of ``estimate_per_class(valid=True)`` gives each class's user's
+    accuracy an interval valid at every sample size (its row's ``valid``):
+    the sentence states it first, then the design's, as the estimate's
+    ``report`` asks, and each ranked entry carries it as ``valid_low`` and
+    ``valid_high``. The ranking stays on the package's estimate. Under the
+    confidence and proportional designs the design's interval is Wilson's
+    on the effective sample size, which the package calls nominal, and is
+    named so, never as a plain 95% interval.
     """
     table = per_class.get("per_class")
     if not isinstance(table, dict) or not table:
@@ -956,14 +989,21 @@ def _weakest_classes(
                     {"class": c, "labelled": labelled, "correct": diagonal(c)}
                 )
                 continue
-            ranked.append(
-                {
-                    "class": c,
-                    "correct": diagonal(c),
-                    "labelled": labelled,
-                    **{k: ua.get(k) for k in ("estimate", "low", "high")},
-                }
-            )
+            entry: dict[str, Any] = {
+                "class": c,
+                "correct": diagonal(c),
+                "labelled": labelled,
+                **{k: ua.get(k) for k in ("estimate", "low", "high")},
+            }
+            valid = row.get("valid")
+            valid_ua = valid.get("user_accuracy") if isinstance(valid, dict) else None
+            if isinstance(valid_ua, dict) and None not in (
+                valid_ua.get("low"),
+                valid_ua.get("high"),
+            ):
+                entry["valid_low"] = valid_ua["low"]
+                entry["valid_high"] = valid_ua["high"]
+            ranked.append(entry)
         elif labelled or row.get("map_share") or row.get("n_labelled_reference_class"):
             # a class neither the map nor the labels hold is not in this map
             too_few.append({"class": c, "labelled": labelled, "correct": diagonal(c)})
@@ -989,6 +1029,10 @@ def _weakest_classes(
 
     cov = per_class.get("nominal_coverage")
     level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
+    # The design's per-class interval under the confidence and proportional
+    # designs is Wilson's on the effective sample size (nominal); under the
+    # random and class designs the user's accuracy is exact.
+    nominal = "nominal " if per_class.get("design") in NOMINAL_DESIGNS else ""
     what = (
         "user's accuracy (of the windows the map puts in a class, the share the "
         "labels agree with)"
@@ -1002,10 +1046,17 @@ def _weakest_classes(
         )
         c = r["class"]
         name = f", {names[c]}" if names and c < len(names) else ""
-        return (
-            f"class {c} ({count}{name}; {rules.percent(r['estimate'])}, {level}"
-            f"interval {rules.percent(r['low'])} to {rules.percent(r['high'])})"
-        )
+        design_ends = f"{rules.percent(r['low'])} to {rules.percent(r['high'])}"
+        if "valid_low" in r:
+            intervals = (
+                f"{level}interval valid at every sample size "
+                f"{rules.percent(r['valid_low'])} to "
+                f"{rules.percent(r['valid_high'])}, {nominal}{level}interval this "
+                f"design earns {design_ends}"
+            )
+        else:
+            intervals = f"{nominal}{level}interval {design_ends}"
+        return f"class {c} ({count}{name}; {rules.percent(r['estimate'])}, {intervals})"
 
     estimated = " with an estimate" if no_estimate else ""
     if not ranked:
@@ -1295,12 +1346,42 @@ def plan_work_dir(block: dict[str, Any]) -> Path:
     return Path(real)
 
 
+#: Held while a plan's sheet is read, checked and written (:func:`fill_sheet`)
+#: or read for labels (:func:`_sheet_holds_labels`). The estimate fixes the
+#: labels from a worker thread while the zone and the certificate fix them on
+#: the event loop; the web bridge serves several sessions, so two of them
+#: grading one plan would otherwise both read an empty ``wrong`` column and
+#: both write, each told its own labels were the ones fixed.
+_SHEET_LOCK = threading.Lock()
+
+
 def _sheet_holds_labels(sheet: Path) -> bool:
     """Whether the package's sheet has a ``wrong`` cell filled in."""
-    if not sheet.is_file():
-        return False
-    with open(sheet, encoding="utf-8", newline="") as fh:
-        return any((row.get("wrong") or "").strip() for row in csv.DictReader(fh))
+    with _SHEET_LOCK:
+        if not sheet.is_file():
+            return False
+        with open(sheet, encoding="utf-8", newline="") as fh:
+            return any((row.get("wrong") or "").strip() for row in csv.DictReader(fh))
+
+
+def _replace_sheet(sheet: Path, header: list[str], body: list[list[str]]) -> None:
+    """Write the sheet whole: a file beside it first, then moved over it.
+
+    ``os.replace`` within one folder is atomic, so a reader (the plan's
+    check, the package's ``certify`` in its own process) finds the sheet as
+    it was or as written, never cut short; a write that fails leaves the
+    sheet as it was and no file beside it.
+    """
+    staged = sheet.with_name(sheet.name + ".tmp")
+    try:
+        with open(staged, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(header)
+            writer.writerows(body)
+        os.replace(staged, sheet)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
 
 
 def fill_sheet(sheet: Path, indices: list[int], wrong: list[int]) -> None:
@@ -1311,7 +1392,11 @@ def fill_sheet(sheet: Path, indices: list[int], wrong: list[int]) -> None:
     Every other cell is written back as read, so the sample a certificate's
     verify draws again is the same. Labels are fixed the first time they are
     written: a sheet that already holds other labels is refused
-    (:data:`LABELS_FIXED`), the same labels again change nothing.
+    (:data:`LABELS_FIXED`), the same labels again change nothing. The read,
+    the check and the write are one step under :data:`_SHEET_LOCK`, whichever
+    thread calls it, and the sheet is replaced whole
+    (:func:`_replace_sheet`): of two sessions grading one plan with
+    different labels, the second is refused.
 
     Parameters
     ----------
@@ -1326,37 +1411,35 @@ def fill_sheet(sheet: Path, indices: list[int], wrong: list[int]) -> None:
     --------
     >>> fill_sheet(Path("certificates/d/sample.csv"), [4, 9], [0, 1])  # doctest: +SKIP
     """
-    with open(sheet, encoding="utf-8", newline="") as fh:
-        rows = [row for row in csv.reader(fh) if row]
-    header = rows[0] if rows else []
-    if "index" not in header or "wrong" not in header:
-        raise ValueError(f"{sheet.name} is not a sheet oe-inferencex sample wrote")
-    at_index, at_wrong = header.index("index"), header.index("wrong")
-    body = [row + [""] * (len(header) - len(row)) for row in rows[1:]]
-    if [int(row[at_index]) for row in body] != list(indices):
-        msg = (
-            f"{sheet.name} does not list the plan's windows in its order; plan "
-            "again with seed_from_map"
-        )
-        raise ValueError(msg)
-    new = [str(int(value)) for value in wrong]
-    held = [row[at_wrong].strip() for row in body]
-    other = [i for i, old, value in zip(indices, held, new) if old and old != value]
-    if other:
-        msg = (
-            f"this sample's sheet ({sheet.name}) already holds other labels on "
-            f"{len(other)} of {len(indices)} windows (first: window {other[0]}): "
-            f"{LABELS_FIXED}. Other labels need a new sample"
-        )
-        raise ValueError(msg)
-    if held == new:
-        return
-    for row, value in zip(body, new):
-        row[at_wrong] = value
-    with open(sheet, "w", encoding="utf-8", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(header)
-        writer.writerows(body)
+    with _SHEET_LOCK:
+        with open(sheet, encoding="utf-8", newline="") as fh:
+            rows = [row for row in csv.reader(fh) if row]
+        header = rows[0] if rows else []
+        if "index" not in header or "wrong" not in header:
+            raise ValueError(f"{sheet.name} is not a sheet oe-inferencex sample wrote")
+        at_index, at_wrong = header.index("index"), header.index("wrong")
+        body = [row + [""] * (len(header) - len(row)) for row in rows[1:]]
+        if [int(row[at_index]) for row in body] != list(indices):
+            msg = (
+                f"{sheet.name} does not list the plan's windows in its order; plan "
+                "again with seed_from_map"
+            )
+            raise ValueError(msg)
+        new = [str(int(value)) for value in wrong]
+        held = [row[at_wrong].strip() for row in body]
+        other = [i for i, old, value in zip(indices, held, new) if old and old != value]
+        if other:
+            msg = (
+                f"this sample's sheet ({sheet.name}) already holds other labels on "
+                f"{len(other)} of {len(indices)} windows (first: window {other[0]}): "
+                f"{LABELS_FIXED}. Other labels need a new sample"
+            )
+            raise ValueError(msg)
+        if held == new:
+            return
+        for row, value in zip(body, new):
+            row[at_wrong] = value
+        _replace_sheet(sheet, header, body)
 
 
 def hold_plan_labels(design: dict[str, Any], wrong: list[int]) -> Path | None:
@@ -1474,11 +1557,17 @@ async def _map_seeded_draw(
     seed = side.get("seed")
     if side.get("seed_rule") != "from_map" or not isinstance(seed, int):
         raise ValueError("oe-inferencex sample did not take its seed from the map")
-    sample = dict(
-        estimate.sample_for_estimation(
-            pop.margin, budget, design="random", seed=seed, stable=True
-        )
+    # The draw orders every window of the map: in a worker thread, as the
+    # command line before it, so the event loop keeps serving other sessions.
+    drawn_here = await asyncio.to_thread(
+        estimate.sample_for_estimation,
+        pop.margin,
+        budget,
+        design="random",
+        seed=seed,
+        stable=True,
     )
+    sample = dict(drawn_here)
     drawn = [int(i) for i in side.get("indices") or []]
     ours = [int(i) for i in sample["indices"].tolist()]
     if ours != drawn or side.get("n_population") != pop.n_valid:
@@ -2163,7 +2252,7 @@ def _class_map_labels(
     return values, codes, table, outside
 
 
-#: What each interval of a class map's estimate is, as the result names it.
+#: What each interval of a valid-first estimate is, as the result names it.
 VALID_WHAT = (
     "valid at every sample size, for every map and number of labels "
     "(estimate_error_rate(valid=True), as oe-inferencex estimate --valid gives "
@@ -2173,14 +2262,33 @@ DESIGN_WHAT = (
     "the interval this design earns, as oe-inferencex estimate gives it without "
     "--valid"
 )
+#: How a valid-first estimate's sentence introduces the package's
+#: ``warning``: every whole-map warning of ``estimate_error_rate`` is of the
+#: design's interval or its variance (thin strata, no labelled window wrong),
+#: never of the one valid at every sample size.
+DESIGN_WARNING_LEAD = "The package warns, of the interval this design earns"
 
-#: How a valid-first estimate is reported, by its design. Neither design a
-#: valid-first estimate takes has an approximate interval: under a random
+#: How the confidence and proportional designs' estimates are reported. The
+#: interval each design earns is Wilson's on the design's effective sample
+#: size, which the package's ``VALID_NOTE`` calls nominal (it covered 91.3% at
+#: 100 labels on a 200-window map, exp105): approximate, never exact. The
+#: valid interval was 1.6 to 1.7 times its width on the package's demo tile
+#: (``VALID_NOTE``), and its ``VALID_HELP`` expects it to be wider.
+NOMINAL_DESIGN_HOW = (
+    "Report valid_interval first, the interval valid at every sample size, "
+    "then the interval this design earns, Wilson's on the design's effective "
+    "sample size, which the package calls nominal: approximate, not valid at "
+    "every sample size (valid_note gives the coverage it fell to), so never "
+    "call it exact. The valid interval is expected to be the wider of the two."
+)
+
+#: How a valid-first estimate is reported, by its design. Under a random
 #: sample the design's interval is the same exact interval as the valid one
-#: (the package's ``VALID_NOTE``), and under the class design it is the union
+#: (the package's ``VALID_NOTE``); under the class design it is the union
 #: bound over the classes, which covers at least 95% by construction
-#: (``CLASS_WHOLE_MAP``); the valid interval was 0.6 times its width on the
-#: package's demo tile (``VALID_NOTE``).
+#: (``CLASS_WHOLE_MAP``), and the valid interval was 0.6 times its width on
+#: the package's demo tile (``VALID_NOTE``); under the confidence and
+#: proportional designs it is nominal (:data:`NOMINAL_DESIGN_HOW`).
 VALID_FIRST_HOW = {
     "random": (
         "Report valid_interval, the interval valid at every sample size; under "
@@ -2194,6 +2302,8 @@ VALID_FIRST_HOW = {
         "classes; both cover at least 95% at every sample size, and valid_note "
         "gives the package's measure of their widths."
     ),
+    "confidence": NOMINAL_DESIGN_HOW,
+    "proportional": NOMINAL_DESIGN_HOW,
 }
 
 
@@ -2238,7 +2348,10 @@ def _valid_first_estimate(res: dict[str, Any], valid: dict[str, Any]) -> dict[st
     own point; a range when the package gives one), ``design_low`` and
     ``design_high`` the design's; the sentence names each interval and its
     method, the labelled count, the population and any warning of the
-    package.
+    package, named as of the interval this design earns: the package's
+    whole-map warnings (strata too thin for a variance, no labelled window
+    wrong) are of that interval or its variance, and the valid one takes no
+    variance.
     """
     cov = res.get("nominal_coverage")
     level = f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
@@ -2259,7 +2372,8 @@ def _valid_first_estimate(res: dict[str, Any], valid: dict[str, Any]) -> dict[st
         f"{rules.percent(res.get('high'))} (method: {res.get('method')})."
     )
     if res.get("warning"):
-        sentence += f" The package warns: {str(res['warning']).rstrip('.')}."
+        warning = str(res["warning"]).rstrip(".")
+        sentence += f" {DESIGN_WARNING_LEAD}: {warning}."
     return rules.fact(
         "whole_map_estimate",
         sentence,
@@ -2276,23 +2390,34 @@ def _valid_first_estimate(res: dict[str, Any], valid: dict[str, Any]) -> dict[st
 def _estimate_valid_first(
     args: dict[str, Any], design: dict[str, Any], estimate: Any
 ) -> dict[str, Any]:
-    """``olmoearth_estimate_map_error`` on a class map or a class design.
+    """``olmoearth_estimate_map_error`` on a design file of one map, any design.
 
-    The error rate is ``estimate_error_rate(valid=True)``: its
-    ``valid_interval``, valid at every sample size, is reported first, the
-    interval the design earns second, each named (``intervals``), with the
-    package's note on the two (``valid_note``, ``VALID_NOTE`` word for word).
-    Neither is approximate here (:data:`VALID_FIRST_HOW`): under the random
-    design the two are the same exact interval, and under the class design
-    the second is the union bound over the classes, which covers at least
-    95% too. With reference classes,
+    A scores map's confidence, proportional or random design, a class map's
+    random or class design, or the class design of a scores map. The error
+    rate is ``estimate_error_rate(valid=True)``: its ``valid_interval``,
+    valid at every sample size, is reported first, the interval the design
+    earns second, each named (``intervals``), with the package's note on the
+    two (``valid_note``, ``VALID_NOTE`` word for word). How the second is
+    reported depends on the design (:data:`VALID_FIRST_HOW`): under the
+    random design the two are the same exact interval; under the class
+    design the second is the union bound over the classes, which covers at
+    least 95% too; under the confidence and proportional designs it is
+    Wilson's on the design's effective sample size, which the package calls
+    nominal (:data:`NOMINAL_DESIGN_HOW`). With reference classes,
     ``estimate_per_class(valid=True)``'s table the same way: each class's
     valid intervals first, its own ``valid_note``. The class design's
     results are worded as the package words them
     (``common.wording.class_wording``: its strata are the map's classes).
-    Every number is the package's. The contract: the valid interval and the
-    design in ``must_state``; for a class map, no certified zone
-    (``zone_for_a_class_map``).
+    A ``seed_from_map`` plan's labels are fixed in its sheet the first time
+    they are graded (:func:`hold_plan_labels`). Every number is the
+    package's. The contract: the valid interval and the design in
+    ``must_state``; for a stratified design, no simple-random-sample
+    interval and no certified zone from it; for a class map, no certified
+    zone (``zone_for_a_class_map``). It runs in a worker thread
+    (``_estimate_map_error``), so it reads and writes files as a plain
+    function does, and fixes a plan's labels in its sheet under the sheet's
+    lock (:func:`fill_sheet`), as the zone and the certificate do on the
+    event loop.
     """
     wording = inferencex.load("common.wording")
     sample = design["sample"]
@@ -2309,6 +2434,7 @@ def _estimate_valid_first(
     else:
         wrong, reference = _labels(args, indices)
         n_classes = int(args["n_classes"]) if args.get("n_classes") else None
+    hold_plan_labels(design, wrong)  # a seed_from_map plan's, fixed once
     # The class design's strata are the map's classes, which the package's
     # condition-design texts call conditions: worded as the package words
     # them (the identity for a random design).
@@ -2383,10 +2509,11 @@ def _estimate_valid_first(
     if class_map:
         claims.append(rules.zone_for_a_class_map())
     else:
-        claims += [
-            rules.certify_from_nonrandom_design(plan_design),
-            _estimate_certification_claim(plan_design, from_design=True),
-        ]
+        if plan_design in STRATIFIED_DESIGNS:
+            claims.append(rules.certify_from_nonrandom_design(plan_design))
+        # Every estimate's next steps name a certified zone: exp86 round 8
+        # (B5/files/2) read them as "a guaranteed-certifiable region".
+        claims.append(_estimate_certification_claim(plan_design, from_design=True))
     stated = rules.valid_interval_must_state(
         valid.get("estimate"),
         valid["low"],
@@ -2416,92 +2543,46 @@ async def _estimate_map_error(
         design = _load_design(str(args["design_path"]))
         if design.get("design") == TWO_MAP_DESIGN:
             return _grade_two_maps(args, design, estimate)
-        # A class map, or the class design: the interval valid at every
-        # sample size first.
-        if _is_class_map(design) or design.get("design") == CLASS_DESIGN:
-            return _estimate_valid_first(args, design, estimate)
-        sample = design["sample"]
-        indices = [int(i) for i in sample["indices"]]
-        wrong, reference = _labels(args, indices)
-        hold_plan_labels(design, wrong)  # a seed_from_map plan's, fixed once
-        out: dict[str, Any] = {
-            "available": True,
-            "design_path": str(args["design_path"]),
-            # The design file's seed: the same plan with it draws these windows.
-            "seed": design.get("seed"),
-        }
-        out.update(_jsonable(estimate.estimate_error_rate(sample, wrong)))
-        if reference is not None:
-            per_class = estimate.estimate_per_class(
-                sample,
-                reference,
-                design["population"]["map_class"],
-                n_classes=int(args["n_classes"]) if args.get("n_classes") else None,
-            )
-            out["per_class"] = _jsonable(per_class)
-        population = design["population"]
-    elif args.get("window_indices") is not None:
-        # Windows labelled with no design: the package treats them as a random
-        # sample only after checking they could be one (a review set is refused).
-        pop = population_from_rows(**_rows_args(args))
-        indices = [int(i) for i in args["window_indices"]]
-        wrong, _ref = _labels(args, indices)
-        out = {"available": True}
-        out.update(
-            _jsonable(estimate.estimate_from_indices(indices, wrong, pop.margin))
-        )
-        # The package estimates them as a simple random sample (its design
-        # "random"), which its check of them does not establish: the design is
-        # none, set after the package's result so that "random" cannot stand.
-        out["estimated_as"] = out.pop("design", None)
-        out["design"] = NO_DESIGN
-        population = {"source": pop.source, "score_kind": pop.score_kind}
-    else:
+        # Every one-map design file (a scores map's confidence, proportional or
+        # random design, a class map's, the class design's): the interval valid
+        # at every sample size first, then the design's own. In a worker
+        # thread: the valid per-class table takes seconds per class under a
+        # stratified design (the package's VALID_HELP), and the event loop
+        # serves the web bridge's other sessions.
+        return await asyncio.to_thread(_estimate_valid_first, args, design, estimate)
+    if args.get("window_indices") is None:
         raise ValueError(
             "pass design_path (from olmoearth_plan_label_sample), or "
             "window_indices with scores/scores_path for windows labelled without a design"
         )
+    # Windows labelled with no design: the package treats them as a random
+    # sample only after checking they could be one (a review set is refused).
+    pop = population_from_rows(**_rows_args(args))
+    indices = [int(i) for i in args["window_indices"]]
+    wrong, _ref = _labels(args, indices)
+    out: dict[str, Any] = {"available": True}
+    out.update(_jsonable(estimate.estimate_from_indices(indices, wrong, pop.margin)))
+    # The package estimates them as a simple random sample (its design
+    # "random"), which its check of them does not establish: the design is
+    # none, set after the package's result so that "random" cannot stand.
+    out["estimated_as"] = out.pop("design", None)
+    out["design"] = NO_DESIGN
     out["interval_rules"] = list(INTERVAL_RULES)
+    studio = bool(pop.source.get("result_id"))
     out["report"] = (
         "Report the estimate with [low, high] and the method string as returned; "
         "the rate is of the design's population windows"
-        + (
-            " (a Studio result's sampled grid points)"
-            if (population.get("source") or {}).get("result_id")
-            else ""
-        )
+        + (" (a Studio result's sampled grid points)" if studio else "")
         + "."
     )
-    stratified = out.get("design") in ("confidence", "proportional")
-    weakest = _weakest_classes(out["per_class"]) if out.get("per_class") else None
-    out["next_steps"] = _estimate_next_steps(
-        str(out.get("design")),
-        from_design=bool(args.get("design_path")),
-        # only when the fact names a lowest class: with one ranked class,
-        # "name the weakest" steered an answer to a 97.7% class (fix-r8 review)
-        per_class=bool(weakest and weakest.get("lowest")),
-    )
+    out["next_steps"] = _estimate_next_steps(NO_DESIGN, from_design=False)
     return rules.add_contract(
         out,
-        facts=[_whole_map_estimate(out)] + ([weakest] if weakest else []),
-        must_state=_studio_scope(
-            population.get("source") or {}, out.get("n_population")
-        ),
-        forbidden_claims=(
-            [
-                rules.simple_random_interval(out.get("method")),
-                rules.certify_from_nonrandom_design(out.get("design")),
-            ]
-            if stratified
-            else []
-        )
+        facts=[_whole_map_estimate(out)],
+        must_state=_studio_scope(pop.source, out.get("n_population")),
         # Every estimate's next steps name a certified zone: exp86 round 8
         # (B5/files/2) read them as "a guaranteed-certifiable region".
-        + [
-            _estimate_certification_claim(
-                str(out.get("design")), from_design=bool(args.get("design_path"))
-            )
-        ],
+        forbidden_claims=[_estimate_certification_claim(NO_DESIGN, from_design=False)],
     )
 
 
@@ -2539,9 +2620,9 @@ def _estimate_next_steps(
 ) -> list[str]:
     """What follows an estimate, from its design (and a per-class table).
 
-    A valid-first estimate (a class map's, or the class design's) reports
-    the interval valid at every sample size first; a class map's steps say
-    it has no certified zone, in place of the certification step.
+    A valid-first estimate (any design file of one map) reports the interval
+    valid at every sample size first; a class map's steps say it has no
+    certified zone, in place of the certification step.
     """
     steps = [
         (
@@ -2727,8 +2808,12 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     # A seed_from_map plan's labels are fixed in its sheet the first time they
     # are graded: a zone on other labels afterwards is refused.
     hold_plan_labels(design, wrong)
+    # certify_zone orders every window of the map: in a worker thread, so the
+    # event loop keeps serving the web bridge's other sessions.
     margin = _margin(design["population"]["margin"])
-    zone = estimate.certify_zone(margin, indices, wrong, alpha, delta=delta, rule=rule)
+    zone = await asyncio.to_thread(
+        estimate.certify_zone, margin, indices, wrong, alpha, delta=delta, rule=rule
+    )
     zone_indices = zone.pop("zone_indices_in_order", None)
     out: dict[str, Any] = {
         "available": True,
@@ -2799,10 +2884,10 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     out["design_requirement"] = DESIGN_REQUIREMENT
     # exp86 round 6 (B6/files): the answers derived "~23%" (69/300) from the
     # 100% level; the package's whole-map estimate on the same labels is given.
-    whole = _whole_map_estimate(
-        _jsonable(estimate.estimate_error_rate(design["sample"], wrong)),
-        certify=True,
+    sampled = await asyncio.to_thread(
+        estimate.estimate_error_rate, design["sample"], wrong
     )
+    whole = _whole_map_estimate(_jsonable(sampled), certify=True)
     out["next_steps"] = _certify_next_steps(out)
     if fixed and out["certified"]:
         out["next_steps"].append(
@@ -2867,7 +2952,8 @@ def _certify_next_steps(
                 if two_maps
                 else "Estimate the map's error rate from these labels: "
                 "olmoearth_estimate_map_error with this design_path and the same "
-                "labels gives the estimate and the interval this design earns."
+                "labels gives the estimate with the interval valid at every "
+                "sample size first, then the interval this design earns."
             ),
             "A certified zone needs a new plan: olmoearth_plan_label_sample with "
             "design='random', every drawn window labelled, and alpha, delta and "
@@ -4041,20 +4127,19 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 description=(
                     "The map's error rate from the reviewer's 0/1 labels on a "
                     "design from olmoearth_plan_label_sample (design_path + "
-                    "wrong, or the filled labels CSV), with the interval that "
-                    "design earns and the package's method string; per-class "
+                    "wrong, or the filled labels CSV), with the interval valid "
+                    "at every sample size first, then the one that design "
+                    "earns, and the package's method string; per-class "
                     "accuracy with reference classes. Windows labelled without "
                     "a design: window_indices + scores/scores_path, checked as "
                     "a random sample (a review set is refused: its rate is "
-                    "inflated). Report estimate, low, high and method as "
+                    "inflated). Report each interval and its method as "
                     "returned; never substitute p +/- 1.96 sqrt(p(1-p)/n). "
                     "A design='disagreement' plan takes reference (the class "
                     "seen in each window, '?' if it cannot be judged) and says "
                     "which map is more accurate, or neither, by the package's "
                     "sign test or interval, with the accuracy difference's "
-                    "interval. A class map's or 'class' sample: the interval "
-                    "valid at every sample size first. Needs the inferencex "
-                    "extra."
+                    "interval. Needs the inferencex extra."
                 ),
                 parameters={
                     "type": "object",
@@ -4089,9 +4174,9 @@ def build_estimation_tools() -> list[RegisteredTool]:
             ),
             handler=_estimate_map_error,
             capability=Capability(
-                does="the map's error rate with its design's interval, from the "
-                "reviewer's 0/1 labels; per-class accuracy; which of two maps is "
-                "more accurate",
+                does="the map's error rate, the valid interval first, then its "
+                "design's, from the reviewer's 0/1 labels; per-class accuracy; "
+                "which of two maps is more accurate",
                 needs=(
                     "a label on every window of a planned design (a class for "
                     "'disagreement'), or on random windows",

@@ -31,9 +31,9 @@ themselves. Besides numbers, they read three keys a tool's result may carry
   with the test or interval and the labels of a grading that names it is
   the which-map rule followed, not a claim without labels. It reads
   whether ``whole_map_estimate`` is in the run (``accuracy_not_measured``
-  holds only while it is not, and while no ``olmoearth_classification_metrics``
-  call computed an accuracy); that and any other id are shown, never
-  checked.
+  and ``error_rate_without_labels`` hold only while it is not, and while no
+  ``olmoearth_classification_metrics`` call computed an accuracy); that and
+  any other id are shown, never checked.
 - ``must_state``: at most :data:`MUST_STATE_MAX` short sentences (at most
   :data:`MUST_STATE_MAX_WORDS` words each) the answer must convey whenever
   it reports that result.
@@ -2231,13 +2231,38 @@ def _two_map_difference(s: str, run: RunEvidence) -> bool:
     return bool(run.facts("which_map")) and bool(_TWO_MAP_DIFFERENCE_RE.search(s))
 
 
-def _error_rate_without_labels(s: str, record: ToolRecord, run: RunEvidence) -> bool:
-    """An error rate figure about a plan, which holds no labels.
+def _measured(run: RunEvidence) -> bool:
+    """Whether the run holds a measured error rate or accuracy.
 
-    Not a which-map grading's difference in accuracy (:func:`_two_map_difference`):
-    the two-map plan forbids this id too, and its grading tells the answer to
-    report that difference.
+    A ``whole_map_estimate`` fact (``olmoearth_estimate_map_error``,
+    ``olmoearth_certify_zone`` and ``olmoearth_write_certificate`` return
+    one, from graded labels), or an accuracy
+    ``olmoearth_classification_metrics`` computed against the caller's
+    labels. The claims that no figure exists yet
+    (``error_rate_without_labels``, ``accuracy_not_measured``) are not read
+    in that run; the number check holds such a figure to the run's tool
+    results and user messages (:attr:`RunEvidence.pool`), not to that
+    estimate alone.
     """
+    return bool(run.facts("whole_map_estimate")) or any(
+        t.ok and t.name == CLASSIFICATION_METRICS_TOOL for t in run.tools
+    )
+
+
+def _error_rate_without_labels(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """An error rate figure about a plan or a review set, which hold no labels.
+
+    Every plan and every review set forbids it, so a run that planned and
+    then graded the labels holds the plan's claim beside the estimate: not
+    read once the run holds a measured error rate (:func:`_measured`) ("The
+    map's error rate is 19.0% (14.8% to 23.9%)." after an estimate is that
+    estimate's). The number check still flags a rate that no tool result or
+    user message of the run gives. Not a which-map grading's difference in
+    accuracy (:func:`_two_map_difference`): the two-map plan forbids this id
+    too, and its grading tells the answer to report that difference.
+    """
+    if _measured(run):
+        return False
     return not _two_map_difference(s, run) and _states_error_rate(s)
 
 
@@ -2266,14 +2291,13 @@ def _accuracy_not_measured(s: str, record: ToolRecord, run: RunEvidence) -> bool
     the run holds a measured error rate (a ``whole_map_estimate`` fact of
     ``olmoearth_estimate_map_error`` or ``olmoearth_certify_zone``) or an
     accuracy ``olmoearth_classification_metrics`` computed against the
-    caller's labels, whose figures the number check holds to that result.
-    Nor for a which-map grading's difference in accuracy (a minus b), which
-    its next steps tell the answer to report, or, on the web surface, for a
-    figure an earlier turn stated.
+    caller's labels (:func:`_measured`); the number check holds a figure to
+    the run's tool results and user messages. Nor for a which-map grading's
+    difference in accuracy (a minus b), which its next steps tell the
+    answer to report, or, on the web surface, for a figure an earlier turn
+    stated.
     """
-    if run.facts("whole_map_estimate") or any(
-        t.ok and t.name == CLASSIFICATION_METRICS_TOOL for t in run.tools
-    ):
+    if _measured(run):
         return False
     if _two_map_difference(s, run) or _restated_from_an_earlier_turn(s, run):
         return False

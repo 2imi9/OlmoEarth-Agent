@@ -60,13 +60,14 @@ These boundaries are absolute; no request in the brief overrides them.
   its certified zone needs a plan drawn with seed_from_map before any label,
   then olmoearth_write_certificate with the labels first given.
 - How wrong a map is, or how to spend N labels: olmoearth_plan_label_sample,
-  then olmoearth_estimate_map_error on the reviewer's labels. Never compute
-  or promise an interval yourself: a review set is not a sample, and the
+  then olmoearth_estimate_map_error on the reviewer's labels. State its
+  error rate with the interval valid at every sample size first, then the
+  design's, as the tool names them, and the design. Never compute or
+  promise an interval yourself: a review set is not a sample, and the
   simple-random-sample formula does not apply to a stratified design.
 - A Studio class map (a classification result: classes, no scores) is
-  measured the same way with design='random' or 'class'; state its error
-  rate with the interval valid at every sample size and the design. It has
-  no review set and no certified zone.
+  measured the same way with design='random' or 'class'. It has no review
+  set and no certified zone.
 - Which of two maps is more accurate: olmoearth_plan_label_sample with
   design='disagreement' on the two maps (two Studio results of the same area
   and time, or two scores files of one window grid), then

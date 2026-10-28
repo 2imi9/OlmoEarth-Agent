@@ -10,16 +10,23 @@ dataset this test writes with rasterio). ``olmoearth_plan_label_sample`` with
 certifies, ``olmoearth_write_certificate`` packs the zone and
 ``olmoearth_verify_certificate`` checks it, as the package's own ``verify``
 does from the command line. Every command runs for real, as a subprocess of
-this interpreter; only the failure tests replace the subprocess call.
+this interpreter; only the failure tests replace the subprocess call. The
+package's calls run off the event loop: tests wrap them to record the thread
+each ran on, and run two sessions' calls on one plan at once
+(``asyncio.gather``) to show the labels and the certificate are fixed once.
 """
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import json
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +35,7 @@ import pytest
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.provenance.log import labels_digest
-from olmoearth_agent.tools import inferencex
+from olmoearth_agent.tools import estimation, inferencex
 from olmoearth_agent.tools.certificate import build_certificate_tools
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
@@ -38,6 +45,7 @@ try:
     import numpy as np
     import rasterio
     from oe_inferencex import cli
+    from oe_inferencex import estimate as pkg_estimate
     from oe_inferencex.certify import certificate as pkg_certificate
     from oe_inferencex.certify import zone as pkg_zone
     from oe_inferencex.readers import olmoearth as oe_reader
@@ -668,3 +676,491 @@ async def test_a_sheet_that_lists_other_windows_is_refused(_scores_root: Path) -
         assert out["ok"] is False, tool
         assert "does not list the plan's windows in its order" in out["error"]
     assert sheet.read_bytes() == before
+
+
+# --------------------------------------------------------------------------- off the event loop
+
+#: The thread each wrapped package call ran on, by the call's name.
+_Threads = list[tuple[str, threading.Thread]]
+
+
+def _recorded(threads: _Threads, name: str, real: Callable[..., Any]) -> Any:
+    """``real``, recording under ``name`` the thread it ran on."""
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        threads.append((name, threading.current_thread()))
+        return real(*args, **kwargs)
+
+    return call
+
+
+def _raising(threads: _Threads, name: str, exc: Exception) -> Any:
+    """A stand-in recording under ``name`` the thread it ran on, then raising."""
+
+    def call(*args: Any, **kwargs: Any) -> Any:
+        threads.append((name, threading.current_thread()))
+        raise exc
+
+    return call
+
+
+def _off_the_loop(threads: _Threads, loop_thread: threading.Thread) -> None:
+    """Every recorded call ran, and none on the event loop's own thread."""
+    assert threads
+    assert all(t is not loop_thread for _name, t in threads), threads
+
+
+async def _written(root: Path) -> tuple[dict[str, Any], Path]:
+    """A direct run's certificate on labels that certify, and a copy of its map."""
+    run = await _direct_run(root)
+    plan = await _map_plan(run["scores_path"])
+    written = await _ok(
+        "olmoearth_write_certificate",
+        {
+            "design_path": plan["design_path"],
+            "wrong": [0] * BUDGET,
+            "date": "2024-06-01",
+        },
+    )
+    copy = root / "my_copy.tif"
+    shutil.copyfile(root / "run" / "scores_32737.tif", copy)
+    return written, copy
+
+
+@pytest.mark.asyncio
+async def test_build_runs_off_the_event_loop(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """certificate.build reads and digests the map and verifies the bundle: it
+    runs in a worker thread, never on the handler's own thread (the event
+    loop's, which serves the web bridge's other sessions), and its refusal
+    and its certificate come back as they did inline."""
+    run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    labels = {"design_path": plan["design_path"], "wrong": [0] * BUDGET}
+    args = {**labels, "date": "2024-06-01"}
+    loop_thread = threading.current_thread()
+    threads: _Threads = []
+    real_build = pkg_certificate.build
+    refusal = ValueError("the zone file is not one certify wrote")
+    monkeypatch.setattr(pkg_certificate, "build", _raising(threads, "build", refusal))
+    out = await _call("olmoearth_write_certificate", args)
+    assert out["ok"] is False
+    assert (
+        "olmoearth-inferencex wrote no certificate: the zone file is not one "
+        "certify wrote" in out["error"]
+    )
+    work = Path(plan["seed_from_map"]["package_sheet"]).parent
+    assert not (work / "certificate" / "certificate.json").exists()
+
+    monkeypatch.setattr(
+        pkg_certificate, "build", _recorded(threads, "build", real_build)
+    )
+    written = await _ok("olmoearth_write_certificate", args)
+    assert written["certificate_written"] is True
+    assert written["verified_before_written"] is True
+    assert Path(written["certificate_path"]).is_file()
+    zone = await _ok("olmoearth_certify_zone", {**labels, "alpha": ALPHA})
+    certified = (zone["n_zone"], zone["coverage"])
+    assert (written["n_zone"], written["coverage"]) == certified
+    assert [name for name, _t in threads] == ["build", "build"]
+    _off_the_loop(threads, loop_thread)
+
+
+@pytest.mark.asyncio
+async def test_verify_runs_off_the_event_loop(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """certificate.verify digests the map and draws the sample and certify
+    again: it runs in a worker thread; the result is the package's, check by
+    check, and an unreadable certificate is the same refusal as inline."""
+    written, copy = await _written(_scores_root)
+    cert_path = str(written["certificate_path"])
+    expected = pkg_certificate.verify(cert_path, str(copy))
+    loop_thread = threading.current_thread()
+    threads: _Threads = []
+    real_verify = pkg_certificate.verify
+    monkeypatch.setattr(
+        pkg_certificate, "verify", _recorded(threads, "verify", real_verify)
+    )
+    args = {"certificate_path": cert_path, "map_path": str(copy)}
+    checked = await _ok("olmoearth_verify_certificate", args)
+    assert checked["verified"] is True is expected["verified"]
+    assert {n: c["ok"] for n, c in checked["checks"].items()} == {
+        n: c["ok"] for n, c in expected["checks"].items()
+    }
+    assert checked["statement"] == pkg_certificate.printable(expected["statement"])
+    assert checked["map_read"] == expected["map_read"]
+
+    unreadable = pkg_certificate.Unreadable(
+        f"{cert_path} is not a certificate this package can read: forged"
+    )
+    monkeypatch.setattr(
+        pkg_certificate, "verify", _raising(threads, "verify", unreadable)
+    )
+    out = await _call("olmoearth_verify_certificate", args)
+    assert out["ok"] is False
+    assert "is not a certificate this package can read: forged" in out["error"]
+    assert [name for name, _t in threads] == ["verify", "verify"]
+    _off_the_loop(threads, loop_thread)
+
+
+@pytest.mark.asyncio
+async def test_a_window_lookup_runs_off_the_event_loop(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """certificate.point, for the window asked about, runs in a worker thread
+    too; its answer is the zone verify built again, and an error of it is the
+    lookup's "not looked up", as inline, the check itself unchanged."""
+    written, copy = await _written(_scores_root)
+    cert_path = Path(written["certificate_path"])
+    inside = bool(np.load(cert_path.parent.parent / "sample_zone.npy")[0, 0])
+    loop_thread = threading.current_thread()
+    threads: _Threads = []
+    real_point = pkg_certificate.point
+    monkeypatch.setattr(
+        pkg_certificate, "point", _recorded(threads, "point", real_point)
+    )
+    args = {
+        "certificate_path": str(cert_path),
+        "map_path": str(copy),
+        "window": [0, 0],
+    }
+    checked = await _ok("olmoearth_verify_certificate", args)
+    assert checked["verified"] is True
+    assert checked["window_lookup"] == {
+        "window": [0, 0],
+        "inside": inside,
+        "where": (
+            "inside the certified zone" if inside else "outside the certified zone"
+        ),
+    }
+
+    broken = ValueError("the zone mask is unreadable")
+    monkeypatch.setattr(pkg_certificate, "point", _raising(threads, "point", broken))
+    again = await _ok("olmoearth_verify_certificate", args)
+    assert again["verified"] is True
+    assert again["window_lookup"] == {
+        "window": [0, 0],
+        "inside": None,
+        "where": "not looked up: the zone mask is unreadable",
+    }
+    assert [name for name, _t in threads] == ["point", "point"]
+    _off_the_loop(threads, loop_thread)
+
+
+@pytest.mark.asyncio
+async def test_the_map_seeded_route_computes_off_the_event_loop(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The draw a certificate rests on, its estimate, its zone, and the
+    certificate's own zone and whole-map estimate: each of the package's
+    computations runs in a worker thread, and the route ends as before (the
+    certificate packs the zone olmoearth_certify_zone certified)."""
+    run = await _direct_run(_scores_root)
+    loop_thread = threading.current_thread()
+    threads: _Threads = []
+    names = ("sample_for_estimation", "certify_zone", "estimate_error_rate")
+    for name in names:
+        real = getattr(pkg_estimate, name)
+        monkeypatch.setattr(pkg_estimate, name, _recorded(threads, name, real))
+    plan = await _map_plan(run["scores_path"])
+    labels = {"design_path": plan["design_path"], "wrong": [0] * BUDGET}
+    estimated = await _ok("olmoearth_estimate_map_error", labels)
+    assert estimated["n_labelled"] == BUDGET
+    zone = await _ok("olmoearth_certify_zone", {**labels, "alpha": ALPHA})
+    dated = {**labels, "date": "2024-06-01"}
+    written = await _ok("olmoearth_write_certificate", dated)
+    assert zone["certified"] is True and written["certificate_written"] is True
+    certified = (zone["n_zone"], zone["coverage"])
+    assert (written["n_zone"], written["coverage"]) == certified
+    assert {name for name, _t in threads} == set(names)
+    _off_the_loop(threads, loop_thread)
+
+
+@pytest.mark.asyncio
+async def test_an_estimate_fixes_a_map_seeded_plans_labels_once(
+    _scores_root: Path,
+) -> None:
+    """The estimate of a seed_from_map plan reports the interval valid at
+    every sample size first, as every design's does, and still writes the
+    labels it grades into the plan's sheet the first time: other labels
+    afterwards are refused, by the estimate and the zone alike, and the
+    sheet keeps the first."""
+    run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    sheet = Path(plan["seed_from_map"]["package_sheet"])
+    first = [1] + [0] * (BUDGET - 1)
+    other = [0] * BUDGET
+    labels = {"design_path": plan["design_path"], "wrong": first}
+    estimated = await _ok("olmoearth_estimate_map_error", labels)
+    assert _sheet_wrong(sheet) == [str(w) for w in first]
+    valid, design = estimated["intervals"]
+    assert (valid["interval"], design["interval"]) == ("valid", "design")
+    assert estimated["plan_design"] == "random"
+    assert estimated["valid_note"] == pkg_estimate.VALID_NOTE
+    # Under a random sample the two are the same exact interval (VALID_NOTE).
+    assert (valid["low"], valid["high"]) == (design["low"], design["high"])
+    again = await _ok("olmoearth_estimate_map_error", labels)
+    assert again["valid_interval"] == estimated["valid_interval"]
+    for tool, extra in (
+        ("olmoearth_estimate_map_error", {}),
+        ("olmoearth_certify_zone", {"alpha": ALPHA}),
+    ):
+        out = await _call(
+            tool, {"design_path": plan["design_path"], "wrong": other, **extra}
+        )
+        assert out["ok"] is False, tool
+        assert f"already holds other labels on 1 of {BUDGET} windows" in out["error"]
+        assert "a certificate rests on the labels first given" in out["error"]
+    assert _sheet_wrong(sheet) == [str(w) for w in first]
+
+
+# --------------------------------------------------------------------------- two sessions at once
+
+
+class _SlowSheetReads:
+    """The csv module as ``estimation`` reads a sheet, each read held a moment.
+
+    Two sessions grading one plan at once then both read the sheet before
+    either writes it, unless the read, the check and the write are one step.
+    """
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(csv, name)
+
+    def reader(self, *args: Any, **kwargs: Any) -> Any:
+        rows = list(csv.reader(*args, **kwargs))
+        time.sleep(self.seconds)
+        return iter(rows)
+
+
+@pytest.mark.asyncio
+async def test_two_sessions_grading_one_plan_fix_one_set_of_labels(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The estimate fixes a seed_from_map plan's labels from a worker thread.
+    Two sessions grade the plan at once with different labels, each read of
+    the sheet held a moment (without the lock both read it empty and both
+    write): exactly one estimate is given, the other is refused as other
+    labels than the ones fixed, and the sheet holds the labels of the one
+    given, with no file left beside it."""
+    run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    sheet = Path(plan["seed_from_map"]["package_sheet"])
+    first = [1] + [0] * (BUDGET - 1)
+    other = [0] * BUDGET
+    monkeypatch.setattr(estimation, "csv", _SlowSheetReads(0.3))
+    outs = await asyncio.gather(
+        *(
+            _call(
+                "olmoearth_estimate_map_error",
+                {"design_path": plan["design_path"], "wrong": labels},
+            )
+            for labels in (first, other)
+        )
+    )
+    given = [k for k, out in enumerate(outs) if out["ok"] is True]
+    assert len(given) == 1, outs
+    (k,) = given
+    refused = outs[1 - k]
+    assert refused["ok"] is False
+    assert f"already holds other labels on 1 of {BUDGET} windows" in refused["error"]
+    assert "a certificate rests on the labels first given" in refused["error"]
+    fixed = (first, other)[k]
+    assert _sheet_wrong(sheet) == [str(w) for w in fixed]
+    assert sorted(p.name for p in sheet.parent.glob("*.tmp")) == []
+    # The estimate given is the one on the labels fixed: graded again, the same.
+    again = await _ok(
+        "olmoearth_estimate_map_error",
+        {"design_path": plan["design_path"], "wrong": fixed},
+    )
+    assert again["valid_interval"] == outs[k]["result"]["valid_interval"]
+
+
+def test_a_sheet_is_replaced_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """fill_sheet writes the labels to a file beside the sheet and moves it
+    over the sheet, so a reader never finds it cut short: a write that fails
+    part way leaves the sheet byte for byte as it was, with no file beside
+    it, and one that succeeds leaves the sheet alone in its folder."""
+    folder = tmp_path / "plan"
+    folder.mkdir()
+    sheet = folder / "sample.csv"
+    sheet.write_bytes(b"index,confidence,map_class,wrong\r\n4,0.9,1,\r\n9,0.4,0,\r\n")
+    before = sheet.read_bytes()
+
+    class _HalfWriter:
+        def __init__(self, fh: Any) -> None:
+            self.inner = csv.writer(fh)
+
+        def writerow(self, row: list[str]) -> Any:
+            return self.inner.writerow(row)
+
+        def writerows(self, rows: list[list[str]]) -> None:
+            raise OSError("the disk is full")
+
+    class _FailingCsv:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(csv, name)
+
+        def writer(self, fh: Any, *args: Any, **kwargs: Any) -> _HalfWriter:
+            return _HalfWriter(fh)
+
+    monkeypatch.setattr(estimation, "csv", _FailingCsv())
+    with pytest.raises(OSError, match="the disk is full"):
+        estimation.fill_sheet(sheet, [4, 9], [0, 1])
+    assert sheet.read_bytes() == before
+    assert [p.name for p in folder.iterdir()] == ["sample.csv"]
+    monkeypatch.setattr(estimation, "csv", csv)
+    estimation.fill_sheet(sheet, [4, 9], [0, 1])
+    assert _sheet_wrong(sheet) == ["0", "1"]
+    assert [p.name for p in folder.iterdir()] == ["sample.csv"]
+
+
+@pytest.mark.asyncio
+async def test_two_certificates_on_one_plan_at_once_write_one(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two sessions write a certificate on one plan at once, with the same
+    labels: both pass the early check before either builds, and the
+    package's build replaces a bundle. The check is made again with the
+    build, under one lock: one certificate is written, the other call is
+    refused as the early check refuses it. (certify runs once here, so that
+    the second run does not rewrite the zone files the first is reading.)"""
+    run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    work = Path(plan["seed_from_map"]["package_sheet"]).parent
+    real_cli = inferencex.run_cli_async
+    ran: list[list[str]] = []
+    one_at_a_time = asyncio.Lock()
+
+    async def certify_once(argv: list[str], **kwargs: Any) -> str:
+        async with one_at_a_time:
+            if ran:
+                return ""
+            ran.append(argv)
+            return await real_cli(argv, **kwargs)
+
+    built: list[str] = []
+
+    def stub_build(zone_path: str, out_dir: str, date: str, **_kw: Any) -> Any:
+        time.sleep(0.3)  # long enough for the other call to reach its build
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        (Path(out_dir) / "certificate.json").write_text("{}", encoding="utf-8")
+        built.append(date)
+        return {
+            "properties": {
+                "zc:map": {"map_sha256": "0" * 64},
+                "zc:statement": "The stub's statement.",
+            }
+        }
+
+    monkeypatch.setattr(inferencex, "run_cli_async", certify_once)
+    monkeypatch.setattr(pkg_certificate, "build", stub_build)
+    labels = {"design_path": plan["design_path"], "wrong": [0] * BUDGET}
+    outs = await asyncio.gather(
+        *(
+            _call("olmoearth_write_certificate", {**labels, "date": date})
+            for date in ("2024-06-01", "2024-07")
+        )
+    )
+    written = [out for out in outs if out["ok"] is True]
+    refused = [out for out in outs if out["ok"] is False]
+    assert len(written) == 1 and len(refused) == 1, outs
+    assert written[0]["result"]["certificate_written"] is True
+    assert "a certificate on this sample is already written" in refused[0]["error"]
+    assert "never replaced" in refused[0]["error"]
+    assert len(built) == 1 and len(ran) == 1
+    assert written[0]["result"]["date"] == built[0]
+    assert (work / "certificate" / "certificate.json").is_file()
+
+
+# --------------------------------------------------------------------------- the zones disagree
+
+
+@pytest.mark.asyncio
+async def test_a_zone_on_other_windows_writes_no_certificate(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The package's certify on the plan's sheet and olmoearth_certify_zone's
+    computation must give the same zone. Its count differing, or the same
+    count on other windows (the zone mask compared off the loop), is refused
+    with the same message, and no certificate is written; certify_zone runs
+    off the event loop's thread each time."""
+    run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    work = Path(plan["seed_from_map"]["package_sheet"]).parent
+    args = {
+        "design_path": plan["design_path"],
+        "wrong": [0] * BUDGET,
+        "date": "2024-06-01",
+    }
+    loop_thread = threading.current_thread()
+    threads: _Threads = []
+    real_zone = pkg_estimate.certify_zone
+
+    def other_windows(*a: Any, **kw: Any) -> Any:
+        threads.append(("certify_zone", threading.current_thread()))
+        zone = dict(real_zone(*a, **kw))
+        order = [int(i) for i in zone["zone_indices_in_order"]]
+        order[-1] = max(order) + 1  # one window swapped: the counts agree
+        zone["zone_indices_in_order"] = order
+        return zone
+
+    def one_window_fewer(*a: Any, **kw: Any) -> Any:
+        threads.append(("certify_zone", threading.current_thread()))
+        zone = dict(real_zone(*a, **kw))
+        zone["n_zone"] = int(zone["n_zone"]) - 1
+        return zone
+
+    for stand_in in (other_windows, one_window_fewer):
+        monkeypatch.setattr(pkg_estimate, "certify_zone", stand_in)
+        out = await _call("olmoearth_write_certificate", args)
+        assert out["ok"] is False, stand_in
+        assert (
+            "the package's certify on the plan's sheet gives another zone"
+            in out["error"]
+        )
+        assert "no certificate was written" in out["error"]
+        assert not (work / "certificate" / "certificate.json").exists()
+    assert len(threads) == 2
+    _off_the_loop(threads, loop_thread)
+
+
+@pytest.mark.asyncio
+async def test_certify_leaving_no_zone_mask_writes_no_certificate(
+    _scores_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """certify certified a zone but its zone mask is gone: the comparison of
+    the windows, run off the loop, is refused with what is missing, and no
+    certificate is written."""
+    run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    work = Path(plan["seed_from_map"]["package_sheet"]).parent
+    real_cli = inferencex.run_cli_async
+
+    async def without_mask(argv: list[str], **kwargs: Any) -> str:
+        out = await real_cli(argv, **kwargs)
+        if argv[0] == "certify":
+            (Path(kwargs["cwd"]) / "sample_zone.npy").unlink()
+        return out
+
+    monkeypatch.setattr(inferencex, "run_cli_async", without_mask)
+    out = await _call(
+        "olmoearth_write_certificate",
+        {
+            "design_path": plan["design_path"],
+            "wrong": [0] * BUDGET,
+            "date": "2024-06-01",
+        },
+    )
+    assert out["ok"] is False
+    assert "oe-inferencex certify left no zone mask" in out["error"]
+    zone = json.loads((work / "sample_zone.json").read_text(encoding="utf-8"))
+    assert zone["coverage"] is not None  # certify did certify a zone
+    assert not (work / "certificate" / "certificate.json").exists()

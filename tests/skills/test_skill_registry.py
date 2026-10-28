@@ -473,8 +473,14 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     olmoearth_write_certificate's description ("writes no certificate" for
     "writes nothing") and 24 to its date's ("a score_area.py run's date
     window" for "the run's"): 31 characters, 8 tokens. 7,553 + 8 = 7,561,
-    under the same bound. These are counts by hand, not measurements. Opted
-    in, a turn carries the opt-in specs again.
+    under the same bound. The fixes of 28 October take, counted the same
+    way, 34 characters off olmoearth_estimate_map_error's description (the
+    interval valid at every sample size first for every design, 48, in
+    place of the 80 of the sentence on a class map's or 'class' sample, and
+    "each interval and its method" for "estimate, low, high and method", 2
+    fewer): 8 tokens. 7,561 - 8 = 7,553, under the same bound. These are
+    counts by hand, not measurements. Opted in, a turn carries the opt-in
+    specs again.
     """
     default = _turn_chars(build_default_registry())
     assert default / 4 < 7_650

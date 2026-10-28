@@ -77,7 +77,8 @@ NOT_MEASURED = (
 HOW_TO_MEASURE = (
     "To estimate it, olmoearth_plan_label_sample plans which windows to label, "
     "and olmoearth_estimate_map_error grades the labels: the error rate with "
-    "the interval its design earns. On the web UI each message is a request of "
+    "the interval valid at every sample size first, then the one its design "
+    "earns. On the web UI each message is a request of "
     "its own: an error rate estimated in an earlier message is stated here only "
     "when olmoearth_estimate_map_error is called again in this request, with "
     "that design_path and its labels."
@@ -127,6 +128,13 @@ _FIGURE_OR_OPTION_RE = re.compile(r"\d\s*%|(?<![\w-])--\w")
 
 #: A note of olmoearth-inferencex, as the section introduces it.
 _PACKAGE_NOTE = "- olmoearth-inferencex's note: {}"
+#: The package's ``warning`` on an error rate that also gives the interval
+#: valid at every sample size: each whole-map warning of
+#: ``estimate_error_rate`` (thin strata, no labelled window wrong) is of the
+#: interval the design earns, never of the valid one.
+_PACKAGE_DESIGN_NOTE = (
+    "- olmoearth-inferencex's note on the interval this design earns: {}"
+)
 #: The first sentences of a package scope note, before another map's figures.
 _PACKAGE_SCOPE_PART = (
     "- olmoearth-inferencex's note on scope (its first sentences, before "
@@ -629,8 +637,15 @@ def _error_rate(
     lines += _limits(result)
     if isinstance(result.get("class_map_note"), str):
         lines.append(_TOOL_LIMIT.format(result["class_map_note"]))
+    # Beside the interval valid at every sample size, the package's warning is
+    # named as of the design's interval (each of its whole-map warnings is).
+    two = any(e.get("interval") == "valid" for e in intervals) and bool(path)
+    warning = result.get("warning")
+    if two and isinstance(warning, str) and warning.strip():
+        lines.append(_PACKAGE_DESIGN_NOTE.format(warning))
+    keys = [k for k in _ESTIMATE_NOTES if not (two and k == "warning")]
     notes: list[str] = []
-    for text in [result.get(key) for key in _ESTIMATE_NOTES] + table_notes:
+    for text in [result.get(key) for key in keys] + table_notes:
         if isinstance(text, str) and text.strip() and text not in notes:
             notes.append(text)
     lines += [_PACKAGE_NOTE.format(text) for text in notes]

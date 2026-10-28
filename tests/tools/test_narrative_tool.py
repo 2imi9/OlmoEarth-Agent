@@ -264,19 +264,28 @@ async def test_the_report_states_each_measured_number_as_the_tool_returned_it(
     assert section.startswith(f"{ACCURACY_HEADING}\n\n{MEASURED_LEAD}")
     assert NOT_MEASURED not in md
 
-    # The random design's error rate, the map it is of, its interval (exact:
-    # the package's hypergeometric interval) and its labels, design, seed.
+    # The random design's error rate, the map it is of, its intervals (the one
+    # valid at every sample size first, then the design's, which under a
+    # random sample is the same exact interval: the package's hypergeometric
+    # interval) and its labels, design, seed.
     assert "- Map: scores given inline." in section
+    est_valid = est["valid_interval"]
     assert (
-        f"- Error rate: {percent(est['estimate'])}, estimated from "
+        f"- Error rate: {percent(est_valid['estimate'])}, estimated from "
         f"{est['n_labelled']:,} labels on a population of {est['n_population']:,} "
         "windows."
     ) in section
     assert est["method"].startswith("exact hypergeometric")
-    assert (
+    assert (est_valid["low"], est_valid["high"]) == (est["low"], est["high"])
+    valid_line = section.index(
+        f"- Interval valid at every sample size (95%): {percent(est_valid['low'])} "
+        f"to {percent(est_valid['high'])} (method: {est_valid['method']})."
+    )
+    design_line = section.index(
         f"- Interval this design earns (95%): {percent(est['low'])} to "
         f"{percent(est['high'])} (method: {est['method']})."
-    ) in section
+    )
+    assert valid_line < design_line
     assert (
         f"- Labels, design and seed: {est['n_labelled']:,} labels on the random "
         f"design, seed 0; design file `{plan['design_path']}`."
@@ -343,14 +352,20 @@ async def test_the_report_states_each_measured_number_as_the_tool_returned_it(
     rate, by_class, certified, which_map = accuracy["statements"]
     assert (rate["kind"], rate["design"], rate["seed"]) == ("error_rate", "random", 0)
     assert rate["map"] == "scores given inline" and rate["labels_changed"] is False
-    assert rate["estimate"] == est["estimate"]
+    assert rate["estimate"] == est_valid["estimate"]
     assert rate["intervals"] == [
+        {
+            "interval": "valid",
+            "low": est_valid["low"],
+            "high": est_valid["high"],
+            "method": est_valid["method"],
+        },
         {
             "interval": "design",
             "low": est["low"],
             "high": est["high"],
             "method": est["method"],
-        }
+        },
     ]
     assert (by_class["design"], by_class["seed"]) == ("class", 7)
     assert by_class["estimate"] == valid["estimate"]
@@ -377,10 +392,11 @@ async def test_the_report_states_each_measured_number_as_the_tool_returned_it(
 
 @pytest.mark.asyncio
 async def test_a_confidence_designs_interval_is_named_nominal() -> None:
-    """The plan's default design: the package's interval is a Wilson interval
-    on the design's effective sample size, which it calls nominal (its
-    VALID_NOTE gives the coverage it fell to); the report names it so, never
-    a plain 95%."""
+    """The plan's default design: the interval valid at every sample size is
+    named first, then the package's design interval, a Wilson interval on the
+    design's effective sample size, which it calls nominal (its VALID_NOTE
+    gives the coverage it fell to); the report names it so, never a plain
+    95%."""
     pytest.importorskip("oe_inferencex.estimate")
     run = _Run()
     scores, truth = _map()
@@ -391,12 +407,50 @@ async def test_a_confidence_designs_interval_is_named_nominal() -> None:
     assert "Wilson" in est["method"]
     report = await run.call(NARRATIVE, _brief())
     section = _section(report["markdown"])
-    assert (
+    valid = est["valid_interval"]
+    first = section.index(
+        f"- Interval valid at every sample size (95%): {percent(valid['low'])} to "
+        f"{percent(valid['high'])} (method: {valid['method']})."
+    )
+    second = section.index(
         "- Interval this design earns (nominal 95%, approximate: not valid at "
         f"every sample size): {percent(est['low'])} to {percent(est['high'])} "
         f"(method: {est['method']})."
-    ) in section
+    )
+    assert first < second
+    assert f"- Error rate: {percent(valid['estimate'])}, estimated from" in section
     assert "- Interval this design earns (95%)" not in section
+    (rate,) = report["accuracy"]["statements"]
+    assert [e["interval"] for e in rate["intervals"]] == ["valid", "design"]
+    found = run_checks(section, run.evidence(without_last=True), [NUMBERS, FORBIDDEN])
+    assert found == {}, json.dumps(found, indent=1)
+
+
+@pytest.mark.asyncio
+async def test_the_packages_warning_is_of_the_design_interval() -> None:
+    """No labelled window wrong under the confidence design: the package warns
+    that the design's variance is zero and its interval the simple-random
+    Wilson bound. Beside the interval valid at every sample size, which takes
+    no variance, the report names the warning, word for word, as of the
+    interval this design earns."""
+    pytest.importorskip("oe_inferencex.estimate")
+    run = _Run()
+    scores, _truth = _map()
+    plan = await run.call(PLAN, {"scores": scores, "budget": 300})
+    assert plan["design"] == "confidence"
+    wrong = [0] * len(_design(plan)["sample"]["indices"])
+    est = await run.call(GRADE, {"design_path": plan["design_path"], "wrong": wrong})
+    warning = est["warning"]
+    assert warning.startswith("no labelled window was wrong")
+    report = await run.call(NARRATIVE, _brief())
+    section = _section(report["markdown"])
+    note = f"- olmoearth-inferencex's note on the interval this design earns: {warning}"
+    assert note in section
+    assert f"- olmoearth-inferencex's note: {warning}" not in section
+    assert section.count(warning) == 1
+    valid_line = section.index("- Interval valid at every sample size (95%)")
+    design_line = section.index("- Interval this design earns (nominal 95%")
+    assert valid_line < design_line < section.index(note)
     found = run_checks(section, run.evidence(without_last=True), [NUMBERS, FORBIDDEN])
     assert found == {}, json.dumps(found, indent=1)
 

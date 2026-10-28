@@ -21,7 +21,13 @@ from typing import Any
 
 import pytest
 
-from olmoearth_agent.harness.checks import RunEvidence, ToolRecord, run_checks
+from olmoearth_agent.harness.checks import (
+    FORBIDDEN,
+    NUMBERS,
+    RunEvidence,
+    ToolRecord,
+    run_checks,
+)
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.tools import statistical_rules as rules
@@ -285,6 +291,43 @@ async def test_a_plan_its_estimate_and_its_certification_pass(design: str) -> No
     cert_args = {"design_path": plan["design_path"], "wrong": wrong, "alpha": 0.05}
     certified = await _call("olmoearth_certify_zone", cert_args)
     _assert_passes("olmoearth_certify_zone", cert_args, certified)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("design", ["random", "confidence"])
+async def test_a_rate_measured_after_its_plan_is_no_false_alarm(design: str) -> None:
+    """Every plan forbids error_rate_without_labels, and a run that planned and
+    then graded the labels holds both: the estimate's own figure, stated
+    plainly, passes the number check and the forbidden claims, while the
+    plan alone still forbids it, and a rate the estimate did not give is the
+    number check's to flag."""
+    plan_args = {"scores": _map(), "budget": 300, "design": design}
+    plan = await _call("olmoearth_plan_label_sample", plan_args)
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    wrong = [int(i % 5 == 0) for i in idx]
+    est_args = {"design_path": plan["design_path"], "wrong": wrong}
+    estimate = await _call("olmoearth_estimate_map_error", est_args)
+    valid = estimate["valid_interval"]
+    own = (
+        f"The map's error rate is {rules.percent(valid['estimate'])} "
+        f"({rules.percent(valid['low'])} to {rules.percent(valid['high'])})."
+    )
+    planned = ToolRecord(
+        "olmoearth_plan_label_sample", plan_args, {"ok": True, "result": plan}
+    )
+    graded = ToolRecord(
+        "olmoearth_estimate_map_error", est_args, {"ok": True, "result": estimate}
+    )
+    asked = ["How wrong is this map? I can label 300 windows."]
+    plan_only = RunEvidence(tools=[planned], user_messages=asked)
+    assert set(run_checks(own, plan_only, [FORBIDDEN])) == {FORBIDDEN}
+    measured = RunEvidence(tools=[planned, graded], user_messages=asked)
+    assert run_checks(own, measured, [NUMBERS, FORBIDDEN]) == {}
+    # Two decimals: no share of the run's results rounds to all three.
+    made_up = "The map's error rate is 71.37% (68.21% to 74.43%)."
+    found = run_checks(made_up, measured, [NUMBERS, FORBIDDEN])
+    assert set(found) == {NUMBERS}
+    assert all(v["check"] == NUMBERS for v in found[NUMBERS])
 
 
 def _passes(

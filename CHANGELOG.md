@@ -903,6 +903,61 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **The certificate tools no longer block the event loop.**
+  - `certificate.build`, `certificate.verify` and `certificate.point` run in
+    a worker thread (`asyncio.to_thread`), as the command line already did.
+  - So do `certify_zone`, the map-seeded draw and a one-map design file's
+    estimate.
+  - Before, on a large map the web server answered other sessions only
+    after the call ended.
+  - A plain plan's draw, the which-map grading and windows labelled without
+    a design still run on the event loop.
+  - Every refusal and result is the same as before.
+  - A `seed_from_map` plan's labels stay fixed once across sessions. The
+    package's sheet is read, checked and written under one lock, and
+    replaced whole (a file beside it, then `os.replace`). Of two sessions
+    grading one plan at once with different labels, the second is refused,
+    and no reader finds the sheet cut short.
+  - A certificate is still written once. The check that none was written is
+    made again under a lock with `certificate.build`, which replaces a
+    bundle. Of two writes on one plan at once, the second is refused.
+  - Tests: `tests/tools/test_certificate_tool.py`,
+    `tests/tools/test_estimation_tool.py`.
+- **Every design's estimate gives the valid interval first.**
+  - Before, only a class map or the class design got it. A scores map's
+    confidence, proportional or random design got the design's interval
+    alone.
+  - Under the default confidence design that is Wilson's interval on the
+    effective sample size, which the package calls nominal (91.3% coverage
+    at 100 labels on a 200-window map, exp105).
+  - Now every design file of one map takes `estimate_error_rate(valid=True)`:
+    the valid interval first, the design's second, each named.
+  - With reference classes, the per-class table is
+    `estimate_per_class(valid=True)` too, each class's valid intervals
+    first; the package says it takes seconds per class.
+  - The `weakest_classes` fact states each class's valid interval first,
+    then the design's, which it names nominal under the confidence and
+    proportional designs. The ranking stays on the package's estimate.
+  - The package's warning on the whole map (thin strata, no labelled window
+    wrong) is named as of the interval the design earns, in the
+    `whole_map_estimate` sentence and in the report. The valid interval
+    takes no variance.
+  - A `seed_from_map` plan still fixes its labels once.
+  - The demo page (`make verify-demo`) lists the random estimate's valid
+    interval too, with the same ends as the design's.
+  - Tests: `tests/tools/test_estimation_tool.py`,
+    `tests/tools/test_statistical_rules.py`, `tests/tools/test_narrative_tool.py`,
+    `tests/tools/test_certificate_tool.py`,
+    `tests/scripts/test_verify_demo_tile.py`.
+- **No false alarm of `error_rate_without_labels` in a measured run.**
+  - Every plan and every review set forbids it. After plan and estimate,
+    "The map's error rate is 19.0% (14.8% to 23.9%)." was marked unverified.
+  - It is no longer read once the run holds a measured error rate, as
+    `accuracy_not_measured` already was.
+  - The number check still flags a rate that no tool result or user message
+    of the run gives.
+  - Tests: `tests/harness/test_answer_checks.py`,
+    `tests/harness/test_tool_sentences_pass_the_checks.py`.
 - **Windows labelled without a design keep design `none (checked as a
   random sample)`.** `olmoearth_estimate_map_error` with `window_indices`
   set that design, then the package's result overwrote it with `random`

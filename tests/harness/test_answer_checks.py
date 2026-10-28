@@ -1528,6 +1528,69 @@ def test_a_measured_runs_figures_are_not_a_plans_error_rate() -> None:
         assert check_forbidden_claims(sentence, run) == [], sentence
 
 
+def _plan_forbidding_a_rate() -> ToolRecord:
+    """A plan of 300 windows, which forbids an error rate (it holds no labels)."""
+    return _record(
+        "olmoearth_plan_label_sample",
+        {
+            "design": "random",
+            "budget": 300,
+            "forbidden_claims": [{"id": "error_rate_without_labels", "why": "x"}],
+        },
+    )
+
+
+def _estimate_of_the_plan() -> ToolRecord:
+    """Its estimate: 57 of 300 labels wrong, 19.0% (14.8% to 23.9%)."""
+    whole = {
+        "id": "whole_map_estimate",
+        "sentence": "The map's error rate is estimated at 19.0%.",
+        "estimate": 0.19,
+        "low": 0.148,
+        "high": 0.239,
+        "design": "random",
+    }
+    return _record(
+        "olmoearth_estimate_map_error",
+        {
+            "estimate": 0.19,
+            "low": 0.148,
+            "high": 0.239,
+            "n_labelled": 300,
+            "n_population": 2000,
+            "facts": [whole],
+        },
+    )
+
+
+def test_a_rate_the_run_measured_is_not_a_plans_error_rate() -> None:
+    """Every plan forbids error_rate_without_labels, and a run that planned
+    and then graded the labels holds that claim beside the estimate: the
+    estimate's own figure, stated plainly, is no false alarm. A plan alone
+    still flags a rate; a made-up rate after the estimate is the number
+    check's, which flags it."""
+    claim = "The map's error rate is 12%."
+    plan_only = _run(_plan_forbidding_a_rate())
+    flagged = check_forbidden_claims(claim, plan_only)
+    assert [v["text"] for v in flagged] == [claim]
+    assert flagged[0]["detail"].startswith("error_rate_without_labels")
+
+    measured = _run(_plan_forbidding_a_rate(), _estimate_of_the_plan())
+    own = "The map's error rate is 19.0% (14.8% to 23.9%)."
+    assert check_forbidden_claims(own, plan_only)  # flagged without the estimate
+    assert run_checks(own, measured, [NUMBERS, FORBIDDEN]) == {}
+
+    made_up = "The map's error rate is 31.0% (26.4% to 36.1%)."
+    found = run_checks(made_up, measured, [NUMBERS, FORBIDDEN])
+    assert set(found) == {NUMBERS}
+    assert [v["check"] for v in found[NUMBERS]] == [NUMBERS] * 3
+    assert [v["detail"] for v in found[NUMBERS]] == ["31.0%", "26.4%", "36.1%"]
+    # A failed estimate measured nothing: the plan's claim holds again.
+    failed = ToolRecord("olmoearth_estimate_map_error", {}, {"ok": False, "error": "e"})
+    flagged = check_forbidden_claims(own, _run(_plan_forbidding_a_rate(), failed))
+    assert [v["text"] for v in flagged] == [own]
+
+
 def test_accuracy_another_tool_measured_is_not_read_as_unmeasured() -> None:
     """accuracy_not_measured leaves alone what another tool of the request
     measured: the accuracy olmoearth_classification_metrics computed against

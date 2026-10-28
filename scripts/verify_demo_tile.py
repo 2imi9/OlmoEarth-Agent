@@ -838,8 +838,11 @@ async def run_demo(
 def interval_entries(result: dict[str, Any]) -> list[dict[str, Any]]:
     """Every interval of an estimate, as the report reads them.
 
-    A class design's estimate lists the valid interval and the design's
-    (``intervals``); a random design's gives the design's alone.
+    An estimate of a design file, whatever its design, lists the interval
+    valid at every sample size and the design's (``intervals``), each named;
+    the truth check covers each, labelled as the tool names it. A result
+    with no ``intervals`` (windows labelled without a design) gives its one
+    interval, the design's.
     """
     entries = result.get("intervals")
     if not (isinstance(entries, list) and entries):
