@@ -10,6 +10,50 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **A direct OlmoEarth run's files go the whole verification route, and its
+  certified zone can be packed into a certificate anyone holding the map can
+  check (#18).** `olmoearth_scores_from_file` also reads what `oe-inferencex
+  from-olmoearth DATASET --out RUN` writes (`scores_<EPSG>.tif` and
+  `olmoearth_output.json`; RUN, the summary, or one raster of a run of
+  several CRSs) and refuses a run of class ids, the rslearn dataset itself
+  and a per-window classification, the first with the package's words on how
+  to get probabilities (`output_probs: true`, a float32 layer) and the
+  fine-tuned checkpoint. `olmoearth_plan_label_sample` with `design='random'`
+  and `seed_from_map` (with `alpha`, `delta`, `rule`) runs `oe-inferencex
+  sample --seed-from-map` on the run's raster in a working folder under
+  `<scores root>/certificates/`, so the seed comes from the map's digest and
+  those settings, and checks its draw is the agent's design window by
+  window; `alpha`, `delta` or `rule` without `seed_from_map` is refused, as
+  the package's `sample` refuses them. `olmoearth_certify_zone` keeps to
+  that plan's settings, and the labels first graded on the plan (estimate,
+  zone or certificate) are fixed in the package's sheet: other labels, and
+  the same plan drawn again over them, are refused. Two new default tools
+  (`tools/certificate.py`, the `inferencex` extra only):
+  `olmoearth_write_certificate` runs `oe-inferencex certify` on the plan's
+  sheet with the labels, checks that the package's certify and
+  `olmoearth_certify_zone`'s computation give the same windows, and calls
+  `certify.certificate.build`, which verifies the bundle before it is
+  written; a certificate is written once, never over an earlier one, and
+  the result carries the whole-map estimate and a digest of the labels
+  (`labels_sha256`, which `olmoearth_certify_zone` now returns too).
+  `olmoearth_verify_certificate` calls `certificate.verify` against a copy
+  of the map (a plain GeoTIFF or `.npy`, or the scores file that names it;
+  the file the certificate names is said to be no copy) and, for a window
+  given as `[row, col]`, `certificate.point`. The package's command line
+  runs as this interpreter's `-P -m oe_inferencex.cli` (the working folder
+  never on its import path), with no shell, without the agent's keys in its
+  environment (`security/child_env.py`, the one denylist
+  `olmoearth_run_python` and the Asta search now share), under a time limit
+  and off the event loop, and any failure is the tool's refusal
+  (`inferencex.run_cli`, `run_cli_async`). The provenance log keeps both
+  calls whole with the plan's seed and `seed_from_map`, and the replay
+  script writes a value holding a line break as a JSON string; the
+  stakeholder report states each certificate with the package's statement,
+  the zone's `ISSUED_NOTE`, what is taken on the issuer's word and the
+  tool's summary of what it proves, and says when a certificate's labels
+  differ from its zone's. The default registry holds 28 tools; the
+  spec-token bound moves to 7,650 and the capability card's budget to 1,600
+  tokens (counted by hand).
 - **The stakeholder report (#14) carries the accuracy the request's
   verification tools measured, as they returned it, and says so plainly when
   the request estimated no error rate.** `olmoearth_case_narrative` reads the

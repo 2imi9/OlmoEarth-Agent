@@ -141,7 +141,7 @@ def test_the_verification_calls_are_kept_whole_with_their_seeds() -> None:
     (the report states them); other tools' are not. The seed is the tool's:
     the plan's own, or the seed of the design file an estimate read."""
     log = _verified_log()
-    assert [c.tool for c in log.verification] == list(VERIFICATION_TOOLS)
+    assert [c.tool for c in log.verification] == list(VERIFICATION_TOOLS[:3])
     plan, estimate, zone = log.verification
     assert plan.ok and plan.result == _PLAN and plan.arguments == _PLAN_ARGS
     assert (plan.seed, estimate.seed, estimate.design) == (5, 5, "random")
@@ -177,7 +177,8 @@ def test_the_summary_lists_each_verification_call_with_what_repeats_it() -> None
 def test_the_manifest_carries_the_verification_calls() -> None:
     manifest = _verified_log().to_dict()
     assert manifest["entry_count"] == 4
-    assert [c["tool"] for c in manifest["verification"]] == list(VERIFICATION_TOOLS)
+    tools = [c["tool"] for c in manifest["verification"]]
+    assert tools == list(VERIFICATION_TOOLS[:3])
     assert '"verification"' in _verified_log().to_json()
 
 
@@ -212,3 +213,131 @@ def test_inline_labels_are_given_by_their_digest() -> None:
     assert indexed["scores"] == "inline, 10 rows"
     from_file = call(design_path="/w/d.json", labels_path="/w/l.csv").repeat()
     assert from_file["labels_path"] == "/w/l.csv" and "wrong" not in from_file
+
+
+def test_the_certificate_calls_are_kept_with_their_plans_seed() -> None:
+    """A certificate written and checked: each is kept whole, with the seed
+    its plan took from the map (128 bits), the date, the certificate, the map
+    copy, the window asked about and whether it verified."""
+    assert VERIFICATION_TOOLS[3:] == (
+        "olmoearth_write_certificate",
+        "olmoearth_verify_certificate",
+    )
+    seed = 2**100 + 7
+    cert = "/w/certificates/d/certificate/certificate.json"
+    log = ProvenanceLog(run_id="r6")
+    log.record_tool_call(
+        "olmoearth_write_certificate",
+        {"design_path": "/w/d.json", "wrong": [0, 0, 1], "date": "2024-06-01"},
+        {
+            "ok": True,
+            "result": {
+                "available": True,
+                "design": "random",
+                "seed": seed,
+                "alpha": 0.2,
+                "delta": 0.1,
+                "rule": "prefix",
+                "n_labelled": 3,
+                "certificate_path": cert,
+            },
+        },
+    )
+    log.record_tool_call(
+        "olmoearth_verify_certificate",
+        {"certificate_path": cert, "map_path": "/w/copy.tif", "window": [2, 3]},
+        {
+            "ok": True,
+            "result": {
+                "available": True,
+                "verified": False,
+                "design": "random",
+                "seed": seed,
+                "certificate_path": cert,
+            },
+        },
+    )
+    written, checked = log.verification_calls()
+    assert written == {
+        "tool": "olmoearth_write_certificate",
+        "ok": True,
+        "design": "random",
+        "seed": seed,
+        "design_path": "/w/d.json",
+        "alpha": 0.2,
+        "delta": 0.1,
+        "rule": "prefix",
+        "date": "2024-06-01",
+        "certificate_path": cert,
+        "wrong": f"inline, 3 rows, sha256 {labels_digest([0, 0, 1])}",
+        "n_labelled": 3,
+    }
+    assert checked == {
+        "tool": "olmoearth_verify_certificate",
+        "ok": True,
+        "design": "random",
+        "seed": seed,
+        "certificate_path": cert,
+        "map_path": "/w/copy.tif",
+        "window": [2, 3],
+        "verified": False,
+    }
+    assert f"seed={seed}" in log.replay_script()
+
+
+def test_a_map_seeded_plan_is_listed_with_seed_from_map() -> None:
+    """A plan drawn with seed_from_map is repeated with seed_from_map and its
+    alpha, delta and rule, never with the seed alone (the plan tool refuses
+    seed and seed_from_map together, and the seed alone draws another
+    sample). The flag is read from the arguments: the plan's result holds a
+    seed_from_map block of the same name."""
+    seed = 2**100 + 7
+    args = {
+        "scores_path": "/w/scores.json",
+        "budget": 60,
+        "design": "random",
+        "seed_from_map": True,
+        "alpha": 0.2,
+    }
+    result = {
+        "available": True,
+        "design": "random",
+        "budget": 60,
+        "seed": seed,
+        "design_path": "/w/d.json",
+        "seed_from_map": {"seed": seed, "note": "n", "package_sheet": "/w/s.csv"},
+    }
+    log = ProvenanceLog(run_id="r7")
+    log.record_tool_call(
+        "olmoearth_plan_label_sample", args, {"ok": True, "result": result}
+    )
+    (plan,) = log.verification_calls()
+    assert plan["seed_from_map"] is True and plan["seed"] == seed
+    assert plan["alpha"] == 0.2
+    assert list(plan)[:6] == ["tool", "ok", "design", "budget", "seed", "seed_from_map"]
+    script = log.replay_script()
+    assert f"seed={seed}  seed_from_map=True  scores_path=/w/scores.json" in script
+    assert "drawn\n# again with seed_from_map" in script
+    # A plan without it lists no flag.
+    plain = VerificationCall(
+        "olmoearth_plan_label_sample", "t", "h", {"seed_from_map": False}, True, None
+    )
+    assert "seed_from_map" not in plain.repeat()
+
+
+def test_the_replay_script_keeps_every_value_on_its_comment_line() -> None:
+    """A value given as an argument (a refused call's date) can hold a line
+    break; written raw, it would end the '#' comment and run as code. It is
+    written as a JSON string, its breaks escaped."""
+    log = ProvenanceLog(run_id="r8")
+    log.record_tool_call(
+        "olmoearth_write_certificate",
+        {"design_path": "/w/d.json", "date": "2024-06-01\nimport os\r\nos.getcwd()"},
+        {"ok": False, "error": "refused"},
+    )
+    script = log.replay_script()
+    body = script.splitlines()
+    assert all(line == "" or line.startswith("#") for line in body), body
+    assert '"2024-06-01\\nimport os\\r\\nos.getcwd()"' in script
+    # A value with no line break is written as it is.
+    assert "design_path=/w/d.json" in script

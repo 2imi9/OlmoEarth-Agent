@@ -34,8 +34,10 @@ from olmoearth_agent.tools.registry import (
     ToolRegistry,
 )
 
-#: The card's budget in the system prompt, in tokens of four characters.
-CARD_TOKEN_BUDGET = 1500
+#: The card's budget in the system prompt, in tokens of four characters
+#: (1,500 until the direct-run step added the certificate tools' lines:
+#: test_the_card_fits_its_budget).
+CARD_TOKEN_BUDGET = 1600
 
 _SCHEMA = {"type": "object", "properties": {}, "required": []}
 
@@ -145,6 +147,15 @@ def test_the_card_fits_its_budget() -> None:
 
     Measured before the trim of 27 October 2026, which took three core tools
     and six deferred groups off the default card; opted in, it still fits.
+    The direct-run step adds, counted by hand from the declarations, the
+    lines of olmoearth_write_certificate and olmoearth_verify_certificate
+    (357 characters with their line breaks) and "or from-olmoearth's files" on
+    olmoearth_scores_from_file's line (27): 384 characters, 96 tokens, on
+    the default card and the opted-in one alike. The opted-in card, which
+    holds the default one, three more core lines and the deferred groups'
+    line, was estimated near 1,460 tokens before it (an estimate from the
+    declarations' text, not a measurement), so the budget moves from 1,500 to
+    1,600.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)

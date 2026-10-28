@@ -66,6 +66,21 @@ design's results are worded as the package words them
 review-set tools refuse a class map in one sentence
 (:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`).
 
+A sample a certificate can rest on. ``olmoearth_plan_label_sample`` with
+``design='random'`` and ``seed_from_map`` on a direct run's scores file
+(``olmoearth_scores_from_file``, every channel kept) runs ``oe-inferencex
+sample RASTER --design random --seed-from-map --alpha A`` on the run's raster
+in a working folder under the scores root (:data:`CERTIFICATE_DIR`): its seed
+is taken from the map's digest and the draw's settings, alpha, delta and the
+rule fixed now, and the agent's sample is the same draw, checked window by
+window against the package's sheet. ``olmoearth_certify_zone`` then keeps to
+the plan's alpha, delta and rule, as ``oe-inferencex certify`` does; the
+labels first graded on the plan (by the estimate, the zone or the
+certificate) are written into the package's sheet and other labels are
+refused afterwards (:func:`hold_plan_labels`); and
+``olmoearth_write_certificate`` (:mod:`olmoearth_agent.tools.certificate`)
+packs the zone into a certificate.
+
 Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
 locations a reviewer needs stay in the files.
 
@@ -84,6 +99,7 @@ import json
 import math
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from olmoearth_agent.analysis.raster_compare import declared_fields, declared_range
@@ -94,6 +110,7 @@ from olmoearth_agent.analysis.review_set import (
     predicted_classes,
 )
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.security.paths import safe_path
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.compare import (
@@ -235,6 +252,41 @@ ZONE_RULES = ("prefix", "bonferroni")
 
 #: Format tag of a design file written by olmoearth_plan_label_sample.
 DESIGN_FORMAT = "olmoearth-agent/label-design@1"
+
+#: Under the scores root, the working folder of each sample drawn for a
+#: certificate (``seed_from_map``): the package's sheet and sidecar, the zone
+#: ``certify`` writes and the bundle (``olmoearth_write_certificate``).
+CERTIFICATE_DIR = "certificates"
+
+#: The package's sheet of a sample drawn for a certificate, in its working
+#: folder: ``oe-inferencex sample`` writes its sidecar beside it
+#: (``sample.json``), and ``oe-inferencex certify`` its zone
+#: (``sample_zone.json``, with the zone mask ``sample_zone.npy``).
+CERT_SAMPLE = "sample.csv"
+
+#: The certificate bundle's folder inside a plan's working folder
+#: (``olmoearth_write_certificate``).
+CERT_BUNDLE = "certificate"
+
+#: delta when a plan drawn with ``seed_from_map`` names none: the default of
+#: ``olmoearth_certify_zone``, and the package's ``ZONE_DELTA``.
+DEFAULT_DELTA = 0.1
+
+#: Said when a sample drawn for a certificate already holds other labels.
+LABELS_FIXED = (
+    "a certificate rests on the labels first given for its sample: labels "
+    "changed after a result was seen are a second test, which neither "
+    "certify's guarantee nor a certificate covers"
+)
+
+#: Said with a plan drawn with ``seed_from_map``: what its seed shows.
+SEED_FROM_MAP_NOTE = (
+    "The seed is taken from the map's digest and the draw's settings, alpha, "
+    "delta and the rule included (oe-inferencex sample --seed-from-map): "
+    "anyone holding the map draws these windows again, and a certificate "
+    "shows these settings were fixed before any label. It cannot show the "
+    "sample was drawn only once."
+)
 
 #: Stated with every certify_zone output: exp86 round 2's model recommended a
 #: confidence design for certification, which the tool refuses, and round
@@ -1146,6 +1198,326 @@ def _draw(
     return sample
 
 
+def _scores_raster(pop: Population) -> tuple[str, dict[str, Any]]:
+    """The raster a direct run's scores file was read from, and the file's fields.
+
+    A sample a certificate rests on is drawn from the map itself, so it needs
+    the scores file ``olmoearth_scores_from_file`` writes, which records its
+    raster's path, read over every channel: a certificate is of the map as
+    the package reads it.
+    """
+    path = pop.source.get("scores_path")
+    meta = load_scores_file(str(path)).meta if path else {}
+    raster = meta.get("raster") if isinstance(meta.get("raster"), dict) else {}
+    if not path or meta.get("score_kind") != "window_confidence" or not raster:
+        msg = (
+            "seed_from_map draws from the map itself: pass scores_path from "
+            "olmoearth_scores_from_file of a direct run (a Studio result has no "
+            "raster to digest)"
+        )
+        raise ValueError(msg)
+    if not raster.get("path"):
+        msg = (
+            "this scores file records no raster path (written before seed_from_map "
+            "existed): read the run again with olmoearth_scores_from_file"
+        )
+        raise ValueError(msg)
+    fill = meta.get("fill_class")
+    if isinstance(fill, dict) and fill.get("excluded"):
+        msg = (
+            "a certificate is of the map as the package reads it, every channel; "
+            "this scores file leaves the label-fill channel out: read the run "
+            "again with include_fill_class=true and plan on that file"
+        )
+        raise ValueError(msg)
+    real = os.path.realpath(str(raster["path"]))
+    roots = read_roots()
+    if not any(os.path.commonpath([r, real]) == r for r in roots):
+        raise ValueError(f"the scores file's raster is not under {' or '.join(roots)}")
+    if not os.path.isfile(real):
+        raise ValueError(f"the scores file's raster {raster.get('file')!r} is gone")
+    return real, meta
+
+
+def labels_sha256(wrong: list[int]) -> str:
+    """The first 12 hex digits of the sha256 of the labels, in the design's order.
+
+    The digest the provenance summary gives inline labels
+    (``provenance.log.labels_digest`` of the same list), so a reader matches
+    a result's labels with the call that gave them. Two results on one design
+    file with different digests graded different labels, which the report
+    states (``reporting.narrative.LABELS_CHANGED``).
+
+    Examples
+    --------
+    >>> labels_sha256([0, 1, 0]) == labels_sha256([0, 1, 0]) != labels_sha256([1, 0, 0])
+    True
+    """
+    blob = json.dumps([int(w) for w in wrong])
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def plan_work_dir(block: dict[str, Any]) -> Path:
+    """The working folder of a plan drawn with ``seed_from_map``, checked.
+
+    The design file names it (``certificate.work_dir``), and the certificate
+    route writes there: the labels into the package's sheet, ``certify``'s
+    zone and the bundle. So it must be a folder the plan tool makes, under
+    ``<scores root>/certificates/``; a design file naming any other folder
+    (even one under the scores root, such as another sheet of the user's) is
+    refused.
+
+    Parameters
+    ----------
+    block
+        The design file's ``certificate`` block.
+
+    Returns
+    -------
+    Path
+        The folder, resolved.
+
+    Examples
+    --------
+    >>> plan_work_dir({"work_dir": "/elsewhere"})  # doctest: +SKIP
+    Traceback (most recent call last):
+    ValueError: the plan's working folder is not one ...
+    """
+    base = os.path.realpath(write_root() / CERTIFICATE_DIR)
+    raw = str(block.get("work_dir") or "").strip()
+    real = os.path.realpath(raw) if raw else ""
+    if not real or real == base or os.path.commonpath([base, real]) != base:
+        msg = (
+            "the plan's working folder is not one olmoearth_plan_label_sample "
+            f"wrote (under {base}); plan again with seed_from_map"
+        )
+        raise ValueError(msg)
+    return Path(real)
+
+
+def _sheet_holds_labels(sheet: Path) -> bool:
+    """Whether the package's sheet has a ``wrong`` cell filled in."""
+    if not sheet.is_file():
+        return False
+    with open(sheet, encoding="utf-8", newline="") as fh:
+        return any((row.get("wrong") or "").strip() for row in csv.DictReader(fh))
+
+
+def fill_sheet(sheet: Path, indices: list[int], wrong: list[int]) -> None:
+    """Write the reviewer's labels into the ``wrong`` column of the package's sheet.
+
+    The sheet is the one ``oe-inferencex sample`` wrote for the plan; its rows
+    must be the plan's windows in the plan's order (its ``index`` column).
+    Every other cell is written back as read, so the sample a certificate's
+    verify draws again is the same. Labels are fixed the first time they are
+    written: a sheet that already holds other labels is refused
+    (:data:`LABELS_FIXED`), the same labels again change nothing.
+
+    Parameters
+    ----------
+    sheet
+        The package's ``sample.csv`` in the plan's working folder.
+    indices
+        The plan's windows, in order.
+    wrong
+        1 where the map is wrong, else 0, in the same order.
+
+    Examples
+    --------
+    >>> fill_sheet(Path("certificates/d/sample.csv"), [4, 9], [0, 1])  # doctest: +SKIP
+    """
+    with open(sheet, encoding="utf-8", newline="") as fh:
+        rows = [row for row in csv.reader(fh) if row]
+    header = rows[0] if rows else []
+    if "index" not in header or "wrong" not in header:
+        raise ValueError(f"{sheet.name} is not a sheet oe-inferencex sample wrote")
+    at_index, at_wrong = header.index("index"), header.index("wrong")
+    body = [row + [""] * (len(header) - len(row)) for row in rows[1:]]
+    if [int(row[at_index]) for row in body] != list(indices):
+        msg = (
+            f"{sheet.name} does not list the plan's windows in its order; plan "
+            "again with seed_from_map"
+        )
+        raise ValueError(msg)
+    new = [str(int(value)) for value in wrong]
+    held = [row[at_wrong].strip() for row in body]
+    other = [i for i, old, value in zip(indices, held, new) if old and old != value]
+    if other:
+        msg = (
+            f"this sample's sheet ({sheet.name}) already holds other labels on "
+            f"{len(other)} of {len(indices)} windows (first: window {other[0]}): "
+            f"{LABELS_FIXED}. Other labels need a new sample"
+        )
+        raise ValueError(msg)
+    if held == new:
+        return
+    for row, value in zip(body, new):
+        row[at_wrong] = value
+    with open(sheet, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(header)
+        writer.writerows(body)
+
+
+def hold_plan_labels(design: dict[str, Any], wrong: list[int]) -> Path | None:
+    """Fix a ``seed_from_map`` plan's labels in its sheet the first time they are graded.
+
+    ``olmoearth_estimate_map_error``, ``olmoearth_certify_zone`` and
+    ``olmoearth_write_certificate`` write the labels they grade on such a plan
+    into the package's sheet (:func:`fill_sheet`), which refuses other labels
+    than the ones it holds: a certificate rests on labels fixed before a
+    result was seen, and relabelling until a zone certifies is what it cannot
+    show. Any other plan, or a plan whose sheet is gone (no certificate can
+    then be written), is left as it is.
+
+    Parameters
+    ----------
+    design
+        The design file, as read.
+    wrong
+        The labels, in the design's order.
+
+    Returns
+    -------
+    Path or None
+        The sheet written, or ``None``.
+
+    Examples
+    --------
+    >>> hold_plan_labels({"design": "random", "sample": {"indices": [1]}}, [0])
+    """
+    block = design.get("certificate")
+    if not isinstance(block, dict) or block.get("seed_rule") != "from_map":
+        return None
+    sheet = plan_work_dir(block) / CERT_SAMPLE
+    if not sheet.is_file():
+        return None
+    fill_sheet(sheet, [int(i) for i in design["sample"]["indices"]], wrong)
+    return sheet
+
+
+async def _map_seeded_draw(
+    estimate: Any, pop: Population, args: dict[str, Any], budget: int, stem: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The random draw a certificate rests on, and what fixes it.
+
+    ``oe-inferencex sample RASTER --design random --seed-from-map --alpha A``
+    (with ``--delta``, ``--rule``, the scores file's ``--patch`` and
+    ``--logits``) is run by :func:`inferencex.run_cli_async` in this plan's
+    working folder under the scores root (:data:`CERTIFICATE_DIR`): the seed
+    is 128 bits of sha256 over the map's digest and those settings
+    (``certify.certificate.draw_seed``), and the sheet and sidecar it writes
+    are what ``certify`` and ``certificate`` read. The agent's sample is then
+    the package's draw in Python with that seed (``sample_for_estimation``,
+    ``stable=True``, the fixed random order a certificate's verify reads),
+    checked to be the same windows, with the same confidence and class, as
+    the package's sheet; otherwise the scores file is not the package's
+    reading of the raster, and the plan is refused. The draw is a function
+    of the map and the settings, so the same plan lands in the same folder:
+    once its sheet holds labels, or a certificate was written there, it is
+    not drawn again (that would clear the labels), and the plan is refused
+    with the design file to grade instead.
+
+    Returns
+    -------
+    tuple
+        The sample, as :func:`_draw` returns one, and the design file's
+        ``certificate`` block (seed, map digest, alpha, delta, rule, raster,
+        working folder, sheet, the run's date window).
+    """
+    raster, meta = _scores_raster(pop)
+    if args.get("alpha") is None:
+        msg = (
+            "seed_from_map fixes certify's alpha with the draw, before any label: "
+            "pass alpha (and delta or rule if not the defaults)"
+        )
+        raise ValueError(msg)
+    alpha = float(args["alpha"])
+    delta = float(args.get("delta", DEFAULT_DELTA))
+    rule = str(args.get("rule", "prefix"))
+    if rule not in ZONE_RULES:
+        raise ValueError(f"rule must be one of {list(ZONE_RULES)}, got {rule!r}")
+    work = safe_path(f"{CERTIFICATE_DIR}/{stem}", root=write_root())
+    sheet = work / CERT_SAMPLE
+    bundle = work / CERT_BUNDLE
+    if bundle.exists() or _sheet_holds_labels(sheet):
+        held = "a certificate" if bundle.exists() else "labels"
+        design_file = safe_path(f"{stem}.json", root=write_root())
+        msg = (
+            "this sample (the same map, budget, alpha, delta and rule) was drawn "
+            f"before, and its working folder {work} holds {held}: drawing it "
+            "again would clear its labels. Grade it from that plan's design file, "
+            f"{design_file}; {LABELS_FIXED}"
+        )
+        raise ValueError(msg)
+    work.mkdir(parents=True, exist_ok=True)
+    argv = [
+        "sample",
+        raster,
+        "--design",
+        "random",
+        "--budget",
+        str(budget),
+        "--seed-from-map",
+        f"--alpha={alpha!r}",
+        f"--delta={delta!r}",
+        f"--rule={rule}",
+        "--patch",
+        str(int(meta.get("patch_px") or 4)),
+        "--out",
+        str(sheet),
+    ]
+    if meta.get("values") == "logits":
+        argv.append("--logits")
+    await inferencex.run_cli_async(argv, cwd=work)
+    side = json.loads((work / "sample.json").read_text(encoding="utf-8"))
+    seed = side.get("seed")
+    if side.get("seed_rule") != "from_map" or not isinstance(seed, int):
+        raise ValueError("oe-inferencex sample did not take its seed from the map")
+    sample = dict(
+        estimate.sample_for_estimation(
+            pop.margin, budget, design="random", seed=seed, stable=True
+        )
+    )
+    drawn = [int(i) for i in side.get("indices") or []]
+    ours = [int(i) for i in sample["indices"].tolist()]
+    if ours != drawn or side.get("n_population") != pop.n_valid:
+        msg = (
+            f"the package drew {len(drawn)} windows of {side.get('n_population')} "
+            f"from the raster, and these scores hold {pop.n_valid} valid windows "
+            "that the same seed draws differently: the scores file is not the "
+            "package's reading of this raster; read the run again"
+        )
+        raise ValueError(msg)
+    with open(sheet, encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            i = int(row["index"])
+            conf, cls = float(row["confidence"]), int(row["map_class"])
+            off = abs(conf - pop.margin[i]) > 1e-6 * max(1.0, abs(conf))
+            if off or cls != pop.map_class[i]:
+                msg = (
+                    f"window {i}: the package's sheet shows confidence {conf:g} "
+                    f"and class {cls}, the scores file {pop.margin[i]:g} and "
+                    f"{pop.map_class[i]}; read the run again"
+                )
+                raise ValueError(msg)
+    plan = side.get("certify") if isinstance(side.get("certify"), dict) else {}
+    block = {
+        "seed_rule": "from_map",
+        "seed": seed,
+        "map_sha256": side.get("map_sha256"),
+        "alpha": alpha,
+        "delta": delta,
+        "rule": rule,
+        "level_cut": plan.get("level_cut"),
+        "raster": raster,
+        "work_dir": str(work),
+        "sample_csv": str(sheet),
+        "date_window": meta.get("date_window"),
+    }
+    return sample, block
+
+
 def _label_budget_advice(
     args: dict[str, Any], pop: Population
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
@@ -1310,6 +1682,34 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         )
     budget = int(args["budget"])
     seed = int(args.get("seed", 0))
+    from_map = bool(args.get("seed_from_map", False))
+    if from_map and design != "random":
+        msg = (
+            "seed_from_map draws the sample a certificate rests on, a simple "
+            "random sample: pass design='random'"
+        )
+        raise ValueError(msg)
+    if from_map and seed != 0:
+        raise ValueError("give seed or seed_from_map, not both")
+    if not from_map:
+        # As `oe-inferencex sample` refuses --alpha, --delta and --rule without
+        # --seed-from-map: given here, they would be taken and then forgotten.
+        stray = [
+            key
+            for key, default in (("alpha", None), ("delta", DEFAULT_DELTA))
+            if args.get(key) is not None and float(args[key]) != default
+        ]
+        if args.get("rule") is not None and str(args["rule"]) != "prefix":
+            stray.append("rule")
+        if stray:
+            msg = (
+                f"{' and '.join(stray)} given without seed_from_map: a plan fixes "
+                "certify's alpha, delta and rule with the draw only with "
+                "seed_from_map (a random plan on a direct run's scores file, for a "
+                "certificate); otherwise give them to olmoearth_certify_zone, "
+                "chosen before the labels are read"
+            )
+            raise ValueError(msg)
     max_listed = int(args.get("max_listed", DEFAULT_MAX_LISTED))
     floor = int(args.get("min_per_class", estimate.CLASS_FLOOR))
     # A Studio classification band is read as a class map only for a design
@@ -1333,7 +1733,22 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     advice: tuple[dict[str, Any], dict[str, Any] | None] | None = None
     if class_map or design == CLASS_DESIGN:
         advice = _label_budget_advice(args, pop)
-    sample = _draw(estimate, pop, design, budget, seed, floor)
+    # A digest of the population keeps two plans of different maps apart (a
+    # class map's margin is the same wherever a window holds a class).
+    digested: Any = [pop.margin, pop.map_class] if class_map else pop.margin
+    digest = hashlib.sha256(json.dumps(_jsonable(digested)).encode()).hexdigest()
+    origin = slug(str(pop.source.get("result_id") or "scores"), 12)
+    certificate: dict[str, Any] | None = None
+    if from_map:
+        # alpha, delta and the rule enter the seed: each gets its own plan.
+        fixed = (args.get("alpha"), args.get("delta", DEFAULT_DELTA))
+        tag = slug(f"a{fixed[0]}_d{fixed[1]}_{args.get('rule', 'prefix')}", 40)
+        stem = f"design_{origin}_{digest[:8]}_{design}_{budget}_smap_{tag}"
+        sample, certificate = await _map_seeded_draw(estimate, pop, args, budget, stem)
+        seed = int(certificate["seed"])
+    else:
+        stem = f"design_{origin}_{digest[:8]}_{design}_{budget}_s{seed}"
+        sample = _draw(estimate, pop, design, budget, seed, floor)
     indices = [int(i) for i in sample["indices"].tolist()]
     stratum_of: dict[int, int] = {}
     if "strata" in sample:
@@ -1350,12 +1765,6 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             entry["stratum"] = stratum_of.get(idx)
         to_label.append(entry)
 
-    # A digest of the population keeps two plans of different maps apart (a
-    # class map's margin is the same wherever a window holds a class).
-    digested: Any = [pop.margin, pop.map_class] if class_map else pop.margin
-    digest = hashlib.sha256(json.dumps(_jsonable(digested)).encode()).hexdigest()
-    origin = slug(str(pop.source.get("result_id") or "scores"), 12)
-    stem = f"design_{origin}_{digest[:8]}_{design}_{budget}_s{seed}"
     population: dict[str, Any] = {
         "n_windows": len(pop.margin),
         "n_valid": n_valid,
@@ -1378,6 +1787,8 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         "population": population,
         "to_label": to_label,
     }
+    if certificate is not None:
+        payload["certificate"] = certificate
     design_path = write_json_file(f"{stem}.json", payload)
     csv_path = _write_csv(f"{stem}_to_label.csv", pop, to_label)
     out: dict[str, Any] = {
@@ -1460,6 +1871,23 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         out["note"] = sample["note"]
     unused = requested - budget
     out["next_steps"] = _plan_next_steps(design, csv_path, budget, pop, unused)
+    if certificate is not None:
+        out["seed_from_map"] = {
+            "seed": seed,
+            "map_sha256": certificate["map_sha256"],
+            "alpha": certificate["alpha"],
+            "delta": certificate["delta"],
+            "rule": certificate["rule"],
+            "note": SEED_FROM_MAP_NOTE,
+            "package_sheet": certificate["sample_csv"],
+        }
+        out["next_steps"].append(
+            f"After labelling: olmoearth_certify_zone with this design_path at "
+            f"alpha={certificate['alpha']:g} (alpha, delta and rule are fixed by "
+            "this plan), then olmoearth_write_certificate with the same labels "
+            "and the map's date packs a certified zone into a certificate anyone "
+            "holding the map can check."
+        )
     facts = [_unused_labels(requested, budget, pop)] if unused else []
     if advice is not None:
         # The package's numbers, before any label (plan.plan_error_rate and,
@@ -1995,6 +2423,7 @@ async def _estimate_map_error(
         sample = design["sample"]
         indices = [int(i) for i in sample["indices"]]
         wrong, reference = _labels(args, indices)
+        hold_plan_labels(design, wrong)  # a seed_from_map plan's, fixed once
         out: dict[str, Any] = {
             "available": True,
             "design_path": str(args["design_path"]),
@@ -2276,13 +2705,28 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
                 ),
             ],
         )
-    rule = str(args.get("rule", "prefix"))
+    # A plan drawn with seed_from_map fixed alpha, delta and the rule with its
+    # draw (they enter its seed), as `oe-inferencex certify` keeps to them.
+    plan_fixed = design.get("certificate")
+    fixed: dict[str, Any] = plan_fixed if isinstance(plan_fixed, dict) else {}
+    rule = str(args.get("rule", fixed.get("rule", "prefix")))
     if rule not in ZONE_RULES:
         raise ValueError(f"rule must be one of {list(ZONE_RULES)}, got {rule!r}")
     alpha = float(args["alpha"])
-    delta = float(args.get("delta", 0.1))
+    delta = float(args.get("delta", fixed.get("delta", DEFAULT_DELTA)))
+    for key, value in (("alpha", alpha), ("delta", delta), ("rule", rule)):
+        if fixed and value != fixed.get(key):
+            msg = (
+                f"this plan was drawn with seed_from_map, which fixed {key} "
+                f"{fixed.get(key)} before any label; {key} {value} on its labels "
+                "would be a second test"
+            )
+            raise rules.refusal(msg, forbidden_claims=[rules.post_hoc_alpha(alpha)])
     indices = [int(i) for i in design["sample"]["indices"]]
     wrong, _ref = _labels(args, indices)
+    # A seed_from_map plan's labels are fixed in its sheet the first time they
+    # are graded: a zone on other labels afterwards is refused.
+    hold_plan_labels(design, wrong)
     margin = _margin(design["population"]["margin"])
     zone = estimate.certify_zone(margin, indices, wrong, alpha, delta=delta, rule=rule)
     zone_indices = zone.pop("zone_indices_in_order", None)
@@ -2292,6 +2736,8 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
         # The design file's design and seed: the same plan draws these labels.
         "design": design.get("design"),
         "seed": design.get("seed"),
+        # Which labels: the report tells two label sets of one design apart.
+        "labels_sha256": labels_sha256(wrong),
     }
     out.update(_jsonable(zone))
     if zone_indices is not None:
@@ -2358,6 +2804,12 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
         certify=True,
     )
     out["next_steps"] = _certify_next_steps(out)
+    if fixed and out["certified"]:
+        out["next_steps"].append(
+            "Pack this zone into a certificate anyone holding the map can check: "
+            "olmoearth_write_certificate with this design_path, the same labels "
+            "and the map's date."
+        )
     return rules.add_contract(
         out,
         facts=[whole],
@@ -3507,7 +3959,9 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "results (result_id, result_id_b) or scores files "
                     "(scores_path, scores_path_b) of one time; it draws windows "
                     "where they differ. A Studio class map takes 'random' or "
-                    "'class' only. Needs the inferencex extra."
+                    "'class' only. 'random' with seed_from_map on a direct "
+                    "run's scores file takes the seed from the map, for a "
+                    "certificate. Needs the inferencex extra."
                 ),
                 parameters={
                     "type": "object",
@@ -3544,6 +3998,20 @@ def build_estimation_tools() -> list[RegisteredTool]:
                             "description": "A class's share, for its budget.",
                         },
                         "seed": {"type": "integer", "default": 0},
+                        "seed_from_map": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Seed from the map's digest, for "
+                            "olmoearth_write_certificate; fixes alpha, delta, "
+                            "rule now.",
+                        },
+                        "alpha": {"type": "number"},
+                        "delta": {"type": "number", "default": DEFAULT_DELTA},
+                        "rule": {
+                            "type": "string",
+                            "enum": list(ZONE_RULES),
+                            "default": "prefix",
+                        },
                         "max_listed": {
                             "type": "integer",
                             "default": DEFAULT_MAX_LISTED,
@@ -3653,7 +4121,8 @@ def build_estimation_tools() -> list[RegisteredTool]:
                         "labels_path": _LABELS_PATH,
                         "alpha": {
                             "type": "number",
-                            "description": "Maximum error rate, e.g. 0.05.",
+                            "description": "Maximum error rate, e.g. 0.05; a "
+                            "seed_from_map plan's own.",
                         },
                         "delta": {
                             "type": "number",

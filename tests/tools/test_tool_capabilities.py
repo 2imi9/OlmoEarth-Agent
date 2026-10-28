@@ -69,7 +69,7 @@ def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
 
 
 def test_every_declaration_is_one_short_line() -> None:
-    """The card's 26 default core tools fit 1,500 tokens; a line is a line."""
+    """The card's 28 default core tools fit 1,600 tokens; a line is a line."""
     registry = _registry()
     for name in registry.names():
         capability = registry.capability_of(name)
@@ -583,6 +583,40 @@ async def _certify_needs_a_random_design(_tmp: Path) -> None:
         {"design_path": plan["design_path"], "wrong": [0] * 60, "alpha": 0.1},
     )
     _refused(out, "needs a simple random sample of the map")
+
+
+@probe("olmoearth_write_certificate", "a plan drawn with seed_from_map, and its labels")
+async def _certificate_needs_a_map_seeded_plan(_tmp: Path) -> None:
+    """A random plan whose seed was not taken from the map gets no certificate."""
+    plan = await _plan("random")
+    out = await _call(
+        "olmoearth_write_certificate",
+        {"design_path": plan["design_path"], "wrong": [0] * 60},
+    )
+    _refused(out, "was not drawn for a certificate")
+
+
+@probe(
+    "olmoearth_verify_certificate",
+    "certificate_path and map_path under the scores root",
+)
+async def _verify_reads_only_the_scores_root(tmp: Path) -> None:
+    outside = tmp.parent / f"{tmp.name}_bundle"
+    outside.mkdir()
+    for folder in (outside, tmp):
+        (folder / "certificate.json").write_text("{}", encoding="utf-8")
+    out = await _call(
+        "olmoearth_verify_certificate", {"certificate_path": str(outside)}
+    )
+    _refused(out, "certificate_path must be under")
+    out = await _call(
+        "olmoearth_verify_certificate",
+        {
+            "certificate_path": str(tmp / "certificate.json"),
+            "map_path": str(outside / "certificate.json"),
+        },
+    )
+    _refused(out, "map_path must be under")
 
 
 @probe("olmoearth_export_data", "out_dir inside the workspace")

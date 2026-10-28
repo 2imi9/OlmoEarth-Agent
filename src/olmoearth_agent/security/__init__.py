@@ -3,9 +3,10 @@
 """Operational-safety helpers for the in-process agent.
 
 Exposes the :mod:`~olmoearth_agent.security.egress` guard (a defence-in-depth
-check on the outbound endpoints the agent talks to) and
+check on the outbound endpoints the agent talks to),
 :mod:`~olmoearth_agent.security.paths` (confines model-controlled tool file I/O
-to a workspace root).
+to a workspace root) and :mod:`~olmoearth_agent.security.child_env` (the
+environment a subprocess the agent starts receives, its keys removed).
 """
 
 from __future__ import annotations

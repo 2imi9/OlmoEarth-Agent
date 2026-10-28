@@ -69,6 +69,8 @@ KEPT = (
     "olmoearth_plan_label_sample",
     "olmoearth_estimate_map_error",
     "olmoearth_certify_zone",
+    "olmoearth_write_certificate",
+    "olmoearth_verify_certificate",
     "olmoearth_case_narrative",
     "olmoearth_qgis_bridge",
     "olmoearth_provenance_summary",
@@ -173,9 +175,9 @@ def test_each_kept_tool_is_in_the_default_registry(
 def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     default_env: None,
 ) -> None:
-    """26 tools; the opt-in python tool is off too."""
+    """28 tools; the opt-in python tool is off too."""
     assert sorted(build_default_registry().names()) == sorted(KEPT)
-    assert len(KEPT) == 26
+    assert len(KEPT) == 28
 
 
 def test_opting_in_restores_every_tool_where_it_was(
@@ -425,7 +427,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         assert deferred not in opted_core, deferred
 
 
-def test_a_default_turn_carries_under_7050_spec_tokens(
+def test_a_default_turn_carries_under_7650_spec_tokens(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Measured as the audit did: len(JSON of the specs) / 4.
@@ -458,9 +460,22 @@ def test_a_default_turn_carries_under_7050_spec_tokens(
     for disaster-response briefs" and "to produce the deliverable") and 32 to
     olmoearth_provenance_summary (", the verification calls' seeds,"): 111
     characters, 28 tokens. 6,962 + 28 = 6,990; the bound moves by the same
-    28, from 6,993 to 7,021, so it is 7,050. These are counts by hand, not
-    measurements. Opted in, a turn carries the opt-in specs again.
+    28, from 6,993 to 7,021, so it is 7,050. The direct-run step adds,
+    counted the same way, olmoearth_write_certificate's spec (914
+    characters) and olmoearth_verify_certificate's (693) with their two
+    separators (4), 428 to olmoearth_plan_label_sample (seed_from_map, alpha,
+    delta and rule, 322, and the sentence on seed_from_map, 106), 28 to
+    olmoearth_certify_zone (alpha's "a seed_from_map plan's own") and 186 to
+    olmoearth_scores_from_file (from-olmoearth's files and the refusal of
+    class ids): 2,253 characters, 563 tokens. 6,990 + 563 = 7,553; the bound
+    moves by the same 563, from 7,050 to 7,613, so it is 7,650. The review of
+    that step adds, counted the same way, 7 characters to
+    olmoearth_write_certificate's description ("writes no certificate" for
+    "writes nothing") and 24 to its date's ("a score_area.py run's date
+    window" for "the run's"): 31 characters, 8 tokens. 7,553 + 8 = 7,561,
+    under the same bound. These are counts by hand, not measurements. Opted
+    in, a turn carries the opt-in specs again.
     """
     default = _turn_chars(build_default_registry())
-    assert default / 4 < 7_050
+    assert default / 4 < 7_650
     assert _turn_chars(_opted_in(monkeypatch)) > default

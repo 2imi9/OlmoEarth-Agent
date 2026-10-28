@@ -8,12 +8,13 @@ id-only summary of the result (no raw geometry, per operational rule
 §3.1). Emits a JSON manifest and a runnable replay script.
 
 The verification tools' calls (:data:`VERIFICATION_TOOLS`: the label plan,
-the error estimate and the certified zone, through olmoearth-inferencex)
-are also kept whole, as :class:`VerificationCall`
-(``ProvenanceLog.verification``): the stakeholder report (skill #14) states
-their numbers as the tools returned them, and the provenance summary
-(skill #13) lists each call's design and seed, from which a reader can draw
-the same sample again.
+the error estimate, the certified zone, and the certificate written and
+checked, through olmoearth-inferencex) are also kept whole, as
+:class:`VerificationCall` (``ProvenanceLog.verification``): the stakeholder
+report (skill #14) states their numbers as the tools returned them, and the
+provenance summary (skill #13) lists each call's design and seed, from which a
+reader can draw the same sample again (a certificate's seed is the one its
+plan took from the map).
 """
 
 from __future__ import annotations
@@ -36,20 +37,25 @@ _ID_KEYS = ("prediction_id", "id", "model_id")
 
 #: The verification tools, whose calls the log keeps whole (with their
 #: result): the plan of which windows to label, the error estimate (and the
-#: which-map grading) and the certified zone.
+#: which-map grading), the certified zone, and the certificate a certified
+#: zone is packed into and its check.
 VERIFICATION_TOOLS = (
     "olmoearth_plan_label_sample",
     "olmoearth_estimate_map_error",
     "olmoearth_certify_zone",
+    "olmoearth_write_certificate",
+    "olmoearth_verify_certificate",
 )
 
 #: What repeats a verification call's sample, in this order: the design, its
-#: budget and seed, the maps it reads, the labels it grades and the zone's
-#: settings. Inline scores and labels are counted, never copied.
+#: budget and seed (and whether the seed was taken from the map), the maps it
+#: reads, the labels it grades and the zone's settings. Inline scores and
+#: labels are counted, never copied.
 _REPEAT_KEYS = (
     "design",
     "budget",
     "seed",
+    "seed_from_map",
     "result_id",
     "result_id_b",
     "scores_path",
@@ -65,6 +71,11 @@ _REPEAT_KEYS = (
     "alpha",
     "delta",
     "rule",
+    "date",
+    "certificate_path",
+    "map_path",
+    "window",
+    "verified",
 )
 #: Inline arrays a verification call may take: given by their length only.
 _INLINE_KEYS = ("scores", "wrong", "reference", "window_indices")
@@ -181,6 +192,11 @@ class VerificationCall:
                 value: Any = self.design
             elif key == "seed":
                 value = self.seed
+            elif key == "seed_from_map":
+                # The argument only: the plan's result holds a block of that
+                # name. With it, the seed was taken from the map, and the plan
+                # is drawn again with seed_from_map, not with the seed.
+                value = self.arguments.get("seed_from_map") or None
             else:
                 value = self._value(key)
             if value is not None:
@@ -322,20 +338,46 @@ class ProvenanceLog:
         for i, e in enumerate(self.entries, 1):
             ids = e.prediction_id or e.model_id or "-"
             lines.append(
-                f"# {i:>2}. {e.api_call}  "
+                f"# {i:>2}. {_one_line(e.api_call)}  "
                 f"args_sha256={e.request_hash[:12]}  "
-                f"result={e.response_summary}  ids={ids}"
+                f"result={e.response_summary}  ids={_one_line(ids)}"
             )
         if self.verification:
             lines += [
                 "",
                 "# Verification calls: the same design, budget and seed (and the",
-                "# same inputs) draw the same sample again.",
+                "# same inputs) draw the same sample again; a plan with",
+                "# seed_from_map=True took its seed from the map, and is drawn",
+                "# again with seed_from_map and its alpha, delta and rule.",
             ]
             for i, call in enumerate(self.verification_calls(), 1):
                 settings = "  ".join(
-                    f"{k}={v}" for k, v in call.items() if k not in ("tool", "ok")
+                    f"{k}={_one_line(v)}"
+                    for k, v in call.items()
+                    if k not in ("tool", "ok")
                 )
                 state = "" if call["ok"] else "  (failed)"
-                lines.append(f"# {i:>2}. {call['tool']}  {settings}{state}")
+                lines.append(f"# {i:>2}. {_one_line(call['tool'])}  {settings}{state}")
         return "\n".join(lines) + "\n"
+
+
+def _one_line(value: Any) -> str:
+    """``value`` as one comment line of the replay script.
+
+    A value given as a call's argument (a date, a path) can hold a line
+    break, which would end the ``#`` comment and leave the rest of the value
+    as code in a script that says it is runnable. Such a value is written as
+    a JSON string instead, its breaks escaped (``ensure_ascii`` escapes the
+    Unicode line separators too); any other value is written as it is.
+
+    Examples
+    --------
+    >>> _one_line("2024-06-01")
+    '2024-06-01'
+    >>> _one_line("x\\nimport os")
+    '"x\\\\nimport os"'
+    """
+    text = str(value)
+    if not text or text.splitlines() == [text]:
+        return text
+    return json.dumps(text)

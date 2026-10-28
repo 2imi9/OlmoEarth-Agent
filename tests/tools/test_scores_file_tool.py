@@ -10,6 +10,13 @@ and a ``manifest.json`` naming the model, the classes (channel 9
 ``nodata_value_9``, the label fill value) and whether the values are logits.
 Nothing here needs the cluster. The reference for every ranking is
 ``oe_inferencex.review.assess.assess_prediction`` on the same raster.
+
+A run read by ``oe-inferencex from-olmoearth`` is made the way that command
+makes it: an rslearn dataset written here with rasterio (each window's output
+layer GeoTIFF and its ``completed`` marker, as ``rslearn model predict``
+leaves them), read by the package's own reader
+(``oe_inferencex.readers.olmoearth.read_output``) into ``scores_<EPSG>.tif``
+and ``olmoearth_output.json``.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -36,6 +44,7 @@ try:
     import numpy as np
     import rasterio
     from oe_inferencex import cli
+    from oe_inferencex.readers import olmoearth as oe_reader
     from oe_inferencex.review import assess
     from rasterio.transform import Affine
 
@@ -745,3 +754,273 @@ async def test_a_scores_file_whose_classes_do_not_match_its_rows_is_refused(
     )
     out = await _call("olmoearth_review_set", {"scores_path": str(path)})
     assert out["ok"] is False and "map_class" in out["error"]
+
+
+# --------------------------------------------------------------------------- a from-olmoearth run
+
+
+def _softmax(seed: int, c: int, h: int, w: int) -> Any:
+    """``c`` bands of float32 class probabilities, as output_probs writes them."""
+    z = np.random.default_rng(seed).normal(0.0, 1.5, (c, h, w))
+    e = np.exp(z - z.max(0, keepdims=True))
+    return (e / e.sum(0, keepdims=True)).astype(np.float32)
+
+
+def _write_dataset(
+    root: Path, name: str, windows: list[tuple[Any, str, float, float]]
+) -> Path:
+    """An rslearn dataset after ``rslearn model predict``: an output per window.
+
+    Each window is ``(values, crs, x0, y0)``: its ``(C, H, W)`` output in
+    ``windows/default/w<k>/layers/output/probs/geotiff.tif`` at 10 m from
+    ``(x0, y0)``, with the ``completed`` marker the writer leaves.
+    """
+    ds = root / name
+    for k, (values, crs, x0, y0) in enumerate(windows):
+        layer = ds / "windows" / "default" / f"w{k}" / "layers" / "output"
+        (layer / "probs").mkdir(parents=True)
+        c, h, w = values.shape
+        profile = {
+            "driver": "GTiff",
+            "height": h,
+            "width": w,
+            "count": c,
+            "dtype": str(values.dtype),
+            "crs": crs,
+            "transform": Affine(10.0, 0.0, x0, 0.0, -10.0, y0),
+        }
+        with rasterio.open(layer / "probs" / "geotiff.tif", "w", **profile) as dst:
+            dst.write(values)
+        (layer / "completed").write_text("", encoding="utf-8")
+    return ds
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_from_olmoearth_run_is_read_as_the_package_reads_it(
+    _scores_root: Path,
+) -> None:
+    """The directory, its summary or its raster names the run; the pooled
+    windows are the package's assess on the raster from-olmoearth wrote."""
+    first = _softmax(20, 3, 32, 32)
+    first[:, :4, :4] = 0.0  # the fill rslearn leaves where no crop predicted
+    windows = [
+        (first, "EPSG:32737", X0, Y0),
+        (_softmax(21, 3, 32, 32), "EPSG:32737", X0 + 320.0, Y0),
+    ]
+    ds = _write_dataset(_scores_root, "ds", windows)
+    summary = oe_reader.read_output(str(ds), str(_scores_root / "run"))
+    assert [g["label"] for g in summary["grids"]] == ["32737"]
+    got = await _ok("olmoearth_scores_from_file", {"run_dir": "run"})
+    files = got["run_files"]
+    assert files["record"] == "olmoearth_output.json"
+    assert files["written_by"] == "oe-inferencex from-olmoearth"
+    assert files["raster"] == "scores_32737.tif" and files["windows_read"] == 2
+    assert got["values"] == "probabilities" and "top-1 probability" in got["signal"]
+    assert got["classes"] == {"0": "class_0", "1": "class_1", "2": "class_2"}
+    assert got["grid"] == [8, 16] and got["n_windows"] == 128
+    assert got["n_nodata"] == 1 and got["n_nodata_pixels"] == 16
+    assert got["fill_class"] is None and got["date_window"] is None
+    assert got["model_and_raster"].startswith(
+        "model not named by the run's olmoearth_output.json, at a revision the "
+        "run's olmoearth_output.json does not record; raster sha256"
+    )
+
+    raster = _scores_root / "run" / "scores_32737.tif"
+    with rasterio.open(raster) as src:
+        a = src.read()
+    valid = np.isfinite(a).all(axis=0)
+    ref = _package(a, valid, is_logit=False)
+    conf, klass = ref["arrays"]["confidence"], ref["arrays"]["pooled_argmax"]
+    saved = json.loads(Path(got["scores_path"]).read_text(encoding="utf-8"))
+    assert saved["windows"] == np.flatnonzero(ref["arrays"]["valid"].ravel()).tolist()
+    for w, row, k in zip(saved["windows"], saved["scores"], saved["map_class"]):
+        r, c = divmod(w, 16)
+        assert max(row) == conf[r, c] and k == klass[r, c]
+    assert saved["raster"]["path"] == os.path.realpath(raster)
+    for name in ("run/olmoearth_output.json", "run/scores_32737.tif"):
+        again = await _ok("olmoearth_scores_from_file", {"run_dir": name})
+        assert again["scores_file"] == got["scores_file"]
+    assert not (_keys(got) & _BANNED_KEYS) and "EPSG" not in json.dumps(got)
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_run_that_wrote_class_ids_is_refused_with_how_to_get_probabilities(
+    _scores_root: Path,
+) -> None:
+    """rslearn's SegmentationTask writes one band of argmax class ids by
+    default. from-olmoearth refuses it, and so does the tool: given the
+    dataset, or the class-id GeoTIFF itself, saying how to get probabilities
+    (output_probs: true, a float32 layer, the fine-tuned checkpoint)."""
+    ids = np.random.default_rng(22).integers(0, 4, (1, 16, 16)).astype(np.uint8)
+    ds = _write_dataset(_scores_root, "ids", [(ids, "EPSG:32737", X0, Y0)])
+    with pytest.raises(ValueError, match="class ids"):
+        oe_reader.read_output(str(ds), str(_scores_root / "ids_run"))
+    tif = ds / "windows" / "default" / "w0" / "layers" / "output" / "probs"
+    for run_dir in ("ids", str(tif / "geotiff.tif")):
+        out = await _call("olmoearth_scores_from_file", {"run_dir": run_dir})
+        assert out["ok"] is False, run_dir
+        error = out["error"]
+        assert "one band of class ids (0, 1, 2, 3)" in error, error
+        assert "output_probs: true" in error and "float32" in error
+        assert "fine-tuned checkpoint" in error
+        assert "oe-inferencex from-olmoearth DATASET --out RUN" in error
+    # A dataset of probabilities is sent to from-olmoearth first.
+    probs = [(_softmax(23, 3, 16, 16), "EPSG:32737", X0, Y0)]
+    _write_dataset(_scores_root, "probs_ds", probs)
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "probs_ds"})
+    assert out["ok"] is False
+    assert "oe-inferencex from-olmoearth probs_ds --out RUN" in out["error"]
+    (_scores_root / "empty").mkdir()
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "empty"})
+    assert out["ok"] is False and "holds neither manifest.json" in out["error"]
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_run_of_several_crs_is_read_one_raster_at_a_time(
+    _scores_root: Path,
+) -> None:
+    """from-olmoearth writes one scores raster per CRS: the tool asks which,
+    and reads the one named; a per-window classification has no grid."""
+    windows = [
+        (_softmax(24, 3, 16, 16), "EPSG:32737", X0, Y0),
+        (_softmax(25, 3, 16, 16), "EPSG:32736", 500_000.0, 9_000_000.0),
+    ]
+    ds = _write_dataset(_scores_root, "two_crs", windows)
+    oe_reader.read_output(str(ds), str(_scores_root / "run2"))
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "run2"})
+    assert out["ok"] is False and "one scores raster per CRS" in out["error"]
+    assert "scores_32736.tif, scores_32737.tif" in out["error"]
+    got = await _ok("olmoearth_scores_from_file", {"run_dir": "run2/scores_32736.tif"})
+    assert got["run_files"]["raster"] == "scores_32736.tif"
+    assert got["run_files"]["rasters"] == ["scores_32736.tif", "scores_32737.tif"]
+    assert got["grid"] == [4, 4] and got["n_valid"] == 16
+    per_window = _scores_root / "per_window"
+    per_window.mkdir()
+    (per_window / "olmoearth_output.json").write_text(
+        json.dumps({"kind": "per-window probabilities", "bands": 3}),
+        encoding="utf-8",
+    )
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "per_window"})
+    assert out["ok"] is False and "per-window classification" in out["error"]
+
+
+def _class_id_tif(path: Path) -> None:
+    """One band of class ids 41, 42 and 43, as rslearn's default output."""
+    ids = np.array([[41, 42], [43, 41]], dtype=np.uint8).repeat(4, 0).repeat(4, 1)
+    profile = {
+        "driver": "GTiff",
+        "height": 8,
+        "width": 8,
+        "count": 1,
+        "dtype": "uint8",
+        "crs": "EPSG:32737",
+        "transform": Affine(10.0, 0.0, X0, 0.0, -10.0, Y0),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(ids[None])
+
+
+@needs_extra
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="needs symlinks")
+@pytest.mark.asyncio
+async def test_a_raster_linked_from_outside_the_root_is_never_opened(
+    _scores_root: Path, tmp_path: Path
+) -> None:
+    """A directory with no record: its class-id GeoTIFFs are read to say how
+    to get probabilities, but only those inside the scores root. A link to a
+    raster outside it is passed over, so none of its values reach the
+    refusal; a class-id raster inside is still named."""
+    outside = tmp_path / "outside" / "ids.tif"
+    _class_id_tif(outside)
+    linked = _scores_root / "linked"
+    linked.mkdir()
+    os.symlink(outside, linked / "ids.tif")
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "linked"})
+    assert out["ok"] is False and "holds neither manifest.json" in out["error"]
+    assert "41" not in out["error"] and "class ids" not in out["error"]
+    layer = _scores_root / "ds_link" / "windows" / "default" / "w0" / "layers"
+    (layer / "output" / "probs").mkdir(parents=True)
+    os.symlink(outside, layer / "output" / "probs" / "geotiff.tif")
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "ds_link"})
+    assert out["ok"] is False and "is an rslearn dataset" in out["error"]
+    assert "41" not in out["error"] and "class ids (" not in out["error"]
+    _class_id_tif(_scores_root / "inside" / "ids.tif")
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "inside"})
+    assert out["ok"] is False and "class ids (41, 42, 43)" in out["error"]
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_run_record_that_is_not_json_is_refused_by_name(
+    _scores_root: Path,
+) -> None:
+    """A truncated olmoearth_output.json or manifest.json is the tool's
+    refusal naming the file and how to write it again, never a JSON parser's
+    message; a summary whose grid label holds a path names no raster."""
+    for name, record, again in (
+        ("cut_summary", "olmoearth_output.json", "from-olmoearth DATASET --out RUN"),
+        ("cut_manifest", "manifest.json", "score_area.py"),
+    ):
+        run = _scores_root / name
+        run.mkdir()
+        (run / record).write_text('{"grids": [', encoding="utf-8")
+        out = await _call("olmoearth_scores_from_file", {"run_dir": name})
+        assert out["ok"] is False, name
+        assert f"the run's {record} is not valid JSON" in out["error"]
+        assert again in out["error"] and "JSONDecodeError" not in out["error"]
+    escape = _scores_root / "escape"
+    escape.mkdir()
+    (escape / "olmoearth_output.json").write_text(
+        json.dumps({"grids": [{"label": "../x", "shape": [4, 4]}], "bands": 3}),
+        encoding="utf-8",
+    )
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "escape"})
+    assert out["ok"] is False
+    assert "names a raster outside its directory" in out["error"]
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_certificate_plan_needs_every_channel(_scores_root: Path) -> None:
+    """A certificate is of the map as the package reads it, every channel: a
+    scores file that left the label-fill channel out is refused for a plan
+    drawn with seed_from_map, before anything is drawn."""
+    _write_run(_scores_root, "run_cert", _logits(15, 32, 32), np.ones((32, 32), bool))
+    left_out = await _ok("olmoearth_scores_from_file", {"run_dir": "run_cert"})
+    assert left_out["fill_class"]["excluded"] is True
+    out = await _call(
+        "olmoearth_plan_label_sample",
+        {
+            "scores_path": left_out["scores_path"],
+            "budget": 20,
+            "design": "random",
+            "seed_from_map": True,
+            "alpha": 0.2,
+        },
+    )
+    assert out["ok"] is False and "include_fill_class=true" in out["error"]
+    assert not (_scores_root / "certificates").exists()
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_summary_raster_linked_out_of_the_root_is_refused(
+    _scores_root: Path, tmp_path: Path
+) -> None:
+    """The raster a from-olmoearth summary lists is looked up inside the run
+    directory and must resolve inside the scores root: a link to a file
+    outside it is refused as no raster of the run."""
+    windows = [(_softmax(26, 3, 16, 16), "EPSG:32737", X0, Y0)]
+    ds = _write_dataset(_scores_root, "ds_out", windows)
+    oe_reader.read_output(str(ds), str(_scores_root / "run_out"))
+    raster = _scores_root / "run_out" / "scores_32737.tif"
+    outside = tmp_path / "moved.tif"
+    raster.rename(outside)
+    os.symlink(outside, raster)
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "run_out"})
+    assert out["ok"] is False
+    assert "has no raster 'scores_32737.tif'" in out["error"]

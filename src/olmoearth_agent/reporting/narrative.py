@@ -21,9 +21,16 @@ design and its seed; each certified zone with what alpha bounds and
 olmoearth-inferencex's note on what delta counts (``ISSUED_NOTE``), word for
 word, and a zone tried after an earlier one on the same design file with
 another alpha, delta, rule or labels as a second look, not a certified zone;
-each which-map verdict with the test or interval it rests on; labels changed
-on a design file after a result was seen; and the notes of the tool and the
-package that limit each statement. Every figure is formatted from the
+each certificate written or checked (``olmoearth_write_certificate``,
+``olmoearth_verify_certificate``) with the package's statement,
+``ISSUED_NOTE`` and ``ISSUERS_WORD`` (what is taken on the issuer's word),
+word for word, since a certificate restates its zone and never replaces that
+note, and the tool's summary of what a certificate proves (from the
+package's Usage, "certificate and verify"); each which-map verdict with the
+test or interval it rests on; labels changed on a design file after a result
+was seen (other inline labels, another whole-map figure, or another digest
+of the labels); and the notes of the tool and the package that limit each
+statement. Every figure is formatted from the
 tool's value as the tools format their own sentences
 (:func:`~olmoearth_agent.tools.statistical_rules.percent`), or copied from a
 sentence the tool wrote. Without such a result the section says plainly
@@ -44,6 +51,9 @@ from olmoearth_agent.tools.statistical_rules import percent
 PLAN_TOOL = "olmoearth_plan_label_sample"
 ESTIMATE_TOOL = "olmoearth_estimate_map_error"
 CERTIFY_TOOL = "olmoearth_certify_zone"
+#: The certificate a certified zone is packed into, and its check.
+WRITE_CERTIFICATE_TOOL = "olmoearth_write_certificate"
+VERIFY_CERTIFICATE_TOOL = "olmoearth_verify_certificate"
 #: The tool that computes accuracy against labels the caller gives (skill #7):
 #: agreement with those labels, not an error rate estimated from a design.
 METRICS_TOOL = "olmoearth_classification_metrics"
@@ -165,6 +175,23 @@ LABELS_CHANGED = (
 #: The map of a design file whose plan is not in the request.
 MAP_NOT_IN_REQUEST = (
     "named only by its design file (the plan that drew it is not in this request)"
+)
+#: A certificate's notes, each word for word from the tool's result: what it
+#: proves (the tool's), what delta counts and what the issuer's word covers
+#: (olmoearth-inferencex's). The zone's ``ISSUED_NOTE`` is stated with every
+#: certificate: the certificate restates the zone, it does not replace it.
+_CERTIFICATE_NOTES = (
+    ("what_it_proves", "- What a certificate proves (the tool's words): {}"),
+    ("issued_note", "- What delta counts (olmoearth-inferencex's note, verbatim): {}"),
+    (
+        "issuers_word",
+        "- Taken on the issuer's word (olmoearth-inferencex's note, verbatim): {}",
+    ),
+)
+#: A certificate checked against the map the certificate itself names.
+MAP_NOT_GIVEN = (
+    " (the path the certificate names, not a copy given to the check: it shows "
+    "only that the certificate agrees with that file)"
 )
 
 #: A recorded verification call that computed: its tool, arguments and result.
@@ -471,10 +498,15 @@ def _figure(result: Mapping[str, Any]) -> tuple[Any, ...] | None:
 def _same_labels(first: _Call, later: _Call) -> bool:
     """Whether two calls on one design file graded the same labels, as far as seen.
 
-    Different figures, or different labels given inline, are different
-    labels; labels read from a file are compared by their figures only.
+    Different figures, different digests of the labels (``labels_sha256``,
+    which the zone and the certificate return), or different labels given
+    inline, are different labels; labels read from a file with no digest are
+    compared by their figures only.
     """
     (_t1, a1, r1), (_t2, a2, r2) = first, later
+    d1, d2 = r1.get("labels_sha256"), r2.get("labels_sha256")
+    if isinstance(d1, str) and isinstance(d2, str) and d1 != d2:
+        return False
     f1, f2 = _figure(r1), _figure(r2)
     if f1 is not None and f2 is not None and f1 != f2:
         return False
@@ -486,9 +518,10 @@ def _same_labels(first: _Call, later: _Call) -> bool:
 
 
 def _graded(call: _Call) -> bool:
-    """Whether a call graded labels (an estimate, a tested zone, a grading)."""
+    """Whether a call graded labels (an estimate, a zone or certificate, a grading)."""
     tool, _a, r = call
-    return tool in (ESTIMATE_TOOL, CERTIFY_TOOL) and r.get("n_labelled") is not None
+    graders = (ESTIMATE_TOOL, CERTIFY_TOOL, WRITE_CERTIFICATE_TOOL)
+    return tool in graders and r.get("n_labelled") is not None
 
 
 def _zone_settings(
@@ -691,6 +724,138 @@ def _zone(
     return lines, statement
 
 
+def _certificate(
+    arguments: Mapping[str, Any],
+    result: Mapping[str, Any],
+    seed: Any,
+    *,
+    map_named: str,
+    labels_changed: bool,
+    estimated: bool = False,
+) -> tuple[list[str], dict[str, Any]]:
+    """A certificate's lines and statement, from ``olmoearth_write_certificate``.
+
+    The package's statement, ``ISSUED_NOTE`` and what is taken on the
+    issuer's word (``ISSUERS_WORD``), each word for word, and the tool's
+    summary of what a certificate proves; or why none was written (no zone
+    certified on the labels). ``estimated`` says an error rate from the same
+    labels is stated already; else the call's own whole-map estimate (the
+    same labels, as the zone states it) is.
+    """
+    path = _design_path(arguments, result)
+    written = bool(result.get("certificate_written"))
+    lines = [
+        "### Certificate (`olmoearth_write_certificate`)",
+        "",
+        f"- Map: {map_named}.",
+    ]
+    said = result.get("statement")
+    if written:
+        lines += [
+            f"- Written: `{result.get('certificate_path')}`, for the map of "
+            f"{result.get('date')} as the issuer states, and verified by "
+            "olmoearth-inferencex before it was written.",
+            f"- Statement (olmoearth-inferencex's, verbatim): {said}",
+        ]
+    elif isinstance(result.get("reason"), str):
+        lines.append(f"- No certificate: {result['reason']}")
+    lines.append(
+        _labels_line(result.get("n_labelled"), _design_name(result), seed, path)
+    )
+    if labels_changed:
+        lines.append(LABELS_CHANGED)
+    if written:
+        lines += [
+            template.format(result[key])
+            for key, template in _CERTIFICATE_NOTES
+            if isinstance(result.get(key), str)
+        ]
+    lines += _limits(result)
+    whole = _fact(result, "whole_map_estimate")
+    if not estimated and whole and whole.get("sentence"):
+        lines.append(f"- Error rate from the same labels: {whole['sentence']}")
+    statement: dict[str, Any] = {
+        "kind": "certificate",
+        "tool": WRITE_CERTIFICATE_TOOL,
+        "map": map_named,
+        "written": written,
+        "certificate_path": result.get("certificate_path"),
+        "date": result.get("date"),
+        "design": _design_name(result),
+        "seed": seed,
+        "design_path": path,
+        "n_labelled": result.get("n_labelled"),
+        "labels_changed": labels_changed,
+    }
+    statement.update({k: result.get(k) for k in _ZONE_KEYS})
+    return lines, statement
+
+
+def _certificate_check(result: Mapping[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    """A certificate check's lines and statement, from ``olmoearth_verify_certificate``.
+
+    Verified, the statement as certify run again gives it and ``ISSUED_NOTE``;
+    not verified, each failed check in the package's words. The package's
+    notes (what is taken on the issuer's word among them) are stated as given.
+    """
+    verified = bool(result.get("verified"))
+    said = result.get("statement")
+    read = f"`{result.get('map_read')}`" if result.get("map_read") else "not read"
+    lines = [
+        "### Certificate checked (`olmoearth_verify_certificate`)",
+        "",
+        f"- Certificate: `{result.get('certificate_path')}`; map: {read}"
+        + ("" if result.get("map_given") else MAP_NOT_GIVEN)
+        + ".",
+    ]
+    if verified:
+        lines.append(
+            "- Verified: olmoearth-inferencex built it again from the map, its "
+            "labels and its settings, and it is the certificate written."
+        )
+        if isinstance(said, str):
+            lines.append(f"- Statement (olmoearth-inferencex's, verbatim): {said}")
+    else:
+        raw = result.get("checks")
+        checks = raw if isinstance(raw, Mapping) else {}
+        failed = [
+            f"{name}: {(checks.get(name) or {}).get('detail')}"
+            for name in result.get("failed_checks") or []
+        ]
+        lines.append(
+            "- Not verified, so its statement is not shown to hold for this map: "
+            + ("; ".join(failed) or "no check passed")
+            + "."
+        )
+    window = result.get("window_lookup")
+    cell = window.get("window") if isinstance(window, Mapping) else None
+    if isinstance(window, Mapping) and isinstance(cell, list) and len(cell) == 2:
+        lines.append(f"- Window {cell[0]}, {cell[1]}: {window.get('where')}.")
+    lines += [
+        template.format(result[key])
+        for key, template in _CERTIFICATE_NOTES[:2]
+        if verified and isinstance(result.get(key), str)
+    ]
+    lines += [
+        _PACKAGE_NOTE.format(note)
+        for note in result.get("notes") or []
+        if isinstance(note, str) and note.strip()
+    ]
+    lines += _limits(result)
+    statement: dict[str, Any] = {
+        "kind": "certificate_check",
+        "tool": VERIFY_CERTIFICATE_TOOL,
+        "verified": verified,
+        "certificate_path": result.get("certificate_path"),
+        "map_read": result.get("map_read"),
+        "map_given": bool(result.get("map_given")),
+        "failed_checks": list(result.get("failed_checks") or []),
+        "seed": result.get("seed"),
+        "window": cell,
+    }
+    return lines, statement
+
+
 def _which_map(
     arguments: Mapping[str, Any],
     result: Mapping[str, Any],
@@ -759,7 +924,10 @@ def accuracy_section(
         The section's Markdown lines, and ``accuracy``: ``measured`` (an
         error rate was measured: an estimate, or a zone call that tested
         labels of a random design, certified or not, which states the
-        whole-map estimate from them), ``which_map`` (a which-map grading
+        whole-map estimate from them, or a certificate call whose result
+        carries that estimate, certificate written or not; a certificate
+        result without it states no error rate and measures nothing),
+        ``which_map`` (a which-map grading
         was), ``labels_metrics``, and ``statements``, each statement's kind,
         map, design, seed, design file, labels and figures, copied from the
         tool result, with whether its labels changed after an earlier result
@@ -809,6 +977,10 @@ def accuracy_section(
         if tool == ESTIMATE_TOOL and "which_map" in r
     ]
     zones = [(i, a, r) for i, (tool, a, r) in indexed if tool == CERTIFY_TOOL]
+    written = [
+        (i, a, r) for i, (tool, a, r) in indexed if tool == WRITE_CERTIFICATE_TOOL
+    ]
+    checked = [r for tool, _a, r in calls if tool == VERIFY_CERTIFICATE_TOOL]
     used = {str(_design_path(a, r)) for tool, a, r in calls if tool != PLAN_TOOL}
     used.discard("None")
     waiting = [
@@ -817,7 +989,13 @@ def accuracy_section(
         if tool == PLAN_TOOL and str(r.get("design_path")) not in used
     ]
     estimated = {str(_design_path(a, r)) for _i, a, r in rates}
-    measured = bool(rates) or any(r.get("n_labelled") is not None for _i, a, r in zones)
+    # A certificate call measured an error rate only when its result states
+    # the whole-map estimate from its labels, as a zone's does.
+    measured = (
+        bool(rates)
+        or any(r.get("n_labelled") is not None for _i, _a, r in zones)
+        or any(_fact(r, "whole_map_estimate") for _i, _a, r in written)
+    )
 
     def look(i: int) -> dict[str, Any]:
         """What call ``i`` changed after an earlier one (:func:`_second_looks`)."""
@@ -847,6 +1025,26 @@ def accuracy_section(
         )
         if _fact(r, "whole_map_estimate"):
             estimated.add(path)  # stated once per design file
+        body += [*lines, ""]
+        statements.append(statement)
+    for i, a, r in written:
+        path = str(_design_path(a, r))
+        changed_labels = look(i)["labels_changed"]
+        lines, statement = _certificate(
+            a,
+            r,
+            seed_of(a, r),
+            map_named=map_of(a, r),
+            labels_changed=changed_labels,
+            # other labels give another figure, stated beside LABELS_CHANGED
+            estimated=path in estimated and not changed_labels,
+        )
+        if _fact(r, "whole_map_estimate"):
+            estimated.add(path)
+        body += [*lines, ""]
+        statements.append(statement)
+    for r in checked:
+        lines, statement = _certificate_check(r)
         body += [*lines, ""]
         statements.append(statement)
     for i, a, r in graded:

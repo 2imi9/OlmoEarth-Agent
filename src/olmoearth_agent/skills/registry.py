@@ -28,6 +28,7 @@ from typing import Literal
 from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.automate import build_automate_tools
 from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
+from olmoearth_agent.tools.certificate import build_certificate_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
 from olmoearth_agent.tools.compare import build_compare_tools
@@ -385,16 +386,19 @@ SKILLS: list[SkillSpec] = [
         "implemented",
         "Label-free review set from the model's own top-1-minus-top-2 margin: "
         "which windows to check first at a budget (from caller scores, from a "
-        "direct model run's scores raster and manifest, or from a Studio "
+        "direct model run's files, score_area.py's scores raster and manifest "
+        "or what oe-inferencex from-olmoearth writes, or from a Studio "
         "result whose band is a binary score in [0, 1], sampled on a grid), "
         "boundary-first ordering, the attainable-ceiling arithmetic, and "
         "(opt-in) a grader for any candidate audit rule. Then how wrong the "
         "map is: a labelled sample drawn by a design, its error rate with the "
         "interval that design earns, per-class accuracy and a certified zone "
-        "(the optional olmoearth-inferencex extra). A review set is not a "
-        "sample. Which of two class maps of one time is more accurate: labels "
-        "on a random sample of the windows where they differ, graded by the "
-        "exact sign test and an interval on the difference.",
+        "(the optional olmoearth-inferencex extra), which a direct run's map "
+        "can carry as a certificate anyone holding the map can check. A "
+        "review set is not a sample. Which of two class maps of one time is "
+        "more accurate: labels on a random sample of the windows where they "
+        "differ, graded by the exact sign test and an interval on the "
+        "difference.",
         [
             "olmoearth_review_set",
             "olmoearth_review_set_from_result",
@@ -405,6 +409,8 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_plan_label_sample",
             "olmoearth_estimate_map_error",
             "olmoearth_certify_zone",
+            "olmoearth_write_certificate",
+            "olmoearth_verify_certificate",
         ],
         opt_in={
             "olmoearth_grade_review_rule": "needs per-unit error labels a Studio "
@@ -485,6 +491,9 @@ def build_default_registry() -> ToolRegistry:
     # How wrong is the map (skill #18, second half): design-based estimation
     # through the optional inferencex extra; the tools say so when it is absent.
     add(build_estimation_tools())
+    # A certified zone of a direct run's map packed into a certificate, and its
+    # check (#18): the same extra, no other dependency, so core like the rest.
+    add(build_certificate_tools())
     add(build_narrative_tools())
     # Opt-in: literature search (#15).
     add(build_litsearch_tools())

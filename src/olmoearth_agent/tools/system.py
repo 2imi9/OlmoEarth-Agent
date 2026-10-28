@@ -33,6 +33,7 @@ import tempfile
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.security.child_env import scrubbed_env
 from olmoearth_agent.tools.registry import (
     Capability,
     RegisteredTool,
@@ -45,28 +46,6 @@ _DEFAULT_TIMEOUT = 30.0
 #: Per-stream output cap (chars), so a noisy run can't flood the context window.
 _MAX_OUTPUT = 8000
 
-#: Env-var name fragments / prefixes that mark a credential. Matched
-#: case-insensitively; any match is dropped from the subprocess environment so
-#: opt-in executed code cannot read the agent's own Studio/LLM/cloud keys.
-_SECRET_FRAGMENTS = (
-    "API_KEY",
-    "APIKEY",
-    "SECRET",
-    "TOKEN",
-    "PASSWORD",
-    "PASSWD",
-    "CREDENTIAL",
-)
-_SECRET_PREFIXES = (
-    "OLMOEARTH_",
-    "LLM_",
-    "AWS_",
-    "ANTHROPIC_",
-    "OPENAI_",
-    "GEMINI_",
-    "HF_",
-)
-
 
 def _enabled() -> bool:
     """True only if the operator opted into code execution."""
@@ -78,18 +57,11 @@ def _scrubbed_env() -> dict[str, str]:
 
     Keeps OS-essential variables (PATH, SystemRoot, TEMP, ...) so the
     interpreter still launches on every platform, but drops the agent's own
-    credentials. Defence-in-depth, not a complete allowlist sandbox: a snippet
-    still inherits non-secret env and is not network-isolated.
+    credentials (the one denylist, :mod:`olmoearth_agent.security.child_env`).
+    Defence-in-depth, not a complete allowlist sandbox: a snippet still
+    inherits non-secret env and is not network-isolated.
     """
-    env: dict[str, str] = {}
-    for name, value in os.environ.items():
-        upper = name.upper()
-        if upper.startswith(_SECRET_PREFIXES):
-            continue
-        if any(fragment in upper for fragment in _SECRET_FRAGMENTS):
-            continue
-        env[name] = value
-    return env
+    return scrubbed_env()
 
 
 def _timeout() -> float:

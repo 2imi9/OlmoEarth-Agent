@@ -15,6 +15,7 @@ from olmoearth_agent.reporting.narrative import (
     INTERVAL_NAMES,
     LABELS_CHANGED,
     LABELS_METRICS_NOTE,
+    MAP_NOT_GIVEN,
     MAP_NOT_IN_REQUEST,
     MEASURED_LEAD,
     NEITHER_MAP_MEASURED,
@@ -577,3 +578,197 @@ def test_the_section_reads_a_range_a_refused_zone_and_unlabelled_designs() -> No
     assert rate["design_path"] is None and rate["seed"] is None
     assert by_range["seed"] == 2 and by_range["estimate"] is None
     assert zone["certified"] is False and zone["n_labelled"] is None
+
+
+# --------------------------------------------------------------------------- certificates
+
+_WRITE = "olmoearth_write_certificate"
+_VERIFY = "olmoearth_verify_certificate"
+_MAP_SEED = 2**100 + 7
+#: A certificate as olmoearth_write_certificate returns it (trimmed).
+_WRITTEN = {
+    "design_path": "/w/map.json",
+    "design": "random",
+    "seed": _MAP_SEED,
+    "alpha": 0.2,
+    "delta": 0.1,
+    "rule": "prefix",
+    "n_labelled": 60,
+    "certified": True,
+    "certificate_written": True,
+    "certificate_path": "/w/c/certificate.json",
+    "date": "2024-06-01",
+    "n_zone": 128,
+    "coverage": 1.0,
+    "statement": "The package's statement of the zone.",
+    "what_it_proves": "The tool's words on what a certificate proves.",
+    "issued_note": "The package's note on what delta counts.",
+    "issuers_word": "The package's note on the issuer's word.",
+    "labels_sha256": "0123456789ab",
+    "must_state": ["It certifies the zone's windows taken together."],
+    "facts": [
+        {
+            "id": "whole_map_estimate",
+            "sentence": "The rate from 60 labels.",
+            "estimate": 0.0,
+        },
+        {"id": "certificate", "sentence": "The zone is packed."},
+    ],
+}
+#: A write call that certified nothing, with the whole-map estimate.
+_NOT_WRITTEN = {
+    "design_path": "/w/none.json",
+    "design": "random",
+    "seed": 3,
+    "n_labelled": 60,
+    "certified": False,
+    "certificate_written": False,
+    "reason": "No zone is certified on these labels.",
+    "facts": [
+        {
+            "id": "whole_map_estimate",
+            "sentence": "The rate from these 60 labels.",
+            "estimate": 0.5,
+        }
+    ],
+}
+#: A certificate checked against a copy of the map, verified.
+_CHECKED = {
+    "verified": True,
+    "certificate_path": "/w/c/certificate.json",
+    "map_read": "/w/copy.tif",
+    "map_given": True,
+    "failed_checks": [],
+    "statement": "The statement certify gives again.",
+    "notes": ["The package's note on the issuer's word."],
+    "seed": _MAP_SEED,
+    "what_it_proves": "The tool's words on what a certificate proves.",
+    "issued_note": "The package's note on what delta counts.",
+    "window_lookup": {"window": [2, 3], "inside": True, "where": "inside the zone"},
+}
+#: A tampered certificate, checked against the map it names.
+_TAMPERED = {
+    "verified": False,
+    "certificate_path": "/w/t/certificate.json",
+    "map_read": "/w/map.tif",
+    "map_given": False,
+    "checks": {"bundle": {"ok": False, "detail": "labels.csv changed"}},
+    "failed_checks": ["bundle"],
+    "statement": None,
+    "issued_note": "The package's note on what delta counts.",
+}
+
+
+def test_a_certificate_is_stated_with_its_zones_note_and_its_check() -> None:
+    """A certificate restates its zone: the package's statement, what it
+    proves, ISSUED_NOTE and the issuer's word, each verbatim, with its seed;
+    a check states verified or each failed check, and the window asked."""
+    lines, accuracy = accuracy_section(
+        [
+            _call(_WRITE, _WRITTEN, design_path="/w/map.json", wrong=[0] * 60),
+            _call(_VERIFY, _CHECKED, certificate_path="/w/c", window=[2, 3]),
+            _call(_VERIFY, _TAMPERED, certificate_path="/w/t"),
+            _call(_WRITE, _NOT_WRITTEN, design_path="/w/none.json"),
+        ]
+    )
+    assert accuracy["measured"] is True and lines[2] == MEASURED_LEAD
+    assert "### Certificate (`olmoearth_write_certificate`)" in lines
+    for line in (
+        "- Written: `/w/c/certificate.json`, for the map of 2024-06-01 as the "
+        "issuer states, and verified by olmoearth-inferencex before it was "
+        "written.",
+        "- Statement (olmoearth-inferencex's, verbatim): The package's statement "
+        "of the zone.",
+        f"- Labels, design and seed: 60 labels on the random design, seed "
+        f"{_MAP_SEED}; design file `/w/map.json`.",
+        "- What a certificate proves (the tool's words): The tool's words on "
+        "what a certificate proves.",
+        "- What delta counts (olmoearth-inferencex's note, verbatim): The "
+        "package's note on what delta counts.",
+        "- Taken on the issuer's word (olmoearth-inferencex's note, verbatim): "
+        "The package's note on the issuer's word.",
+        "- Limit stated by the tool: It certifies the zone's windows taken "
+        "together.",
+        "### Certificate checked (`olmoearth_verify_certificate`)",
+        "- Certificate: `/w/c/certificate.json`; map: `/w/copy.tif`.",
+        "- Statement (olmoearth-inferencex's, verbatim): The statement certify "
+        "gives again.",
+        "- Window 2, 3: inside the zone.",
+        "- olmoearth-inferencex's note: The package's note on the issuer's word.",
+        "- Not verified, so its statement is not shown to hold for this map: "
+        "bundle: labels.csv changed.",
+        f"- Certificate: `/w/t/certificate.json`; map: `/w/map.tif`{MAP_NOT_GIVEN}.",
+        "- No certificate: No zone is certified on these labels.",
+        # each write call states the whole-map estimate from its labels
+        "- Error rate from the same labels: The rate from 60 labels.",
+        "- Error rate from the same labels: The rate from these 60 labels.",
+    ):
+        assert line in lines, line
+    # The zone's note is stated with every certificate written or verified.
+    note = "- What delta counts (olmoearth-inferencex's note, verbatim): The "
+    assert sum(line.startswith(note) for line in lines) == 2
+    kinds = [s["kind"] for s in accuracy["statements"]]
+    assert kinds == ["certificate"] * 2 + ["certificate_check"] * 2
+    written, none, checked, tampered = accuracy["statements"]
+    assert written["written"] is True and written["seed"] == _MAP_SEED
+    assert (written["n_zone"], written["alpha"], written["date"]) == (
+        128,
+        0.2,
+        "2024-06-01",
+    )
+    assert none["written"] is False and none["certificate_path"] is None
+    assert checked["verified"] is True and checked["window"] == [2, 3]
+    assert tampered["failed_checks"] == ["bundle"] and not tampered["map_given"]
+
+
+def test_a_certificate_call_with_no_estimate_measures_nothing() -> None:
+    """A certificate call measures an error rate only when its result states
+    the whole-map estimate from its labels, as olmoearth_write_certificate's
+    does: one without it, which certified nothing, leaves the section saying
+    no error rate was measured (and the narrative tool's guard on a typed
+    figure in place)."""
+    bare = {k: v for k, v in _NOT_WRITTEN.items() if k != "facts"}
+    lines, accuracy = accuracy_section(
+        [_call(_WRITE, bare, design_path="/w/none.json")]
+    )
+    assert accuracy["measured"] is False and lines[2] == NOT_MEASURED
+    assert "- No certificate: No zone is certified on these labels." in lines
+    lines, accuracy = accuracy_section(
+        [_call(_WRITE, _NOT_WRITTEN, design_path="/w/none.json")]
+    )
+    assert accuracy["measured"] is True and lines[2] == MEASURED_LEAD
+    stated = "- Error rate from the same labels: The rate from these 60 labels."
+    assert stated in lines
+
+
+def test_a_certificate_on_other_labels_than_its_zone_is_said() -> None:
+    """certify_zone on one label file, then a certificate on another with the
+    same whole-map figure (as many windows wrong): the labels' digests
+    differ, so the certificate is stated with LABELS_CHANGED and its own
+    figure. The same digest says no change."""
+    figure = {
+        "id": "whole_map_estimate",
+        "sentence": "The rate from 60 labels.",
+        "estimate": 0.05,
+        "low": 0.01,
+        "high": 0.14,
+    }
+    zone = {**_ZONE, "labels_sha256": "aaaaaaaaaaaa", "facts": [figure]}
+
+    def written(digest: str, labels: str) -> dict[str, Any]:
+        result = {**_WRITTEN, "labels_sha256": digest, "facts": [figure]}
+        return _call(_WRITE, result, design_path="/w/map.json", labels_path=labels)
+
+    first = _call(
+        _CERTIFY, zone, design_path="/w/map.json", labels_path="/w/a.csv", alpha=0.1
+    )
+    stated = "- Error rate from the same labels: The rate from 60 labels."
+    lines, accuracy = accuracy_section([first, written("bbbbbbbbbbbb", "/w/b.csv")])
+    zone_said, certificate = accuracy["statements"]
+    assert zone_said["kind"] == "certified_zone"
+    assert certificate["kind"] == "certificate"
+    assert certificate["labels_changed"] is True and LABELS_CHANGED in lines
+    assert lines.count(stated) == 2
+    lines, accuracy = accuracy_section([first, written("aaaaaaaaaaaa", "/w/a.csv")])
+    assert accuracy["statements"][1]["labels_changed"] is False
+    assert LABELS_CHANGED not in lines and lines.count(stated) == 1

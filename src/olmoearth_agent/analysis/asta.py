@@ -36,6 +36,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from olmoearth_agent.security.child_env import scrubbed_env
 from olmoearth_agent.security.paths import workspace_root
 
 #: Env var overriding the CLI binary (absolute path or name on PATH).
@@ -55,27 +56,6 @@ _AUTHOR_CAP = 10
 _STDERR_TAIL = 600
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-# Same policy as tools/system.py: drop the agent's own credentials from the
-# child env — but ASTA_* must pass through (the CLI authenticates with it).
-_SECRET_FRAGMENTS = (
-    "API_KEY",
-    "APIKEY",
-    "SECRET",
-    "TOKEN",
-    "PASSWORD",
-    "PASSWD",
-    "CREDENTIAL",
-)
-_SECRET_PREFIXES = (
-    "OLMOEARTH_",
-    "LLM_",
-    "AWS_",
-    "ANTHROPIC_",
-    "OPENAI_",
-    "GEMINI_",
-    "HF_",
-)
 
 
 class AstaUnavailableError(RuntimeError):
@@ -106,19 +86,13 @@ def _timeout_s() -> float:
 
 
 def _scrubbed_env() -> dict[str, str]:
-    """Child env minus the agent's own credentials; ``ASTA_*`` passes through."""
-    env: dict[str, str] = {}
-    for name, value in os.environ.items():
-        upper = name.upper()
-        if upper.startswith("ASTA"):
-            env[name] = value
-            continue
-        if upper.startswith(_SECRET_PREFIXES):
-            continue
-        if any(fragment in upper for fragment in _SECRET_FRAGMENTS):
-            continue
-        env[name] = value
-    return env
+    """Child env minus the agent's own credentials; ``ASTA_*`` passes through.
+
+    The same denylist as every child the agent starts
+    (:mod:`olmoearth_agent.security.child_env`): the CLI authenticates with
+    its own ``ASTA_*`` variables, which pass whatever they hold.
+    """
+    return scrubbed_env(keep_prefixes=("ASTA",))
 
 
 async def _run_cli(argv: list[str]) -> tuple[int, str, str]:
