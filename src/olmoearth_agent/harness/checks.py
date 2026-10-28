@@ -29,14 +29,21 @@ themselves. Besides numbers, they read three keys a tool's result may carry
   The forbidden-claim check reads ``which_map`` (``more_accurate``,
   ``n_labelled``, ``n_a_right``, ``n_b_right``): a map named more accurate
   with the test or interval and the labels of a grading that names it is
-  the which-map rule followed, not a claim without labels.
-  ``whole_map_estimate`` and any other id are shown, never checked.
+  the which-map rule followed, not a claim without labels. It reads
+  whether ``whole_map_estimate`` is in the run (``accuracy_not_measured``
+  holds only while it is not, and while no ``olmoearth_classification_metrics``
+  call computed an accuracy); that and any other id are shown, never
+  checked.
 - ``must_state``: at most :data:`MUST_STATE_MAX` short sentences (at most
   :data:`MUST_STATE_MAX_WORDS` words each) the answer must convey whenever
   it reports that result.
 - ``forbidden_claims``: ``[{"id", "why"}]``, claims the answer must not make
   about that result; :data:`FORBIDDEN_DETECTORS` holds a detector per id,
   and an id without one is ignored.
+
+A result may also list keys of its own under ``not_a_source``: text that
+renders the call's arguments (the case narrative's ``markdown``), from which
+the number check takes no number (:attr:`RunEvidence.pool`).
 
 The detectors are regular expressions over one sentence at a time, and they
 are conservative on purpose: a false alarm costs a rewrite and, when it
@@ -62,6 +69,7 @@ from dataclasses import dataclass, field
 from functools import cached_property, lru_cache, partial
 from typing import Any
 
+from olmoearth_agent.analysis.output_contract import NOT_A_SOURCE
 from olmoearth_agent.harness.grounding import NumberPool, tokenize
 
 logger = logging.getLogger(__name__)
@@ -156,17 +164,25 @@ class RunEvidence:
         """The numbers of the tool results and the user's messages.
 
         Also the paths the harness spilled results to (the model is told
-        them), and, on the ``"web"`` surface, the earlier assistant turns.
+        them), and, on the ``"web"`` surface, the earlier assistant turns. A
+        result's keys listed under its ``not_a_source`` are left out
+        (:func:`_as_source`): they render the call's own arguments, so a
+        number the model typed into them is the model's.
         """
         earlier = self.assistant_messages if self.surface == "web" else []
         return NumberPool(
             [
-                *(t.envelope for t in self.tools),
+                *(_as_source(t.envelope) for t in self.tools),
                 *(t.spilled_to for t in self.tools if t.spilled_to),
                 *self.user_messages,
                 *earlier,
             ]
         )
+
+    @cached_property
+    def earlier_turns_pool(self) -> NumberPool:
+        """The numbers of the earlier assistant turns alone (``"web"`` only)."""
+        return NumberPool(self.assistant_messages if self.surface == "web" else [])
 
     def contract(self, key: str) -> Iterator[tuple[ToolRecord, Any]]:
         """Every item of the list a successful tool result holds under ``key``."""
@@ -312,6 +328,27 @@ class RunEvidence:
                 named += [(k, v) for k, v in _strings(record.result) if _is_path(v)]
             out.update(path for key, path in named if _holds_list(key, path))
         return frozenset(out)
+
+
+def _as_source(envelope: Any) -> Any:
+    """``envelope`` as a source of numbers: less its result's ``not_a_source`` keys.
+
+    A result lists there the keys whose text renders the call's arguments
+    (``analysis.output_contract.NOT_A_SOURCE``): the case narrative's
+    ``markdown`` holds the title and results the model typed beside the
+    run's tool results, whose numbers the pool takes from those results'
+    own records. Any other envelope is returned as it is.
+    """
+    if not isinstance(envelope, Mapping):
+        return envelope
+    result = envelope.get("result")
+    if not isinstance(result, Mapping):
+        return envelope
+    skip = result.get(NOT_A_SOURCE)
+    if not isinstance(skip, list) or not skip:
+        return envelope
+    kept = {k: v for k, v in result.items() if k not in skip}
+    return {**envelope, "result": kept}
 
 
 def _property_names(obj: Any, depth: int = 0) -> Iterator[tuple[list[str], set[str]]]:
@@ -2089,28 +2126,158 @@ def _certify_nonrandom(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     return any(_unnegated(r"\bcertif\w*", s))
 
 
-def _error_rate_without_labels(s: str, record: ToolRecord, run: RunEvidence) -> bool:
-    if _negated(s) or re.search(
-        r"\b(?:would|if|once|after|need|needs|requires?|estimate|overstate\w*|"
-        r"can|could|will|label\w*)\b",
-        s,
+#: An error rate or accuracy given as a figure: "the error rate is about
+#: 12%", "12% of windows are wrong".
+_ERROR_RATE_FIGURE_RES = (
+    re.compile(
+        r"\b(?:error\s+rate|accuracy|misclassification\s+rate|share\s+wrong)\b"
+        r"[^.;]{0,30}?(?:is|of|at|about|around|~|≈|=|:)\s*~?\d",
         re.I,
-    ):
+    ),
+    re.compile(
+        r"\d+(?:\.\d+)?\s*%\s+(?:of\s+(?:the\s+)?(?:windows|map|pixels|cells)\s+)?"
+        r"(?:are\s+|is\s+)?(?:wrong|misclassified|in\s+error)\b",
+        re.I,
+    ),
+)
+#: An accuracy given as a share right: "the map is 94% accurate", "94%
+#: accuracy", "91% correct" (a stakeholder report's title, as a model types
+#: it). Read by ``accuracy_not_measured`` only: in a measured run a class's
+#: "80.0% correct" is the per-class table's, which the plan's
+#: ``error_rate_without_labels`` must not flag.
+_ACCURACY_FIGURE_RE = re.compile(
+    r"\d+(?:\.\d+)?\s*%\s+(?:overall\s+)?(?:accurate|accuracy|correct)\b", re.I
+)
+#: What makes such a figure no claim about a plan: a need or condition
+#: ("would", "needs"), an estimate named as one, or labels named as its source.
+_ERROR_RATE_HEDGE_RE = re.compile(
+    r"\b(?:would|if|once|after|need|needs|requires?|estimate|overstate\w*|"
+    r"can|could|will|label\w*)\b",
+    re.I,
+)
+#: What makes such a figure no claim in a run that measured none: a need, a
+#: condition or a modal only. Labels or an estimate named as its source do
+#: not: with no graded labels in the run, they name a source that is not there
+#: ("from the 300 labelled windows, the map's accuracy is 94%").
+_NOT_MEASURED_HEDGE_RE = re.compile(
+    r"\b(?:would|if|once|after|need|needs|requires?|can|could|will)\b", re.I
+)
+#: A figure of the which-map grading, the difference in accuracy between two
+#: maps, which the grading's next steps tell the answer to report: "the
+#: difference in accuracy, a minus b, is 5.6 points".
+_TWO_MAP_DIFFERENCE_RE = re.compile(
+    r"\bdifference\b|\ba\s+minus\s+b\b|\bpercentage\s+points?\b"
+    r"|\bpoints?\s+(?:higher|lower|more|less|above|below|ahead|behind)\b",
+    re.I,
+)
+#: The tool that computes accuracy against labels the caller gives (skill #7).
+CLASSIFICATION_METRICS_TOOL = "olmoearth_classification_metrics"
+
+
+def _states_error_rate(s: str) -> bool:
+    """Whether ``s`` states an error rate as a figure, as a claim about a plan.
+
+    Not under a negation, a need or condition, a named estimate, or labels
+    named as its source; read by ``error_rate_without_labels``.
+    """
+    if _negated(s) or _ERROR_RATE_HEDGE_RE.search(s):
+        return False
+    return any(r.search(s) for r in _ERROR_RATE_FIGURE_RES)
+
+
+def states_accuracy_figure(s: str) -> bool:
+    """Whether ``s`` states an error rate or accuracy as a figure, as a claim.
+
+    The figures ``error_rate_without_labels`` reads, and an accuracy given as
+    a share right ("94% accurate", "94% accuracy", "91% correct"). Not under a
+    negation, a need, a condition or a modal (:data:`_NOT_MEASURED_HEDGE_RE`);
+    labels or an estimate named as its source do not excuse it. Read by
+    ``accuracy_not_measured`` and by the stakeholder report
+    (``olmoearth_case_narrative``), which refuses a title or result typed with
+    such a figure.
+
+    Parameters
+    ----------
+    s
+        One sentence.
+
+    Returns
+    -------
+    bool
+        Whether it states the figure as a claim.
+
+    Examples
+    --------
+    >>> states_accuracy_figure("Flood extent: 94% accurate")
+    True
+    >>> states_accuracy_figure("The map's accuracy has not been measured.")
+    False
+    """
+    if _negated(s) or _NOT_MEASURED_HEDGE_RE.search(s):
         return False
     return bool(
-        re.search(
-            r"\b(?:error\s+rate|accuracy|misclassification\s+rate|share\s+wrong)\b"
-            r"[^.;]{0,30}?(?:is|of|at|about|around|~|≈|=|:)\s*~?\d",
-            s,
-            re.I,
-        )
-        or re.search(
-            r"\d+(?:\.\d+)?\s*%\s+(?:of\s+(?:the\s+)?(?:windows|map|pixels|cells)\s+)?"
-            r"(?:are\s+|is\s+)?(?:wrong|misclassified|in\s+error)\b",
-            s,
-            re.I,
-        )
+        _ACCURACY_FIGURE_RE.search(s)
+        or any(r.search(s) for r in _ERROR_RATE_FIGURE_RES)
     )
+
+
+def _two_map_difference(s: str, run: RunEvidence) -> bool:
+    """Whether ``s`` gives a which-map grading's difference in accuracy.
+
+    The grading's next steps tell the answer to report "the difference in
+    accuracy, a minus b, with its 95% interval as returned"; it is no map's
+    own accuracy, and the number check holds it to the grading.
+    """
+    return bool(run.facts("which_map")) and bool(_TWO_MAP_DIFFERENCE_RE.search(s))
+
+
+def _error_rate_without_labels(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """An error rate figure about a plan, which holds no labels.
+
+    Not a which-map grading's difference in accuracy (:func:`_two_map_difference`):
+    the two-map plan forbids this id too, and its grading tells the answer to
+    report that difference.
+    """
+    return not _two_map_difference(s, run) and _states_error_rate(s)
+
+
+def _restated_from_an_earlier_turn(s: str, run: RunEvidence) -> bool:
+    """Whether every figure of ``s`` is one an earlier assistant turn stated.
+
+    On the ``"web"`` surface each message is a run of its own, and its earlier
+    turns were checked when first shown (:attr:`RunEvidence.pool` takes them
+    as a source): a rate measured in an earlier message is restated, not
+    invented. On ``"cli"`` they are no source.
+    """
+    if run.surface != "web" or not run.assistant_messages:
+        return False
+    figures = [t for t in tokenize(s) if not t.exempt]
+    earlier = run.earlier_turns_pool
+    return bool(figures) and all(earlier.supports(t) for t in figures)
+
+
+def _accuracy_not_measured(s: str, record: ToolRecord, run: RunEvidence) -> bool:
+    """An error rate or accuracy figure in a run that measured none.
+
+    Forbidden by the stakeholder report (``olmoearth_case_narrative``) of a
+    run with no graded labels: "the map's error rate is about 12%", or "94%
+    accurate" repeated from a title (the report refuses a title or result
+    typed with such a figure, :func:`states_accuracy_figure`). Not read once
+    the run holds a measured error rate (a ``whole_map_estimate`` fact of
+    ``olmoearth_estimate_map_error`` or ``olmoearth_certify_zone``) or an
+    accuracy ``olmoearth_classification_metrics`` computed against the
+    caller's labels, whose figures the number check holds to that result.
+    Nor for a which-map grading's difference in accuracy (a minus b), which
+    its next steps tell the answer to report, or, on the web surface, for a
+    figure an earlier turn stated.
+    """
+    if run.facts("whole_map_estimate") or any(
+        t.ok and t.name == CLASSIFICATION_METRICS_TOOL for t in run.tools
+    ):
+        return False
+    if _two_map_difference(s, run) or _restated_from_an_earlier_turn(s, run):
+        return False
+    return states_accuracy_figure(s)
 
 
 def _error_rate_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool:
@@ -3558,6 +3725,7 @@ FORBIDDEN_DETECTORS: dict[str, Callable[[str, ToolRecord, RunEvidence], bool]] =
     "margin_as_error_probability": _margin_as_error_probability,
     "more_accurate_without_its_test": _more_accurate_without_its_test,
     "zone_for_a_class_map": _zone_for_a_class_map,
+    "accuracy_not_measured": _accuracy_not_measured,
 }
 
 

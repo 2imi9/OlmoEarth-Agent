@@ -294,7 +294,8 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-provenance",
         "Report",
         "implemented",
-        "Manifest wrapper over every tool call; emits replay script.",
+        "Manifest wrapper over every tool call; emits replay script; lists "
+        "each verification call's design and seed.",
         ["olmoearth_provenance_summary"],
     ),
     SkillSpec(
@@ -302,7 +303,9 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-case-narrative",
         "Report",
         "implemented",
-        "Stakeholder Markdown writeup with tile URLs + freshness gate.",
+        "Stakeholder Markdown writeup with tile URLs + freshness gate; states "
+        "the accuracy the request's verification tools measured, or that none "
+        "was.",
         ["olmoearth_case_narrative"],
     ),
     SkillSpec(

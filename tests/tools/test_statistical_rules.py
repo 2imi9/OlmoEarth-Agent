@@ -110,6 +110,7 @@ CONTRACT_IDS = {
     "margin_as_error_probability",
     "more_accurate_without_its_test",
     "zone_for_a_class_map",
+    "accuracy_not_measured",
 }
 
 
@@ -170,6 +171,33 @@ def test_every_forbidden_id_is_one_of_the_contracts_fixed_ids() -> None:
     assert (
         rules.SIMPLE_RANDOM_INTERVAL == "simple_random_interval_for_stratified_design"
     )
+
+
+@pytest.mark.parametrize("which_map", [False, True])
+def test_a_report_of_no_measured_accuracy_states_it_and_forbids_a_figure(
+    which_map: bool,
+) -> None:
+    """The stakeholder report's contract when the run measured no error rate:
+    one must_state sentence of the contract's length, and the fixed id."""
+    stated = (
+        rules.NEITHER_MAP_MEASURED_MUST_STATE
+        if which_map
+        else rules.NOT_MEASURED_MUST_STATE
+    )
+    out = rules.add_contract(
+        {},
+        must_state=[stated],
+        forbidden_claims=[rules.accuracy_not_measured(which_map=which_map)],
+    )
+    _holds_to_the_contract(out)
+    assert _ids(out) == [rules.ACCURACY_NOT_MEASURED]
+    why = _why(out, rules.ACCURACY_NOT_MEASURED)
+    assert "olmoearth_estimate_map_error" in why and "in the answer" in why
+    # A request is one run: on the web UI, one message (an estimate made in an
+    # earlier message is not in it).
+    assert "each message is a request of its own" in why
+    assert ("which-map grading" in why) is which_map
+    assert "this request" in stated and len(stated.split()) <= 25
 
 
 def test_the_labels_in_studio_fact_names_each_model_trained_on_labels() -> None:

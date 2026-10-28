@@ -10,6 +10,67 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **The stakeholder report (#14) carries the accuracy the request's
+  verification tools measured, as they returned it, and says so plainly when
+  the request estimated no error rate.** `olmoearth_case_narrative` reads the
+  verification results the way it reads provenance: the provenance log now
+  keeps every call of `olmoearth_plan_label_sample`,
+  `olmoearth_estimate_map_error` and `olmoearth_certify_zone` whole
+  (`ProvenanceLog.verification`), never a figure the model types. The log is
+  one request's: on the web UI each message is a request with a fresh log,
+  and the report says an earlier message's estimate is stated only when it
+  is estimated again in this request. The new "How accurate is this map"
+  section states each error rate with the map it is of (named by its plan),
+  every interval it has, each named with its method and level (valid at
+  every sample size; the design's own, exact or by the union bound; or
+  nominal and approximate where the package's method is the Wilson interval
+  of the confidence and proportional designs), the number of labels, the
+  design and its seed, and the per-class ranking; windows labelled without a
+  design as what they are (the interval they would earn as a simple random
+  sample, which the package's review-set check does not establish, and its
+  confident-end flag); each certified zone with what alpha bounds and
+  olmoearth-inferencex's `ISSUED_NOTE` word for word; a zone call that
+  changed its alpha, delta, rule or labels after an earlier call on the same
+  design file as a second look, never as certified; labels changed on a
+  design file after a result was seen; each which-map verdict with the sign
+  test or interval it rests on; the tool's `must_state` limits and the
+  package's notes (the per-class table's and each named class's included,
+  and its `scope` notes up to their first sentence with another map's
+  figures or a command-line option); and any plan still awaiting labels.
+  Figures are copied from the results (`accuracy.statements`) and formatted
+  as the tools format their own sentences. With no error rate estimated,
+  the section says so and names the tools that estimate one (and, after
+  `olmoearth_classification_metrics`, that its accuracy against the caller's
+  labels is no error rate from a planned sample); the result then requires
+  the answer to say so and forbids any accuracy figure for the map with a
+  new fixed id, `accuracy_not_measured` (`statistical_rules.py`,
+  `harness/checks.py`). It also reads "94% accurate", "94% accuracy" and
+  "94% correct"; labels or an estimate named as a figure's source do not
+  excuse it, as they do a plan's `error_rate_without_labels`; and it is not
+  read once the run holds a `whole_map_estimate` or a successful
+  `olmoearth_classification_metrics` call, for a which-map grading's
+  difference in accuracy (nor is `error_rate_without_labels`, which the
+  two-map plan emits), or, on the web UI, for a figure an earlier message
+  stated. A title or result typed with an accuracy figure is refused
+  (`harness.checks.states_accuracy_figure`; the error names where, never the
+  figure), so the report never shows one no tool returned. The report's
+  Markdown is no source of numbers for the answer's number check (the new
+  contract key `not_a_source`, `analysis/output_contract.py`): it renders
+  the title and results the model typed. `olmoearth_estimate_map_error` and
+  `olmoearth_certify_zone` return the seed of the design file they read (the
+  zone also its design, and `issued_note`), and
+  `olmoearth_provenance_summary` lists each verification call with what
+  repeats its sample (`verification_calls`: design, budget, seed, maps,
+  design file, labels, inline labels with a sha256 digest, alpha, delta,
+  rule), as do the replay script and the manifest. No web UI change. The
+  spec-size test's bound for a default turn goes from 7,000 to 7,050 tokens.
+  README #14, `SKILLS.md` #13 and #14 and `PLAN.md` §1 and rule 13 say so.
+  Tests:
+  `tests/tools/test_narrative_tool.py`,
+  `tests/reporting/test_narrative_builder.py`,
+  `tests/provenance/test_log.py`, `tests/harness/test_answer_checks.py`,
+  `tests/tools/test_statistical_rules.py`,
+  `tests/tools/test_estimation_tool.py`.
 - **A Studio class map gets its error rate and per-class accuracy from
   labels, the interval valid at every sample size first; ranking and
   certified zones stay refused for it.** A classification result gives each
@@ -759,6 +820,14 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **Windows labelled without a design keep design `none (checked as a
+  random sample)`.** `olmoearth_estimate_map_error` with `window_indices`
+  set that design, then the package's result overwrote it with `random`
+  (its reading of them as a simple random sample), so the result, its
+  `whole_map_estimate` fact and the provenance summary named a random design
+  for windows the model chose. The tool's design now stands, and the
+  package's reading is kept under `estimated_as`. Test:
+  `tests/tools/test_estimation_tool.py`.
 - **The tools state what round 9's model filled in from general knowledge**
   (the audit of exp86 round 9, on agent c62538f). Most of round 9's material
   errors sat where the tools said nothing. Offers are not restricted; the

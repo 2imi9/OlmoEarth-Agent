@@ -14,6 +14,12 @@ make). Two limits hold for every result:
   reached ``must_state`` though no agent tool takes a ``form``).
 - a ``forbidden_claims`` id appears once per result, however many parts of a
   tool add it.
+
+A result may also list, under :data:`NOT_A_SOURCE`, keys of its own whose
+text renders the call's arguments (the case narrative's ``markdown`` holds
+the title and results the model typed): the harness's number check reads no
+number from them, so a figure the model typed into a report is not taken as
+a tool's.
 """
 
 from __future__ import annotations
@@ -28,6 +34,9 @@ logger = logging.getLogger(__name__)
 MUST_STATE_MAX = 3
 #: Most words (split on whitespace) one ``must_state`` sentence holds.
 MUST_STATE_MAX_WORDS = 25
+#: The result key listing that result's keys which are no source of numbers
+#: for the answer's number check (``harness.checks.RunEvidence.pool``).
+NOT_A_SOURCE = "not_a_source"
 
 
 def word_count(sentence: str) -> int:

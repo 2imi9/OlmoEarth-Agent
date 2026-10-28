@@ -155,6 +155,11 @@ CLASS_MAP_DESIGNS = ("random", CLASS_DESIGN)
 #: certify nothing.
 STRATIFIED_DESIGNS = ("confidence", "proportional", CLASS_DESIGN)
 
+#: The design of windows labelled without one (``window_indices``): the
+#: package estimates them as a simple random sample once its check finds they
+#: are not a review set (``estimated_as``), which does not make them one.
+NO_DESIGN = "none (checked as a random sample)"
+
 #: ``score_kind`` of a class map's population: each window's class, no score.
 CLASS_MAP = "class_map"
 
@@ -1886,6 +1891,8 @@ def _estimate_valid_first(
         "available": True,
         "design_path": str(args["design_path"]),
         "plan_design": plan_design,
+        # The design file's seed: the same plan with it draws these windows.
+        "seed": design.get("seed"),
         "valid_interval": valid,
     }
     out.update(res)
@@ -1991,6 +1998,8 @@ async def _estimate_map_error(
         out: dict[str, Any] = {
             "available": True,
             "design_path": str(args["design_path"]),
+            # The design file's seed: the same plan with it draws these windows.
+            "seed": design.get("seed"),
         }
         out.update(_jsonable(estimate.estimate_error_rate(sample, wrong)))
         if reference is not None:
@@ -2008,10 +2017,15 @@ async def _estimate_map_error(
         pop = population_from_rows(**_rows_args(args))
         indices = [int(i) for i in args["window_indices"]]
         wrong, _ref = _labels(args, indices)
-        out = {"available": True, "design": "none (checked as a random sample)"}
+        out = {"available": True}
         out.update(
             _jsonable(estimate.estimate_from_indices(indices, wrong, pop.margin))
         )
+        # The package estimates them as a simple random sample (its design
+        # "random"), which its check of them does not establish: the design is
+        # none, set after the package's result so that "random" cannot stand.
+        out["estimated_as"] = out.pop("design", None)
+        out["design"] = NO_DESIGN
         population = {"source": pop.source, "score_kind": pop.score_kind}
     else:
         raise ValueError(
@@ -2194,6 +2208,7 @@ def _certify_refused_for_a_class_map(design: dict[str, Any]) -> dict[str, Any]:
         "available": True,
         "certified": False,
         "design": design.get("design"),
+        "seed": design.get("seed"),
         "class_map": True,
         "reason": rules.CLASS_MAP_NO_CONFIDENCE,
         "next_steps": [
@@ -2226,6 +2241,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             "available": True,
             "certified": False,
             "design": design.get("design"),
+            "seed": design.get("seed"),
             "reason": (
                 "a certified zone needs a simple random sample of the map: its "
                 "guarantee rests on the labels inside each candidate zone being a "
@@ -2273,6 +2289,9 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     out: dict[str, Any] = {
         "available": True,
         "certified": zone.get("coverage") is not None,
+        # The design file's design and seed: the same plan draws these labels.
+        "design": design.get("design"),
+        "seed": design.get("seed"),
     }
     out.update(_jsonable(zone))
     if zone_indices is not None:
@@ -2307,6 +2326,9 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             f"that fails on at most delta={delta:g} of random draws. Nothing "
             "outside the zone is certified. " + str(zone_module.ISSUED_NOTE)
         )
+        # The package's note on its own, for a report that states it verbatim
+        # (olmoearth_case_narrative).
+        out["issued_note"] = str(zone_module.ISSUED_NOTE)
     else:
         out["verdict"] = (
             f"No zone is certified at alpha={alpha:g}, delta={delta:g} under "
@@ -3312,7 +3334,12 @@ def _grade_two_maps(
     source = population.get("source") or {}
     verdict = res.get("verdict")
     n = int(res["n_labelled"])
-    out: dict[str, Any] = {"available": True, "design_path": str(args["design_path"])}
+    out: dict[str, Any] = {
+        "available": True,
+        "design_path": str(args["design_path"]),
+        # The design file's seed: the same plan with it draws these windows.
+        "seed": design.get("seed"),
+    }
     out.update(res)
     out["which_map"] = verdict or "undetermined"
     out["map_a"], out["map_b"] = source.get("map_a"), source.get("map_b")

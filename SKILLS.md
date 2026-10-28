@@ -39,7 +39,7 @@ Skills #4-#18 are implemented in this repo (see `CHANGELOG.md`).
 | 11 | Integrate | [`olmoearth-qgis-bridge`](#11-olmoearth-qgis-bridge) | Tile URLs -> a QGIS `.qlr` layer + a GDAL_WMS/XYZ descriptor + XYZ URLs + an SLD style + a local `gdal_translate` COG recipe. |
 | 12 | Integrate | [`olmoearth-data-export`](#12-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 13 | Report | [`olmoearth-provenance`](#13-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
-| 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate. |
+| 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate; the accuracy the verification tools measured in the same request, with the map, its intervals, labels, design and seed, or a plain statement that none was estimated. |
 | 15 | Report | [`olmoearth-litsearch`](#15-olmoearth-litsearch) | *Opt-in.* arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional Asta full-text backend. |
 | 16 | Prep | [`olmoearth-negative-sampler`](#16-olmoearth-negative-sampler) | *Opt-in.* Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
 | 17 | Configure | [`olmoearth-rslearn`](#17-olmoearth-rslearn) | Operate rslearn (the engine under OlmoEarth): vendored SKILL.md; four torch-free tools (recommend / validate / compose / diagnose), opt-in. |
@@ -321,9 +321,9 @@ agent does not build them.
 ### 13. `olmoearth-provenance`
 
 **In:** every API call (transparent wrap).
-**Out:** manifest + single-command replay script.
+**Out:** manifest + single-command replay script + the verification calls with their seeds.
 
-**What.** Manifest of `prediction_id`, `model_id`, dataset hashes, time window, parameters, tile dates. Emits a single-command replay script so the case can be re-run by a third party.
+**What.** Manifest of `prediction_id`, `model_id`, dataset hashes, time window, parameters, tile dates. Emits a single-command replay script so the case can be re-run by a third party. The verification calls (`olmoearth_plan_label_sample`, `olmoearth_estimate_map_error`, `olmoearth_certify_zone`) are kept whole (`ProvenanceLog.verification`). `olmoearth_provenance_summary` lists each one with what repeats its sample (`verification_calls`): the design, the budget, the seed, the maps or scores file it read, the design file and labels, and the zone's alpha, delta and rule. Inline scores and labels are counted, not copied; inline labels also carry a short sha256 digest, so two calls that graded one design file with other labels show it. The estimate and the zone return the seed of the design file they read. Windows labelled without a design (`window_indices`) have design `none (checked as a random sample)` and no seed.
 
 **Why.** ML pipelines have a documented reproducibility gap ([Samuel et al. arXiv:2006.12117](https://arxiv.org/abs/2006.12117)). [Kedron & Holler (Remote Sensing 14:5471, 2022)](https://doi.org/10.3390/rs14215471) call for benchmark datasets to test replicability in remote sensing specifically. EUDR and REDD+ MRV impose audit requirements that need traceable provenance, not just outputs. Without provenance, NGO and regulator-facing cases cannot be defended.
 
@@ -337,15 +337,26 @@ agent does not build them.
 
 ### 14. `olmoearth-case-narrative`
 
-**In:** `tile_urls` + provenance manifest.
-**Out:** stakeholder writeup with live tiles + freshness gate.
+**In:** `tile_urls` + provenance manifest + the request's recorded verification calls.
+**Out:** stakeholder writeup with live tiles + freshness gate + a "How accurate is this map" section.
 
 **What.** Stakeholder writeup with embedded live map tiles, citations to dataset hashes, and a freshness gate that refuses to render stale tiles past a configurable window.
+
+**How accurate is this map.** The report reads the verification results the way it reads provenance: from the log of the same request (`ProvenanceLog.verification`), never from figures the model types. A request is one run of the agent. On the web UI each message is a request of its own, with a fresh log, so an estimate made in an earlier message is not in it: the report states it only when `olmoearth_estimate_map_error` is called again in this request, with that `design_path` and its labels. The report states, as the tools returned them:
+- each error rate (`olmoearth_estimate_map_error`), with the map it is of (named by its plan in the request), every interval it has, each named with its method and level: valid at every sample size; the design's own, exact or by the union bound; nominal and approximate where the package's method is a Wilson interval (the confidence and proportional designs; the package's `VALID_NOTE` gives the coverage it fell to); the number of labels, the design and its seed; the per-class ranking (`weakest_classes`);
+- windows labelled without a design (`window_indices`): the interval they would earn as a simple random sample, which nothing establishes, that the package checked only that they are not a review set, and its flag when they come from the confident end of the map;
+- each certified zone (`olmoearth_certify_zone`), with what alpha bounds and olmoearth-inferencex's `ISSUED_NOTE` on what delta counts, word for word. A zone call that changed its alpha, delta or rule after an earlier zone call on the same design file, or its labels after an earlier call graded others there, is a second look the guarantee does not cover: it is stated as such, never as certified;
+- each which-map verdict, with the exact sign test or the interval it rests on;
+- labels changed on a design file after a result was seen (other labels given inline, or another whole-map figure);
+- the tool's `must_state` limits and the package's notes: an estimate's `warning`, `bounds_note`, `condition_note` and `valid_note` (and the tool's `class_map_note` for a class map); the per-class table's `warning` and `valid_note` (its intervals hold one by one, not jointly) and the `warning` of each class `weakest_classes` names; the zone's `note` (its rule); the which-map grading's `note` and `verdict_note`; and the package's `scope` note up to its first sentence with a percent figure or a command-line option (the rest gives another map's figures, exp88).
+
+A plan still awaiting labels is listed with its design and seed. Without an estimated error rate the section says plainly that none was estimated in the request, and names the tools that estimate one; when `olmoearth_classification_metrics` (#7) computed accuracy against the caller's labels, it says that is agreement with those labels, not the map's error rate from a planned sample. The result then requires the answer to say so (`must_state`) and forbids any accuracy figure for the map (`accuracy_not_measured`). The answer checks read that id without the hedges that excuse a plan's `error_rate_without_labels` ("from 300 labelled windows" names a source the request does not hold), and not at all once the run holds a measured estimate or a successful `olmoearth_classification_metrics` call; nor for a which-map grading's difference in accuracy, or, on the web UI, a figure an earlier message stated. A title or result typed with an accuracy figure is refused (the error names where, not the figure), so the report never shows a figure no tool returned. The report's Markdown is no source of numbers for the answer's number check (`not_a_source`): it renders the title and results the model typed.
 
 **Why.** Practitioners working under operational timelines often need to ship a working solution rather than an optimal one ([WorldCereal lessons, arXiv:2508.00858](https://arxiv.org/abs/2508.00858), preprint). NGO leadership, journalists, and policymakers need outputs tied to map tiles and policy briefs, not Jupyter notebooks. Freshness gating prevents stale-tile reports during disaster response when conditions change within hours.
 
 **Tools composed.**
-- Skill #13 (`olmoearth-provenance`) for manifest read.
+- Skill #13 (`olmoearth-provenance`) for manifest read, and the verification calls it keeps.
+- Skill #18's estimation tools (`olmoearth_estimate_map_error`, `olmoearth_certify_zone`) for the accuracy section.
 - `olmoearth.fetch_results` for tile URLs.
 - Skill-local: `freshness_gate`, `narrative_template`, `tile_embed`.
 

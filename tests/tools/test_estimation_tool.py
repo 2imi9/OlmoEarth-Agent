@@ -228,6 +228,28 @@ async def test_a_review_set_is_refused_as_a_sample() -> None:
 
 
 @pytest.mark.asyncio
+async def test_windows_labelled_without_a_design_keep_design_none() -> None:
+    """The package estimates such windows as a simple random sample and
+    returns its design "random"; the tool's "none (checked as a random
+    sample)" stands after it, and the package's reading is kept apart
+    (estimated_as), so no report reads them as a random design."""
+    scores, truth = _map()
+    drawn = random.Random(3).sample(range(len(scores)), 100)
+    out = await _call(
+        "olmoearth_estimate_map_error",
+        {"window_indices": drawn, "wrong": [truth[i] for i in drawn], "scores": scores},
+    )
+    assert out["ok"] is True
+    result = out["result"]
+    assert result["design"] == "none (checked as a random sample)"
+    assert result["estimated_as"] == "random"
+    assert "design_path" not in result and "seed" not in result
+    assert "looks_drawn_from_the_confident_end" in result["review_set_check"]
+    whole = next(f for f in result["facts"] if f["id"] == "whole_map_estimate")
+    assert whole["design"] == "none (checked as a random sample)"
+
+
+@pytest.mark.asyncio
 async def test_certify_zone_needs_a_random_design() -> None:
     scores, truth = _map(2000, seed=11)
     stratified = (
@@ -907,6 +929,57 @@ async def test_certify_zone_with_too_few_labels_tests_no_level() -> None:
     assert tested["n_levels"] == 0 and tested["per_level_delta"] is None
     assert tested["any_level_certifies"] is False
     assert "no level" in tested["how_the_rule_tests_them"]
+
+
+@pytest.mark.asyncio
+async def test_an_estimate_and_a_zone_return_their_design_files_seed() -> None:
+    """The stakeholder report (skill #14) states the seed beside each estimate
+    and zone: each returns the seed of the design file it read, and a
+    certified zone also returns the package's ISSUED_NOTE on its own."""
+    zone_module = pytest.importorskip("oe_inferencex.certify.zone")
+    scores, truth = _map(2000, seed=11)
+    plan = (
+        await _call(
+            "olmoearth_plan_label_sample",
+            {"scores": scores, "budget": 300, "design": "random", "seed": 4},
+        )
+    )["result"]
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    labels = {"design_path": plan["design_path"], "wrong": [truth[i] for i in idx]}
+    out = (await _call("olmoearth_estimate_map_error", labels))["result"]
+    assert plan["seed"] == out["seed"] == 4
+    design_path, wrong = await _random_zone_inputs()
+    zone = (
+        await _call(
+            "olmoearth_certify_zone",
+            {
+                "design_path": design_path,
+                "wrong": wrong,
+                "alpha": 0.1,
+                "rule": "bonferroni",
+            },
+        )
+    )["result"]
+    assert zone["certified"] is True
+    assert (zone["design"], zone["seed"]) == ("random", 0)
+    assert zone["issued_note"] == zone_module.ISSUED_NOTE
+    stratified = (
+        await _call(
+            "olmoearth_plan_label_sample", {"scores": scores, "budget": 300, "seed": 2}
+        )
+    )["result"]
+    refused = (
+        await _call(
+            "olmoearth_certify_zone",
+            {
+                "design_path": stratified["design_path"],
+                "wrong": [0] * 300,
+                "alpha": 0.05,
+            },
+        )
+    )["result"]
+    assert refused["certified"] is False and refused["seed"] == 2
+    assert "issued_note" not in refused
 
 
 @pytest.mark.asyncio

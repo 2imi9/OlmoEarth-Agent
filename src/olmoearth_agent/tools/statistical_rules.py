@@ -84,6 +84,11 @@ MORE_ACCURATE_WITHOUT_ITS_TEST = "more_accurate_without_its_test"
 #: stated for a class map: it has no confidence to rank its windows by, so no
 #: zone of it can be certified, whatever the design, budget or alpha.
 ZONE_FOR_A_CLASS_MAP = "zone_for_a_class_map"
+#: An error rate, accuracy or share wrong stated in the answer for a map whose
+#: error rate the request did not estimate (olmoearth_estimate_map_error or
+#: olmoearth_certify_zone on labels of the map); the stakeholder report
+#: refuses a title or result typed with one.
+ACCURACY_NOT_MEASURED = "accuracy_not_measured"
 
 #: The contract's fixed ids: every forbidden claim a tool emits is one of them.
 FIXED_IDS = (
@@ -106,6 +111,7 @@ FIXED_IDS = (
     MARGIN_AS_ERROR_PROBABILITY,
     MORE_ACCURATE_WITHOUT_ITS_TEST,
     ZONE_FOR_A_CLASS_MAP,
+    ACCURACY_NOT_MEASURED,
 )
 
 
@@ -188,6 +194,51 @@ def error_rate_without_labels() -> dict[str, str]:
         "until the reviewer has labelled its windows, so none may be stated or "
         "guessed from the scores (a confidence score is not a probability of "
         "error)",
+    )
+
+
+#: What a stakeholder report (skill #14) of a request that estimated no error
+#: rate states. A request is one run of the agent: on the web UI, one message.
+NOT_MEASURED_MUST_STATE = (
+    "No error rate of this map has been estimated in this request; "
+    "olmoearth_estimate_map_error estimates one from labels on a planned sample."
+)
+#: The same, for a request that graded only which of two maps is more
+#: accurate: that grading says nothing of either map's own accuracy
+#: (``WHICH_MAP_NOTE``).
+NEITHER_MAP_MEASURED_MUST_STATE = (
+    "Neither map's own accuracy has been measured in this request; the "
+    "which-map grading says which is more accurate, not how accurate either is."
+)
+
+
+def accuracy_not_measured(*, which_map: bool = False) -> dict[str, str]:
+    """No error rate, accuracy or interval for a map this request did not measure.
+
+    Emitted by the stakeholder report (``olmoearth_case_narrative``) when no
+    call of the request estimated the map's error rate from labels
+    (``olmoearth_estimate_map_error``, ``olmoearth_certify_zone``): an
+    accuracy figure in the answer has no tool behind it, and the report
+    refuses a title or result typed with one. ``harness/checks.py`` reads it
+    (:func:`~olmoearth_agent.harness.checks.states_accuracy_figure`), and not
+    once the run holds a measured error rate (a ``whole_map_estimate`` fact)
+    or an accuracy ``olmoearth_classification_metrics`` computed against the
+    caller's labels. ``which_map`` is set when the request graded which of two
+    maps is more accurate, which says neither map's own accuracy.
+    """
+    graded = (
+        "; the which-map grading of this request says which map is more "
+        "accurate, not how accurate either is"
+        if which_map
+        else ""
+    )
+    return forbidden(
+        ACCURACY_NOT_MEASURED,
+        "this request estimated no error rate: no call of it graded labels of "
+        "the map (olmoearth_estimate_map_error, olmoearth_certify_zone), so no "
+        "error rate, accuracy, share wrong or interval may be stated for the map "
+        "in the answer; the report's accuracy section says none was estimated "
+        "(on the web UI each message is a request of its own)" + graded,
     )
 
 

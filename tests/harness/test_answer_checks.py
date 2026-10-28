@@ -928,7 +928,13 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
     ),
     "error_rate_without_labels": (
         ["The map's error rate is about 12%.", "About 12% of windows are wrong."],
-        ["An error rate needs labels.", "A review set would overstate errors 3x."],
+        [
+            "An error rate needs labels.",
+            "A review set would overstate errors 3x.",
+            # a class's accuracy as the per-class table gives it: read by
+            # accuracy_not_measured only, never as a plan's error rate
+            "Class 2 is 80.0% correct.",
+        ],
     ),
     "error_rate_for_unthresholded_regression": (
         [
@@ -1363,6 +1369,31 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
             "The error rate is 12.5%, with the interval valid at every sample size.",
         ],
     ),
+    # The stakeholder report of a request that estimated no error rate: an
+    # accuracy figure in the answer has no tool behind it. Labels or an
+    # estimate named as its source do not excuse it, as they do a plan's
+    # error_rate_without_labels: with no graded labels in the run, they name
+    # a source that is not there.
+    "accuracy_not_measured": (
+        [
+            "Flood extent: 94% accurate.",
+            "Burn scars mapped at 91.5% accuracy.",
+            "The map's error rate is about 12%.",
+            "About 12% of windows are wrong.",
+            "From the 300 labelled windows, the map's accuracy is 94%.",
+            "Based on 300 labelled windows the map is 94% accurate.",
+            "The estimated error rate is about 6%.",
+        ],
+        [
+            "No error rate of this map has been estimated in this request.",
+            "The map's accuracy has not been measured in this run.",
+            "olmoearth_estimate_map_error measures the error rate from labels.",
+            "An error rate needs labels.",
+            "Once labelled, olmoearth_estimate_map_error would give the error "
+            "rate at 95% confidence.",
+            "If it is 94% accurate, the flood extent holds.",
+        ],
+    ),
 }
 
 
@@ -1440,6 +1471,143 @@ def test_a_forbidden_claim_is_flagged_and_its_negation_is_not(claim_id: str) -> 
         assert violations[0]["detail"] == f"{claim_id} (tool): the tool says so"
     for sentence in fine:
         assert check_forbidden_claims(sentence, run) == [], sentence
+
+
+def test_an_accuracy_figure_is_read_against_a_run_that_measured_one() -> None:
+    """accuracy_not_measured holds only while the run measured no error rate:
+    once an estimate is in the run (a whole_map_estimate fact, as
+    olmoearth_estimate_map_error and olmoearth_certify_zone return), its
+    figure is the number check's to hold to the result, not this claim's."""
+    report = _record(
+        "olmoearth_case_narrative",
+        {"forbidden_claims": [{"id": "accuracy_not_measured", "why": "x"}]},
+    )
+    claim = "Flood extent: 94% accurate."
+    flagged = check_forbidden_claims(claim, _run(report))
+    assert [v["text"] for v in flagged] == [claim]
+    assert flagged[0]["detail"].startswith("accuracy_not_measured")
+    estimate = _record(
+        "olmoearth_estimate_map_error",
+        {
+            "estimate": 0.06,
+            "facts": [{"id": "whole_map_estimate", "sentence": "s", "estimate": 0.06}],
+        },
+    )
+    assert check_forbidden_claims(claim, _run(report, estimate)) == []
+    # A which-map grading alone measures neither map's accuracy.
+    graded = _record(
+        "olmoearth_estimate_map_error",
+        {"facts": [{"id": "which_map", "sentence": "s", "more_accurate": "a"}]},
+    )
+    assert [v["text"] for v in check_forbidden_claims(claim, _run(report, graded))]
+
+
+def test_a_measured_runs_figures_are_not_a_plans_error_rate() -> None:
+    """A plan forbids error_rate_without_labels, and every measured run holds
+    its plan: a class's accuracy as the per-class table gives it ("80.0%
+    correct"), or the map's, is the estimate's, not a plan's error rate."""
+    plan = _record(
+        "olmoearth_plan_label_sample",
+        {"forbidden_claims": [{"id": "error_rate_without_labels", "why": "x"}]},
+    )
+    estimate = _record(
+        "olmoearth_estimate_map_error",
+        {
+            "facts": [
+                {"id": "whole_map_estimate", "sentence": "s", "estimate": 0.103},
+                {
+                    "id": "weakest_classes",
+                    "sentence": "class 2 (40 of 50 correct; 80.0%)",
+                    "lowest": [2],
+                },
+            ]
+        },
+    )
+    run = _run(plan, estimate)
+    for sentence in ("Class 2 is 80.0% correct.", "The map is 89.7% accurate."):
+        assert check_forbidden_claims(sentence, run) == [], sentence
+
+
+def test_accuracy_another_tool_measured_is_not_read_as_unmeasured() -> None:
+    """accuracy_not_measured leaves alone what another tool of the request
+    measured: the accuracy olmoearth_classification_metrics computed against
+    the caller's labels, and a which-map grading's difference in accuracy,
+    which its next steps tell the answer to report. A map's own accuracy
+    beside the grading is still flagged."""
+    report = _record(
+        "olmoearth_case_narrative",
+        {"forbidden_claims": [{"id": "accuracy_not_measured", "why": "x"}]},
+    )
+    claim = "Overall accuracy on the 500 reference points is 94.0%."
+    assert [v["text"] for v in check_forbidden_claims(claim, _run(report))] == [claim]
+    metrics = _record("olmoearth_classification_metrics", {"accuracy": 0.94, "n": 500})
+    assert check_forbidden_claims(claim, _run(report, metrics)) == []
+    failed = ToolRecord(
+        "olmoearth_classification_metrics", {}, {"ok": False, "error": "e"}
+    )
+    flagged = check_forbidden_claims(claim, _run(report, failed))
+    assert [v["text"] for v in flagged] == [claim]
+    # The which-map grading's difference, as its next steps word it.
+    difference = "The difference in accuracy, a minus b, is 8.3 points."
+    assert check_forbidden_claims(difference, _run(report, _graded("a"))) == []
+    flagged = check_forbidden_claims(difference, _run(report))
+    assert [v["text"] for v in flagged] == [difference]
+    own = "Map a's accuracy is 94%."
+    flagged = check_forbidden_claims(own, _run(report, _graded("a")))
+    assert [v["text"] for v in flagged] == [own]
+
+
+def test_a_rate_an_earlier_web_message_stated_is_restated_not_invented() -> None:
+    """On the web UI each message is a request of its own, with a log of its
+    own: a rate an earlier message stated (checked when it was shown) is
+    restated, while a new figure, or the same one on the command line, is
+    still flagged."""
+    report = _record(
+        "olmoearth_case_narrative",
+        {"forbidden_claims": [{"id": "accuracy_not_measured", "why": "x"}]},
+    )
+    earlier = ["The map's error rate is estimated at 6.2% from 300 labels."]
+
+    def run(surface: str) -> RunEvidence:
+        return RunEvidence(
+            tools=[report],
+            user_messages=["Write the brief."],
+            surface=surface,
+            assistant_messages=earlier,
+        )
+
+    restated = "The error rate measured earlier is 6.2%."
+    assert check_forbidden_claims(restated, run("web")) == []
+    flagged = check_forbidden_claims(restated, run("cli"))
+    assert [v["text"] for v in flagged] == [restated]
+    new = "The error rate measured earlier is 7.5%."
+    assert [v["text"] for v in check_forbidden_claims(new, run("web"))] == [new]
+
+
+def test_a_results_not_a_source_keys_ground_no_number() -> None:
+    """A report renders the title and results the model typed (the case
+    narrative's markdown, listed under not_a_source): a figure only there is
+    the model's, while the result's other keys still ground their numbers."""
+    report = _record(
+        "olmoearth_case_narrative",
+        {
+            "markdown": "# Flood extent: 93.21% accurate\n",
+            "freshness": [{"result_id": "r1", "age_hours": 48.0}],
+            "not_a_source": ["markdown"],
+        },
+    )
+    run = _run(report)
+    answer = "Flood extent: 93.21% accurate. The tile is 48.0h old."
+    assert check_numbers(answer, run) == [
+        {
+            "check": NUMBERS,
+            "text": "Flood extent: 93.21% accurate.",
+            "detail": "93.21%",
+        }
+    ]
+    # Without the key the markdown grounds its own figure, as any result does.
+    listed = _record("olmoearth_case_narrative", {"markdown": "# 93.21% accurate\n"})
+    assert check_numbers("Flood extent: 93.21% accurate.", _run(listed)) == []
 
 
 def _class_map_beside_a_certified_scores_map() -> tuple[ToolRecord, ToolRecord]:
