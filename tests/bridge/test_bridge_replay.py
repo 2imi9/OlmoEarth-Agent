@@ -792,7 +792,7 @@ async def test_a_run_directory_that_existed_empty_is_made_private(
     # mkdir leaves an existing directory's mode as it was; begin sets 0700.
     run = tmp_path / "made"
     run.mkdir()
-    os.chmod(run, 0o755)
+    os.chmod(run, 0o744)
     await _begin(run, partial(_registry, {}))
     assert stat.S_IMODE(run.stat().st_mode) == 0o700
     # A symlink is refused: where it points is not this run's to set.

@@ -1638,8 +1638,7 @@ def _refused_class_map(refusal: dict[str, Any], design: str) -> dict[str, Any]:
         "design": design,
         "reason": (
             f"design='{design}' stratifies the map by its confidence margin, which "
-            "a class map without top-k scores does not have. "
-            + rules.CLASS_MAP_REFUSAL
+            "a class map without top-k scores does not have. " + rules.CLASS_MAP_REFUSAL
         ),
         "designs_for_a_class_map": list(CLASS_MAP_DESIGNS),
         "next_steps": [

@@ -585,9 +585,11 @@ def directory_size(data: bytes) -> int | None:
     if locator >= 0 and data[locator : locator + 4] == b"PK\x06\x07":
         at = int.from_bytes(data[locator + 8 : locator + 16], "little")
         # the locator's offset, and the 56 bytes before the locator
-        for start in (at, locator - 56):
-            if start >= 0 and data[start : start + 4] == b"PK\x06\x06":
-                sizes.append(int.from_bytes(data[start + 40 : start + 48], "little"))
+        sizes.extend(
+            int.from_bytes(data[start + 40 : start + 48], "little")
+            for start in (at, locator - 56)
+            if start >= 0 and data[start : start + 4] == b"PK\x06\x06"
+        )
     return max(sizes) if sizes else None
 
 
@@ -1481,8 +1483,7 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         raise ValueError(
             "no zone could be pooled, though each was written under the scores "
             "root (a later call reuses it, and olmoearth_scores_from_file pools "
-            "a zone's run_dir at another patch with no download): "
-            + "; ".join(refused)
+            "a zone's run_dir at another patch with no download): " + "; ".join(refused)
         )
     if len(zones) > 1:
         facts.append(_zones_fact(zones))
