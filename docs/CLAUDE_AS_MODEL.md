@@ -87,8 +87,10 @@ With a read-only Studio key, run every command of a run with
 `OE_BRIDGE_READ_ONLY=1`. The wrapper then runs the bridge with
 `OLMOEARTH_READ_ONLY=1`: the two Studio write tools
 (`olmoearth_create_project`, `olmoearth_submit_prediction`) are not offered,
-and the capability card says why. Changing it within a run shows as a
-divergence.
+and the capability card says why. `olmoearth_request_aoi` is still offered:
+it calls no Studio endpoint itself, and it is the web UI that saves the
+drawn area (answering a refused save with 403). Changing the setting within
+a run shows as a divergence.
 
 A response is `{"tool_calls": [{"name": ..., "arguments": {...}}]}` or
 `{"content": "..."}`. When a call offers no tools (the turn cap, the answer
@@ -202,9 +204,10 @@ Written 31 October 2026. The tests in `tests/bridge/` cover:
 Checked live on 31 October 2026: two runs on aicr through
 `scripts/oe-bridge.sh`, a Claude Code session as the model, with a read-only
 Studio key and `OE_BRIDGE_READ_ONLY=1`. Each was a `begin` and six steps, one
-ssh connection and one srun step per command. The earlier ran at the commits
-that added `OE_BRIDGE_READ_ONLY` and the `cannot` fix below, the later with
-the label inventory and `olmoearth_scores_from_studio` merged.
+ssh connection and one srun step per command. A `begin` before them showed
+the `cannot` bug below, and both runs had its fix: the first ran with
+`OE_BRIDGE_READ_ONLY` and that fix, the second also with the label
+inventory and `olmoearth_scores_from_studio` merged.
 
 - A run on aicr: both reached a final answer that passed the answer checks,
   not revised and not marked.
@@ -215,10 +218,11 @@ the label inventory and `olmoearth_scores_from_studio` merged.
   `--response-file -`).
 - The queue wait: none was seen. Each step took about 5 to 9 s of wall time
   from the Mac.
-- The first live run found that the bridge's copy of the registry dropped
-  the registry's `cannot` lines: its system prompt left out the two write
-  tools, as it should, and also the capability card's line saying why (the
-  `prompt` command, which builds the registry directly, showed the line).
+- The `begin` before the two runs found that the bridge's copy of the
+  registry dropped the registry's `cannot` lines: its system prompt left
+  out the two write tools, as it should, and also the capability card's
+  line saying why (the `prompt` command, which builds the registry
+  directly, showed the line).
   The replay now keeps them, and a test compares the requests with
   `LeadAgent`'s.
 

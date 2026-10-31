@@ -12,10 +12,10 @@
 </div>
 
 - It drives OlmoEarth Studio from a plain-language brief: it finds a model, runs predictions and compares results.
-- It checks a map: which windows to review first (maps with scores only, Studio class maps with top-k scores among them), and how wrong the map is, with the interval its labels earn.
+- It checks a map: which windows to review first (maps with scores only, including Studio class maps with top-k scores), and how wrong the map is, with the interval its labels earn.
 - It tests which of two maps of one time is more accurate, and packs a direct OlmoEarth run's certified zone into a certificate anyone with the map can check.
 - It checks each answer against the tool results before showing it.
-- It runs on a local Qwen3.6 model, or on your own cloud API key (Claude, ChatGPT or Gemini). A Claude Code session can also play the model, through a replay bridge.
+- It runs on a local Qwen3.6 model, or on your own cloud API key (Claude, ChatGPT or Gemini).
 - Its verification statistics (error rates and their intervals, the two-map test, certified zones and certificates) come from [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX), the `inferencex` extra.
 
 <div align="center">
@@ -37,7 +37,7 @@
 | **Which windows to check first**<br>`olmoearth_review_set`, `olmoearth_review_set_from_result` | A map with scores: a Studio `[0, 1]` score band (another regression band needs a `threshold`), a Studio class map with top-k scores, a direct run's scores, or your own. No labels. | The windows to open first at your review budget, least confident first. Boundary-first is optional. |
 | **How wrong one map is**<br>`olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error` / `olmoearth_certify_zone` | A map with scores and labels on a planned sample. A Studio result is sampled on at most 16 x 16 points (256 windows), so its figures cover those points, not every pixel, unless its own files are read (below). | The error rate: the interval valid at every sample size first, then the design's (approximate under the default confidence design, exact under a random one). Per-class accuracy where labels name the class, each class's valid interval first, its producer's accuracy beside its user's, and whether the map draws it too little or too much. A random design can certify a zone. |
 | **A Studio class map without top-k scores**<br>`olmoearth_plan_label_sample` (`design='random'` or `'class'`), then `olmoearth_estimate_map_error` | A classification result (classes, no scores) and labels on a random or class-stratified sample. The plan gives olmoearth-inferencex's label budget for a random sample. | The error rate and per-class accuracy, the interval valid at every sample size first. They cover the sampled grid points (at most 16 x 16, one pixel each), not every pixel. No review set, no certified zone. |
-| **A Studio result's own files**<br>`olmoearth_scores_from_studio` | A class map with top-k scores (its prediction submitted with `probability_output`) or a `[0, 1]` score band. | One scores file per UTM zone, pooled from every pixel of the native-resolution files, for the review set, plan, estimate and certified zone. Each zone is its own map. In one live run, a coastal map gave 7 valid windows on the grid and 2,468 + 2,837 from its files. |
+| **A Studio result's own files**<br>`olmoearth_scores_from_studio` | A class map with top-k scores (its prediction submitted with `probability_output`) or a `[0, 1]` score band. | One scores file per UTM zone, pooled from every pixel of the native-resolution files, for the review set, plan, estimate and certified zone. Each zone is its own map. On one coastal map (two live runs): 7 valid windows on the 16 x 16 grid; 2,468 + 2,837 from its files at patch 11 (at the default patch 4, its zones had too many windows to rank). |
 | **A direct OlmoEarth run and its certificate**<br>`olmoearth_scores_from_file`, `olmoearth_write_certificate`, `olmoearth_verify_certificate` | `oe-inferencex from-olmoearth`'s `scores_<EPSG>.tif` and `olmoearth_output.json`, or `score_area.py`'s raster and `manifest.json`, with probabilities or logits (class ids are refused). A certificate needs a `seed_from_map` random plan; its labels are fixed once first graded. | Every window of the run, for the review set, estimate and two-map route. Its certified zone in a certificate anyone with the map can recheck; its labels, the map's date and single draw are the issuer's word. It adds no guarantee. |
 | **Which of two maps is more accurate**<br>`olmoearth_plan_label_sample` (`design='disagreement'`; `date_a` / `date_b` date a scores file), then `olmoearth_estimate_map_error` | Two maps of one area and time: two Studio results, or two scores files of one window grid (not class-map rasters). Labels where they differ; the plan advises how many. Different, overlapping or one-sided dates are refused when given; missing dates are noted. Maps of different times are measured each on its own sample. | Which map is more accurate, or neither (exact sign test; the interval past a fifth of the differing windows), and the accuracy difference with a 95% interval. Studio results cover at most 12 x 12 sampled points, not every pixel. |
 | **What labels Studio holds**<br>`olmoearth_studio_label_inventory` | A prediction, model or project id. | The annotations a model's training selector selects now, counted by status, split and class. No error rate: Studio records no random design for them. |
@@ -85,7 +85,8 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 - `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`.
 - No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands.
 - [`docs/serving.md`](docs/serving.md) has the cloud-API setup and the raw `docker compose` invocations.
-- A Claude Code session can be the agent's model through the replay bridge (`olmoearth-agent-bridge`; `scripts/oe-bridge.sh` runs it on the aicr cluster). [`docs/CLAUDE_AS_MODEL.md`](docs/CLAUDE_AS_MODEL.md) compares it with the Claude API backend. The project skills `olmoearth-agent-model` and `olmoearth-agent-bridge` say how to use it.
+- A read-only Studio key: set `OLMOEARTH_READ_ONLY=1`. The two tools that write to Studio (`olmoearth_create_project`, `olmoearth_submit_prediction`) are then left out, and the capability card says why. Drawing an area stays; the web UI answers a refused save with 403.
+- A Claude Code session can play the agent's model with `olmoearth-agent-bridge` (not `make bridge`, which serves the web UI). [`docs/CLAUDE_AS_MODEL.md`](docs/CLAUDE_AS_MODEL.md) says how, with the project skills `olmoearth-agent-model` and `olmoearth-agent-bridge`.
 
 ## What it does
 
@@ -109,7 +110,6 @@ The capability set ships as **18 skills**, grouped by EO-workflow stage. Four of
 - The agent registers 30 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 30 are sent on every turn.
 - Another 15 opt-in tools stay off. They train models outside Studio, need inputs no Studio run produces, repeat Ai2's Explorer, cost a core slot every turn (literature search), or name a winner with no test.
 - Skills #6, #8, #10, #15 and #16 are opt-in whole, as is #18's rule grader. [`SKILLS.md`](SKILLS.md#opt-in-tools) gives each tool's reason and what the "/" menu does without the setting.
-- `OLMOEARTH_READ_ONLY=1` declares a read-only Studio key. The two tools that write to Studio (`olmoearth_create_project`, `olmoearth_submit_prediction`) are then left out, and the capability card says why.
 
 ```bash
 OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same setting works for make agent
@@ -150,7 +150,7 @@ OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same se
 
 | Layer | What |
 |---|---|
-| **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored), or a Claude Code session through the replay bridge ([`docs/CLAUDE_AS_MODEL.md`](docs/CLAUDE_AS_MODEL.md)) |
+| **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
 | **Harness** | A catalog of function-call tools (more behind `OLMOEARTH_OPT_IN_TOOLS=1`), an **opt-in** `system:python` subprocess for light glue (`OLMOEARTH_RUN_PYTHON=1`), and a provenance manifest per call ([`PLAN.md`](PLAN.md)) |
 | **Skills** | 18-skill catalog ([`SKILLS.md`](SKILLS.md)); the instruction packages for #1-#3 and #17 are in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) |
