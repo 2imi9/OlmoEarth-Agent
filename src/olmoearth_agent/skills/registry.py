@@ -53,6 +53,7 @@ from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.studio_labels import build_studio_label_tools
+from olmoearth_agent.tools.studio_scores import build_studio_scores_tools
 from olmoearth_agent.tools.system import build_system_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
@@ -414,7 +415,8 @@ SKILLS: list[SkillSpec] = [
         "direct model run's files, score_area.py's scores raster and manifest "
         "or what oe-inferencex from-olmoearth writes, or from a Studio "
         "result whose band is a binary score in [0, 1], or a class map with "
-        "top-k scores, sampled on a grid), "
+        "top-k scores, sampled on a grid or read from its native-resolution "
+        "files, one scores file per UTM zone), "
         "boundary-first ordering, the attainable-ceiling arithmetic, and "
         "(opt-in) a grader for any candidate audit rule. Then how wrong the "
         "map is: a labelled sample drawn by a design, its error rate with the "
@@ -430,6 +432,7 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_review_set",
             "olmoearth_review_set_from_result",
             "olmoearth_scores_from_file",
+            "olmoearth_scores_from_studio",
             "olmoearth_compare_review",
             "olmoearth_grade_review_rule",
             "olmoearth_review_budget_ceiling",
@@ -528,6 +531,10 @@ def build_default_registry() -> ToolRegistry:
     # the entry point of a path whose other tools are all core, and deferring
     # it would put a load_skill turn before the first useful call.
     add(build_scores_file_tools())
+    # A Studio result's own native-resolution files (top-k scores or a [0, 1]
+    # score) as the same run directories and scores files (#18); core for the
+    # same reason.
+    add(build_studio_scores_tools())
     # How wrong is the map (skill #18, second half): design-based estimation
     # through the optional inferencex extra; the tools say so when it is absent.
     add(build_estimation_tools())

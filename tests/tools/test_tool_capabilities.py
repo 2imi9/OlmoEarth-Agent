@@ -69,7 +69,7 @@ def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
 
 
 def test_every_declaration_is_one_short_line() -> None:
-    """The card's 29 default core tools fit 1,650 tokens; a line is a line."""
+    """The card's 30 default core tools fit 1,700 tokens; a line is a line."""
     registry = _registry()
     for name in registry.names():
         capability = registry.capability_of(name)
@@ -450,6 +450,20 @@ async def _scores_file_reads_only_the_root(tmp: Path) -> None:
     outside.mkdir()
     out = await _call("olmoearth_scores_from_file", {"run_dir": str(outside)})
     _refused(out, "run_dir must be a directory under")
+
+
+@probe("olmoearth_scores_from_studio", "read a class map with no top-k scores")
+async def _studio_scores_refuse_a_class_map(_tmp: Path) -> None:
+    """Refused from the result's metadata, before any download (_Studio has none).
+
+    The id is a UUID, the API's format for it: the tool asks Studio for no
+    other.
+    """
+    rid = "7b1d9e20-6c4f-4a8b-8e2d-3f5a9c0b1e44"
+    studio = _Studio(results={rid: _result(rid, "landcover", _CLASSIFICATION)})
+    out = await _call("olmoearth_scores_from_studio", {"result_id": rid}, studio)
+    _refused(out, "class map without top-k scores")
+    _refused(out, "probability_output")
 
 
 @probe(

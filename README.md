@@ -103,7 +103,7 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 The capability set ships as **18 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
 
-- The agent registers 28 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 28 are sent on every turn.
+- The agent registers 30 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 30 are sent on every turn.
 - Another 15 opt-in tools stay off. They train models outside Studio, need inputs no Studio run produces, repeat Ai2's Explorer, cost a core slot every turn (literature search), or name a winner with no test.
 - Skills #6, #8, #10, #15 and #16 are opt-in whole, as is #18's rule grader. [`SKILLS.md`](SKILLS.md#opt-in-tools) gives each tool's reason and what the "/" menu does without the setting.
 

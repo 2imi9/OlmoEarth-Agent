@@ -2,7 +2,9 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """The scores provider: a model run's full output as review-set input (skill #18).
 
-Studio's API returns map tiles and a point lookup, never per-class scores. A
+Studio's API returns map tiles, a point lookup and, from its files endpoint, a
+result's native-resolution files, whose scores are at most the top-k softmax
+scores the prediction asked for (``tools/studio_scores.py`` reads them). A
 model run outside Studio (for instance ``scripts/score_area.py`` of the
 research record, ``2imi9/olmoearth_inferenceX-record``, on a GPU cluster)
 writes what Studio does not: a
@@ -44,6 +46,16 @@ its class, which a zero margin cannot carry in a row.
 A channel the manifest marks as the label fill value (``score_area.py`` names
 it ``nodata_value_<c>``; AWF's channel 9, never a training target) is left out
 of the margin and of the class vote unless ``include_fill_class`` is set.
+
+A run directory ``olmoearth_scores_from_studio`` writes from a Studio
+result's own files (``tools/studio_scores.py``) holds a ``manifest.json``
+too, whose ``source.kind`` is ``studio_files``: it is read and pooled the same
+way, and its provenance says the scores were downloaded from Studio's files
+endpoint (:data:`STUDIO_PROVENANCE`), not made by a direct run. Its model is
+stated with no revision, which Studio does not expose (the manifest's
+``revision`` holds the result id), and its scores file carries the manifest's
+``studio`` block and assumption, so later results built on it repeat it
+(:func:`studio_notes`).
 
 Reading the GeoTIFF needs the optional ``inferencex`` extra (numpy and
 rasterio through ``olmoearth-inferencex[geo]``); without it the tool answers
@@ -123,6 +135,21 @@ PROVENANCE = (
     "full model output from a direct run: every pixel's pre-argmax scores, "
     "read from the run's raster and pooled to windows by olmoearth-inferencex; "
     "not Studio point samples"
+)
+
+#: ``source.kind`` of a manifest ``olmoearth_scores_from_studio`` writes.
+STUDIO_FILES = "studio_files"
+
+#: Where the scores come from when the manifest's ``source.kind`` is
+#: :data:`STUDIO_FILES`, stated in place of :data:`PROVENANCE`: no direct run
+#: made them, Studio did, and the tool downloaded its native-resolution files.
+#: Those hold what Studio stores, not every class's score: a class map's top-k
+#: scores, quantized, or one ``[0, 1]`` score.
+STUDIO_PROVENANCE = (
+    "the model output Studio stores, downloaded from Studio's files endpoint: "
+    "each pixel's top-k softmax scores (quantized to 1/254) or [0, 1] score in "
+    "Studio's native-resolution file, read from the raster written from it and "
+    "pooled to windows by olmoearth-inferencex; not Studio point samples"
 )
 
 _FILL_NAME = re.compile(r"nodata_value_(\d+)")
@@ -313,6 +340,83 @@ def model_and_raster(
         f"model {name} {at}; raster sha256 {digest[:8]} (a hash of the scores "
         f"raster, not of the model){in_name}."
     )
+
+
+def studio_source(manifest: dict[str, Any]) -> dict[str, Any] | None:
+    """The manifest's ``source`` if its kind is :data:`STUDIO_FILES`, else ``None``."""
+    source = manifest.get("source")
+    if isinstance(source, dict) and source.get("kind") == STUDIO_FILES:
+        return source
+    return None
+
+
+def provenance_of(manifest: dict[str, Any]) -> str:
+    """Where a run's scores come from: :data:`PROVENANCE` unless Studio's files.
+
+    A manifest whose ``source.kind`` is :data:`STUDIO_FILES` gets
+    :data:`STUDIO_PROVENANCE`; any other, one with no ``source`` among them,
+    keeps :data:`PROVENANCE` as it was.
+    """
+    return STUDIO_PROVENANCE if studio_source(manifest) is not None else PROVENANCE
+
+
+def studio_model(manifest: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
+    """The model block of a Studio files manifest: Studio's model id and name.
+
+    Studio exposes no model revision. The manifest's ``revision`` holds the
+    result id (``tools/studio_scores.py``), kept here as ``result_id`` and
+    never as a revision: exp86 round 7 gave a hash as the model's revision.
+    """
+    raw = manifest.get("model")
+    found = raw if isinstance(raw, dict) else {}
+    out: dict[str, Any] = {"repo": None, "revision": None}
+    for key in ("id", "name"):
+        value = found.get(key)
+        if isinstance(value, str) and value:
+            out[key] = value
+    result_id = source.get("result_id")
+    out["result_id"] = result_id if isinstance(result_id, str) else None
+    return out
+
+
+def studio_model_and_raster(
+    model: dict[str, Any], digest: str, scores_file: str
+) -> str:
+    """:func:`model_and_raster` for Studio's files: the result, never a revision."""
+    name, model_id = model.get("name"), model.get("id")
+    who = f"{name} ({model_id})" if name and model_id else name or model_id
+    result_id = str(model.get("result_id") or "")
+    in_name = (
+        f"; the {digest[:8]} in the scores file's name is that hash, not a revision"
+        if digest[:8] in scores_file
+        else ""
+    )
+    return (
+        f"Studio model {who or 'not named by the manifest'}, whose revision "
+        "Studio does not expose; the scores are those of Studio result "
+        f"{result_id[:8]}; raster sha256 {digest[:8]} (a hash of the scores "
+        f"raster, not of the model){in_name}."
+    )
+
+
+def studio_notes(manifest: dict[str, Any]) -> dict[str, Any]:
+    """What a scores file from Studio's files carries so later results state it.
+
+    The manifest's ``studio`` block (how the zone was decoded) and its
+    ``assumption``: Studio's top-k scores are uncalibrated and quantized, or
+    a ``[0, 1]`` score is read as a probability. ``olmoearth_plan_label_sample``
+    returns a scores file's ``assumption``, and ``olmoearth_review_set``
+    repeats its ``warnings`` (``scores_file_warnings``).
+    """
+    studio = manifest.get("studio")
+    if not isinstance(studio, dict):
+        return {}
+    out: dict[str, Any] = {"studio": studio}
+    assumption = studio.get("assumption")
+    if isinstance(assumption, str) and assumption:
+        out["assumption"] = assumption
+        out["warnings"] = [assumption]
+    return out
 
 
 def _date_window(manifest: dict[str, Any]) -> dict[str, Any] | None:
@@ -711,6 +815,8 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     manifest, raster = run.manifest, run.raster
     kind = _values_kind(manifest)
     is_logit = kind == "logits"
+    provenance = provenance_of(manifest)
+    studio = studio_source(manifest)
 
     digest = _sha256(raster)
     recorded = (manifest.get("scores") or {}).get("sha256")
@@ -805,7 +911,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     )
     if fill and not include_fill:
         signal += ", label-fill channel left out"
-    model = _model_block(manifest)
+    model = _model_block(manifest) if studio is None else studio_model(manifest, studio)
     stem = slug(str(model.get("repo") or model.get("id") or "run").split("/")[-1], 32)
     if run.kind == "from-olmoearth":
         stem = slug(f"olmoearth-{raster.stem}", 32)
@@ -813,7 +919,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     package_warnings = [str(w) for w in out.get("warnings", [])]
     payload: dict[str, Any] = {
         "format": "olmoearth-agent/scores@1",
-        "provenance": PROVENANCE,
+        "provenance": provenance,
         "score_kind": SCORE_KIND,
         "score_type": "logit" if is_logit else "probability",
         "values": kind,
@@ -847,6 +953,10 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         # the provider's multi-class warning never reached a brief-8 answer).
         "package_warnings": package_warnings,
     }
+    # Studio's files: how the zone was decoded and what is assumed of its
+    # scores travel with every result built on this file.
+    notes = studio_notes(manifest) if studio is not None else {}
+    payload.update(notes)
     if n_valid < rows_n * cols_n:
         payload["windows"] = [int(i) for i in idx.tolist()]
     centres = _centres(np, geo, idx, cols_n, patch)
@@ -854,7 +964,11 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         payload["centres_lon_lat"] = centres
     name = f"scores_run_{stem}_{digest[:8]}_p{patch}{tag}.json"
     scores_path = write_json_file(name, payload)
-    identity = model_and_raster(model, digest, name, RECORDS[run.kind])
+    identity = (
+        model_and_raster(model, digest, name, RECORDS[run.kind])
+        if studio is None
+        else studio_model_and_raster(model, digest, name)
+    )
 
     result: dict[str, Any] = {
         "available": True,
@@ -862,7 +976,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         "scores_file": name,
         "run_dir": run_dir.name,
         "run_files": run.files,
-        "provenance": PROVENANCE,
+        "provenance": provenance,
         "values": kind,
         "grid": [rows_n, cols_n],
         "patch_px": patch,
@@ -900,6 +1014,10 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
             "olmoearth_compare_review."
         ),
     }
+    if studio is not None:
+        result["facts"][0]["result_id"] = model.get("result_id")
+    if "assumption" in notes:
+        result["assumption"] = notes["assumption"]
     return result
 
 

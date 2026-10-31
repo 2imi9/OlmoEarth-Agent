@@ -37,8 +37,9 @@ from olmoearth_agent.tools.registry import (
 
 #: The card's budget in the system prompt, in tokens of four characters
 #: (1,500 until the direct-run step added the certificate tools' lines, 1,600
-#: until the label-inventory step added its line: test_the_card_fits_its_budget).
-CARD_TOKEN_BUDGET = 1650
+#: until the label-inventory and Studio-files steps added their lines:
+#: test_the_card_fits_its_budget).
+CARD_TOKEN_BUDGET = 1700
 
 _SCHEMA = {"type": "object", "properties": {}, "required": []}
 
@@ -218,13 +219,17 @@ def test_the_card_fits_its_budget() -> None:
     do: the labels line 14 characters longer ("use Studio annotations as a
     probability sample" for "look up ... or say whether any exist") and the
     training line 5 shorter ("train a model" for "what its training data
-    held"): 142 characters, 36 tokens, on both cards. With the opted-in card
-    estimated near 1,570 tokens before it (an estimate, not a measurement),
-    the budget moves by the same 36, from 1,600 to 1,636, so it is 1,650. The
-    review of that step adds 17 characters to the tool's line ("a model's
-    training selector selects now" for "a model was trained on"): 159
-    characters, 40 tokens, so the budget moves by 40, from 1,600 to 1,640, and
-    stays 1,650.
+    held"): 142 characters, 36 tokens, on both cards. The review of that step
+    adds 17 characters to the tool's line ("a model's training selector
+    selects now" for "a model was trained on"): 159 characters, 40 tokens.
+    The Studio-files step adds olmoearth_scores_from_studio's line, counted
+    by hand from its declaration: 192 characters with its line break (what it
+    does, 100, verb first as the others, and its cannot, 37), 48 tokens on
+    both cards. The two steps together: 88 tokens. The opted-in card,
+    estimated near 1,567 tokens before them (1,460 + 96 + 5 + 6, estimates
+    from the declarations' text, not measurements), would then be near
+    1,655, so the budget moves by the same 88, from 1,600 to 1,688: it is
+    1,700.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
