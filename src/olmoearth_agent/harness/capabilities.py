@@ -49,9 +49,10 @@ CARD_TITLE = "## Capability card"
 #: round 9 claimed "no ground-truth labels exist" while Studio's model records
 #: showed both models fine-tuned on the project's label fields, and offered to
 #: "set up" a direct model run. ``olmoearth_studio_label_inventory`` now counts
-#: the Studio annotations a model was trained on, by split and class; people
-#: placed them where they chose, so no tool takes them for a probability
-#: sample, and no tool trains a model or reads its training metrics.
+#: the Studio annotations a model's training selector selects now, by split
+#: and class; Studio records no random design for them, so no tool takes them
+#: for a probability sample, and no tool trains a model or reads its training
+#: metrics.
 NO_TOOL_CAN: dict[str, str] = {
     "run_model": (
         "run a model outside Studio, on a GPU cluster or locally "

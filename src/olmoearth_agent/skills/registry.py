@@ -117,8 +117,8 @@ SKILLS: list[SkillSpec] = [
         "Foundational",
         "implemented",
         "Base Studio API tools every Run/Analyze skill builds on, and the count "
-        "of the Studio annotations a model was trained on, by split and class "
-        "(people placed them: no random sample, no error rate).",
+        "of the Studio annotations a model's training selector selects now, by "
+        "split and class (no random design recorded: no error rate).",
         [
             "olmoearth_load_context",
             "olmoearth_create_project",
@@ -506,8 +506,9 @@ def build_default_registry() -> ToolRegistry:
 
     # --- Core: sent on every turn. ---
     add(build_studio_tools())
-    # The Studio annotations a model was trained on, counted (read-only): core,
-    # since whether labels exist is asked before any review set or estimate.
+    # The Studio annotations a model's training selector selects, counted
+    # (read-only): core, since whether labels exist is asked before any review
+    # set or estimate.
     add(build_studio_label_tools())
     add(build_predict_tools())
     # How Studio results differ (#4, #5 series, #9 ensemble): one tool.

@@ -5,9 +5,11 @@
 The kelp case follows what was measured live on 2026-10-31 with a read-only
 key: the model record's data selector (its training project's ``project_id``
 ``{"eq", "inc": null}``, every other filter null, ``sort_by`` creation_time
-ascending), its label and split fields, and the training project's 1056
-approved MULTIPOLYGON annotations by oe_split and kelp class, all created at
-01:26 UTC, the model at 02:25 and updated at 03:10. Ids, people, coordinates
+ascending), its label and split fields, its split proportions (test 0.0), and
+the training project's 1056 approved MULTIPOLYGON annotations by oe_split and
+kelp class, all created at 01:26 UTC, the model at 02:25 and updated at 03:10.
+The embeddings record follows the live KarstEmbedding's shape (no selector)
+and the no-split-field case the live KarstBinary's. Ids, people, coordinates
 and the data types of kelp_value and task_name (the facts name those fields
 only) are this test's own values.
 """
@@ -25,7 +27,7 @@ from pytest_httpx import HTTPXMock
 from olmoearth_agent.analysis.output_contract import MUST_STATE_MAX_WORDS
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
-from olmoearth_agent.studio.client import StudioClient, StudioConfig
+from olmoearth_agent.studio.client import StudioAccessError, StudioClient, StudioConfig
 from olmoearth_agent.tools import studio_labels
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 
@@ -43,6 +45,11 @@ CKPT_VALUE = "ckpt-5e1a-test-only"
 REQUESTER = "person-requester-test"
 #: A free-text metadata value (the task_name field): never returned.
 FREE_NOTE = "free-text-note-test: surveyed from the pier at low tide"
+#: What a selector may hold that must reach Studio and nothing else: a
+#: person's id, a polygon's coordinates and a free-text filter value.
+HIDDEN_PERSON = "person-annotator-hidden"
+HIDDEN_TEXT = "free-text-filter-hidden"
+HIDDEN_RING = [[-119.81, 34.41], [-119.79, 34.41], [-119.79, 34.43], [-119.81, 34.41]]
 
 #: oe_split x kelp of the kelp training project's annotations (2026-10-31).
 KELP_CELLS = (
@@ -158,6 +165,7 @@ def _model(
     created: str = "2026-10-31T02:25:55.862308Z",
     updated: str = "2026-10-31T03:10:57.823284Z",
     split_field: str | None = SPLIT_FIELD,
+    test_prop: float = 0.0,
 ) -> dict[str, Any]:
     """A model record shaped as the kelp model's (live, 2026-10-31), test ids."""
     return {
@@ -178,8 +186,8 @@ def _model(
             "split_field_id": split_field,
             "split_proportions": {
                 "train_prop": 0.75,
-                "val_prop": 0.25,
-                "test_prop": 0.0,
+                "val_prop": 0.25 - test_prop,
+                "test_prop": test_prop,
             },
             "patch_size": 4,
         },
@@ -210,6 +218,20 @@ def _search(
     return answer
 
 
+def _mock_search(
+    httpx_mock: HTTPXMock, records: list[dict[str, Any]], bodies: list[dict[str, Any]]
+) -> None:
+    """Answer every /annotations/search with :func:`_search`."""
+    httpx_mock.add_callback(
+        _search(records, bodies), url=SEARCH, method="POST", is_reusable=True
+    )
+
+
+def _mock_model(httpx_mock: HTTPXMock, record: dict[str, Any]) -> None:
+    """Answer GET /models/{MODEL} with ``record``."""
+    httpx_mock.add_response(url=f"{BASE}/models/{MODEL}", json={"records": [record]})
+
+
 def _mock_kelp(httpx_mock: HTTPXMock, bodies: list[dict[str, Any]]) -> None:
     """The kelp prediction (optional), its model record and the annotation search."""
     prediction = {
@@ -224,15 +246,8 @@ def _mock_kelp(httpx_mock: HTTPXMock, bodies: list[dict[str, Any]]) -> None:
         json={"records": [prediction]},
         is_optional=True,
     )
-    httpx_mock.add_response(
-        url=f"{BASE}/models/{MODEL}", json={"records": [_model([_selector(PROJECT)])]}
-    )
-    httpx_mock.add_callback(
-        _search(_kelp_annotations(), bodies),
-        url=SEARCH,
-        method="POST",
-        is_reusable=True,
-    )
+    _mock_model(httpx_mock, _model([_selector(PROJECT)]))
+    _mock_search(httpx_mock, _kelp_annotations(), bodies)
 
 
 def _studio() -> StudioClient:
@@ -261,6 +276,28 @@ def _page(offset: int, **filters: Any) -> dict[str, Any]:
     }
 
 
+def _selector_with_people() -> dict[str, Any]:
+    """A selector holding a person's id, a polygon and a free-text filter."""
+    return _selector(
+        PROJECT,
+        annotator_id={"eq": HIDDEN_PERSON, "neq": None},
+        intersects_geometry={"type": "Polygon", "coordinates": [HIDDEN_RING]},
+        metadata_filters=[
+            {
+                "metadata_field_id": "field-task-name",
+                "label_id": None,
+                "text": {"eq": HIDDEN_TEXT},
+            }
+        ],
+    )
+
+
+def _leaks(text: str) -> list[str]:
+    """The selector's values (a person, a polygon, free text) found in ``text``."""
+    values = (HIDDEN_PERSON, HIDDEN_TEXT, "-119.81", "-119.79", "34.41", "34.43")
+    return [v for v in values if v in text]
+
+
 # --------------------------------------------------------------------------- the kelp case
 
 
@@ -282,6 +319,10 @@ async def test_the_kelp_models_training_annotations_are_counted_from_its_predict
     ]
     assert (out["annotations_read"], out["studio_total"]) == (1056, 1056)
     assert out["complete"] is True
+    assert out["read_note"] == (
+        "Read 1056 of the 1056 that Studio counts (meta.total): every annotation "
+        "selected was read, each counted once."
+    )
     assert out["by_status"] == {"approved": 1056}
     assert out["by_geometry_type"] == {"MULTIPOLYGON": 1056}
     assert out["by_split"] == {"test": 557, "train": 436, "val": 63}
@@ -294,9 +335,15 @@ async def test_the_kelp_models_training_annotations_are_counted_from_its_predict
     # All created at 01:26, before the model's record (02:25, updated 03:10).
     assert out["creation_time"] == {"first": _kelp_time(0), "last": _kelp_time(1055)}
     assert out["created_after_model_creation"] == 0
+    assert out["updated_after_model_creation"] == 0
     assert out["created_after_model_update"] == 0
     assert out["times_note"] == studio_labels.TIMES_NOTE
+    assert out["classes_note"] == studio_labels.CLASSES_NOTE
     model = out["model"]
+    assert (model["model_type"], model["prediction_type"]) == (
+        "fine_tuned",
+        "per_pixel_classification",
+    )
     assert model["split_proportions"] == {
         "train_prop": 0.75,
         "val_prop": 0.25,
@@ -312,18 +359,68 @@ async def test_the_kelp_models_training_annotations_are_counted_from_its_predict
 async def test_the_result_states_what_annotations_cannot_be_used_for(
     httpx_mock: HTTPXMock,
 ) -> None:
-    """must_state: no design-based error rate; train/val fit the model; test only if."""
+    """must_state: no design-based error rate; train/val fit the model; the
+    kelp record's test share is 0, so its 557 test-tagged annotations were held
+    out only if training followed the split field."""
     _mock_kelp(httpx_mock, [])
     async with _studio() as studio:
         out = (await _call(studio, prediction_id=PREDICTION))["result"]
     assert out["must_state"] == [
         studio_labels.NOT_A_SAMPLE,
         studio_labels.TRAIN_VAL_USED,
-        studio_labels.TEST_HELD_OUT_IF,
+        studio_labels.TEST_SHARE_ZERO,
     ]
     assert [c["id"] for c in out["forbidden_claims"]] == ["accuracy_not_measured"]
-    assert "olmoearth_estimate_map_error" in out["forbidden_claims"][0]["why"]
+    why = out["forbidden_claims"][0]["why"]
+    # Holds where the stakeholder report emits the same id (one why per id).
+    assert why.startswith("no error rate, accuracy or share wrong may be stated")
+    assert "olmoearth_estimate_map_error" in why
     assert "olmoearth_plan_label_sample" in out["next_steps"][0]
+
+
+@pytest.mark.parametrize(
+    ("split_field", "test_prop", "expected"),
+    [
+        (
+            SPLIT_FIELD,
+            0.0,
+            [
+                studio_labels.NOT_A_SAMPLE,
+                studio_labels.TRAIN_VAL_USED,
+                studio_labels.TEST_SHARE_ZERO,
+            ],
+        ),
+        (
+            SPLIT_FIELD,
+            0.1,
+            [
+                studio_labels.NOT_A_SAMPLE,
+                studio_labels.TRAIN_VAL_USED,
+                studio_labels.TEST_HELD_OUT_IF,
+            ],
+        ),
+        (None, 0.0, [studio_labels.NOT_A_SAMPLE, studio_labels.NO_TEST_SHARE]),
+        (None, 0.1, [studio_labels.NOT_A_SAMPLE, studio_labels.NO_SPLIT_FIELD]),
+    ],
+    ids=["split-field-no-test", "split-field-test", "karst-no-test", "no-field-test"],
+)
+@pytest.mark.asyncio
+async def test_must_state_follows_the_split_field_and_the_test_share(
+    httpx_mock: HTTPXMock,
+    split_field: str | None,
+    test_prop: float,
+    expected: list[str],
+) -> None:
+    """With no split field and a test share of 0 (the live KarstBinary and
+    KarstNumber), no annotation is recorded as held out; every annotation here
+    predates the model, so nothing is said of later ones."""
+    record = _model([_selector(PROJECT)], split_field=split_field, test_prop=test_prop)
+    _mock_model(httpx_mock, record)
+    _mock_search(httpx_mock, _kelp_annotations()[:3], [])
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    assert envelope["result"]["must_state"] == expected
 
 
 @pytest.mark.asyncio
@@ -338,6 +435,27 @@ async def test_the_replayed_selector_drops_its_null_keys_and_its_order(
     assert envelope["ok"] is True, envelope
     assert bodies == [_page(0), _page(1000)]
     assert envelope["result"]["source"] == "model"
+
+
+@pytest.mark.asyncio
+async def test_the_split_by_class_table_keeps_its_largest_cells_apart(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past its bounds the table sums the smaller splits and classes."""
+    monkeypatch.setattr(studio_labels, "_MAX_TABLE_SPLITS", 1)
+    monkeypatch.setattr(studio_labels, "_MAX_TABLE_CLASSES", 1)
+    _mock_kelp(httpx_mock, [])
+    async with _studio() as studio:
+        out = (await _call(studio, model_id=MODEL))["result"]
+    other = studio_labels.OTHER
+    assert out["split_by_class"] == {
+        "test": {"absent": 378, other: 179},
+        other: {"absent": 348, other: 151},
+    }
+    assert out["by_split"] == {"test": 557, "train": 436, "val": 63}
+
+
+# --------------------------------------------------------------------------- privacy
 
 
 @pytest.mark.asyncio
@@ -381,6 +499,86 @@ async def test_no_id_person_token_geometry_or_free_text_reaches_the_result(
         assert number not in text, number
 
 
+@pytest.mark.asyncio
+async def test_selector_values_reach_studio_but_never_the_result(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """A person's id, a polygon and a free-text filter are sent as the selector
+    holds them; the result names the filters' keys, never their values."""
+    _mock_model(httpx_mock, _model([_selector_with_people()]))
+    bodies: list[dict[str, Any]] = []
+    _mock_search(httpx_mock, _kelp_annotations()[:3], bodies)
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    (body,) = bodies
+    assert body["annotator_id"] == {"eq": HIDDEN_PERSON}
+    assert body["intersects_geometry"]["coordinates"] == [HIDDEN_RING]
+    assert body["metadata_filters"] == [
+        {"metadata_field_id": "field-task-name", "text": {"eq": HIDDEN_TEXT}}
+    ]
+    assert envelope["result"]["selectors"][0]["filters"] == [
+        "annotator_id",
+        "intersects_geometry",
+        "metadata_filters",
+        "project_id",
+    ]
+    assert _leaks(json.dumps(envelope)) == []
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        (200, "RuntimeError: Studio's annotation search failed (RuntimeError)"),
+        (
+            422,
+            "RuntimeError: Studio's annotation search failed "
+            "(HTTPStatusError, HTTP 422)",
+        ),
+        (
+            403,
+            "StudioAccessError: Studio refused POST /annotations/search "
+            "(HTTP 403, permission_error).",
+        ),
+    ],
+    ids=["errors-in-200", "422", "403"],
+)
+@pytest.mark.asyncio
+async def test_a_failed_search_reaches_the_model_without_studios_text(
+    httpx_mock: HTTPXMock, status: int, error: str
+) -> None:
+    """Studio's error text may quote the selector: only its type, status and
+    code reach the error, and no __context__ keeps the request."""
+    record = _model([_selector_with_people()])
+    httpx_mock.add_response(
+        url=f"{BASE}/models/{MODEL}", json={"records": [record]}, is_reusable=True
+    )
+    message = f"no annotator {HIDDEN_PERSON} near -119.81 34.41 for {HIDDEN_TEXT}"
+    httpx_mock.add_response(
+        url=SEARCH,
+        method="POST",
+        status_code=status,
+        json={
+            "records": [],
+            "meta": None,
+            "errors": [{"code": "permission_error", "message": message}],
+        },
+        is_reusable=True,
+    )
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        with pytest.raises(RuntimeError) as caught:
+            await studio_labels._label_inventory({"model_id": MODEL}, ctx)
+    assert envelope["ok"] is False
+    assert envelope["error"].startswith(error), envelope["error"]
+    assert _leaks(json.dumps(envelope)) == []
+    if status == 403:
+        assert envelope["hint"] == StudioAccessError.hint
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+
+
 # --------------------------------------------------------------------------- paging
 
 
@@ -391,12 +589,7 @@ async def test_the_read_stops_at_the_cap_and_says_how_many_of_the_total(
     monkeypatch.setattr(studio_labels, "_PAGE", 2)
     monkeypatch.setattr(studio_labels, "_CAP", 5)
     bodies: list[dict[str, Any]] = []
-    httpx_mock.add_callback(
-        _search(_kelp_annotations()[:9], bodies),
-        url=SEARCH,
-        method="POST",
-        is_reusable=True,
-    )
+    _mock_search(httpx_mock, _kelp_annotations()[:9], bodies)
     async with _studio() as studio:
         envelope = await _call(studio, project_id=PROJECT)
     assert envelope["ok"] is True, envelope
@@ -404,11 +597,88 @@ async def test_the_read_stops_at_the_cap_and_says_how_many_of_the_total(
     assert (out["annotations_read"], out["studio_total"]) == (5, 9)
     assert out["complete"] is False
     assert out["read_note"].startswith(
-        "Read 5 of the 9 that Studio counts (meta.total), stopping at this "
-        "tool's cap of 5;"
+        "Read 5 of the 9 that Studio counts (meta.total): the read stopped at "
+        "this tool's cap of 5 annotations;"
     )
     assert sum(out["by_status"].values()) == 5
     assert [b["offset"] for b in bodies] == [0, 2, 4]
+
+
+@pytest.mark.asyncio
+async def test_a_read_that_ends_exactly_at_the_cap_is_complete(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Four annotations, a cap of four, a full last page: Studio's total says
+    nothing is left, so the read is complete and no third page is asked for."""
+    monkeypatch.setattr(studio_labels, "_PAGE", 2)
+    monkeypatch.setattr(studio_labels, "_CAP", 4)
+    bodies: list[dict[str, Any]] = []
+    _mock_search(httpx_mock, _kelp_annotations()[:4], bodies)
+    async with _studio() as studio:
+        envelope = await _call(studio, project_id=PROJECT)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert (out["annotations_read"], out["complete"]) == (4, True)
+    assert "every annotation selected was read" in out["read_note"]
+    assert [b["offset"] for b in bodies] == [0, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_selector_after_the_cap_still_has_its_total_read(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second selector is not paged, but a page of one gives its total, so
+    the result still says how many of Studio's total were read."""
+    monkeypatch.setattr(studio_labels, "_PAGE", 2)
+    monkeypatch.setattr(studio_labels, "_CAP", 3)
+    selectors = [_selector(PROJECT), _selector(PROJECT, status={"eq": "approved"})]
+    _mock_model(httpx_mock, _model(selectors))
+    bodies: list[dict[str, Any]] = []
+    _mock_search(httpx_mock, _kelp_annotations()[:5], bodies)
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert [(b["offset"], b["limit"]) for b in bodies] == [(0, 2), (2, 2), (0, 1)]
+    assert [s["studio_total"] for s in out["selectors"]] == [5, 5]
+    assert (out["annotations_read"], out["studio_total"]) == (3, 10)
+    assert out["complete"] is False
+    assert out["read_note"].startswith(
+        "Read 3 of the 10 that Studio counts (meta.total): the read stopped at "
+        "this tool's cap of 3 annotations;"
+    )
+    # Not complete, so later annotations cannot be ruled out.
+    assert out["must_state"][1] == studio_labels.TRAIN_VAL_BEFORE
+
+
+@pytest.mark.asyncio
+async def test_pages_that_repeat_and_skip_are_not_called_complete(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Offset pages over equal creation times keep no fixed order: a page that
+    repeats one annotation and skips another ends short of meta.total."""
+    monkeypatch.setattr(studio_labels, "_PAGE", 2)
+    kelp = _kelp_annotations()
+    pages = {0: [kelp[0], kelp[1]], 2: [kelp[1], kelp[3]], 4: [kelp[4]]}
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        payload = {"records": pages[body["offset"]], "meta": {"total": 5}}
+        return httpx.Response(200, json=payload)
+
+    httpx_mock.add_callback(answer, url=SEARCH, method="POST", is_reusable=True)
+    async with _studio() as studio:
+        envelope = await _call(studio, project_id=PROJECT)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert (out["annotations_read"], out["studio_total"]) == (4, 5)
+    assert out["complete"] is False
+    assert out["read_note"] == (
+        "Read 4 of the 5 that Studio counts (meta.total): Studio's pages ended "
+        "before as many distinct annotations as it counts came back (offset pages "
+        "over equal creation times may repeat some and skip others); the counts "
+        "cover the annotations read only."
+    )
 
 
 @pytest.mark.asyncio
@@ -419,12 +689,7 @@ async def test_past_the_largest_offset_the_read_goes_on_from_the_last_creation_t
     monkeypatch.setattr(studio_labels, "_PAGE", 2)
     monkeypatch.setattr(studio_labels, "_OFFSET_MAX", 2)
     bodies: list[dict[str, Any]] = []
-    httpx_mock.add_callback(
-        _search(_kelp_annotations()[:7], bodies),
-        url=SEARCH,
-        method="POST",
-        is_reusable=True,
-    )
+    _mock_search(httpx_mock, _kelp_annotations()[:7], bodies)
     async with _studio() as studio:
         envelope = await _call(studio, project_id=PROJECT)
     assert envelope["ok"] is True, envelope
@@ -442,6 +707,47 @@ async def test_past_the_largest_offset_the_read_goes_on_from_the_last_creation_t
 
 
 @pytest.mark.asyncio
+async def test_a_floor_that_would_not_move_ends_the_read(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Five annotations of one creation time, two to a page, no offset past 0:
+    the floor stays at that time, so the read ends instead of looping."""
+    monkeypatch.setattr(studio_labels, "_PAGE", 2)
+    monkeypatch.setattr(studio_labels, "_OFFSET_MAX", 0)
+    same = "2026-10-31T01:26:16.152409Z"
+    records = [_annotation(i, "train", "absent", same) for i in range(5)]
+    bodies: list[dict[str, Any]] = []
+    _mock_search(httpx_mock, records, bodies)
+    async with _studio() as studio:
+        envelope = await _call(studio, project_id=PROJECT)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert (out["annotations_read"], out["complete"]) == (2, False)
+    assert "more annotations share one creation time" in out["read_note"]
+    assert [b.get("creation_time") for b in bodies] == [None, {"gte": same}]
+
+
+@pytest.mark.asyncio
+async def test_the_page_bound_stops_the_read(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(studio_labels, "_PAGE", 2)
+    monkeypatch.setattr(studio_labels, "_MAX_PAGES", 2)
+    bodies: list[dict[str, Any]] = []
+    _mock_search(httpx_mock, _kelp_annotations()[:7], bodies)
+    async with _studio() as studio:
+        envelope = await _call(studio, project_id=PROJECT)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert (out["annotations_read"], out["complete"]) == (4, False)
+    assert out["read_note"].startswith(
+        "Read 4 of the 7 that Studio counts (meta.total): the read stopped at "
+        "this tool's 2 search pages;"
+    )
+    assert [b["offset"] for b in bodies] == [0, 2]
+
+
+@pytest.mark.asyncio
 async def test_an_annotation_two_selectors_select_is_counted_once(
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -450,21 +756,15 @@ async def test_an_annotation_two_selectors_select_is_counted_once(
         _selector(PROJECT),
         _selector(PROJECT, status={"eq": "approved", "neq": None}, limit=500),
     ]
-    httpx_mock.add_response(
-        url=f"{BASE}/models/{MODEL}", json={"records": [_model(selectors)]}
-    )
+    _mock_model(httpx_mock, _model(selectors))
     bodies: list[dict[str, Any]] = []
-    httpx_mock.add_callback(
-        _search(_kelp_annotations()[:6], bodies),
-        url=SEARCH,
-        method="POST",
-        is_reusable=True,
-    )
+    _mock_search(httpx_mock, _kelp_annotations()[:6], bodies)
     async with _studio() as studio:
         envelope = await _call(studio, model_id=MODEL)
     assert envelope["ok"] is True, envelope
     out = envelope["result"]
     assert (out["annotations_read"], out["studio_total"]) == (6, 12)
+    assert out["complete"] is True
     assert out["selectors"][1] == {
         "filters": ["project_id", "status"],
         "not_replayed": ["limit"],
@@ -475,38 +775,68 @@ async def test_an_annotation_two_selectors_select_is_counted_once(
     assert "not_replayed" in out["selector_notes"][0]
 
 
+@pytest.mark.asyncio
+async def test_selectors_and_their_keys_are_bounded(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Selectors past the bound are not replayed and are said to be left out; a
+    selector names at most ten keys, and an offset of 0 narrows nothing."""
+    monkeypatch.setattr(studio_labels, "_MAX_SELECTORS", 1)
+    odd = {f"odd_key_{i:02d}": i + 1 for i in range(12)}
+    selectors = [_selector(PROJECT, offset=0, **odd), _selector("proj-other-test")]
+    _mock_model(httpx_mock, _model(selectors))
+    bodies: list[dict[str, Any]] = []
+    _mock_search(httpx_mock, _kelp_annotations()[:3], bodies)
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert bodies == [_page(0)]
+    assert out["selectors_left_out"] == 1
+    (selector,) = out["selectors"]
+    assert selector["not_replayed"] == [
+        *(f"odd_key_{i:02d}" for i in range(10)),
+        "and 2 more",
+    ]
+    assert any(
+        n.startswith("Only the first 1 of the record's 2 selectors were replayed")
+        for n in out["selector_notes"]
+    )
+
+
 # --------------------------------------------------------------------------- times
 
 
 @pytest.mark.asyncio
-async def test_annotations_created_after_the_model_are_counted_apart(
+async def test_annotations_created_or_updated_after_the_model_are_counted_apart(
     httpx_mock: HTTPXMock,
 ) -> None:
-    """Two before the model's creation, three between it and the update, one after.
+    """Two before the model's creation, three between it and the update, one
+    after, and one of the first two updated after the creation.
 
-    With no split field named, the split is unrecorded and must_state says
-    which annotations fit or tuned the model is unknown.
+    With no split field the split is unrecorded; the record's test share of 0
+    holds none out, and must_state says the later ones may not have trained it.
     """
     times = ["2026-10-31T01:00:00Z"] * 2 + ["2026-10-31T02:30:00Z"] * 3
     records = [
         _annotation(i, "train", "present", at)
         for i, at in enumerate([*times, "2026-10-31T03:30:00Z"])
     ]
+    records[0]["updated_time"] = "2026-10-31T02:10:00Z"
     record = _model(
         [_selector(PROJECT)],
         created="2026-10-31T02:00:00Z",
         updated="2026-10-31T03:00:00Z",
         split_field=None,
     )
-    httpx_mock.add_response(url=f"{BASE}/models/{MODEL}", json={"records": [record]})
-    httpx_mock.add_callback(
-        _search(records, []), url=SEARCH, method="POST", is_reusable=True
-    )
+    _mock_model(httpx_mock, record)
+    _mock_search(httpx_mock, records, [])
     async with _studio() as studio:
         envelope = await _call(studio, model_id=MODEL)
     assert envelope["ok"] is True, envelope
     out = envelope["result"]
     assert out["created_after_model_creation"] == 4
+    assert out["updated_after_model_creation"] == 5
     assert out["created_after_model_update"] == 1
     assert out["creation_time"] == {
         "first": "2026-10-31T01:00:00Z",
@@ -516,9 +846,27 @@ async def test_annotations_created_after_the_model_are_counted_apart(
     assert out["by_class"] == {"present": 6}
     assert out["must_state"] == [
         studio_labels.NOT_A_SAMPLE,
-        studio_labels.NO_SPLIT_FIELD,
+        studio_labels.NO_TEST_SHARE,
+        studio_labels.LATER_UNKNOWN,
     ]
     assert "selector_notes" not in out
+
+
+@pytest.mark.asyncio
+async def test_a_split_model_with_later_annotations_hedges_what_trained_it(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """An annotation added after the model does not read as trained on (the
+    review's case: 200 train annotations added after the model finished)."""
+    records = _kelp_annotations()[:3]
+    records[2]["creation_time"] = "2026-10-31T04:00:00Z"
+    records[2]["updated_time"] = "2026-10-31T04:00:00Z"
+    _mock_model(httpx_mock, _model([_selector(PROJECT)]))
+    _mock_search(httpx_mock, records, [])
+    async with _studio() as studio:
+        out = (await _call(studio, model_id=MODEL))["result"]
+    assert out["created_after_model_creation"] == 1
+    assert out["must_state"][1] == studio_labels.TRAIN_VAL_BEFORE
 
 
 # --------------------------------------------------------------------------- no model
@@ -539,12 +887,7 @@ async def test_no_models_route_leaves_the_selector_unknown_and_counts_a_project(
         url=f"{BASE}/models/{MODEL}", status_code=404, json={"detail": "Not Found"}
     )
     bodies: list[dict[str, Any]] = []
-    httpx_mock.add_callback(
-        _search(_kelp_annotations(), bodies),
-        url=SEARCH,
-        method="POST",
-        is_reusable=True,
-    )
+    _mock_search(httpx_mock, _kelp_annotations(), bodies)
     async with _studio() as studio:
         first = await _call(studio, prediction_id=PREDICTION)
         assert studio.models_unavailable is True
@@ -575,9 +918,101 @@ async def test_no_models_route_leaves_the_selector_unknown_and_counts_a_project(
     ]
     assert bodies[0] == _page(0)
     text = json.dumps(second)
-    for training in (studio_labels.TRAIN_VAL_USED, studio_labels.TEST_HELD_OUT_IF):
+    for training in (
+        studio_labels.TRAIN_VAL_USED,
+        studio_labels.TRAIN_VAL_BEFORE,
+        studio_labels.TEST_HELD_OUT_IF,
+        studio_labels.TEST_SHARE_ZERO,
+    ):
         assert training not in text
     assert FREE_NOTE not in text
+
+
+@pytest.mark.asyncio
+async def test_a_refused_model_record_leaves_the_selector_unknown(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """A key refused on /models/{id} is a lookup failure: unknown, not an error."""
+    httpx_mock.add_response(
+        url=f"{BASE}/models/{MODEL}",
+        status_code=403,
+        json={
+            "records": [],
+            "meta": None,
+            "errors": [{"code": "permission_error", "message": "no access"}],
+        },
+    )
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert out["training_selector"] == "unknown"
+    assert out["reason"] == "Studio refused the model record for this key (HTTP 403)"
+    assert out["must_state"] == [
+        studio_labels.SELECTOR_UNKNOWN,
+        studio_labels.NOT_A_SAMPLE,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_embeddings_model_is_not_said_to_be_trained_on_annotations(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The live KarstEmbedding's record: model_type embeddings, no selector."""
+    record = {
+        "id": MODEL,
+        "name": "KarstEmbedding",
+        "model_type": "embeddings",
+        "status": "completed",
+        "creation_time": "2026-07-05T14:28:39.653852Z",
+        "updated_time": "2026-07-05T14:28:39.653857Z",
+        "checkpoint_token": CKPT_VALUE,
+        "requester_id": None,
+        "wizard_answers": {
+            "wizard_id": "embeddings_v1",
+            "project_id": PROJECT,
+            "encoder_variant": "nano",
+        },
+        "data_selectors": None,
+    }
+    _mock_model(httpx_mock, record)
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert out["training_selector"] == "none recorded"
+    assert (out["model"]["model_type"], out["model"]["prediction_type"]) == (
+        "embeddings",
+        None,
+    )
+    assert out["must_state"] == [studio_labels.NO_SELECTOR, studio_labels.NOT_A_SAMPLE]
+    assert studio_labels.SELECTOR_UNKNOWN not in json.dumps(envelope)
+    assert CKPT_VALUE not in json.dumps(envelope)
+
+
+@pytest.mark.asyncio
+async def test_studio_values_in_the_model_record_are_bounded(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Text is cut, and a number that is not one (a bool, a string) is None."""
+    record = _model(None)
+    record.update({"name": "N" * 5000, "status": {"nested": "x"}})
+    record["wizard_answers"].update(
+        {
+            "patch_size": "4",
+            "split_proportions": {"train_prop": True, "val_prop": 0.25, "x": 1},
+        }
+    )
+    _mock_model(httpx_mock, record)
+    async with _studio() as studio:
+        out = (await _call(studio, model_id=MODEL))["result"]
+    model = out["model"]
+    assert model["name"] == "N" * 120
+    assert (model["status"], model["patch_size"]) == (None, None)
+    assert model["split_proportions"] == {"train_prop": None, "val_prop": 0.25}
+
+
+# --------------------------------------------------------------------------- inputs
 
 
 @pytest.mark.parametrize(
@@ -602,14 +1037,54 @@ async def test_exactly_one_of_the_three_ids_is_taken(args: dict[str, Any]) -> No
 
 
 @pytest.mark.parametrize(
+    "args",
+    [
+        {"model_id": "m/../../users/me"},
+        {"prediction_id": "p?download_token=x"},
+        {"project_id": "a b"},
+    ],
+    ids=["path", "query", "space"],
+)
+@pytest.mark.asyncio
+async def test_an_id_that_is_no_studio_id_is_refused(args: dict[str, Any]) -> None:
+    """An id goes into a request path: refused before any Studio call."""
+    envelope = await _call(None, **args)
+    assert envelope["ok"] is False
+    assert "is not a Studio id" in envelope["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_predictions_model_id_that_is_no_studio_id_is_never_requested(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The prediction record is Studio's data: its model id is checked too."""
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/{PREDICTION}",
+        json={"records": [{"id": PREDICTION, "model_id": "m/../../users/me"}]},
+    )
+    async with _studio() as studio:
+        envelope = await _call(studio, prediction_id=PREDICTION)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert (out["training_selector"], out["model_id"]) == ("unknown", None)
+    assert out["reason"] == "the prediction record's model id is not a Studio id"
+    assert len(httpx_mock.get_requests()) == 1
+
+
+@pytest.mark.parametrize(
     "sentence",
     [
         studio_labels.NOT_A_SAMPLE,
         studio_labels.TRAIN_VAL_USED,
+        studio_labels.TRAIN_VAL_BEFORE,
         studio_labels.TEST_HELD_OUT_IF,
+        studio_labels.TEST_SHARE_ZERO,
         studio_labels.NO_SPLIT_FIELD,
+        studio_labels.NO_TEST_SHARE,
+        studio_labels.LATER_UNKNOWN,
         studio_labels.TRAINING_UNKNOWN,
         studio_labels.SELECTOR_UNKNOWN,
+        studio_labels.NO_SELECTOR,
     ],
 )
 def test_each_must_state_sentence_keeps_the_contract(sentence: str) -> None:

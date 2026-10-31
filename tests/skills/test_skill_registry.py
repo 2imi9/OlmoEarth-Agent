@@ -600,7 +600,12 @@ def test_a_default_turn_carries_under_7800_spec_tokens(
     counted the same way, olmoearth_studio_label_inventory's spec (455
     characters, its description 223 of them) with its separator (2): 457
     characters, 114 tokens. 7,640 + 114 = 7,754; the bound moves by the same
-    114, from 7,650 to 7,764, so it is 7,800. These are
+    114, from 7,650 to 7,764, so it is 7,800. The review of that step adds,
+    counted the same way, 10 characters to its description ("a model's
+    training selector selects now" for "a model was trained on", 17 more, and
+    "No random design recorded" for "Annotations are no random sample", 7
+    fewer): 467 characters, 117 tokens. 7,640 + 117 = 7,757; the bound moves
+    by the same 117, from 7,650 to 7,767, so it stays 7,800. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

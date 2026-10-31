@@ -127,14 +127,17 @@ def test_what_no_tool_can_do_is_read_off_the_registry() -> None:
 
 
 def test_the_card_counts_studio_annotations_but_takes_no_sample_or_training() -> None:
-    """The label inventory counts a model's Studio annotations and splits; what
-    no tool can do still says they are no probability sample and that no tool
-    trains a model (the label-inventory step of 31 October 2026)."""
+    """The label inventory counts the Studio annotations a model's training
+    selector selects now, and their splits; what no tool can do still says they
+    are no probability sample and that no tool trains a model (the
+    label-inventory step of 31 October 2026 and its review: the selector is
+    read now, so the card does not say what the model was trained on)."""
     card = capability_card(build_default_registry())
     head, beyond = card.split("No tool of this agent can:", 1)
     line = (
         "\n- olmoearth_studio_label_inventory: count the Studio annotations a "
-        "model was trained on, or a project's, by status, split and class."
+        "model's training selector selects now, or a project's, by status, split "
+        "and class."
     )
     assert line in head
     assert NO_TOOL_CAN["labels"].endswith(
@@ -217,7 +220,11 @@ def test_the_card_fits_its_budget() -> None:
     training line 5 shorter ("train a model" for "what its training data
     held"): 142 characters, 36 tokens, on both cards. With the opted-in card
     estimated near 1,570 tokens before it (an estimate, not a measurement),
-    the budget moves by the same 36, from 1,600 to 1,636, so it is 1,650.
+    the budget moves by the same 36, from 1,600 to 1,636, so it is 1,650. The
+    review of that step adds 17 characters to the tool's line ("a model's
+    training selector selects now" for "a model was trained on"): 159
+    characters, 40 tokens, so the budget moves by 40, from 1,600 to 1,640, and
+    stays 1,650.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
