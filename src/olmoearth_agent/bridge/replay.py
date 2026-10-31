@@ -297,10 +297,12 @@ def replay_registry(registry: ToolRegistry, cache: ToolCache) -> ToolRegistry:
     """A copy of ``registry`` whose handlers go through ``cache``.
 
     The same tools in the same order, with the same specs, capabilities and
-    deferred groups, so the tools offered and the capability card are the
-    live ones.
+    deferred groups, and the same ``cannot`` lines (what a setting of this
+    process rules out, e.g. a read-only Studio key), so the tools offered and
+    the capability card are the live ones.
     """
     replayed = ToolRegistry()
+    replayed.cannot = dict(registry.cannot)
     for name in registry.names():
         tool = registry.tool_of(name)
         if tool is None:  # pragma: no cover - names() lists registered tools only

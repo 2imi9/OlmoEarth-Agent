@@ -603,6 +603,47 @@ async def test_a_loaded_skill_is_loaded_again_on_each_replay(tmp_path: Path) -> 
     assert calls == {"rs_tool": 1}
 
 
+_CANNOT = "write to Studio: this run's key is read-only (a test's line)"
+
+
+def _read_only_registry(calls: dict[str, int]) -> ToolRegistry:
+    """The fake registry with a ``cannot`` line, as a read-only key gives one."""
+    registry = _registry(calls)
+    registry.cannot["studio_write"] = _CANNOT
+    return registry
+
+
+@pytest.mark.asyncio
+async def test_a_setting_s_card_line_reaches_the_model_through_the_replay(
+    tmp_path: Path,
+) -> None:
+    # The live loop puts registry.cannot under what no tool can do; the
+    # replay's copy of the registry must too, or the model reads another card
+    # (found on aicr: OLMOEARTH_READ_ONLY's line was missing from the bridge's
+    # system prompt while the write tools were left out).
+    calls: dict[str, int] = {}
+    stub = _Stub([_as_chat(1, {"content": _FIXED})])
+    agent = LeadAgent(
+        stub,  # type: ignore[arg-type]
+        _read_only_registry(calls),
+        _studio(),
+        state=ThreadState(provenance=ProvenanceLog(run_id="direct")),
+        skill_index="",
+        memory_block="",
+        local=False,
+        check_claims=False,
+        surface="cli",
+    )
+    _ = [e async for e in agent.run_stream(_BRIEF)]
+
+    run = tmp_path / "run"
+    first = await _begin(run, partial(_read_only_registry, calls))
+    assert f"- {_CANNOT}" in first["system"]["text"]
+    await _step(run, {"content": _FIXED}, partial(_read_only_registry, calls))
+    recorded = _jsonl(run / "responses.jsonl")
+    assert [r["request_sha256"] for r in recorded] == stub.fingerprints
+
+
 @pytest.mark.asyncio
 async def test_the_claim_check_s_call_is_refused() -> None:
     llm = ScriptedLLM([])
