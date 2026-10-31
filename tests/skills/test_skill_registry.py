@@ -55,6 +55,7 @@ KEPT = (
     "olmoearth_create_project",
     "olmoearth_request_aoi",
     "olmoearth_get_prediction",
+    "olmoearth_studio_label_inventory",
     "olmoearth_search_predictions",
     "olmoearth_submit_prediction",
     "olmoearth_fetch_results",
@@ -205,9 +206,9 @@ def test_each_kept_tool_is_in_the_default_registry(
 def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     default_env: None,
 ) -> None:
-    """28 tools; the opt-in python tool is off too."""
+    """29 tools; the opt-in python tool is off too."""
     assert sorted(build_default_registry().names()) == sorted(KEPT)
-    assert len(KEPT) == 28
+    assert len(KEPT) == 29
 
 
 def test_opting_in_restores_every_tool_where_it_was(
@@ -498,6 +499,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         "olmoearth_estimate_map_error",
         "olmoearth_certify_zone",
         "olmoearth_classification_metrics",
+        "olmoearth_studio_label_inventory",
         "olmoearth_load_skill",
     ):
         assert tool in core, tool
@@ -518,7 +520,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         assert deferred not in opted_core, deferred
 
 
-def test_a_default_turn_carries_under_7650_spec_tokens(
+def test_a_default_turn_carries_under_7800_spec_tokens(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Measured as the audit did: len(JSON of the specs) / 4.
@@ -594,10 +596,19 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     to olmoearth_review_set_from_result's threshold ("Required for a
     regression band not in [0, 1]." for "Required unless the band is a [0, 1]
     score.", which said a class map with top-k scores needs one): 1 token,
-    7,640, under the same bound. These are
+    7,640, under the same bound. The label-inventory step of 31 October adds,
+    counted the same way, olmoearth_studio_label_inventory's spec (455
+    characters, its description 223 of them) with its separator (2): 457
+    characters, 114 tokens. 7,640 + 114 = 7,754; the bound moves by the same
+    114, from 7,650 to 7,764, so it is 7,800. The review of that step adds,
+    counted the same way, 10 characters to its description ("a model's
+    training selector selects now" for "a model was trained on", 17 more, and
+    "No random design recorded" for "Annotations are no random sample", 7
+    fewer): 467 characters, 117 tokens. 7,640 + 117 = 7,757; the bound moves
+    by the same 117, from 7,650 to 7,767, so it stays 7,800. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """
     default = _turn_chars(build_default_registry())
-    assert default / 4 < 7_650
+    assert default / 4 < 7_800
     assert _turn_chars(_opted_in(monkeypatch)) > default

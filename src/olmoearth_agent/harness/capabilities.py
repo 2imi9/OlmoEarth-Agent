@@ -47,18 +47,22 @@ CARD_TITLE = "## Capability card"
 #: file paths are confined to the workspace and the scores root
 #: (``security/paths.safe_path``, ``tools/review_set.read_roots``). exp86
 #: round 9 claimed "no ground-truth labels exist" while Studio's model records
-#: showed both models fine-tuned on the project's label fields, which no tool
-#: reads, and offered to "set up" a direct model run.
+#: showed both models fine-tuned on the project's label fields, and offered to
+#: "set up" a direct model run. ``olmoearth_studio_label_inventory`` now counts
+#: the Studio annotations a model's training selector selects now, by split
+#: and class; Studio records no random design for them, so no tool takes them
+#: for a probability sample, and no tool trains a model or reads its training
+#: metrics.
 NO_TOOL_CAN: dict[str, str] = {
     "run_model": (
         "run a model outside Studio, on a GPU cluster or locally "
         "(olmoearth_scores_from_file reads a run already made)"
     ),
     "labels": (
-        "look up or fetch ground-truth labels (they come from the user or a "
-        "reviewer), or say whether any exist"
+        "fetch ground-truth labels (they come from the user or a reviewer), or "
+        "use Studio annotations as a probability sample"
     ),
-    "training": ("say what a Studio model's training data held, or its metrics"),
+    "training": ("train a model, or say a Studio model's training metrics"),
     "files": (
         "read files outside the workspace, the scores root and, with no scores "
         "root set, the working directory"
