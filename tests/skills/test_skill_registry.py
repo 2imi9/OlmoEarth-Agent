@@ -66,6 +66,7 @@ KEPT = (
     "olmoearth_review_set",
     "olmoearth_review_set_from_result",
     "olmoearth_scores_from_file",
+    "olmoearth_scores_from_studio",
     "olmoearth_compare_review",
     "olmoearth_review_budget_ceiling",
     "olmoearth_plan_label_sample",
@@ -205,9 +206,9 @@ def test_each_kept_tool_is_in_the_default_registry(
 def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     default_env: None,
 ) -> None:
-    """28 tools; the opt-in python tool is off too."""
+    """29 tools; the opt-in python tool is off too."""
     assert sorted(build_default_registry().names()) == sorted(KEPT)
-    assert len(KEPT) == 28
+    assert len(KEPT) == 29
 
 
 def test_opting_in_restores_every_tool_where_it_was(
@@ -494,6 +495,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         "olmoearth_review_set",
         "olmoearth_review_set_from_result",
         "olmoearth_scores_from_file",
+        "olmoearth_scores_from_studio",
         "olmoearth_plan_label_sample",
         "olmoearth_estimate_map_error",
         "olmoearth_certify_zone",
@@ -518,7 +520,7 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         assert deferred not in opted_core, deferred
 
 
-def test_a_default_turn_carries_under_7650_spec_tokens(
+def test_a_default_turn_carries_under_7900_spec_tokens(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Measured as the audit did: len(JSON of the specs) / 4.
@@ -594,10 +596,14 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     to olmoearth_review_set_from_result's threshold ("Required for a
     regression band not in [0, 1]." for "Required unless the band is a [0, 1]
     score.", which said a class map with top-k scores needs one): 1 token,
-    7,640, under the same bound. These are
-    counts by hand, not measurements. Opted in, a turn carries the opt-in
-    specs again.
+    7,640, under the same bound. The Studio-files step adds, counted the
+    same way, olmoearth_scores_from_studio's spec (931 characters: its
+    description 436, its four parameters result_id, patch, clip_out_of_range
+    and max_mb) with its separator (2): 933 characters, 233 tokens. 7,640 +
+    233 = 7,873; the bound moves by the same 233, from 7,650 to 7,883, so it
+    is 7,900. These are counts by hand, not measurements. Opted in, a turn
+    carries the opt-in specs again.
     """
     default = _turn_chars(build_default_registry())
-    assert default / 4 < 7_650
+    assert default / 4 < 7_900
     assert _turn_chars(_opted_in(monkeypatch)) > default

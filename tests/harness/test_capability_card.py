@@ -36,9 +36,10 @@ from olmoearth_agent.tools.registry import (
 )
 
 #: The card's budget in the system prompt, in tokens of four characters
-#: (1,500 until the direct-run step added the certificate tools' lines:
+#: (1,500 until the direct-run step added the certificate tools' lines, 1,600
+#: until the Studio-files step added olmoearth_scores_from_studio's:
 #: test_the_card_fits_its_budget).
-CARD_TOKEN_BUDGET = 1600
+CARD_TOKEN_BUDGET = 1650
 
 _SCHEMA = {"type": "object", "properties": {}, "required": []}
 
@@ -189,7 +190,13 @@ def test_the_card_fits_its_budget() -> None:
     on olmoearth_review_set_from_result's line, whose cannot is 6 shorter
     ("a class map with no top-k scores (no margin)"), "a class map with no
     top-k scores" on olmoearth_plan_label_sample's need (14) and on
-    olmoearth_certify_zone's cannot (3 shorter).
+    olmoearth_certify_zone's cannot (3 shorter). The Studio-files step adds
+    olmoearth_scores_from_studio's line, counted by hand from its
+    declaration: 185 characters with its line break (what it does, 93, and
+    its cannot, 37), 46 tokens on both cards. The opted-in card, estimated
+    near 1,570 tokens before it (1,460 + 96 + 5 + 6, estimates from the
+    declarations' text, not measurements), would then be near 1,615, too
+    close to 1,600 to count on, so the budget moves to 1,650.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)

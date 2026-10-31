@@ -45,6 +45,12 @@ A channel the manifest marks as the label fill value (``score_area.py`` names
 it ``nodata_value_<c>``; AWF's channel 9, never a training target) is left out
 of the margin and of the class vote unless ``include_fill_class`` is set.
 
+A run directory ``olmoearth_scores_from_studio`` writes from a Studio
+result's own files (``tools/studio_scores.py``) holds a ``manifest.json``
+too, whose ``source.kind`` is ``studio_files``: it is read and pooled the same
+way, and its provenance says the scores were downloaded from Studio's files
+endpoint (:data:`STUDIO_PROVENANCE`), not made by a direct run.
+
 Reading the GeoTIFF needs the optional ``inferencex`` extra (numpy and
 rasterio through ``olmoearth-inferencex[geo]``); without it the tool answers
 with the install line. A raster the package's reader cannot read is a refusal
@@ -123,6 +129,19 @@ PROVENANCE = (
     "full model output from a direct run: every pixel's pre-argmax scores, "
     "read from the run's raster and pooled to windows by olmoearth-inferencex; "
     "not Studio point samples"
+)
+
+#: ``source.kind`` of a manifest ``olmoearth_scores_from_studio`` writes.
+STUDIO_FILES = "studio_files"
+
+#: Where the scores come from when the manifest's ``source.kind`` is
+#: :data:`STUDIO_FILES`, stated in place of :data:`PROVENANCE`: no direct run
+#: made them, Studio did, and the tool downloaded its native-resolution files.
+STUDIO_PROVENANCE = (
+    "full model output downloaded from Studio's files endpoint: every pixel's "
+    "scores in Studio's native-resolution file, read from the raster written "
+    "from it and pooled to windows by olmoearth-inferencex; not Studio point "
+    "samples"
 )
 
 _FILL_NAME = re.compile(r"nodata_value_(\d+)")
@@ -313,6 +332,19 @@ def model_and_raster(
         f"model {name} {at}; raster sha256 {digest[:8]} (a hash of the scores "
         f"raster, not of the model){in_name}."
     )
+
+
+def provenance_of(manifest: dict[str, Any]) -> str:
+    """Where a run's scores come from: :data:`PROVENANCE` unless Studio's files.
+
+    A manifest whose ``source.kind`` is :data:`STUDIO_FILES` gets
+    :data:`STUDIO_PROVENANCE`; any other, one with no ``source`` among them,
+    keeps :data:`PROVENANCE` as it was.
+    """
+    source = manifest.get("source")
+    if isinstance(source, dict) and source.get("kind") == STUDIO_FILES:
+        return STUDIO_PROVENANCE
+    return PROVENANCE
 
 
 def _date_window(manifest: dict[str, Any]) -> dict[str, Any] | None:
@@ -711,6 +743,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     manifest, raster = run.manifest, run.raster
     kind = _values_kind(manifest)
     is_logit = kind == "logits"
+    provenance = provenance_of(manifest)
 
     digest = _sha256(raster)
     recorded = (manifest.get("scores") or {}).get("sha256")
@@ -813,7 +846,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     package_warnings = [str(w) for w in out.get("warnings", [])]
     payload: dict[str, Any] = {
         "format": "olmoearth-agent/scores@1",
-        "provenance": PROVENANCE,
+        "provenance": provenance,
         "score_kind": SCORE_KIND,
         "score_type": "logit" if is_logit else "probability",
         "values": kind,
@@ -862,7 +895,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         "scores_file": name,
         "run_dir": run_dir.name,
         "run_files": run.files,
-        "provenance": PROVENANCE,
+        "provenance": provenance,
         "values": kind,
         "grid": [rows_n, cols_n],
         "patch_px": patch,
