@@ -279,14 +279,35 @@ inventory and `olmoearth_scores_from_studio` merged.
   The replay now keeps them, and a test compares the requests with
   `LeadAgent`'s.
 
+Checked live later on 31 October 2026, after the review fixes: three more
+runs on aicr, with the wrapper's defaults (no `OE_BRIDGE_` variable set). One
+asked about "my kelp prediction" when the account held five and ended with
+the model asking which; one ran the label inventory, then
+`olmoearth_scores_from_studio` with no patch and `olmoearth_review_set` on
+each zone; one ran `olmoearth_review_set_from_result` on a 16 x 16 grid. All
+three ended with an answer that passed the answer checks, not revised and not
+marked.
+
+- The read-only default: 28 tools were offered, without the two write tools;
+  the capability card said why; each run's `brief.json` recorded
+  `read_only` true; each run directory was mode 0700.
+- The tool specs: in full on the first call, "unchanged since the last call"
+  after it.
+- The run's lock: while the grid step ran on one compute node, `show` (its
+  own srun step) said a step was still running, naming that step's job and
+  node, and the same response sent again, from an srun step on another node,
+  was refused by the lock; the lock file was gone once the step ended.
+- `--call`: the same response sent again after its call was answered was
+  refused, "nothing ran".
+- With no patch passed, `olmoearth_scores_from_studio` pooled the two kelp
+  zones at patch 6 and patch 11, each stated as a fact, in one call.
+
 Not checked yet:
 
 - writes with the read-only key, which are expected to fail with 403
-  (unverified with a read-only key): `OE_BRIDGE_READ_ONLY=1` left the write
-  tools out of both runs, and the wrapper now leaves them out by default, so
-  none was tried;
+  (unverified with a read-only key): the wrapper leaves the write tools out
+  by default, so none was tried;
 - a run with a key that can write, with `OE_BRIDGE_ALLOW_WRITES=1`;
-- the run's lock, `--call`, a step with no response file, the wrapper's
-  read-only default and its stop on a missing `studio.env`, which came after
-  the two runs: unit tests cover the bridge's side, and no live run has used
-  them.
+- a step with no response file after a failed first step, the wrapper's stop
+  on a missing `studio.env`, a stale lock taken over and a cut-off last line
+  dropped: unit tests cover them, and no live run has needed them.
