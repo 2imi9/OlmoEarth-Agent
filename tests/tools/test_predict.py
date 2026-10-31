@@ -155,8 +155,11 @@ async def test_search_predictions_survives_a_missing_model(
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
         result = await _tool("olmoearth_search_predictions").handler({}, ctx)
+        # One missing model is not a missing /models route: no fact says so.
+        assert studio.models_unavailable is False
     assert result["predictions"][0]["model_id"] == "gone"
     assert result["models"] == {}
+    assert "facts" not in result
 
 
 @pytest.mark.asyncio

@@ -6,9 +6,11 @@ Thin wrapper over ``httpx.AsyncClient``: Bearer auth, the
 ``{records, meta, errors}`` envelope, and typed helpers for the
 endpoints the agent needs. Endpoint shapes verified against the live
 API (``/users/me``, ``/projects/search``) on 2026-05-28 and the
-openapi v0.1.0 spec; the search filters (``project_id``,
-``prediction_id``, ``deleted_time``, ``include``) and the results'
-``file_formats`` against the live API and its spec on 2026-10-31.
+openapi v0.1.0 spec. On 2026-10-31 the predictions' ``project_id`` and
+``deleted_time`` filters, the prediction-results' ``prediction_id`` filter
+with ``include`` and the results' ``file_formats`` were checked against the
+live API; the areas' ``project_id`` filter, the search limits and offsets and
+the write bodies come from the spec alone (unverified live).
 
 A 401 or 403 raises :class:`StudioAccessError` and is never retried: Studio
 refused the key, and a retry cannot change that. The read-only methods for
@@ -20,6 +22,7 @@ request log.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
 import re
@@ -57,13 +60,26 @@ _SEARCH_LIMIT_MAX: dict[str, int] = {
     "/labelsets/search": 1000,
     "/datasets/search": 10000,
 }
+#: The largest ``offset`` the searches that bound it accept (the spec of
+#: 2026-10-31); a larger one is refused before the request, since Studio
+#: cannot page past it. The other searches take any offset of 0 or more.
+_SEARCH_OFFSET_MAX: dict[str, int] = {
+    "/predictions/search": 10000,
+    "/areas/search": 10000,
+    "/annotations/search": 10000,
+    "/labels/search": 10000,
+    "/datasets/search": 10000,
+}
 #: The default cap of :meth:`StudioClient.prediction_result_files`: 2 GiB.
 DEFAULT_MAX_FILES_BYTES = 2 * 1024**3
 #: Why a ``/models`` call is refused once the server has shown it has no route.
 MODELS_UNAVAILABLE = (
-    "Studio's /models endpoint is not served here (it answered HTTP 404 or 405 "
-    "earlier on this client), so no model record can be read"
+    "Studio answered an earlier /models request on this client with HTTP 405, "
+    "or with HTTP 404 as for a path it does not route, so no model record is "
+    "read"
 )
+#: FastAPI's body for a path that no route matches (Starlette's default 404).
+_UNROUTED_BODY = {"detail": "Not Found"}
 
 #: A download token in a URL's query string, as httpx's request log writes it.
 _TOKEN_IN_URL = re.compile(r"(download_token=)[^&\s\"']+")
@@ -158,12 +174,15 @@ class StudioAccessError(RuntimeError):
         }
 
 
-def _studio_error(resp: httpx.Response) -> tuple[str | None, str | None]:
+def _studio_error(
+    resp: httpx.Response, *, secret: str | None = None
+) -> tuple[str | None, str | None]:
     """Studio's ``errors[0]`` ``code`` and ``message`` from an error body, if it parses.
 
     The spec's error envelope is ``{"records", "meta", "errors": [{"code",
-    "message"}]}``; anything else gives ``(None, None)``. The message is cut
-    to 300 characters.
+    "message"}]}``; anything else gives ``(None, None)``. ``secret`` (e.g. a
+    download token), should Studio echo it, is masked before the message is
+    cut to 300 characters, so no cut leaves a part of it behind.
     """
     try:
         body = resp.json()
@@ -173,8 +192,24 @@ def _studio_error(resp: httpx.Response) -> tuple[str | None, str | None]:
     first = errors[0] if isinstance(errors, list) and errors else None
     if not isinstance(first, dict):
         return None, None
-    code, message = first.get("code"), first.get("message")
-    return (str(code) if code else None), (str(message)[:300] if message else None)
+
+    def text(value: Any) -> str | None:
+        """``value`` as text with ``secret`` masked, or ``None`` when empty."""
+        if not value:
+            return None
+        out = str(value)
+        return out.replace(secret, "<redacted>") if secret else out
+
+    message = text(first.get("message"))
+    return text(first.get("code")), (message[:300] if message else None)
+
+
+def _unrouted(resp: httpx.Response) -> bool:
+    """Whether ``resp``'s body is FastAPI's for a path no route matches."""
+    try:
+        return bool(resp.json() == _UNROUTED_BODY)
+    except ValueError:
+        return False
 
 
 def _page(path: str, limit: int, offset: int) -> dict[str, int]:
@@ -182,10 +217,24 @@ def _page(path: str, limit: int, offset: int) -> dict[str, int]:
 
     ``limit`` is clamped to 1 .. the spec's maximum for ``path``
     (:data:`_SEARCH_LIMIT_MAX`) and ``offset`` to 0 or more, so a limit a model
-    chose never comes back as an HTTP 422.
+    chose never comes back as an HTTP 422. An ``offset`` past the spec's
+    maximum (:data:`_SEARCH_OFFSET_MAX`) is refused instead of clamped: a
+    clamped offset would return another page than the one asked for.
+
+    Raises
+    ------
+    ValueError
+        If ``offset`` is past the most ``path`` accepts.
     """
     top = _SEARCH_LIMIT_MAX.get(path, 1000)
-    return {"limit": max(1, min(int(limit), top)), "offset": max(0, int(offset))}
+    start = max(0, int(offset))
+    last = _SEARCH_OFFSET_MAX.get(path)
+    if last is not None and start > last:
+        raise ValueError(
+            f"offset {start} is past the {last} that Studio's {path} accepts; "
+            "Studio's search cannot page further, so narrow the search instead"
+        )
+    return {"limit": max(1, min(int(limit), top)), "offset": start}
 
 
 def _without(value: Any, key: str) -> Any:
@@ -268,8 +317,8 @@ class StudioClient:
             timeout=self.config.timeout_seconds,
         )
         #: True once ``/models`` answered as a route this server does not serve
-        #: (:meth:`get_model`); every later ``/models`` call is then refused
-        #: without a request, for this client's lifetime.
+        #: (:meth:`_note_models_failure`); every later ``/models`` call is then
+        #: refused without a request, for this client's lifetime.
         self.models_unavailable = False
 
     @classmethod
@@ -389,9 +438,12 @@ class StudioClient:
         on a 422 the page is asked for again without them and, when ``match``
         names a ``(field, value)``, filtered client-side over at most
         :data:`_MAX_FILTER_PAGES` pages of ``limit``, as this client did before
-        the filters; ``meta.total`` then counts the matches found. A 422 also
-        comes back for a value that is not a UUID: the scan then finds no
-        match, the answer the client-side filter always gave.
+        the filters, and never past the spec's largest offset; ``meta.total``
+        then counts the matches found. The fallback sends no other key of
+        ``filters`` (an ``include`` among them), so its records are the bare
+        ones an older server returns. A 422 also comes back for a value that
+        is not a UUID: the scan then finds no match, the answer the client-side
+        filter always gave.
         """
         page = _page(path, limit, offset)
         try:
@@ -405,9 +457,14 @@ class StudioClient:
             return env
         key, value = match
         size, start = page["limit"], page["offset"]
+        last = _SEARCH_OFFSET_MAX.get(path)
         matches = [r for r in env.records if r.get(key) == value]
         page_len, pages = len(env.records), 1
-        while page_len == size and pages < _MAX_FILTER_PAGES:
+        while (
+            page_len == size
+            and pages < _MAX_FILTER_PAGES
+            and (last is None or start + size <= last)
+        ):
             start += size
             more = await self.post(path, {"limit": size, "offset": start}, retry=True)
             page_len, pages = len(more.records), pages + 1
@@ -482,10 +539,12 @@ class StudioClient:
         Deleted predictions are left out with ``{"deleted_time": {"exists":
         false}}`` (accepted live on 2026-10-31; none of the account's
         predictions was deleted, so its effect on one is unobserved). With
-        ``project_id`` the server filters too (``{"project_id": {"eq": id}}``),
-        so ``meta.total`` counts the project's predictions and a page holds
-        ``limit`` of them. A server that answers these filters with HTTP 422
-        gets the old request (:meth:`_search`).
+        ``project_id`` the server filters too (``{"project_id": {"eq": id}}``,
+        the same ids as a client-side filter, live on 2026-10-31), and a page
+        holds up to ``limit`` of the project's predictions; that ``meta.total``
+        then counts the project's predictions, not all, is assumed (a filtered
+        search's total was not checked live). A server that answers these
+        filters with HTTP 422 gets the old request (:meth:`_search`).
         """
         filters: dict[str, Any] = {"deleted_time": {"exists": False}}
         match: tuple[str, str] | None = None
@@ -535,9 +594,11 @@ class StudioClient:
         With ``prediction_id`` the server filters (``{"prediction_id": {"eq":
         id}}``) and the records carry their ``result_metadata`` (``"include":
         ["result_metadata"]``; without it a search record's metadata is null),
-        both verified live on 2026-10-31. A server that answers these with
-        HTTP 422 gets the old request and a bounded client-side scan
-        (:meth:`_search`). ``limit`` is at most 1000.
+        both verified live on 2026-10-31; a page holds up to ``limit`` of
+        them, at most 1000. A server that answers these with HTTP 422 gets the
+        old request and a bounded client-side scan (:meth:`_search`), without
+        ``include``: its records then carry no ``result_metadata``, so the
+        results' declared outputs and period are unknown.
         """
         path = "/prediction-results/search"
         if prediction_id is None:
@@ -591,12 +652,10 @@ class StudioClient:
         if not download_token:
             raise ValueError("a result's download_token is required")
         path = "/prediction-results/files"
-
-        def scrub(text: str | None) -> str | None:
-            """``text`` with the token masked, should Studio echo it."""
-            return text.replace(download_token, "<redacted>") if text else text
-
-        chunks: list[bytes] = []
+        # One growing buffer, which getvalue hands back (in CPython without a
+        # copy): a list of chunks and their join would hold the zip twice.
+        buf = io.BytesIO()
+        failure: str | None = None
         try:
             async with self._client.stream(
                 "GET",
@@ -606,9 +665,9 @@ class StudioClient:
             ) as resp:
                 if resp.status_code in _ACCESS_STATUSES:
                     await resp.aread()
-                    code, message = _studio_error(resp)
+                    code, message = _studio_error(resp, secret=download_token)
                     raise StudioAccessError(
-                        "GET", path, resp.status_code, scrub(code), scrub(message)
+                        "GET", path, resp.status_code, code, message
                     )
                 if not resp.is_success:
                     raise RuntimeError(
@@ -629,13 +688,16 @@ class StudioClient:
                             "the result's files passed this client's cap of "
                             f"{max_bytes} bytes while read; nothing was kept"
                         )
-                    chunks.append(chunk)
+                    buf.write(chunk)
         except httpx.HTTPError as exc:
-            # httpx's own texts may hold the URL, and with it the token.
-            raise RuntimeError(
-                f"GET {path} failed ({type(exc).__name__}); no file was read"
-            ) from None
-        return b"".join(chunks)
+            # httpx's own texts may hold the URL, and with it the token: only
+            # the exception's type is kept, and the error is raised below, out
+            # of this block, so it carries no __context__ (which would still
+            # hold httpx's exception and its URL under ``from None``).
+            failure = type(exc).__name__
+        if failure is not None:
+            raise RuntimeError(f"GET {path} failed ({failure}); no file was read")
+        return buf.getvalue()
 
     async def submit_prediction(
         self,
@@ -708,7 +770,8 @@ class StudioClient:
         """Search areas (read-only). Optionally scope to a project.
 
         With ``project_id`` the server filters (``{"project_id": {"eq": id}}``,
-        in the spec's ``AreaSearchRequest``); a server that answers it with
+        from the spec's ``AreaSearchRequest`` alone, unverified live; the same
+        filter on predictions was checked live); a server that answers it with
         HTTP 422 gets the old request and a bounded client-side scan
         (:meth:`_search`). Search records carry ``id``/``name``/``project_id``
         but omit ``geom`` (lightweight); fetch one with :meth:`get_area` for
@@ -755,18 +818,17 @@ class StudioClient:
         """Remember a ``/models`` answer that says the route is not served.
 
         A 405, or a 404 from ``/models/search``, is a missing route. A 404
-        from ``GET /models/{id}`` is one too, unless its body is Studio's error
-        envelope with code ``not_found_error`` (the spec's code for a missing
-        record; how Studio answers a missing model is unverified): then only
-        that model is missing, and later lookups of other models still run.
+        from ``GET /models/{id}`` may instead be one missing model, and how
+        Studio answers a missing model is unverified, so it counts as a missing
+        route only when its body is FastAPI's for a path no route matches
+        (``{"detail": "Not Found"}``). Any other 404 body (Studio's
+        ``not_found_error`` envelope, a ``detail`` naming the model, none)
+        leaves later lookups of other models running.
         """
         status = exc.response.status_code
-        missing_record = (
-            one_record
-            and status == 404
-            and _studio_error(exc.response)[0] == "not_found_error"
-        )
-        if status in (404, 405) and not missing_record:
+        if status == 405 or (
+            status == 404 and (not one_record or _unrouted(exc.response))
+        ):
             self.models_unavailable = True
 
     async def search_models(
@@ -783,9 +845,10 @@ class StudioClient:
         the live API serves ``POST /models/search`` and ``GET /models/{id}``
         (both answered 200 on 2026-10-31; ``GET /models`` with no id was a 404
         on 2026-05-30).
-        After a 404 or 405 that says the route is gone, every later ``/models``
-        call of this client raises at once (:attr:`models_unavailable`);
-        callers treat any failure as no model record.
+        After a 405, or a 404 that says the route is gone
+        (:meth:`_note_models_failure`), every later ``/models`` call of this
+        client raises at once (:attr:`models_unavailable`); callers treat any
+        failure as no model record.
         """
         self._check_models()
         path = "/models/search"

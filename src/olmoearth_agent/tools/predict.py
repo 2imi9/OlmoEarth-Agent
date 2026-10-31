@@ -43,12 +43,14 @@ _MODELS_SCOPE_NOTE = (
     "not a class probability and not a confidence."
 )
 
-#: Said when this Studio server serves no model records (``/models`` answered
-#: 404 or 405): an unread record is not a model trained on no labels.
+#: Said when the client stopped asking ``/models`` (it answered 405, or 404 as
+#: for a path the server does not route; ``StudioClient.models_unavailable``):
+#: an unread record is not a model trained on no labels. It says what was
+#: observed, not that the endpoint is gone.
 _MODELS_UNAVAILABLE_SENTENCE = (
-    "Studio's model records could not be read on this server (its /models "
-    "endpoint is not served), so what each model outputs and whether it was "
-    "fine-tuned on labels are unknown, not absent."
+    "Studio's model records could not be read here (an earlier /models request "
+    "was answered as for a path the server does not route), so what each model "
+    "outputs and whether it was fine-tuned on labels are unknown, not absent."
 )
 
 
@@ -61,8 +63,9 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
         limit=int(args.get("limit", 50)),
         offset=offset,
     )
-    # Studio filters by project_id itself, so env.total counts the project's
-    # predictions (on an older server's client-side scan, the matches found).
+    # Studio filters by project_id itself (checked live), and env.total is
+    # taken as the count of the project's predictions (assumed: a filtered
+    # total was not checked live; on an older server's scan, the matches found).
     model_ids = list(
         dict.fromkeys(str(r["model_id"]) for r in env.records if r.get("model_id"))
     )[:_MAX_MODELS_RESOLVED]

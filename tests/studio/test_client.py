@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 import httpx
 import pytest
-from pytest_httpx import HTTPXMock
+from pytest_httpx import HTTPXMock, IteratorStream
 
 from olmoearth_agent.studio.client import (
     MODELS_UNAVAILABLE,
@@ -315,6 +316,35 @@ async def test_search_predictions_falls_back_to_the_scan_on_422(
 
 
 @pytest.mark.asyncio
+async def test_the_fallback_scan_stops_at_the_specs_largest_offset(
+    config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    """An older server's scan never sends an offset past 10000 (no 422 mid-scan)."""
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        match_json={
+            "limit": 1,
+            "offset": 9999,
+            "deleted_time": {"exists": False},
+            "project_id": {"eq": "p1"},
+        },
+        status_code=422,
+    )
+    for start in (9999, 10000):
+        httpx_mock.add_response(
+            url=f"{BASE}/predictions/search",
+            method="POST",
+            match_json={"limit": 1, "offset": start},
+            json={"records": [{"id": f"x{start}", "project_id": "p1"}]},
+        )
+    async with StudioClient(config) as studio:
+        env = await studio.search_predictions(project_id="p1", limit=1, offset=9999)
+    assert [r["id"] for r in env.records] == ["x9999", "x10000"]
+    assert len(httpx_mock.get_requests()) == 3
+
+
+@pytest.mark.asyncio
 async def test_search_prediction_results_filters_and_includes_metadata(
     config: StudioConfig, httpx_mock: HTTPXMock
 ) -> None:
@@ -388,6 +418,35 @@ async def test_each_search_keeps_its_own_spec_bound(
         await studio.search_prediction_results(prediction_id="pX", limit=1001)
         await studio.search_predictions(limit=20000)
         await studio.search_labelsets(limit=5000)
+
+
+@pytest.mark.asyncio
+async def test_an_offset_past_the_specs_bound_is_refused_before_any_request(
+    config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    """The spec caps these offsets at 10000: no 422, no fallback scan, no request."""
+    httpx_mock.add_response(
+        url=f"{BASE}/areas/search",
+        method="POST",
+        match_json={"limit": 50, "offset": 10000, "project_id": {"eq": "p1"}},
+        json={"records": []},
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/projects/search",
+        method="POST",
+        match_json={"limit": 50, "offset": 12000},
+        json={"records": []},
+    )
+    async with StudioClient(config) as studio:
+        with pytest.raises(ValueError, match="offset 12000 is past the 10000"):
+            await studio.search_predictions(project_id="p1", offset=12000)
+        with pytest.raises(ValueError, match="/annotations/search"):
+            await studio.search_annotations({"project_id": {"eq": "p1"}}, offset=10001)
+        # The bound itself is accepted, and a search the spec leaves unbounded
+        # takes any offset.
+        await studio.search_areas(project_id="p1", offset=10000)
+        await studio.search_projects(offset=12000)
+    assert len(httpx_mock.get_requests()) == 2
 
 
 # --------------------------------------------------------------------------- a refused key
@@ -537,13 +596,17 @@ async def test_a_refused_download_names_no_token(
         url=f"{BASE}/prediction-results/files",
         match_params={"download_token": DL_VALUE},
         status_code=403,
-        json={"errors": [{"code": "permission_error", "message": f"{DL_VALUE} no"}]},
+        # The token where the message's 300-character cut would split it.
+        json={
+            "errors": [{"code": "permission_error", "message": "x" * 290 + DL_VALUE}]
+        },
     )
     async with StudioClient(config) as studio:
         with pytest.raises(StudioAccessError) as caught:
             await studio.prediction_result_files(DL_VALUE)
     text = str(caught.value)
-    assert DL_VALUE not in text
+    assert DL_VALUE[:6] not in text
+    assert "x<redacted>" in text
     assert "GET /prediction-results/files (HTTP 403, permission_error" in text
     assert len(httpx_mock.get_requests()) == 1
 
@@ -573,19 +636,22 @@ async def test_a_failed_download_names_no_token(
     assert "ReadTimeout" in str(timed_out.value)
     for err in (missing.value, timed_out.value):
         assert DL_VALUE not in str(err)
-    # httpx's own exception, whose text holds the URL, is not chained on.
-    assert timed_out.value.__cause__ is None
-    assert timed_out.value.__suppress_context__ is True
+        # httpx's own exception, whose text and request hold the URL, is not
+        # attached either way: an error reporter walking __context__ finds none.
+        assert err.__cause__ is None
+        assert err.__context__ is None
 
 
 @pytest.mark.asyncio
 async def test_a_download_over_the_cap_is_refused(
     config: StudioConfig, httpx_mock: HTTPXMock
 ) -> None:
+    # A streamed body with no Content-Length (as a chunked answer has): only
+    # the count while read can stop it.
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/files",
         match_params={"download_token": DL_VALUE},
-        content=b"x" * 100,
+        stream=IteratorStream([b"x" * 6, b"x" * 6]),
     )
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/files",
@@ -594,7 +660,7 @@ async def test_a_download_over_the_cap_is_refused(
         content=b"PK",
     )
     async with StudioClient(config) as studio:
-        with pytest.raises(RuntimeError, match="cap of 10"):
+        with pytest.raises(RuntimeError, match="cap of 10 bytes while read"):
             await studio.prediction_result_files(DL_VALUE, max_bytes=10)
         # Content-Length over the default 2 GiB cap: refused before the body.
         with pytest.raises(RuntimeError, match="5000000000 bytes, over"):
@@ -727,34 +793,51 @@ async def test_a_missing_models_route_is_not_asked_again(
     assert len(httpx_mock.get_requests()) == 1
 
 
+@pytest.mark.parametrize(
+    ("status", "body"), [(405, None), (404, {"detail": "Not Found"})]
+)
 @pytest.mark.asyncio
-async def test_a_405_from_one_model_marks_the_route_missing(
-    config: StudioConfig, httpx_mock: HTTPXMock
+async def test_a_405_or_an_unrouted_404_from_one_model_marks_the_route_missing(
+    status: int,
+    body: dict[str, Any] | None,
+    config: StudioConfig,
+    httpx_mock: HTTPXMock,
 ) -> None:
-    httpx_mock.add_response(url=f"{BASE}/models/m1", status_code=405)
+    """A 405, or FastAPI's 404 for a path no route matches, is a missing route."""
+    httpx_mock.add_response(url=f"{BASE}/models/m1", status_code=status, json=body)
     async with StudioClient(config) as studio:
         with pytest.raises(httpx.HTTPStatusError):
             await studio.get_model("m1")
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="no model record is read"):
             await studio.get_model("m2")
         assert studio.models_unavailable is True
     assert len(httpx_mock.get_requests()) == 1
 
 
-@pytest.mark.asyncio
-async def test_a_missing_model_record_leaves_other_lookups_running(
-    config: StudioConfig, httpx_mock: HTTPXMock
-) -> None:
-    """Studio's not_found_error names a missing record, not a missing route."""
-    httpx_mock.add_response(
-        url=f"{BASE}/models/gone",
-        status_code=404,
-        json={
+@pytest.mark.parametrize(
+    "body",
+    [
+        {
             "records": None,
             "meta": None,
             "errors": [{"code": "not_found_error", "message": "Model not found"}],
         },
-    )
+        {"detail": "Model not found"},
+        None,
+    ],
+    ids=["studio-envelope", "detail-naming-the-model", "no-body"],
+)
+@pytest.mark.asyncio
+async def test_a_missing_model_record_leaves_other_lookups_running(
+    body: dict[str, Any] | None, config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    """A 404 that may name one missing model never stops the lookups of others.
+
+    How Studio answers a missing model is unverified: its not_found_error
+    envelope, a detail naming the model and an empty body all leave the route
+    in use, so one deleted model never hides the records of the rest.
+    """
+    httpx_mock.add_response(url=f"{BASE}/models/gone", status_code=404, json=body)
     httpx_mock.add_response(
         url=f"{BASE}/models/m1", json={"records": [{"id": "m1", "name": "Kelp"}]}
     )

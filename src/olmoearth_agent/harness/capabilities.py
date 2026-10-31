@@ -69,10 +69,15 @@ NO_TOOL_CAN: dict[str, str] = {
 #: run's Studio key read-only (``OLMOEARTH_READ_ONLY``): the default registry
 #: then leaves out the tools that write to Studio and sets this line on
 #: ``ToolRegistry.cannot`` (``skills.registry.build_default_registry``).
-#: Unset, no registry carries it, and the card is unchanged.
+#: Unset, no registry carries it, and the card is unchanged. The soul's typical
+#: order names olmoearth_submit_prediction whatever the registry holds, so the
+#: line names the two tools left out and says to skip that step: the soul stays
+#: the same text in every run, and the card answers it.
 READ_ONLY_STUDIO = (
     "create a Studio project or prediction: this run's Studio key is read-only "
-    "(OLMOEARTH_READ_ONLY is set)"
+    "(OLMOEARTH_READ_ONLY is set), so olmoearth_create_project and "
+    "olmoearth_submit_prediction are not offered; skip the submit step of the "
+    "typical order and work from existing predictions"
 )
 
 _HEAD = (

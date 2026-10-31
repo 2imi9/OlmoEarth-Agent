@@ -358,6 +358,43 @@ def test_nothing_the_default_agent_sends_names_an_opt_in_tool(
     assert len(texts) > len(registry.names())
 
 
+def test_a_read_only_agent_names_a_write_tool_only_where_the_card_answers_it(
+    default_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OLMOEARTH_READ_ONLY: no text points at a left-out write tool unanswered.
+
+    The soul is one text for every run, and its typical order names
+    olmoearth_submit_prediction; the read-only card's line names the two tools
+    left out and says to skip that step. No tool text, skill index or SKILL.md
+    package names either tool.
+    """
+    monkeypatch.delenv("OLMOEARTH_SOUL_PATH", raising=False)
+    monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
+    monkeypatch.setenv(READ_ONLY_ENV, "1")
+    registry = build_default_registry()
+    texts = {
+        spec.name: spec.description + json.dumps(spec.parameters)
+        for spec in registry.specs()
+    }
+    loader = SkillLoader()
+    texts["skill index"] = loader.index(brief=False)
+    for skill in loader.discover():
+        texts[skill.name] = loader.load(skill.name)
+
+    def write_tools_named(text: str) -> set[str]:
+        return set(re.findall(r"olmoearth_[a-z0-9_]+", text)) & STUDIO_WRITE_TOOLS
+
+    named = {where: write_tools_named(text) for where, text in texts.items()}
+    assert not {where: n for where, n in named.items() if n}
+    assert write_tools_named(load_soul()) == {"olmoearth_submit_prediction"}
+    card = capability_card(registry, registry.groups())
+    head, beyond = card.split("No tool of this agent can:", 1)
+    assert not write_tools_named(head)
+    (line,) = [x for x in beyond.splitlines() if "read-only" in x]
+    assert write_tools_named(line) == STUDIO_WRITE_TOOLS
+    assert "skip the submit step of the typical order" in line
+
+
 def test_foundational_entry_is_implemented() -> None:
     implemented = skills_by_status("implemented")
     assert any(s.name == "studio-core" for s in implemented)
