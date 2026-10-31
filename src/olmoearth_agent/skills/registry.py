@@ -52,6 +52,7 @@ from olmoearth_agent.tools.scores_file import build_scores_file_tools
 from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
+from olmoearth_agent.tools.studio_labels import build_studio_label_tools
 from olmoearth_agent.tools.system import build_system_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
@@ -115,12 +116,15 @@ SKILLS: list[SkillSpec] = [
         "studio-core",
         "Foundational",
         "implemented",
-        "Base Studio API tools every Run/Analyze skill builds on.",
+        "Base Studio API tools every Run/Analyze skill builds on, and the count "
+        "of the Studio annotations a model was trained on, by split and class "
+        "(people placed them: no random sample, no error rate).",
         [
             "olmoearth_load_context",
             "olmoearth_create_project",
             "olmoearth_request_aoi",
             "olmoearth_get_prediction",
+            "olmoearth_studio_label_inventory",
         ],
     ),
     # #1 unifies the former studio-upload + rslearn-config rows: they were two
@@ -502,6 +506,9 @@ def build_default_registry() -> ToolRegistry:
 
     # --- Core: sent on every turn. ---
     add(build_studio_tools())
+    # The Studio annotations a model was trained on, counted (read-only): core,
+    # since whether labels exist is asked before any review set or estimate.
+    add(build_studio_label_tools())
     add(build_predict_tools())
     # How Studio results differ (#4, #5 series, #9 ensemble): one tool.
     add(build_compare_tools())

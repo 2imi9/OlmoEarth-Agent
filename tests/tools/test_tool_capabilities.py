@@ -69,7 +69,7 @@ def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
 
 
 def test_every_declaration_is_one_short_line() -> None:
-    """The card's 28 default core tools fit 1,600 tokens; a line is a line."""
+    """The card's 29 default core tools fit 1,650 tokens; a line is a line."""
     registry = _registry()
     for name in registry.names():
         capability = registry.capability_of(name)

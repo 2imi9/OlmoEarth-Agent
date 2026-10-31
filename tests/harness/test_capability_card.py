@@ -36,9 +36,9 @@ from olmoearth_agent.tools.registry import (
 )
 
 #: The card's budget in the system prompt, in tokens of four characters
-#: (1,500 until the direct-run step added the certificate tools' lines:
-#: test_the_card_fits_its_budget).
-CARD_TOKEN_BUDGET = 1600
+#: (1,500 until the direct-run step added the certificate tools' lines, 1,600
+#: until the label-inventory step added its line: test_the_card_fits_its_budget).
+CARD_TOKEN_BUDGET = 1650
 
 _SCHEMA = {"type": "object", "properties": {}, "required": []}
 
@@ -126,6 +126,26 @@ def test_what_no_tool_can_do_is_read_off_the_registry() -> None:
     assert NO_TOOL_CAN["run_model"] in capability_card(registry)
 
 
+def test_the_card_counts_studio_annotations_but_takes_no_sample_or_training() -> None:
+    """The label inventory counts a model's Studio annotations and splits; what
+    no tool can do still says they are no probability sample and that no tool
+    trains a model (the label-inventory step of 31 October 2026)."""
+    card = capability_card(build_default_registry())
+    head, beyond = card.split("No tool of this agent can:", 1)
+    line = (
+        "\n- olmoearth_studio_label_inventory: count the Studio annotations a "
+        "model was trained on, or a project's, by status, split and class."
+    )
+    assert line in head
+    assert NO_TOOL_CAN["labels"].endswith(
+        "use Studio annotations as a probability sample"
+    )
+    assert NO_TOOL_CAN["training"].startswith("train a model")
+    for key in ("labels", "training"):
+        assert f"- {NO_TOOL_CAN[key]}." in beyond
+    assert "say whether any exist" not in card
+
+
 def test_the_opt_in_python_tool_takes_files_and_model_runs_off_the_list() -> None:
     with mock.patch.dict(os.environ, {"OLMOEARTH_RUN_PYTHON": "1"}):
         registry = build_default_registry()
@@ -189,7 +209,15 @@ def test_the_card_fits_its_budget() -> None:
     on olmoearth_review_set_from_result's line, whose cannot is 6 shorter
     ("a class map with no top-k scores (no margin)"), "a class map with no
     top-k scores" on olmoearth_plan_label_sample's need (14) and on
-    olmoearth_certify_zone's cannot (3 shorter).
+    olmoearth_certify_zone's cannot (3 shorter). The label-inventory step of
+    31 October adds, counted the same way, olmoearth_studio_label_inventory's
+    line (133 characters with its line break), and rewords what no tool can
+    do: the labels line 14 characters longer ("use Studio annotations as a
+    probability sample" for "look up ... or say whether any exist") and the
+    training line 5 shorter ("train a model" for "what its training data
+    held"): 142 characters, 36 tokens, on both cards. With the opted-in card
+    estimated near 1,570 tokens before it (an estimate, not a measurement),
+    the budget moves by the same 36, from 1,600 to 1,636, so it is 1,650.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
