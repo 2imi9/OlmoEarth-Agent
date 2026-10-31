@@ -511,7 +511,13 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     where they differ" left out), its design parameter 3 shorter
     ("'disagreement': two maps") and its seed_from_map parameter 62 longer
     (the precondition): 18 characters, 5 tokens. 7,553 + 5 = 7,558, under
-    the same bound. These are
+    the same bound. The top-k step adds, counted the same way, 78
+    characters to olmoearth_review_set_from_result's description ("A class
+    map with top-k scores ranks by rank-1 minus rank-2 score. ", and "a
+    class map without top-k scores" for "a classification band") and 21
+    each to olmoearth_plan_label_sample's and olmoearth_certify_zone's
+    (" without top-k scores"): 120 characters, 30 tokens. 7,558 + 30 =
+    7,588, under the same bound. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

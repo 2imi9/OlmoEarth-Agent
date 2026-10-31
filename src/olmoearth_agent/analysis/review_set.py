@@ -46,10 +46,15 @@ no probabilities, no logits, no per-class scores (see
 cannot be recovered from a hard class label, so the scores must come from
 wherever inference actually ran (rslearn ``model predict``, an
 embeddings+probe pass, or any exported softmax). This mirrors skill #8,
-which likewise takes caller-supplied embeddings. The one Studio output that
-does carry a margin is a regression band that is a binary score in
-``[0, 1]``: :func:`regression_scores` reads it as ``[1 - s, s]``, with the
-assumption stated in :data:`BINARY_SCORE_ASSUMPTION`.
+which likewise takes caller-supplied embeddings. Two Studio outputs do carry
+a margin. A regression band that is a binary score in ``[0, 1]``:
+:func:`regression_scores` reads it as ``[1 - s, s]``, with the assumption
+stated in :data:`BINARY_SCORE_ASSUMPTION`. And a class map with top-k scores
+(a segmentation prediction submitted with ``probability_output``, whose
+result carries each rank's class and softmax score as bands of their own):
+its rows are ``[p1, p2]``, the rank-1 and rank-2 scores, ranked as
+probabilities (:data:`TOPK_SCORE`, :func:`topk_assumption`), and its classes
+are the rank-1 classes, passed beside them (``map_class``).
 
 Coordinates are never accepted or returned: windows are addressed by index
 and by caller-supplied id, so a review set cannot leak geometry into chat
@@ -274,6 +279,10 @@ EVIDENCE_OUTSIDE_ITS_SCOPE = "evidence_outside_its_scope"
 MUST_STATE_BINARY_SCORE = (
     "No recorded experiment grades a regression score read as a probability."
 )
+#: A class map's top-k scores read as [p1, p2].
+MUST_STATE_TOPK_SCORE = (
+    "No recorded experiment grades a ranking by a Studio class map's top-k scores."
+)
 #: A regression band ranked by its distance from a threshold.
 MUST_STATE_THRESHOLD_DISTANCE = (
     "No recorded experiment grades a regression band's distance from a decision "
@@ -329,9 +338,10 @@ def ranking_evidence_scope(
         What the rows are: ``"logit"`` or ``"probability"`` (class scores),
         ``"window_confidence_logit"`` or ``"window_confidence_probability"``
         (a scores provider's pooled confidence), ``"binary_score"`` (a
-        regression band in ``[0, 1]`` read as ``[1 - s, s]``) or
+        regression band in ``[0, 1]`` read as ``[1 - s, s]``),
         ``"threshold_distance"`` (a regression band's distance from a
-        threshold).
+        threshold) or :data:`TOPK_SCORE` (a Studio class map's rank-1 and
+        rank-2 scores).
     n_classes
         Classes per row.
     model
@@ -364,6 +374,18 @@ def ranking_evidence_scope(
             "source": "exp70",
             "covers": "no",
             "must_state": MUST_STATE_THRESHOLD_DISTANCE,
+        }
+    # Studio's top-k scores are a fine-tuned model's uncalibrated softmax,
+    # quantized; the suite's margins are a probe's, and no recorded
+    # experiment reads a Studio result's scores.
+    if score_kind == TOPK_SCORE:
+        return {
+            "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
+            "recorded experiment grades a ranking by a Studio class map's top-k "
+            "scores.",
+            "source": "exp70",
+            "covers": "no",
+            "must_state": MUST_STATE_TOPK_SCORE,
         }
     if not is_olmoearth(model):
         named = (
@@ -937,6 +959,39 @@ def regression_scores(
     return rows, "threshold_distance", assumption
 
 
+# --------------------------------------------------------------------------- a Studio class map's top-k scores
+
+#: ``score_kind`` of a class map with top-k scores: a Studio segmentation
+#: result submitted with ``probability_output``, whose rank-1 class is the
+#: map's class and whose rank-1 and rank-2 softmax scores are bands of their
+#: own. Its rows are ``[p1, p2]``, read as probabilities whatever their sum
+#: (``p1 + p2`` is below 1 with more than two classes, and below 1 by the
+#: quantization with two), and its classes are passed beside them.
+TOPK_SCORE = "topk_score"
+
+
+def topk_assumption(k: int, *, quantized: bool) -> str:
+    """The assumption that makes a class map's top-k scores rankable, as returned.
+
+    Parameters
+    ----------
+    k
+        The ranks the result keeps (``probability_output.top_k``).
+    quantized
+        Whether the scores are Studio's uint8 scores (``(raw - 1) / 254``).
+    """
+    form = "uncalibrated, quantized to 1/254" if quantized else "uncalibrated"
+    return (
+        f"Each window's rank-1 and rank-2 scores, of the top-{k} softmax scores "
+        f"Studio returns with the class map ({form}), are read as [p1, p2]: its "
+        "margin is p1 - p2, the least decided windows (margin near 0) are opened "
+        "first and the most confident come last, and its class is the rank-1 "
+        "class. Ranking by the margin needs no calibration, but these scores "
+        "are not probabilities that a class is right, and no recorded "
+        "experiment grades this case."
+    )
+
+
 # --------------------------------------------------------------------------- the two public entry points
 
 
@@ -953,6 +1008,7 @@ def review_set(
     score_kind: str | None = None,
     model: str | None = None,
     keep_full: bool = False,
+    map_class: Sequence[int] | None = None,
 ) -> dict[str, Any]:
     """Rank windows by suspicion and return the ones to review first.
 
@@ -983,14 +1039,20 @@ def review_set(
     score_kind
         What the rows are when they are not class scores (see
         :func:`ranking_evidence_scope`): ``"window_confidence"`` (a scores
-        provider's rows; read with ``score_type``), ``"binary_score"`` or
-        ``"threshold_distance"``. Only the evidence scope reads it.
+        provider's rows; read with ``score_type``), ``"binary_score"``,
+        ``"threshold_distance"`` or :data:`TOPK_SCORE`. Only the evidence
+        scope reads it.
     model
         The model the scores came from, when known; only the evidence scope
         reads it (the measurement is on the OlmoEarth family).
     keep_full
         Also return ``review_full``: every window of the review set at the
         budget as its own row, listed or not, for the caller to save.
+    map_class
+        Each window's class, when its rows do not say it: a class map's
+        top-k rows are ``[p1, p2]``, whose arg-max is 0 on every window, and
+        its class is the rank-1 class. ``None`` (the default) takes the
+        arg-max of each row.
 
     Returns
     -------
@@ -1022,6 +1084,10 @@ def review_set(
 
     marg = margins(matrix)
     classes = predicted_classes(matrix)
+    if map_class is not None:
+        classes = [int(c) for c in map_class]
+        if len(classes) != n:
+            raise ValueError(f"map_class length {len(classes)} != {n} windows")
     bnd: list[int] | None = None
     if grid is not None:
         bnd = boundary_counts(classes, int(grid[0]), int(grid[1]))
@@ -1075,7 +1141,7 @@ def review_set(
     kind = score_kind or used_type
     if kind == "window_confidence":
         kind = f"window_confidence_{used_type}"
-    elif kind not in ("binary_score", "threshold_distance"):
+    elif kind not in ("binary_score", "threshold_distance", TOPK_SCORE):
         kind = used_type
     scope = ranking_evidence_scope(
         score_kind=kind, n_classes=len(matrix[0]), model=model

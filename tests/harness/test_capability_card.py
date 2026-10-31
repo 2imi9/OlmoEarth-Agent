@@ -85,7 +85,8 @@ def test_needs_and_cannot_are_on_the_tool_line() -> None:
     lines = {line.split("(")[0].split(":")[0]: line for line in card.splitlines()}
     review = lines["- olmoearth_review_set_from_result"]
     assert "Needs: threshold, for a regression band not in [0, 1]." in review
-    assert "Cannot: rank a classification band" in review
+    # A class map with top-k scores is ranked; one without them is not.
+    assert "Cannot: rank a class map with no top-k scores" in review
     compare = lines["- olmoearth_compare_review"]
     assert "Cannot: say which map is right, even with labels_date" in compare
     estimate = lines["- olmoearth_estimate_map_error"]
@@ -162,7 +163,12 @@ def test_the_card_fits_its_budget() -> None:
     olmoearth_plan_label_sample's line at 425 characters: seed_from_map's
     need (57 with its separator) in place of "; save the design" (17),
     "(no confidence)" (16), "for 'disagreement', " (4 net), "a Studio result
-    at grid 16 plans them all" shortened (17) and ", or" (3).
+    at grid 16 plans them all" shortened (17) and ", or" (3). The top-k step
+    adds 25 characters, 6 tokens, on both cards: " or its top-k margin" (20)
+    on olmoearth_review_set_from_result's line, whose cannot is 6 shorter
+    ("a class map with no top-k scores (no margin)"), "a class map with no
+    top-k scores" on olmoearth_plan_label_sample's need (14) and on
+    olmoearth_certify_zone's cannot (3 shorter).
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)

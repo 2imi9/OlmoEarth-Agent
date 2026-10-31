@@ -41,9 +41,19 @@ more accurate, or neither, by the exact sign test while the labels are at
 most a fifth of the differing windows and by the interval past that, and
 the 95% interval on the difference in accuracy. No class map needs a score.
 
-A Studio class map (a classification result: each window's class, no
-probability). Nothing ranks its windows, so it has no review set and no
-certified zone, but a sample drawn without its confidence still measures it.
+A Studio class map with top-k scores (a segmentation prediction submitted
+with ``probability_output``: each window's class, and each rank's softmax
+score as a band of its own) is a map with confidence. The review set's
+sampler reads it (``score_kind`` ``topk_score``): its margin is the rank-1
+score minus the rank-2, its ``p1`` the rank-1 score and its class the
+rank-1 class, so it takes every design, ranking ones included, and a random
+design's labels can certify a zone; its reviewer writes the class seen, as
+for a class map without scores (:func:`_labels_are_classes`).
+
+A Studio class map without top-k scores (a classification result: each
+window's class, no probability). Nothing ranks its windows, so it has no
+review set and no certified zone (:func:`_has_no_confidence`), but a sample
+drawn without its confidence still measures it.
 ``olmoearth_plan_label_sample`` reads it with ``olmoearth_compare_results``'
 own sampler (each window's class, as the two-map design reads it) and draws
 ``design='random'`` or ``design='class'``, the class design of Olofsson et
@@ -66,8 +76,10 @@ Wilson's on the effective sample size, which the package calls nominal).
 With reference classes, ``estimate_per_class(valid=True)`` the same way per
 class; the class design's results are worded as the package words them
 (``common.wording.class_wording``). ``olmoearth_certify_zone`` and the
-review-set tools refuse a class map in one sentence
-(:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`).
+review-set tools refuse a class map without top-k scores in one sentence
+(:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`),
+followed by where top-k scores come from
+(:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_REFUSAL`).
 
 A sample a certificate can rest on. ``olmoearth_plan_label_sample`` with
 ``design='random'`` and ``seed_from_map`` on a direct run's scores file
@@ -128,6 +140,7 @@ from olmoearth_agent.analysis.output_contract import (
 from olmoearth_agent.analysis.raster_compare import declared_fields, declared_range
 from olmoearth_agent.analysis.review_set import (
     DEFAULT_MAX_LISTED,
+    TOPK_SCORE,
     detect_score_type,
     margins,
     predicted_classes,
@@ -170,6 +183,8 @@ from olmoearth_agent.tools.sampling import (
     OK,
     default_property,
     prediction_period,
+    topk_part_reason,
+    topk_scores,
 )
 
 #: The design of two maps: a random sample of the windows where their classes
@@ -207,6 +222,12 @@ NO_DESIGN = "none (checked as a random sample)"
 
 #: ``score_kind`` of a class map's population: each window's class, no score.
 CLASS_MAP = "class_map"
+
+#: The ``score_kind`` values whose labels are reference classes written as the
+#: map writes its classes (the class labelling path, per-class accuracy by
+#: class name): a class map without top-k scores, which has no confidence, and
+#: one with them (``topk_score``), which has.
+CLASS_LABELLED = (CLASS_MAP, TOPK_SCORE)
 
 #: The interval width (high minus low) the label-budget advice is for unless
 #: the caller states one (``oe_inferencex.plan.plan_error_rate``).
@@ -389,9 +410,12 @@ class Population:
     A class map (``score_kind`` :data:`CLASS_MAP`) has no confidence: its
     ``margin`` is 0 wherever a window holds a class, which only marks the
     population, its ``p1`` NaN, and ``classes`` the class each code stands
-    for, as the map writes it. ``class_names`` names a scores map's class
-    codes where its scores file does (``olmoearth_scores_from_file`` writes
-    them); it only labels a plan's strata (:meth:`class_name`).
+    for, as the map writes it. A class map with top-k scores (``score_kind``
+    ``topk_score``) has its rank-1 minus rank-2 score as ``margin``, its
+    rank-1 score as ``p1``, and ``classes`` the same way. ``class_names``
+    names a scores map's class codes where its scores file does
+    (``olmoearth_scores_from_file`` writes them); it only labels a plan's
+    strata (:meth:`class_name`).
     """
 
     margin: list[float]
@@ -493,21 +517,52 @@ def population_from_rows(
 
 
 def _from_sampled(sampled: SampledScores) -> Population:
-    """A :class:`Population` from a Studio result sampled on a grid."""
-    return population_from_rows(
+    """A :class:`Population` from a Studio result sampled on a grid.
+
+    A class map with top-k scores brings its ``p1`` and rank-1 classes (its
+    rows' arg-max is no class), the classes as the map writes them, and the
+    field read (``source["top_k"]``).
+    """
+    source: dict[str, Any] = {
+        "result_id": sampled.result_id,
+        "property_name": sampled.property_name,
+        "threshold": sampled.threshold,
+        "assumption": sampled.assumption,
+        "sampling": sampled.sampling_block(),
+    }
+    if sampled.top_k is not None:
+        source["top_k"] = sampled.top_k
+    pop = population_from_rows(
         sampled.scores,
         grid=(sampled.grid, sampled.grid),
         windows=sampled.windows,
         score_kind=sampled.score_kind,
-        source={
-            "result_id": sampled.result_id,
-            "property_name": sampled.property_name,
-            "threshold": sampled.threshold,
-            "assumption": sampled.assumption,
-            "sampling": sampled.sampling_block(),
-        },
+        source=source,
         centres=sampled.centres,
+        p1=sampled.p1,
+        map_class=sampled.map_class,
     )
+    if sampled.classes is not None:
+        pop.classes = list(sampled.classes)
+    return pop
+
+
+def _topk_file_classes(raw: Any) -> list[Any]:
+    """A top-k scores file's classes (code to name), as a list by code.
+
+    ``olmoearth_review_set_from_result`` names every code from 0 up; a file
+    that does not is refused, since its classes are matched against the
+    reviewer's.
+    """
+    names = _file_class_names(raw)
+    if sorted(names) != list(range(len(names))):
+        msg = (
+            "this scores file of a class map's top-k scores does not name its "
+            "classes 0 to K-1: read the result again with "
+            "olmoearth_review_set_from_result"
+        )
+        raise ValueError(msg)
+    return [names[c] for c in range(len(names))]
 
 
 def _file_class_names(raw: Any) -> dict[int, str]:
@@ -553,7 +608,7 @@ async def _population(
         loaded = load_scores_file(path)
         meta = loaded.meta
         source: dict[str, Any] = {"scores_path": path}
-        for key in ("result_id", "property_name", "threshold", "assumption"):
+        for key in ("result_id", "property_name", "threshold", "assumption", "top_k"):
             if meta.get(key) is not None:
                 source[key] = meta[key]
         if isinstance(meta.get("provenance"), str):
@@ -570,6 +625,10 @@ async def _population(
             map_class=meta.get("map_class"),
         )
         pop.class_names = _file_class_names(meta.get("classes"))
+        if pop.score_kind == TOPK_SCORE:
+            # A class map's top-k scores: its reviewer writes classes as the
+            # map writes them, which these name.
+            pop.classes = _topk_file_classes(meta.get("classes"))
         return pop
     if args.get("result_id"):
         # N or [N, N], held to 2-16 and stated in the result, never silently.
@@ -886,32 +945,36 @@ def _plan_next_steps(
     what a separate random plan is for, so each says a random design makes
     one possible, not certain (exp86 round 8, B5/files/2). A class map's
     steps say instead that it has no certified zone
-    (:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`).
+    (:data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_NO_CONFIDENCE`);
+    a class map with top-k scores is labelled as a class map is (the class
+    seen) and certified as a scores map is.
     """
     estimate_step = (
         "Then olmoearth_estimate_map_error with design_path and the filled sheet "
         "(labels_path) gives the error rate with the interval valid at every "
         "sample size first, then the interval this design earns."
     )
-    if pop.score_kind == CLASS_MAP or design == CLASS_DESIGN:
+    classes = pop.score_kind in CLASS_LABELLED
+    if classes or design == CLASS_DESIGN:
         estimate_step = (
             "Then olmoearth_estimate_map_error with design_path and the filled "
             "sheet (labels_path) gives the error rate with the interval valid at "
             "every sample size first, then the interval this design earns, and "
             "each class's accuracy."
         )
+    label_step = (
+        f"Write in reference_class, for every one of the {planned} windows in "
+        f"{csv_path}, the class seen there as map_class writes classes (wrong "
+        "is then read from it); olmoearth_estimate_map_error refuses a design "
+        "with any window unlabelled."
+        if classes
+        else _label_every_window(planned, csv_path)
+    )
     if pop.score_kind == CLASS_MAP:
-        steps = [
-            f"Write in reference_class, for every one of the {planned} windows in "
-            f"{csv_path}, the class seen there as map_class writes classes (wrong "
-            "is then read from it); olmoearth_estimate_map_error refuses a design "
-            "with any window unlabelled.",
-            estimate_step,
-            rules.CLASS_MAP_NO_CONFIDENCE,
-        ]
+        steps = [label_step, estimate_step, rules.CLASS_MAP_NO_CONFIDENCE]
     elif design == "random":
         steps = [
-            _label_every_window(planned, csv_path),
+            label_step,
             estimate_step,
             "For a certified zone, olmoearth_certify_zone with the same "
             "design_path and labels, at an alpha (and delta and rule) fixed now, "
@@ -920,7 +983,7 @@ def _plan_next_steps(
         ]
     else:
         steps = [
-            _label_every_window(planned, csv_path),
+            label_step,
             estimate_step,
             f"This {design} design gives an estimate, not a certification: "
             "olmoearth_certify_zone refuses it. A certified zone needs a separate "
@@ -1492,7 +1555,8 @@ def _refused_class_map(refusal: dict[str, Any], design: str) -> dict[str, Any]:
     """A ranking design refused for a Studio class map, with the designs it takes.
 
     The confidence and proportional designs stratify the map by its
-    confidence margin, which a class map does not have; the refusal comes
+    confidence margin, which a class map without top-k scores does not have
+    (the reason ends with where top-k scores come from); the refusal comes
     before any pixel is sampled when the result declares its band type, and
     after the grid is sampled otherwise (the band's type is known only then).
     """
@@ -1504,7 +1568,7 @@ def _refused_class_map(refusal: dict[str, Any], design: str) -> dict[str, Any]:
         "design": design,
         "reason": (
             f"design='{design}' stratifies the map by its confidence margin, which "
-            "a class map does not have. " + rules.CLASS_MAP_NO_CONFIDENCE
+            "a class map does not have. " + rules.CLASS_MAP_REFUSAL
         ),
         "designs_for_a_class_map": list(CLASS_MAP_DESIGNS),
         "next_steps": [
@@ -1568,10 +1632,11 @@ def _per_stratum(sample: dict[str, Any], pop: Population) -> list[dict[str, Any]
     over the classes present, sorted), so its ``class`` is the class as the
     map writes it (``pop.classes[code]``) and the code is ``code``: a map
     writing ids [1, 2, 3, 5] has codes 0 to 3, and code 3 is its class 5
-    (the step 11 review).
+    (the step 11 review). A class map with top-k scores is read the same
+    way, its codes in its declared classes' order.
     """
     values = list(sample["condition"]["values"])
-    written = pop.classes if pop.score_kind == CLASS_MAP else None
+    written = pop.classes if pop.score_kind in CLASS_LABELLED else None
     rows: list[dict[str, Any]] = []
     for h, (size, labels) in enumerate(zip(sample["sizes"], sample["allocation"])):
         value = values[h] if h < len(values) else None
@@ -2199,6 +2264,9 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             return _refused_class_map(pop, design)
         return _refused_band(pop)
     class_map = pop.score_kind == CLASS_MAP
+    # A class map, with top-k scores or without, is labelled with the class
+    # seen; only one without them has no confidence (class_map).
+    labels_classes = pop.score_kind in CLASS_LABELLED
     n_valid = pop.n_valid
     # At the largest Studio grid a budget above the valid windows plans every
     # one of them and states the labels left over (exp86: "your extra 127
@@ -2253,7 +2321,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         "map_class": pop.map_class,
         "source": _jsonable(pop.source),
     }
-    if class_map:
+    if labels_classes:
         population["classes"] = _jsonable(pop.classes)
     elif pop.class_names:
         # A scores file's class names, which the estimate's per-class facts
@@ -2287,7 +2355,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         "n_windows_listed": min(len(to_label), max_listed),
         "how_to_label": (
             _how_to_label_a_class_map(design)
-            if class_map
+            if labels_classes
             else "For each window, in this order, set wrong = 1 when the map's "
             "class (map_class) is not what is on the ground there, else 0 (and "
             "reference_class to the true class id for per-class accuracy). Fill "
@@ -2346,8 +2414,9 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         )
         # The package's own note on labelling this design's sheet blind.
         out["class_blind_note"] = str(estimate.CLASS_BLIND_NOTE)
-    if class_map:
+    if labels_classes:
         out["map_classes"] = {str(c): v for c, v in enumerate(pop.classes or [])}
+    if class_map:
         out["class_map_note"] = rules.CLASS_MAP_NO_CONFIDENCE
     if pop.source.get("assumption"):
         out["assumption"] = pop.source["assumption"]
@@ -2446,9 +2515,26 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             if unused
             else []
         )
-        + _studio_scope(pop.source, n_valid),
+        + _studio_scope(pop.source, n_valid)
+        + _topk_must_state(pop.score_kind, pop.source),
         forbidden_claims=claims,
     )
+
+
+def _topk_must_state(score_kind: Any, source: dict[str, Any]) -> list[str]:
+    """What a result on a class map's top-k scores states about them, or nothing.
+
+    A plan, whose confidence design allocates labels by the rank-1 score,
+    and a certified zone, the windows of the largest margins: the scores
+    are Studio's uncalibrated softmax scores, quantized unless the field
+    read (``source["top_k"]``) says otherwise
+    (:func:`~olmoearth_agent.tools.statistical_rules.topk_scores_must_state`).
+    """
+    if score_kind != TOPK_SCORE:
+        return []
+    top_k = source.get("top_k")
+    quantized = not (isinstance(top_k, dict) and top_k.get("quantized") is False)
+    return [rules.topk_scores_must_state(quantized)]
 
 
 def _scores_route(pop: Population) -> str | None:
@@ -2533,9 +2619,27 @@ def _labels(
     return values, ref
 
 
-def _is_class_map(design: dict[str, Any]) -> bool:
-    """Whether a design file samples a class map (no confidence)."""
+def _has_no_confidence(design: dict[str, Any]) -> bool:
+    """Whether a design file samples a class map without top-k scores.
+
+    Such a map has no confidence to rank its windows by: no certified zone
+    (``olmoearth_certify_zone`` refuses it, and every result forbids
+    ``zone_for_a_class_map``). A class map with top-k scores has one, its
+    margin.
+    """
     return bool((design.get("population") or {}).get("score_kind") == CLASS_MAP)
+
+
+def _labels_are_classes(design: dict[str, Any]) -> bool:
+    """Whether a design file's labels are the classes seen, as the map writes them.
+
+    A class map, with top-k scores or without (:data:`CLASS_LABELLED`): its
+    reviewer writes the class seen in each window (the sheet's
+    ``reference_class``), ``wrong`` follows from it, and per-class accuracy
+    names each class as the map writes it.
+    """
+    population = design.get("population") or {}
+    return population.get("score_kind") in CLASS_LABELLED
 
 
 def _class_map_sheet(
@@ -2836,23 +2940,28 @@ def _estimate_valid_first(
     they are graded (:func:`hold_plan_labels`). Every number is the
     package's. The contract: the valid interval and the design in
     ``must_state``; for a stratified design, no simple-random-sample
-    interval and no certified zone from it; for a class map, no certified
-    zone (``zone_for_a_class_map``). It runs in a worker thread
-    (``_estimate_map_error``), so it reads and writes files as a plain
-    function does, and fixes a plan's labels in its sheet under the sheet's
-    lock (:func:`fill_sheet`), as the zone and the certificate do on the
-    event loop.
+    interval and no certified zone from it; for a class map without top-k
+    scores, no certified zone (``zone_for_a_class_map``), while a class map
+    with them is labelled as a class map and certified as a scores map. It
+    runs in a worker thread (``_estimate_map_error``), so it reads and writes
+    files as a plain function does, and fixes a plan's labels in its sheet
+    under the sheet's lock (:func:`fill_sheet`), as the zone and the
+    certificate do on the event loop.
     """
     wording = inferencex.load("common.wording")
     sample = design["sample"]
     population = design.get("population") or {}
     indices = [int(i) for i in sample["indices"]]
     plan_design = str(design.get("design"))
-    class_map = _is_class_map(design)
+    # Two questions: whether the map has no confidence (no certified zone),
+    # and whether its labels are the classes seen; a class map with top-k
+    # scores answers no and yes.
+    class_map = _has_no_confidence(design)
+    labels_classes = _labels_are_classes(design)
     names: list[Any] | None = None
     outside: list[str] = []
     n_classes: int | None
-    if class_map:
+    if labels_classes:
         wrong, reference, names, outside = _class_map_labels(args, indices, population)
         n_classes = len(names)
     else:
@@ -2879,10 +2988,11 @@ def _estimate_valid_first(
         _interval_entry("design", DESIGN_WHAT, res),
     ]
     out["valid_note"] = str(estimate.VALID_NOTE)
-    if class_map:
+    if labels_classes:
         # The class each code of the per-class table stands for: the map's
         # classes, then any class seen that the map never writes.
         out["classes"] = {str(c): v for c, v in enumerate(names or [])}
+    if class_map:
         out["class_map_note"] = rules.CLASS_MAP_NO_CONFIDENCE
     if outside:
         out["references_outside_the_maps_classes"] = sorted(set(outside))
@@ -2956,7 +3066,7 @@ def _estimate_valid_first(
         # come after the valid interval and the scope, within the contract's
         # cap. A class map's classes as it writes them, never its internal
         # codes (the step 11 review); a scores map's ids with its file's names.
-        if class_map:
+        if labels_classes:
             contrast, missed = _user_vs_producer(per_class, written=names or [])
         else:
             labels_of = _file_class_names(population.get("class_names"))
@@ -3150,8 +3260,9 @@ def _certify_refused_for_a_class_map(design: dict[str, Any]) -> dict[str, Any]:
     """``olmoearth_certify_zone`` on a class map's design: refused, in one sentence.
 
     A certified zone is the most confident share of a map, and a class map
-    has no confidence to rank by, so its random design is refused as its
-    class design is; the labels still give its error rate and per-class
+    without top-k scores has no confidence to rank by, so its random design
+    is refused as its class design is (the reason adds where top-k scores
+    come from); the labels still give its error rate and per-class
     accuracy, and labels where it differs from another map of one time say
     which of the two is more accurate.
     """
@@ -3161,7 +3272,7 @@ def _certify_refused_for_a_class_map(design: dict[str, Any]) -> dict[str, Any]:
         "design": design.get("design"),
         "seed": design.get("seed"),
         "class_map": True,
-        "reason": rules.CLASS_MAP_NO_CONFIDENCE,
+        "reason": rules.CLASS_MAP_REFUSAL,
         "next_steps": [
             "Estimate the map's error rate and each class's accuracy from these "
             "labels: olmoearth_estimate_map_error with this design_path and the "
@@ -3184,7 +3295,7 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     except inferencex.InferencexMissingError:
         return inferencex.missing_extra("Certifying a trusted zone")
     design = _load_design(str(args["design_path"]))
-    if _is_class_map(design):
+    if _has_no_confidence(design):
         return _certify_refused_for_a_class_map(design)
     if design.get("design") != "random":
         two_maps = design.get("design") == TWO_MAP_DESIGN
@@ -3245,12 +3356,18 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             )
             raise rules.refusal(msg, forbidden_claims=[rules.post_hoc_alpha(alpha)])
     indices = [int(i) for i in design["sample"]["indices"]]
-    wrong, _ref = _labels(args, indices)
+    if _labels_are_classes(design):
+        # A class map with top-k scores: its sheet holds the class seen, and
+        # wrong follows from it, as its estimate reads it.
+        wrong = _class_map_labels(args, indices, design["population"])[0]
+    else:
+        wrong, _ref = _labels(args, indices)
     # A seed_from_map plan's labels are fixed in its sheet the first time they
     # are graded: a zone on other labels afterwards is refused.
     hold_plan_labels(design, wrong)
     # certify_zone orders every window of the map: in a worker thread, so the
-    # event loop keeps serving the web bridge's other sessions.
+    # event loop keeps serving the web bridge's other sessions. A class map's
+    # top-k margin orders it as any score's margin does: higher, more trusted.
     margin = _margin(design["population"]["margin"])
     zone = await asyncio.to_thread(
         estimate.certify_zone, margin, indices, wrong, alpha, delta=delta, rule=rule
@@ -3360,7 +3477,11 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             if out["certified"]
             else []
         )
-        + _studio_scope(design["population"].get("source") or {}, out["n_population"]),
+        + _studio_scope(design["population"].get("source") or {}, out["n_population"])
+        + _topk_must_state(
+            design["population"].get("score_kind"),
+            design["population"].get("source") or {},
+        ),
         forbidden_claims=[
             rules.post_hoc_alpha(alpha),
             rules.rule_switch_after_failure(
@@ -3720,11 +3841,17 @@ async def _studio_two_maps(args: dict[str, Any], ctx: ToolContext) -> TwoMaps:
         raise ValueError(str(pair.get("reason")))
     dates = _two_map_dates([prediction_period(p) for p in pair.predictions], args)
     prop = args.get("property_name")
+    # A class map with top-k scores is compared on its class; a rank's score
+    # or class named instead is refused, never read as a map of its own.
+    tops = [topk_scores(record, prop) for record in pair.records]
+    for top in tops:
+        if top is not None and top.reads_a_part(prop):
+            raise ValueError(topk_part_reason(str(prop), top))
     threshold = float(args["threshold"]) if args.get("threshold") is not None else None
     if threshold is None:
         undecided: list[tuple[str | None, tuple[float, float] | None]] = []
-        for record in pair.records:
-            name = default_property(record, prop)
+        for record, top in zip(pair.records, tops):
+            name = top.base if top is not None else default_property(record, prop)
             decl = declared_fields(record).get(str(name)) if name else None
             if decl and decl.get("value_type") == "regression":
                 rng = declared_range(None, decl)
@@ -3867,6 +3994,12 @@ async def _file_two_maps(args: dict[str, Any], ctx: ToolContext) -> TwoMaps:
         if isinstance(pop, dict):  # only a Studio result is refused this way
             raise ValueError(str(pop.get("reason")))
         pops.append(pop)
+    # A class map's top-k scores file codes its classes; compared, and shown
+    # to the reviewer, as the map writes them (a scores map's codes as they are).
+    named = [
+        pop.classes if pop.score_kind == TOPK_SCORE and pop.classes else None
+        for pop in pops
+    ]
     if len(pops[0].margin) != len(pops[1].margin) or pops[0].grid != pops[1].grid:
         shapes = [
             f"{p.grid[0]}x{p.grid[1]}" if p.grid else f"{len(p.margin)} windows"
@@ -3890,10 +4023,14 @@ async def _file_two_maps(args: dict[str, Any], ctx: ToolContext) -> TwoMaps:
     dates = _two_map_dates([None, None], args)
     values = [
         [
-            pop.map_class[i] if math.isfinite(pop.margin[i]) else None
+            (
+                (names[pop.map_class[i]] if names else pop.map_class[i])
+                if math.isfinite(pop.margin[i])
+                else None
+            )
             for i in range(len(pop.margin))
         ]
-        for pop in pops
+        for pop, names in zip(pops, named)
     ]
     class_a, class_b, classes = _code_classes(values[0], values[1])
     keep = ("scores_path", "result_id", "property_name", "model")
@@ -4499,9 +4636,9 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "is more accurate: design='disagreement' on two Studio "
                     "results (result_id, result_id_b) or scores files "
                     "(scores_path, scores_path_b) of one time. A Studio class "
-                    "map takes 'random' or 'class' only. seed_from_map "
-                    "('random', for a certificate) needs a scores file "
-                    "olmoearth_scores_from_file wrote from a model run's "
+                    "map without top-k scores takes 'random' or 'class' only. "
+                    "seed_from_map ('random', for a certificate) needs a scores "
+                    "file olmoearth_scores_from_file wrote from a model run's "
                     "GeoTIFF; any other scores file, inline scores or Studio "
                     "result is refused. Needs the inferencex extra."
                 ),
@@ -4574,7 +4711,7 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "a budget of at most the valid windows (Studio grid 16 plans "
                     "all)",
                     "'disagreement': two maps of one time on one window grid",
-                    "'random' or 'class' for a Studio class map",
+                    "'random' or 'class' for a class map with no top-k scores",
                     "seed_from_map: a scores file from a model run's GeoTIFF",
                 ),
             ),
@@ -4653,8 +4790,9 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "statement fails on at most delta of draws); it may "
                     "certify none. Needs a "
                     "design='random' plan and its labels; a stratified design, "
-                    "or a class map, is refused. rule 'prefix' (default) or "
-                    "'bonferroni' (no assumption). Needs the inferencex extra."
+                    "or a class map without top-k scores, is refused. rule "
+                    "'prefix' (default) or 'bonferroni' (no assumption). Needs "
+                    "the inferencex extra."
                 ),
                 parameters={
                     "type": "object",
@@ -4686,7 +4824,7 @@ def build_estimation_tools() -> list[RegisteredTool]:
                 does="the largest most-confident share of the map whose error "
                 "rate is at most alpha, by exact tests; it may certify none",
                 needs=("a design='random' plan and its labels",),
-                cannot=("certify a class map (no confidence to rank)",),
+                cannot=("certify a class map with no top-k scores",),
             ),
         ),
     ]

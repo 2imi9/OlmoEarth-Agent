@@ -3897,9 +3897,15 @@ _WHAT_A_CLASS_MAP_LACKS_RE = re.compile(
     re.I,
 )
 #: A class map named by its kind: "the class map", "this classification result".
+#: A class map with top-k scores is not one ("the class map with top-k scores",
+#: "the top-2 class map", the tools' name for it, ``rules.TOPK_MAP_KIND``): its
+#: rank-1 minus rank-2 score ranks its windows, and a random design of it can
+#: certify a zone.
 _CLASS_MAP_NAME_RE = re.compile(
-    r"\bclass(?:ification)?[\s-]+maps?\b"
-    r"|\bclassification\s+(?:results?|bands?|outputs?|layers?)\b",
+    r"(?<!\btop-k\s)(?<!\btop-\d\s)"
+    r"(?:\bclass(?:ification)?[\s-]+maps?\b"
+    r"|\bclassification\s+(?:results?|bands?|outputs?|layers?)\b)"
+    r"(?![\s-]+with\s+(?:its\s+|their\s+)?top[\s-]?(?:k|\d+)\b)",
     re.I,
 )
 
@@ -3919,8 +3925,10 @@ def _scores_map_in_run(run: RunEvidence) -> bool:
 
     Every result about such a map that names certification forbids
     ``certification_guaranteed`` (its plan, its estimate, its certify call,
-    a certified zone included); no class-map result does, and a two-map
-    design's refused certify call is about two maps' classes, not scores.
+    a certified zone included); so does every result about a class map with
+    top-k scores, its review set included, whose margin ranks its windows.
+    No result about a class map without them does, and a two-map design's
+    refused certify call is about two maps' classes, not scores.
     """
     for record in _claim_records(run, "certification_guaranteed"):
         result = record.result
@@ -3973,12 +3981,13 @@ def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
 
     The claim is the run's, not one sentence's: in a run whose maps are all
     class maps, any such mention is read as about one. A run that also holds
-    a map with scores (:func:`_scores_map_in_run`) can certify that map, so
-    there only a clause that names a class map, by its kind or by the result
-    id a class-map call read (:func:`_names_a_class_map`), is read: "the
-    flood map's top 40% is certified" passes, "the class map's top half is
-    certified" is flagged, and a class map named by neither ("its top half")
-    is not read.
+    a map with scores (:func:`_scores_map_in_run`), a class map with top-k
+    scores among them, can certify that map, so there only a clause that
+    names a class map, by its kind or by the result id a class-map call read
+    (:func:`_names_a_class_map`), is read: "the flood map's top 40% is
+    certified" and "the class map with top-k scores is certified at coverage
+    0.4" pass, "the class map's top half is certified" is flagged, and a
+    class map named by neither ("its top half") is not read.
     """
     p = _parse(s)
     scoped = _scores_map_in_run(run)

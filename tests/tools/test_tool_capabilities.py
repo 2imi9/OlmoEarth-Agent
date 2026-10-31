@@ -347,12 +347,14 @@ async def _from_result_needs_threshold(_tmp: Path) -> None:
 
 @probe(
     "olmoearth_review_set_from_result",
-    "rank a classification band (a hard class has no margin)",
+    "rank a class map with no top-k scores (no margin)",
 )
 async def _from_result_refuses_classes(_tmp: Path) -> None:
+    """A class map without top-k scores (one with them is ranked: test_topk_scores)."""
     studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
     out = await _call("olmoearth_review_set_from_result", {"result_id": "lc"}, studio)
     _refused(out, "A class map has no confidence to rank or certify")
+    _refused(out, "probability_output")
 
 
 class _ClassMapStudio(_Studio):
@@ -368,7 +370,10 @@ class _ClassMapStudio(_Studio):
         return {"bands": [band]}
 
 
-@probe("olmoearth_plan_label_sample", "'random' or 'class' for a Studio class map")
+@probe(
+    "olmoearth_plan_label_sample",
+    "'random' or 'class' for a class map with no top-k scores",
+)
 async def _plan_takes_random_or_class_for_a_class_map(_tmp: Path) -> None:
     """The ranking designs read a confidence a class map does not have."""
     studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
@@ -382,7 +387,7 @@ async def _plan_takes_random_or_class_for_a_class_map(_tmp: Path) -> None:
         assert out["result"]["designs_for_a_class_map"] == ["random", "class"]
 
 
-@probe("olmoearth_certify_zone", "certify a class map (no confidence to rank)")
+@probe("olmoearth_certify_zone", "certify a class map with no top-k scores")
 async def _certify_refuses_a_class_map(_tmp: Path) -> None:
     """A random design of a Studio class map is planned, and refused a zone."""
     studio = _ClassMapStudio(
