@@ -295,6 +295,29 @@ def _file_classes(meta: dict[str, Any], n_rows: int) -> list[int] | None:
     return [int(c) for c in classes]
 
 
+def _file_margin(meta: dict[str, Any], n_rows: int) -> list[float] | None:
+    """A scores file's own per-row margins (``margin``), checked, or ``None``.
+
+    A class map's top-k scores file carries each window's margin beside its
+    row ``[p1, p2]``: for Studio's uint8 scores it is the levels' difference
+    over 254, which the row's gap misses by a level where a rank-2 score is
+    raw 0 (:func:`~olmoearth_agent.tools.sampling.read_topk`).
+    """
+    margin = meta.get("margin")
+    if margin is None:
+        return None
+    if (
+        not isinstance(margin, list)
+        or len(margin) != n_rows
+        or not all(
+            isinstance(m, (int, float)) and not isinstance(m, bool) for m in margin
+        )
+    ):
+        msg = f"the scores file's margin does not have one number per row ({n_rows})"
+        raise ValueError(msg)
+    return [float(m) for m in margin]
+
+
 def _annotate_from_file(
     out: dict[str, Any],
     meta: dict[str, Any],
@@ -683,6 +706,11 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     # over detection: a provider's rows are one confidence and zeros.
     file_type = meta.get("score_type")
     budget = float(args.get("budget", 0.05))
+    # A class map's top-k scores file keeps each window's margin and rank-1
+    # class beside its rows [p1, p2] (olmoearth_review_set_from_result writes
+    # them): the rows' arg-max is no class, and their gap misses the margin by
+    # a level where a rank-2 score is raw 0.
+    topk_file = meta.get("score_kind") == TOPK_SCORE
     out = review_set(
         scores,
         budget=budget,
@@ -701,6 +729,8 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         ),
         model=file_model(meta),
         keep_full=True,
+        map_class=_file_classes(meta, len(scores)) if topk_file else None,
+        margin=_file_margin(meta, len(scores)) if topk_file else None,
     )
     full = out.pop("review_full")
     if meta:
@@ -719,9 +749,14 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             add_must_state(out, warning_limits(meta))
         # A class map's top-k scores, saved by olmoearth_review_set_from_result,
         # keep that ranking's contract (its scores' must_state, and the zone a
-        # random plan of it can certify).
-        if meta.get("score_kind") == TOPK_SCORE:
+        # random plan of it can certify). Their rows are probabilities, as the
+        # file says, never detected (p1 + p2 is below 1), and the map's
+        # classes are the file's, not the rows' two.
+        if topk_file:
             topk_contract(out, meta.get("top_k"))
+            out.pop("score_type_detected", None)
+            if isinstance(meta.get("classes"), dict):
+                out["n_classes"] = len(meta["classes"])
     if grid_note:
         out["grid_note"] = grid_note
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
@@ -1199,11 +1234,15 @@ class SampledScores:
 
     A class map with top-k scores (``score_kind`` :data:`TOPK_SCORE`) has
     rows ``[p1, p2]``, its rank-1 and rank-2 scores, ``values`` its ``p1``,
-    no threshold and no declared range of its own; ``map_class`` codes each
-    window's rank-1 class into ``classes`` (the classes as the map writes
-    them) and ``top_k`` names the field read
+    no threshold and no declared range of its own; ``margin`` is each
+    window's margin as :func:`~olmoearth_agent.tools.sampling.read_topk`
+    reads it (for Studio's uint8 scores, the levels' difference over 254,
+    which ``p1 - p2`` misses by a level where the rank-2 score is raw 0),
+    ``map_class`` codes each window's rank-1 class into ``classes`` (the
+    classes as the map writes them) and ``top_k`` names the field read
     (:meth:`~olmoearth_agent.tools.sampling.TopKScores.describe`, with
-    ``quantized``). Every other result leaves those four ``None``.
+    ``quantized``); ``threshold_note`` says when a threshold passed was set
+    aside. Every other result leaves those six ``None``.
     """
 
     result_id: str
@@ -1227,6 +1266,8 @@ class SampledScores:
     map_class: list[int] | None = None
     classes: list[Any] | None = None
     top_k: dict[str, Any] | None = None
+    margin: list[float] | None = None
+    threshold_note: str | None = None
 
     def grid_block(self) -> dict[str, Any]:
         """The grid used, the grid asked for, and whether it was held to the range."""
@@ -1251,8 +1292,9 @@ class SampledScores:
 
         A class map's top-k scores also carry what their rows cannot say, as
         ``olmoearth_scores_from_file`` writes it: ``score_type`` (the rows are
-        probabilities, whatever their sum), each window's ``p1`` and class
-        (``map_class``) and the classes' names (``classes``), and ``top_k``.
+        probabilities, whatever their sum), each window's ``p1``, ``margin``
+        and class (``map_class``), the classes' names (``classes``), and
+        ``top_k``.
         """
         payload: dict[str, Any] = {
             "format": "olmoearth-agent/scores@1",
@@ -1273,6 +1315,7 @@ class SampledScores:
         if self.map_class is not None:
             payload["score_type"] = "probability"
             payload["p1"] = self.p1
+            payload["margin"] = self.margin
             payload["map_class"] = self.map_class
             payload["classes"] = {
                 str(c): str(v) for c, v in enumerate(self.classes or [])
@@ -1359,18 +1402,24 @@ async def _sample_topk(
     *,
     grid: int,
     grid_requested: int | None,
+    threshold: float | None = None,
 ) -> SampledScores | dict[str, Any]:
     """A class map with top-k scores on a grid: rows ``[p1, p2]`` and each class.
 
     One pixel-value call per window returns every band, and
     :func:`~olmoearth_agent.tools.sampling.read_topk` reads its rank-1
-    class and its rank-1 and rank-2 scores, each by its own name. The margin
-    is ``p1 - p2`` (as :func:`~olmoearth_agent.analysis.review_set.margins`
-    reads a row), ``p1`` is the window's top-1 probability (the confidence
-    design reads it) and its class is the rank-1 class, coded in the
-    declared classes' order (``map_class``, ``classes``). A score range
-    other than ``[0, 254]`` or ``[0, 1]`` is refused, before any pixel is
-    sampled when the result declares it.
+    class, its rank-1 and rank-2 scores and their margin, each band by its
+    own name. The margin is kept beside the rows (``margin``: for Studio's
+    uint8 scores, the levels' difference over 254), ``p1`` is the window's
+    top-1 probability (the confidence design reads it) and its class is the
+    rank-1 class, coded in the declared classes' order (``map_class``,
+    ``classes``). A score range other than ``[0, 254]`` or ``[0, 1]`` is
+    refused, before any pixel is sampled when the result declares it, and so
+    is a window whose rank-2 score is above its rank-1 score. A window that
+    holds a class but no score refuses the sampling: a score never makes a
+    window no-data, and leaving it out would drop a valid window of the map
+    (a score of 1.0 is stored as the files' no-data value). A ``threshold``
+    plays no part, and the result says it was set aside.
     """
     reason = topk_range_refusal(topk, nodata.declared)
     if reason is not None:
@@ -1384,10 +1433,23 @@ async def _sample_topk(
         reads = [read_topk(r, topk, nodata) for r in records]
     except ValueError as exc:
         return _refusal(result_id, topk.base, str(exc), top_k=topk.describe())
+    unscored = sum(1 for _value, status in reads if status == UNSCORED)
+    if unscored:
+        scores = " or ".join(repr(n) for n in topk.score_properties[:2])
+        return _refusal(
+            result_id,
+            topk.base,
+            f"{unscored} of {len(cells)} sampled windows hold a rank-1 class but "
+            f"no number in {scores}: a score never makes a window no-data, and "
+            "leaving these windows out would drop valid windows of the map, so no "
+            "margin is read",
+            top_k=topk.describe(),
+        )
     windows: list[int] = []
     centres: list[tuple[float, float]] = []
     read_classes: list[Any] = []
     rows: list[list[float]] = []
+    margin: list[float] = []
     n_nodata = n_failed = 0
     for (row, col, lon, lat), (value, status) in zip(cells, reads):
         if status == OK and value is not None:
@@ -1395,6 +1457,7 @@ async def _sample_topk(
             centres.append((lon, lat))
             read_classes.append(value[0])
             rows.append([value[1], value[2]])
+            margin.append(value[3])
         elif status == FAILED:
             n_failed += 1
         else:
@@ -1430,6 +1493,13 @@ async def _sample_topk(
         map_class=codes,
         classes=classes,
         top_k={**topk.describe(), "quantized": quantized},
+        margin=margin,
+        threshold_note=(
+            f"the threshold passed ({threshold:g}) was set aside: a "
+            f"{rules.TOPK_MAP_KIND} is ranked by its margin, which needs none"
+            if threshold is not None
+            else None
+        ),
     )
 
 
@@ -1449,21 +1519,24 @@ async def sample_result_scores(
     the side asked for, is carried so the result can say when they differ.
     A class map with top-k scores
     (:func:`~olmoearth_agent.tools.sampling.topk_scores`) is read before
-    either class refusal, as rows ``[p1, p2]`` with each window's rank-1
-    class beside them (:func:`_sample_topk`; ``threshold`` plays no part),
-    and a ``property_name`` naming one of its ranks' scores or classes is
-    refused. Returns :class:`SampledScores`, or a refusal dict (``ranked:
-    False``) when the band cannot be ranked: a classification band without
-    top-k scores (marked ``class_map``:
+    either class refusal, as rows ``[p1, p2]`` with each window's margin and
+    rank-1 class beside them (:func:`_sample_topk`; ``threshold`` plays no
+    part, and ``threshold_note`` says so), and a ``property_name`` naming
+    one of its ranks' scores or classes is refused. Returns
+    :class:`SampledScores`, or a refusal dict (``ranked: False``) when the
+    band cannot be ranked: a classification band without top-k scores
+    (marked ``class_map``:
     :data:`~olmoearth_agent.tools.statistical_rules.CLASS_MAP_REFUSAL` is
     its reason), a regression band that is not a ``[0, 1]`` score and no
     ``threshold``, a top-k score of a range other than ``[0, 254]`` or
-    ``[0, 1]``, a missing extent, or fewer than two valid windows. The band
-    type is read from the result's declared outputs before sampling, so a
-    refusal usually costs no pixel-value call. A result that declares no band
-    type is sampled first; with ``keep_class_reads``, a classification band
-    found that way is refused with the grid's reads under
-    :data:`CLASS_READS` (a :class:`ClassReads`), which the caller pops.
+    ``[0, 1]``, a top-k window with a class but no score or with a rank-2
+    score above its rank-1, a missing extent, or fewer than two valid
+    windows. The band type is read from the result's declared outputs
+    before sampling, so a refusal usually costs no pixel-value call. A
+    result that declares no band type is sampled first; with
+    ``keep_class_reads``, a classification band found that way is refused
+    with the grid's reads under :data:`CLASS_READS` (a :class:`ClassReads`),
+    which the caller pops.
     """
     record = await ctx.studio.get_prediction_result(result_id)
     bbox = result_bbox(record)
@@ -1489,6 +1562,7 @@ async def sample_result_scores(
             bbox,
             grid=grid,
             grid_requested=grid_requested,
+            threshold=threshold,
         )
     name = default_property(record, property_name) or property_name
     decl = nodata.declared.get(str(name)) if name else None
@@ -1651,8 +1725,9 @@ async def _review_set_from_result(
         return _refused_regression(sampled)
 
     # A class map's top-k rows are probabilities whatever their sum (below 1
-    # with more than two classes, and by the quantization), and their
-    # arg-max is never the window's class: both are passed, never detected.
+    # with more than two classes, and by the quantization), their arg-max is
+    # never the window's class, and their margin is read from the bands'
+    # levels: all three are passed, never detected.
     topk = sampled.map_class is not None
     ranked = review_set(
         sampled.scores,
@@ -1663,10 +1738,15 @@ async def _review_set_from_result(
         score_kind=sampled.score_kind,
         keep_full=True,
         map_class=sampled.map_class,
+        margin=sampled.margin,
     )
     full = ranked.pop("review_full")
     n_valid = len(sampled.windows)
-    margins_sorted = sorted(abs(r[1] - r[0]) for r in sampled.scores)
+    margins_sorted = sorted(
+        sampled.margin
+        if sampled.margin is not None
+        else [abs(r[1] - r[0]) for r in sampled.scores]
+    )
     per_budget = []
     for budget in budgets:
         k = max(1, int(round(budget * n_valid)))
@@ -1760,6 +1840,8 @@ async def _review_set_from_result(
         out["classes"] = {str(c): v for c, v in enumerate(names)}
         out["top_k"] = sampled.top_k
         topk_contract(out, sampled.top_k)
+    if sampled.threshold_note:
+        out["threshold_note"] = sampled.threshold_note
     rules.add_contract(
         out,
         facts=[
@@ -1995,8 +2077,8 @@ def build_review_set_tools() -> list[RegisteredTool]:
                         },
                         "threshold": {
                             "type": "number",
-                            "description": "Required unless the band is a "
-                            "[0, 1] score.",
+                            "description": "Required for a regression band "
+                            "not in [0, 1].",
                         },
                         "error_rate": {
                             "type": "number",

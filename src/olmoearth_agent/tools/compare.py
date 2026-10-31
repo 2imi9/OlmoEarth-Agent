@@ -90,6 +90,7 @@ from olmoearth_agent.tools.sampling import (
     OK,
     SAMPLE_CONCURRENCY,
     ResultNodata,
+    band_by_name,
     default_property,
     model_summary,
     prediction_meta,
@@ -253,11 +254,21 @@ def _sampled_property(
     reads: list[tuple[Any, bool, str]],
     recs: list[dict[str, Any] | None],
     prop: str | None,
+    *,
+    exact: bool = False,
 ) -> str | None:
-    """The property name the sampled bands actually carried (first usable one)."""
+    """The property name the sampled bands actually carried (first usable one).
+
+    With ``exact`` (a class map with top-k scores, read by name), only a band
+    of ``prop`` itself counts: a record without it names no property, where
+    :func:`select_band` would name its first band (a score, say).
+    """
     for rec, (_value, _cat, status) in zip(recs, reads):
         if rec is not None and status != FAILED:
-            band = select_band(rec, prop)
+            if exact and prop:
+                band = band_by_name(rec, prop)
+            else:
+                band = select_band(rec, prop)
             if band is not None and isinstance(band.get("property_name"), str):
                 return str(band["property_name"])
     return None
@@ -368,8 +379,10 @@ async def _sample_on_grid(
         for row, nd, name, top in zip(sampled, nodata, props, tops)
     ]
     names = [
-        _sampled_property(row_reads, row, name) or default
-        for row_reads, row, name, default in zip(reads, sampled, props, names)
+        _sampled_property(row_reads, row, name, exact=top is not None) or default
+        for row_reads, row, name, default, top in zip(
+            reads, sampled, props, names, tops
+        )
     ]
     if len({n for n in names if n}) > 1 and not allow_different:
         return _property_refusal(mode, ids, names, nodata)

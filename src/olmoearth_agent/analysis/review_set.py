@@ -966,7 +966,8 @@ def regression_scores(
 #: map's class and whose rank-1 and rank-2 softmax scores are bands of their
 #: own. Its rows are ``[p1, p2]``, read as probabilities whatever their sum
 #: (``p1 + p2`` is below 1 with more than two classes, and below 1 by the
-#: quantization with two), and its classes are passed beside them.
+#: quantization with two), and its classes and margins are passed beside them
+#: (``map_class``, ``margin``).
 TOPK_SCORE = "topk_score"
 
 
@@ -978,16 +979,18 @@ def topk_assumption(k: int, *, quantized: bool) -> str:
     k
         The ranks the result keeps (``probability_output.top_k``).
     quantized
-        Whether the scores are Studio's uint8 scores (``(raw - 1) / 254``).
+        Whether the scores are Studio's uint8 scores (``(raw - 1) / 254``),
+        whose margin is read from their levels.
     """
     form = "uncalibrated, quantized to 1/254" if quantized else "uncalibrated"
+    margin = "p1 - p2 (their levels' difference over 254)" if quantized else "p1 - p2"
     return (
         f"Each window's rank-1 and rank-2 scores, of the top-{k} softmax scores "
         f"Studio returns with the class map ({form}), are read as [p1, p2]: its "
-        "margin is p1 - p2, the least decided windows (margin near 0) are opened "
-        "first and the most confident come last, and its class is the rank-1 "
-        "class. Ranking by the margin needs no calibration, but these scores "
-        "are not probabilities that a class is right, and no recorded "
+        f"margin is {margin}, the least decided windows (margin near 0) are "
+        "opened first and the most confident come last, and its class is the "
+        "rank-1 class. Ranking by the margin needs no calibration, but these "
+        "scores are not probabilities that a class is right, and no recorded "
         "experiment grades this case."
     )
 
@@ -1009,6 +1012,7 @@ def review_set(
     model: str | None = None,
     keep_full: bool = False,
     map_class: Sequence[int] | None = None,
+    margin: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     """Rank windows by suspicion and return the ones to review first.
 
@@ -1053,6 +1057,12 @@ def review_set(
         top-k rows are ``[p1, p2]``, whose arg-max is 0 on every window, and
         its class is the rank-1 class. ``None`` (the default) takes the
         arg-max of each row.
+    margin
+        Each window's margin, when its rows do not give it exactly: a class
+        map's top-k margin of Studio's uint8 scores is the levels' difference
+        over 254, which the gap of ``[p1, p2]`` misses by a level where a
+        rank-2 score is raw 0. ``None`` (the default) takes the top-1 minus
+        top-2 score of each row.
 
     Returns
     -------
@@ -1083,6 +1093,10 @@ def review_set(
     used_type = score_type or detected
 
     marg = margins(matrix)
+    if margin is not None:
+        marg = [float(m) for m in margin]
+        if len(marg) != n or not all(math.isfinite(m) for m in marg):
+            raise ValueError(f"margin needs one finite margin per window ({n})")
     classes = predicted_classes(matrix)
     if map_class is not None:
         classes = [int(c) for c in map_class]

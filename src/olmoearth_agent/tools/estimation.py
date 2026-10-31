@@ -453,6 +453,7 @@ def population_from_rows(
     centres: list[Any] | None = None,
     p1: list[Any] | None = None,
     map_class: list[Any] | None = None,
+    margin: list[Any] | None = None,
 ) -> Population:
     """Build a :class:`Population` from per-window score rows.
 
@@ -463,7 +464,10 @@ def population_from_rows(
     the same rows. A scores file that carries its own ``p1`` and
     ``map_class`` per row (``olmoearth_scores_from_file``: the pooled top-1
     probability of the model's pixels and the window's majority class) is
-    read as it says, since its rows hold one confidence and zeros.
+    read as it says, since its rows hold one confidence and zeros; so is the
+    ``margin`` a class map's top-k scores carry (for Studio's uint8 scores,
+    the levels' difference over 254, which the gap of ``[p1, p2]`` misses by
+    a level where a rank-2 score is raw 0).
     """
     matrix = [[float(v) for v in row] for row in rows]
     if not matrix:
@@ -475,6 +479,10 @@ def population_from_rows(
         raise ValueError("a score is not finite; leave no-data windows out")
     kind = detect_score_type(matrix)
     marg = margins(matrix)
+    if margin is not None:
+        marg = [float(v) for v in margin]
+        if len(marg) != len(matrix) or not all(math.isfinite(v) for v in marg):
+            raise ValueError("the scores file's margin needs one number per row")
     cls = predicted_classes(matrix)
     top1 = [max(r) if kind == "probability" else _softmax_top(r) for r in matrix]
     if p1 is not None:
@@ -519,9 +527,10 @@ def population_from_rows(
 def _from_sampled(sampled: SampledScores) -> Population:
     """A :class:`Population` from a Studio result sampled on a grid.
 
-    A class map with top-k scores brings its ``p1`` and rank-1 classes (its
-    rows' arg-max is no class), the classes as the map writes them, and the
-    field read (``source["top_k"]``).
+    A class map with top-k scores brings its ``p1``, margins and rank-1
+    classes (its rows' arg-max is no class), the classes as the map writes
+    them, the field read (``source["top_k"]``) and, when a threshold was
+    passed, that it was set aside (``source["threshold_note"]``).
     """
     source: dict[str, Any] = {
         "result_id": sampled.result_id,
@@ -532,6 +541,8 @@ def _from_sampled(sampled: SampledScores) -> Population:
     }
     if sampled.top_k is not None:
         source["top_k"] = sampled.top_k
+    if sampled.threshold_note:
+        source["threshold_note"] = sampled.threshold_note
     pop = population_from_rows(
         sampled.scores,
         grid=(sampled.grid, sampled.grid),
@@ -541,6 +552,7 @@ def _from_sampled(sampled: SampledScores) -> Population:
         centres=sampled.centres,
         p1=sampled.p1,
         map_class=sampled.map_class,
+        margin=sampled.margin,
     )
     if sampled.classes is not None:
         pop.classes = list(sampled.classes)
@@ -563,6 +575,21 @@ def _topk_file_classes(raw: Any) -> list[Any]:
         )
         raise ValueError(msg)
     return [names[c] for c in range(len(names))]
+
+
+def _topk_file_margin(meta: dict[str, Any]) -> list[Any] | None:
+    """A top-k scores file's own margins, or ``None`` for any other file.
+
+    ``olmoearth_review_set_from_result`` writes each window's margin beside
+    its row ``[p1, p2]`` (for Studio's uint8 scores, the levels' difference
+    over 254); another file's ``margin`` key, if any, is not read.
+    """
+    margin = meta.get("margin")
+    if meta.get("score_kind") != TOPK_SCORE or margin is None:
+        return None
+    if not isinstance(margin, list):
+        raise ValueError("the scores file's margin needs one number per row")
+    return margin
 
 
 def _file_class_names(raw: Any) -> dict[int, str]:
@@ -623,6 +650,7 @@ async def _population(
             centres=meta.get("centres_lon_lat"),
             p1=meta.get("p1"),
             map_class=meta.get("map_class"),
+            margin=_topk_file_margin(meta),
         )
         pop.class_names = _file_class_names(meta.get("classes"))
         if pop.score_kind == TOPK_SCORE:
@@ -2420,6 +2448,9 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         out["class_map_note"] = rules.CLASS_MAP_NO_CONFIDENCE
     if pop.source.get("assumption"):
         out["assumption"] = pop.source["assumption"]
+    if pop.source.get("threshold_note"):
+        # A threshold passed for a class map with top-k scores, set aside.
+        out["threshold_note"] = pop.source["threshold_note"]
     if pop.source.get("sampling"):
         # The grid a Studio result was sampled on, and whether it was capped.
         out["sampling"] = pop.source["sampling"]
@@ -3074,10 +3105,19 @@ def _estimate_valid_first(
         if contrast is not None:
             facts.append(contrast)
     room = max(0, MUST_STATE_MAX - 1 - len(scope))
+    # A class map's top-k scores, stated in the slot the classes it finds
+    # less of leave free: those are this estimate's own finding, while the
+    # scores only allocated a confidence design's labels (the interval does
+    # not rest on them) and the plan whose design this grades states them.
+    topk = _topk_must_state(
+        population.get("score_kind"), population.get("source") or {}
+    )
+    stated_missed = missed[:room]
+    free = room - len(stated_missed)
     return rules.add_contract(
         out,
         facts=facts,
-        must_state=[stated, *scope, *missed[:room]],
+        must_state=[stated, *scope, *stated_missed, *topk[:free]],
         forbidden_claims=claims,
     )
 
@@ -3250,6 +3290,7 @@ def _rows_args(args: dict[str, Any]) -> dict[str, Any]:
             },
             "p1": loaded.meta.get("p1"),
             "map_class": loaded.meta.get("map_class"),
+            "margin": _topk_file_margin(loaded.meta),
         }
     raise ValueError(
         "window_indices need the scores they index: pass scores or scores_path"

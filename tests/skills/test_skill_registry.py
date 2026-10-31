@@ -517,7 +517,11 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     class map without top-k scores" for "a classification band") and 21
     each to olmoearth_plan_label_sample's and olmoearth_certify_zone's
     (" without top-k scores"): 120 characters, 30 tokens. 7,558 + 30 =
-    7,588, under the same bound. These are
+    7,588, under the same bound. The review of that step adds 2 characters
+    to olmoearth_review_set_from_result's threshold ("Required for a
+    regression band not in [0, 1]." for "Required unless the band is a [0, 1]
+    score.", which said a class map with top-k scores needs one): 1 token,
+    7,589, under the same bound. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

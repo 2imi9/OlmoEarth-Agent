@@ -48,6 +48,7 @@ from olmoearth_agent.tools.review_set import TOPK_ZONE_STEP, build_review_set_to
 from olmoearth_agent.tools.sampling import (
     NODATA,
     OK,
+    UNSCORED,
     ResultNodata,
     read_topk,
     select_band,
@@ -220,6 +221,11 @@ def _prob(raw: int) -> float:
     return 0.0 if raw == 0 else (raw - 1.0) / 254.0
 
 
+def _margin(raw1: int, raw2: int) -> float:
+    """A uint8 top-k margin as the tools read it: the levels' difference over 254."""
+    return min(1.0, (raw1 - raw2) / 254.0)
+
+
 class _Studio:
     """Top-2 results over the box: every result id reads the same map."""
 
@@ -306,7 +312,7 @@ def _expected(
             p1.append(math.nan)
             classes.append(-1)
         else:
-            margin.append(_prob(raw1) - _prob(raw2))
+            margin.append(_margin(raw1, raw2))
             p1.append(_prob(raw1))
             classes.append(rank1)
     return margin, p1, classes
@@ -349,15 +355,40 @@ def test_the_field_is_recognised_from_its_names_and_its_metadata() -> None:
     part = topk_scores(result, "kelp_rank1_prob")
     assert part == topk and part.reads_a_part("kelp_rank1_prob")
     assert not topk.reads_a_part(None) and not topk.reads_a_part("kelp")
+    # A rank the result does not name is still a rank of the field, refused
+    # as the map; a property the result does not name otherwise (a mistyped
+    # P) reads the first property, as default_property does: the map with
+    # its scores, never a class map without them.
+    third = topk_scores(result, "kelp_rank3_prob")
+    assert third == topk and third.reads_a_part("kelp_rank3_prob")
+    for mistyped in ("Kelp", "foo_rank1_prob"):
+        found = topk_scores(result, mistyped)
+        assert found == topk and not found.reads_a_part(mistyped), mistyped
     # Studio pairs P with the band of its rank-1 score; another pairing is
     # not taken for top-k scores.
     other = _result("r", KELP)
     other["result_metadata"]["classification_fields"][0]["confidence_band_index"] = 4
     assert topk_scores(other) is None
-    # Without result_metadata the bands are taken by their names alone.
+    # Metadata that declares fields, but not P as a classification field, says
+    # the bands are something else.
+    regression = _result("r", KELP)
+    meta = regression["result_metadata"]
+    meta["regression_fields"].append(
+        {"property_name": "kelp", "band_index": 1, "min_value": 0.0, "max_value": 1.0}
+    )
+    meta["classification_fields"] = []
+    assert topk_scores(regression) is None
+    # Without result_metadata, or with one that declares no field, the bands
+    # are taken by their names alone.
     bare = {"id": "r", "property_names": list(PROPS), "result_metadata": None}
     named = topk_scores(bare)
     assert named is not None and named.base == "kelp" and named.classes == ()
+    extent = {
+        "id": "r",
+        "property_names": list(PROPS),
+        "result_metadata": {"geometry": _BOX},
+    }
+    assert topk_scores(extent) == named
     # A class map without top-k scores, and a [0, 1] score, are not one.
     assert topk_scores({"property_names": ["landcover"]}) is None
     assert topk_scores({"property_names": ["sample_karst_score"]}) is None
@@ -374,19 +405,48 @@ def test_a_window_is_read_from_its_own_bands_and_its_class_band_decides() -> Non
     assert status == OK and value is not None
     assert value[0] == "absent"
     assert value[1] == pytest.approx(226 / 254) and value[2] == pytest.approx(26 / 254)
+    assert value[3] == pytest.approx(200 / 254)
     # A rank-1 score of raw 255 on a valid pixel is 1.0, not no-data.
     full, status = read_topk(_record(KELP, (1, 0, 255, 1)), topk, nodata)
-    assert status == OK and full is not None and full[1] == 1.0
+    assert status == OK and full is not None and full[1] == 1.0 and full[3] == 1.0
+    # The margin is the levels' difference over 254: a rank-2 raw 0 and raw 1
+    # both read 0.0, and their margins stay one level apart.
+    zero, _ = read_topk(_record(KELP, (1, 0, 254, 0)), topk, nodata)
+    one, _ = read_topk(_record(KELP, (1, 0, 254, 1)), topk, nodata)
+    assert zero is not None and one is not None and zero[2] == one[2] == 0.0
+    assert zero[3] == 1.0 and one[3] == pytest.approx(253 / 254)
     # A no-data pixel: the class band says so, whatever the scores hold.
     assert read_topk(_record(KELP, (None, 0, 0, 0)), topk, nodata) == (None, NODATA)
-    # A missing rank band is no-data, never read from another band: the
-    # first-band fall back would have read the class band.
+    # A missing rank-1 class band is no-data, never read from another band:
+    # the first-band fall back would have read the class of a score band.
+    no_class = _record(KELP, (0, 1, 227, 27), drop="kelp", first="kelp_rank1_prob")
+    assert select_band(no_class, "kelp")["property_name"] == "kelp_rank1_prob"
+    assert read_topk(no_class, topk, nodata) == (None, NODATA)
+    # A missing score is never read from another band either (the fall back
+    # would have read the class band), and never makes a window no-data: a
+    # window with a class and no score is unscored, and its sampling refused.
     missing = _record(KELP, (0, 1, 227, 27), drop="kelp_rank2_prob")
     assert select_band(missing, "kelp_rank2_prob")["property_name"] == "kelp"
-    assert read_topk(missing, topk, nodata) == (None, NODATA)
-    no_class = _record(KELP, (0, 1, 227, 27), drop="kelp")
-    assert read_topk(no_class, topk, nodata) == (None, NODATA)
+    assert read_topk(missing, topk, nodata) == (None, UNSCORED)
+    blank = _record(KELP, (0, 1, 227, 27))
+    blank["bands"][2]["raw_value"] = None
+    assert read_topk(blank, topk, nodata) == (None, UNSCORED)
+    # A rank-2 score above the rank-1: no one top-k field holds that.
+    with pytest.raises(ValueError, match="is above its rank-1 score"):
+        read_topk(_record(KELP, (0, 1, 27, 227)), topk, nodata)
     assert read_topk(None, topk, nodata)[1] == "failed"
+
+
+def test_without_metadata_a_class_band_with_no_class_is_no_data() -> None:
+    """With nothing declared, the rank-1 class band is still a class band: a
+    no-data pixel (255 in every band, no class) is never a class 255."""
+    bare = {"id": "r", "property_names": list(PROPS), "result_metadata": None}
+    topk = topk_scores(bare)
+    assert topk is not None
+    pixel = _record(KELP, (None, 0, 0, 0))
+    assert read_topk(pixel, topk, ResultNodata()) == (None, NODATA)
+    value, status = read_topk(_record(KELP, (1, 0, 200, 54)), topk, ResultNodata())
+    assert status == OK and value is not None and value[0] == "present"
 
 
 # --------------------------------------------------------------------------- the review set
@@ -442,18 +502,25 @@ async def test_a_two_class_top2_result_gets_a_review_set_ordered_by_margin() -> 
     assert saved["map_class"] == [classes[w] for w in valid]
     assert saved["classes"] == {"0": "absent", "1": "present"}
     assert saved["p1"] == pytest.approx([p1[w] for w in valid])
-    # The saved file ranks the same windows the same way, with the same contract.
+    assert saved["margin"] == pytest.approx([margin[w] for w in valid])
+    # The saved file ranks the same windows the same way, with the same
+    # contract, the map's two classes, and never calls its rows logits.
     again = await _call(
         "olmoearth_review_set", {"scores_path": result["scores_path"], "budget": 1.0}
     )
     assert again["ok"] is True, again
     second = again["result"]
     assert [r["window_index"] for r in second["review"]] == order
+    assert [r["margin"] for r in second["review"]] == [
+        round(margin[w], 6) for w in order
+    ]
     assert [r["class_name"] for r in second["review"]] == [
         KELP[classes[w]]["label"] for w in order
     ]
     assert second["must_state"] == result["must_state"]
     assert rules.CERTIFICATION_GUARANTEED in _ids(second)
+    assert second["n_classes"] == 2 and second["score_type"] == "probability"
+    assert "logit" not in json.dumps(second)
 
 
 @pytest.mark.asyncio
@@ -479,12 +546,41 @@ async def test_a_three_class_top2_result_is_ranked_and_not_called_a_logit() -> N
     assert result["classes"] == {"0": "water", "1": "kelp", "2": "cloud"}
     assert MUST_STATE_MULTICLASS_LOGIT not in result["must_state"]
     assert "logit" not in json.dumps(result)
+    # Ranked again from its file: three classes, not the rows' two, and no logit.
+    again = await _call(
+        "olmoearth_review_set", {"scores_path": result["scores_path"], "budget": 1.0}
+    )
+    assert again["ok"] is True, again
+    second = again["result"]
+    assert second["n_classes"] == 3 and "score_type_detected" not in second
+    assert MUST_STATE_MULTICLASS_LOGIT not in second["must_state"]
+    assert "logit" not in json.dumps(second)
 
 
 @pytest.mark.asyncio
-async def test_a_missing_rank_band_is_no_data_in_the_grid() -> None:
-    """The south-west window's rank-2 score is missing: dropped as no-data,
-    never read from the class band that comes first."""
+async def test_a_missing_class_band_is_no_data_in_the_grid() -> None:
+    """The south-west window's rank-1 class band is missing: dropped as
+    no-data, never read from the score band that comes first."""
+
+    def drop(lon: float, lat: float) -> str | None:
+        return "kelp" if lon < 1.0 and lat < 1.0 else None
+
+    studio = _Studio(drop=drop, first="kelp_rank1_prob")
+    out = await _call(
+        FROM_RESULT, {"result_id": "kelp-1", "grid": 4, "budgets": [1.0]}, studio
+    )
+    result = out["result"]
+    assert result["ranked"] is True
+    assert result["sampling"]["n_nodata_dropped"] == 2
+    assert 12 not in {r["window_index"] for r in result["review"]}  # row 3, col 0
+
+
+@pytest.mark.asyncio
+async def test_a_window_with_a_class_and_no_score_refuses_the_grid() -> None:
+    """The south-west window's rank-2 score is missing beside a valid class:
+    never read from the class band that comes first, and never dropped as
+    no-data (a score does not decide validity, and a dropped window would
+    leave a valid one out of the map), so the sampling is refused."""
 
     def drop(lon: float, lat: float) -> str | None:
         return "kelp_rank2_prob" if lon < 1.0 and lat < 1.0 else None
@@ -494,9 +590,53 @@ async def test_a_missing_rank_band_is_no_data_in_the_grid() -> None:
         FROM_RESULT, {"result_id": "kelp-1", "grid": 4, "budgets": [1.0]}, studio
     )
     result = out["result"]
-    assert result["ranked"] is True
-    assert result["sampling"]["n_nodata_dropped"] == 2
-    assert 12 not in {r["window_index"] for r in result["review"]}  # row 3, col 0
+    assert result["ranked"] is False
+    assert result["reason"].startswith("1 of 16 sampled windows hold a rank-1 class")
+    assert "'kelp_rank2_prob'" in result["reason"]
+    assert result["top_k"]["class_property"] == "kelp"
+
+
+@pytest.mark.asyncio
+async def test_a_rank2_score_above_the_rank1_refuses_the_grid() -> None:
+    """A window whose rank-2 score is above its rank-1 score holds no one
+    top-k field, and its margin is never read as the absolute gap."""
+
+    def swapped(lon: float, lat: float) -> Pixel:
+        rank1, rank2, raw1, raw2 = _two_class(lon, lat)
+        if lon < 1.0 and lat < 1.0:
+            return rank1, rank2, raw2, raw1
+        return rank1, rank2, raw1, raw2
+
+    out = await _call(FROM_RESULT, {"result_id": "kelp-1", "grid": 4}, _Studio(swapped))
+    result = out["result"]
+    assert result["ranked"] is False
+    assert "is above its rank-1 score" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_a_mistyped_property_reads_the_map_with_its_scores() -> None:
+    """A property the result does not name reads its first property, as for
+    any result: here the class map with top-k scores, never refused as a
+    class map without them."""
+    out = await _call(
+        FROM_RESULT,
+        {"result_id": "kelp-1", "grid": 4, "property_name": "Kelp"},
+        _Studio(),
+    )
+    result = out["result"]
+    assert result["ranked"] is True and result["score_kind"] == TOPK_SCORE
+    assert result["property_name"] == "kelp"
+    assert rules.ZONE_FOR_A_CLASS_MAP not in _ids(result)
+
+
+@pytest.mark.asyncio
+async def test_a_threshold_passed_with_top_k_scores_is_said_to_be_set_aside() -> None:
+    out = await _call(
+        FROM_RESULT, {"result_id": "kelp-1", "grid": 4, "threshold": 0.3}, _Studio()
+    )
+    result = out["result"]
+    assert result["ranked"] is True and result["threshold"] is None
+    assert result["threshold_note"].startswith("the threshold passed (0.3) was set")
 
 
 @pytest.mark.asyncio
@@ -514,7 +654,7 @@ async def test_a_score_range_other_than_uint8_or_unit_is_refused() -> None:
 @pytest.mark.asyncio
 async def test_a_ranks_score_or_class_is_refused_as_the_map() -> None:
     studio = _Studio()
-    for prop in ("kelp_rank1_prob", "kelp_rank2_class"):
+    for prop in ("kelp_rank1_prob", "kelp_rank2_class", "kelp_rank3_prob"):
         out = await _call(
             FROM_RESULT, {"result_id": "kelp-1", "property_name": prop}, studio
         )
@@ -567,6 +707,28 @@ async def test_a_comparison_reads_the_rank1_class_and_refuses_a_score() -> None:
     assert refused["result"]["comparable"] is False
     assert "pass property_name='kelp'" in refused["result"]["reason"]
     assert studio.pixel_calls == calls
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_names_the_class_band_where_a_window_lacks_it() -> None:
+    """The first window's class band is missing: the comparison names the
+    property from a window that holds it, never from the score band that
+    comes first."""
+
+    def drop(lon: float, lat: float) -> str | None:
+        return "kelp" if lon < 1.0 and lat > 3.0 else None
+
+    studio = _Studio(drop=drop, first="kelp_rank1_prob")
+    out = await _call(
+        "olmoearth_compare_results",
+        {"result_ids": ["kelp-1", "kelp-2"], "mode": "pair", "grid": 3},
+        studio,
+    )
+    assert out["ok"] is True, out
+    result = out["result"]
+    assert result["property_a"]["property_name"] == "kelp"
+    assert result["property_b"]["property_name"] == "kelp"
+    assert result["stats"]["agreement_fraction"] == 1.0
 
 
 # --------------------------------------------------------------------------- designs and the zone
@@ -635,11 +797,19 @@ async def test_a_random_design_certifies_a_zone_of_the_top_k_map(
     pytest.importorskip("oe_inferencex.certify.zone")
     out = await _call(
         PLAN,
-        {"result_id": "kelp-1", "grid": 16, "budget": 120, "design": "random"},
+        {
+            "result_id": "kelp-1",
+            "grid": 16,
+            "budget": 120,
+            "design": "random",
+            "threshold": 0.3,
+        },
         _Studio(),
     )
     assert out["ok"] is True, out
     plan = out["result"]
+    # The threshold plays no part in a class map's top-k margin, and says so.
+    assert plan["threshold_note"].startswith("the threshold passed (0.3) was set")
     labels = _label_with_the_map(plan["labels_csv_path"], tmp_path / "labelled.csv")
     certified = await _call(
         CERTIFY,
@@ -680,6 +850,9 @@ async def test_a_random_design_certifies_a_zone_of_the_top_k_map(
     assert names <= {"absent", "present"} and names
     assert rules.ZONE_FOR_A_CLASS_MAP not in _ids(result)
     assert not any("class map has no certified zone" in s for s in result["must_state"])
+    # No class is found less than it is called, so the slot the per-class
+    # statements leave free states the scores.
+    assert result["must_state"][-1] == rules.topk_scores_must_state(True)
 
 
 # --------------------------------------------------------------------------- the answer checks
@@ -712,18 +885,71 @@ def test_a_run_with_a_class_map_and_a_top_k_map_reads_each_zone_right() -> None:
             },
         },
     )
-    run = RunEvidence(tools=[hard, topk], user_messages=[""])
+    # The top-k map's plan, by its result id.
+    topk_plan = ToolRecord(
+        PLAN,
+        {"result_id": "kelp-1", "design": "random"},
+        {
+            "ok": True,
+            "result": {
+                "population": {"score_kind": TOPK_SCORE},
+                "forbidden_claims": [
+                    {"id": rules.CERTIFICATION_GUARANTEED, "why": "x"}
+                ],
+            },
+        },
+    )
+    run = RunEvidence(tools=[hard, topk_plan, topk], user_messages=[""])
     for fine in (
         "The class map with top-k scores is certified at coverage 0.4, alpha 0.1.",
         "The top-2 class map's 96 most confident windows are certified.",
         f"Its zone is only the most confident windows of the {rules.TOPK_MAP_KIND}, "
         "certified at alpha 0.1.",
+        "The class map's top-k margin certifies 40% of its windows.",
+        "The class map (top-2 scores) is certified at coverage 0.4.",
+        "The class map, with its top-2 scores, is certified at coverage 0.4.",
+        "The top-10 class map's most confident windows are certified.",
+        "The class map kelp-1 is certified at coverage 0.4.",
     ):
         assert check_forbidden_claims(fine, run) == [], fine
     for flagged in (
         "The class map's top half is certified at alpha 0.05.",
+        "The class map's top 40% is certified at alpha 0.05.",
         "The top half of lc-1 is certified at alpha 0.05.",
         "The land-cover classification result has a certified zone too.",
+    ):
+        violations = check_forbidden_claims(flagged, run)
+        assert [v["text"] for v in violations] == [flagged], flagged
+        assert violations[0]["detail"].startswith(rules.ZONE_FOR_A_CLASS_MAP)
+
+
+def test_a_new_prediction_with_top_k_scores_is_no_zone_of_the_class_map() -> None:
+    """With only a class map without top-k scores in the run, a zone offered
+    from a new prediction that carries them (the refusal's own hint, in other
+    words) is of another map; a zone of the class map itself is flagged."""
+    hard = ToolRecord(
+        FROM_RESULT,
+        {"result_id": "lc-1"},
+        {
+            "ok": True,
+            "result": {
+                "ranked": False,
+                "class_map": True,
+                "reason": rules.CLASS_MAP_REFUSAL,
+                "forbidden_claims": [{"id": rules.ZONE_FOR_A_CLASS_MAP, "why": "x"}],
+            },
+        },
+    )
+    run = RunEvidence(tools=[hard], user_messages=[""])
+    for fine in (
+        rules.CLASS_MAP_REFUSAL,
+        "A new prediction with probability_output would allow a certified zone.",
+        "Rerun it with top-k scores and a random plan may certify a zone.",
+    ):
+        assert check_forbidden_claims(fine, run) == [], fine
+    for flagged in (
+        "The class map's top half is certified at alpha 0.05.",
+        "A new prediction would give the class map a certified zone.",
     ):
         violations = check_forbidden_claims(flagged, run)
         assert [v["text"] for v in violations] == [flagged], flagged
