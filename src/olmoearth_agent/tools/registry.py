@@ -245,6 +245,14 @@ class ToolRegistry:
         tool = self._tools.get(name)
         return None if tool is None else tool.capability
 
+    def tool_of(self, name: str) -> RegisteredTool | None:
+        """The registered tool called ``name`` (spec, handler, capability), or ``None``.
+
+        The replay bridge (:mod:`olmoearth_agent.bridge`) copies a registry
+        with each handler wrapped, keeping the order, groups and specs.
+        """
+        return self._tools.get(name)
+
     def active_specs(self, loaded: Iterable[str] = ()) -> list[ToolSpec]:
         """The specs to send on one turn: every core tool plus ``loaded`` groups."""
         groups = set(loaded)
