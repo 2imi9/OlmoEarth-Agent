@@ -59,7 +59,11 @@ from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
-from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
+from olmoearth_agent.studio.client import (
+    DEFAULT_BASE_URL,
+    StudioAccessError,
+    StudioConfig,
+)
 from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
@@ -230,10 +234,13 @@ def _studio_detail(exc: Exception) -> str:
 
     httpx raises ``HTTPStatusError`` carrying a ``.response``; surfacing its
     status code (instead of only the exception class) turns an opaque 502
-    into something debuggable.
+    into something debuggable. A refused key (HTTP 401/403) comes as a
+    :class:`StudioAccessError`, which carries its status itself.
     """
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
+    if isinstance(exc, StudioAccessError):
+        status = exc.status_code
     if status is not None:
         return f"Studio API returned HTTP {status}"
     return f"Studio call failed: {type(exc).__name__}"
@@ -727,6 +734,8 @@ async def api_create_area(request: Request) -> dict[str, Any]:
     chat map; it is stored via ``POST /areas`` so the returned ``area_id``
     can drive a prediction (skill #5) and the derived ``bbox`` can drive a
     bbox-based skill. Returns ``{ok, area: {id, name, project_id, bbox}}``.
+    When Studio refuses the key (HTTP 401/403, e.g. a read-only key), the
+    answer is a 403 whose detail says so and that nothing was created.
     """
     key = _studio_key(request)
     if not key:
@@ -756,6 +765,10 @@ async def api_create_area(request: Request) -> dict[str, Any]:
             record = await studio.create_area(
                 name=name, geom=geom, project_id=project_id
             )
+    except StudioAccessError as exc:
+        # Studio refused the key (e.g. a read-only one): its words, as a 403,
+        # say that no area was saved, where a 502 would read as an outage.
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     # The project's area list changed -> drop its cached read (server + clients).
@@ -904,7 +917,8 @@ async def api_prediction_results(
         {
             "id": r.get("id", ""),
             "property_names": r.get("property_names") or [],
-            "file_format": r.get("file_format") or "",
+            # Studio lists a result's formats (e.g. ["png"]); none is singular.
+            "file_formats": r.get("file_formats") or [],
             "tiles": len(r.get("tile_urls") or []),
             "tile_url": (r.get("tile_urls") or [""])[0],
         }

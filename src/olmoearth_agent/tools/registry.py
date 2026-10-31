@@ -24,7 +24,14 @@ and ``OLMOEARTH_OPT_IN_TOOLS`` for the tools left out of the default registry
 that is off cannot be called or loaded by the model, and no text the default
 agent sends it (tool descriptions, capability card, soul, SKILL.md packages)
 names one of ``OPT_IN_TOOLS``; ``tests/skills/test_skill_registry.py`` checks
-that.
+that. The opposite switch, ``OLMOEARTH_READ_ONLY`` (the same values), leaves
+out the tools that write to Studio (``skills.registry.STUDIO_WRITE_TOOLS``),
+and :attr:`ToolRegistry.cannot` puts the reason on the capability card.
+
+A handler's exception becomes a failed envelope with a generic hint; a
+:class:`~olmoearth_agent.studio.client.StudioAccessError` (Studio refused the
+key) brings its own hint instead, and any exception's ``contract`` keys are
+put beside the error.
 """
 
 from __future__ import annotations
@@ -36,7 +43,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from olmoearth_agent.llm.types import ToolCall, ToolSpec
-from olmoearth_agent.studio.client import StudioClient
+from olmoearth_agent.studio.client import StudioAccessError, StudioClient
 from olmoearth_agent.tools.validate import schema_summary, validate_arguments
 
 if TYPE_CHECKING:
@@ -184,6 +191,12 @@ class ToolRegistry:
         self._tools: dict[str, RegisteredTool] = {}
         #: Deferred tools only: tool name -> the group that loads it.
         self._group_of: dict[str, str] = {}
+        #: What a setting of this process rules out that no tool's declaration
+        #: says, by id -> its line (e.g. a read-only Studio key; see
+        #: ``skills.registry.build_default_registry``). The capability card
+        #: lists each under what no tool can do
+        #: (:func:`olmoearth_agent.harness.capabilities.beyond_tools`).
+        self.cannot: dict[str, str] = {}
 
     def register(self, tool: RegisteredTool, *, group: str | None = None) -> None:
         """Add (or replace) one tool; ``group`` makes it deferred (see module doc)."""
@@ -308,6 +321,10 @@ class ToolRegistry:
                 "argument values are valid; do not retry with identical "
                 "arguments.",
             }
+            if isinstance(exc, StudioAccessError):
+                # Studio refused the key (HTTP 401/403): no id is wrong and a
+                # retry cannot help, so the error's own hint replaces the above.
+                failed["hint"] = exc.hint
             # A refusal can carry the output contract's keys (e.g. the labels
             # a budget leaves over; statistical_rules.refusal): stated beside
             # the error, which is unchanged.

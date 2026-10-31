@@ -17,7 +17,9 @@ from olmoearth_agent.skills.loader import SkillLoader
 from olmoearth_agent.skills.registry import (
     OPT_IN_ENV,
     OPT_IN_TOOLS,
+    READ_ONLY_ENV,
     SKILLS,
+    STUDIO_WRITE_TOOLS,
     build_default_registry,
     skills_by_status,
 )
@@ -163,6 +165,34 @@ def test_any_other_value_leaves_the_opt_in_tools_out(
 ) -> None:
     names = set(_opted_in(monkeypatch, value).names())
     assert not set(TRIMMED) & names
+
+
+@pytest.mark.parametrize("value", ["1", "true", "Yes", " on "])
+def test_a_read_only_key_leaves_out_exactly_the_studio_write_tools(
+    value: str, default_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OLMOEARTH_READ_ONLY: no tool that would meet Studio's refusal is offered."""
+    assert STUDIO_WRITE_TOOLS == {
+        "olmoearth_create_project",
+        "olmoearth_submit_prediction",
+    }
+    monkeypatch.setenv(READ_ONLY_ENV, value)
+    registry = build_default_registry()
+    assert sorted(registry.names()) == sorted(set(KEPT) - STUDIO_WRITE_TOOLS)
+    assert "studio_write" in registry.cannot
+    # The opt-in tools come back with their own switch; the write tools do not.
+    names = set(_opted_in(monkeypatch).names())
+    assert set(TRIMMED) <= names and not STUDIO_WRITE_TOOLS & names
+
+
+@pytest.mark.parametrize("value", ["", "0", "off", "maybe"])
+def test_without_the_read_only_setting_the_registry_is_unchanged(
+    value: str, default_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(READ_ONLY_ENV, value)
+    registry = build_default_registry()
+    assert sorted(registry.names()) == sorted(KEPT)
+    assert registry.cannot == {}
 
 
 @pytest.mark.parametrize("tool", KEPT)
@@ -326,6 +356,43 @@ def test_nothing_the_default_agent_sends_names_an_opt_in_tool(
     named = {where: _opt_in_tools_named(text) for where, text in texts.items()}
     assert not {where: n for where, n in named.items() if n}
     assert len(texts) > len(registry.names())
+
+
+def test_a_read_only_agent_names_a_write_tool_only_where_the_card_answers_it(
+    default_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OLMOEARTH_READ_ONLY: no text points at a left-out write tool unanswered.
+
+    The soul is one text for every run, and its typical order names
+    olmoearth_submit_prediction; the read-only card's line names the two tools
+    left out and says to skip that step. No tool text, skill index or SKILL.md
+    package names either tool.
+    """
+    monkeypatch.delenv("OLMOEARTH_SOUL_PATH", raising=False)
+    monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
+    monkeypatch.setenv(READ_ONLY_ENV, "1")
+    registry = build_default_registry()
+    texts = {
+        spec.name: spec.description + json.dumps(spec.parameters)
+        for spec in registry.specs()
+    }
+    loader = SkillLoader()
+    texts["skill index"] = loader.index(brief=False)
+    for skill in loader.discover():
+        texts[skill.name] = loader.load(skill.name)
+
+    def write_tools_named(text: str) -> set[str]:
+        return set(re.findall(r"olmoearth_[a-z0-9_]+", text)) & STUDIO_WRITE_TOOLS
+
+    named = {where: write_tools_named(text) for where, text in texts.items()}
+    assert not {where: n for where, n in named.items() if n}
+    assert write_tools_named(load_soul()) == {"olmoearth_submit_prediction"}
+    card = capability_card(registry, registry.groups())
+    head, beyond = card.split("No tool of this agent can:", 1)
+    assert not write_tools_named(head)
+    (line,) = [x for x in beyond.splitlines() if "read-only" in x]
+    assert write_tools_named(line) == STUDIO_WRITE_TOOLS
+    assert "skip the submit step of the typical order" in line
 
 
 def test_foundational_entry_is_implemented() -> None:
@@ -511,7 +578,13 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     where they differ" left out), its design parameter 3 shorter
     ("'disagreement': two maps") and its seed_from_map parameter 62 longer
     (the precondition): 18 characters, 5 tokens. 7,553 + 5 = 7,558, under
-    the same bound. These are
+    the same bound. The Studio-client step of 31 October adds, counted the
+    same way, olmoearth_submit_prediction's probability_top_k parameter (234
+    characters with its separator) and 1 to olmoearth_get_prediction_result
+    ("file formats"), and takes 31 off olmoearth_fetch_results (Studio's own
+    filter, 97 characters, in place of the client-side scan's sentence, 129,
+    less 1 for "file formats"): 204 characters, 51 tokens. 7,558 + 51 =
+    7,609, under the same bound. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

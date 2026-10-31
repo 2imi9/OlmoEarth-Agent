@@ -153,10 +153,12 @@ function predNode(p) {
 }
 function resultNode(r) {
   const props = (r.property_names || []).join(', ');
+  // Studio lists a result's formats (file_formats, e.g. ["png"]).
+  const format = (r.file_formats || []).join(', ');
   return {
     kind: 'result', id: r.id, name: props || ('result ' + shortId(r.id)),
-    meta: r.file_format || '', leaf: true,
-    result: { id: r.id, properties: props, format: r.file_format || '', tile_url: r.tile_url || '' },
+    meta: format, leaf: true,
+    result: { id: r.id, properties: props, format: format, tile_url: r.tile_url || '' },
   };
 }
 

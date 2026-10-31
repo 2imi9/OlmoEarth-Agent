@@ -17,7 +17,9 @@ assembled from code: each tool's required arguments (its spec) and its
 handler, whose ``needs`` and ``cannot`` a test calls the tool in. The core
 tools are listed, and the deferred groups the run has loaded; a group not
 loaded is named, since ``olmoearth_load_skill`` lists and loads its tools. :data:`NO_TOOL_CAN` ends the card: what no tool of the registry
-can do, each dropped as soon as a registered tool declares it ``covers`` it.
+can do, each dropped as soon as a registered tool declares it ``covers`` it,
+and then what a setting of the run rules out (``ToolRegistry.cannot``), such
+as :data:`READ_ONLY_STUDIO`.
 """
 
 from __future__ import annotations
@@ -26,7 +28,13 @@ from collections.abc import Iterable
 
 from olmoearth_agent.tools.registry import Capability, ToolRegistry
 
-__all__ = ["CARD_TITLE", "NO_TOOL_CAN", "beyond_tools", "capability_card"]
+__all__ = [
+    "CARD_TITLE",
+    "NO_TOOL_CAN",
+    "READ_ONLY_STUDIO",
+    "beyond_tools",
+    "capability_card",
+]
 
 #: The card's heading in the system prompt (the soul's rules name it).
 CARD_TITLE = "## Capability card"
@@ -56,6 +64,21 @@ NO_TOOL_CAN: dict[str, str] = {
         "root set, the working directory"
     ),
 }
+
+#: The card's line under what no tool can do when the operator declares this
+#: run's Studio key read-only (``OLMOEARTH_READ_ONLY``): the default registry
+#: then leaves out the tools that write to Studio and sets this line on
+#: ``ToolRegistry.cannot`` (``skills.registry.build_default_registry``).
+#: Unset, no registry carries it, and the card is unchanged. The soul's typical
+#: order names olmoearth_submit_prediction whatever the registry holds, so the
+#: line names the two tools left out and says to skip that step: the soul stays
+#: the same text in every run, and the card answers it.
+READ_ONLY_STUDIO = (
+    "create a Studio project or prediction: this run's Studio key is read-only "
+    "(OLMOEARTH_READ_ONLY is set), so olmoearth_create_project and "
+    "olmoearth_submit_prediction are not offered; skip the submit step of the "
+    "typical order and work from existing predictions"
+)
 
 _HEAD = (
     "What each tool of this run does, from its code (required arguments in "
@@ -102,14 +125,17 @@ def beyond_tools(registry: ToolRegistry) -> list[str]:
     """What no registered tool can do: :data:`NO_TOOL_CAN` less what one covers.
 
     Every registered tool counts, core or deferred: a deferred tool is one
-    ``olmoearth_load_skill`` call away.
+    ``olmoearth_load_skill`` call away. The lines of the registry's own
+    ``cannot`` (what a setting of the run rules out, e.g.
+    :data:`READ_ONLY_STUDIO`) follow.
     """
     covered: set[str] = set()
     for name in registry.names():
         capability: Capability | None = registry.capability_of(name)
         if capability is not None:
             covered |= set(capability.covers)
-    return [text for key, text in NO_TOOL_CAN.items() if key not in covered]
+    beyond = [text for key, text in NO_TOOL_CAN.items() if key not in covered]
+    return beyond + list(registry.cannot.values())
 
 
 def capability_card(registry: ToolRegistry, loaded_groups: Iterable[str] = ()) -> str:

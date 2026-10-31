@@ -6,7 +6,9 @@ from olmoearth_agent.skills.loader import SkillLoader, VendoredSkill
 from olmoearth_agent.skills.registry import (
     OPT_IN_ENV,
     OPT_IN_TOOLS,
+    READ_ONLY_ENV,
     SKILLS,
+    STUDIO_WRITE_TOOLS,
     SkillSpec,
     build_default_registry,
     skills_by_status,
@@ -15,7 +17,9 @@ from olmoearth_agent.skills.registry import (
 __all__ = [
     "OPT_IN_ENV",
     "OPT_IN_TOOLS",
+    "READ_ONLY_ENV",
     "SKILLS",
+    "STUDIO_WRITE_TOOLS",
     "SkillLoader",
     "SkillSpec",
     "VendoredSkill",

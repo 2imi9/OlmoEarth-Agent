@@ -18,9 +18,13 @@ from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolConte
 
 
 async def _load_context(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    """Identity, organization and one page of projects (``limit``/``offset``)."""
+    """Identity, organization and one page of projects (``limit``/``offset``).
+
+    The client keeps ``limit`` within the 1 to 1000 Studio accepts and
+    ``offset`` at 0 or more, so a page the model asks for is never an HTTP 422.
+    """
     limit = int(args.get("limit", 50))
-    offset = int(args.get("offset", 0))
+    offset = max(0, int(args.get("offset", 0)))
     me = await ctx.studio.users_me()
     env = await ctx.studio.search_projects(limit=limit, offset=offset)
     studio_ctx = studio_context(me, env.records)
@@ -45,6 +49,13 @@ async def _load_context(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any
 
 
 async def _create_project(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_create_project``; left out with a read-only key.
+
+    A refusal (HTTP 401/403) raises
+    :class:`~olmoearth_agent.studio.client.StudioAccessError`, whose text and
+    hint say that nothing was created (``skills.registry.READ_ONLY_ENV`` leaves
+    the tool out when the operator declares the key read-only).
+    """
     record = await ctx.studio.create_project(
         name=args["name"], description=args.get("description", "")
     )

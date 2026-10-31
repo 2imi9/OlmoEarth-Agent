@@ -172,6 +172,30 @@ async def test_dispatch_exception_envelope_names_tool_and_hints() -> None:
     assert result["ok"] is False
     assert result["tool"] == "boom"
     assert "hint" in result
+    assert "Check that referenced ids exist" in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_studio_key_brings_its_own_hint_and_sentence() -> None:
+    """A 401/403 is no wrong id and no retry helps: the generic hint would mislead."""
+    from olmoearth_agent.studio.client import StudioAccessError
+
+    async def refused(_args: dict[str, Any], _ctx: ToolContext) -> None:
+        raise StudioAccessError("POST", "/projects", 403, "permission_error")
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("write"), handler=refused))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="write", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert result["ok"] is False
+    assert result["error"].startswith("StudioAccessError: Studio refused POST")
+    assert result["hint"] == StudioAccessError.hint
+    assert "Do not retry" in result["hint"]
+    assert "Check that referenced ids exist" not in result["hint"]
+    (sentence,) = result["must_state"]
+    assert "HTTP 403" in sentence and "nothing was created or changed" in sentence
 
 
 def test_register_overwrites_by_name() -> None:
