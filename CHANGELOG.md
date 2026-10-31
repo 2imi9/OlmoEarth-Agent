@@ -10,14 +10,144 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
 ## [Unreleased]
 
 ### Added
+- **A Studio class map with top-k scores gets a review set, every label
+  design and a certified zone (#18).** A segmentation prediction submitted
+  with `probability_output` carries, beside its class band `P`, each rank's
+  softmax score (`P_rank1_prob`, `P_rank2_prob`, ...) and runner-up class as
+  bands of their own, which Studio declares 0 to 254.
+  - `olmoearth_review_set_from_result` ranks its windows on the pixel-value
+    grid by rank-1 minus rank-2 score (the uint8 levels' difference over
+    254), each window's class its rank-1 class, named by its label
+    (`score_kind` `topk_score`). A window is valid by its rank-1 class band
+    alone; one with a class but no score, or a rank-2 score above its
+    rank-1, refuses the sampling.
+  - It states that the scores are Studio's uncalibrated softmax scores,
+    quantized to 1/254, whose margin ranks windows and is no probability
+    that the class is right, and that no recorded experiment grades it; it
+    forbids `certification_guaranteed`.
+  - `olmoearth_plan_label_sample` takes every design for it,
+    `olmoearth_estimate_map_error` gives per-class accuracy by class name,
+    and `olmoearth_certify_zone` certifies a zone of a random design.
+    `olmoearth_compare_review` refuses its scores file;
+    `olmoearth_compare_results` reads its class band by name and refuses to
+    compare a rank's score or class.
+  - One live run (31 October 2026, a kelp result with top-2 scores): at the
+    grid's maximum, 16 x 16, 7 windows were valid, 189 no-data and 60 points
+    no result file covers (HTTP 404 each time). `olmoearth_scores_from_studio`
+    (below) reads the whole map.
+  - Tests: `tests/tools/test_topk_scores.py`.
+- **`olmoearth_scores_from_studio` reads a Studio result's own
+  native-resolution files into scores files, one per UTM zone (#18; core,
+  read-only, the `inferencex` extra).** It downloads the result's model output
+  (`GET /prediction-results/files`), reads a class map with top-k scores or a
+  `[0, 1]` score band, and pools each zone with `olmoearth_scores_from_file`'s
+  own handler.
+  - The kind is decided from `result_metadata` before any download. A class
+    map without top-k scores is refused with where top-k scores come from;
+    so are a top-1 result, a score in other units and another layout.
+    `result_id` must be a UUID.
+  - Each zone is a run directory under `<scores root>/studio_results/`
+    (`scores.tif` on the native grid, `manifest.json` with `source.kind`
+    `studio_files`). The review set, the label plans (a `seed_from_map` plan
+    included), the estimate and the certified zone read its scores file.
+    Each zone is its own map; no tool combines zones.
+  - The zip is untrusted input: only the native GeoTIFFs and the README are
+    read, never extracted by name, only when stored or deflated, with caps on
+    the entry list and the sizes. The download token reaches no result,
+    manifest, error or log.
+  - Top-k scores are decoded with the files README's `(value - 1) / 254`. On
+    the kelp result, measured on 31 October 2026, raw rank-1 plus rank-2 is
+    254 on every valid pixel, so rank-2 is raw 0, which the README calls
+    unused, on 62% and 56% of its two zones' valid pixels, and `raw / 254`
+    fits better. The result states such counts as facts. The margin does not
+    depend on which reading holds, nor does the window order while no rank-1
+    score is raw 0.
+  - Its `must_state` names Studio's uncalibrated softmax scores, quantized
+    to 1/254, or the assumption that a `[0, 1]` score is the probability of
+    the positive class; every result forbids `certification_guaranteed`.
+  - One live run (31 October 2026, read-only key): at patch 11 the kelp
+    result's two zones gave 2,468 and 2,837 valid windows, where the
+    pixel-value grid gave 7. At the default patch 4 both zones were written
+    and refused for pooling: more windows than a ranking takes (200,000).
+  - Assumed, not verified: the README's layout for k above 2; that Studio's
+    zips are stored or deflated; the result's model as its prediction's
+    `model_id`; a `[0, 1]` score read as a probability.
+  - `olmoearth_scores_from_file` names Studio's files endpoint as the source
+    of such a manifest, and its model as Studio's, "whose revision Studio
+    does not expose"; any other manifest keeps its results byte for byte.
+  - Tests: `tests/tools/test_studio_scores.py`.
+- **`olmoearth_studio_label_inventory` counts the Studio annotations a
+  model's training selector selects now, or a project's (core,
+  read-only).** It replays the model record's `data_selectors` as `POST
+  /annotations/search` filters and counts by status, geometry type, split,
+  class and split by class, with their creation times against the model
+  record's.
+  - Give exactly one of `prediction_id`, `model_id` or `project_id`. It does
+    not say what the model was trained on: an annotation deleted since is not
+    seen, and one updated since counts as it is now.
+  - A read is called complete only when each selector returned its
+    `meta.total`; a call reads at most 20,000 annotations in 50 pages.
+  - Its `must_state`: Studio records no random design for its annotations,
+    so they give no design-based error rate (the next step is
+    `olmoearth_plan_label_sample`); train and val annotations fit or tuned the
+    model; test ones were held out only if training honoured the split
+    field. Its forbidden claim is `accuracy_not_measured`, enforced in a run
+    that measured no accuracy.
+  - No id, geometry, coordinate, free text or person's id is returned, and
+    Studio's search error text is not passed on.
+  - One live run (31 October 2026) read the kelp model's selector whole:
+    1,056 of 1,056 annotations, complete.
+  - Assumed, not verified live: that Studio trained on what the selectors
+    select (several as a union); that training honoured the split field
+    rather than the proportions; that a filtered `meta.total` counts the
+    filtered annotations; the paging past offset 10,000; that `updated_time`
+    changes with a split or class.
+  - The capability card's lines now read "fetch ground-truth labels (they
+    come from the user or a reviewer), or use Studio annotations as a
+    probability sample" and "train a model, or say a Studio model's training
+    metrics".
+  - Tests: `tests/tools/test_studio_labels.py`.
+- **A Claude Code session can be the agent's model (`olmoearth-agent-bridge`,
+  `docs/CLAUDE_AS_MODEL.md`).** Each command replays the run from its run
+  directory with the real loop, tools and answer checks, serves the tool
+  results from the run's cache and stops at the next model call. Nothing is
+  held between calls.
+  - A replay that makes another request or tool call than the saved ones
+    stops with "the run diverged". A failed step saves no response; the tool
+    calls it ran are reused by the same response and dropped, and named, by
+    another.
+  - `scripts/oe-bridge.sh` runs each command on aicr from the Mac: one ssh
+    connection and one srun step, the brief and responses sent over stdin,
+    nothing on the login node but srun. `OE_BRIDGE_READ_ONLY=1` runs the
+    bridge with `OLMOEARTH_READ_ONLY=1`.
+  - The project skills `olmoearth-agent-model` and `olmoearth-agent-bridge`
+    say how to play the model and operate the bridge. `docs/CLAUDE_AS_MODEL.md`
+    compares it with the native `AnthropicLLM` route and lists where a replay
+    differs from a live run.
+  - Checked live on 31 October 2026: two runs on aicr with a read-only key,
+    each a `begin` and six steps. QOS `interactive` was accepted, srun
+    forwarded stdin, no queue wait was seen, and both answers passed the
+    answer checks unrevised. Writes with the read-only key were never tried.
+  - `ToolRegistry.tool_of(name)` returns a registered tool whole, so the
+    bridge can copy a registry with each handler wrapped.
+  - Tests: `tests/bridge/`.
+- **`OLMOEARTH_READ_ONLY=1` (also `true`, `yes` or `on`) declares the run's
+  Studio key read-only.** The default registry then leaves out
+  `olmoearth_create_project` and `olmoearth_submit_prediction`, and the
+  capability card says why and to work from existing predictions.
+  - `/users/me` does not show a key's access level, so the operator says so.
+    Unset, the registry, the soul and the card are unchanged.
+  - Tests: `tests/skills/test_skill_registry.py`,
+    `tests/harness/test_capability_card.py`.
 - **The verification layer on a real map, with no Studio key and no LLM
   (`make verify-demo`).** `scripts/verify_demo_tile.py` calls the agent's
   default verification tools, in the agent's order, on the expert-annotated
   Dynamic World tile that olmoearth-inferencex ships (Zenodo record 4766508,
   CC BY 4.0; 40 m windows, the expert's class per window).
-  - The calls: the tile as a direct run's scores (a GeoTIFF placed
-    approximately on the tile's recorded centre, in its UTM zone; the package
-    writes no certificate for a raster with no georeference), the review set
+  - The calls: the tile as a direct run's scores (a north-up GeoTIFF placed
+    approximately on the tile's recorded centre, in its UTM zone, as a direct
+    run's map is georeferenced; olmoearth-inferencex 1.20.3 also certifies a
+    raster with no georeference), the review set
     at 5%, a random plan of 300 with `seed_from_map` at alpha 0.1, the
     estimate, the certified zone, the certificate and its check (a copy of
     the map must verify; a copy with one label flipped must not), a
@@ -438,6 +568,67 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the code.
 
 ### Changed
+- **The Studio client follows the live API of 31 October 2026, read-only
+  first** (`studio/client.py`).
+  - Searches filter on the server: predictions by `project_id` and
+    `deleted_time`, prediction results by `prediction_id` with `include:
+    ["result_metadata"]`, areas by `project_id`. The first two were checked
+    live with a read-only key; `deleted_time` was accepted, but no deleted
+    prediction showed its effect; the areas filter is from the spec alone.
+    That a filtered `meta.total` counts only the matches is assumed. The old
+    client-side scan remains only for a server that answers HTTP 422.
+  - Search limits stay within the spec's bounds, so a limit the model picks
+    is no HTTP 422. An offset past 10,000 on the searches the spec caps there
+    is refused before any request, not clamped to another page.
+  - HTTP 401 or 403 raises `StudioAccessError`: never retried, with a hint
+    and a `must_state` that nothing was created or changed. The web UI's
+    area save answers it with 403, not 502.
+  - Once `/models` answers 405, or 404 as for a path no route matches, the
+    client asks it no more, and `olmoearth_search_predictions` says the model
+    records could not be read, not that the models have no labels.
+  - `olmoearth_submit_prediction` sends the area as `target_area_ids` and
+    takes an optional `probability_top_k`, sent as `probability_output` (a
+    segmentation model's top-k class scores). Both follow the spec only and
+    are unverified with a read-only key.
+  - New read-only methods: `prediction_result_files` (a result's model output
+    zip, capped at 2 GiB, the token masked in every error) and the
+    annotation, label, labelset and dataset searches. Annotator, user and
+    requester ids are removed from what they return.
+  - Tests that mocked `file_format`, the client-side filters or `area_id` now
+    mock the live API (`tests/studio/test_client.py`,
+    `tests/tools/test_predict.py`).
+- **olmoearth-inferencex 1.20.3 is required, and the minimum is enforced.**
+  The `inferencex` extra pins `olmoearth-inferencex[geo]>=1.20.3`; `uv.lock`
+  was re-locked on aicr, where only its entry and the extra's specifier
+  changed.
+  - 1.20.3 lets a certificate's zone mask carry GDAL's ModelTransformation
+    matrix, so a south-up, rotated or ungeoreferenced scores raster gets a
+    certificate (1.17.0 to 1.20.2 refused that mask). Its verify refuses a
+    negative PixelScale y step, a perspective term, a second tiepoint or a
+    tag given twice. 1.20.2 changed only documentation.
+  - Every tool that loads the package now refuses an older release that
+    imports, naming the installed version and the upgrade line (`pip install
+    -U 'olmoearth-agent[inferencex]'`); before, 1.19.0 to 1.20.2 ran
+    silently. `olmoearth_compare_review` says the dates were not assessed.
+  - Tests: `tests/tools/test_inferencex.py` (1.20.2 and 1.20.1 now count as
+    older), `tests/tools/test_certificate_tool.py` (a south-up raster
+    planned, certified, given a certificate and verified).
+- **A class map without top-k scores keeps its refusal, which now says where
+  top-k scores come from.** The review set, a ranking design and
+  `olmoearth_certify_zone` add "A review set or a certified zone of a Studio
+  class map needs its top-k class scores: a new prediction of a segmentation
+  model, submitted with probability_output (top_k of 2 or more), carries
+  them." (`statistical_rules.CLASS_MAP_REFUSAL`).
+  - The soul and the web UI say what a class map with top-k scores gets.
+  - The answer check's zone rule reads a class map named with top-k scores,
+    or by the result id of a call on one, as a map a zone can be certified
+    of; in a run with both kinds, a zone of the class map without them is
+    still flagged.
+- **The default registry holds 30 tools, all sent on every turn.** The two
+  new core tools move the spec-size bound of a default turn from 7,650 to
+  8,000 tokens and the capability card's budget from 1,600 to 1,700 (counts
+  by hand). The README, `SKILLS.md`, `PLAN.md`, `AGENTS.md`, `docs/CANON.md`
+  and the web UI's skill pages name the new tools and limits.
 - **Why `olmoearth_litsearch` is opt-in, corrected.** It is off only because
   it costs a core slot every turn. It is the agent's own route to Ai2's Asta
   (`asta literature find`), with arXiv and OpenAlex beside it, not a copy of
@@ -910,6 +1101,31 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   extra requires olmoearth-inferencex 1.3.1.
 
 ### Fixed
+- **Studio fields the agent read as always empty.**
+  - Results list their formats as `file_formats` (e.g. `["png"]`). The
+    singular `file_format` the code read does not exist in Studio's records:
+    the predict tools, the web UI's results endpoint and its project tree now
+    read the list.
+  - Search records carry `result_metadata` only when the request asks for it
+    with `include`, so `olmoearth_fetch_results` returned no `outputs` or
+    `period`. It now does.
+  - The old client-side scan stopped at 10 pages, so older predictions and
+    results could drop out without notice. Studio's own filters replace it.
+- **A refused key no longer reads as a wrong id.** Before, the model saw
+  httpx's raw `403 Forbidden` and the hint to check its ids;
+  `StudioAccessError` (above) says the key may be read-only or lack the
+  permission.
+- **The bridge's replay keeps the capability card's setting lines.** Its
+  registry copy dropped `ToolRegistry.cannot`, so on a read-only run the
+  system prompt left out the two write tools, as it should, and also the
+  card's line saying why. Found in the first live run on aicr; a test
+  compares the requests with `LeadAgent`'s.
+- **Merge fixes on the integration branch.** The review set imports
+  `UNSCORED`, which the top-k review fixes used without importing (10 top-k
+  tests failed with a `NameError`); `read_topk` narrows a missing raw score
+  before `float()`; black's and mypy's fixes after the second merge (the label
+  inventory's status key, the zones fact's shares); the bridge's read-only
+  card test answers with no number, so the answer checks ask for no rewrite.
 - **Six fixes from a blind audit of agent trial 12** (27 false statements in
   30 answers, none marked by the harness).
   - **A class plan names each stratum's class.** Its result lists

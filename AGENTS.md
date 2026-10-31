@@ -47,6 +47,7 @@ uv run pytest -m integration        # needs OLMOEARTH_API_KEY
 │   ├── studio/          # OlmoEarth Studio API client
 │   ├── tools/           # Tool implementations (PLAN.md §1)
 │   ├── harness/         # Lead agent + middleware
+│   ├── bridge/          # `olmoearth-agent-bridge`: a Claude Code session as the model (docs/CLAUDE_AS_MODEL.md)
 │   ├── skills/          # catalog (registry.py), loader, SKILL.md packages (packages/)
 │   ├── analysis/        # computations behind the tools (comparison, review set, ...)
 │   ├── evaluation/      # spatial CV + classification metrics
@@ -96,7 +97,9 @@ Anything that conflicts with `PLAN.md` is a bug in `PLAN.md`: open a PR that upd
 3. **`system:python` is an opt-in subprocess, not a preloaded interpreter.** `olmoearth_run_python` is off unless `OLMOEARTH_RUN_PYTHON=1`; it runs in an isolated subprocess (`python -I`), so use normal `import`s, do NOT assume preloaded libraries or persisted state, and treat the heavy geospatial/rslearn/GDAL stack as possibly absent. Use it for light glue/inspection and surface long `rslearn` jobs to the user.
 4. **Studio API key cap is 10 per account.** Never programmatically rotate keys; tests use a single key from env.
 5. **Opt-in tools are not in the default registry.** The 15 tools a catalog row lists under `opt_in` (`skills/registry.py`, `OPT_IN_TOOLS`, each with its reason) are registered only with `OLMOEARTH_OPT_IN_TOOLS=1`, through the same `tools/registry.opted_in` switch as `OLMOEARTH_RUN_PYTHON`. A test that needs one through `build_default_registry()` sets the variable first; a test of the tool's own bundle (`build_*_tools()`) needs nothing.
-6. **`/models` is live but undocumented; there is no `/jobs` resource.** All async work is `Predictions` (request) + `PredictionResults` (output incl. XYZ tiles and MVT vectors). `/models` is absent from [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json) (v0.1.0) yet the live API answers `POST /models/search` and `GET /models/{id}` (verified 2026-05-30; used to label a prediction's model as fine-tuned vs an embeddings run). Don't invent *other* endpoints - confirm against the spec or a live probe first.
+6. **`/models` is live but undocumented; there is no `/jobs` resource.** All async work is `Predictions` (request) + `PredictionResults` (output incl. XYZ tiles and MVT vectors). `/models` is absent from [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json) (v0.1.0) yet the live API answers `POST /models/search` and `GET /models/{id}` (verified 2026-05-30, still outside the spec on 2026-10-31; used to label a prediction's model as fine-tuned vs an embeddings run, and for the training selector `olmoearth_studio_label_inventory` replays). Once `/models` answers 405, or 404 as for a path no route matches, the client asks it no more. Don't invent *other* endpoints - confirm against the spec or a live probe first.
+7. **A Studio key can be read-only, and nothing shows it.** `/users/me` lists the user's permissions, not the key's access level. `OLMOEARTH_READ_ONLY=1` leaves out the two write tools (`skills/registry.py`, `STUDIO_WRITE_TOOLS`) and puts the reason on the capability card; a refused request raises `StudioAccessError` (HTTP 401/403, never retried). Writes with a read-only key have never been tried live.
+8. **A result's `download_token` is a credential.** `StudioClient.prediction_result_files` masks it in every error; never put a real one in a tool result, a manifest, a log or a test fixture.
 
 ---
 
