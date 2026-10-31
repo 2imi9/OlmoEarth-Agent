@@ -83,6 +83,15 @@ but srun. A brief or a response is a file on the Mac. It goes over ssh's
 stdin, which srun forwards to the bridge, so its text passes through no
 shell. Its paths are variables at the top: `AGENT_DIR`, `RUNS` and `OUTPUTS`.
 
+With a read-only Studio key, run every command of a run with
+`OE_BRIDGE_READ_ONLY=1`. The wrapper then runs the bridge with
+`OLMOEARTH_READ_ONLY=1`: the two Studio write tools
+(`olmoearth_create_project`, `olmoearth_submit_prediction`) are not offered,
+and the capability card says why. `olmoearth_request_aoi` is still offered:
+it calls no Studio endpoint itself, and it is the web UI that saves the
+drawn area (answering a refused save with 403). Changing the setting within
+a run shows as a divergence.
+
 A response is `{"tool_calls": [{"name": ..., "arguments": {...}}]}` or
 `{"content": "..."}`. When a call offers no tools (the turn cap, the answer
 checks' rewrite), the bridge refuses tool calls.
@@ -135,7 +144,8 @@ the loop has stopped cleanly. `pending.json` comes last.
 ### Costs
 
 - Each command, `show` included, is one ssh connection and one srun step on
-  the cpu partition (2 CPUs, 8G, limit 20 minutes), plus any queue wait.
+  the cpu partition (2 CPUs, 8G, limit 20 minutes, QOS `interactive` unless
+  `OE_BRIDGE_QOS` says otherwise), plus any queue wait.
 - Nothing is held between steps.
 - Each step replays the run from its start. The cached tools cost nothing,
   but the checks run again and the package is imported again, so a step costs
@@ -187,15 +197,38 @@ Written 31 October 2026. The tests in `tests/bridge/` cover:
 - the rewrite call;
 - the spill names;
 - skill loading;
-- the command line.
+- the command line;
+- the registry's `cannot` lines in the replay (the requests compared with
+  `LeadAgent`'s).
+
+Checked live on 31 October 2026: two runs on aicr through
+`scripts/oe-bridge.sh`, a Claude Code session as the model, with a read-only
+Studio key and `OE_BRIDGE_READ_ONLY=1`. Each was a `begin` and six steps, one
+ssh connection and one srun step per command. A `begin` before them showed
+the `cannot` bug below, and both runs had its fix: the first ran with
+`OE_BRIDGE_READ_ONLY` and that fix, the second also with the label
+inventory and `olmoearth_scores_from_studio` merged.
+
+- A run on aicr: both reached a final answer that passed the answer checks,
+  not revised and not marked.
+- The QOS: `interactive` on the cpu partition, the wrapper's default, was
+  accepted. The AICR guide lists `normal` there; `OE_BRIDGE_QOS=normal` was
+  not needed.
+- srun forwards the wrapper's stdin to the bridge (`--brief-file -`,
+  `--response-file -`).
+- The queue wait: none was seen. Each step took about 5 to 9 s of wall time
+  from the Mac.
+- The `begin` before the two runs found that the bridge's copy of the
+  registry dropped the registry's `cannot` lines: its system prompt left
+  out the two write tools, as it should, and also the capability card's
+  line saying why (the `prompt` command, which builds the registry
+  directly, showed the line).
+  The replay now keeps them, and a test compares the requests with
+  `LeadAgent`'s.
 
 Not checked yet:
 
-- a run on aicr;
-- the QOS on the cpu partition: the AICR guide lists `normal` there, and
-  `OE_BRIDGE_QOS` overrides it;
-- the queue wait;
-- srun forwarding the wrapper's stdin to the bridge (Slurm's default); if it
-  does not, the bridge reads an empty brief or response and refuses it;
 - writes with the read-only key, which are expected to fail with 403
-  (unverified with a read-only key).
+  (unverified with a read-only key): `OE_BRIDGE_READ_ONLY=1` left the write
+  tools out of both runs, so none was tried;
+- a run with a key that can write, without `OE_BRIDGE_READ_ONLY`.
