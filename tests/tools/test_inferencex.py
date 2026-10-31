@@ -4,15 +4,18 @@
 
 olmoearth-inferencex 1.19.0 moved the modules the tools load into feature
 folders (``review.assess``, ``common.raster``, ``certify.zone``), so on an
-older release their import fails as an absent package's does. The answer then
+older release their import fails as an absent package's does. 1.19.0 to
+1.20.2 hold those modules but not 1.20.3's certificate check, so the loader
+refuses them by their version once the import succeeds. Either way the answer
 names the installed version and the upgrade line instead of saying the
-package is not installed. These need no package: the failed import and the
-installed version are simulated.
+package is not installed. These need no package: the failed import, the
+module that imports and the installed version are simulated.
 """
 
 from __future__ import annotations
 
 import sys
+import types
 from typing import Any
 
 import pytest
@@ -23,6 +26,7 @@ from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools.certificate import build_certificate_tools
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
+from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.scores_file import build_scores_file_tools
 
 
@@ -31,46 +35,180 @@ async def _ok(name: str, args: dict[str, Any]) -> dict[str, Any]:
     registry.register_all(build_estimation_tools())
     registry.register_all(build_scores_file_tools())
     registry.register_all(build_certificate_tools())
+    registry.register_all(build_review_set_tools())
     ctx = ToolContext(studio=None, state=ThreadState())  # type: ignore[arg-type]
     out = await registry.dispatch(ToolCall(id="1", name=name, arguments=args), ctx)
     assert out["ok"] is True, out
     return out["result"]
 
 
+def _importable(monkeypatch: pytest.MonkeyPatch, module: str) -> types.ModuleType:
+    """``oe_inferencex.<module>`` made importable as an empty stand-in."""
+    stand_in = types.ModuleType(f"oe_inferencex.{module}")
+    monkeypatch.setitem(sys.modules, f"oe_inferencex.{module}", stand_in)
+    return stand_in
+
+
 @pytest.mark.parametrize(
     ("installed", "older"),
     [
         (None, None),
-        ("1.20.1", None),
-        ("1.20.2", None),
+        ("1.20.3", None),
+        ("1.20.4", None),
         ("1.21.0", None),
         ("2.0", None),
-        ("1.20.1.post1", None),
+        ("1.20.3.post1", None),
+        ("1.20.2", "1.20.2"),  # documentation only, on 1.20.1's code
+        ("1.20.1", "1.20.1"),
+        ("1.20.1.post1", "1.20.1.post1"),
         ("1.20.0", "1.20.0"),
         ("1.20", "1.20"),
         ("1.19.0", "1.19.0"),
         ("1.18.1", "1.18.1"),
-        ("1.3.1", "1.3.1"),  # by release numbers: as text, "1.3.1" > "1.20.1"
+        ("1.3.1", "1.3.1"),  # by release numbers: as text, "1.3.1" > "1.20.3"
     ],
 )
 def test_an_older_release_is_told_apart_by_its_release_numbers(
     monkeypatch: pytest.MonkeyPatch, installed: str | None, older: str | None
 ) -> None:
-    assert inferencex.MIN_VERSION == "1.20.1"
+    assert inferencex.MIN_VERSION == "1.20.3"
     monkeypatch.setattr(inferencex, "version", lambda: installed)
     assert inferencex.older_version() == older
+
+
+@pytest.mark.parametrize("installed", ["1.20.2", "1.20.1", "1.19.0"])
+def test_load_refuses_an_older_release_whose_modules_import(
+    monkeypatch: pytest.MonkeyPatch, installed: str
+) -> None:
+    """1.19.0 to 1.20.2 hold every module the tools load, so their import
+    succeeds; load refuses them by their version all the same, with the
+    error a missing package gives, and the answer names the version."""
+    _importable(monkeypatch, "certify.certificate")
+    monkeypatch.setattr(inferencex, "version", lambda: installed)
+    with pytest.raises(inferencex.InferencexMissingError) as caught:
+        inferencex.load("certify.certificate")
+    assert str(caught.value) == (
+        f"version {installed} is installed; the tools need >= 1.20.3"
+    )
+    out = inferencex.missing_extra("Writing a certificate")
+    assert f"has version {installed}, which is older" in out["reason"]
+    assert out["install"] == inferencex.UPGRADE_HINT
+
+
+@pytest.mark.parametrize("installed", [None, "1.20.3", "1.21.0"])
+def test_load_returns_the_module_of_a_current_release(
+    monkeypatch: pytest.MonkeyPatch, installed: str | None
+) -> None:
+    """A release at MIN_VERSION or later loads; so does a module with no
+    installed distribution behind it (older_version is then None), as
+    before. A failed import is still the error it was."""
+    stand_in = _importable(monkeypatch, "certify.certificate")
+    monkeypatch.setattr(inferencex, "version", lambda: installed)
+    assert inferencex.load("certify.certificate") is stand_in
+    monkeypatch.setitem(sys.modules, "oe_inferencex.certify.certificate", None)
+    with pytest.raises(inferencex.InferencexMissingError, match="halted"):
+        inferencex.load("certify.certificate")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "args", "module", "what"),
+    [
+        (
+            "olmoearth_write_certificate",
+            {"design_path": "x.json"},
+            "certify.certificate",
+            "Writing a certificate",
+        ),
+        (
+            "olmoearth_verify_certificate",
+            {"certificate_path": "x"},
+            "certify.certificate",
+            "Checking a certificate",
+        ),
+        (
+            "olmoearth_certify_zone",
+            {"design_path": "x.json", "alpha": 0.05},
+            "estimate",
+            "Certifying a trusted zone",
+        ),
+        (
+            "olmoearth_estimate_map_error",
+            {"design_path": "x.json", "wrong": [1]},
+            "estimate",
+            "Estimating a map's error rate",
+        ),
+        (
+            "olmoearth_plan_label_sample",
+            {"scores": [[0.2, 0.8]], "budget": 1},
+            "estimate",
+            "Planning a labelled sample",
+        ),
+        (
+            "olmoearth_scores_from_file",
+            {"run_dir": "anything"},
+            "review.assess",
+            "Reading a model run's scores raster",
+        ),
+    ],
+)
+async def test_the_tools_refuse_a_release_older_than_the_minimum(
+    tool: str,
+    args: dict[str, Any],
+    module: str,
+    what: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With 1.20.2 installed (its modules import), every tool that loads the
+    package answers that it needs >= 1.20.3 and names 1.20.2 with the upgrade
+    line; nothing runs on the older release (its verify passed a mask that
+    libgeotiff mirrors, and refused an honest south-up one)."""
+    _importable(monkeypatch, module)
+    monkeypatch.setattr(inferencex, "version", lambda: "1.20.2")
+    out = await _ok(tool, args)
+    assert out["available"] is False
+    assert out["reason"].startswith(f"{what} needs the optional package")
+    assert "olmoearth-inferencex (>= 1.20.3)" in out["reason"]
+    assert "this environment has version 1.20.2, which is older" in out["reason"]
+    assert "not installed" not in out["reason"]
+    assert out["install"] == inferencex.UPGRADE_HINT
+    if tool == "olmoearth_scores_from_file":  # the one answer that keeps the error
+        assert out["missing"] == (
+            "olmoearth-inferencex: version 1.20.2 is installed; "
+            "the tools need >= 1.20.3"
+        )
+
+
+@pytest.mark.asyncio
+async def test_compare_review_does_not_read_dates_on_an_older_release(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """The dates reading loads ``oe_inferencex.compare``: on 1.20.2 it is not
+    assessed, the statement names the minimum and the line upgrades."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    _importable(monkeypatch, "compare")
+    monkeypatch.setattr(inferencex, "version", lambda: "1.20.2")
+    scores = [[0.2, 0.8], [0.7, 0.3]]
+    out = await _ok(
+        "olmoearth_compare_review",
+        {"scores_a": scores, "scores_b": scores, "date_a": "2024-01-01"},
+    )
+    assert out["dates"]["assessed"] is False
+    reason = out["dates"]["reason"]
+    assert reason.endswith("needs olmoearth-inferencex (>= 1.20.3)")
+    assert out["dates"]["install"] == inferencex.UPGRADE_HINT
 
 
 def test_missing_extra_says_not_installed_only_when_no_older_release_is(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for installed in (None, "1.20.1"):  # absent, or numpy missing under it
+    for installed in (None, "1.20.3"):  # absent, or numpy missing under it
         monkeypatch.setattr(inferencex, "version", lambda v=installed: v)
         absent = inferencex.missing_extra("Certifying a trusted zone")
         assert absent["available"] is False
         assert absent["reason"].startswith(
             "Certifying a trusted zone needs the optional package "
-            "olmoearth-inferencex (>= 1.20.1), which is not installed in this "
+            "olmoearth-inferencex (>= 1.20.3), which is not installed in this "
             "environment. Nothing was computed;"
         )
         assert absent["install"] == "pip install 'olmoearth-agent[inferencex]'"
@@ -79,7 +217,7 @@ def test_missing_extra_says_not_installed_only_when_no_older_release_is(
     assert old["available"] is False
     assert "not installed" not in old["reason"]
     assert (
-        "olmoearth-inferencex (>= 1.20.1), and this environment has version "
+        "olmoearth-inferencex (>= 1.20.3), and this environment has version "
         "1.18.1, which is older. Nothing was computed;" in old["reason"]
     )
     assert "do not substitute a hand-made formula" in old["reason"]
@@ -114,7 +252,7 @@ async def test_scores_from_file_on_a_release_without_review_assess_names_it(
     assert out["available"] is False
     assert out["reason"].startswith(
         "Reading a model run's scores raster needs the optional package "
-        "olmoearth-inferencex (>= 1.20.1) with rasterio (its geo extra), and "
+        "olmoearth-inferencex (>= 1.20.3) with rasterio (its geo extra), and "
         "this environment has version 1.18.1, which is older."
     )
     assert "not installed" not in out["reason"]

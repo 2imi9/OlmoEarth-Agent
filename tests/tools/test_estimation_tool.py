@@ -1028,7 +1028,7 @@ async def test_certify_zone_states_the_levels_and_bonferronis_per_level_delta() 
 
 @pytest.mark.asyncio
 async def test_a_certified_zone_states_what_delta_counts_verbatim() -> None:
-    """olmoearth-inferencex 1.20.1's ISSUED_NOTE (oe_inferencex.certify.zone):
+    """olmoearth-inferencex 1.20.3's ISSUED_NOTE (oe_inferencex.certify.zone):
     delta counts all samples, those that certify nothing included, so a
     certified zone is not a 1 - delta chance of being right. certify_zone's
     result does not carry it; `oe-inferencex certify` prints it with a

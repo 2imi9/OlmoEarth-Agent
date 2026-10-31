@@ -39,9 +39,13 @@ claude = [
 # which reading a model run's scores GeoTIFF needs. Its own requires-python
 # stops below 3.14, hence the marker. 1.19.0 moved the modules the tools load
 # into feature folders (review.assess, common.raster, certify.zone with
-# ISSUED_NOTE); 1.20.1 is the release the agent is checked against.
+# ISSUED_NOTE). 1.20.3 lets a certificate's zone mask carry GDAL's
+# ModelTransformation matrix, so a south-up, rotated or ungeoreferenced map
+# gets a certificate, and its verify refuses a negative PixelScale y step, a
+# perspective term, a second tiepoint or a tag given twice (1.20.2 was docs
+# only); tools/inferencex.py refuses an older release (MIN_VERSION).
 inferencex = [
-    "olmoearth-inferencex[geo]>=1.20.1; python_version < '3.14'",
+    "olmoearth-inferencex[geo]>=1.20.3; python_version < '3.14'",
 ]
 dev = [
     "pytest>=8.0",

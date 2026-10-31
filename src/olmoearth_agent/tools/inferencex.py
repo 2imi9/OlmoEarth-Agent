@@ -4,11 +4,12 @@
 
 The design-based estimation tools (``olmoearth_plan_label_sample``,
 ``olmoearth_estimate_map_error``, ``olmoearth_certify_zone``) and the dates
-reading of ``olmoearth_compare_review`` call ``oe_inferencex`` (>= 1.20.1), which
+reading of ``olmoearth_compare_review`` call ``oe_inferencex`` (>= 1.20.3), which
 brings numpy. The core package has no numpy, so the package is an optional
 extra, ``pip install 'olmoearth-agent[inferencex]'``, imported only when a tool
-needs it. When it is missing, or older than :data:`MIN_VERSION`, the tool
-answers with :func:`missing_extra` instead of raising.
+needs it. When it is missing, or older than :data:`MIN_VERSION` (:func:`load`
+refuses an older release even when its modules import), the tool answers with
+:func:`missing_extra` instead of raising.
 
 A certificate rests on files the package's command line writes (a sample
 drawn with ``--seed-from-map`` and its sidecar, then the zone ``certify``
@@ -42,11 +43,19 @@ UPGRADE_HINT = "pip install -U 'olmoearth-agent[inferencex]'"
 #: The companion package's distribution name on PyPI.
 DISTRIBUTION = "olmoearth-inferencex"
 
-#: The oldest companion release the tools are written for: 1.19.0 moved the
+#: The oldest companion release the tools are written for. 1.19.0 moved the
 #: modules they load into feature folders (``review.assess``,
-#: ``common.raster``, ``certify.zone``), and 1.20.1 is the release the agent is
-#: checked against.
-MIN_VERSION = "1.20.1"
+#: ``common.raster``, ``certify.zone``), so an older release fails their
+#: import. 1.20.3 changed ``certify.certificate``: a certificate's zone mask
+#: may carry GDAL's ModelTransformation matrix, so a map that is south up,
+#: rotated or has no georeferencing gets a certificate (1.17.0 to 1.20.2
+#: refuse that mask: they write no such certificate and fail an honest one),
+#: and verify refuses a mask with a negative PixelScale y step (which passed
+#: through 1.20.2 while libgeotiff mirrors the zone), a perspective term, a
+#: second tiepoint or a tag given twice. 1.20.2 changed only the
+#: documentation. 1.19.0 to 1.20.2 hold every module the tools load, so
+#: :func:`load` checks the installed version as well.
+MIN_VERSION = "1.20.3"
 
 #: The package's command line, run as a module of this interpreter: the
 #: package has no ``oe_inferencex/__main__.py``, and the console script
@@ -59,7 +68,7 @@ CLI_TIMEOUT = 600.0
 
 
 class InferencexMissingError(ImportError):
-    """The optional ``olmoearth-inferencex`` package is not importable."""
+    """The optional ``olmoearth-inferencex`` package is not importable, or too old."""
 
 
 def load(module: str) -> ModuleType:
@@ -67,13 +76,24 @@ def load(module: str) -> ModuleType:
 
     Any ``ImportError`` (the package absent, a release older than
     :data:`MIN_VERSION` without the module, or numpy absent under it) is
-    reported the same way; :func:`missing_extra` tells an older release apart
-    by its version.
+    reported the same way. So is an installed release older than
+    :data:`MIN_VERSION` whose module imports (1.19.0 to 1.20.2 hold every
+    module the tools load): run on it, a tool would use that release's
+    certificate code without a word. Every tool loads the package through
+    here, so each refuses such a release as it refuses an absent one;
+    :func:`missing_extra` tells an older release apart by its version.
     """
     try:
-        return importlib.import_module(f"oe_inferencex.{module}")
+        found = importlib.import_module(f"oe_inferencex.{module}")
     except ImportError as exc:
         raise InferencexMissingError(str(exc)) from exc
+    old = older_version()
+    if old is not None:
+        # No package name: a caller that reports the message prefixes it, as
+        # it does an import error's.
+        msg = f"version {old} is installed; the tools need >= {MIN_VERSION}"
+        raise InferencexMissingError(msg)
+    return found
 
 
 def version() -> str | None:
@@ -101,7 +121,7 @@ def older_version() -> str | None:
     """The installed version when it is older than :data:`MIN_VERSION`, else ``None``.
 
     ``None`` too when the package is not installed at all. Versions compare by
-    their release numbers, so 1.3.1 is older than 1.20.1.
+    their release numbers, so 1.3.1 is older than 1.20.3, and so is 1.20.2.
     """
     installed = version()
     if installed is None or _release(installed) >= _release(MIN_VERSION):
@@ -112,8 +132,9 @@ def older_version() -> str | None:
 def unavailable() -> tuple[str, str]:
     """Why the package cannot be used here, as a clause, and the line that fixes it.
 
-    A release older than :data:`MIN_VERSION` lacks the modules the tools load,
-    so its import fails as an absent package's does; the clause then names the
+    A release older than :data:`MIN_VERSION` lacks the modules the tools load
+    (before 1.19.0), so its import fails as an absent package's does, or
+    :func:`load` refuses it (1.19.0 to 1.20.2); the clause then names the
     installed version and the line upgrades it, instead of saying the package
     is not installed.
     """

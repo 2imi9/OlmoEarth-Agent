@@ -704,9 +704,10 @@ def test_a_tile_or_report_not_as_expected_is_refused(
 
 
 def test_the_geotiff_is_placed_on_the_tiles_centre(script: ModuleType) -> None:
-    """The run's raster is georeferenced (the package writes no certificate
-    for one that is not): the UTM zone of the recorded centre, north up,
-    windows of window_m metres, the centre in the middle of the grid."""
+    """The run's raster is georeferenced, as a direct run's is (the package
+    certifies one that is not from 1.20.3, but no direct run writes it): the
+    UTM zone of the recorded centre, north up, windows of window_m metres,
+    the centre in the middle of the grid."""
     from rasterio.warp import transform as reproject
 
     meta = {"lon": -71.8352855451905, "lat": -16.409944165598645, "window_m": 40}

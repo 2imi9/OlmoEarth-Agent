@@ -56,7 +56,7 @@ check that goes the wrong way, or a page that cannot be built stops the run
 with exit status 1, and a failed call's envelope is printed.
 
 Needs the standard library, numpy, the agent and olmoearth-inferencex
-(>= 1.20.1), with rasterio, which the package's ``geo`` extra brings to
+(>= 1.20.3), with rasterio, which the package's ``geo`` extra brings to
 write the GeoTIFF: the agent's ``inferencex`` extra installs both, on Python
 3.11 to 3.13. Without them the command says what to install and exits 2.
 """
@@ -363,8 +363,10 @@ def tile_grid(meta: dict[str, Any], height: int, width: int) -> tuple[str, Any]:
     zone of the centre, north up (the source raster's rows, as the package
     stores them), windows of ``window_m`` metres centred there. It places the
     tile approximately, not on the source raster's own grid. A raster with no
-    georeference is no map a direct run writes, and olmoearth-inferencex
-    writes no certificate for it (its zone mask is not a plain GeoTIFF).
+    georeference is no map a direct run writes, so the tile gets one, though
+    olmoearth-inferencex certifies such a map from 1.20.3 (as it does a
+    south-up or rotated one: the zone mask may carry GDAL's
+    ModelTransformation matrix, which 1.17.0 to 1.20.2 refused).
     """
     from rasterio.transform import from_origin
     from rasterio.warp import transform as reproject

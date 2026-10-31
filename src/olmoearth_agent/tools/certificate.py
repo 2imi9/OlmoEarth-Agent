@@ -4,12 +4,19 @@
 
 olmoearth-inferencex packs a certified zone into a bundle that travels with the
 map (``oe_inferencex.certify.certificate``, from 1.17.0; the agent requires
-1.20.1 or later, :data:`inferencex.MIN_VERSION`): ``certificate.json``, a
-STAC Item whose ``zc:`` properties state the guarantee; the zone as a GeoTIFF
-mask on the map's window grid; copies of the labelled sample, its sidecar and
-the zone JSON; and digests that bind it to the map's decoded pixels. Its
-``verify`` builds the certificate again from the map, the bundled labels and
-the recorded settings, and compares it.
+1.20.3 or later, :data:`inferencex.MIN_VERSION`, and refuses an older release
+installed): ``certificate.json``, a STAC Item whose ``zc:`` properties state
+the guarantee; the zone as a GeoTIFF mask on the map's window grid; copies of
+the labelled sample, its sidecar and the zone JSON; and digests that bind it
+to the map's decoded pixels. Its ``verify`` builds the certificate again from
+the map, the bundled labels and the recorded settings, and compares it.
+
+From 1.20.3 the zone mask may carry GDAL's ModelTransformation matrix, so a
+map that is south up, rotated or has no georeferencing gets a certificate
+(1.17.0 to 1.20.2 refuse that mask), and ``verify`` reads a mask's
+georeferencing as written: a negative PixelScale y step (which passed through
+1.20.2 while libgeotiff mirrors the zone), a perspective term, a second
+tiepoint or a tag given twice fails it.
 
 The route is file-based. ``certificate.build`` reads the zone JSON that
 ``oe-inferencex certify SAMPLE.csv`` writes, which needs the sheet and sidecar
