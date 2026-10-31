@@ -185,7 +185,12 @@ def test_the_studio_files_scope_does_not_cover_the_case() -> None:
 
 
 def test_the_studio_kind_of_a_file_is_read_from_its_studio_block() -> None:
-    """The value repeated in review_set (studio_scores imports it) is the same."""
+    """The value repeated in review_set (studio_scores imports it) is the same.
+
+    A file whose ``studio`` value is no block but whose provenance is
+    Studio's files is still Studio's, of a kind not stated (the review of 31
+    October: it would otherwise get live3's "not an OlmoEarth model").
+    """
     assert review_tools.STUDIO_TOPK == studio_scores.TOPK
     kind = review_tools.file_studio_kind
     assert kind({"studio": {"kind": "top_k"}}) == "top_k"
@@ -193,7 +198,22 @@ def test_the_studio_kind_of_a_file_is_read_from_its_studio_block() -> None:
     assert kind({"studio": {}}) == ""
     assert kind({"studio": "top_k"}) is None
     assert kind({}) is None
+    studio_provenance = {"provenance": scores_file.STUDIO_PROVENANCE}
+    assert kind(studio_provenance) == ""
+    assert kind({**studio_provenance, "studio": "top_k"}) == ""
+    assert kind({"provenance": scores_file.PROVENANCE}) is None
     assert rules.STUDIO_TOPK_SCORES_MUST_STATE == studio_scores.TOPK_SCORES_SENTENCE
+
+
+def test_the_window_scores_sentence_says_they_pool_quantized_scores() -> None:
+    """The review of 31 October: a window's score is the mean of its pixels'
+    top-1 scores, not on their 1/254 grid, so the later tools' sentence says
+    the window scores pool quantized scores, never that they are quantized."""
+    sentence = rules.STUDIO_WINDOW_SCORES_MUST_STATE
+    assert sentence.startswith("These window scores pool Studio's uncalibrated")
+    assert "each quantized to 1/254" in sentence
+    assert word_count(sentence) <= MUST_STATE_MAX_WORDS
+    assert word_count(rules.STUDIO_TOPK_SCORES_MUST_STATE) <= MUST_STATE_MAX_WORDS
 
 
 @pytest.mark.asyncio
@@ -209,7 +229,7 @@ async def test_a_review_set_of_a_studio_top_k_file_is_scoped_and_states_its_scor
     assert "not an OlmoEarth model" not in json.dumps(review)
     assert review["must_state"] == [
         MUST_STATE_STUDIO_FILES,
-        rules.STUDIO_TOPK_SCORES_MUST_STATE,
+        rules.STUDIO_WINDOW_SCORES_MUST_STATE,
     ]
     assert len(review["must_state"]) <= MUST_STATE_MAX
     assert rules.EVIDENCE_OUTSIDE_ITS_SCOPE in _ids(review)
@@ -236,6 +256,27 @@ async def test_a_review_set_of_a_studio_unit_score_file_is_scoped_only(
         studio_scores.UNIT_ASSUMPTION_SENTENCE in w
         for w in review["scores_file_warnings"]
     )
+
+
+@pytest.mark.asyncio
+async def test_a_studio_provenance_file_without_its_block_keeps_the_studio_scope(
+    tmp_path: Path,
+) -> None:
+    """The review of 31 October: a manifest whose ``studio`` value is no block
+    leaves its scores file with Studio's provenance and no block. It is still
+    scoped as a Studio model's scores, never "not an OlmoEarth model", and
+    states no top-k sentence, its kind not being stated."""
+    path = Path(_scores_file(tmp_path))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("studio", "assumption", "warnings"):
+        payload.pop(key)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    review = await _ok(REVIEW, {"scores_path": str(path), "budget": 0.1})
+    assert review["provenance"] == scores_file.STUDIO_PROVENANCE
+    assert review["evidence_covers_this_case"] == "no"
+    assert "not an OlmoEarth model" not in json.dumps(review)
+    assert review["must_state"] == [MUST_STATE_STUDIO_FILES]
+    assert "score_type_detected" not in review
 
 
 @pytest.mark.asyncio
@@ -277,19 +318,45 @@ async def test_a_plan_its_estimate_and_its_certification_state_the_top_k_scores(
     plan = await _ok(
         PLAN, {"scores_path": path, "budget": 40, "design": "random", "seed": 2}
     )
-    assert plan["must_state"] == [rules.STUDIO_TOPK_SCORES_MUST_STATE]
+    assert plan["must_state"] == [rules.STUDIO_WINDOW_SCORES_MUST_STATE]
     assert plan["assumption"] == TOPK_ASSUMPTION
     design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
     assert design["population"]["source"]["studio"]["kind"] == studio_scores.TOPK
     wrong = [0] * len(design["sample"]["indices"])
     graded = await _ok(GRADE, {"design_path": plan["design_path"], "wrong": wrong})
-    assert graded["must_state"][-1] == rules.STUDIO_TOPK_SCORES_MUST_STATE
+    assert graded["must_state"][-1] == rules.STUDIO_WINDOW_SCORES_MUST_STATE
     assert len(graded["must_state"]) <= MUST_STATE_MAX
     zone = await _ok(
         CERTIFY, {"design_path": plan["design_path"], "wrong": wrong, "alpha": 0.2}
     )
-    assert rules.STUDIO_TOPK_SCORES_MUST_STATE in zone["must_state"]
+    assert rules.STUDIO_WINDOW_SCORES_MUST_STATE in zone["must_state"]
     assert len(zone["must_state"]) <= MUST_STATE_MAX
+
+
+@pytest.mark.asyncio
+async def test_an_estimate_without_a_design_states_the_top_k_scores(
+    tmp_path: Path,
+) -> None:
+    """The review of 31 October: windows labelled with no design on a Studio
+    top-k file (window_indices with its scores_path) state what the window
+    scores pool too; a direct run's file states nothing of Studio's scores."""
+    pytest.importorskip("oe_inferencex.estimate")
+    path = _scores_file(tmp_path)
+    p1 = json.loads(Path(path).read_text(encoding="utf-8"))["p1"]
+    # Every other window in order of confidence: neither end of the map is
+    # favoured, so the package's check for a review set passes.
+    drawn = sorted(range(len(p1)), key=p1.__getitem__)[::2]
+    args: dict[str, Any] = {
+        "scores_path": path,
+        "window_indices": drawn,
+        "wrong": [0] * len(drawn),
+    }
+    graded = await _ok(GRADE, args)
+    assert graded["design"] == "none (checked as a random sample)"
+    assert graded["must_state"] == [rules.STUDIO_WINDOW_SCORES_MUST_STATE]
+    args["scores_path"] = _scores_file(tmp_path, kind=None)
+    direct = await _ok(GRADE, args)
+    assert rules.STUDIO_WINDOW_SCORES_MUST_STATE not in direct.get("must_state", [])
 
 
 @pytest.mark.asyncio
@@ -307,7 +374,7 @@ async def test_a_plan_of_a_unit_score_or_direct_file_states_no_top_k_scores(
             "design": "random",
         },
     )
-    assert rules.STUDIO_TOPK_SCORES_MUST_STATE not in unit.get("must_state", [])
+    assert rules.STUDIO_WINDOW_SCORES_MUST_STATE not in unit.get("must_state", [])
     assert unit["assumption"] == studio_scores.UNIT_ASSUMPTION_SENTENCE
     direct = await _ok(
         PLAN,
@@ -317,6 +384,6 @@ async def test_a_plan_of_a_unit_score_or_direct_file_states_no_top_k_scores(
             "design": "random",
         },
     )
-    assert rules.STUDIO_TOPK_SCORES_MUST_STATE not in direct.get("must_state", [])
+    assert rules.STUDIO_WINDOW_SCORES_MUST_STATE not in direct.get("must_state", [])
     design = json.loads(Path(direct["design_path"]).read_text(encoding="utf-8"))
     assert "studio" not in design["population"]["source"]

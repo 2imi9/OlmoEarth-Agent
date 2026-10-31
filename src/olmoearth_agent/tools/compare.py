@@ -89,6 +89,7 @@ from olmoearth_agent.tools.sampling import (
     NODATA_RULE,
     OK,
     OUTSIDE,
+    OUTSIDE_REASON,
     SAMPLE_CONCURRENCY,
     ResultNodata,
     band_by_name,
@@ -1040,6 +1041,13 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         out = _ensemble(s, value_type=value_type)
     if out.get("comparable") is False:
         return out
+    if mode != "pair":
+        # Samples read as outside a result's files (Studio answered 404) are
+        # dropped as no-data ones are, and counted per sample as those are;
+        # the pair counts cells (_pair).
+        out["n_outside_dropped"] = sum(
+            1 for row in s.reads for _v, _c, st in row if st == OUTSIDE
+        )
     claims: list[dict[str, str]] = []
     if unthresholded := _unthresholded_regression(s, out):
         claims.append(rules.unthresholded_regression(unthresholded))
@@ -1250,6 +1258,12 @@ def _sampling_note(s: _Sampled, out: dict[str, Any], mode: str) -> str:
             "n_failed_dropped count those cells)"
         )
     note += "; n_nodata_dropped counts samples, not cells"
+    if out.get("n_outside_dropped"):
+        # Named only when some were, so a sampling with none reads as before.
+        note += (
+            f"; {out['n_outside_dropped']} samples read as {OUTSIDE_REASON} were "
+            "dropped too (n_outside_dropped, also samples)"
+        )
     if mode == "ensemble":
         note += (
             f"; {out.get('n_points_dropped', 0)} cells were dropped for holding "

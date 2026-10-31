@@ -353,8 +353,9 @@ def _mock_pixels_failing(
 ) -> None:
     """As :func:`_mock_pixels`, but answer ``status[(row, col)]`` at those cells.
 
-    Studio answers 404 ``not_found_error`` at a point no file of the result
-    covers (probe 5, 31 October 2026); any other status is a failed call.
+    A 404 ``not_found_error`` where other points answer is read as a point
+    outside the result's files (probe 5, 31 October 2026, got 60 on the kelp
+    grid); any other status is a failed call.
     """
     cells = {(lo, la): (r, c) for r, c, lo, la in grid_windows(_BBOX, 4)}
 
@@ -383,9 +384,10 @@ def _mock_pixels_failing(
 async def test_a_point_studio_answers_404_is_outside_the_results_files(
     httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Probe 5 (31 October 2026): the 60 "failed" points of the kelp grid were
-    deterministic HTTP 404s at points no result file covers. They are counted
-    apart (n_outside_dropped); a 500 stays a failed call."""
+    """Probe 5 (31 October 2026): the kelp grid's 60 "failed" points were as
+    many HTTP 404s. A 404 where other points answer is counted apart
+    (n_outside_dropped), and the note says it is read so, no more; a 500
+    stays a failed call."""
     monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
@@ -402,10 +404,14 @@ async def test_a_point_studio_answers_404_is_outside_the_results_files(
     assert sampling["n_failed_dropped"] == 1
     assert sampling["n_nodata_dropped"] == 3
     assert sampling["n_valid"] == 9
-    assert sampling["outside_note"].startswith(
-        "3 of the 16 windows lie outside the result's files (Studio answered 404)"
+    assert sampling["outside_note"] == (
+        "3 of the 16 windows are read as outside the result's files (Studio "
+        "answered 404), since other windows of the result answered: they are "
+        "dropped and counted apart from failed calls (n_failed_dropped)"
     )
-    assert "no transient error" in sampling["outside_note"]
+    # Probe 5 measured counts, not which file covers which point.
+    assert "no file" not in sampling["outside_note"]
+    assert "transient" not in sampling["outside_note"]
 
 
 @pytest.mark.asyncio
@@ -428,6 +434,29 @@ async def test_a_grid_mostly_outside_the_files_is_refused_naming_the_404s(
         "only 1 of 16 sampled windows hold a value (0 no-data, 0 failed, 15 "
         "outside the result's files, where Studio answered 404); a ranking needs "
         "at least two"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_404_at_every_point_is_counted_as_failed(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The review of 31 October: a removed result, or files Studio no longer
+    serves, answer 404 at every point, which says nothing of where the files
+    lie. With no point answered, every 404 is a failed call."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb", json=_record("kb", _BINARY_META)
+    )
+    status = {(r, c): 404 for r in range(4) for c in range(4)}
+    _mock_pixels_failing(httpx_mock, _GRID, status)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler({"result_id": "kb", "grid": 4}, ctx)
+    assert out["ranked"] is False
+    assert out["reason"] == (
+        "only 0 of 16 sampled windows hold a value (0 no-data, 16 failed); a "
+        "ranking needs at least two"
     )
 
 

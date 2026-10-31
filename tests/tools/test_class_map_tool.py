@@ -156,20 +156,38 @@ class _Studio:
         return {"bands": [band]}
 
 
+def _not_found() -> httpx.HTTPStatusError:
+    """The error the Studio client raises for a pixel-value answer of 404."""
+    request = httpx.Request("GET", "http://mock-studio/api/v1/pixel-value")
+    response = httpx.Response(404, request=request)
+    return httpx.HTTPStatusError("HTTP 404", request=request, response=response)
+
+
 class _EdgeStudio(_Studio):
-    """The same map, its west column outside the result's files (Studio answers
-    404 there, as probe 5 found on 31 October 2026) and one call failing."""
+    """The same map, Studio answering 404 in its west column (read as outside
+    the result's files, as probe 5's 404s on 31 October 2026 were) and one
+    call failing."""
 
     async def pixel_value(self, result_id: str, lon: float, lat: float) -> Any:
         row, col, _lo, _la = min(
             self.cells, key=lambda c: (c[2] - lon) ** 2 + (c[3] - lat) ** 2
         )
         if col == 0:
-            request = httpx.Request("GET", "http://mock-studio/api/v1/pixel-value")
-            response = httpx.Response(404, request=request)
-            raise httpx.HTTPStatusError("HTTP 404", request=request, response=response)
+            raise _not_found()
         if (row, col) == (5, 5):
             raise RuntimeError("timeout")
+        return await super().pixel_value(result_id, lon, lat)
+
+
+class _FarStudio(_Studio):
+    """The same map, answered at the window (2, 2) only: 404 everywhere else."""
+
+    async def pixel_value(self, result_id: str, lon: float, lat: float) -> Any:
+        row, col, _lo, _la = min(
+            self.cells, key=lambda c: (c[2] - lon) ** 2 + (c[3] - lat) ** 2
+        )
+        if (row, col) != (2, 2):
+            raise _not_found()
         return await super().pixel_value(result_id, lon, lat)
 
 
@@ -279,8 +297,9 @@ async def test_a_class_map_is_planned_under_the_random_design() -> None:
 @pytest.mark.asyncio
 async def test_a_class_maps_points_outside_its_files_are_counted_apart() -> None:
     """Probe 5 (31 October 2026): the kelp grid's "failed" points were HTTP
-    404s where no file of the result lies. The sample counts them apart; any
-    other failure stays a failed call, and no-data stays no-data."""
+    404s. Where other points answer, the sample counts them apart, read as
+    outside the result's files; any other failure stays a failed call, and
+    no-data stays no-data."""
     args = {"result_id": "lc", "grid": GRID, "budget": 20, "design": "random"}
     out = await _call(PLAN, args, _EdgeStudio())
     assert out["ok"] is True, out
@@ -292,6 +311,21 @@ async def test_a_class_maps_points_outside_its_files_are_counted_apart() -> None
     assert sampling["n_valid"] == 54
     note = sampling["outside_note"]
     assert "outside the result's files (Studio answered 404)" in note
+
+
+@pytest.mark.asyncio
+async def test_a_class_map_mostly_outside_its_files_is_refused_naming_them() -> None:
+    """The refusal of too few windows with a class names the points read as
+    outside the result's files, not failed calls (untested until the review
+    of 31 October)."""
+    args = {"result_id": "lc", "grid": GRID, "budget": 20, "design": "random"}
+    out = await _call(PLAN, args, _FarStudio())
+    assert out["ok"] is False
+    assert (
+        "only 1 of 64 sampled windows hold a class (0 no-data, 0 failed, 63 "
+        "outside the result's files, where Studio answered 404); a labelled "
+        "sample needs at least two"
+    ) in out["error"]
 
 
 @pytest.mark.asyncio

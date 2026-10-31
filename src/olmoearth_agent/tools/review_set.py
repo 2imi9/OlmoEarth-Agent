@@ -372,14 +372,20 @@ def file_studio_kind(meta: dict[str, Any]) -> str | None:
     its ``kind`` is :data:`STUDIO_TOPK` for a class map's top-k softmax
     scores, ``"unit_score"`` for a ``[0, 1]`` score. Any other scores file
     has no such block; a block with no kind gives ``""`` (Studio's files, of
-    a kind not stated). ``meta`` may be a population's source, which keeps
-    the block under the same key.
+    a kind not stated), and so does a file without the block whose
+    ``provenance`` is ``scores_file.STUDIO_PROVENANCE`` (a manifest whose
+    ``studio`` value was no block): it is still a Studio model's scores,
+    never "not an OlmoEarth model". ``meta`` may be a population's source,
+    which keeps the block and the provenance under the same keys.
     """
     studio = meta.get("studio")
-    if not isinstance(studio, dict):
-        return None
-    kind = studio.get("kind")
-    return kind if isinstance(kind, str) else ""
+    if isinstance(studio, dict):
+        kind = studio.get("kind")
+        return kind if isinstance(kind, str) else ""
+    # scores_file imports this module, so its constant is read at call time.
+    from olmoearth_agent.tools import scores_file
+
+    return "" if meta.get("provenance") == scores_file.STUDIO_PROVENANCE else None
 
 
 def file_warnings(meta: dict[str, Any]) -> list[str]:
@@ -720,11 +726,13 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     are an encoding, read as the file's ``score_type`` says, so neither
     reports ``score_type_detected`` (live3, 31 October 2026, showed "logit"
     beside "probability" for rows ``[m, 0]``). A file of window confidences
-    pooled from a Studio result's own files (its ``studio`` block,
-    :func:`file_studio_kind`) is scoped as a Studio model's scores, which no
-    recorded experiment grades, and one of a class map's top-k scores states
-    that they are Studio's uncalibrated softmax scores, as
-    ``olmoearth_scores_from_studio`` did.
+    pooled from a Studio result's own files (its ``studio`` block or Studio
+    provenance, :func:`file_studio_kind`) is scoped as a Studio model's
+    scores, which no recorded experiment grades, and one of a class map's
+    top-k scores states that its window scores pool Studio's uncalibrated
+    softmax scores (``rules.STUDIO_WINDOW_SCORES_MUST_STATE``; a pooled mean
+    is not on the 1/254 grid ``olmoearth_scores_from_studio`` states of the
+    pixels' scores).
     """
     grid = args.get("grid")
     scores = args.get("scores")
@@ -814,10 +822,10 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         # is the file's score_type, and detection would read them as logits.
         if window_file:
             out.pop("score_type_detected", None)
-        # A Studio class map's top-k scores, pooled from its own files: the
-        # sentence olmoearth_scores_from_studio stated, after the scope's.
+        # A Studio class map's top-k scores, pooled from its own files: what
+        # the window scores pool, after the scope's sentence.
         if window_file and studio_kind == STUDIO_TOPK:
-            add_must_state(out, [rules.STUDIO_TOPK_SCORES_MUST_STATE])
+            add_must_state(out, [rules.STUDIO_WINDOW_SCORES_MUST_STATE])
     if grid_note:
         out["grid_note"] = grid_note
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
@@ -1268,13 +1276,16 @@ def sampling_block(
         As :func:`grid_block` takes them.
     n_sampled, n_valid, n_nodata, n_failed
         The windows sampled, those holding a usable value, and those dropped
-        as no-data or as a failed pixel-value call (any failure but a 404).
+        as no-data or as a failed pixel-value call (any failure but a 404
+        read as outside the result's files).
     n_outside
         The windows dropped as outside the result's files: Studio answered
-        their pixel-value call with HTTP 404 ``not_found_error``, as probe 5
-        (31 October 2026) found at the 60 points of the kelp result's grid
-        that the live run had counted as failed: no file covers them, and the
-        404 is not transient.
+        their pixel-value call with HTTP 404 ``not_found_error`` while it
+        answered other points of the result
+        (:func:`~olmoearth_agent.tools.sampling.sample_records`). Probe 5
+        (31 October 2026) got 60 such 404s on the kelp result's 16 x 16
+        grid, the same count the live run had counted as failed; it did not
+        test which file covers which point.
     nodata_rule
         How a sample is judged no-data, as the calling tool applies it.
 
@@ -1302,10 +1313,9 @@ def sampling_block(
     }
     if n_outside:
         block["outside_note"] = (
-            f"{n_outside} of the {n_sampled} windows lie {OUTSIDE_REASON}: no "
-            "file of the result covers their point, so they are dropped and "
-            "counted apart from failed calls (n_failed_dropped); a 404 there is "
-            "no transient error"
+            f"{n_outside} of the {n_sampled} windows are read as {OUTSIDE_REASON}, "
+            "since other windows of the result answered: they are dropped and "
+            "counted apart from failed calls (n_failed_dropped)"
         )
     return block
 

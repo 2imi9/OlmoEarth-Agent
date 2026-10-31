@@ -242,7 +242,8 @@ async def test_a_review_set_of_a_studio_top_k_scores_file_passes(
 ) -> None:
     """live3 (31 October 2026): a scores file pooled from a Studio class map's
     own files, scoped as a Studio model's scores (no recorded experiment
-    covers them) and stating Studio's uncalibrated scores in must_state."""
+    covers them) and stating in must_state that its window scores pool
+    Studio's uncalibrated scores."""
     rng = random.Random(10)
     confidence = [round(rng.uniform(0.5, 1.0), 6) for _ in range(64)]
     classes = [i % 2 for i in range(64)]
@@ -272,7 +273,7 @@ async def test_a_review_set_of_a_studio_top_k_scores_file_passes(
     args = {"scores_path": str(tmp_path / "kelp.json"), "budget": 0.1}
     out = await _call("olmoearth_review_set", args)
     assert out["evidence_covers_this_case"] == "no"
-    assert rules.STUDIO_TOPK_SCORES_MUST_STATE in out["must_state"]
+    assert rules.STUDIO_WINDOW_SCORES_MUST_STATE in out["must_state"]
     _assert_passes("olmoearth_review_set", args, out)
 
 

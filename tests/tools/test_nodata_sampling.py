@@ -173,8 +173,9 @@ def _status_error(code: int) -> httpx.HTTPStatusError:
 
 @pytest.mark.asyncio
 async def test_sample_records_tells_a_404_from_a_failed_call() -> None:
-    """Probe 5 (31 October 2026): a 404 is a point no file of the result
-    covers (OUTSIDE); a 500, a transport error or anything else stays FAILED."""
+    """Probe 5 (31 October 2026): a 404 where another point answered is read
+    as outside the result's files (OUTSIDE); a 500, a transport error or
+    anything else stays FAILED."""
     record = {"bands": [_band("p", 0.4)]}
     studio: Any = _AnsweringStudio(
         [record, _status_error(404), _status_error(500), RuntimeError("timeout")]
@@ -192,6 +193,29 @@ async def test_sample_records_tells_a_404_from_a_failed_call() -> None:
     assert dropped_text(2, 1, 3) == (
         "2 no-data, 1 failed, 3 outside the result's files, where Studio answered 404"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_404_where_no_point_answered_is_a_failed_call() -> None:
+    """The review of 31 October: a removed result, or files Studio no longer
+    serves, answer 404 at every point, which says nothing of where the files
+    lie, so with no answer at any point every 404 stays FAILED. One answer,
+    even a no-data one, is enough for the others to be read as outside."""
+    gone: Any = _AnsweringStudio([_status_error(404)] * 3 + [RuntimeError("x")])
+    ctx = ToolContext(studio=gone, state=ThreadState())
+    records = await sample_records(
+        ctx, "r1", [(float(i), 0.0) for i in range(4)], asyncio.Semaphore(2)
+    )
+    assert records == [None, None, None, None]
+    assert [read_sample(r, "p")[2] for r in records] == [FAILED] * 4
+    nodata = {"bands": [_band("p", -1.0)]}
+    edge: Any = _AnsweringStudio([_status_error(404), nodata, _status_error(404)])
+    ctx = ToolContext(studio=edge, state=ThreadState())
+    records = await sample_records(
+        ctx, "r1", [(float(i), 0.0) for i in range(3)], asyncio.Semaphore(2)
+    )
+    assert isinstance(records[0], OutsideRecord) and records[1] == nodata
+    assert isinstance(records[2], OutsideRecord)
 
 
 def test_karst_fixture_before_and_after_the_fix() -> None:
@@ -250,9 +274,10 @@ async def test_compare_results_drops_the_sentinel_on_the_trial_grid(
 async def test_compare_results_counts_cells_outside_a_results_files(
     httpx_mock: HTTPXMock,
 ) -> None:
-    """Probe 5 (31 October 2026): Studio answers HTTP 404 ``not_found_error``
-    at a point no file of the result covers, the same each time. A pair
-    counts those cells apart (n_outside_dropped); a 500 stays a failed call."""
+    """Probe 5 (31 October 2026): the kelp grid's "failed" points were HTTP
+    404 ``not_found_error``. A pair counts the cells where one result answered
+    404, while it answered elsewhere, apart (n_outside_dropped); a 500 stays
+    a failed call."""
     prop = "sample_karst_score"
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/a1", json=_result("a1", prop)
@@ -555,6 +580,52 @@ async def test_ensemble_uncertainty_drops_nodata_draws(httpx_mock: HTTPXMock) ->
     assert out["comparable"] is True
     assert out["n_nodata_dropped"] == 6
     assert out["n_points_dropped"] == 3
+    # No 404 here: the note reads as it did before outside samples counted.
+    assert out["n_outside_dropped"] == 0
+    assert "outside" not in out["sampling_note"]
+
+
+@pytest.mark.asyncio
+async def test_ensemble_counts_samples_outside_a_results_files(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The review of 31 October: group, series and ensemble modes count the
+    samples read as outside a result's files (Studio answered 404 where it
+    answered other points) per sample, beside n_nodata_dropped, and the
+    sampling note names them."""
+    prop = "sample_karst_score"
+    for rid in ("e1", "e2"):
+        httpx_mock.add_response(
+            url=f"{BASE}/prediction-results/{rid}", json=_result(rid, prop)
+        )
+    values = _sentinel_values(9)
+    index = {pt: i for i, pt in enumerate(grid_points([0.0, 0.0, 10.0, 10.0], 3))}
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        q = parse_qs(urlparse(url).query)
+        i = index[(round(float(q["lon"][0]), 6), round(float(q["lat"][0]), 6))]
+        if "/e1/" in url and i in (1, 2):
+            return httpx.Response(404, json={"code": "not_found_error"})
+        band = _band(prop, values[i])
+        return httpx.Response(200, json={"records": [{"bands": [band]}]})
+
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _compare(
+            {"result_ids": ["e1", "e2"], "grid": 3, "mode": "ensemble"}, ctx
+        )
+    assert out["comparable"] is True
+    assert out["n_nodata_dropped"] == 6  # points 0, 3 and 6 of both results
+    assert out["n_outside_dropped"] == 2  # points 1 and 2 of e1
+    assert out["n_points_dropped"] == 5  # 0, 3 and 6 empty; 1 and 2 one value
+    assert (
+        "; 2 samples read as outside the result's files (Studio answered 404) "
+        "were dropped too (n_outside_dropped, also samples)"
+    ) in out["sampling_note"]
 
 
 @pytest.mark.asyncio

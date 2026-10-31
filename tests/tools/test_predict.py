@@ -136,8 +136,8 @@ async def test_search_predictions_says_which_models_were_fine_tuned_on_labels(
         "KarstBinary was fine-tuned in Studio on a label field of its project "
         "(train/val split 0.75/0.25), so labels for this project may exist in "
         "Studio; olmoearth_studio_label_inventory counts those its training "
-        "selector selects, and Studio records no random design for them, so none "
-        "is a random sample of this map."
+        "selector selects, and Studio records no random design over a map for "
+        "them, so none can be taken as a random sample of a map."
     )
     assert "person-7f3a" not in json.dumps(result)
 

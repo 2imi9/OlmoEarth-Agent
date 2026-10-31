@@ -170,9 +170,10 @@ TOPK_DECODE = (
     "0.0 and raw 255 reads 1.0"
 )
 
-#: must_state of a class map with top-k scores; every later result on one of
-#: its zones' scores files states it too (the review set, the plan, the
-#: estimate and the certification read it from statistical_rules).
+#: must_state of a class map with top-k scores, of the per-pixel scores
+#: downloaded; every later result on one of its zones' scores files states
+#: what its pooled window scores are
+#: (``statistical_rules.STUDIO_WINDOW_SCORES_MUST_STATE``).
 TOPK_SCORES_SENTENCE = rules.STUDIO_TOPK_SCORES_MUST_STATE
 #: must_state when ``k`` is below the number of classes.
 UNRETAINED_SENTENCE = (

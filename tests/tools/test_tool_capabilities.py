@@ -230,7 +230,8 @@ async def _search_gives_no_training(_tmp: Path) -> None:
     blob = json.dumps(out)
     for secret in ("karst_training_windows", "0.123456"):
         assert secret not in blob
-    assert not any("annotation" in key for key in out["result"])
+    # no annotation is counted or named anywhere in the result
+    assert "annotation" not in json.dumps(out["result"])
     (labels,) = out["result"]["facts"]
     assert "olmoearth_studio_label_inventory counts those" in labels["sentence"]
 

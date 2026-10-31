@@ -437,7 +437,7 @@ def test_a_window_is_read_from_its_own_bands_and_its_class_band_decides() -> Non
     with pytest.raises(ValueError, match="is above its rank-1 score"):
         read_topk(_record(KELP, (0, 1, 27, 227)), topk, nodata)
     assert read_topk(None, topk, nodata)[1] == "failed"
-    # A point Studio answered with 404 (no file of the result covers it).
+    # A point Studio answered with 404, read as outside the result's files.
     assert read_topk(OutsideRecord(), topk, nodata) == (None, OUTSIDE)
 
 
