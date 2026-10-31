@@ -164,9 +164,11 @@ from olmoearth_agent.tools.review_set import (
     FROM_RESULT_MAX_GRID,
     FROM_RESULT_MIN_GRID,
     PARTLY_DATED_MUST_STATE,
+    STUDIO_TOPK,
     ClassReads,
     SampledScores,
     _check_date_form,
+    file_studio_kind,
     load_json_file,
     load_scores_file,
     read_roots,
@@ -181,7 +183,9 @@ from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA_RULE,
     OK,
+    OUTSIDE,
     default_property,
+    dropped_text,
     prediction_period,
     topk_part_reason,
     topk_scores,
@@ -641,6 +645,10 @@ async def _population(
         if isinstance(meta.get("provenance"), str):
             source["provenance"] = meta["provenance"]
             source["model"] = meta.get("model")
+        if file_studio_kind(meta) is not None:
+            # Pooled from a Studio result's own files: the design file keeps
+            # how, so its estimate and certification state what the plan does.
+            source["studio"] = meta["studio"]
         pop = population_from_rows(
             loaded.scores,
             grid=loaded.grid,
@@ -741,12 +749,15 @@ async def _class_map_population(
     n_points = grid * grid
     n_valid = sum(1 for c in codes if c >= 0)
     n_failed = sum(1 for _v, _c, status in reads if status == FAILED)
-    n_nodata = n_points - n_valid - n_failed
+    # Points outside the result's files (Studio answered 404) are neither
+    # failed calls nor no-data pixels.
+    n_outside = sum(1 for _v, _c, status in reads if status == OUTSIDE)
+    n_nodata = n_points - n_valid - n_failed - n_outside
     if n_valid < 2:
         msg = (
             f"only {n_valid} of {n_points} sampled windows hold a class "
-            f"({n_nodata} no-data, {n_failed} failed); a labelled sample needs "
-            "at least two"
+            f"({dropped_text(n_nodata, n_failed, n_outside)}); a labelled sample "
+            "needs at least two"
         )
         raise ValueError(msg)
     return Population(
@@ -766,6 +777,7 @@ async def _class_map_population(
                 n_valid=n_valid,
                 n_nodata=n_nodata,
                 n_failed=n_failed,
+                n_outside=n_outside,
                 nodata_rule=NODATA_RULE,
             ),
         },
@@ -872,6 +884,8 @@ def _budget_refusal(budget: int, pop: Population) -> str:
         "population)"
     )
     rest = " (the rest were no-data or failed)" if n_valid < n_points else ""
+    if rest and sampling.get("n_outside_dropped"):
+        rest = " (the rest were no-data, failed or outside the result's files)"
     return (
         f"{head}budget {budget} is more than the {n_valid} valid windows: a "
         f"Studio result sampled at {side}x{side} = {n_points} points has "
@@ -2560,12 +2574,22 @@ def _topk_must_state(score_kind: Any, source: dict[str, Any]) -> list[str]:
     are Studio's uncalibrated softmax scores, quantized unless the field
     read (``source["top_k"]``) says otherwise
     (:func:`~olmoearth_agent.tools.statistical_rules.topk_scores_must_state`).
+    A scores file pooled from a Studio class map's own files
+    (``olmoearth_scores_from_studio``; ``source["studio"]``, kind
+    :data:`~olmoearth_agent.tools.review_set.STUDIO_TOPK`) states the
+    sentence that tool states
+    (:data:`~olmoearth_agent.tools.statistical_rules.STUDIO_TOPK_SCORES_MUST_STATE`):
+    its windows are ranked by their pooled top-1 score, not a margin. Each
+    caller places it as the pixel-value route's sentence, within the cap of
+    three.
     """
-    if score_kind != TOPK_SCORE:
-        return []
-    top_k = source.get("top_k")
-    quantized = not (isinstance(top_k, dict) and top_k.get("quantized") is False)
-    return [rules.topk_scores_must_state(quantized)]
+    if score_kind == TOPK_SCORE:
+        top_k = source.get("top_k")
+        quantized = not (isinstance(top_k, dict) and top_k.get("quantized") is False)
+        return [rules.topk_scores_must_state(quantized)]
+    if file_studio_kind(source) == STUDIO_TOPK:
+        return [rules.STUDIO_TOPK_SCORES_MUST_STATE]
+    return []
 
 
 def _scores_route(pop: Population) -> str | None:

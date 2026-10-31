@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 from pytest_httpx import HTTPXMock
 
+from olmoearth_agent.analysis.review_set import MUST_STATE_STUDIO_FILES
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
@@ -851,6 +852,12 @@ async def test_a_zone_scores_file_feeds_the_review_set_and_a_certificate_plan(
     assert review["provenance"] == scores_file.STUDIO_PROVENANCE
     assert {r["class_name"] for r in review["review"]} <= {"absent", "present"}
     assert f"The scores file warns: {assumption}" in review["scores_file_warnings"]
+    # live3: scoped as a Studio model's scores (never "not an OlmoEarth
+    # model"), the uncalibrated sentence in must_state, no detected score type.
+    assert review["evidence_covers_this_case"] == "no"
+    assert review["must_state"] == [MUST_STATE_STUDIO_FILES, TOPK_SCORES_SENTENCE]
+    assert "not an OlmoEarth model" not in review["evidence_scope"]
+    assert "score_type_detected" not in review
     plan = await _ok(
         "olmoearth_plan_label_sample",
         {
@@ -863,6 +870,7 @@ async def test_a_zone_scores_file_feeds_the_review_set_and_a_certificate_plan(
     )
     assert plan["seed_from_map"]["alpha"] == 0.2
     assert plan["assumption"] == assumption
+    assert TOPK_SCORES_SENTENCE in plan["must_state"]
     design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
     assert design["certificate"]["seed_rule"] == "from_map"
     assert len(design["sample"]["indices"]) == 20

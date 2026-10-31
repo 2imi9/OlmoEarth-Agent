@@ -236,6 +236,46 @@ async def test_a_review_sets_class_counts_and_its_list_file_pass(
     _assert_passes("olmoearth_review_set", args, out)
 
 
+@pytest.mark.asyncio
+async def test_a_review_set_of_a_studio_top_k_scores_file_passes(
+    tmp_path: Path,
+) -> None:
+    """live3 (31 October 2026): a scores file pooled from a Studio class map's
+    own files, scoped as a Studio model's scores (no recorded experiment
+    covers them) and stating Studio's uncalibrated scores in must_state."""
+    rng = random.Random(10)
+    confidence = [round(rng.uniform(0.5, 1.0), 6) for _ in range(64)]
+    classes = [i % 2 for i in range(64)]
+    rows = [[c, 0.0] if k == 0 else [0.0, c] for c, k in zip(confidence, classes)]
+    assumption = (
+        "The scores are Studio's uncalibrated softmax scores, quantized to 1/254 "
+        "and decoded as (value - 1) / 254, the files README's formula: they rank "
+        "windows and are not probabilities that a class is right."
+    )
+    (tmp_path / "kelp.json").write_text(
+        json.dumps(
+            {
+                "grid": [8, 8],
+                "score_kind": "window_confidence",
+                "score_type": "probability",
+                "scores": rows,
+                "p1": confidence,
+                "map_class": classes,
+                "classes": {"0": "absent", "1": "present"},
+                "model": {"repo": None, "id": "model-kelp-test"},
+                "studio": {"kind": "top_k", "k": 2, "assumption": assumption},
+                "assumption": assumption,
+                "warnings": [assumption],
+            }
+        )
+    )
+    args = {"scores_path": str(tmp_path / "kelp.json"), "budget": 0.1}
+    out = await _call("olmoearth_review_set", args)
+    assert out["evidence_covers_this_case"] == "no"
+    assert rules.STUDIO_TOPK_SCORES_MUST_STATE in out["must_state"]
+    _assert_passes("olmoearth_review_set", args, out)
+
+
 @pytest.mark.parametrize("n_models", [1, 2])
 def test_the_labels_in_studio_fact_passes_beside_a_comparisons_claims(
     n_models: int,

@@ -12,6 +12,7 @@ the 25 valid points give -0.017. Values only; no coordinates were kept.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -30,6 +31,15 @@ from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.sampling import (
+    FAILED,
+    OK,
+    OUTSIDE,
+    OutsideRecord,
+    dropped_text,
+    read_sample,
+    sample_records,
+)
 
 BASE = "http://mock-studio/api/v1"
 
@@ -141,6 +151,49 @@ def _nodata_filtered(pairs: list[tuple[float, float]]) -> list[tuple[float, floa
     ]
 
 
+class _AnsweringStudio:
+    """Answers the call at x = i with ``answers[i]``: a record, or an error."""
+
+    def __init__(self, answers: list[Any]) -> None:
+        self.answers = answers
+
+    async def pixel_value(self, _result_id: str, lon: float, _lat: float) -> Any:
+        answer = self.answers[int(lon)]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def _status_error(code: int) -> httpx.HTTPStatusError:
+    """The error StudioClient raises for an HTTP status it does not retry."""
+    request = httpx.Request("GET", f"{BASE}/prediction-results/r1/pixel-value")
+    response = httpx.Response(code, json={"code": "not_found_error"}, request=request)
+    return httpx.HTTPStatusError(f"HTTP {code}", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_sample_records_tells_a_404_from_a_failed_call() -> None:
+    """Probe 5 (31 October 2026): a 404 is a point no file of the result
+    covers (OUTSIDE); a 500, a transport error or anything else stays FAILED."""
+    record = {"bands": [_band("p", 0.4)]}
+    studio: Any = _AnsweringStudio(
+        [record, _status_error(404), _status_error(500), RuntimeError("timeout")]
+    )
+    ctx = ToolContext(studio=studio, state=ThreadState())
+    records = await sample_records(
+        ctx, "r1", [(float(i), 0.0) for i in range(4)], asyncio.Semaphore(2)
+    )
+    assert records[0] == record
+    assert isinstance(records[1], OutsideRecord) and records[1] == {}
+    assert records[2] is None and records[3] is None
+    assert [read_sample(r, "p")[2] for r in records] == [OK, OUTSIDE, FAILED, FAILED]
+    assert read_sample(records[1], "p", exact=True) == (None, False, OUTSIDE)
+    assert dropped_text(2, 1) == "2 no-data, 1 failed"
+    assert dropped_text(2, 1, 3) == (
+        "2 no-data, 1 failed, 3 outside the result's files, where Studio answered 404"
+    )
+
+
 def test_karst_fixture_before_and_after_the_fix() -> None:
     """Keep both numbers reproducible: 0.946 as shipped, -0.017 without no-data."""
     before = compare_numeric(KARST_PAIRS, tolerance=0.1)
@@ -185,11 +238,53 @@ async def test_compare_results_drops_the_sentinel_on_the_trial_grid(
     assert out["comparable"] is True
     assert out["n_nodata_dropped"] == 11
     assert out["n_failed_dropped"] == 0
+    assert out["n_outside_dropped"] == 0
     assert out["stats"]["n_samples"] == 25
     assert out["stats"]["correlation"] == pytest.approx(-0.0172)
     assert out["stats"]["agreement_fraction"] == 0.0
     assert out["property_a"]["max_value"] == 1.0
     assert "warning" not in out
+
+
+@pytest.mark.asyncio
+async def test_compare_results_counts_cells_outside_a_results_files(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Probe 5 (31 October 2026): Studio answers HTTP 404 ``not_found_error``
+    at a point no file of the result covers, the same each time. A pair
+    counts those cells apart (n_outside_dropped); a 500 stays a failed call."""
+    prop = "sample_karst_score"
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/a1", json=_result("a1", prop)
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/b1", json=_result("b1", prop)
+    )
+    points = grid_points([0.0, 0.0, 10.0, 10.0], 6)
+    index = {pt: i for i, pt in enumerate(points)}
+    status = {7: 404, 8: 404, 9: 404, 10: 500}  # of result a1, by grid point
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        q = parse_qs(urlparse(url).query)
+        i = index[(round(float(q["lon"][0]), 6), round(float(q["lat"][0]), 6))]
+        if "/a1/" in url and i in status:
+            return httpx.Response(status[i], json={"code": "not_found_error"})
+        value = 0.2 + 0.01 * i if "/a1/" in url else 0.7 - 0.01 * i
+        return httpx.Response(200, json={"records": [{"bands": [_band(prop, value)]}]})
+
+    httpx_mock.add_callback(
+        pixel, url=re.compile(r".*/pixel-value\?.*"), is_reusable=True
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _compare({"result_ids": ["a1", "b1"], "grid": 6}, ctx)
+    assert out["comparable"] is True
+    assert out["n_outside_dropped"] == 3
+    assert out["n_failed_dropped"] == 1
+    assert out["n_nodata_dropped"] == 0
+    assert out["n_cells_compared"] == 32 and out["n_cells_dropped"] == 4
+    assert "n_outside_dropped" in out["sampling_note"]
 
 
 @pytest.mark.asyncio

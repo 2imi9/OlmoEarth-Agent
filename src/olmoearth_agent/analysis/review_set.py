@@ -271,6 +271,17 @@ COMPARISON_SOURCE = (
 #: case (:data:`NOT_COVERED`); the contract's fixed id.
 EVIDENCE_OUTSIDE_ITS_SCOPE = "evidence_outside_its_scope"
 
+#: ``score_kind`` of a scores file ``olmoearth_scores_from_file`` writes
+#: (``tools/scores_file.SCORE_KIND``): each row holds the window's pooled
+#: confidence at its class and 0 elsewhere, an encoding read with
+#: ``score_type``.
+WINDOW_CONFIDENCE = "window_confidence"
+#: The ``score_kind`` the review set passes for such a file pooled from a
+#: Studio result's own files (``olmoearth_scores_from_studio``: a Studio
+#: model's top-k softmax scores, or its ``[0, 1]`` score), which no recorded
+#: experiment grades.
+STUDIO_WINDOW_CONFIDENCE = "studio_window_confidence"
+
 # The must_state sentence for each case the evidence does not cover: at most
 # 25 words, a limit the answer must convey, never an instruction (the long
 # scope sentence stays in ``evidence_scope``, the full text in the file).
@@ -282,6 +293,11 @@ MUST_STATE_BINARY_SCORE = (
 #: A class map's top-k scores read as [p1, p2].
 MUST_STATE_TOPK_SCORE = (
     "No recorded experiment grades a ranking by a Studio class map's top-k scores."
+)
+#: A Studio model's scores pooled to windows from its result's own files.
+MUST_STATE_STUDIO_FILES = (
+    "The ranking evidence was measured on OlmoEarth models' class-score margins, "
+    "not a Studio model's pooled scores, so it does not cover this case."
 )
 #: A regression band ranked by its distance from a threshold.
 MUST_STATE_THRESHOLD_DISTANCE = (
@@ -340,8 +356,9 @@ def ranking_evidence_scope(
         (a scores provider's pooled confidence), ``"binary_score"`` (a
         regression band in ``[0, 1]`` read as ``[1 - s, s]``),
         ``"threshold_distance"`` (a regression band's distance from a
-        threshold) or :data:`TOPK_SCORE` (a Studio class map's rank-1 and
-        rank-2 scores).
+        threshold), :data:`TOPK_SCORE` (a Studio class map's rank-1 and
+        rank-2 scores) or :data:`STUDIO_WINDOW_CONFIDENCE` (a Studio model's
+        scores pooled to windows from its result's own files).
     n_classes
         Classes per row.
     model
@@ -386,6 +403,22 @@ def ranking_evidence_scope(
             "source": "exp70",
             "covers": "no",
             "must_state": MUST_STATE_TOPK_SCORE,
+        }
+    # A Studio model's top-k softmax scores (or [0, 1] score), downloaded from
+    # its result's files and pooled to window confidence. Studio fine-tunes
+    # OlmoEarth foundation models (the kelp model's record names its
+    # foundation_model_version, v1.2, read live on 31 October 2026), so the
+    # model is never called "not an OlmoEarth model", as live3 did by its id;
+    # the suite's margins are a probe's class scores, and no recorded
+    # experiment reads a Studio result's scores.
+    if score_kind == STUDIO_WINDOW_CONFIDENCE:
+        return {
+            "sentence": f"{RANKING_SOURCE}, not on a Studio model's top-k softmax "
+            "scores (or [0, 1] score) pooled to window confidence, so it does not "
+            "cover this case.",
+            "source": "exp70",
+            "covers": "no",
+            "must_state": MUST_STATE_STUDIO_FILES,
         }
     if not is_olmoearth(model):
         named = (
@@ -1044,8 +1077,8 @@ def review_set(
         What the rows are when they are not class scores (see
         :func:`ranking_evidence_scope`): ``"window_confidence"`` (a scores
         provider's rows; read with ``score_type``), ``"binary_score"``,
-        ``"threshold_distance"`` or :data:`TOPK_SCORE`. Only the evidence
-        scope reads it.
+        ``"threshold_distance"``, :data:`TOPK_SCORE` or
+        :data:`STUDIO_WINDOW_CONFIDENCE`. Only the evidence scope reads it.
     model
         The model the scores came from, when known; only the evidence scope
         reads it (the measurement is on the OlmoEarth family).
@@ -1153,9 +1186,14 @@ def review_set(
 
     summary = margin_summary(marg, ranked, k, len(rows))
     kind = score_kind or used_type
-    if kind == "window_confidence":
+    if kind == WINDOW_CONFIDENCE:
         kind = f"window_confidence_{used_type}"
-    elif kind not in ("binary_score", "threshold_distance", TOPK_SCORE):
+    elif kind not in (
+        "binary_score",
+        "threshold_distance",
+        TOPK_SCORE,
+        STUDIO_WINDOW_CONFIDENCE,
+    ):
         kind = used_type
     scope = ranking_evidence_scope(
         score_kind=kind, n_classes=len(matrix[0]), model=model

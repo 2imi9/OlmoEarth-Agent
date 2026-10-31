@@ -48,7 +48,9 @@ from olmoearth_agent.tools.review_set import TOPK_ZONE_STEP, build_review_set_to
 from olmoearth_agent.tools.sampling import (
     NODATA,
     OK,
+    OUTSIDE,
     UNSCORED,
+    OutsideRecord,
     ResultNodata,
     read_topk,
     select_band,
@@ -435,6 +437,8 @@ def test_a_window_is_read_from_its_own_bands_and_its_class_band_decides() -> Non
     with pytest.raises(ValueError, match="is above its rank-1 score"):
         read_topk(_record(KELP, (0, 1, 27, 227)), topk, nodata)
     assert read_topk(None, topk, nodata)[1] == "failed"
+    # A point Studio answered with 404 (no file of the result covers it).
+    assert read_topk(OutsideRecord(), topk, nodata) == (None, OUTSIDE)
 
 
 def test_without_metadata_a_class_band_with_no_class_is_no_data() -> None:

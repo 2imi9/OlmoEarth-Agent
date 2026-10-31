@@ -229,7 +229,13 @@ def test_the_card_fits_its_budget() -> None:
     estimated near 1,567 tokens before them (1,460 + 96 + 5 + 6, estimates
     from the declarations' text, not measurements), would then be near
     1,655, so the budget moves by the same 88, from 1,600 to 1,688: it is
-    1,700.
+    1,700. The final code step of 31 October rewords
+    olmoearth_search_predictions' cannot, counted by hand: "say a model's
+    metrics, or count its Studio annotations (olmoearth_studio_label_inventory
+    does)" (94 characters) for "say what a model's training data held, or
+    its metrics" (53): 41 characters, 10 tokens, on both cards. The opted-in
+    card, estimated near 1,655, would be near 1,665, under the budget of
+    1,700, which stays.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)

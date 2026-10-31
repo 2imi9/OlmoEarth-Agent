@@ -9,7 +9,9 @@ design of ``olmoearth_plan_label_sample``, and
 copied per tool and are now one implementation each:
 
 - :func:`sample_records` -- bounded-concurrency sampling (a semaphore of
-  :data:`SAMPLE_CONCURRENCY`), a failed call resolving to ``None``;
+  :data:`SAMPLE_CONCURRENCY`), a failed call resolving to ``None`` and a
+  point Studio answers with HTTP 404 to an :class:`OutsideRecord` (outside
+  the result's files, status :data:`OUTSIDE`);
 - :func:`read_sample` -- one band's value with the no-data decision of
   :func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata` applied, so a
   sentinel such as ``-1.0`` on a ``[0, 1]`` band never reaches a statistic;
@@ -40,6 +42,8 @@ from dataclasses import dataclass, field
 from math import isfinite
 from typing import Any
 
+import httpx
+
 from olmoearth_agent.analysis.raster_compare import (
     band_is_nodata,
     declared_fields,
@@ -52,6 +56,41 @@ SAMPLE_CONCURRENCY = 8
 
 #: Sample status values returned by :func:`read_sample`.
 OK, NODATA, FAILED = "ok", "nodata", "failed"
+#: The status of a point outside the result's files (:class:`OutsideRecord`):
+#: Studio answered its pixel-value call with HTTP 404. :data:`FAILED` is every
+#: other failed call.
+OUTSIDE = "outside"
+
+#: What a point of status :data:`OUTSIDE` is, as the sampling tools state it.
+OUTSIDE_REASON = "outside the result's files (Studio answered 404)"
+
+
+class OutsideRecord(dict[str, Any]):
+    """The record :func:`sample_records` gives a point Studio answers with HTTP 404.
+
+    Studio's pixel-value answers 404 ``not_found_error`` at a point no file
+    of the result covers: probe 5 (31 October 2026) sampled the kelp result
+    at the cell centres of the review set's 16 x 16 grid and got 60 such
+    404s beside 196 answers, the very counts the live run had reported as 60
+    failed calls, so they are no transient failure. The point is counted on
+    its own (:data:`OUTSIDE`). The record holds no band, so a reader that
+    does not ask for its status finds no value in it, as in a record with no
+    bands.
+    """
+
+
+def dropped_text(n_nodata: int, n_failed: int, n_outside: int = 0) -> str:
+    """The dropped windows in words: ``3 no-data, 2 failed``, then those outside.
+
+    The windows outside the result's files are named only when there are
+    some, so a sampling with none reads as it did before they were counted
+    apart from the failed calls.
+    """
+    text = f"{n_nodata} no-data, {n_failed} failed"
+    if n_outside:
+        text += f", {n_outside} outside the result's files, where Studio answered 404"
+    return text
+
 
 #: How a sampled value is judged no-data, stated in every sampling result.
 NODATA_RULE = (
@@ -310,14 +349,24 @@ async def sample_records(
     points: list[tuple[float, float]],
     sem: asyncio.Semaphore,
 ) -> list[dict[str, Any] | None]:
-    """Sample one result at every ``(lon, lat)``; a failed call yields ``None``."""
+    """Sample one result at every ``(lon, lat)``; a failed call yields ``None``.
+
+    A point Studio answers with HTTP 404 yields an :class:`OutsideRecord`: no
+    file of the result covers it (:data:`OUTSIDE`; probe 5 found these 404s
+    deterministic). Every other failure, a 401 or 403 among them, stays
+    ``None`` (:data:`FAILED`).
+    """
 
     async def one(lon: float, lat: float) -> dict[str, Any] | None:
         """One bounded pixel-value call."""
         async with sem:
             try:
                 return await ctx.studio.pixel_value(result_id, lon, lat)
-            except Exception:  # off-raster / transient -> drop the point
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:  # no file covers the point
+                    return OutsideRecord()
+                return None
+            except Exception:  # transient or any other failure -> drop the point
                 return None
 
     return list(await asyncio.gather(*[one(lo, la) for lo, la in points]))
@@ -333,9 +382,11 @@ def read_sample(
     """One sampled value: ``(value, categorical, status)``.
 
     ``status`` is :data:`OK`, :data:`NODATA` (no band, or
-    :func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata` said so)
-    or :data:`FAILED` (the pixel-value call itself failed). ``value`` is
-    ``None`` unless the status is :data:`OK`; a class reads as its label.
+    :func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata` said so),
+    :data:`OUTSIDE` (Studio answered 404: no file of the result covers the
+    point, :class:`OutsideRecord`) or :data:`FAILED` (the pixel-value call
+    itself failed otherwise). ``value`` is ``None`` unless the status is
+    :data:`OK`; a class reads as its label.
     With ``exact``, a named property is read from its own band only
     (:func:`band_by_name`): a record without it is :data:`NODATA`, never
     read from the first band (the class of a map with top-k scores is read
@@ -343,6 +394,8 @@ def read_sample(
     """
     if record is None:
         return None, False, FAILED
+    if isinstance(record, OutsideRecord):
+        return None, False, OUTSIDE
     if exact and property_name:
         band = band_by_name(record, property_name)
     else:
@@ -676,7 +729,9 @@ def read_topk(
     name (:func:`band_by_name`), never by position: :func:`select_band`
     would read the class band for a missing score.
 
-    ``status`` is :data:`FAILED` for a failed call, :data:`NODATA` when the
+    ``status`` is :data:`FAILED` for a failed call, :data:`OUTSIDE` for a
+    point outside the result's files (Studio answered 404,
+    :class:`OutsideRecord`), :data:`NODATA` when the
     rank-1 class band is missing or no-data
     (:func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata`, the
     band judged as a class band whether or not the result declares it, so a
@@ -696,6 +751,8 @@ def read_topk(
     """
     if record is None:
         return None, FAILED
+    if isinstance(record, OutsideRecord):
+        return None, OUTSIDE
     ctx = nodata or ResultNodata()
     band = band_by_name(record, topk.base)
     # P is a class property by construction: a band of it with no class is

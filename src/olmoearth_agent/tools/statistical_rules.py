@@ -294,9 +294,14 @@ def labels_in_studio_fact(
     rest from general knowledge. A model summary
     (:func:`olmoearth_agent.tools.sampling.summarize_model`) whose record
     names a label field is stated here: labels for the project may exist in
-    Studio, and no tool of this run looked them up for this area (no agent
-    tool reads Studio labels). No person's id or name is read or stated;
-    ``label_field_id`` is the id of the label field.
+    Studio, ``olmoearth_studio_label_inventory`` counts those the model's
+    training selector selects, and Studio records no random design for them,
+    so none is a random sample of this map (of these maps, for several
+    models, as a comparison or a search states them). The sentence holds
+    whether or not the run called the inventory (live3, 31 Oct 2026, called
+    it in the run that stated this fact, whose sentence then said no tool of
+    the run had looked the labels up). No person's id or name is read or
+    stated; ``label_field_id`` is the id of the label field.
 
     Returns
     -------
@@ -316,8 +321,11 @@ def labels_in_studio_fact(
         f"{_names(names)} {'was' if one else 'were each'} fine-tuned in Studio on "
         f"a label field of {'its' if one else 'their'} project"
         + (f" ({split})" if split else "")
-        + ", so labels for this project may exist in Studio; no tool of this run "
-        "looked them up for this area."
+        + ", so labels for this project may exist in Studio; "
+        f"olmoearth_studio_label_inventory counts those {'its' if one else 'their'} "
+        f"training {'selector selects' if one else 'selectors select'}, and Studio "
+        "records no random design for them, so none is a random sample of "
+        f"{'this map' if one else 'these maps'}."
     )
     return fact(
         "labels_in_studio",
@@ -691,6 +699,20 @@ def topk_scores_must_state(quantized: bool = True) -> str:
         f"The top-k scores are Studio's uncalibrated softmax scores{form}: their "
         "margin ranks windows and is not a probability the class is right."
     )
+
+
+#: What every result on a scores file pooled from a Studio class map's own
+#: files states (``olmoearth_scores_from_studio``, which states it first,
+#: then ``olmoearth_review_set``, ``olmoearth_plan_label_sample``,
+#: ``olmoearth_estimate_map_error`` and ``olmoearth_certify_zone`` on the
+#: file): the same scores as :func:`topk_scores_must_state`'s, but the file's
+#: window confidence pools each pixel's top-1 score, not the margin, so the
+#: sentence says they rank windows. Until the final code step of 31 October
+#: 2026 the later tools carried it as a warning or ``assumption`` only.
+STUDIO_TOPK_SCORES_MUST_STATE = (
+    "These scores are Studio's uncalibrated softmax scores, quantized to "
+    "1/254: they rank windows and are not probabilities that a class is right."
+)
 
 
 def zone_for_a_class_map(detail: str | None = None) -> dict[str, str]:

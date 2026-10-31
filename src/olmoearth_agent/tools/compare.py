@@ -88,6 +88,7 @@ from olmoearth_agent.tools.sampling import (
     NODATA,
     NODATA_RULE,
     OK,
+    OUTSIDE,
     SAMPLE_CONCURRENCY,
     ResultNodata,
     band_by_name,
@@ -601,14 +602,21 @@ def _pair(
     tolerance: float,
     different: bool,
 ) -> dict[str, Any]:
-    """Pair mode: two-way divergence (or change) statistics."""
+    """Pair mode: two-way divergence (or change) statistics.
+
+    A cell dropped is counted once: no-data in either map first, then outside
+    either result's files (Studio answered 404, ``n_outside_dropped``), then a
+    failed call (``n_failed_dropped``, every other failure).
+    """
     pairs: list[tuple[Any, Any]] = []
-    n_nodata = n_failed = 0
+    n_nodata = n_failed = n_outside = 0
     for (va, _ca, sa), (vb, _cb, sb) in zip(s.reads[0], s.reads[1]):
         if sa == OK and sb == OK:
             pairs.append((va, vb))
         elif NODATA in (sa, sb):
             n_nodata += 1
+        elif OUTSIDE in (sa, sb):
+            n_outside += 1
         else:
             n_failed += 1
     first = next((r for r in s.reads[0] + s.reads[1] if r[2] == OK), None)
@@ -635,6 +643,7 @@ def _pair(
         "n_cells_dropped": s.n_points - stats.get("n_samples", 0),
         "n_nodata_dropped": n_nodata,
         "n_failed_dropped": n_failed,
+        "n_outside_dropped": n_outside,
         "stats": stats,
         "method": "pointwise pixel-value sampled on a grid over the shared "
         "extent (an estimate, not every pixel); windows where either map is "
@@ -1236,7 +1245,8 @@ def _sampling_note(s: _Sampled, out: dict[str, Any], mode: str) -> str:
     if mode == "pair":
         return note + (
             f"; {out['n_cells_compared']} compared, {out['n_cells_dropped']} "
-            "dropped (no-data or failed in either map; n_nodata_dropped and "
+            "dropped (no-data, outside the result's files where Studio answered "
+            "404, or failed in either map; n_nodata_dropped, n_outside_dropped and "
             "n_failed_dropped count those cells)"
         )
     note += "; n_nodata_dropped counts samples, not cells"

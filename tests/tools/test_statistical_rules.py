@@ -219,7 +219,10 @@ def test_a_report_of_no_measured_accuracy_states_it_and_forbids_a_figure(
 
 def test_the_labels_in_studio_fact_names_each_model_trained_on_labels() -> None:
     """exp86 round 9 (B3/studio run 1): "no ground-truth labels exist", of two
-    Studio models fine-tuned on label fields of the user's project."""
+    Studio models fine-tuned on label fields of the user's project. The
+    sentence points at olmoearth_studio_label_inventory and stays true whether
+    or not the run called it (live3 called it in the run that stated "no tool
+    of this run looked them up")."""
     half = {"train_prop": 0.5, "val_prop": 0.3, "test_prop": 0.2}
     one = rules.labels_in_studio_fact(
         [
@@ -232,8 +235,11 @@ def test_the_labels_in_studio_fact_names_each_model_trained_on_labels() -> None:
     assert one["sentence"] == (
         "A was fine-tuned in Studio on a label field of its project (train/val/"
         "test split 0.5/0.3/0.2), so labels for this project may exist in Studio; "
-        "no tool of this run looked them up for this area."
+        "olmoearth_studio_label_inventory counts those its training selector "
+        "selects, and Studio records no random design for them, so none is a "
+        "random sample of this map."
     )
+    assert "no tool of this run" not in one["sentence"]
     assert [m["name"] for m in one["models"]] == ["A"]
     # splits that differ are not stated; three names are listed in order
     three = rules.labels_in_studio_fact(
@@ -246,6 +252,10 @@ def test_the_labels_in_studio_fact_names_each_model_trained_on_labels() -> None:
     assert three["sentence"].startswith(
         "A, B and C were each fine-tuned in Studio on a label field of their "
         "project, so labels"
+    )
+    assert three["sentence"].endswith(
+        "counts those their training selectors select, and Studio records no "
+        "random design for them, so none is a random sample of these maps."
     )
     assert rules.labels_in_studio_fact([{"name": "E"}, None]) is None
     assert rules.labels_in_studio_fact([]) is None

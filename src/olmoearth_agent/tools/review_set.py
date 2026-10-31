@@ -67,7 +67,9 @@ from olmoearth_agent.analysis.review_set import (
     DEFAULT_MAX_LISTED,
     MUST_STATE_MULTICLASS_LOGIT,
     NOT_COVERED,
+    STUDIO_WINDOW_CONFIDENCE,
     TOPK_SCORE,
+    WINDOW_CONFIDENCE,
     attainable_ceiling,
     compare_scores,
     evidence_detail,
@@ -85,12 +87,15 @@ from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA,
     OK,
+    OUTSIDE,
+    OUTSIDE_REASON,
     SAMPLE_CONCURRENCY,
     TOPK_NODATA_RULE,
     UNSCORED,
     ResultNodata,
     TopKScores,
     default_property,
+    dropped_text,
     read_sample,
     read_topk,
     result_nodata_context,
@@ -350,6 +355,31 @@ def file_model(meta: dict[str, Any]) -> str | None:
         name = model.get("repo") or model.get("id")
         return str(name) if name else None
     return str(model) if isinstance(model, str) and model else None
+
+
+#: The ``kind`` of a scores file's ``studio`` block pooled from a Studio class
+#: map's top-k scores (``tools/studio_scores.TOPK``; that module imports this
+#: one, so the value is repeated here).
+STUDIO_TOPK = "top_k"
+
+
+def file_studio_kind(meta: dict[str, Any]) -> str | None:
+    """The kind of Studio result a scores file was pooled from, or ``None``.
+
+    ``olmoearth_scores_from_file`` copies the ``studio`` block of a manifest
+    that ``olmoearth_scores_from_studio`` wrote (``source.kind``
+    ``studio_files``) into its scores file (``scores_file.studio_notes``):
+    its ``kind`` is :data:`STUDIO_TOPK` for a class map's top-k softmax
+    scores, ``"unit_score"`` for a ``[0, 1]`` score. Any other scores file
+    has no such block; a block with no kind gives ``""`` (Studio's files, of
+    a kind not stated). ``meta`` may be a population's source, which keeps
+    the block under the same key.
+    """
+    studio = meta.get("studio")
+    if not isinstance(studio, dict):
+        return None
+    kind = studio.get("kind")
+    return kind if isinstance(kind, str) else ""
 
 
 def file_warnings(meta: dict[str, Any]) -> list[str]:
@@ -681,7 +711,21 @@ def topk_contract(out: dict[str, Any], top_k: Any) -> None:
 
 
 async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-    """Handler for ``olmoearth_review_set``."""
+    """Handler for ``olmoearth_review_set``.
+
+    A scores file's rows are not always scores whose type can be detected: a
+    class map's top-k rows ``[p1, p2]`` and a file of window confidences
+    (``score_kind`` ``window_confidence``, every ``olmoearth_scores_from_file``
+    output: each row the window's confidence at its class and 0 elsewhere)
+    are an encoding, read as the file's ``score_type`` says, so neither
+    reports ``score_type_detected`` (live3, 31 October 2026, showed "logit"
+    beside "probability" for rows ``[m, 0]``). A file of window confidences
+    pooled from a Studio result's own files (its ``studio`` block,
+    :func:`file_studio_kind`) is scoped as a Studio model's scores, which no
+    recorded experiment grades, and one of a class map's top-k scores states
+    that they are Studio's uncalibrated softmax scores, as
+    ``olmoearth_scores_from_studio`` did.
+    """
     grid = args.get("grid")
     scores = args.get("scores")
     windows: list[int] | None = None
@@ -712,6 +756,16 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
     # them): the rows' arg-max is no class, and their gap misses the margin by
     # a level where a rank-2 score is raw 0.
     topk_file = meta.get("score_kind") == TOPK_SCORE
+    score_kind = (
+        meta.get("score_kind") if isinstance(meta.get("score_kind"), str) else None
+    )
+    window_file = score_kind == WINDOW_CONFIDENCE
+    studio_kind = file_studio_kind(meta)
+    if window_file and studio_kind is not None:
+        # A Studio model's scores, pooled from its result's own files: Studio
+        # fine-tunes OlmoEarth models, so the scope never says "not an
+        # OlmoEarth model" of its model id (live3), and no experiment covers it.
+        score_kind = STUDIO_WINDOW_CONFIDENCE
     out = review_set(
         scores,
         budget=budget,
@@ -725,9 +779,7 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             float(args["error_rate"]) if args.get("error_rate") is not None else None
         ),
         max_listed=int(args.get("max_listed", DEFAULT_MAX_LISTED)),
-        score_kind=(
-            meta.get("score_kind") if isinstance(meta.get("score_kind"), str) else None
-        ),
+        score_kind=score_kind,
         model=file_model(meta),
         keep_full=True,
         map_class=_file_classes(meta, len(scores)) if topk_file else None,
@@ -758,6 +810,14 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             out.pop("score_type_detected", None)
             if isinstance(meta.get("classes"), dict):
                 out["n_classes"] = len(meta["classes"])
+        # Rows [m, 0, ...] encode a window's confidence and class: their type
+        # is the file's score_type, and detection would read them as logits.
+        if window_file:
+            out.pop("score_type_detected", None)
+        # A Studio class map's top-k scores, pooled from its own files: the
+        # sentence olmoearth_scores_from_studio stated, after the scope's.
+        if window_file and studio_kind == STUDIO_TOPK:
+            add_must_state(out, [rules.STUDIO_TOPK_SCORES_MUST_STATE])
     if grid_note:
         out["grid_note"] = grid_note
     # Row-major index to (row, col), so a caller with a grid need not do the division itself.
@@ -1193,6 +1253,7 @@ def sampling_block(
     n_valid: int,
     n_nodata: int,
     n_failed: int,
+    n_outside: int = 0,
     nodata_rule: str = _NODATA_RULE,
 ) -> dict[str, Any]:
     """What was sampled of a Studio result: a grid of points, never every pixel.
@@ -1207,22 +1268,30 @@ def sampling_block(
         As :func:`grid_block` takes them.
     n_sampled, n_valid, n_nodata, n_failed
         The windows sampled, those holding a usable value, and those dropped
-        as no-data or as a failed pixel-value call.
+        as no-data or as a failed pixel-value call (any failure but a 404).
+    n_outside
+        The windows dropped as outside the result's files: Studio answered
+        their pixel-value call with HTTP 404 ``not_found_error``, as probe 5
+        (31 October 2026) found at the 60 points of the kelp result's grid
+        that the live run had counted as failed: no file covers them, and the
+        404 is not transient.
     nodata_rule
         How a sample is judged no-data, as the calling tool applies it.
 
     Returns
     -------
     dict
-        :func:`grid_block`'s keys, the counts, ``what_a_window_is`` and
-        ``nodata_rule``.
+        :func:`grid_block`'s keys, the counts (``n_outside_dropped`` among
+        them), ``what_a_window_is``, ``nodata_rule`` and, when a window was
+        outside the result's files, ``outside_note``.
     """
-    return {
+    block: dict[str, Any] = {
         **grid_block(grid, grid_requested),
         "n_windows_sampled": n_sampled,
         "n_valid": n_valid,
         "n_nodata_dropped": n_nodata,
         "n_failed_dropped": n_failed,
+        "n_outside_dropped": n_outside,
         "what_a_window_is": (
             f"a grid of sampled points, not every pixel: the result's extent "
             f"is cut into {grid} x {grid} cells and each window is "
@@ -1231,6 +1300,14 @@ def sampling_block(
         ),
         "nodata_rule": nodata_rule,
     }
+    if n_outside:
+        block["outside_note"] = (
+            f"{n_outside} of the {n_sampled} windows lie {OUTSIDE_REASON}: no "
+            "file of the result covers their point, so they are dropped and "
+            "counted apart from failed calls (n_failed_dropped); a 404 there is "
+            "no transient error"
+        )
+    return block
 
 
 @dataclass
@@ -1273,6 +1350,9 @@ class SampledScores:
     top_k: dict[str, Any] | None = None
     margin: list[float] | None = None
     threshold_note: str | None = None
+    #: Windows outside the result's files (Studio answered 404); ``n_failed``
+    #: counts every other failed call.
+    n_outside: int = 0
 
     def grid_block(self) -> dict[str, Any]:
         """The grid used, the grid asked for, and whether it was held to the range."""
@@ -1287,6 +1367,7 @@ class SampledScores:
             n_valid=len(self.windows),
             n_nodata=self.n_nodata,
             n_failed=self.n_failed,
+            n_outside=self.n_outside,
             nodata_rule=(
                 TOPK_NODATA_RULE if self.score_kind == TOPK_SCORE else _NODATA_RULE
             ),
@@ -1455,7 +1536,7 @@ async def _sample_topk(
     read_classes: list[Any] = []
     rows: list[list[float]] = []
     margin: list[float] = []
-    n_nodata = n_failed = 0
+    n_nodata = n_failed = n_outside = 0
     for (row, col, lon, lat), (value, status) in zip(cells, reads):
         if status == OK and value is not None:
             windows.append(row * grid + col)
@@ -1465,6 +1546,8 @@ async def _sample_topk(
             margin.append(value[3])
         elif status == FAILED:
             n_failed += 1
+        elif status == OUTSIDE:
+            n_outside += 1
         else:
             n_nodata += 1
     if len(windows) < 2:
@@ -1472,7 +1555,8 @@ async def _sample_topk(
             result_id,
             topk.base,
             f"only {len(windows)} of {len(cells)} sampled windows hold a value "
-            f"({n_nodata} no-data, {n_failed} failed); a ranking needs at least two",
+            f"({dropped_text(n_nodata, n_failed, n_outside)}); a ranking needs at "
+            "least two",
         )
     codes, classes = topk.code_classes(read_classes)
     quantized = topk_quantized(topk, nodata, records)
@@ -1492,6 +1576,7 @@ async def _sample_topk(
         n_sampled=len(cells),
         n_nodata=n_nodata,
         n_failed=n_failed,
+        n_outside=n_outside,
         model=nodata.model,
         grid_requested=grid_requested,
         p1=p1,
@@ -1623,7 +1708,7 @@ async def sample_result_scores(
     windows: list[int] = []
     values: list[float] = []
     centres: list[tuple[float, float]] = []
-    n_nodata = n_failed = 0
+    n_nodata = n_failed = n_outside = 0
     for (row, col, lon, lat), (value, categorical, status) in zip(cells, reads):
         if status == OK and not categorical and isinstance(value, (int, float)):
             windows.append(row * grid + col)
@@ -1631,6 +1716,8 @@ async def sample_result_scores(
             centres.append((lon, lat))
         elif status == FAILED:
             n_failed += 1
+        elif status == OUTSIDE:
+            n_outside += 1
         elif status == NODATA or status == OK:
             n_nodata += 1
     if len(windows) < 2:
@@ -1638,7 +1725,8 @@ async def sample_result_scores(
             result_id,
             name,
             f"only {len(windows)} of {len(cells)} sampled windows hold a value "
-            f"({n_nodata} no-data, {n_failed} failed); a ranking needs at least two",
+            f"({dropped_text(n_nodata, n_failed, n_outside)}); a ranking needs at "
+            "least two",
         )
     lo, hi = rng if rng else (None, None)
     rows, kind, assumption = regression_scores(
@@ -1659,6 +1747,7 @@ async def sample_result_scores(
         n_sampled=len(cells),
         n_nodata=n_nodata,
         n_failed=n_failed,
+        n_outside=n_outside,
         model=nodata.model,
         grid_requested=grid_requested,
     )

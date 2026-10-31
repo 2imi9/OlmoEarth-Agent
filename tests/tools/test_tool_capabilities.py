@@ -183,10 +183,18 @@ def probe(tool: str, entry: str) -> Callable[[Probe], Probe]:
 
 @probe(
     "olmoearth_search_predictions",
-    "say what a model's training data held, or its metrics",
+    "say a model's metrics, or count its Studio annotations "
+    "(olmoearth_studio_label_inventory does)",
 )
 async def _search_gives_no_training(_tmp: Path) -> None:
-    """exp86 round 9 said "no ground-truth labels exist" of two fine-tuned models."""
+    """exp86 round 9 said "no ground-truth labels exist" of two fine-tuned models.
+
+    The entry said "what a model's training data held" until the label
+    inventory (31 October 2026) counted the annotations a model's training
+    selector selects: the search still gives no metrics and counts no
+    annotation (this fake Studio has no annotation search), and its
+    ``labels_in_studio`` fact points at the inventory.
+    """
     studio = _Studio(
         listed=[{"id": "p1", "name": "run", "status": "completed", "model_id": "m1"}],
         models={
@@ -222,6 +230,9 @@ async def _search_gives_no_training(_tmp: Path) -> None:
     blob = json.dumps(out)
     for secret in ("karst_training_windows", "0.123456"):
         assert secret not in blob
+    assert not any("annotation" in key for key in out["result"])
+    (labels,) = out["result"]["facts"]
+    assert "olmoearth_studio_label_inventory counts those" in labels["sentence"]
 
 
 @probe("olmoearth_compare_results", "2 or more distinct results")

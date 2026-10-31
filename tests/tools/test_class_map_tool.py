@@ -27,6 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from olmoearth_agent.analysis.raster_compare import grid_windows
@@ -155,6 +156,23 @@ class _Studio:
         return {"bands": [band]}
 
 
+class _EdgeStudio(_Studio):
+    """The same map, its west column outside the result's files (Studio answers
+    404 there, as probe 5 found on 31 October 2026) and one call failing."""
+
+    async def pixel_value(self, result_id: str, lon: float, lat: float) -> Any:
+        row, col, _lo, _la = min(
+            self.cells, key=lambda c: (c[2] - lon) ** 2 + (c[3] - lat) ** 2
+        )
+        if col == 0:
+            request = httpx.Request("GET", "http://mock-studio/api/v1/pixel-value")
+            response = httpx.Response(404, request=request)
+            raise httpx.HTTPStatusError("HTTP 404", request=request, response=response)
+        if (row, col) == (5, 5):
+            raise RuntimeError("timeout")
+        return await super().pixel_value(result_id, lon, lat)
+
+
 @pytest.fixture(autouse=True)
 def _scores_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
@@ -256,6 +274,24 @@ async def test_a_class_map_is_planned_under_the_random_design() -> None:
     # A random sheet is in random order: hiding the map's class is enough.
     assert "To label blind, hide map_class." in plan["how_to_label"]
     assert "shuffled" not in plan["how_to_label"]
+
+
+@pytest.mark.asyncio
+async def test_a_class_maps_points_outside_its_files_are_counted_apart() -> None:
+    """Probe 5 (31 October 2026): the kelp grid's "failed" points were HTTP
+    404s where no file of the result lies. The sample counts them apart; any
+    other failure stays a failed call, and no-data stays no-data."""
+    args = {"result_id": "lc", "grid": GRID, "budget": 20, "design": "random"}
+    out = await _call(PLAN, args, _EdgeStudio())
+    assert out["ok"] is True, out
+    sampling = out["result"]["sampling"]
+    # 64 points: column 0 outside (8), (5, 5) failed (1), (0, 7) no-data (1).
+    assert sampling["n_outside_dropped"] == 8
+    assert sampling["n_failed_dropped"] == 1
+    assert sampling["n_nodata_dropped"] == 1
+    assert sampling["n_valid"] == 54
+    note = sampling["outside_note"]
+    assert "outside the result's files (Studio answered 404)" in note
 
 
 @pytest.mark.asyncio
