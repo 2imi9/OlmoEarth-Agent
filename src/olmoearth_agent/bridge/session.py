@@ -227,6 +227,24 @@ async def _drive(
     return events
 
 
+def _answered(
+    pending: dict[str, Any] | None, responses: list[RecordedResponse]
+) -> bool:
+    """Whether the pending call's response is saved already.
+
+    A step saves the response it was given, then writes ``pending.json``
+    last; one stopped in between leaves the pending call's response as the
+    last one saved, with the request's fingerprint.
+    """
+    return bool(
+        pending is not None
+        and pending.get("status") == MODEL_CALL
+        and responses
+        and pending.get("model_call") == len(responses)
+        and responses[-1].request_sha256 == pending.get("request_sha256")
+    )
+
+
 def _check_switches(agent: LeadAgent, settings: dict[str, Any]) -> None:
     """The answer checks must stay as they were when the run began."""
     for name, variable in (
@@ -327,53 +345,75 @@ async def step(
     response
         The model's response to the pending call: ``{"tool_calls": [{"name",
         "arguments"}]}`` or ``{"content": "..."}``. ``None`` only to start a
-        run whose first step failed.
+        run whose first step failed, or to finish a step that saved its
+        response and stopped before it ended.
     registry_factory, studio
         As for :func:`begin`.
 
     Returns
     -------
     dict
-        :func:`pending_view` for the next model call, or :func:`final_view`.
+        :func:`pending_view` for the next model call, or :func:`final_view`;
+        with ``dropped_tool_calls`` when the step dropped provisional records.
 
     Raises
     ------
     BridgeError
         No run, a malformed response, a run that is not waiting for one, or a
-        replay that diverged from the recorded run (the run is then left as
-        it was).
+        replay that diverged from the recorded run.
+
+    Notes
+    -----
+    A step that fails saves no response and leaves ``pending.json`` as it
+    was. The tool calls it ran stay in the cache as provisional records: the
+    same response sent again reuses them, and another response drops them
+    (:class:`~olmoearth_agent.bridge.replay.ToolCache`; a Studio write among
+    them may already have happened). A step stopped after it saved the
+    response and before it wrote ``pending.json`` is finished by the next
+    step, given no response or the same one.
     """
     run = RunDir(run_dir)
     brief = run.read_brief()
     pending = run.read_pending()
     responses = run.read_responses()
+    saved = len(responses)
+    unfinished = _answered(pending, responses)
     given: RecordedResponse | None = None
+    if pending is not None and pending.get("status") != MODEL_CALL:
+        raise BridgeError("the run has ended: show prints its answer")
     if response is None:
-        if pending is not None:
+        if pending is not None and not unfinished:
             raise BridgeError(
                 "the run is waiting for a model response: pass one (show prints "
                 "the pending call)"
             )
     else:
-        if pending is None or pending.get("status") != MODEL_CALL:
+        if pending is None:
             raise BridgeError(
-                "the run has ended: show prints its answer"
-                if pending is not None
-                else "the run has not started: run step without a response first"
+                "the run has not started: run step without a response first"
             )
-        given = RecordedResponse.parse(
+        parsed = RecordedResponse.parse(
             response, request_sha256=str(pending["request_sha256"])
         )
-        if given.tool_calls and not pending.get("tools"):
+        if parsed.tool_calls and not pending.get("tools"):
             raise BridgeError(RESPOND_WITHOUT_TOOLS)
-        if pending.get("model_call") != len(responses) + 1:
+        if unfinished:
+            if parsed.to_record() != responses[-1].to_record():
+                raise BridgeError(
+                    f"model call {saved} already has its response saved (the step "
+                    "that took it stopped before it ended): send the same "
+                    "response again, or run step without one"
+                )
+        elif pending.get("model_call") != saved + 1:
             raise BridgeError(
-                f"{run.RESPONSES} holds {len(responses)} responses but the pending "
+                f"{run.RESPONSES} holds {saved} responses but the pending "
                 f"call is model call {pending.get('model_call')}"
             )
-        responses.append(given)
+        else:
+            given = parsed
+            responses.append(given)
 
-    cache = ToolCache(run)
+    cache = ToolCache(run, saved=saved, model_call=len(responses))
     llm = ScriptedLLM(responses)
     registry = replay_registry((registry_factory or build_default_registry)(), cache)
     client = StudioClient.from_env() if studio is None else studio
@@ -388,10 +428,10 @@ async def step(
         if studio is None:
             await client.aclose()
 
-    if cache.position < len(cache.records):
+    if cache.position < cache.committed:
         raise BridgeError(
             f"the run diverged: the replay made {cache.position} of the "
-            f"{len(cache.records)} cached tool calls"
+            f"{cache.committed} tool calls the saved responses made"
         )
     if llm.pending is not None:
         view = pending_view(brief, llm, agent)
@@ -404,6 +444,9 @@ async def step(
         view = final_view(brief, events, agent.state)
     else:  # pragma: no cover - run_stream always ends with its final event
         raise BridgeError("the loop stopped without a final event")
+    cache.drop_unread()
+    if cache.dropped:
+        view["dropped_tool_calls"] = cache.dropped
 
     if given is not None:
         run.append_response(given)
@@ -649,6 +692,19 @@ def _message_text(message: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _dropped_text(view: dict[str, Any]) -> list[str]:
+    """The bridge's note on the provisional tool calls a step dropped, if any."""
+    dropped = view.get("dropped_tool_calls") or []
+    if not dropped:
+        return []
+    names = ", ".join(str(d.get("name")) for d in dropped)
+    return [
+        f"(bridge: dropped {len(dropped)} tool call(s) ({names}) that an earlier "
+        "step made for this model call before it failed; a Studio write among "
+        "them may already have happened)"
+    ]
+
+
 def render_text(view: dict[str, Any]) -> str:
     """The readable form of a view (``--text``)."""
     if view.get("status") == FINAL:
@@ -661,6 +717,7 @@ def render_text(view: dict[str, Any]) -> str:
             "(no answer)" if content is None else str(content),
             "== " + ("; ".join(flags) if flags else "not revised, not marked") + " ==",
             *view.get("notes", []),
+            *_dropped_text(view),
         ]
         return "\n".join(lines)
     tools = view.get("tools")
@@ -668,6 +725,7 @@ def render_text(view: dict[str, Any]) -> str:
     lines = [
         f"== model call {view.get('model_call')} "
         f"(turn {view.get('turn')} of {view.get('max_turns')}) ==",
+        *_dropped_text(view),
         f"mode: {view.get('mode')}",
         "tools: " + (", ".join(tools) if tools else "none"),
     ]

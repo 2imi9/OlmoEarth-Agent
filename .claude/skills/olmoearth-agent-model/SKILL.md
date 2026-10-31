@@ -12,13 +12,14 @@ You are the model inside the agent's loop (`LeadAgent`), in Qwen's place. The lo
 - The run's rules are its system prompt: the soul (`src/olmoearth_agent/harness/soul.md`) and the capability card. The first step shows it in full, and `scripts/oe-bridge.sh prompt` prints it. Follow it for the whole run. Do not copy it here or restate it to the user.
 - During a run, the run's content comes only from the bridge. Do not compute anything yourself, do not open spill files or files the tools wrote, do not search the web, and do not use subagents. Run nothing on the Mac but `scripts/oe-bridge.sh`.
 - Write every response and the answer in English: the checks read English.
-- If the bridge fails, report its error and stop. Do not answer from your own knowledge.
+- If the bridge fails, report its error; do not answer from your own knowledge. See the end for the one retry.
 
 ## Procedure
 
 1. Before the first command, tell the user the cost: one ssh connection and one srun step (2 CPUs, 8G, at most 20 minutes) per step; nothing is held between steps.
-2. Begin with the user's request, word for word, and a new run name:
-   `scripts/oe-bridge.sh begin RUN "<the request>" --text`
+2. Write the user's request, word for word, to a file with the Write tool, then begin with a new run name:
+   `scripts/oe-bridge.sh begin RUN FILE --text`
+   Never put the request on the command line: the Mac's shell would expand `$`, backticks and quotes in it.
 3. Read the pending call: the system prompt (in full when it changed), the messages you have not seen (tool results as the loop feeds them, harness notes), the tools offered and the mode.
 4. Write one response to a file with the Write tool, then run `scripts/oe-bridge.sh step RUN FILE --text`. A response is one JSON object:
    - tool calls: `{"tool_calls": [{"name": "olmoearth_...", "arguments": {...}}]}`; several calls run in order, as one turn;
@@ -29,4 +30,4 @@ You are the model inside the agent's loop (`LeadAgent`), in Qwen's place. The lo
 
 A translation for the user, if wanted, comes after the final answer and is labelled as not checked.
 
-If a step fails, `scripts/oe-bridge.sh show RUN` prints the pending call again without running anything.
+If a step fails, report its error, then run `scripts/oe-bridge.sh show RUN --text`; it prints the pending call again without running the loop. If that is still the call you answered, the only retry is the same response file sent again: a failed step saved no response, and the same response reuses the tool calls it already ran (another response drops them, and a Studio write among them may already have happened). If the pending call has moved on, the step finished after all (a dropped connection): answer the new call.

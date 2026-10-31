@@ -14,6 +14,8 @@ Each command is a fresh process; the run lives in its directory
 
 ``begin``, ``step`` and ``show`` print the step's view as JSON (``--text``:
 readable); an error prints ``{"status": "error", "error": ...}`` and exits 1.
+``--brief-file -`` and ``--response-file -`` read the text from stdin, as
+``scripts/oe-bridge.sh`` sends it, so it passes through no shell.
 """
 
 from __future__ import annotations
@@ -51,7 +53,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     start.add_argument("--run-dir", required=True, help="a new or empty directory")
     brief = start.add_mutually_exclusive_group(required=True)
     brief.add_argument("--brief", help="the user's request, word for word")
-    brief.add_argument("--brief-file", help="a file holding the request")
+    brief.add_argument("--brief-file", help="a file holding the request (- stdin)")
     start.add_argument(
         "--history-file",
         help='prior turns, a JSON list of {"role": "user"|"assistant", "content"}',
@@ -67,7 +69,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     move = commands.add_parser("step", help="answer the pending call, show the next")
     move.add_argument("--run-dir", required=True)
     response = move.add_mutually_exclusive_group()
-    response.add_argument("--response-file", help="a file holding the response JSON")
+    response.add_argument(
+        "--response-file", help="a file holding the response JSON (- stdin)"
+    )
     response.add_argument("--response", help="the response JSON itself")
     move.add_argument("--text", action="store_true", help="print readable text")
 
@@ -83,10 +87,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _read(path: str, what: str) -> str:
+    """A file's text, as UTF-8; ``-`` is stdin."""
     try:
+        if path == "-":
+            return sys.stdin.buffer.read().decode("utf-8")
         return Path(path).read_text(encoding="utf-8")
-    except OSError as exc:
-        raise BridgeError(f"cannot read the {what} file {path}: {exc}") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        source = "stdin" if path == "-" else f"the file {path}"
+        raise BridgeError(f"cannot read the {what} from {source}: {exc}") from exc
 
 
 def _json(text: str, what: str) -> Any:

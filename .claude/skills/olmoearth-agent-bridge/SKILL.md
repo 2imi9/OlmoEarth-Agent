@@ -11,9 +11,9 @@ How the bridge works and what it costs: `docs/CLAUDE_AS_MODEL.md`.
 
 Before any command, tell the user what it uses:
 
-- each bridge command: one ssh connection and one srun step on the cpu partition (2 CPUs, 8G, limit 20 minutes); `show` without `--text` is a `cat` on the login node;
+- each bridge command, `show` included: one ssh connection and one srun step on the cpu partition (2 CPUs, 8G, limit 20 minutes); on the login node only that srun runs;
 - nothing is held between commands;
-- disk: run directories and the tools' outputs on scratch (`RUNS`, `OUTPUTS` at the top of `scripts/oe-bridge.sh`), purged after 30 days.
+- disk: run directories and the tools' outputs on scratch (`RUNS`, `OUTPUTS` at the top of `scripts/oe-bridge.sh`), purged after 30 days, readable by the account only.
 
 Never poll the cluster in a loop.
 
@@ -27,7 +27,7 @@ Never poll the cluster in a loop.
 ## Smoke test
 
 1. `scripts/oe-bridge.sh tools` prints the tool specs.
-2. `scripts/oe-bridge.sh begin smoke-1 "How many OlmoEarth projects do I have?" --text`
+2. Write `How many OlmoEarth projects do I have?` to a file with the Write tool, then `scripts/oe-bridge.sh begin smoke-1 FILE --text`. The brief never goes on the command line: the Mac's shell would expand `$`, backticks and quotes in it.
 3. A response calling `olmoearth_load_context` with `{}`, then an answer from its result.
 
 ## The read-only key
@@ -49,6 +49,7 @@ Never poll the cluster in a loop.
 
 ## When a step fails
 
-- "the run diverged at call k" or "at model call k": the loop no longer makes the calls the run recorded. This happens when the code, the environment or the cache changed between steps. Start a new run; do not edit the files.
+- A failed step (an error, the srun time limit) saves no response, and `pending.json` stays as it was. Send the same response file again; that also finishes a step stopped between saving the response and writing `pending.json`. After a dropped connection, run `show RUN --text` first: if the pending call has moved on, the step finished, and the same file would answer the wrong call.
+- Tool calls a failed step already ran are kept: the same response reuses them, and another response drops them. A dropped call did run; the view's `dropped_tool_calls` (a `bridge:` line with `--text`) names them, and a Studio write among them may already have happened.
+- "the run diverged at call k" or "at model call k": the loop no longer makes the calls the saved responses made. This happens when the code, the environment or the cache changed between steps. Start a new run; do not edit the files.
 - `OLMOEARTH_API_KEY is not set`: the env file is missing on aicr.
-- A failed step leaves the run as it was, except for tool calls that already ran; a retry serves those from the cache.

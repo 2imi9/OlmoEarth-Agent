@@ -47,7 +47,7 @@ Each command is a fresh process on a run directory:
    loop's spill, records and provenance.
 4. A wrapped handler serves its result from `tool_cache.jsonl` when the cache
    has it. Only a call past the cache runs, and its outcome is appended at
-   once.
+   once, with the model call whose response made it.
 5. A cached exception is raised again with the same class name, text and
    `contract`, so its envelope is the live one.
 6. `olmoearth_load_skill` runs again on every step. It sets the run's loaded
@@ -67,17 +67,21 @@ goes on with a run the model did not see.
 On aicr (each a fresh process):
 
 ```bash
-olmoearth-agent-bridge begin --run-dir D --brief "How many projects do I have?"
+olmoearth-agent-bridge begin --run-dir D --brief-file brief.txt
 olmoearth-agent-bridge step --run-dir D --response-file response.json
 olmoearth-agent-bridge show --run-dir D --text
 olmoearth-agent-bridge prompt           # the system prompt: soul + card + skill index
 olmoearth-agent-bridge tools [--run-dir D]
 ```
 
+`--brief` takes the text itself; `--brief-file -` and `--response-file -`
+read stdin.
+
 From the Mac, `scripts/oe-bridge.sh` runs the same commands through
-`ssh aicr srun`. Nothing runs locally but ssh. It copies a brief or a response
-over ssh's stdin as a file, so no JSON is quoted through two shells. Its paths
-are variables at the top: `AGENT_DIR`, `RUNS` and `OUTPUTS`.
+`ssh aicr srun`. Nothing runs locally but ssh, and nothing on the login node
+but srun. A brief or a response is a file on the Mac. It goes over ssh's
+stdin, which srun forwards to the bridge, so its text passes through no
+shell. Its paths are variables at the top: `AGENT_DIR`, `RUNS` and `OUTPUTS`.
 
 A response is `{"tool_calls": [{"name": ..., "arguments": {...}}]}` or
 `{"content": "..."}`. When a call offers no tools (the turn cap, the answer
@@ -99,17 +103,39 @@ The skills `.claude/skills/olmoearth-agent-model` (playing the model) and
 
 ### The run directory
 
+It is readable by its owner only (0700): its files hold the account's names
+and the tools' whole results.
+
 - `brief.json`: the brief, the history and the settings.
 - `responses.jsonl`: one response per model call, with the request's sha256.
-- `tool_cache.jsonl`: each handler's outcome, in call order.
+- `tool_cache.jsonl`: each handler's outcome, in call order, with the model
+  call whose response made it.
 - `events.jsonl`: the loop's events from the last replay.
 - `pending.json`: the pending call, or the final answer.
 - `provenance.json`: the provenance log from the last replay.
 
+### A failed step
+
+A step writes the response it was given, then the other files, only once
+the loop has stopped cleanly. `pending.json` comes last.
+
+- A step that failed (an error, the srun time limit) has saved no response,
+  and `pending.json` is as it was. Send the same response again. After a
+  dropped connection, check with `show` first: the step may have finished on
+  the cluster, and then the same response would answer the next call.
+- The tool calls it ran are in the cache already, as provisional records.
+  The same response reuses them. Another response drops them from the first
+  call it makes otherwise, or at its end if it makes fewer. A dropped call
+  did run, so a Studio write among them may already have happened. The view
+  names the dropped calls (`dropped_tool_calls`).
+- A step stopped after it saved the response but before it wrote
+  `pending.json` is finished by the next step, given the same response or
+  none.
+
 ### Costs
 
-- Each model call is one ssh connection and one srun step on the cpu
-  partition (2 CPUs, 8G, limit 20 minutes), plus any queue wait.
+- Each command, `show` included, is one ssh connection and one srun step on
+  the cpu partition (2 CPUs, 8G, limit 20 minutes), plus any queue wait.
 - Nothing is held between steps.
 - Each step replays the run from its start. The cached tools cost nothing,
   but the checks run again and the package is imported again, so a step costs
@@ -142,7 +168,9 @@ The skills `.claude/skills/olmoearth-agent-model` (playing the model) and
 - **The claim check.** It is off, as by default. A claim-check call reaching
   `ScriptedLLM` stops the step.
 - **A killed step.** A handler cut off mid-call (a killed process, the srun
-  time limit) is not recorded, and the next step runs it again.
+  time limit) is not recorded, and the next step runs it again. A call a
+  failed step finished is kept, and dropped if the next response differs
+  (see "A failed step").
 - **Settings.** Keep the answer-check switches (`OLMOEARTH_CHECK_NUMBERS`,
   `OLMOEARTH_CHECK_ANSWER`), the soul and the code as they were at `begin`.
   A changed switch stops the step. Any other change shows as a divergence.
@@ -154,6 +182,7 @@ Written 31 October 2026. The tests in `tests/bridge/` cover:
 - the replay against `LeadAgent` (the same requests, events, provenance and
   answer);
 - the cache;
+- a failed step, retried with the same or another response;
 - divergence;
 - the rewrite call;
 - the spill names;
@@ -166,5 +195,7 @@ Not checked yet:
 - the QOS on the cpu partition: the AICR guide lists `normal` there, and
   `OE_BRIDGE_QOS` overrides it;
 - the queue wait;
+- srun forwarding the wrapper's stdin to the bridge (Slurm's default); if it
+  does not, the bridge reads an empty brief or response and refuses it;
 - writes with the read-only key, which are expected to fail with 403
   (unverified with a read-only key).

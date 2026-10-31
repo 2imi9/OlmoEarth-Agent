@@ -5,14 +5,15 @@
 # Run one olmoearth-agent-bridge command on aicr, from the Mac.
 #
 # Nothing runs on this machine but ssh and shell builtins. Each command is
-# one ssh connection and one srun step on the cpu partition (2 CPUs, 8G, at
-# most 20 minutes); `show` without --text is a `cat` of pending.json on the
-# login node instead. Nothing is held between commands. The Studio key is
-# read from ~/.config/olmoearth-agent/studio.env on the cluster, inside the
-# srun step, and never printed. A brief or a response goes to the cluster as
-# a file over ssh's stdin, so no JSON is quoted through two shells.
+# one ssh connection running one srun step on the cpu partition (2 CPUs, 8G,
+# at most 20 minutes); on the login node nothing runs but that srun. Nothing
+# is held between commands. The Studio key is read from
+# ~/.config/olmoearth-agent/studio.env on the cluster, inside the srun step,
+# and never printed. A brief or a response is a file here: it goes over ssh's
+# stdin, which srun forwards to the bridge (--brief-file -, --response-file -),
+# so its text passes through no shell, here or there.
 #
-#   scripts/oe-bridge.sh begin RUN "the brief, word for word" [MAX_TURNS] [--text]
+#   scripts/oe-bridge.sh begin RUN BRIEF.txt [MAX_TURNS] [--text]
 #   scripts/oe-bridge.sh step RUN RESPONSE.json [--text]
 #   scripts/oe-bridge.sh show RUN [--text]
 #   scripts/oe-bridge.sh prompt
@@ -38,15 +39,15 @@ QOS="${OE_BRIDGE_QOS:-interactive}"
 SRUN="srun -A p2026_0089_neu -p cpu -q $QOS -n 1 -c 2 --mem=8G -t 00:20:00"
 
 BIN="$AGENT_DIR/.venv/bin/olmoearth-agent-bridge"
-INBOX="$RUNS/.inbox"
-# What srun runs on the compute node: export the Studio key from the env file
-# (set -a), point the workspace root at $1, then exec the bridge with the
-# rest of the arguments.
-INNER='set -a; . "$HOME/.config/olmoearth-agent/studio.env"; set +a; export OLMOEARTH_OUTPUT_ROOT="$1"; shift; exec "$@"'
+# What srun runs on the compute node: new files private to the account
+# (umask 077: run files and outputs hold account names and tool results),
+# the Studio key exported from the env file (set -a), the workspace root at
+# $1 (made if missing), then the bridge with the rest of the arguments.
+INNER='umask 077; set -a; . "$HOME/.config/olmoearth-agent/studio.env"; set +a; export OLMOEARTH_OUTPUT_ROOT="$1"; mkdir -p "$1"; shift; exec "$@"'
 
 usage() {
   printf '%s\n' \
-    'usage: scripts/oe-bridge.sh begin RUN "the brief" [MAX_TURNS] [--text]' \
+    'usage: scripts/oe-bridge.sh begin RUN BRIEF.txt [MAX_TURNS] [--text]' \
     '       scripts/oe-bridge.sh step RUN RESPONSE.json [--text]' \
     '       scripts/oe-bridge.sh show RUN [--text]' \
     '       scripts/oe-bridge.sh prompt' \
@@ -66,27 +67,16 @@ check_run() {
 
 [[ "$QOS" =~ ^[A-Za-z0-9_-]+$ ]] || fail "OE_BRIDGE_QOS must be a QOS name"
 
-# The remote command that runs the bridge with the given arguments in a srun
-# step. Every word is quoted for the remote shell with printf %q.
+# The remote command: one srun step that runs the bridge with the given
+# arguments. Every word is quoted for the remote shell with printf %q.
 bridge_cmd() {
   local cmd arg
-  cmd="mkdir -p $(printf '%q' "$RUNS") $(printf '%q' "$OUTPUTS")"
-  cmd+=" && $SRUN bash -c $(printf '%q' "$INNER") oe-bridge"
+  cmd="$SRUN bash -c $(printf '%q' "$INNER") oe-bridge"
   cmd+=" $(printf '%q' "$OUTPUTS") $(printf '%q' "$BIN")"
   for arg in "$@"; do
     cmd+=" $(printf '%q' "$arg")"
   done
   printf '%s' "$cmd"
-}
-
-# The remote command that saves stdin to $INBOX/NAME, runs the bridge (whose
-# arguments name that file), removes the file and exits with the bridge's
-# status.
-with_input() {
-  local file="$INBOX/$1"
-  shift
-  printf 'mkdir -p %q && cat > %q && { %s; rc=$?; rm -f %q; exit $rc; }' \
-    "$INBOX" "$file" "$(bridge_cmd "$@")" "$file"
 }
 
 [[ $# -ge 1 ]] || usage
@@ -100,6 +90,8 @@ case "$action" in
     brief="$2"
     shift 2
     check_run "$run"
+    [[ -f "$brief" && -r "$brief" ]] ||
+      fail "cannot read the brief file '$brief' (write the request to a file)"
     extra=()
     for arg in "$@"; do
       if [[ "$arg" == "--text" ]]; then
@@ -107,12 +99,11 @@ case "$action" in
       elif [[ "$arg" =~ ^[0-9]{1,3}$ ]]; then
         extra+=(--max-turns "$arg")
       else
-        fail "begin takes MAX_TURNS and --text after the brief (got '$arg')"
+        fail "begin takes MAX_TURNS and --text after the brief file (got '$arg')"
       fi
     done
-    remote="$(with_input "$run.brief" begin --run-dir "$RUNS/$run" \
-      --brief-file "$INBOX/$run.brief" ${extra[@]+"${extra[@]}"})"
-    printf '%s' "$brief" | ssh -T "$HOST" "$remote"
+    ssh -T "$HOST" "$(bridge_cmd begin --run-dir "$RUNS/$run" --brief-file - \
+      ${extra[@]+"${extra[@]}"})" < "$brief"
     ;;
   step)
     [[ $# -ge 2 ]] || usage
@@ -120,26 +111,28 @@ case "$action" in
     response="$2"
     shift 2
     check_run "$run"
-    [[ -r "$response" ]] || fail "cannot read the response file '$response'"
+    [[ -f "$response" && -r "$response" ]] ||
+      fail "cannot read the response file '$response'"
     extra=()
     for arg in "$@"; do
       [[ "$arg" == "--text" ]] ||
         fail "step takes only --text after the response file (got '$arg')"
       extra+=(--text)
     done
-    remote="$(with_input "$run.response" step --run-dir "$RUNS/$run" \
-      --response-file "$INBOX/$run.response" ${extra[@]+"${extra[@]}"})"
-    ssh -T "$HOST" "$remote" < "$response"
+    ssh -T "$HOST" "$(bridge_cmd step --run-dir "$RUNS/$run" --response-file - \
+      ${extra[@]+"${extra[@]}"})" < "$response"
     ;;
   show)
     [[ $# -ge 1 ]] || usage
     run="$1"
     check_run "$run"
-    if [[ "${2:-}" == "--text" ]]; then
-      ssh -T "$HOST" "$(bridge_cmd show --run-dir "$RUNS/$run" --text)" < /dev/null
-    else
-      ssh -T "$HOST" "cat $(printf '%q' "$RUNS/$run/pending.json")" < /dev/null
+    extra=()
+    if [[ $# -ge 2 ]]; then
+      [[ "$2" == "--text" ]] || fail "show takes only --text after RUN (got '$2')"
+      extra+=(--text)
     fi
+    ssh -T "$HOST" "$(bridge_cmd show --run-dir "$RUNS/$run" \
+      ${extra[@]+"${extra[@]}"})" < /dev/null
     ;;
   prompt)
     ssh -T "$HOST" "$(bridge_cmd prompt)" < /dev/null

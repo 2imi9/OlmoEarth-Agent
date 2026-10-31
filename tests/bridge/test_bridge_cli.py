@@ -10,7 +10,9 @@ fakes, as ``tests/harness/test_answer_check_loop.py`` swaps them in
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +114,31 @@ def test_a_brief_can_come_from_a_file(
     text = capsys.readouterr().out
     assert text.startswith("== model call 1 (turn 1 of 8) ==")
     assert "What's in map a? It's \"the\" map." in text
+
+
+def _stdin(monkeypatch: pytest.MonkeyPatch, text: str) -> None:
+    """Give the command ``text`` on stdin, as scripts/oe-bridge.sh's ssh does."""
+    data = io.BytesIO(text.encode("utf-8"))
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(data, encoding="utf-8"))
+
+
+def test_a_brief_and_a_response_can_come_on_stdin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # What a shell would expand or cut reaches the agent word for word.
+    brief = 'Compare "kelp" maps for $2025 runs and `id`.\nAlso map a.'
+    run = str(tmp_path / "run")
+    _stdin(monkeypatch, brief)
+    assert cli.main(["begin", "--run-dir", run, "--brief-file", "-"]) == 0
+    assert _out(capsys)["messages"] == [{"role": "user", "content": brief}]
+
+    call = {"name": "measure", "arguments": {"map": "a"}}
+    _stdin(monkeypatch, json.dumps({"tool_calls": [call]}))
+    assert cli.main(["step", "--run-dir", run, "--response-file", "-"]) == 0
+    second = _out(capsys)
+    assert second["model_call"] == 2 and second["messages"][0]["role"] == "tool"
 
 
 def test_an_error_is_printed_as_json_and_exits_1(

@@ -8,13 +8,17 @@ and rewrites it when the harness asks. The same responses go once through
 ``LeadAgent`` with a stub model, as ``tests/harness/test_answer_check_loop.py``
 drives it, and once through the bridge, one step at a time, each step a
 fresh session reading the run directory, as a new process would. Nothing
-here touches the network.
+here touches the network. Further tests cover a step that fails partway
+(its tool calls kept for the same response, dropped for another), a step
+stopped between saving the response and writing its view, divergence, the
+rewrite call, spill names and skill loading.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import stat
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import asdict
@@ -305,6 +309,119 @@ async def test_a_replay_that_differs_from_the_record_stops(tmp_path: Path) -> No
     assert calls == {"measure": 2}  # one live call per run, none on a replay
 
 
+def _flaky(calls: dict[str, int], broken: dict[str, bool]) -> ToolRegistry:
+    """measure and refuse, and export, whose result is not JSON while broken."""
+    registry = _registry(calls)
+
+    async def export(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        calls["export"] = calls.get("export", 0) + 1
+        return {"saved_to": object() if broken["on"] else "outputs/a.json"}
+
+    spec = ToolSpec("export", "export a map", _EMPTY_SCHEMA)
+    registry.register(RegisteredTool(spec, export))
+    return registry
+
+
+_MEASURE_EXPORT = _calls(("measure", {"map": "a"}), ("export", {}))
+_NO_TOOL = {"content": "No tool was called."}
+
+
+async def _failed(run: Path, factory: Factory) -> None:
+    """Begin, then a step that fails after its first tool call ran."""
+    await _begin(run, factory)
+    with pytest.raises(BridgeError, match=r"the result of call 2 \(export\) is not"):
+        await _step(run, _MEASURE_EXPORT, factory)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_step_s_tool_calls_serve_the_same_response_again(
+    tmp_path: Path,
+) -> None:
+    calls: dict[str, int] = {}
+    broken = {"on": True}
+    factory = partial(_flaky, calls, broken)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    pending = (run / "pending.json").read_text()
+    with pytest.raises(BridgeError, match="is not JSON"):
+        await _step(run, _MEASURE_EXPORT, factory)
+    # No response saved and the pending call as it was; the call that ran is
+    # kept, for model call 1.
+    assert (run / "pending.json").read_text() == pending
+    assert not (run / "responses.jsonl").exists()
+    (record,) = _jsonl(run / "tool_cache.jsonl")
+    assert (record["name"], record["model_call"]) == ("measure", 1)
+    assert calls == {"measure": 1, "export": 1}
+
+    broken["on"] = False
+    second = await _step(run, _MEASURE_EXPORT, factory)
+    assert second["model_call"] == 2 and "dropped_tool_calls" not in second
+    # measure is served from the failed step's record; export runs again.
+    assert calls == {"measure": 1, "export": 2}
+    records = _jsonl(run / "tool_cache.jsonl")
+    assert [(r["name"], r["model_call"]) for r in records] == [
+        ("measure", 1),
+        ("export", 1),
+    ]
+    final = await _step(run, {"content": _FIXED}, factory)
+    assert final["status"] == "final" and final["content"] == _FIXED
+    assert calls == {"measure": 1, "export": 2}
+
+
+@pytest.mark.asyncio
+async def test_a_failed_step_s_tool_calls_are_dropped_for_another_response(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    calls: dict[str, int] = {}
+    factory = partial(_flaky, calls, {"on": True})
+
+    # Another first call: the kept record is dropped there, the new call runs.
+    run = tmp_path / "other"
+    await _failed(run, factory)
+    view = await _step(run, _calls(("measure", {"map": "b"})), factory)
+    assert view["status"] == "model_call" and view["model_call"] == 2
+    assert view["dropped_tool_calls"] == [{"call": 1, "name": "measure"}]
+    assert "a Studio write among them may already have happened" in caplog.text
+    records = _jsonl(run / "tool_cache.jsonl")
+    assert [(r["name"], r["arguments"]) for r in records] == [("measure", {"map": "b"})]
+    assert calls == {"measure": 2, "export": 1}
+    # That response is saved: the next step replays it from the cache.
+    final = await _step(run, {"content": _FIXED}, factory)
+    assert final["status"] == "final" and "dropped_tool_calls" not in final
+    assert calls == {"measure": 2, "export": 1}
+
+    # An answer instead: the kept record is dropped at the step's end.
+    run = tmp_path / "answer"
+    await _failed(run, factory)
+    final = await _step(run, _NO_TOOL, factory)
+    assert final["status"] == "final" and final["content"] == _NO_TOOL["content"]
+    assert final["dropped_tool_calls"] == [{"call": 1, "name": "measure"}]
+    assert _jsonl(run / "tool_cache.jsonl") == []
+    assert calls == {"measure": 3, "export": 2}
+
+
+@pytest.mark.asyncio
+async def test_a_step_stopped_before_its_view_is_finished_by_the_next(
+    tmp_path: Path,
+) -> None:
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    first = (run / "pending.json").read_text()
+    second = await _step(run, _MEASURE_A, factory)
+
+    # As if killed after it saved the response and before it wrote pending.json.
+    (run / "pending.json").write_text(first)
+    with pytest.raises(BridgeError, match="already has its response saved"):
+        await _step(run, _calls(("measure", {"map": "b"})), factory)
+    assert await _step(run, _MEASURE_A, factory) == second
+    (run / "pending.json").write_text(first)
+    assert await _step(run, None, factory) == second
+    assert len(_jsonl(run / "responses.jsonl")) == 1
+    assert calls == {"measure": 1}
+
+
 @pytest.mark.asyncio
 async def test_an_answer_that_fails_a_check_gets_a_call_without_tools(
     tmp_path: Path,
@@ -515,10 +632,14 @@ async def test_a_run_takes_one_response_per_pending_call(tmp_path: Path) -> None
     factory = partial(_registry, {})
     run = tmp_path / "run"
     await _begin(run, factory)
+    # The run's files hold account names and tool results: owner only.
+    assert stat.S_IMODE(run.stat().st_mode) & 0o077 == 0
     with pytest.raises(BridgeError, match="not an empty directory"):
         await _begin(run, factory)
     with pytest.raises(BridgeError, match="waiting for a model response"):
         await _step(run, None, factory)
-    await _step(run, {"content": "No tool was called."}, factory)
+    await _step(run, _NO_TOOL, factory)
     with pytest.raises(BridgeError, match="the run has ended"):
         await _step(run, {"content": "Again."}, factory)
+    with pytest.raises(BridgeError, match="the run has ended"):
+        await _step(run, None, factory)

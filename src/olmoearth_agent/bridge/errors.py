@@ -9,7 +9,10 @@ class BridgeError(RuntimeError):
     """A bridge command cannot go on: no run, a bad response, a diverged replay.
 
     The command line prints it as ``{"status": "error", "error": ...}`` and
-    exits 1; the run directory is left as it was before the command.
+    exits 1. A step that fails saves no response and leaves ``pending.json``
+    as it was; tool calls it already ran stay in the cache as provisional
+    records, which the same response sent again reuses and another response
+    drops (``replay.ToolCache``).
     """
 
 

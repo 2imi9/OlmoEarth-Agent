@@ -7,14 +7,22 @@
   as one ``olmoearth-agent`` run builds its prompt once).
 - ``responses.jsonl``: the model's responses so far, one line per model call,
   each with the fingerprint of the request it answered.
-- ``tool_cache.jsonl``: each tool handler invocation's outcome, in call order.
+- ``tool_cache.jsonl``: each tool handler invocation's outcome, in call order,
+  with the model call whose response made it.
 - ``events.jsonl``: the loop's events, as the last step's replay yielded them.
 - ``pending.json``: what the loop waits for (a model call), or its final answer.
 - ``provenance.json``: the run's provenance log, as the last step rebuilt it.
 
 A step appends to the tool cache as each new handler returns; it writes the
-response it was given and the other files only once it has stopped cleanly,
-so a failed step leaves the run as it was (with any tool call that ran).
+response it was given, then the events, the provenance and ``pending.json``
+last, only once it has stopped cleanly. A step that failed has saved no
+response and left ``pending.json`` as it was; the tool calls it ran stay in
+the cache as provisional records (``replay.ToolCache``). A step stopped
+after saving the response but before writing ``pending.json`` is finished by
+the next ``step`` (``session.step``).
+
+The directory is made private to its owner (0700): its files hold the
+account's names and the tools' whole results.
 """
 
 from __future__ import annotations
@@ -50,13 +58,16 @@ class RunDir:
     # --- writing ---------------------------------------------------------
 
     def create(self, brief: dict[str, Any]) -> None:
-        """Make the run's directory with its ``brief.json``; it must be new or empty."""
+        """Make the run's directory with its ``brief.json``; it must be new or empty.
+
+        A new directory is made readable by its owner only (mode 0700).
+        """
         if self.path.exists() and (not self.path.is_dir() or any(self.path.iterdir())):
             raise BridgeError(
                 f"{self.path} exists and is not an empty directory: begin needs a "
                 "new run directory"
             )
-        self.path.mkdir(parents=True, exist_ok=True)
+        self.path.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._write(self.BRIEF, json.dumps(brief, indent=2, ensure_ascii=False))
 
     def append_response(self, response: RecordedResponse) -> None:
@@ -66,6 +77,11 @@ class RunDir:
     def append_tool_record(self, record: dict[str, Any]) -> None:
         """Add one handler outcome to ``tool_cache.jsonl``."""
         self._append(self.TOOL_CACHE, record)
+
+    def write_tool_cache(self, records: list[dict[str, Any]]) -> None:
+        """Replace ``tool_cache.jsonl`` with ``records`` (provisional ones dropped)."""
+        lines = [json.dumps(r, ensure_ascii=False) for r in records]
+        self._write(self.TOOL_CACHE, "".join(line + "\n" for line in lines))
 
     def write_events(self, events: list[dict[str, Any]]) -> None:
         """Replace ``events.jsonl`` with the events of this step's replay."""
