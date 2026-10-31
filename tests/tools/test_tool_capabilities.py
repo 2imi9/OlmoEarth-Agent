@@ -454,9 +454,14 @@ async def _scores_file_reads_only_the_root(tmp: Path) -> None:
 
 @probe("olmoearth_scores_from_studio", "read a class map with no top-k scores")
 async def _studio_scores_refuse_a_class_map(_tmp: Path) -> None:
-    """Refused from the result's metadata, before any download (_Studio has none)."""
-    studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
-    out = await _call("olmoearth_scores_from_studio", {"result_id": "lc"}, studio)
+    """Refused from the result's metadata, before any download (_Studio has none).
+
+    The id is a UUID, the API's format for it: the tool asks Studio for no
+    other.
+    """
+    rid = "7b1d9e20-6c4f-4a8b-8e2d-3f5a9c0b1e44"
+    studio = _Studio(results={rid: _result(rid, "landcover", _CLASSIFICATION)})
+    out = await _call("olmoearth_scores_from_studio", {"result_id": rid}, studio)
     _refused(out, "class map without top-k scores")
     _refused(out, "probability_output")
 

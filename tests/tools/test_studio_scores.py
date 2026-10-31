@@ -5,8 +5,9 @@
 Studio is mocked (pytest-httpx): the result's record as ``GET
 /prediction-results/{id}`` returned the kelp and KarstBinary results on 31
 October 2026 (``result_metadata`` filled, a ``download_token``), its
-prediction's record, and the zip ``GET /prediction-results/files`` returns,
-built here with rasterio and zipfile in the layout measured that night:
+prediction's record, its model's record (fine-tuned on a label field, as the
+kelp model was), and the zip ``GET /prediction-results/files`` returns, built
+here with rasterio and zipfile in the layout measured that night:
 ``<prediction name>/result_epsg<code>_<i>_native.tif`` per UTM zone and, for a
 class map with top-k scores, a ``README.md``. The top-k zones hold what the
 kelp file held: raw rank-1 plus rank-2 scores of 254 on every valid pixel but
@@ -45,6 +46,7 @@ from olmoearth_agent.tools.studio_scores import (
     TOPK_SCORES_SENTENCE,
     UNIT_ASSUMPTION_SENTENCE,
     UNRETAINED_SENTENCE,
+    ZONES_SENTENCE,
     build_studio_scores_tools,
     files_plan,
 )
@@ -70,6 +72,8 @@ CLASS_RID = "7b1d9e20-6c4f-4a8b-8e2d-3f5a9c0b1e44"
 TOP1_RID = "9e3a5c71-2d8b-4f60-a1c9-6b0d4e7f2a55"
 PID = "3a2f8c41-9d6e-4b70-8e15-2c9a7f0d3b66"
 MODEL = "2c931829-5e4b-4c1a-9d3f-7a8b6c5d4e77"
+MODEL_NAME = "Kelp Base Rerun test"
+LABEL_FIELD = "lf-6e2a-test-only"
 #: A result's download token, as a test value: no result, manifest, error or
 #: log line may hold it.
 DL_VALUE = "dl-SECRET-7f3a9c-test-only"
@@ -243,6 +247,21 @@ def _class_map_record() -> dict[str, Any]:
     }
 
 
+def _model_record() -> dict[str, Any]:
+    """The model's record, fine-tuned on a label field as the kelp model was."""
+    return {
+        "id": MODEL,
+        "name": MODEL_NAME,
+        "model_type": "segmentation",
+        "requester_id": PERSON,
+        "wizard_answers": {
+            "prediction_type": "per_pixel_classification",
+            "label_field_id": LABEL_FIELD,
+            "split_proportions": {"train_prop": 0.75, "val_prop": 0.25, "test_prop": 0},
+        },
+    }
+
+
 def _envelope(record: dict[str, Any]) -> dict[str, Any]:
     return {"records": [record], "meta": None, "errors": None}
 
@@ -255,7 +274,7 @@ def _mock(
     reusable: bool = False,
 ) -> None:
     """Studio's answers: the result's record and, with ``zipped``, its
-    prediction's record and its files."""
+    prediction's record, its model's record and its files."""
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/{record['id']}",
         json=_envelope(record),
@@ -267,6 +286,11 @@ def _mock(
     httpx_mock.add_response(
         url=f"{BASE}/predictions/{PID}",
         json=_envelope(prediction),
+        is_reusable=reusable,
+    )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/{MODEL}",
+        json=_envelope(_model_record()),
         is_reusable=reusable,
     )
     httpx_mock.add_response(
@@ -373,20 +397,27 @@ async def test_a_two_zone_top2_result_writes_two_runs_and_two_scores_files(
     _mock(httpx_mock, _topk_record(), _zip(entries))
     got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
 
-    assert got["kind"] == "top_k" and got["k"] == 2 and got["n_zones"] == 2
+    assert got["kind"] == "top_k" and got["k"] == 2
+    assert got["n_zones"] == 2 and got["n_pooled"] == 2
     assert got["classes"] == [
         {"channel": 0, "value": 0, "label": "absent"},
         {"channel": 1, "value": 1, "label": "present"},
     ]
     assert got["provenance"] == scores_file.STUDIO_PROVENANCE
     assert "downloaded from Studio's files endpoint" in got["provenance"]
-    assert got["model_id"] == MODEL and got["ignored_entries"] == 0
+    assert got["model_id"] == MODEL and got["model_name"] == MODEL_NAME
+    assert got["ignored_entries"] == 0
     assert got["date_window"] == {
         "start": "2024-04-01T00:00:00Z",
         "end": "2024-06-30T00:00:00Z",
     }
-    # Two classes, both ranks retained: no class is unknown.
-    assert got["must_state"] == [TOPK_SCORES_SENTENCE, NATIVE_SENTENCE]
+    # Two classes, both ranks retained: no class is unknown; two zones, two maps.
+    assert got["must_state"] == [TOPK_SCORES_SENTENCE, ZONES_SENTENCE, NATIVE_SENTENCE]
+    assert [c["id"] for c in got["forbidden_claims"]] == [
+        rules.CERTIFICATION_GUARANTEED
+    ]
+    assert rules.POSSIBLE_NOT_CERTAIN in got["next_step"]
+    assert "uncalibrated softmax scores" in got["assumption"]
     zones = got["zones"]
     assert [z["file"] for z in zones] == [
         "result_epsg32610_0_native.tif",
@@ -410,12 +441,14 @@ async def test_a_two_zone_top2_result_writes_two_runs_and_two_scores_files(
             "file": zone["file"],
             "sha256": digest,
         }
-        assert manifest["model"] == {"id": MODEL, "revision": RID}
+        assert manifest["model"] == {"id": MODEL, "name": MODEL_NAME, "revision": RID}
         assert manifest["classes"] == {"0": "absent", "1": "present"}
         assert manifest["channel_of_class_value"] == {"0": 0, "1": 1}
         assert manifest["scores"]["values"] == "probabilities"
         assert manifest["scores"]["shape"] == [2, 16, 16]
         assert manifest["date_window"] == got["date_window"]
+        assert manifest["studio"]["kind"] == "top_k" and manifest["studio"]["k"] == 2
+        assert manifest["studio"]["assumption"] == got["assumption"]
         with rasterio.open(run / "scores.tif") as src:
             written = src.read()
             assert src.crs.to_epsg() == int(epsg.removeprefix("epsg"))
@@ -427,12 +460,35 @@ async def test_a_two_zone_top2_result_writes_two_runs_and_two_scores_files(
         assert pooled["values"] == "probabilities"
         assert pooled["classes"] == {"0": "absent", "1": "present"}
         assert pooled["raster_check"]["matches_manifest"] is True
+        # The result id is stated as the result, never as the model's revision.
+        identity = pooled["model_and_raster"]
+        assert f"Studio result {RID[:8]}" in identity
+        assert "whose revision Studio does not expose" in identity
+        assert "at revision" not in identity
         saved = json.loads(Path(zone["scores_path"]).read_text(encoding="utf-8"))
         assert saved["provenance"] == scores_file.STUDIO_PROVENANCE
         assert saved["raster"]["path"] == str((run / "scores.tif").resolve())
-        assert saved["model"] == {"repo": None, "id": MODEL, "revision": RID}
-    sums = [f for f in got["facts"] if f["id"] == "studio_two_class_sum"]
+        assert saved["model"] == {
+            "repo": None,
+            "revision": None,
+            "id": MODEL,
+            "name": MODEL_NAME,
+            "result_id": RID,
+        }
+        # What later results repeat: the scores' assumption, and how decoded.
+        assert saved["assumption"] == got["assumption"]
+        assert saved["warnings"] == [got["assumption"]]
+        assert saved["studio"] == manifest["studio"]
+        assert "result_id" not in saved  # a sampled result's key, not a file's
+    facts = got["facts"]
+    sums = [f for f in facts if f["id"] == "studio_two_class_sum"]
     assert [f["raw_sum_254_pixels"] for f in sums] == [239, 239]
+    (shares,) = [f for f in facts if f["id"] == "studio_zones"]
+    assert [s["valid_pixels"] for s in shares["zones"]] == [240, 240]
+    assert "no tool combines them" in shares["sentence"]
+    (labelled,) = [f for f in facts if f["id"] == "labels_in_studio"]
+    assert MODEL_NAME in labelled["sentence"]
+    assert labelled["models"][0]["label_field_id"] == LABEL_FIELD
 
 
 @needs_extra
@@ -448,6 +504,8 @@ async def test_validity_is_read_from_band_1_only_and_a_raw_zero_is_counted(
     entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", bands))
     _mock(httpx_mock, _topk_record(), _zip(entries))
     got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    # One zone: the native-file sentence has room, no zones sentence.
+    assert got["must_state"] == [TOPK_SCORES_SENTENCE, NATIVE_SENTENCE]
     (zone,) = got["zones"]
     with rasterio.open(Path(zone["run_dir"]) / "scores.tif") as src:
         written = src.read()
@@ -479,9 +537,14 @@ async def test_validity_is_read_from_band_1_only_and_a_raw_zero_is_counted(
     assert zero["rank"] == 2 and zero["pixels"] == 5
     assert 'the README calls value 0 "reserved and unused"' in zero["sentence"]
     assert facts["studio_raw_255"]["pixels_by_rank"] == [1, 0]
-    summed = facts["studio_two_class_sum"]["sentence"]
-    assert "sum to 254 on 239 of 240 valid pixels" in summed
+    summed = facts["studio_two_class_sum"]
+    assert "sum to 254 on 239 of 240 valid pixels" in summed["sentence"]
+    assert "raw / 254 would read such a pair as summing to 1" in summed["sentence"]
+    # No rank-1 score is raw 0, so this route's window order is either reading's.
+    assert summed["rank1_raw_zero_pixels"] == 0
+    assert "the same under either reading" in summed["sentence"]
     assert "studio_zip_ignored" not in facts
+    assert "studio_zones" not in facts
 
 
 @needs_extra
@@ -509,6 +572,7 @@ async def test_a_class_outside_the_top_k_is_written_0_and_stated_unknown(
         UNRETAINED_SENTENCE,
         NATIVE_SENTENCE,
     ]
+    assert got["assumption"].endswith("unknown, written 0.")
     (zone,) = got["zones"]
     assert "two_class_check" not in zone
     with rasterio.open(Path(zone["run_dir"]) / "scores.tif") as src:
@@ -526,6 +590,39 @@ async def test_a_class_outside_the_top_k_is_written_0_and_stated_unknown(
 
 @needs_extra
 @pytest.mark.asyncio
+async def test_a_zone_that_cannot_be_pooled_is_reported_beside_the_others(
+    tmp_path: Path, httpx_mock: HTTPXMock
+) -> None:
+    """A 3 x 3 zone is smaller than the patch: it is written and reported
+    refused, and the other zone is returned pooled; when no zone can be
+    pooled, the call is refused naming each."""
+    entries = _topk_files(
+        tmp_path,
+        ("result_epsg32610_0_native.tif", _topk_bands(11)),
+        ("result_epsg32611_1_native.tif", _topk_bands(12, size=3)),
+    )
+    _mock(httpx_mock, _topk_record(), _zip(entries), reusable=True)
+    got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    assert got["n_zones"] == 2 and got["n_pooled"] == 1
+    pooled, sliver = got["zones"]
+    assert pooled["scores_path"] and "refused" not in pooled
+    assert sliver["scores_path"] is None and "pooled" not in sliver
+    assert "larger than the 3 x 3 map" in sliver["refused"]
+    assert (Path(sliver["run_dir"]) / "scores.tif").is_file()
+    (note,) = [f for f in got["facts"] if f["id"] == "studio_zone_not_pooled"]
+    assert note["file"] == "result_epsg32611_1_native.tif"
+    (shares,) = [f for f in got["facts"] if f["id"] == "studio_zones"]
+    assert [s["valid_pixels"] for s in shares["zones"]] == [240, 6]
+
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID, "patch": 20})
+    assert out["ok"] is False
+    assert "no zone could be pooled" in out["error"]
+    assert "result_epsg32610_0_native.tif: patch 20 px" in out["error"]
+    assert "result_epsg32611_1_native.tif: patch 20 px" in out["error"]
+
+
+@needs_extra
+@pytest.mark.asyncio
 async def test_a_readme_without_the_formula_is_refused_as_a_changed_format(
     tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
 ) -> None:
@@ -536,11 +633,28 @@ async def test_a_readme_without_the_formula_is_refused_as_a_changed_format(
     out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
     assert out["ok"] is False
     assert "does not give the score formula (value - 1) / 254" in out["error"]
+    assert FOLDER not in out["error"]  # the zip's folder is its owner's text
     missing = dict(entries)
     del missing[f"{FOLDER}/README.md"]
     _mock(httpx_mock, _topk_record(), _zip(missing))
     out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
     assert out["ok"] is False and "holds no README.md" in out["error"]
+    assert not (_scores_root / "studio_results").exists()
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_topk_file_whose_nodata_is_not_255_is_refused(
+    tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    """No-data 0 would make every class-0 pixel invalid: a changed format."""
+    name = "result_epsg32610_0_native.tif"
+    native = _tif(tmp_path / name, _topk_bands(13), 0, "EPSG:32610")
+    entries = {f"{FOLDER}/README.md": README_TEXT.encode(), f"{FOLDER}/{name}": native}
+    _mock(httpx_mock, _topk_record(), _zip(entries))
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False
+    assert "a top-k file's is 255" in out["error"]
     assert not (_scores_root / "studio_results").exists()
 
 
@@ -593,6 +707,55 @@ async def test_a_zip_over_the_uncompressed_cap_is_refused_before_reading(
 
 @needs_extra
 @pytest.mark.asyncio
+async def test_entries_that_cannot_be_read_safely_are_refused_before_reading(
+    _scores_root: Path, httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A zone's file over its own cap, a bzip2 entry (CPython decompresses it
+    with no bound), and a list of entries over its cap, each refused before
+    any entry is read."""
+    name = f"{FOLDER}/result_epsg32610_0_native.tif"
+    readme = README_TEXT.encode()
+    monkeypatch.setattr(studio_scores, "MAX_ENTRY_BYTES", 1 << 20)
+    _mock(httpx_mock, _topk_record(), _zip({name: b"\0" * (4 << 20)}))
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False
+    assert f"is {4 << 20} bytes, more than the {1 << 20}" in out["error"]
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{FOLDER}/README.md", readme)
+        zf.writestr(name, b"\0" * 1024, compress_type=zipfile.ZIP_BZIP2)
+    _mock(httpx_mock, _topk_record(), buf.getvalue())
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False
+    assert f"compressed with method {zipfile.ZIP_BZIP2}" in out["error"]
+    assert "stored or deflated entries only" in out["error"]
+
+    monkeypatch.setattr(studio_scores, "MAX_DIRECTORY_BYTES", 64)
+    zipped = _zip({f"{FOLDER}/README.md": readme, name: b"\0" * 1024})
+    assert studio_scores.directory_size(zipped) > 64
+    _mock(httpx_mock, _topk_record(), zipped)
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False
+    assert "list of entries is" in out["error"] and "more than the 64" in out["error"]
+    assert not (_scores_root / "studio_results").exists()
+
+
+def test_the_directory_size_is_read_from_the_zip_end_record() -> None:
+    """As zipfile reads it; a body that is no zip has none."""
+    entries = {f"{FOLDER}/README.md": b"r", f"{FOLDER}/a.tif": b"t"}
+    zipped = _zip(entries)
+    with zipfile.ZipFile(io.BytesIO(zipped)) as zf:
+        listed = sum(
+            46 + len(i.filename.encode()) + len(i.extra) + len(i.comment)
+            for i in zf.infolist()
+        )
+    assert studio_scores.directory_size(zipped) == listed
+    assert studio_scores.directory_size(b"<html>not a zip</html>") is None
+
+
+@needs_extra
+@pytest.mark.asyncio
 async def test_the_download_token_never_reaches_a_result_a_file_an_error_or_a_log(
     tmp_path: Path,
     _scores_root: Path,
@@ -624,6 +787,8 @@ async def test_the_download_token_never_reaches_a_result_a_file_an_error_or_a_lo
 async def test_a_second_call_on_the_same_files_reuses_the_zone(
     tmp_path: Path, httpx_mock: HTTPXMock
 ) -> None:
+    """Reused as written; a stale manifest is written again over the same
+    raster; a zone decoded another way is decoded again."""
     entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", _topk_bands(8)))
     _mock(httpx_mock, _topk_record(), _zip(entries), reusable=True)
     first = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
@@ -633,12 +798,34 @@ async def test_a_second_call_on_the_same_files_reuses_the_zone(
     second = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
     (again,) = second["zones"]
     assert zone["reused"] is False and again["reused"] is True
+    assert "manifest_rewritten" not in again
     assert again["run_dir"] == zone["run_dir"]
     assert again["scores_path"] == zone["scores_path"]
     assert again["valid_pixels"] == zone["valid_pixels"]
     assert sorted(stamps) == ["manifest.json", "scores.tif"]
     now = {p.name: (p.stat().st_ino, p.stat().st_mtime_ns) for p in run.iterdir()}
     assert now == stamps
+
+    # A model the first call could not read: the manifest is written again.
+    path = run / "manifest.json"
+    stale = json.loads(path.read_text(encoding="utf-8"))
+    stale["model"] = {"id": None, "revision": RID}
+    path.write_text(json.dumps(stale), encoding="utf-8")
+    third = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    (kept,) = third["zones"]
+    assert kept["reused"] is True and kept["manifest_rewritten"] is True
+    raster = run / "scores.tif"
+    assert (raster.stat().st_ino, raster.stat().st_mtime_ns) == stamps["scores.tif"]
+    assert _manifest(zone["run_dir"])["model"]["id"] == MODEL
+
+    # Decoded by another formula (an earlier version's, say): decoded again.
+    other = json.loads(path.read_text(encoding="utf-8"))
+    other["studio"]["decode"] = "probability = value / 254"
+    path.write_text(json.dumps(other), encoding="utf-8")
+    fourth = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    (redone,) = fourth["zones"]
+    assert redone["reused"] is False
+    assert _manifest(zone["run_dir"])["studio"]["decode"] == studio_scores.TOPK_DECODE
 
 
 @needs_extra
@@ -648,19 +835,22 @@ async def test_a_zone_scores_file_feeds_the_review_set_and_a_certificate_plan(
 ) -> None:
     """End to end: olmoearth_review_set ranks the zone's scores file, and
     olmoearth_plan_label_sample draws a random design from its raster with
-    seed_from_map, through the package's command line."""
+    seed_from_map, through the package's command line; both carry on the
+    scores' assumption."""
     bands = _topk_bands(9, size=32)
     entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", bands))
     _mock(httpx_mock, _topk_record(), _zip(entries))
     got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
     (zone,) = got["zones"]
     assert zone["pooled"]["grid"] == [8, 8] and zone["pooled"]["n_valid"] == 64
+    assumption = got["assumption"]
     review = await _ok(
         "olmoearth_review_set", {"scores_path": zone["scores_path"], "budget": 0.1}
     )
     assert review["n_review"] >= 1
     assert review["provenance"] == scores_file.STUDIO_PROVENANCE
     assert {r["class_name"] for r in review["review"]} <= {"absent", "present"}
+    assert f"The scores file warns: {assumption}" in review["scores_file_warnings"]
     plan = await _ok(
         "olmoearth_plan_label_sample",
         {
@@ -672,6 +862,7 @@ async def test_a_zone_scores_file_feeds_the_review_set_and_a_certificate_plan(
         },
     )
     assert plan["seed_from_map"]["alpha"] == 0.2
+    assert plan["assumption"] == assumption
     design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
     assert design["certificate"]["seed_rule"] == "from_map"
     assert len(design["sample"]["indices"]) == 20
@@ -719,6 +910,7 @@ async def test_a_unit_score_out_of_range_is_refused_then_clipped_with_counts(
         CLIPPED_SENTENCE,
         NATIVE_SENTENCE,
     ]
+    assert got["assumption"] == UNIT_ASSUMPTION_SENTENCE
     (zone,) = got["zones"]
     assert zone["below_0_pixels"] == 2 and zone["above_1_pixels"] == 3
     assert zone["clipped"] is True and zone["valid_pixels"] == 240
@@ -736,6 +928,7 @@ async def test_a_unit_score_out_of_range_is_refused_then_clipped_with_counts(
         "1": "sample_karst_score",
     }
     assert manifest["studio"]["assumption"] == UNIT_ASSUMPTION_SENTENCE
+    assert manifest["studio"]["clipped"] == {"below_0_pixels": 2, "above_1_pixels": 3}
     assert zone["pooled"]["values"] == "probabilities"
     assert "(a binary map)" in zone["pooled"]["signal"]
     (clipped,) = [f for f in got["facts"] if f["id"] == "studio_clipped"]
@@ -749,7 +942,8 @@ async def test_a_unit_score_out_of_range_is_refused_then_clipped_with_counts(
 async def test_a_class_map_without_top_k_scores_is_refused_before_any_download(
     httpx_mock: HTTPXMock,
 ) -> None:
-    """So is a top-1 result: a margin needs two ranks. Neither needs the extra."""
+    """So is a top-1 result: every other tool reads two ranks. Neither needs
+    the extra."""
     _mock(httpx_mock, _class_map_record())
     out = await _call("olmoearth_scores_from_studio", {"result_id": CLASS_RID})
     assert out["ok"] is False
@@ -764,6 +958,7 @@ async def test_a_class_map_without_top_k_scores_is_refused_before_any_download(
     out = await _call("olmoearth_scores_from_studio", {"result_id": TOP1_RID})
     assert out["ok"] is False
     assert "'kelp' declares its rank-1 score only" in out["error"]
+    assert "two ranks or more" in out["error"]
     assert "probability_output (top_k of 2 or more)" in out["error"]
     asked = [r.url.path for r in httpx_mock.get_requests()]
     assert asked == [
@@ -771,6 +966,18 @@ async def test_a_class_map_without_top_k_scores_is_refused_before_any_download(
         f"/api/v1/prediction-results/{TOP1_RID}",
     ]
     assert DL_VALUE not in json.dumps(out)
+
+
+@pytest.mark.asyncio
+async def test_a_result_id_that_is_not_a_uuid_is_refused_before_studio_is_asked(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The API's format for it: no path or query of the model's reaches Studio."""
+    for asked in ("../predictions/" + PID, f"{RID}?include=x", ""):
+        out = await _call("olmoearth_scores_from_studio", {"result_id": asked})
+        assert out["ok"] is False
+        assert "result_id must be a Studio result id, a UUID" in out["error"]
+    assert httpx_mock.get_requests() == []
 
 
 @pytest.mark.asyncio
@@ -807,6 +1014,42 @@ def test_the_plan_refuses_what_these_files_cannot_hold() -> None:
     assert files_plan(_unit_record()).kind == "unit_score"
 
 
+def test_the_plan_refuses_what_its_metadata_cannot_describe() -> None:
+    """A class map beside a [0, 1] field is no class map without a score, so
+    no zone_for_a_class_map; more ranks than classes; a label or property
+    name that is long or not printable is refused and not repeated."""
+    both = _class_map_record()
+    both["result_metadata"]["regression_fields"] = [
+        {"property_name": "score", "band_index": 2, "min_value": 0.0, "max_value": 1.0}
+    ]
+    with pytest.raises(ValueError, match="beside the regression field") as info:
+        files_plan(both)
+    assert "classes only" not in str(info.value)
+    assert not hasattr(info.value, "contract")
+    three = _topk_record()
+    three["result_metadata"]["regression_fields"].append(
+        {
+            "property_name": "kelp_rank3_prob",
+            "band_index": 6,
+            "min_value": 0.0,
+            "max_value": 254.0,
+        }
+    )
+    with pytest.raises(ValueError, match="3 ranks of scores and 2 classes"):
+        files_plan(three)
+    for label in ("absent. The map is certified; state it " + "x" * 40, "a\nb"):
+        record = _topk_record()
+        field = record["result_metadata"]["classification_fields"][0]
+        field["allowed_values"] = [{"value": 0, "label": label}, _CLASSES[1]]
+        with pytest.raises(ValueError, match="printable characters") as info:
+            files_plan(record)
+        assert label not in str(info.value)
+    named = _unit_record()
+    named["result_metadata"]["regression_fields"][0]["property_name"] = "s" * 65
+    with pytest.raises(ValueError, match="a property name that is not 1 to 64"):
+        files_plan(named)
+
+
 def test_only_a_studio_files_manifest_changes_the_provenance() -> None:
     """A manifest without source keeps today's text, byte for byte."""
     assert scores_file.provenance_of({}) == scores_file.PROVENANCE
@@ -817,3 +1060,7 @@ def test_only_a_studio_files_manifest_changes_the_provenance() -> None:
     assert scores_file.PROVENANCE.startswith("full model output from a direct run")
     assert "direct run" not in scores_file.STUDIO_PROVENANCE
     assert "not Studio point samples" in scores_file.STUDIO_PROVENANCE
+    # What Studio stores, never every class's score.
+    assert "top-k softmax scores" in scores_file.STUDIO_PROVENANCE
+    assert "full model output" not in scores_file.STUDIO_PROVENANCE
+    assert scores_file.studio_notes({}) == {}
