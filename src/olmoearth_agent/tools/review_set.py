@@ -87,6 +87,7 @@ from olmoearth_agent.tools.sampling import (
     OK,
     SAMPLE_CONCURRENCY,
     TOPK_NODATA_RULE,
+    UNSCORED,
     ResultNodata,
     TopKScores,
     default_property,

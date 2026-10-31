@@ -714,7 +714,7 @@ def read_topk(
     for name in names:
         score = band_by_name(record, name)
         raw = (score or {}).get("raw_value")
-        if not _is_number(raw) or not isfinite(float(raw)):
+        if raw is None or not _is_number(raw) or not isfinite(float(raw)):
             return None, UNSCORED
         raws.append(float(raw))
         ranges.append(declared_range(score, ctx.declared.get(name)))

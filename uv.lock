@@ -1648,7 +1648,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "interrogate", marker = "extra == 'dev'", specifier = ">=1.7" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
-    { name = "olmoearth-inferencex", extras = ["geo"], marker = "python_full_version < '3.14' and extra == 'inferencex'", specifier = ">=1.20.1" },
+    { name = "olmoearth-inferencex", extras = ["geo"], marker = "python_full_version < '3.14' and extra == 'inferencex'", specifier = ">=1.20.3" },
     { name = "openai", specifier = ">=1.50" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -1663,7 +1663,7 @@ provides-extras = ["serve", "claude", "inferencex", "dev"]
 
 [[package]]
 name = "olmoearth-inferencex"
-version = "1.20.1"
+version = "1.20.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -1671,9 +1671,9 @@ dependencies = [
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' and python_full_version < '3.14'" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/bb/3a48ff488df7bcd1d2705c219b7626c5d50813299eae9979c2f469df929b/olmoearth_inferencex-1.20.1.tar.gz", hash = "sha256:4d02d3114ddd33c866fc0840de7622b34a6b4996c22073cb6e51589fbfb608b6", size = 662189, upload-time = "2026-10-28T01:33:24.041Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/4c/657c1780ba52cc1423c2d6842400ed87922ad07e21d09e21a119c591c3e1/olmoearth_inferencex-1.20.3.tar.gz", hash = "sha256:3f07e192d7ea11de3a6dbff43c478f519d80bf53d47c36fe039c84996ebcceeb", size = 664048, upload-time = "2026-10-29T16:04:31.12Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/f8/ee062af99a19209542006a1e59e59afdce5bc606dbe967489e336d5037ea/olmoearth_inferencex-1.20.1-py3-none-any.whl", hash = "sha256:e34913d086448970f60bfc2cc05527d55a89e166b07040ad325bcd206b0c7c22", size = 692530, upload-time = "2026-10-28T01:33:22.61Z" },
+    { url = "https://files.pythonhosted.org/packages/62/4b/1ef01a90f630470a4d7c0354c17bee71c473b22728f36d20f795c67d49f7/olmoearth_inferencex-1.20.3-py3-none-any.whl", hash = "sha256:b45504c20e214a66d8f83e2dfb019a00a4d3be51998199fe30be18c1b9ee7132", size = 694120, upload-time = "2026-10-29T16:04:29.568Z" },
 ]
 
 [package.optional-dependencies]
