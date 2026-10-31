@@ -604,6 +604,8 @@ async def test_a_loaded_skill_is_loaded_again_on_each_replay(tmp_path: Path) -> 
 
 
 _CANNOT = "write to Studio: this run's key is read-only (a test's line)"
+# An answer with no number, so the answer checks ask for no rewrite.
+_PLAIN = "No tool measured map a in this run."
 
 
 def _read_only_registry(calls: dict[str, int]) -> ToolRegistry:
@@ -622,7 +624,7 @@ async def test_a_setting_s_card_line_reaches_the_model_through_the_replay(
     # (found on aicr: OLMOEARTH_READ_ONLY's line was missing from the bridge's
     # system prompt while the write tools were left out).
     calls: dict[str, int] = {}
-    stub = _Stub([_as_chat(1, {"content": _FIXED})])
+    stub = _Stub([_as_chat(1, {"content": _PLAIN})])
     agent = LeadAgent(
         stub,  # type: ignore[arg-type]
         _read_only_registry(calls),
@@ -639,7 +641,8 @@ async def test_a_setting_s_card_line_reaches_the_model_through_the_replay(
     run = tmp_path / "run"
     first = await _begin(run, partial(_read_only_registry, calls))
     assert f"- {_CANNOT}" in first["system"]["text"]
-    await _step(run, {"content": _FIXED}, partial(_read_only_registry, calls))
+    final = await _step(run, {"content": _PLAIN}, partial(_read_only_registry, calls))
+    assert final["status"] == "final" and final["revised"] is False
     recorded = _jsonl(run / "responses.jsonl")
     assert [r["request_sha256"] for r in recorded] == stub.fingerprints
 

@@ -1031,8 +1031,7 @@ async def test_exactly_one_of_the_three_ids_is_taken(args: dict[str, Any]) -> No
     envelope = await _call(None, **args)
     assert envelope["ok"] is False
     assert (
-        "give exactly one of prediction_id, model_id or project_id"
-        in envelope["error"]
+        "give exactly one of prediction_id, model_id or project_id" in envelope["error"]
     )
 
 

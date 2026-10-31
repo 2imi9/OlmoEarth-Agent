@@ -436,8 +436,8 @@ class _Tally:
             self.seen.add(str(key))
         self.read += 1
         status = record.get("status")
-        known = isinstance(status, str) and status in _STATUSES
-        self.status[status if known else UNRECORDED] += 1
+        named = status if isinstance(status, str) and status in _STATUSES else None
+        self.status[named or UNRECORDED] += 1
         self.geometry[_geometry_type(record.get("geom_wkt"))] += 1
         values = record.get("metadata_values")
         entries = (

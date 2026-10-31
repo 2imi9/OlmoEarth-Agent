@@ -1254,7 +1254,7 @@ def _zone_facts(zone: Zone, plan: FilesPlan, unused: bool) -> list[dict[str, Any
 def _zones_fact(zones: list[Zone]) -> dict[str, Any]:
     """The fact that several UTM zones are several maps, with each one's share."""
     total = sum(int(zone.counts["valid_pixels"]) for zone in zones)
-    shares = [
+    shares: list[dict[str, Any]] = [
         {
             "file": zone.file,
             "valid_pixels": int(zone.counts["valid_pixels"]),
@@ -1292,9 +1292,7 @@ def _period(record: dict[str, Any]) -> dict[str, str] | None:
     return None
 
 
-async def _scores_from_studio(
-    args: dict[str, Any], ctx: ToolContext
-) -> dict[str, Any]:
+async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_scores_from_studio``.
 
     The result's record first (its metadata decides the kind, or refuses it),
