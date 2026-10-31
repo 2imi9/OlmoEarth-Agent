@@ -6,13 +6,23 @@ Thin wrapper over ``httpx.AsyncClient``: Bearer auth, the
 ``{records, meta, errors}`` envelope, and typed helpers for the
 endpoints the agent needs. Endpoint shapes verified against the live
 API (``/users/me``, ``/projects/search``) on 2026-05-28 and the
-openapi v0.1.0 spec.
+openapi v0.1.0 spec; the search filters (``project_id``,
+``prediction_id``, ``deleted_time``, ``include``) and the results'
+``file_formats`` against the live API and its spec on 2026-10-31.
+
+A 401 or 403 raises :class:`StudioAccessError` and is never retried: Studio
+refused the key, and a retry cannot change that. The read-only methods for
+Studio's annotations and datasets leave out the ids of the people behind a
+record, and a result's download token never reaches an error text or httpx's
+request log.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -25,11 +35,179 @@ DEFAULT_BASE_URL = "https://olmoearth.allenai.org/api/v1"
 
 #: Upstream statuses worth retrying (transient gateway / rate-limit).
 _RETRY_STATUSES = frozenset({429, 502, 503, 504})
+#: Studio refused the key: :class:`StudioAccessError`, never retried.
+_ACCESS_STATUSES = frozenset({401, 403})
 #: Total attempts for a retryable (idempotent) request.
 _MAX_ATTEMPTS = 3
-#: Bounded client-side scan for endpoints with no server-side filter
-#: (predictions by project, results by prediction): at most this many pages.
+#: Bounded client-side scan, used only when a server answers a filtered search
+#: with HTTP 422 (a server older than the filters): at most this many pages.
 _MAX_FILTER_PAGES = 10
+#: The largest ``limit`` each search accepts (the spec of 2026-10-31; a larger
+#: one is a 422, e.g. 1001 on prediction-results, measured). The smallest one
+#: sent is 1. ``/models/search`` is not in the spec: its 1000 is a cautious
+#: cap, not a documented one.
+_SEARCH_LIMIT_MAX: dict[str, int] = {
+    "/projects/search": 1000,
+    "/predictions/search": 10000,
+    "/prediction-results/search": 1000,
+    "/areas/search": 10000,
+    "/models/search": 1000,
+    "/annotations/search": 10000,
+    "/labels/search": 10000,
+    "/labelsets/search": 1000,
+    "/datasets/search": 10000,
+}
+#: The default cap of :meth:`StudioClient.prediction_result_files`: 2 GiB.
+DEFAULT_MAX_FILES_BYTES = 2 * 1024**3
+#: Why a ``/models`` call is refused once the server has shown it has no route.
+MODELS_UNAVAILABLE = (
+    "Studio's /models endpoint is not served here (it answered HTTP 404 or 405 "
+    "earlier on this client), so no model record can be read"
+)
+
+#: A download token in a URL's query string, as httpx's request log writes it.
+_TOKEN_IN_URL = re.compile(r"(download_token=)[^&\s\"']+")
+
+
+class _RedactDownloadToken(logging.Filter):
+    """Masks a download token in httpx's request log (``HTTP Request: GET ...``).
+
+    httpx logs every request's URL at INFO, and the files download carries its
+    token in the query string; a token is a credential and never reaches a log.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Rewrite a record whose message holds a token; always keep the record."""
+        try:
+            message = record.getMessage()
+        except Exception:  # a malformed record is not this filter's to break
+            return True
+        if "download_token=" in message:
+            record.msg = _TOKEN_IN_URL.sub(r"\1<redacted>", message)
+            record.args = ()
+        return True
+
+
+logging.getLogger("httpx").addFilter(_RedactDownloadToken())
+
+
+class StudioAccessError(RuntimeError):
+    """Studio refused a request with HTTP 401 or 403: the key may not do it.
+
+    Raised by every request of :class:`StudioClient` and never retried: a
+    key's access does not change on a second try. Studio's keys can be
+    read-only, and ``/users/me`` does not show a key's access level (measured
+    on 2026-10-31 with a read-only key: its ``permissions`` list the user's
+    full set), so a refusal is the only signal; the spec declares a 403 on
+    ``POST /predictions``. A read-only key never tried a write, so how Studio
+    words that refusal is unverified. The text names the method, the path
+    without its query string (a download token travels in one) and Studio's
+    ``errors[0]`` code and message when the body has them.
+
+    ``contract`` carries the sentence the model must state (the registry puts
+    it on the failed envelope, beside the error), and :attr:`hint` replaces
+    the registry's generic hint: neither a check of the ids nor a retry can
+    help.
+
+    Attributes
+    ----------
+    method, path
+        The refused request; ``path`` has no query string.
+    status_code
+        401 or 403.
+    code
+        Studio's ``errors[0].code`` (e.g. ``permission_error``), or ``None``.
+    contract
+        ``{"must_state": [sentence]}``.
+    """
+
+    #: The failed envelope's hint in place of the registry's generic one.
+    hint = (
+        "Studio refused this request for the API key in use. Do not retry it, "
+        "and do not try another call that writes to Studio in this run: tell "
+        "the user that Studio refused it, that the key may be read-only or lack "
+        "the permission, and that nothing was created or changed."
+    )
+
+    def __init__(
+        self,
+        method: str,
+        path: str,
+        status_code: int,
+        code: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        self.method = method.upper()
+        self.path = path.split("?", 1)[0]
+        self.status_code = status_code
+        self.code = code
+        detail = f"HTTP {status_code}" + (f", {code}" if code else "")
+        if message:
+            detail += f": {message}"
+        super().__init__(
+            f"Studio refused {self.method} {self.path} ({detail}). The Studio API "
+            "key may be read-only or lack the permission for this request; "
+            "nothing was created or changed."
+        )
+        self.contract: dict[str, Any] = {
+            "must_state": [
+                f"Studio refused this request (HTTP {status_code}): the API key "
+                "may be read-only or lack the permission, and nothing was "
+                "created or changed."
+            ]
+        }
+
+
+def _studio_error(resp: httpx.Response) -> tuple[str | None, str | None]:
+    """Studio's ``errors[0]`` ``code`` and ``message`` from an error body, if it parses.
+
+    The spec's error envelope is ``{"records", "meta", "errors": [{"code",
+    "message"}]}``; anything else gives ``(None, None)``. The message is cut
+    to 300 characters.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        return None, None
+    errors = body.get("errors") if isinstance(body, dict) else None
+    first = errors[0] if isinstance(errors, list) and errors else None
+    if not isinstance(first, dict):
+        return None, None
+    code, message = first.get("code"), first.get("message")
+    return (str(code) if code else None), (str(message)[:300] if message else None)
+
+
+def _page(path: str, limit: int, offset: int) -> dict[str, int]:
+    """A search's ``limit`` and ``offset`` within what ``path`` accepts.
+
+    ``limit`` is clamped to 1 .. the spec's maximum for ``path``
+    (:data:`_SEARCH_LIMIT_MAX`) and ``offset`` to 0 or more, so a limit a model
+    chose never comes back as an HTTP 422.
+    """
+    top = _SEARCH_LIMIT_MAX.get(path, 1000)
+    return {"limit": max(1, min(int(limit), top)), "offset": max(0, int(offset))}
+
+
+def _without(value: Any, key: str) -> Any:
+    """``value`` less ``key`` when it is a dict; anything else unchanged."""
+    if not isinstance(value, dict):
+        return value
+    return {k: v for k, v in value.items() if k != key}
+
+
+def _annotation_without_people(record: dict[str, Any]) -> dict[str, Any]:
+    """An annotation record less ``annotator_id`` and its images' ``user_id``."""
+    out: dict[str, Any] = _without(record, "annotator_id")
+    images = out.get("annotation_images")
+    if isinstance(images, list):
+        out["annotation_images"] = [_without(image, "user_id") for image in images]
+    return out
+
+
+def _dataset_without_people(record: dict[str, Any]) -> dict[str, Any]:
+    """A dataset record less ``requester_id`` (the user who asked for it)."""
+    out: dict[str, Any] = _without(record, "requester_id")
+    return out
 
 
 @dataclass
@@ -89,6 +267,10 @@ class StudioClient:
             },
             timeout=self.config.timeout_seconds,
         )
+        #: True once ``/models`` answered as a route this server does not serve
+        #: (:meth:`get_model`); every later ``/models`` call is then refused
+        #: without a request, for this client's lifetime.
+        self.models_unavailable = False
 
     @classmethod
     def from_env(cls) -> StudioClient:
@@ -135,12 +317,18 @@ class StudioClient:
         When ``retry`` is set, transient failures (gateway 5xx, 429, and
         transport errors like timeouts) are retried with a short backoff.
         Use it only for idempotent reads, never for creates: a retried POST
-        could duplicate a write.
+        could duplicate a write. A 401 or 403 raises
+        :class:`StudioAccessError` at once, never retried.
         """
         attempts = _MAX_ATTEMPTS if retry else 1
         for attempt in range(attempts):
             try:
                 resp = await self._client.request(method, path, **kwargs)
+                if resp.status_code in _ACCESS_STATUSES:
+                    # Not retried: the key's access does not change on a retry.
+                    raise StudioAccessError(
+                        method, path, resp.status_code, *_studio_error(resp)
+                    )
                 resp.raise_for_status()
                 return resp
             except httpx.HTTPStatusError as exc:
@@ -184,6 +372,59 @@ class StudioClient:
         resp = await self._send("POST", path, retry=retry, json=body)
         return self._unwrap(resp.json())
 
+    async def _search(
+        self,
+        path: str,
+        filters: dict[str, Any],
+        *,
+        limit: int,
+        offset: int,
+        match: tuple[str, str] | None = None,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """POST a search with server-side ``filters``; a 422 falls back to a scan.
+
+        Studio's searches take filter objects (``{"project_id": {"eq": id}}``
+        returned the same ids as a client-side filter, live on 2026-10-31). A
+        server older than these filters answered such a field with HTTP 422, so
+        on a 422 the page is asked for again without them and, when ``match``
+        names a ``(field, value)``, filtered client-side over at most
+        :data:`_MAX_FILTER_PAGES` pages of ``limit``, as this client did before
+        the filters; ``meta.total`` then counts the matches found. A 422 also
+        comes back for a value that is not a UUID: the scan then finds no
+        match, the answer the client-side filter always gave.
+        """
+        page = _page(path, limit, offset)
+        try:
+            return await self.post(path, {**page, **filters}, retry=True)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 422:
+                raise
+        # Fallback for an older server: the request as it was before the filters.
+        env = await self.post(path, page, retry=True)
+        if match is None:
+            return env
+        key, value = match
+        size, start = page["limit"], page["offset"]
+        matches = [r for r in env.records if r.get(key) == value]
+        page_len, pages = len(env.records), 1
+        while page_len == size and pages < _MAX_FILTER_PAGES:
+            start += size
+            more = await self.post(path, {"limit": size, "offset": start}, retry=True)
+            page_len, pages = len(more.records), pages + 1
+            matches.extend(r for r in more.records if r.get(key) == value)
+        env.records = matches
+        # The server's total counts every record, not the matches.
+        env.meta = {**(env.meta or {}), "total": len(matches)}
+        return env
+
+    async def _search_records(
+        self, path: str, filters: dict[str, Any] | None, limit: int, offset: int
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """POST ``path`` with ``filters`` passed through and a clamped page (a read)."""
+        return await self.post(
+            path, {**(filters or {}), **_page(path, limit, offset)}, retry=True
+        )
+
     # --- typed helpers ---
 
     async def users_me(self) -> dict[str, Any]:
@@ -195,9 +436,8 @@ class StudioClient:
         self, *, limit: int = 50, offset: int = 0
     ) -> ApiEnvelope[dict[str, Any]]:
         """Search projects (read-only). Returns the full envelope."""
-        return await self.post(
-            "/projects/search", {"limit": limit, "offset": offset}, retry=True
-        )
+        path = "/projects/search"
+        return await self.post(path, _page(path, limit, offset), retry=True)
 
     async def create_project(self, *, name: str, description: str) -> dict[str, Any]:
         """Create a project (``POST /projects`` → 200). Returns the new record."""
@@ -216,8 +456,7 @@ class StudioClient:
         ``{"records": [{"record": {...}}]}`` (verified live 2026-05-28),
         so we unwrap the inner ``record``.
         """
-        resp = await self._client.request("DELETE", f"/projects/{project_id}")
-        resp.raise_for_status()
+        resp = await self._send("DELETE", f"/projects/{project_id}")
         env = ApiEnvelope.from_response(resp.json())
         record = env.one or {}
         return cast(dict[str, Any], record.get("record", record))
@@ -234,40 +473,37 @@ class StudioClient:
         limit: int = 50,
         offset: int = 0,
     ) -> ApiEnvelope[dict[str, Any]]:
-        """Search predictions (read-only). Optionally scope to a project.
+        """Search predictions (read-only), newest first. Optionally scope to a project.
 
         Each record carries a ``model_id``: this is how a client
         discovers a reusable model id for a new prediction (resolves the
         PLAN.md §4 ``model_id`` provenance gap for the reuse case).
 
-        Note: ``PredictionSearchRequest`` rejects a ``project_id`` field
-        (openapi v0.1.0; sending one returns HTTP 422), so when
-        ``project_id`` is given we filter client-side, scanning up to
-        ``_MAX_FILTER_PAGES`` pages of ``limit`` to gather matches that fall
-        past the first page.
+        Deleted predictions are left out with ``{"deleted_time": {"exists":
+        false}}`` (accepted live on 2026-10-31; none of the account's
+        predictions was deleted, so its effect on one is unobserved). With
+        ``project_id`` the server filters too (``{"project_id": {"eq": id}}``),
+        so ``meta.total`` counts the project's predictions and a page holds
+        ``limit`` of them. A server that answers these filters with HTTP 422
+        gets the old request (:meth:`_search`).
         """
-        env = await self.post(
-            "/predictions/search", {"limit": limit, "offset": offset}, retry=True
+        filters: dict[str, Any] = {"deleted_time": {"exists": False}}
+        match: tuple[str, str] | None = None
+        if project_id is not None:
+            filters["project_id"] = {"eq": project_id}
+            match = ("project_id", project_id)
+        return await self._search(
+            "/predictions/search", filters, limit=limit, offset=offset, match=match
         )
-        if project_id is None:
-            return env
-        matches = [r for r in env.records if r.get("project_id") == project_id]
-        page_len, pages = len(env.records), 1
-        while page_len == limit and pages < _MAX_FILTER_PAGES:
-            offset += limit
-            page = await self.post(
-                "/predictions/search", {"limit": limit, "offset": offset}, retry=True
-            )
-            page_len, pages = len(page.records), pages + 1
-            matches.extend(r for r in page.records if r.get("project_id") == project_id)
-        env.records = matches
-        return env
 
     async def get_prediction_result(self, result_id: str) -> dict[str, Any]:
         """Fetch one prediction-result record (``GET /prediction-results/{id}``).
 
         Returns ``tile_urls`` (XYZ/MVT templates), ``property_names``,
-        ``result_metadata``, ``file_format``, and ``download_token``.
+        ``result_metadata`` (filled on a GET by id, measured on 2026-10-31),
+        ``file_formats`` (a list, e.g. ``["png"]``), and ``download_token``,
+        a credential that never goes to the model or a log
+        (:meth:`prediction_result_files` takes it).
         """
         env = await self.get(f"/prediction-results/{result_id}")
         return env.one or {}
@@ -296,31 +532,110 @@ class StudioClient:
     ) -> ApiEnvelope[dict[str, Any]]:
         """Search prediction-results.
 
-        Note: the API's ``PredictionResultSearchRequest`` has no
-        ``prediction_id`` filter (openapi v0.1.0), so when ``prediction_id``
-        is given we filter client-side, scanning up to ``_MAX_FILTER_PAGES``
-        pages of ``limit`` to gather results past the first page.
+        With ``prediction_id`` the server filters (``{"prediction_id": {"eq":
+        id}}``) and the records carry their ``result_metadata`` (``"include":
+        ["result_metadata"]``; without it a search record's metadata is null),
+        both verified live on 2026-10-31. A server that answers these with
+        HTTP 422 gets the old request and a bounded client-side scan
+        (:meth:`_search`). ``limit`` is at most 1000.
         """
-        env = await self.post(
-            "/prediction-results/search", {"limit": limit, "offset": offset}, retry=True
-        )
+        path = "/prediction-results/search"
         if prediction_id is None:
-            return env
-        matches = [r for r in env.records if r.get("prediction_id") == prediction_id]
-        page_len, pages = len(env.records), 1
-        while page_len == limit and pages < _MAX_FILTER_PAGES:
-            offset += limit
-            page = await self.post(
-                "/prediction-results/search",
-                {"limit": limit, "offset": offset},
-                retry=True,
-            )
-            page_len, pages = len(page.records), pages + 1
-            matches.extend(
-                r for r in page.records if r.get("prediction_id") == prediction_id
-            )
-        env.records = matches
-        return env
+            return await self.post(path, _page(path, limit, offset), retry=True)
+        return await self._search(
+            path,
+            {"prediction_id": {"eq": prediction_id}, "include": ["result_metadata"]},
+            limit=limit,
+            offset=offset,
+            match=("prediction_id", prediction_id),
+        )
+
+    async def prediction_result_files(
+        self, download_token: str, *, max_bytes: int = DEFAULT_MAX_FILES_BYTES
+    ) -> bytes:
+        """A result's model output files: the zip of ``GET /prediction-results/files``.
+
+        ``download_token`` is the result record's token, sent as the query
+        parameter the spec names, through this client (its base URL passed the
+        egress check). The zip holds one GeoTIFF per UTM zone and, for a top-k
+        result, a ``README.md`` (measured on 2026-10-31: 230 KB for a kelp
+        result, 209 MB for a [0, 1] score result). The token is a credential:
+        no error raised here holds it, and httpx's request log masks it.
+        Redirects are not followed, since a target host would be outside the
+        egress check; whether Studio redirects this download is unverified
+        (the live probe's client followed redirects without saying so).
+
+        Parameters
+        ----------
+        download_token
+            The result's ``download_token``.
+        max_bytes
+            The most this reads; a larger ``Content-Length`` is refused before
+            the body is read, and a body that grows past it while read.
+
+        Returns
+        -------
+        bytes
+            The zip.
+
+        Raises
+        ------
+        StudioAccessError
+            On HTTP 401 or 403.
+        RuntimeError
+            On any other non-2xx answer, a body over ``max_bytes`` or a failed
+            transfer.
+        ValueError
+            If ``download_token`` is empty.
+        """
+        if not download_token:
+            raise ValueError("a result's download_token is required")
+        path = "/prediction-results/files"
+
+        def scrub(text: str | None) -> str | None:
+            """``text`` with the token masked, should Studio echo it."""
+            return text.replace(download_token, "<redacted>") if text else text
+
+        chunks: list[bytes] = []
+        try:
+            async with self._client.stream(
+                "GET",
+                path,
+                params={"download_token": download_token},
+                headers={"Accept": "*/*"},
+            ) as resp:
+                if resp.status_code in _ACCESS_STATUSES:
+                    await resp.aread()
+                    code, message = _studio_error(resp)
+                    raise StudioAccessError(
+                        "GET", path, resp.status_code, scrub(code), scrub(message)
+                    )
+                if not resp.is_success:
+                    raise RuntimeError(
+                        f"Studio answered HTTP {resp.status_code} to GET {path}; "
+                        "no file was read"
+                    )
+                declared = resp.headers.get("content-length", "")
+                if declared.isdigit() and int(declared) > max_bytes:
+                    raise RuntimeError(
+                        f"the result's files are {int(declared)} bytes, over this "
+                        f"client's cap of {max_bytes}; nothing was read"
+                    )
+                read = 0
+                async for chunk in resp.aiter_bytes():
+                    read += len(chunk)
+                    if read > max_bytes:
+                        raise RuntimeError(
+                            "the result's files passed this client's cap of "
+                            f"{max_bytes} bytes while read; nothing was kept"
+                        )
+                    chunks.append(chunk)
+        except httpx.HTTPError as exc:
+            # httpx's own texts may hold the URL, and with it the token.
+            raise RuntimeError(
+                f"GET {path} failed ({type(exc).__name__}); no file was read"
+            ) from None
+        return b"".join(chunks)
 
     async def submit_prediction(
         self,
@@ -331,25 +646,38 @@ class StudioClient:
         model_id: str,
         start_time: str,
         end_time: str,
+        probability_top_k: int | None = None,
     ) -> dict[str, Any]:
         """Create a prediction (``POST /predictions``). Returns the record.
 
-        All six fields are required by ``PredictionWrite`` (openapi
-        v0.1.0). Note ``area_id`` (not dataset) is the geographic anchor.
-        ``model_id`` is typically reused from a prior prediction found via
-        :meth:`search_predictions`.
+        ``PredictionWrite`` (the spec of 2026-10-31) takes its areas as
+        ``target_area_ids`` and has no ``area_id``, so the area is sent as
+        ``target_area_ids: [area_id]``. ``probability_top_k`` adds
+        ``probability_output: {"top_k": k}``: Studio then also writes each
+        pixel's top-k class scores (segmentation only, the spec says). Both
+        follow the spec alone: a read-only key cannot try a write, so neither
+        is verified live. ``model_id`` is typically reused from a prior
+        prediction found via :meth:`search_predictions`.
+
+        Raises
+        ------
+        ValueError
+            If ``probability_top_k`` is given and is not an integer of 1 or more.
         """
-        env = await self.post(
-            "/predictions",
-            {
-                "name": name,
-                "project_id": project_id,
-                "area_id": area_id,
-                "model_id": model_id,
-                "start_time": start_time,
-                "end_time": end_time,
-            },
-        )
+        body: dict[str, Any] = {
+            "name": name,
+            "project_id": project_id,
+            "target_area_ids": [area_id],
+            "model_id": model_id,
+            "start_time": start_time,
+            "end_time": end_time,
+        }
+        if probability_top_k is not None:
+            top_k = probability_top_k
+            if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1:
+                raise ValueError("probability_top_k must be an integer of 1 or more")
+            body["probability_output"] = {"top_k": top_k}
+        env = await self.post("/predictions", body)
         return env.one or {}
 
     # --- areas (AOIs) ---
@@ -379,28 +707,23 @@ class StudioClient:
     ) -> ApiEnvelope[dict[str, Any]]:
         """Search areas (read-only). Optionally scope to a project.
 
-        Like ``AreaSearchRequest`` (openapi v0.1.0) has no ``project_id``
-        filter field, so when ``project_id`` is given we filter client-side,
-        scanning up to ``_MAX_FILTER_PAGES`` pages of ``limit``. Search
-        records carry ``id``/``name``/``project_id`` but omit ``geom``
-        (lightweight); fetch one with :meth:`get_area` for the geometry.
+        With ``project_id`` the server filters (``{"project_id": {"eq": id}}``,
+        in the spec's ``AreaSearchRequest``); a server that answers it with
+        HTTP 422 gets the old request and a bounded client-side scan
+        (:meth:`_search`). Search records carry ``id``/``name``/``project_id``
+        but omit ``geom`` (lightweight); fetch one with :meth:`get_area` for
+        the geometry.
         """
-        env = await self.post(
-            "/areas/search", {"limit": limit, "offset": offset}, retry=True
-        )
+        path = "/areas/search"
         if project_id is None:
-            return env
-        matches = [r for r in env.records if r.get("project_id") == project_id]
-        page_len, pages = len(env.records), 1
-        while page_len == limit and pages < _MAX_FILTER_PAGES:
-            offset += limit
-            page = await self.post(
-                "/areas/search", {"limit": limit, "offset": offset}, retry=True
-            )
-            page_len, pages = len(page.records), pages + 1
-            matches.extend(r for r in page.records if r.get("project_id") == project_id)
-        env.records = matches
-        return env
+            return await self.post(path, _page(path, limit, offset), retry=True)
+        return await self._search(
+            path,
+            {"project_id": {"eq": project_id}},
+            limit=limit,
+            offset=offset,
+            match=("project_id", project_id),
+        )
 
     async def get_area(self, area_id: str) -> dict[str, Any]:
         """Fetch one area (``GET /areas/{id}``), including its ``geom``."""
@@ -414,13 +737,37 @@ class StudioClient:
         the record as ``{"record": {...}}`` (as project delete does), so we
         unwrap the inner ``record`` defensively.
         """
-        resp = await self._client.request("DELETE", f"/areas/{area_id}")
-        resp.raise_for_status()
+        resp = await self._send("DELETE", f"/areas/{area_id}")
         env = ApiEnvelope.from_response(resp.json())
         record = env.one or {}
         return cast(dict[str, Any], record.get("record", record))
 
     # --- models ---
+
+    def _check_models(self) -> None:
+        """Refuse a ``/models`` call once this server has shown it has no route."""
+        if self.models_unavailable:
+            raise RuntimeError(MODELS_UNAVAILABLE)
+
+    def _note_models_failure(
+        self, exc: httpx.HTTPStatusError, *, one_record: bool
+    ) -> None:
+        """Remember a ``/models`` answer that says the route is not served.
+
+        A 405, or a 404 from ``/models/search``, is a missing route. A 404
+        from ``GET /models/{id}`` is one too, unless its body is Studio's error
+        envelope with code ``not_found_error`` (the spec's code for a missing
+        record; how Studio answers a missing model is unverified): then only
+        that model is missing, and later lookups of other models still run.
+        """
+        status = exc.response.status_code
+        missing_record = (
+            one_record
+            and status == 404
+            and _studio_error(exc.response)[0] == "not_found_error"
+        )
+        if status in (404, 405) and not missing_record:
+            self.models_unavailable = True
 
     async def search_models(
         self, *, limit: int = 50, offset: int = 0
@@ -432,22 +779,138 @@ class StudioClient:
         variant, imagery sources, spatial/temporal context). This is how a
         client tells a fine-tuned model apart from an embeddings one.
 
-        Note: ``/models`` is absent from openapi v0.1.0, but the live API
-        serves ``POST /models/search`` and ``GET /models/{id}`` (``GET
-        /models`` with no id is 404). Verified live 2026-05-30.
+        Note: ``/models`` is absent from the spec (still on 2026-10-31), but
+        the live API serves ``POST /models/search`` and ``GET /models/{id}``
+        (both answered 200 on 2026-10-31; ``GET /models`` with no id was a 404
+        on 2026-05-30).
+        After a 404 or 405 that says the route is gone, every later ``/models``
+        call of this client raises at once (:attr:`models_unavailable`);
+        callers treat any failure as no model record.
         """
-        return await self.post(
-            "/models/search", {"limit": limit, "offset": offset}, retry=True
-        )
+        self._check_models()
+        path = "/models/search"
+        try:
+            return await self.post(path, _page(path, limit, offset), retry=True)
+        except httpx.HTTPStatusError as exc:
+            self._note_models_failure(exc, one_record=False)
+            raise
 
     async def get_model(self, model_id: str) -> dict[str, Any]:
         """Fetch one model record (``GET /models/{id}``).
 
         Returns ``model_type``, ``name``, ``status``, and ``wizard_answers``.
-        Undocumented in openapi v0.1.0; verified live 2026-05-30.
+        Undocumented in the spec; verified live 2026-05-30 and 2026-10-31.
+        Refused at once after the route was found missing (:meth:`search_models`).
         """
-        env = await self.get(f"/models/{model_id}")
+        self._check_models()
+        try:
+            env = await self.get(f"/models/{model_id}")
+        except httpx.HTTPStatusError as exc:
+            self._note_models_failure(exc, one_record=True)
+            raise
         return env.one or {}
+
+    # --- annotations, labels, datasets (read-only) ---
+
+    async def search_annotations(
+        self,
+        filters: dict[str, Any] | None = None,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search Studio's annotations (``POST /annotations/search``; a read).
+
+        ``filters`` are the spec's ``AnnotationSearchRequest`` filter objects,
+        passed through (e.g. ``{"project_id": {"eq": id}}``, or ``{"id":
+        {"inc": [...]}}`` and ``{"intersects_geometry": <GeoJSON>}``, both
+        accepted live on 2026-10-31). ``limit`` is at most 10000. Personal
+        data is left out: each record loses ``annotator_id``, and each of its
+        ``annotation_images`` its ``user_id``, so who labelled or photographed
+        a place never reaches the agent.
+        """
+        env = await self._search_records("/annotations/search", filters, limit, offset)
+        env.records = [_annotation_without_people(r) for r in env.records]
+        return env
+
+    async def aggregate_annotations(
+        self, body: dict[str, Any]
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Aggregate annotations (``POST /annotations/aggregate``; a read).
+
+        ``body`` is the spec's ``AggregateAnnotationsRequest``, passed through,
+        e.g. ``{"metric": {"type": "count"}, "group_by": [{"field": "status"}],
+        "project_id": {"eq": id}}`` (accepted live on 2026-10-31). The records
+        are buckets (``key``, ``value``).
+
+        Raises
+        ------
+        ValueError
+            If ``body`` groups by ``annotator_id``: the annotators' ids are
+            personal data, never returned.
+        """
+        groups = body.get("group_by")
+        listed = groups if isinstance(groups, list) else []
+        if "annotator_id" in {g.get("field") for g in listed if isinstance(g, dict)}:
+            raise ValueError(
+                "annotations are not grouped by annotator_id: the annotators' "
+                "ids are personal data"
+            )
+        return await self.post("/annotations/aggregate", body, retry=True)
+
+    async def search_labels(
+        self,
+        filters: dict[str, Any] | None = None,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search labels, a project's classes (``POST /labels/search``; a read).
+
+        ``filters`` are the spec's ``LabelSearchRequest`` filter objects (e.g.
+        ``{"labelset_id": {"eq": id}}``), passed through; ``limit`` is at most
+        10000. A label record holds a class's ``name``, ``display_name`` and
+        ``color``.
+        """
+        return await self._search_records("/labels/search", filters, limit, offset)
+
+    async def search_labelsets(
+        self,
+        filters: dict[str, Any] | None = None,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search labelsets (``POST /labelsets/search``; a read).
+
+        ``filters`` are the spec's ``LabelsetSearchRequest`` filter objects,
+        passed through; ``limit`` is at most 1000 (the spec's bound for this
+        search). A labelset record lists its ``labels``.
+        """
+        return await self._search_records("/labelsets/search", filters, limit, offset)
+
+    async def search_datasets(
+        self,
+        filters: dict[str, Any] | None = None,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> ApiEnvelope[dict[str, Any]]:
+        """Search datasets (``POST /datasets/search``; a read).
+
+        ``filters`` are the spec's ``DatasetSearchRequest`` filter objects
+        (e.g. ``{"project_id": {"eq": id}}``), passed through; ``limit`` is at
+        most 10000. Each record loses ``requester_id``, the user who asked for
+        the dataset (personal data).
+        """
+        env = await self._search_records("/datasets/search", filters, limit, offset)
+        env.records = [_dataset_without_people(r) for r in env.records]
+        return env
+
+    async def get_dataset(self, dataset_id: str) -> dict[str, Any]:
+        """Fetch one dataset (``GET /datasets/{id}``), less its ``requester_id``."""
+        env = await self.get(f"/datasets/{dataset_id}")
+        return _dataset_without_people(env.one or {})
 
     async def load_context(self, *, limit: int = 50, offset: int = 0) -> StudioContext:
         """Assemble the user's active Studio context.

@@ -153,7 +153,13 @@ async def model_summary(
     model_id: str,
     cache: dict[str, dict[str, Any] | None] | None = None,
 ) -> dict[str, Any] | None:
-    """Best-effort :func:`summarize_model` of ``GET /models/{id}`` (None on failure)."""
+    """Best-effort :func:`summarize_model` of ``GET /models/{id}`` (None on failure).
+
+    ``None`` also when the server serves no ``/models`` route; the client's
+    ``models_unavailable`` then tells that apart from a model without a record
+    (``olmoearth_search_predictions`` states it, so no label field read is not
+    taken for no labels).
+    """
     if cache is not None and model_id in cache:
         return cache[model_id]
     try:

@@ -714,7 +714,7 @@ class _FakeStudio:
                     "id": "r1",
                     "prediction_id": prediction_id,
                     "property_names": ["karst_score"],
-                    "file_format": "png",
+                    "file_formats": ["png"],
                     "tile_urls": ["t1", "t2"],
                 }
             ]
@@ -805,6 +805,31 @@ def test_create_area_stores_and_returns_bbox(monkeypatch: pytest.MonkeyPatch) ->
     assert area["id"] == "area-1"
     assert area["project_id"] == "p1"
     assert area["bbox"] == [-1.0, -1.0, 1.0, 1.0]
+
+
+def test_create_area_refused_by_studio_is_a_403(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read-only key's refusal reads as such, not as a 502 outage."""
+    from olmoearth_agent.studio.client import StudioAccessError
+
+    class _ReadOnlyStudio(_FakeStudio):
+        async def create_area(
+            self, *, name: str, geom: dict[str, Any], project_id: str
+        ) -> dict[str, Any]:
+            raise StudioAccessError("POST", "/areas", 403, "permission_error")
+
+    monkeypatch.setattr(serve, "StudioClient", _ReadOnlyStudio)
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/areas",
+            json={"name": "Drawn AOI", "geom": _SQUARE, "project_id": "p1"},
+            headers={"X-Olmoearth-Key": "k"},
+        )
+    assert resp.status_code == 403
+    detail = resp.json()["detail"]
+    assert "Studio refused POST /areas (HTTP 403, permission_error)" in detail
+    assert "read-only" in detail and "nothing was created" in detail
 
 
 def test_create_area_requires_key() -> None:
@@ -1164,7 +1189,9 @@ def test_prediction_results(monkeypatch: pytest.MonkeyPatch) -> None:
     results = resp.json()["results"]
     assert results[0]["tiles"] == 2
     assert results[0]["property_names"] == ["karst_score"]
-    assert results[0]["file_format"] == "png"
+    # Studio's field is the list file_formats; it has no singular file_format.
+    assert results[0]["file_formats"] == ["png"]
+    assert "file_format" not in results[0]
 
 
 def test_tree_endpoints_require_key() -> None:

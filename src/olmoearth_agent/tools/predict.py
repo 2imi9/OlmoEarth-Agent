@@ -43,18 +43,26 @@ _MODELS_SCOPE_NOTE = (
     "not a class probability and not a confidence."
 )
 
+#: Said when this Studio server serves no model records (``/models`` answered
+#: 404 or 405): an unread record is not a model trained on no labels.
+_MODELS_UNAVAILABLE_SENTENCE = (
+    "Studio's model records could not be read on this server (its /models "
+    "endpoint is not served), so what each model outputs and whether it was "
+    "fine-tuned on labels are unknown, not absent."
+)
+
 
 async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_search_predictions``: predictions plus their models."""
     project_id = args.get("project_id")
+    offset = max(0, int(args.get("offset", 0)))
     env = await ctx.studio.search_predictions(
         project_id=project_id,
         limit=int(args.get("limit", 50)),
-        offset=int(args.get("offset", 0)),
+        offset=offset,
     )
-    # With a project_id filter the match list is built client-side, so
-    # env.total (the unfiltered server total) would mislead; report the
-    # actual returned count instead.
+    # Studio filters by project_id itself, so env.total counts the project's
+    # predictions (on an older server's client-side scan, the matches found).
     model_ids = list(
         dict.fromkeys(str(r["model_id"]) for r in env.records if r.get("model_id"))
     )[:_MAX_MODELS_RESOLVED]
@@ -66,7 +74,7 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
         if summary is not None
     }
     out: dict[str, Any] = {
-        "total": len(env.records) if project_id else env.total,
+        "total": env.total,
         "predictions": [
             {
                 "id": r.get("id"),
@@ -77,6 +85,8 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
             for r in env.records
         ],
     }
+    if env.total is not None and offset + len(env.records) < env.total:
+        out["next_offset"] = offset + len(env.records)
     if model_ids:
         out["models"] = models
         out["models_note"] = _MODELS_SCOPE_NOTE
@@ -86,11 +96,22 @@ async def _search_predictions(args: dict[str, Any], ctx: ToolContext) -> dict[st
         labels = rules.labels_in_studio_fact(summaries)
         if labels:
             rules.add_contract(out, facts=[labels])
+        if getattr(ctx.studio, "models_unavailable", False):
+            # No record read is not "no labels": say which it is.
+            unread = rules.fact(
+                "model_records_unavailable", _MODELS_UNAVAILABLE_SENTENCE
+            )
+            rules.add_contract(out, facts=[unread])
     return out
 
 
 async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    """Handler for ``olmoearth_submit_prediction``."""
+    """Handler for ``olmoearth_submit_prediction``.
+
+    The area goes to Studio as ``target_area_ids`` and ``probability_top_k``,
+    when given, as ``probability_output``
+    (:meth:`~olmoearth_agent.studio.client.StudioClient.submit_prediction`).
+    """
     record = await ctx.studio.submit_prediction(
         name=args["name"],
         project_id=args["project_id"],
@@ -98,6 +119,7 @@ async def _submit_prediction(args: dict[str, Any], ctx: ToolContext) -> dict[str
         model_id=args["model_id"],
         start_time=args["start_time"],
         end_time=args["end_time"],
+        probability_top_k=args.get("probability_top_k"),
     )
     prediction_id = record.get("id")
     if prediction_id:
@@ -125,7 +147,8 @@ def _summarize_result(record: dict[str, Any]) -> dict[str, Any]:
         "prediction_id": record.get("prediction_id"),
         "tile_urls": record.get("tile_urls"),
         "property_names": record.get("property_names"),
-        "file_format": record.get("file_format"),
+        # A list, e.g. ["png"]; Studio's records have no singular file_format.
+        "file_formats": record.get("file_formats"),
     }
     outputs = _declared_outputs(record)
     if outputs:
@@ -136,7 +159,13 @@ def _summarize_result(record: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _fetch_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-    """Handler for ``olmoearth_fetch_results``."""
+    """Handler for ``olmoearth_fetch_results``.
+
+    Studio filters the results to the prediction and fills their
+    ``result_metadata``, so each one's declared outputs and period are read
+    here; ``scan_limit`` is the page size, which the client keeps within 1 to
+    1000 (``StudioClient.search_prediction_results``).
+    """
     env = await ctx.studio.search_prediction_results(
         prediction_id=args["prediction_id"],
         limit=int(args.get("scan_limit", 200)),
@@ -292,6 +321,14 @@ def build_predict_tools() -> list[RegisteredTool]:
                         "model_id": {"type": "string"},
                         "start_time": {"type": "string"},
                         "end_time": {"type": "string"},
+                        "probability_top_k": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Ask Studio for the top-k class scores "
+                            "of a segmentation model, which the verification tools "
+                            "need for a class map's review set. Unverified with a "
+                            "read-only key.",
+                        },
                     },
                     "required": [
                         "name",
@@ -314,11 +351,10 @@ def build_predict_tools() -> list[RegisteredTool]:
                 name="olmoearth_fetch_results",
                 description=(
                     "Fetch the output results for a prediction: tile URLs "
-                    "(XYZ/MVT map layers), property names, file format, and "
+                    "(XYZ/MVT map layers), property names, file formats, and "
                     "'outputs' (each property's declared regression range or "
-                    "classes). Scans recent prediction-results and filters to "
-                    "this prediction (no server-side filter); increase "
-                    "scan_limit if results are older."
+                    "classes). Studio filters the results to this prediction; "
+                    "scan_limit (at most 1000) caps how many come back."
                 ),
                 parameters={
                     "type": "object",
@@ -342,7 +378,7 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "Fetch one prediction-result by its result id: tile "
                     "URLs, property names, declared outputs (regression range "
                     "or classes per property), result metadata (without its "
-                    "geometry), and file format."
+                    "geometry), and file formats."
                 ),
                 parameters={
                     "type": "object",

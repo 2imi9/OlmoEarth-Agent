@@ -21,12 +21,13 @@ from olmoearth_agent.harness.agent import LeadAgent
 from olmoearth_agent.harness.capabilities import (
     CARD_TITLE,
     NO_TOOL_CAN,
+    READ_ONLY_STUDIO,
     beyond_tools,
     capability_card,
 )
 from olmoearth_agent.harness.soul import load_soul
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
-from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
+from olmoearth_agent.skills import OPT_IN_ENV, READ_ONLY_ENV, build_default_registry
 from olmoearth_agent.tools.registry import (
     Capability,
     RegisteredTool,
@@ -131,6 +132,26 @@ def test_the_opt_in_python_tool_takes_files_and_model_runs_off_the_list() -> Non
     assert NO_TOOL_CAN["files"] not in beyond
     assert NO_TOOL_CAN["run_model"] not in beyond
     assert NO_TOOL_CAN["labels"] in beyond and NO_TOOL_CAN["training"] in beyond
+
+
+def test_a_read_only_key_puts_its_line_on_the_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With OLMOEARTH_READ_ONLY on, the card says why no project or prediction."""
+    default = capability_card(build_default_registry())
+    assert READ_ONLY_STUDIO not in default
+    monkeypatch.setenv(READ_ONLY_ENV, "1")
+    registry = build_default_registry()
+    card = capability_card(registry)
+    head, beyond = card.split("No tool of this agent can:", 1)
+    assert f"- {READ_ONLY_STUDIO}." in beyond
+    assert "read-only" in READ_ONLY_STUDIO
+    for gone in ("olmoearth_create_project", "olmoearth_submit_prediction"):
+        assert f"- {gone}" not in head, gone
+    # What no tool can do is still listed in full beside it.
+    for text in NO_TOOL_CAN.values():
+        assert f"- {text}." in beyond
+    assert beyond_tools(registry)[-1] == READ_ONLY_STUDIO
 
 
 def test_covers_names_only_what_no_tool_can() -> None:

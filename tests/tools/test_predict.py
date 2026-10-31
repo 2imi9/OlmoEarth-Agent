@@ -160,6 +160,101 @@ async def test_search_predictions_survives_a_missing_model(
 
 
 @pytest.mark.asyncio
+async def test_search_predictions_by_project_pages_with_the_servers_total(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Studio filters by project; its total of the project's predictions pages."""
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        match_json={
+            "limit": 1,
+            "offset": 0,
+            "deleted_time": {"exists": False},
+            "project_id": {"eq": "proj1"},
+        },
+        json={"records": [{"id": "p1", "status": "completed"}], "meta": {"total": 3}},
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_search_predictions").handler(
+            {"project_id": "proj1", "limit": 1}, ctx
+        )
+    assert (result["total"], result["next_offset"]) == (3, 1)
+    assert [p["id"] for p in result["predictions"]] == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_search_predictions_says_when_model_records_cannot_be_read(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """A server without /models is not a model trained on no labels."""
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions/search",
+        method="POST",
+        json={"records": [{"id": "p1", "model_id": "m1"}], "meta": {"total": 1}},
+    )
+    httpx_mock.add_response(url=f"{BASE}/models/m1", status_code=405)
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        result = await _tool("olmoearth_search_predictions").handler({}, ctx)
+        assert studio.models_unavailable is True
+    assert result["models"] == {}
+    (fact,) = result["facts"]
+    assert fact["id"] == "model_records_unavailable"
+    assert "unknown, not absent" in fact["sentence"]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_submit_tells_the_model_to_stop_not_to_check_ids(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """A read-only key's 403 on POST /predictions, through the registry."""
+    from olmoearth_agent.llm.types import ToolCall
+    from olmoearth_agent.studio.client import (
+        StudioAccessError,
+        StudioClient,
+        StudioConfig,
+    )
+    from olmoearth_agent.tools.registry import ToolRegistry
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions",
+        method="POST",
+        status_code=403,
+        json={"errors": [{"code": "permission_error", "message": "read-only key"}]},
+    )
+    registry = ToolRegistry()
+    registry.register_all(build_predict_tools())
+    args = {
+        "name": "n",
+        "project_id": "pr",
+        "area_id": "a",
+        "model_id": "m",
+        "start_time": "2022-01-01",
+        "end_time": "2024-12-31",
+    }
+    state = ThreadState()
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        out = await registry.dispatch(
+            ToolCall(id="c1", name="olmoearth_submit_prediction", arguments=args),
+            ToolContext(studio=studio, state=state),
+        )
+    assert out["ok"] is False
+    assert out["error"].startswith("StudioAccessError: Studio refused POST /predict")
+    assert "nothing was created or changed" in out["error"]
+    assert out["hint"] == StudioAccessError.hint
+    assert "Check that referenced ids exist" not in out["hint"]
+    assert "nothing was created or changed" in out["must_state"][0]
+    assert state.prediction_ids == []
+    assert len(httpx_mock.get_requests()) == 1
+
+
+@pytest.mark.asyncio
 async def test_submit_prediction_tool_sends_required_fields(
     httpx_mock: HTTPXMock,
 ) -> None:
@@ -187,25 +282,68 @@ async def test_submit_prediction_tool_sends_required_fields(
     assert result["id"] == "pred9"
     assert "pred9" in state.prediction_ids
     body = json.loads(httpx_mock.get_requests()[0].content)
+    # PredictionWrite (spec of 31 October) has target_area_ids and no area_id,
+    # which Studio would have dropped, leaving the prediction without an area.
     assert set(body) == {
         "name",
         "project_id",
-        "area_id",
+        "target_area_ids",
         "model_id",
         "start_time",
         "end_time",
     }
+    assert body["target_area_ids"] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_submit_prediction_tool_asks_for_top_k_scores(
+    httpx_mock: HTTPXMock,
+) -> None:
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+
+    httpx_mock.add_response(
+        url=f"{BASE}/predictions",
+        method="POST",
+        json={"records": [{"id": "pred9", "status": "pending"}]},
+    )
+    spec = _tool("olmoearth_submit_prediction").spec
+    assert "probability_top_k" in spec.parameters["properties"]
+    assert "probability_top_k" not in spec.parameters["required"]
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        await _tool("olmoearth_submit_prediction").handler(
+            {
+                "name": "n",
+                "project_id": "pr",
+                "area_id": "a",
+                "model_id": "m",
+                "start_time": "2022-01-01",
+                "end_time": "2024-12-31",
+                "probability_top_k": 2,
+            },
+            ctx,
+        )
+    body = json.loads(httpx_mock.get_requests()[0].content)
+    assert body["probability_output"] == {"top_k": 2}
+    assert "area_id" not in body
 
 
 @pytest.mark.asyncio
 async def test_fetch_results_filters_by_prediction_id(
     httpx_mock: HTTPXMock,
 ) -> None:
+    """Studio filters by prediction and fills result_metadata (live, 31 October)."""
     from olmoearth_agent.studio.client import StudioClient, StudioConfig
 
     httpx_mock.add_response(
         url=f"{BASE}/prediction-results/search",
         method="POST",
+        match_json={
+            "limit": 1000,
+            "offset": 0,
+            "prediction_id": {"eq": "pX"},
+            "include": ["result_metadata"],
+        },
         json={
             "records": [
                 {
@@ -213,21 +351,33 @@ async def test_fetch_results_filters_by_prediction_id(
                     "prediction_id": "pX",
                     "tile_urls": ["t1"],
                     "property_names": ["score"],
-                    "file_format": "png",
-                },
-                {"id": "r2", "prediction_id": "pOTHER", "tile_urls": ["t2"]},
+                    "file_formats": ["png"],
+                    "result_metadata": {
+                        "start_datetime": "2024-06-01T00:00:00Z",
+                        "end_datetime": "2024-09-01T00:00:00Z",
+                        "regression_fields": [
+                            {"property_name": "score", "min_value": 0, "max_value": 1}
+                        ],
+                    },
+                }
             ],
-            "meta": {"total": 2},
+            "meta": {"total": 1},
         },
     )
     async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
         ctx = ToolContext(studio=studio, state=ThreadState())
+        # A model-chosen scan_limit over the spec's 1000 is clamped, not a 422.
         result = await _tool("olmoearth_fetch_results").handler(
-            {"prediction_id": "pX"}, ctx
+            {"prediction_id": "pX", "scan_limit": 5000}, ctx
         )
     assert result["result_count"] == 1
-    assert result["results"][0]["result_id"] == "r1"
-    assert result["results"][0]["tile_urls"] == ["t1"]
+    (one,) = result["results"]
+    assert one["result_id"] == "r1"
+    assert one["tile_urls"] == ["t1"]
+    assert one["file_formats"] == ["png"]
+    assert "file_format" not in one
+    assert one["period"] == ["2024-06-01T00:00:00Z", "2024-09-01T00:00:00Z"]
+    assert one["outputs"][0]["property_name"] == "score"
 
 
 @pytest.mark.asyncio
@@ -243,7 +393,7 @@ async def test_get_prediction_result_tool(httpx_mock: HTTPXMock) -> None:
                     "prediction_id": "p1",
                     "tile_urls": ["tpl"],
                     "property_names": ["karst_score"],
-                    "file_format": "png",
+                    "file_formats": ["png"],
                     "result_metadata": {"foo": 1},
                 }
             ]
@@ -257,6 +407,7 @@ async def test_get_prediction_result_tool(httpx_mock: HTTPXMock) -> None:
     assert result["result_id"] == "r9"
     assert result["property_names"] == ["karst_score"]
     assert result["result_metadata"] == {"foo": 1}
+    assert result["file_formats"] == ["png"]
 
 
 @pytest.mark.asyncio
