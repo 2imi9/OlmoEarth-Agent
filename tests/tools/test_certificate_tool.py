@@ -4,7 +4,9 @@
 
 The run is what ``oe-inferencex from-olmoearth`` writes from an rslearn
 dataset (``oe_inferencex.readers.olmoearth.read_output``, run here on a
-dataset this test writes with rasterio). ``olmoearth_plan_label_sample`` with
+dataset this test writes with rasterio); one test's run is instead a
+score_area.py raster that is south up, which olmoearth-inferencex certifies
+from 1.20.3 on. ``olmoearth_plan_label_sample`` with
 ``seed_from_map`` draws through the package's command line (``sample
 --seed-from-map``), the labels are fixed, ``olmoearth_certify_zone``
 certifies, ``olmoearth_write_certificate`` packs the zone and
@@ -129,6 +131,38 @@ async def _direct_run(root: Path) -> dict[str, Any]:
         (layer / "completed").write_text("", encoding="utf-8")
     oe_reader.read_output(str(root / "ds"), str(root / "run"))
     return await _ok("olmoearth_scores_from_file", {"run_dir": "run"})
+
+
+#: The south-up run's folder under the scores root, and its raster.
+SOUTH_UP, SOUTH_UP_RASTER = "south_up", "scores.tif"
+
+
+async def _south_up_run(root: Path) -> dict[str, Any]:
+    """A direct run whose scores raster is south up, read by the tool.
+
+    A score_area.py run (its raster and a ``manifest.json`` that says the
+    values are probabilities) of 32 x 64 pixels, 128 windows of 4 px, whose
+    row 0 is the south edge: the y step is positive. GDAL georeferences such
+    a grid, and the zone mask on its windows, with a ModelTransformation
+    matrix, which olmoearth-inferencex refused in a zone mask from 1.17.0 to
+    1.20.2.
+    """
+    run = root / SOUTH_UP
+    run.mkdir()
+    profile = {
+        "driver": "GTiff",
+        "height": 32,
+        "width": 64,
+        "count": 3,
+        "dtype": "float32",
+        "crs": "EPSG:32737",
+        "transform": Affine(10.0, 0.0, X0, 0.0, 10.0, Y0 - 320.0),
+    }
+    with rasterio.open(run / SOUTH_UP_RASTER, "w", **profile) as dst:
+        dst.write(_softmax(40, 32, 64))
+    manifest = {"scores": {"file": SOUTH_UP_RASTER, "values": "probabilities"}}
+    (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return await _ok("olmoearth_scores_from_file", {"run_dir": SOUTH_UP})
 
 
 async def _map_plan(scores_path: str) -> dict[str, Any]:
@@ -280,6 +314,61 @@ async def test_a_certificate_round_trip_reproduces(_scores_root: Path) -> None:
         "where": "outside the map",
     }
     assert any("path the certificate names" in s for s in outside["must_state"])
+
+
+@pytest.mark.asyncio
+async def test_a_south_up_map_gets_a_certificate_that_verifies(
+    _scores_root: Path,
+) -> None:
+    """A scores raster whose y step is positive (row 0 at the south edge) is
+    planned, certified, given a certificate and checked against a copy of
+    the map, by the tool and by the package's CLI. Its zone mask lies on the
+    map's south-up window grid, which GDAL writes as a ModelTransformation
+    matrix: olmoearth-inferencex 1.17.0 to 1.20.2 refused that mask, so the
+    write failed, and 1.20.3, the release the agent requires, writes it."""
+    run = await _south_up_run(_scores_root)
+    raster = _scores_root / SOUTH_UP / SOUTH_UP_RASTER
+    with rasterio.open(raster) as src:
+        grid = tuple(src.transform)[:6]
+    assert grid == (10.0, 0.0, X0, 0.0, 10.0, Y0 - 320.0)  # south up, as written
+    plan = await _map_plan(run["scores_path"])
+    assert plan["seed_from_map"]["alpha"] == ALPHA
+    wrong = [0] * BUDGET
+    zone = await _ok(
+        "olmoearth_certify_zone",
+        {"design_path": plan["design_path"], "wrong": wrong, "alpha": ALPHA},
+    )
+    assert zone["certified"] is True
+    written = await _ok(
+        "olmoearth_write_certificate",
+        {"design_path": plan["design_path"], "wrong": wrong, "date": "2024-06-01"},
+    )
+    assert written["certificate_written"] is True and written["certified"] is True
+    assert written["verified_before_written"] is True
+    certified = (zone["n_zone"], zone["coverage"])
+    assert (written["n_zone"], written["coverage"]) == certified
+    cert_path = Path(written["certificate_path"])
+    with rasterio.open(cert_path.parent / "zone_mask.tif") as mask_src:
+        mask_grid = tuple(mask_src.transform)[:6]
+    # The mask's grid is the map's in windows of 4 px: south up too.
+    assert mask_grid == (40.0, 0.0, X0, 0.0, 40.0, Y0 - 320.0)
+
+    copy = _scores_root / "my_south_up_copy.tif"
+    shutil.copyfile(raster, copy)
+    mask = np.load(cert_path.parent.parent / "sample_zone.npy")
+    checked = await _ok(
+        "olmoearth_verify_certificate",
+        {
+            "certificate_path": str(cert_path.parent),
+            "map_path": str(copy),
+            "window": [0, 0],
+        },
+    )
+    assert checked["verified"] is True and checked["failed_checks"] == []
+    assert all(c["ok"] is True for c in checked["checks"].values())
+    assert checked["map_given"] is True
+    assert checked["window_lookup"]["inside"] is bool(mask[0, 0])
+    assert cli.main(["verify", str(cert_path), "--scores", str(copy)]) == 0
 
 
 @pytest.mark.asyncio

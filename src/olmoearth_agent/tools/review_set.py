@@ -732,8 +732,10 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
 
     With the ``inferencex`` extra: ``oe_inferencex.compare.dates_reading`` of
     ``date_a``, ``date_b`` and ``labels_date`` (``status`` "unstated" when none
-    was given). Without it: a statement that the dates were not assessed. A
-    bare year or month is refused first, with the interval that means it.
+    was given). Without it, or with a release older than
+    ``inferencex.MIN_VERSION``: a statement that the dates were not assessed,
+    with the line that installs or upgrades it. A bare year or month is
+    refused first, with the interval that means it.
     """
     date_a, date_b = args.get("date_a"), args.get("date_b")
     labels_date = args.get("labels_date")
@@ -746,14 +748,16 @@ def _dates_block(args: dict[str, Any]) -> dict[str, Any]:
     try:
         compare = inferencex.load("compare")
     except inferencex.InferencexMissingError:
+        _status, install = inferencex.unavailable()
         return {
             "assessed": False,
             "a": date_a,
             "b": date_b,
             "labels": labels_date,
             "reason": "the dates were not assessed: reading what a difference "
-            "means across dates needs olmoearth-inferencex (>= 1.20.1)",
-            "install": inferencex.INSTALL_HINT,
+            "means across dates needs olmoearth-inferencex "
+            f"(>= {inferencex.MIN_VERSION})",
+            "install": install,
         }
     reading: dict[str, Any] = dict(compare.dates_reading(date_a, date_b, labels_date))
     reading["assessed"] = True

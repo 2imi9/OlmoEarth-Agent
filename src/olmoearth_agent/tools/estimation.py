@@ -8,7 +8,7 @@ overstates the error rate (1.8 to 5.8 times the true rate on the companion
 package's exp78). An error rate needs a labelled **sample drawn by a design**,
 and its interval is the one that design earns -- a stratified or targeted draw
 does not get the simple-random-sample formula. Three tools wrap
-``oe_inferencex.estimate`` (``olmoearth-inferencex`` >= 1.20.1, the optional
+``oe_inferencex.estimate`` (``olmoearth-inferencex`` >= 1.20.3, the optional
 ``inferencex`` extra, imported lazily):
 
 - ``olmoearth_plan_label_sample`` -- choose which windows to label
@@ -4339,7 +4339,7 @@ def _grade_two_maps(
     out["which_map"] = verdict or "undetermined"
     out["map_a"], out["map_b"] = source.get("map_a"), source.get("map_b")
     out["more_accurate_map"] = source.get(f"map_{verdict}") if verdict else None
-    # The package that holds estimate (>= 1.20.1) holds decide too.
+    # The package that holds estimate (>= 1.20.3) holds decide too.
     decide = inferencex.load("decide")
     head = decide.sign_test_head(res)
     if head:

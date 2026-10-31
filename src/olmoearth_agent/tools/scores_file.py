@@ -141,7 +141,8 @@ def _missing(detail: str) -> dict[str, Any]:
     """The answer when the extra (or rasterio under it) is not importable.
 
     A release older than ``inferencex.MIN_VERSION`` has no ``review.assess``
-    or ``common.raster``: the reason names its version and the upgrade line.
+    or ``common.raster`` (before 1.19.0), or ``inferencex.load`` refuses it
+    (1.19.0 to 1.20.2): the reason names its version and the upgrade line.
     """
     status, install = inferencex.unavailable()
     return {

@@ -388,7 +388,7 @@ def _passes(
 
 @pytest.mark.asyncio
 async def test_a_certified_zones_note_on_what_delta_counts_passes() -> None:
-    """olmoearth-inferencex 1.20.1's ISSUED_NOTE, which a certified zone's
+    """olmoearth-inferencex 1.20.3's ISSUED_NOTE, which a certified zone's
     meaning ends with: an answer that repeats it beside the zone's must_state
     is not flagged (certification_guaranteed and post_hoc_alpha included)."""
     zone_module = pytest.importorskip("oe_inferencex.certify.zone")
