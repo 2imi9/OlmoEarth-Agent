@@ -37,6 +37,11 @@ OUTPUTS=/scratch/qi_zim_neu/olmoearth_inferenceX/agent-checks/bridge/outputs
 # srun refuses the QOS, run with OE_BRIDGE_QOS=normal.
 QOS="${OE_BRIDGE_QOS:-interactive}"
 SRUN="srun -A p2026_0089_neu -p cpu -q $QOS -n 1 -c 2 --mem=8G -t 00:20:00"
+# OE_BRIDGE_READ_ONLY=1 runs the bridge with OLMOEARTH_READ_ONLY=1: the key
+# is declared read-only, so the two Studio write tools are not offered. It
+# changes the tools and the capability card, so keep it the same for every
+# command of a run (a change shows as a divergence).
+READ_ONLY="${OE_BRIDGE_READ_ONLY:-}"
 
 BIN="$AGENT_DIR/.venv/bin/olmoearth-agent-bridge"
 # What srun runs on the compute node: new files private to the account
@@ -66,13 +71,19 @@ check_run() {
 }
 
 [[ "$QOS" =~ ^[A-Za-z0-9_-]+$ ]] || fail "OE_BRIDGE_QOS must be a QOS name"
+[[ -z "$READ_ONLY" || "$READ_ONLY" == 1 ]] ||
+  fail "OE_BRIDGE_READ_ONLY must be 1 or unset"
 
 # The remote command: one srun step that runs the bridge with the given
 # arguments. Every word is quoted for the remote shell with printf %q.
 bridge_cmd() {
   local cmd arg
   cmd="$SRUN bash -c $(printf '%q' "$INNER") oe-bridge"
-  cmd+=" $(printf '%q' "$OUTPUTS") $(printf '%q' "$BIN")"
+  cmd+=" $(printf '%q' "$OUTPUTS")"
+  if [[ -n "$READ_ONLY" ]]; then
+    cmd+=" env OLMOEARTH_READ_ONLY=1"
+  fi
+  cmd+=" $(printf '%q' "$BIN")"
   for arg in "$@"; do
     cmd+=" $(printf '%q' "$arg")"
   done

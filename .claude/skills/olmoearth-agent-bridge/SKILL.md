@@ -35,6 +35,7 @@ Never poll the cluster in a loop.
 - In the 31 Oct probe, every GET, search and aggregate request tried with the read-only key answered 200.
 - Writes were never tried. A 403 on a write is expected, since the key's access level shows nowhere else; this is unverified with a read-only key.
 - So `olmoearth_create_project` and `olmoearth_submit_prediction` should fail. The model gets each failure as a failed tool result, and the answer says so. It is not a bridge failure.
+- With a read-only key, run every command of a run with `OE_BRIDGE_READ_ONLY=1` (it sets `OLMOEARTH_READ_ONLY=1`): the two write tools are then not offered, and the capability card says why. Changing it in the middle of a run shows as a divergence.
 
 ## A run directory
 
