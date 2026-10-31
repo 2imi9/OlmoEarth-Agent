@@ -297,9 +297,9 @@ async def test_a_class_map_is_planned_under_the_random_design() -> None:
 @pytest.mark.asyncio
 async def test_a_class_maps_points_outside_its_files_are_counted_apart() -> None:
     """Probe 5 (31 October 2026): the kelp grid's "failed" points were HTTP
-    404s. Where other points answer, the sample counts them apart, read as
-    outside the result's files; any other failure stays a failed call, and
-    no-data stays no-data."""
+    404s. Where other points answer, the sample counts them apart, stated as
+    the 404 seen (not as outside the result's files, which no probe tested);
+    any other failure stays a failed call, and no-data stays no-data."""
     args = {"result_id": "lc", "grid": GRID, "budget": 20, "design": "random"}
     out = await _call(PLAN, args, _EdgeStudio())
     assert out["ok"] is True, out
@@ -310,21 +310,25 @@ async def test_a_class_maps_points_outside_its_files_are_counted_apart() -> None
     assert sampling["n_nodata_dropped"] == 1
     assert sampling["n_valid"] == 54
     note = sampling["outside_note"]
-    assert "outside the result's files (Studio answered 404)" in note
+    assert note.startswith(
+        "8 of the 64 windows were answered with HTTP 404 (not_found_error) by "
+        "Studio, which answered other points of the result"
+    )
+    assert "outside the result's files" not in note
 
 
 @pytest.mark.asyncio
 async def test_a_class_map_mostly_outside_its_files_is_refused_naming_them() -> None:
-    """The refusal of too few windows with a class names the points read as
-    outside the result's files, not failed calls (untested until the review
-    of 31 October)."""
+    """The refusal of too few windows with a class names the points Studio
+    answered with HTTP 404, not failed calls (untested until the review of 31
+    October)."""
     args = {"result_id": "lc", "grid": GRID, "budget": 20, "design": "random"}
     out = await _call(PLAN, args, _FarStudio())
     assert out["ok"] is False
     assert (
         "only 1 of 64 sampled windows hold a class (0 no-data, 0 failed, 63 "
-        "outside the result's files, where Studio answered 404); a labelled "
-        "sample needs at least two"
+        "answered HTTP 404 (not_found_error) where Studio answered other "
+        "points); a labelled sample needs at least two"
     ) in out["error"]
 
 

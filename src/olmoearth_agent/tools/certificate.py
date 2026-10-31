@@ -43,6 +43,14 @@ writes; the agent's estimation tools compute on arrays and write neither. So:
   ``[row, col]`` on the certificate's window grid, never by coordinates
   (rule §3.1).
 
+A zone read from a Studio result's own files (``olmoearth_scores_from_studio``)
+is the probability raster the agent decoded from Studio's native file, and
+that raster is the map a certificate on it binds: the result names it
+(``map_bound``), states as a fact that Studio's native GeoTIFF is not that
+map and does not verify, and tells the holder to check against the decoded
+raster; a failed check against a copy, of a certificate that names such a
+raster, says that Studio's native file fails without any tampering.
+
 A certificate states the zone ``certify`` gives: a re-checkable record, not a
 new test. Every result states the package's ``ISSUED_NOTE`` (what delta
 counts) and ``ISSUERS_WORD`` (what is taken on the issuer's word: the labels,
@@ -80,7 +88,7 @@ from pathlib import Path
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools import inferencex
+from olmoearth_agent.tools import inferencex, scores_file
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import (
     _DESIGN_PATH,
@@ -98,7 +106,12 @@ from olmoearth_agent.tools.estimation import (
     plan_work_dir,
 )
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
-from olmoearth_agent.tools.review_set import load_scores_file, read_roots, write_root
+from olmoearth_agent.tools.review_set import (
+    file_studio_kind,
+    load_scores_file,
+    read_roots,
+    write_root,
+)
 
 #: The bundle's folder inside a plan's working folder.
 BUNDLE_DIR = CERT_BUNDLE
@@ -143,6 +156,99 @@ ISSUERS_LABELS = (
     "The labels, and that the sample was drawn once, are the issuer's word, "
     "which the certificate does not show."
 )
+
+#: Said when a check against a copy fails and the certificate names a raster
+#: decoded from Studio's files (the contract's ``must_state``).
+STUDIO_COPY_NOTE = (
+    "This certificate binds a raster decoded from a Studio file; a check "
+    "against Studio's native file fails without any tampering."
+)
+
+
+def _studio_map(design: dict[str, Any], raster: str) -> dict[str, Any] | None:
+    """What a certificate on a zone read from Studio's own files binds, or ``None``.
+
+    ``olmoearth_scores_from_studio`` writes each zone as ``scores.tif``, a
+    float32 probability raster the agent decoded from Studio's native file
+    (a class map's uint8 top-k bands by the files README's formula, or a
+    ``[0, 1]`` score band). That raster is the map the plan drew its seed
+    from and the certificate binds (``map_sha256``), not Studio's file: a
+    holder of Studio's native GeoTIFF does not hold the certified map. A
+    design pooled from such a zone keeps the manifest's ``studio`` block, or
+    Studio's provenance, in its population's source
+    (``review_set.file_studio_kind``); the native file's name, its sha256
+    and the result id's first 8 characters come from the manifest beside the
+    raster, when it is there. ``None`` for a direct run's map.
+    """
+    population = design.get("population")
+    found = population.get("source") if isinstance(population, dict) else None
+    source: dict[str, Any] = found if isinstance(found, dict) else {}
+    if file_studio_kind(source) is None:
+        return None
+    block = source.get("studio")
+    studio: dict[str, Any] = block if isinstance(block, dict) else {}
+    decode = studio.get("decode") or studio.get("assumption")
+    out: dict[str, Any] = {
+        "map_file": raster,
+        "decode": decode if isinstance(decode, str) else None,
+        "studio_file": None,
+        "studio_file_sha256": None,
+        "result_id_prefix": None,
+    }
+    try:
+        text = (Path(raster).parent / scores_file.MANIFEST).read_text(encoding="utf-8")
+        manifest = json.loads(text)
+    except (OSError, ValueError):
+        manifest = None
+    native = scores_file.studio_source(manifest) if isinstance(manifest, dict) else None
+    if native is not None:
+        for key, kept in (("file", "studio_file"), ("sha256", "studio_file_sha256")):
+            if isinstance(native.get(key), str):
+                out[kept] = native[key]
+        if isinstance(native.get("result_id"), str):
+            out["result_id_prefix"] = native["result_id"][:8]
+    return out
+
+
+def _decoded_from_studio(named: str) -> bool:
+    """Whether a map a certificate names is a zone written from Studio's files.
+
+    Read from the manifest beside it, as ``olmoearth_scores_from_studio``
+    writes it (``source.kind`` ``studio_files``); a path that is not a plain
+    local one, or has no readable manifest, is not.
+    """
+    if named.startswith("/vsi") or "://" in named or not os.path.isabs(named):
+        return False
+    try:
+        text = (Path(named).parent / scores_file.MANIFEST).read_text(encoding="utf-8")
+        manifest = json.loads(text)
+    except (OSError, ValueError):
+        return False
+    return (
+        isinstance(manifest, dict) and scores_file.studio_source(manifest) is not None
+    )
+
+
+def _studio_map_fact(bound: dict[str, Any]) -> dict[str, Any]:
+    """The fact that the certificate binds the decoded raster, not Studio's file."""
+    native = bound.get("studio_file") or "native file"
+    result = bound.get("result_id_prefix")
+    of = f"Studio result {result}'s {native}" if result else f"Studio's {native}"
+    how = f" ({bound['decode']})" if bound.get("decode") else ""
+    sentence = (
+        f"The map this certificate binds is the agent's decoded raster "
+        f"{bound['map_file']}{how}, written from {of}; Studio's native GeoTIFF "
+        "is not that map and does not verify. Checking needs this raster, or "
+        "the one olmoearth_scores_from_studio writes again from the same "
+        "result, decoded the same way."
+    )
+    return rules.fact(
+        "certificate_map_is_decoded",
+        sentence,
+        map_file=bound["map_file"],
+        studio_file=bound.get("studio_file"),
+        studio_file_sha256=bound.get("studio_file_sha256"),
+    )
 
 
 def _under_roots(raw: Any, what: str) -> Path:
@@ -415,18 +521,36 @@ async def _write_certificate(args: dict[str, Any], _ctx: ToolContext) -> dict[st
         f"{out['coverage']:g}) is packed into a certificate at {path}, which "
         "olmoearth-inferencex verified before writing it."
     )
+    facts = [
+        whole,
+        rules.fact(
+            "certificate",
+            sentence,
+            certificate_path=path,
+            seed=block["seed"],
+            map_sha256=out["map_sha256"],
+        ),
+    ]
+    # A zone read from Studio's own files: the map bound is the agent's
+    # decoded raster, which a holder of Studio's native file does not hold.
+    # Stated as a fact (must_state is full) and in the first next step.
+    bound = _studio_map(design, str(block.get("raster") or ""))
+    if bound is not None:
+        out["map_bound"] = bound
+        out["next_steps"][0] = (
+            "Anyone holding a copy of that decoded raster (map_bound.map_file), "
+            "not Studio's native file, checks it: olmoearth_verify_certificate "
+            "with certificate_path and map_path (their copy of the raster), or "
+            f"oe-inferencex verify {path} --scores <their copy of the raster>. "
+            "Someone holding only the Studio result gets the raster with "
+            "olmoearth_scores_from_studio on the same result."
+        )
+        # No forbidden claim: the contract's ids are fixed
+        # (statistical_rules.FIXED_IDS), so the fact carries it.
+        facts.append(_studio_map_fact(bound))
     return rules.add_contract(
         out,
-        facts=[
-            whole,
-            rules.fact(
-                "certificate",
-                sentence,
-                certificate_path=path,
-                seed=block["seed"],
-                map_sha256=out["map_sha256"],
-            ),
-        ],
+        facts=facts,
         must_state=[
             f"The certificate holds for the map of {date}, as the issuer states, "
             "not for other dates or versions of the map.",
@@ -679,6 +803,10 @@ async def _verify_certificate(
             "map_path is the file the certificate names, so this shows only that "
             "they agree; pass your own copy to check it is that map."
         )
+    elif not verified and any(_decoded_from_studio(n) for n in named_maps):
+        # The certificate binds the raster decoded from a Studio zone's file:
+        # Studio's own file, given as the copy, fails with nothing changed.
+        must.append(STUDIO_COPY_NOTE)
     return rules.add_contract(
         out,
         facts=[

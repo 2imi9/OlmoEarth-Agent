@@ -23,6 +23,8 @@ import hashlib
 import io
 import json
 import logging
+import shutil
+import struct
 import sys
 import zipfile
 from pathlib import Path
@@ -37,7 +39,11 @@ from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools import scores_file, studio_scores
 from olmoearth_agent.tools import statistical_rules as rules
-from olmoearth_agent.tools.estimation import build_estimation_tools
+from olmoearth_agent.tools.certificate import STUDIO_COPY_NOTE, build_certificate_tools
+from olmoearth_agent.tools.estimation import (
+    SEED_FROM_STUDIO_RASTER_NOTE,
+    build_estimation_tools,
+)
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.scores_file import build_scores_file_tools
@@ -122,6 +128,7 @@ def _registry() -> ToolRegistry:
     registry.register_all(build_scores_file_tools())
     registry.register_all(build_review_set_tools())
     registry.register_all(build_estimation_tools())
+    registry.register_all(build_certificate_tools())
     return registry
 
 
@@ -878,6 +885,432 @@ async def test_a_zone_scores_file_feeds_the_review_set_and_a_certificate_plan(
     design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
     assert design["certificate"]["seed_rule"] == "from_map"
     assert len(design["sample"]["indices"]) == 20
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_certificate_on_a_studio_zone_binds_the_decoded_raster(
+    tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    """The review of 31 October: a certificate on a zone read from Studio's
+    files binds the raster the agent decoded (scores.tif), not Studio's native
+    file, which a Studio collaborator holds. The plan's seed note, the zone's
+    next step and the certificate's first next step say whose copy checks it;
+    the certificate names the raster (map_bound) and a fact says Studio's
+    native GeoTIFF does not verify; a failed check against a copy says that
+    Studio's native file fails without any tampering."""
+    bands = _topk_bands(9, size=32)
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", bands))
+    _mock(httpx_mock, _topk_record(), _zip(entries))
+    got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    (zone,) = got["zones"]
+    holder = "anyone holding the decoded raster this plan drew from"
+    plan = await _ok(
+        "olmoearth_plan_label_sample",
+        {
+            "scores_path": zone["scores_path"],
+            "budget": 60,
+            "design": "random",
+            "seed_from_map": True,
+            "alpha": 0.2,
+        },
+    )
+    assert plan["seed_from_map"]["note"] == SEED_FROM_STUDIO_RASTER_NOTE
+    assert holder in plan["next_steps"][-1]
+    design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
+    wrong = [0] * len(design["sample"]["indices"])
+    certified = await _ok(
+        "olmoearth_certify_zone",
+        {"design_path": plan["design_path"], "wrong": wrong, "alpha": 0.2},
+    )
+    assert certified["certified"] is True
+    assert any(holder in step for step in certified["next_steps"])
+    written = await _ok(
+        "olmoearth_write_certificate",
+        {"design_path": plan["design_path"], "wrong": wrong, "date": "2024-06-01"},
+    )
+    assert written["certificate_written"] is True
+    raster = (Path(zone["run_dir"]) / "scores.tif").resolve()
+    native = entries[f"{FOLDER}/result_epsg32610_0_native.tif"]
+    assert written["map_bound"] == {
+        "map_file": str(raster),
+        "decode": studio_scores.TOPK_DECODE,
+        "studio_file": "result_epsg32610_0_native.tif",
+        "studio_file_sha256": hashlib.sha256(native).hexdigest(),
+        "result_id_prefix": RID[:8],
+    }
+    (fact,) = [f for f in written["facts"] if f["id"] == "certificate_map_is_decoded"]
+    assert fact["map_file"] == str(raster)
+    assert fact["sentence"].startswith(
+        f"The map this certificate binds is the agent's decoded raster {raster} "
+    )
+    assert (
+        f"written from Studio result {RID[:8]}'s result_epsg32610_0_native.tif; "
+        "Studio's native GeoTIFF is not that map and does not verify."
+    ) in fact["sentence"]
+    first = written["next_steps"][0]
+    assert first.startswith(
+        "Anyone holding a copy of that decoded raster (map_bound.map_file), not "
+        "Studio's native file, checks it:"
+    )
+    assert "their copy of the map" not in first
+    assert len(written["must_state"]) == 3  # the fact holds it: must_state is full
+
+    # A copy of the decoded raster verifies; one with a pixel changed does
+    # not, and the result says Studio's native file fails without tampering.
+    same = _scores_root / "same_copy.tif"
+    shutil.copyfile(raster, same)
+    checked = await _ok(
+        "olmoearth_verify_certificate",
+        {"certificate_path": written["certificate_path"], "map_path": str(same)},
+    )
+    assert checked["verified"] is True
+    assert STUDIO_COPY_NOTE not in checked["must_state"]
+    with rasterio.open(raster) as src:
+        profile, pixels = src.profile, src.read()
+    pixels[:, 3, 3] = [0.3, 0.7]
+    changed = _scores_root / "changed_copy.tif"
+    with rasterio.open(changed, "w", **profile) as dst:
+        dst.write(pixels)
+    failed = await _ok(
+        "olmoearth_verify_certificate",
+        {"certificate_path": written["certificate_path"], "map_path": str(changed)},
+    )
+    assert failed["verified"] is False
+    assert STUDIO_COPY_NOTE in failed["must_state"]
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_with_no_patch_passed_each_zone_is_pooled_at_a_patch_that_fits(
+    tmp_path: Path, httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """live3: at the default patch 4 both kelp zones held more windows than a
+    ranking takes, and the call at patch 11 downloaded the zip again. With no
+    patch passed, a zone too large at 4 is pooled at the smallest patch that
+    fits, and a fact says so; a patch passed is used as given, and its
+    refusal names each zone's run_dir for olmoearth_scores_from_file."""
+    monkeypatch.setattr(scores_file, "MAX_WINDOWS", 10)
+    monkeypatch.setattr(studio_scores, "MAX_WINDOWS", 10)
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", _topk_bands(14)))
+    _mock(httpx_mock, _topk_record(), _zip(entries), reusable=True)
+    got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    (zone,) = got["zones"]
+    # 16 x 16 pixels: 16 windows of 4 px, over 10; 9 windows of 5 px.
+    assert zone["patch"] == 5 and zone["pooled"]["patch_px"] == 5
+    assert zone["pooled"]["grid"] == [3, 3]
+    (chosen,) = [f for f in got["facts"] if f["id"] == "studio_zone_patch"]
+    assert (chosen["patch"], chosen["windows_at_default_patch"]) == (5, 16)
+    assert chosen["sentence"] == (
+        "result_epsg32610_0_native.tif: at patch 4 it would hold 16 windows, more "
+        "than the 10 a ranking takes, so with no patch passed it was pooled at "
+        "patch 5, the smallest that fits."
+    )
+
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID, "patch": 4})
+    assert out["ok"] is False
+    error = out["error"]
+    assert "16 windows of 4 px exceed the 10 a ranking takes" in error
+    assert "pass patch >= 5" in error
+    assert f"(run_dir {zone['run_dir']})" in error
+    assert "pools a zone's run_dir at another patch with no download" in error
+
+
+def test_the_smallest_patch_is_the_first_whose_windows_a_ranking_takes() -> None:
+    """At most MAX_WINDOWS whole windows, from the start side up."""
+    assert scores_file.smallest_patch(64, 64) == scores_file.DEFAULT_PATCH
+    # 4000 x 4000: 250,000 windows of 8 px, 197,136 of 9 px.
+    assert scores_file.smallest_patch(4000, 4000) == 9
+    assert scores_file.smallest_patch(4000, 4000, 12) == 12
+
+
+# --------------------------------------------------------------------------- a native file that is no GeoTIFF
+
+
+@needs_extra
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'<VRTDataset rasterXSize="1" rasterYSize="1"><VRTRasterBand '
+        b'dataType="Byte" band="1"><SimpleSource><SourceFilename '
+        b'relativeToVRT="0">/etc/hosts</SourceFilename></SimpleSource>'
+        b"</VRTRasterBand></VRTDataset>",
+        b"\x89PNG\r\n\x1a\n" + b"\0" * 64,
+    ],
+    ids=["vrt", "png"],
+)
+@pytest.mark.asyncio
+async def test_a_native_file_that_is_no_tiff_is_refused_unread(
+    payload: bytes, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    """GDAL picks a driver from the content: a VRT under the native name would
+    read another file or a URL. Only a TIFF by its first bytes is opened, and
+    only with the GeoTIFF driver."""
+    entries = {
+        f"{FOLDER}/README.md": README_TEXT.encode(),
+        f"{FOLDER}/result_epsg32610_0_native.tif": payload,
+    }
+    _mock(httpx_mock, _topk_record(), _zip(entries))
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False
+    error = out["error"]
+    assert "result_epsg32610_0_native.tif: not a GeoTIFF by its first bytes" in error
+    assert "nothing was read" in error
+    assert not (_scores_root / "studio_results").exists()
+
+
+# --------------------------------------------------------------------------- the decode guards
+
+
+async def _refused(
+    httpx_mock: HTTPXMock, root: Path, entries: dict[str, bytes], text: str
+) -> None:
+    """The tool refuses the zip with ``text`` and writes no zone."""
+    _mock(httpx_mock, _topk_record(), _zip(entries))
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False, out
+    assert text in out["error"], out["error"]
+    assert not (root / "studio_results").exists()
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_class_value_not_declared_on_a_valid_pixel_is_refused(
+    tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    """The README says only that class indices "correspond to the label field
+    values": a class band holding another value is refused, not decoded."""
+    bands = _topk_bands(15)
+    bands[0, 3, 3] = 2
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", bands))
+    await _refused(
+        httpx_mock,
+        _scores_root,
+        entries,
+        "rank 1's class band holds [2] on valid pixels; the result declares the "
+        "classes [0, 1]",
+    )
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_one_class_at_two_ranks_of_a_valid_pixel_is_refused(
+    tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    bands = _topk_bands(16)
+    bands[2, 3, 3] = bands[0, 3, 3]
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", bands))
+    await _refused(
+        httpx_mock,
+        _scores_root,
+        entries,
+        "ranks 1 and 2 name one class on 1 valid pixels",
+    )
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_lower_rank_scored_above_a_higher_one_is_refused_where_valid(
+    tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    """On a valid pixel only: row 2 is invalid (band 1 is 255), and a rank-2
+    score above rank 1's there is never read."""
+    bands = _topk_bands(17)
+    bands[3, 3, 3] = int(bands[1, 3, 3]) + 1
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", bands))
+    await _refused(
+        httpx_mock,
+        _scores_root,
+        entries,
+        "rank 2's score is above rank 1's on 1 valid pixels",
+    )
+    invalid = _topk_bands(17)
+    invalid[3, 2, :] = 255  # rank 1 holds 200 on that invalid row
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", invalid))
+    _mock(httpx_mock, _topk_record(), _zip(entries))
+    got = await _ok("olmoearth_scores_from_studio", {"result_id": RID})
+    assert got["n_pooled"] == 1
+
+
+@needs_extra
+@pytest.mark.parametrize("kind", ["three_bands", "float32"])
+@pytest.mark.asyncio
+async def test_a_file_that_is_not_2k_uint8_bands_is_refused(
+    kind: str, tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    bands = _topk_bands(18)
+    held = bands[:3] if kind == "three_bands" else bands.astype(np.float32)
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", held))
+    await _refused(
+        httpx_mock, _scores_root, entries, "a top-2 file holds 4 uint8 bands"
+    )
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_zone_over_the_value_cap_is_refused_before_it_is_decoded(
+    tmp_path: Path,
+    _scores_root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MAX_ENTRY_BYTES was computed at import, so the entry cap does not trip
+    first."""
+    monkeypatch.setattr(studio_scores.scores_file, "MAX_VALUES", 100)
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", _topk_bands(19)))
+    await _refused(
+        httpx_mock,
+        _scores_root,
+        entries,
+        "probability raster holds 2 x 16 x 16 values, more than 100",
+    )
+
+
+def test_the_plan_refuses_class_values_a_uint8_class_band_cannot_hold() -> None:
+    """255 is no-data, a fraction is no class value, and a value given twice
+    names two channels for one class."""
+    for values, text in (
+        ([{"value": 255, "label": "x"}, _CLASSES[1]], "outside 0 to 254"),
+        ([{"value": 1.5, "label": "x"}, _CLASSES[1]], "outside 0 to 254"),
+        (
+            [{"value": 0, "label": "a"}, {"value": 0, "label": "b"}],
+            "declares a class value twice",
+        ),
+    ):
+        record = _topk_record()
+        field = record["result_metadata"]["classification_fields"][0]
+        field["allowed_values"] = values
+        with pytest.raises(ValueError, match=text):
+            files_plan(record)
+
+
+def _flag_encrypted(zipped: bytes, name: str) -> bytes:
+    """``zipped`` with bit 0x1 (encrypted) set on ``name``'s entry, in its
+    central-directory header and its local header."""
+    data = bytearray(zipped)
+    at = data.find(b"PK\x01\x02")
+    while at >= 0:
+        size = int.from_bytes(data[at + 28 : at + 30], "little")
+        if bytes(data[at + 46 : at + 46 + size]) == name.encode():
+            data[at + 8] |= 0x1
+            local = int.from_bytes(data[at + 42 : at + 46], "little")
+            data[local + 6] |= 0x1
+            return bytes(data)
+        at = data.find(b"PK\x01\x02", at + 4)
+    raise AssertionError(f"{name} is not in the zip")
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_an_encrypted_native_entry_is_refused_before_it_is_read(
+    tmp_path: Path, _scores_root: Path, httpx_mock: HTTPXMock
+) -> None:
+    name = f"{FOLDER}/result_epsg32610_0_native.tif"
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", _topk_bands(20)))
+    _mock(httpx_mock, _topk_record(), _flag_encrypted(_zip(entries), name))
+    out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    assert out["ok"] is False
+    error = out["error"]
+    assert "result_epsg32610_0_native.tif is encrypted; nothing was read" in error
+    assert not (_scores_root / "studio_results").exists()
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_readme_over_its_cap_or_a_native_file_named_twice_is_refused(
+    tmp_path: Path,
+    _scores_root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", _topk_bands(21)))
+    native = entries[f"{FOLDER}/result_epsg32610_0_native.tif"]
+    twice = {**entries, "other/result_epsg32610_0_native.tif": native}
+    await _refused(
+        httpx_mock,
+        _scores_root,
+        twice,
+        "the files zip holds result_epsg32610_0_native.tif twice",
+    )
+    monkeypatch.setattr(studio_scores, "MAX_README_BYTES", 16)
+    await _refused(
+        httpx_mock,
+        _scores_root,
+        entries,
+        f"README.md is {len(README_TEXT.encode())} bytes, more than the 16",
+    )
+
+
+# --------------------------------------------------------------------------- a ZIP64 end record
+
+
+def _with_zip64(zipped: bytes, *, classic: int, decoy: int | None = None) -> bytes:
+    """``zipped`` with a ZIP64 end record and locator before its end record.
+
+    The ZIP64 record holds the real size and offset of the list of entries,
+    in the 56 bytes before the locator, where CPython's zipfile reads it,
+    and the classic end record declares ``classic`` bytes. With ``decoy``, a
+    second ZIP64 record declaring ``decoy`` bytes comes first and the
+    locator points at it, as a reader that follows the locator reads.
+    """
+    end = zipped.rfind(b"PK\x05\x06")
+    body, record = zipped[:end], bytearray(zipped[end:])
+    count = int.from_bytes(record[10:12], "little")
+    size = int.from_bytes(record[12:16], "little")
+    offset = int.from_bytes(record[16:20], "little")
+
+    def zip64(declared: int) -> bytes:
+        fields = (44, 45, 45, 0, 0, count, count, declared, offset)
+        return b"PK\x06\x06" + struct.pack("<QHHIIQQQQ", *fields)
+
+    first = zip64(decoy) if decoy is not None else b""
+    real = zip64(size)
+    # The locator points at the first ZIP64 record: the decoy when there is
+    # one, else the real one, both right after the body.
+    locator = b"PK\x06\x07" + struct.pack("<IQI", 0, len(body), 1)
+    record[12:16] = classic.to_bytes(4, "little")
+    return body + first + real + locator + bytes(record)
+
+
+def test_a_zip64_record_declares_the_size_zipfile_reads() -> None:
+    """The review of 31 October: zipfile takes the list of entries' size from
+    a ZIP64 record whenever a locator precedes the end record, whatever the
+    32-bit size says, so a small 32-bit size could pass the cap."""
+    zipped = _zip({f"{FOLDER}/README.md": b"r", f"{FOLDER}/a.tif": b"t"})
+    real = studio_scores.directory_size(zipped)
+    assert real is not None and real > 10
+    patched = _with_zip64(zipped, classic=10)
+    with zipfile.ZipFile(io.BytesIO(patched)) as zf:  # zipfile reads it whole
+        assert len(zf.infolist()) == 2
+    assert studio_scores.directory_size(patched) == real
+    # The locator pointing at a smaller decoy: the larger size is taken.
+    decoyed = _with_zip64(zipped, classic=10, decoy=10)
+    assert studio_scores.directory_size(decoyed) == real
+    # A 32-bit size deferring to a ZIP64 record that is not there.
+    deferred = bytearray(zipped)
+    end = zipped.rfind(b"PK\x05\x06")
+    deferred[end + 12 : end + 16] = (0xFFFFFFFF).to_bytes(4, "little")
+    assert studio_scores.directory_size(bytes(deferred)) is None
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_zip64_size_over_the_cap_is_refused_before_zipfile_reads(
+    _scores_root: Path, httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(studio_scores, "MAX_DIRECTORY_BYTES", 64)
+    name = f"{FOLDER}/result_epsg32610_0_native.tif"
+    zipped = _zip({f"{FOLDER}/README.md": README_TEXT.encode(), name: b"\0" * 1024})
+    for patched in (
+        _with_zip64(zipped, classic=10),
+        _with_zip64(zipped, classic=10, decoy=10),
+    ):
+        _mock(httpx_mock, _topk_record(), patched)
+        out = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+        assert out["ok"] is False
+        assert "list of entries is" in out["error"]
+        assert "more than the 64" in out["error"]
+    assert not (_scores_root / "studio_results").exists()
 
 
 # --------------------------------------------------------------------------- a [0, 1] score

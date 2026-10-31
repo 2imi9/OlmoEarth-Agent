@@ -11,8 +11,9 @@ copied per tool and are now one implementation each:
 - :func:`sample_records` -- bounded-concurrency sampling (a semaphore of
   :data:`SAMPLE_CONCURRENCY`), a failed call resolving to ``None`` and a
   point Studio answers with HTTP 404, where it answered other points of the
-  same result, to an :class:`OutsideRecord` (read as outside the result's
-  files, status :data:`OUTSIDE`);
+  same result, to an :class:`OutsideRecord` (read as a point where Studio
+  serves no file, status :data:`OUTSIDE`; which file covers which point was
+  not tested);
 - :func:`read_sample` -- one band's value with the no-data decision of
   :func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata` applied, so a
   sentinel such as ``-1.0`` on a ``[0, 1]`` band never reaches a statistic;
@@ -57,14 +58,19 @@ SAMPLE_CONCURRENCY = 8
 
 #: Sample status values returned by :func:`read_sample`.
 OK, NODATA, FAILED = "ok", "nodata", "failed"
-#: The status of a point read as outside the result's files
-#: (:class:`OutsideRecord`): Studio answered its pixel-value call with HTTP
-#: 404 while answering other points of the result. :data:`FAILED` is every
-#: other failed call.
+#: The status of a point Studio answered with HTTP 404 while answering other
+#: points of the result (:class:`OutsideRecord`), read as a point where no
+#: file is served; which file covers which point was not tested.
+#: :data:`FAILED` is every other failed call.
 OUTSIDE = "outside"
 
-#: What a point of status :data:`OUTSIDE` is, as the sampling tools state it.
-OUTSIDE_REASON = "outside the result's files (Studio answered 404)"
+#: What a point of status :data:`OUTSIDE` is, as the sampling tools state it:
+#: what was observed (a 404 beside answered points), not where the result's
+#: files lie, which no probe tested.
+OUTSIDE_REASON = (
+    "answered with HTTP 404 (not_found_error) by Studio, which answered other "
+    "points of the result"
+)
 
 
 class OutsideRecord(dict[str, Any]):
@@ -74,23 +80,28 @@ class OutsideRecord(dict[str, Any]):
     the review set's 16 x 16 grid and got 60 answers of HTTP 404
     ``not_found_error`` beside 196 answers of 200, the same count the live
     run had reported as 60 failed calls. A 404 where the same result answered
-    other points is read as a point outside the result's files and counted on
-    its own (:data:`OUTSIDE`); the probe did not test which file covers which
-    point. The record holds no band, so a reader that does not ask for its
-    status finds no value in it, as in a record with no bands.
+    other points is read as a point where Studio serves no file and counted
+    on its own (:data:`OUTSIDE`); the probe did not test which file covers
+    which point, so the tools state the 404 they saw (:data:`OUTSIDE_REASON`),
+    not that the point lies outside the result's files. The record holds no
+    band, so a reader that does not ask for its status finds no value in it,
+    as in a record with no bands.
     """
 
 
 def dropped_text(n_nodata: int, n_failed: int, n_outside: int = 0) -> str:
-    """The dropped windows in words: ``3 no-data, 2 failed``, then those outside.
+    """The dropped windows in words: ``3 no-data, 2 failed``, then the 404s.
 
-    The windows outside the result's files are named only when there are
-    some, so a sampling with none reads as it did before they were counted
-    apart from the failed calls.
+    The windows Studio answered with HTTP 404 (:data:`OUTSIDE`) are named
+    only when there are some, so a sampling with none reads as it did before
+    they were counted apart from the failed calls.
     """
     text = f"{n_nodata} no-data, {n_failed} failed"
     if n_outside:
-        text += f", {n_outside} outside the result's files, where Studio answered 404"
+        text += (
+            f", {n_outside} answered HTTP 404 (not_found_error) where Studio "
+            "answered other points"
+        )
     return text
 
 
@@ -198,8 +209,12 @@ def summarize_model(record: dict[str, Any]) -> dict[str, Any]:
     val and test), else None: not known from the record. exp86 round 9
     (B3/studio run 1) said "no ground-truth labels exist" of two models whose
     records named a label field of the user's project; the tools had passed
-    on only name, type and output. No person's id is read (the record's
-    ``requester_id`` is left out).
+    on only name, type and output. ``split_field_named`` says whether the
+    record also names a split field (``split_field_id``): then which of it
+    and the proportions training followed is not recorded, and the proportions
+    are not stated as the training split
+    (``statistical_rules.labels_in_studio_fact``). No person's id is read
+    (the record's ``requester_id`` is left out).
     """
     wiz = record.get("wizard_answers") or {}
     out: dict[str, Any] = {
@@ -212,6 +227,7 @@ def summarize_model(record: dict[str, Any]) -> dict[str, Any]:
     }
     if wiz.get("label_field_id"):
         out["label_field_id"] = wiz.get("label_field_id")
+        out["split_field_named"] = bool(wiz.get("split_field_id"))
         split = wiz.get("split_proportions")
         if isinstance(split, dict):
             out["split"] = {
@@ -354,7 +370,7 @@ async def sample_records(
     """Sample one result at every ``(lon, lat)``; a failed call yields ``None``.
 
     A point Studio answers with HTTP 404 yields an :class:`OutsideRecord`
-    (:data:`OUTSIDE`, read as outside the result's files) when the same
+    (:data:`OUTSIDE`, read as a point where no file is served) when the same
     result answered at least one other point; with no answer at any point,
     every 404 stays ``None``: a removed result, or files Studio no longer
     serves, answer 404 everywhere, and that says nothing of where the files
@@ -368,7 +384,7 @@ async def sample_records(
             try:
                 return await ctx.studio.pixel_value(result_id, lon, lat)
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 404:  # no file at the point
+                if exc.response.status_code == 404:  # read as no file served there
                     return OutsideRecord()
                 return None
             except Exception:  # transient or any other failure -> drop the point
@@ -393,7 +409,7 @@ def read_sample(
     ``status`` is :data:`OK`, :data:`NODATA` (no band, or
     :func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata` said so),
     :data:`OUTSIDE` (Studio answered 404 where it answered other points,
-    read as outside the result's files, :class:`OutsideRecord`) or
+    read as a point where no file is served, :class:`OutsideRecord`) or
     :data:`FAILED` (the pixel-value call itself failed otherwise). ``value``
     is ``None`` unless the status is :data:`OK`; a class reads as its label.
     With ``exact``, a named property is read from its own band only
@@ -739,8 +755,8 @@ def read_topk(
     would read the class band for a missing score.
 
     ``status`` is :data:`FAILED` for a failed call, :data:`OUTSIDE` for a
-    point read as outside the result's files (Studio answered 404,
-    :class:`OutsideRecord`), :data:`NODATA` when the
+    point Studio answered with HTTP 404 where it answered others
+    (:class:`OutsideRecord`), :data:`NODATA` when the
     rank-1 class band is missing or no-data
     (:func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata`, the
     band judged as a class band whether or not the result declares it, so a

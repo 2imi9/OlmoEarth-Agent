@@ -974,9 +974,10 @@ def test_a_budget_error_says_raised_for_a_grid_below_two() -> None:
 
 
 def test_a_budget_error_names_the_points_outside_the_results_files() -> None:
-    """The review of 31 October: points read as outside the result's files
-    (Studio answered 404) are neither no-data nor failed, and the refusal
-    names them when there are some; with none, it reads as it did."""
+    """The review of 31 October: points Studio answered with HTTP 404 (where
+    it answered others) are neither no-data nor failed, and the refusal names
+    them when there are some, by the 404 seen, not as outside the result's
+    files, which no probe tested; with none, it reads as it did."""
     from olmoearth_agent.tools.estimation import _budget_refusal, population_from_rows
 
     def message(n_outside: int) -> str:
@@ -989,11 +990,12 @@ def test_a_budget_error_names_the_points_outside_the_results_files() -> None:
         return _budget_refusal(5, pop)
 
     outside = message(1)
-    assert "(the rest were no-data, failed or outside the result's files)" in outside
+    assert "(the rest were no-data, failed, or answered HTTP 404)" in outside
     assert (
-        "fewer once no-data and points outside the result's files are dropped"
+        "fewer once no-data and points Studio answers with HTTP 404 are dropped"
         in outside
     )
+    assert "outside the result's files" not in outside
     assert "(the rest were no-data or failed)" in message(0)
 
 

@@ -334,6 +334,39 @@ async def test_submit_prediction_tool_asks_for_top_k_scores(
 
 
 @pytest.mark.asyncio
+async def test_submit_prediction_refuses_top_k_one_before_any_request(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """Every reader of top-k scores takes rank 1 minus rank 2: one rank would
+    be a paid prediction that no tool reads."""
+    from olmoearth_agent.llm.types import ToolCall
+    from olmoearth_agent.studio.client import StudioClient, StudioConfig
+    from olmoearth_agent.tools.registry import ToolRegistry
+
+    spec = _tool("olmoearth_submit_prediction").spec
+    assert spec.parameters["properties"]["probability_top_k"]["minimum"] == 2
+    registry = ToolRegistry()
+    registry.register_all(build_predict_tools())
+    args = {
+        "name": "n",
+        "project_id": "pr",
+        "area_id": "a",
+        "model_id": "m",
+        "start_time": "2022-01-01",
+        "end_time": "2024-12-31",
+        "probability_top_k": 1,
+    }
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        out = await registry.dispatch(
+            ToolCall(id="c1", name="olmoearth_submit_prediction", arguments=args),
+            ToolContext(studio=studio, state=ThreadState()),
+        )
+    assert out["ok"] is False
+    assert "probability_top_k must be an integer of 2 or more" in out["error"]
+    assert httpx_mock.get_requests() == []
+
+
+@pytest.mark.asyncio
 async def test_fetch_results_filters_by_prediction_id(
     httpx_mock: HTTPXMock,
 ) -> None:

@@ -40,9 +40,13 @@ others.
 
 What the counts are for, the result's ``must_state``: Studio records no
 random design for its annotations, so they give no design-based error rate
-(``olmoearth_plan_label_sample`` draws one); those of split train or val
-created and updated before the model's creation fit or tuned it; those of
-split test were held out only if training honoured the split field. No id,
+(``olmoearth_plan_label_sample`` draws one); if Studio trained on what the
+selectors select (not confirmed, above), those of split train or val created
+and updated before the model's creation fit or tuned it, which is stated
+with that condition; those of split test were held out only if training
+honoured the split field. A selector not read (one with no filter, or past
+:data:`_MAX_SELECTORS`) may select annotations the counts miss, so later
+annotations are then not ruled out. No id,
 geometry, coordinate, free-text value or person's id is returned, nor
 Studio's error text for a search, which may quote the selector: annotations
 are counted, never listed, and an annotation's id is a key of the count's
@@ -170,14 +174,18 @@ NOT_A_SAMPLE = (
 )
 #: A replayed selector whose model record names a split field, every
 #: annotation read created and last updated before the model's creation.
+#: That training used what the selector selects is assumed (the module
+#: docstring), so the sentence says so.
 TRAIN_VAL_USED = (
-    "Train and val annotations of the training selector, none created or "
-    "updated after the model's creation, fit or tuned it."
+    "If training used the record's selector, its train and val annotations, "
+    "none created or updated after the model's creation, fit or tuned it."
 )
-#: The same, when some were created or updated after it, or that is unknown.
+#: The same, when some were created or updated after it, or that is unknown
+#: (a read not complete, a selector not read).
 TRAIN_VAL_BEFORE = (
-    "Train and val annotations of the training selector created and updated "
-    "before the model's creation fit or tuned it; later ones may not have."
+    "Assuming training used the record's selector, train and val annotations "
+    "created and updated before the model's creation fit or tuned it; later "
+    "ones may not."
 )
 #: A split field named, and proportions with a test share above 0 or none.
 TEST_HELD_OUT_IF = (
@@ -846,10 +854,11 @@ def _model_must_state(
 ) -> list[str]:
     """What a replayed selector's annotations were and were not used for.
 
-    By the record: train and val fit or tuned the model, unless created or
-    updated since its creation (``newer``); test was held out only if
-    training honoured the split field, and with a test share of 0 the
-    proportions hold none out. With no split field, a test share of 0 means
+    By the record, if Studio trained on what its selector selects (not
+    confirmed): train and val fit or tuned the model, unless created or
+    updated since its creation, or not all read (``newer``); test was held
+    out only if training honoured the split field, and with a test share of
+    0 the proportions hold none out. With no split field, a test share of 0 means
     no annotation is recorded as held out.
     """
     split = wizard.get("split_proportions")
@@ -955,7 +964,11 @@ async def _model_inventory(ctx: ToolContext, source: str, ident: str) -> dict[st
         notes.append(SPLIT_NOTE)
     if notes:
         out["selector_notes"] = notes
-    newer = tally.newer or not summary["complete"]
+    # A selector not read (no filter, or past the cap) may select annotations
+    # the counts miss: later ones are then not ruled out. A limit or offset
+    # not replayed only widens the set counted.
+    unread = len(selectors) > _MAX_SELECTORS or len(filters) < len(replays)
+    newer = tally.newer or not summary["complete"] or unread
     return _contract(out, _model_must_state(split_field, wizard, newer=newer))
 
 

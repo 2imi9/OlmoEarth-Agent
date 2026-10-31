@@ -1420,6 +1420,7 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
         ],
         [
             "A class map has no confidence to rank or certify.",
+            "A class map without top-k scores has no confidence to rank or certify.",
             "No zone of this class map can be certified.",
             "Certification needs per-window probabilities, which Studio does not "
             "return.",

@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import stat
+import time
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import asdict
@@ -29,8 +31,10 @@ from typing import Any, cast
 import pytest
 
 from olmoearth_agent.bridge.errors import BridgeError, BridgeHalt
+from olmoearth_agent.bridge.replay import replayed_error
 from olmoearth_agent.bridge.scripted import ModelCall, RecordedResponse, ScriptedLLM
-from olmoearth_agent.bridge.session import begin, step
+from olmoearth_agent.bridge.session import begin, render_text, show, step
+from olmoearth_agent.bridge.store import STALE_LOCK_SECONDS
 from olmoearth_agent.harness import spill
 from olmoearth_agent.harness.agent import (
     CHECK_ANSWER_ENV,
@@ -47,8 +51,14 @@ from olmoearth_agent.llm.presets import (
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
 from olmoearth_agent.provenance.log import ProvenanceLog
 from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
-from olmoearth_agent.studio.client import StudioClient
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
+from olmoearth_agent.skills.registry import READ_ONLY_ENV
+from olmoearth_agent.studio.client import StudioAccessError, StudioClient
+from olmoearth_agent.tools.registry import (
+    RegisteredTool,
+    ToolContext,
+    ToolRegistry,
+    own_hint,
+)
 
 Factory = Callable[[], ToolRegistry]
 
@@ -647,6 +657,92 @@ async def test_a_setting_s_card_line_reaches_the_model_through_the_replay(
     assert [r["request_sha256"] for r in recorded] == stub.fingerprints
 
 
+def _refused_key_registry(calls: dict[str, int]) -> ToolRegistry:
+    """measure and refuse, and write, which Studio refuses as a read-only key's."""
+    registry = _registry(calls)
+
+    async def write(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        calls["write"] = calls.get("write", 0) + 1
+        raise StudioAccessError("POST", "/projects", 403, "permission_error")
+
+    spec = ToolSpec("write", "create a project", _EMPTY_SCHEMA)
+    registry.register(RegisteredTool(spec, write))
+    return registry
+
+
+@pytest.mark.asyncio
+async def test_a_refused_key_s_hint_reaches_the_model_through_the_replay(
+    tmp_path: Path,
+) -> None:
+    # The registry gives a refused key's own hint (stop, report the refusal)
+    # in place of the generic one (check the ids). The bridge raises every
+    # handler error from its record, the live call's too, so the record keeps
+    # the hint and the replayed error carries it.
+    responses = [_calls(("write", {})), {"content": _PLAIN}]
+    direct_calls: dict[str, int] = {}
+    stub = _Stub([_as_chat(k, r) for k, r in enumerate(responses, 1)])
+    agent = LeadAgent(
+        stub,  # type: ignore[arg-type]
+        _refused_key_registry(direct_calls),
+        _studio(),
+        state=ThreadState(provenance=ProvenanceLog(run_id="direct")),
+        skill_index="",
+        memory_block="",
+        local=False,
+        check_claims=False,
+        surface="cli",
+    )
+    events = [e async for e in agent.run_stream(_BRIEF)]
+    live = StudioAccessError("POST", "/projects", 403, "permission_error").hint
+    (direct,) = [e["result"] for e in events if e["type"] == "tool_result"]
+    assert direct["hint"] == live and "Do not retry it" in live
+    assert "Check that referenced ids exist" not in direct["hint"]
+
+    bridge_calls: dict[str, int] = {}
+    factory = partial(_refused_key_registry, bridge_calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    # The live call: the envelope the model reads is the live loop's.
+    second = await _step(run, responses[0], factory)
+    envelope = json.loads(second["messages"][0]["content"])
+    assert envelope == json.loads(json.dumps(direct))
+    (record,) = _jsonl(run / "tool_cache.jsonl")
+    assert record["error"]["type"] == "StudioAccessError"
+    assert record["error"]["hint"] == live
+    # A later step serves it from the cache: the events are the live loop's.
+    final = await _step(run, responses[1], factory)
+    assert final["status"] == "final" and final["content"] == _PLAIN
+    assert _jsonl(run / "events.jsonl") == json.loads(json.dumps(events, default=str))
+    recorded = _jsonl(run / "responses.jsonl")
+    assert [r["request_sha256"] for r in recorded] == stub.fingerprints
+    assert direct_calls == bridge_calls == {"write": 1}
+
+
+@pytest.mark.asyncio
+async def test_only_a_refused_key_s_hint_is_recorded_and_replayed(
+    tmp_path: Path,
+) -> None:
+    # The refusal with a contract keeps the generic hint, as live, and its
+    # record keeps no hint.
+    calls: dict[str, int] = {}
+    factory = partial(_refused_key_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    view = await _step(run, _calls(("refuse", {}), ("write", {})), factory)
+    tool = [m for m in view["messages"] if m["role"] == "tool"]
+    refused, written = (json.loads(m["content"]) for m in tool)
+    assert "Check that referenced ids exist" in refused["hint"]
+    assert written["hint"] == StudioAccessError.hint
+    first, second = _jsonl(run / "tool_cache.jsonl")
+    assert "hint" not in first["error"] and second["error"]["hint"]
+    # A record cached before the hint was kept replays with none, so the
+    # registry gives the generic hint, as it did when the record was made.
+    old = replayed_error({"type": "StudioAccessError", "message": "refused"})
+    assert old.hint is None and own_hint(old) is None
+    kept = replayed_error({**second["error"]})
+    assert own_hint(kept) == StudioAccessError.hint
+
+
 @pytest.mark.asyncio
 async def test_the_claim_check_s_call_is_refused() -> None:
     llm = ScriptedLLM([])
@@ -687,3 +783,244 @@ async def test_a_run_takes_one_response_per_pending_call(tmp_path: Path) -> None
         await _step(run, {"content": "Again."}, factory)
     with pytest.raises(BridgeError, match="the run has ended"):
         await _step(run, None, factory)
+
+
+@pytest.mark.asyncio
+async def test_a_run_directory_that_existed_empty_is_made_private(
+    tmp_path: Path,
+) -> None:
+    # mkdir leaves an existing directory's mode as it was; begin sets 0700.
+    run = tmp_path / "made"
+    run.mkdir()
+    os.chmod(run, 0o755)
+    await _begin(run, partial(_registry, {}))
+    assert stat.S_IMODE(run.stat().st_mode) == 0o700
+    # A symlink is refused: where it points is not this run's to set.
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target)
+    with pytest.raises(BridgeError, match="is a symlink"):
+        await _begin(link, partial(_registry, {}))
+    assert list(target.iterdir()) == []
+
+
+_HELD = {
+    "host": "c0101",
+    "pid": 7,
+    "job": "1605000",
+    "started": "2026-10-31T12:00:00+00:00",
+}
+
+
+@pytest.mark.asyncio
+async def test_a_second_step_is_refused_while_one_holds_the_run(
+    tmp_path: Path,
+) -> None:
+    # After a dropped ssh connection the first step may still run on the
+    # cluster; a step sent again meanwhile must not replay the run too.
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    first = await _begin(run, factory)
+    lock = run / "step.lock"
+    assert not lock.exists()  # begin's step released it
+    lock.write_text(json.dumps(_HELD))
+    pending = (run / "pending.json").read_text()
+    running = (
+        r"a step is still running on this run \(since 2026-10-31T12:00:00\+00:00, "
+        r"job 1605000, host c0101\)"
+    )
+    with pytest.raises(BridgeError, match=running):
+        await _step(run, _MEASURE_A, factory)
+    assert calls == {} and (run / "pending.json").read_text() == pending
+    assert not (run / "responses.jsonl").exists()
+    assert json.loads(lock.read_text()) == _HELD  # the holder's, untouched
+    # show says so: the call shown is the one that step is answering.
+    shown = show(run)
+    assert shown["step_running"] == _HELD
+    assert shown["model_call"] == first["model_call"] == 1
+    assert "do not send the response again" in render_text(shown)
+    # A lock older than srun's limit is a dead step's: the next step takes
+    # it over, and removes it at its end.
+    old = time.time() - STALE_LOCK_SECONDS - 60
+    os.utime(lock, (old, old))
+    assert "step_running" not in show(run)
+    second = await _step(run, _MEASURE_A, factory)
+    assert second["model_call"] == 2 and calls == {"measure": 1}
+    assert not lock.exists()
+
+
+@pytest.mark.asyncio
+async def test_a_response_for_another_call_is_refused_before_anything_runs(
+    tmp_path: Path,
+) -> None:
+    # A response sent again after its call was answered (the first step
+    # finished after all) would otherwise answer the next call.
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    second = await step(
+        run, _MEASURE_A, call=1, registry_factory=factory, studio=_studio()
+    )
+    assert second["model_call"] == 2
+    pending = (run / "pending.json").read_text()
+    with pytest.raises(
+        BridgeError,
+        match="the response answers model call 1, and the pending call is model "
+        "call 2: nothing ran",
+    ):
+        await step(run, _MEASURE_A, call=1, registry_factory=factory, studio=_studio())
+    assert calls == {"measure": 1}
+    assert len(_jsonl(run / "responses.jsonl")) == 1
+    assert (run / "pending.json").read_text() == pending
+
+
+@pytest.mark.asyncio
+async def test_the_read_only_switch_is_kept_for_the_whole_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # It decides the tools offered and the card; the wrapper sets it unless
+    # OE_BRIDGE_ALLOW_WRITES=1, and a step with the other setting is refused.
+    monkeypatch.delenv(READ_ONLY_ENV, raising=False)
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    brief = json.loads((run / "brief.json").read_text())
+    assert brief["settings"]["read_only"] is False
+    monkeypatch.setenv(READ_ONLY_ENV, "1")
+    with pytest.raises(
+        BridgeError, match="read_only was False when the run began and is True now"
+    ):
+        await _step(run, _MEASURE_A, factory)
+    assert calls == {}
+    monkeypatch.delenv(READ_ONLY_ENV)
+    assert (await _step(run, _MEASURE_A, factory))["model_call"] == 2
+
+
+def _lines_ok(path: Path) -> bool:
+    """Whether every line of a JSON-lines file is whole: it ends with "\\n"."""
+    text = path.read_text(encoding="utf-8")
+    return text.endswith("\n") and all(
+        isinstance(json.loads(line), dict) for line in text.split("\n") if line
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_cut_off_tool_record_is_dropped_and_its_call_runs_again(
+    tmp_path: Path,
+) -> None:
+    # A step killed while it appended a record leaves half a line, which
+    # every later read would fail on; that record was never saved.
+    calls: dict[str, int] = {}
+    broken = {"on": True}
+    factory = partial(_flaky, calls, broken)
+    run = tmp_path / "run"
+    await _failed(run, factory)
+    cache = run / "tool_cache.jsonl"
+    with cache.open("a", encoding="utf-8") as fh:
+        fh.write('{"call": 2, "model_call": 1, "name": "export", "argu')
+    broken["on"] = False
+    second = await _step(run, _MEASURE_EXPORT, factory)
+    assert second["model_call"] == 2 and "dropped_tool_calls" not in second
+    assert calls == {"measure": 1, "export": 2}
+    assert [r["name"] for r in _jsonl(cache)] == ["measure", "export"]
+    assert _lines_ok(cache)
+
+
+@pytest.mark.asyncio
+async def test_a_cut_off_response_counts_as_not_saved(tmp_path: Path) -> None:
+    # Killed while it appended the response, before it wrote pending.json:
+    # the same response is taken as new, and its tool call is served.
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    pending = (run / "pending.json").read_text()
+    second = await _step(run, _MEASURE_A, factory)
+    responses = run / "responses.jsonl"
+    line = responses.read_text(encoding="utf-8")
+    responses.write_text(line[: len(line) // 2], encoding="utf-8")
+    (run / "pending.json").write_text(pending)
+    assert await _step(run, _MEASURE_A, factory) == second
+    assert calls == {"measure": 1}
+    assert _jsonl(responses) == [json.loads(line)]
+    assert _lines_ok(responses)
+
+
+@pytest.mark.asyncio
+async def test_a_line_cut_inside_a_character_is_dropped_whole(
+    tmp_path: Path,
+) -> None:
+    # Split as bytes: a cut inside U+0085's two bytes is no decode error.
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    cache = run / "tool_cache.jsonl"
+    fragment = '{"call": 1, "model_call": 1, "name": "measure", "result": "Karst\x85'
+    cache.write_bytes(fragment.encode("utf-8")[:-1])
+    second = await _step(run, _MEASURE_A, factory)
+    assert second["model_call"] == 2 and calls == {"measure": 1}
+    (record,) = _jsonl(cache)
+    assert record["result"] == _MEASURED
+    assert _lines_ok(cache)
+
+
+@pytest.mark.asyncio
+async def test_the_view_carries_the_tool_specs_when_they_are_new(
+    tmp_path: Path,
+) -> None:
+    # The capability card names required arguments only, and an argument a
+    # spec does not declare is ignored: the model gets every spec on the first
+    # call and whenever the tools offered change.
+    factory = partial(_skill_registry, {})
+    run = tmp_path / "run"
+    first = await _begin(run, factory)
+    assert first["tool_specs_changed"] is True
+    specs = {s["name"]: s for s in first["tool_specs"]}
+    assert [s["name"] for s in first["tool_specs"]] == first["tools"]
+    measure = {"name": "measure", "description": "count a map's windows"}
+    assert specs["measure"] == {**measure, "parameters": _MAP_SCHEMA}
+    text = render_text(first)
+    assert "-- tool specs (use only the argument names each declares) --" in text
+    assert "- measure: count a map's windows" in text
+    assert f"  parameters: {json.dumps(_MAP_SCHEMA)}" in text
+
+    second = await _step(run, _MEASURE_A, factory)
+    assert second["tool_specs_changed"] is False and "tool_specs" not in second
+    assert "-- tool specs unchanged since the last call --" in render_text(second)
+
+    load = _calls(("olmoearth_load_skill", {"name": "olmoearth-rslearn"}))
+    third = await _step(run, load, factory)
+    assert third["tool_specs_changed"] is True
+    assert "rs_tool" in [s["name"] for s in third["tool_specs"]]
+    assert "- rs_tool: rs" in render_text(third)
+
+
+@pytest.mark.asyncio
+async def test_a_run_whose_first_step_failed_is_started_without_a_response(
+    tmp_path: Path,
+) -> None:
+    # begin writes brief.json before its first step; when that step fails
+    # (OLMOEARTH_API_KEY unset, say), a step with no response starts the run.
+    made: list[int] = []
+
+    def factory() -> ToolRegistry:
+        made.append(1)
+        if len(made) == 2:  # begin's own step
+            raise RuntimeError("OLMOEARTH_API_KEY is not set")
+        return _registry({})
+
+    run = tmp_path / "run"
+    with pytest.raises(RuntimeError, match="OLMOEARTH_API_KEY is not set"):
+        await _begin(run, factory)
+    assert (run / "brief.json").is_file() and not (run / "step.lock").exists()
+    with pytest.raises(BridgeError, match="with no response file"):
+        show(run)
+    with pytest.raises(BridgeError, match="the run has not started"):
+        await _step(run, _MEASURE_A, factory)
+    first = await _step(run, None, factory)
+    assert first["status"] == "model_call" and first["model_call"] == 1

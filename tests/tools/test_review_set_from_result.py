@@ -405,12 +405,15 @@ async def test_a_point_studio_answers_404_is_outside_the_results_files(
     assert sampling["n_nodata_dropped"] == 3
     assert sampling["n_valid"] == 9
     assert sampling["outside_note"] == (
-        "3 of the 16 windows are read as outside the result's files (Studio "
-        "answered 404), since other windows of the result answered: they are "
-        "dropped and counted apart from failed calls (n_failed_dropped)"
+        "3 of the 16 windows were answered with HTTP 404 (not_found_error) by "
+        "Studio, which answered other points of the result: they are dropped "
+        "and counted apart from failed calls (n_failed_dropped); which of the "
+        "result's files covers which point was not tested"
     )
-    # Probe 5 measured counts, not which file covers which point.
+    # Probe 5 measured counts, not which file covers which point: the note
+    # states the 404 seen, never that the windows lie outside the files.
     assert "no file" not in sampling["outside_note"]
+    assert "outside the result's files" not in sampling["outside_note"]
     assert "transient" not in sampling["outside_note"]
 
 
@@ -432,8 +435,8 @@ async def test_a_grid_mostly_outside_the_files_is_refused_naming_the_404s(
     assert out["ranked"] is False
     assert out["reason"] == (
         "only 1 of 16 sampled windows hold a value (0 no-data, 0 failed, 15 "
-        "outside the result's files, where Studio answered 404); a ranking needs "
-        "at least two"
+        "answered HTTP 404 (not_found_error) where Studio answered other "
+        "points); a ranking needs at least two"
     )
 
 

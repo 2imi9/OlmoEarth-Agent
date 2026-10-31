@@ -9,15 +9,23 @@
 # at most 20 minutes); on the login node nothing runs but that srun. Nothing
 # is held between commands. The Studio key is read from
 # ~/.config/olmoearth-agent/studio.env on the cluster, inside the srun step,
-# and never printed. A brief or a response is a file here: it goes over ssh's
-# stdin, which srun forwards to the bridge (--brief-file -, --response-file -),
-# so its text passes through no shell, here or there.
+# and never printed; a missing file stops the command there. A brief or a
+# response is a file here: it goes over ssh's stdin, which srun forwards to
+# the bridge (--brief-file -, --response-file -), so its text passes through
+# no shell, here or there.
 #
 #   scripts/oe-bridge.sh begin RUN BRIEF.txt [MAX_TURNS] [--text]
-#   scripts/oe-bridge.sh step RUN RESPONSE.json [--text]
+#   scripts/oe-bridge.sh step RUN [RESPONSE.json] [--call N] [--text]
 #   scripts/oe-bridge.sh show RUN [--text]
 #   scripts/oe-bridge.sh prompt
 #   scripts/oe-bridge.sh tools [RUN]
+#
+# step with no response file starts a run whose first step failed. --call N
+# names the model call the response answers (the view's "model call N"): the
+# bridge refuses it when another call is pending, so a response sent again
+# after its call was answered never answers the next one. A step that is
+# still running on the cluster (after a dropped connection, say) holds the
+# run's lock: another step is refused, and show says so.
 #
 # RUN is a short name (letters, digits, . _ -); its directory is $RUNS/RUN.
 # Works with macOS's bash 3.2. See docs/CLAUDE_AS_MODEL.md.
@@ -37,23 +45,26 @@ OUTPUTS=/scratch/qi_zim_neu/olmoearth_inferenceX/agent-checks/bridge/outputs
 # srun refuses the QOS, run with OE_BRIDGE_QOS=normal.
 QOS="${OE_BRIDGE_QOS:-interactive}"
 SRUN="srun -A p2026_0089_neu -p cpu -q $QOS -n 1 -c 2 --mem=8G -t 00:20:00"
-# OE_BRIDGE_READ_ONLY=1 runs the bridge with OLMOEARTH_READ_ONLY=1: the key
-# is declared read-only, so the two Studio write tools are not offered. It
-# changes the tools and the capability card, so keep it the same for every
-# command of a run (a change shows as a divergence).
-READ_ONLY="${OE_BRIDGE_READ_ONLY:-}"
+# Read-only by default: the bridge runs with OLMOEARTH_READ_ONLY=1, so the
+# two Studio write tools are not offered and the capability card says why.
+# OE_BRIDGE_ALLOW_WRITES=1 offers them; only the owner sets it, for a key
+# that can write. It changes the tools and the card, so keep it the same for
+# every command of a run: the run records it at begin, and a step with the
+# other setting is refused.
+ALLOW_WRITES="${OE_BRIDGE_ALLOW_WRITES:-}"
 
 BIN="$AGENT_DIR/.venv/bin/olmoearth-agent-bridge"
 # What srun runs on the compute node: new files private to the account
 # (umask 077: run files and outputs hold account names and tool results),
-# the Studio key exported from the env file (set -a), the workspace root at
-# $1 (made if missing), then the bridge with the rest of the arguments.
-INNER='umask 077; set -a; . "$HOME/.config/olmoearth-agent/studio.env"; set +a; export OLMOEARTH_OUTPUT_ROOT="$1"; mkdir -p "$1"; shift; exec "$@"'
+# the Studio key exported from the env file (set -a), which must be there,
+# the workspace root at $1 (made if missing, and private to the account),
+# then the bridge with the rest of the arguments.
+INNER='umask 077; env_file="$HOME/.config/olmoearth-agent/studio.env"; [ -r "$env_file" ] || { echo "oe-bridge: $env_file is missing on aicr (the owner writes it)" >&2; exit 2; }; set -a; . "$env_file"; set +a; export OLMOEARTH_OUTPUT_ROOT="$1"; mkdir -p "$1" && chmod 700 "$1"; shift; exec "$@"'
 
 usage() {
   printf '%s\n' \
     'usage: scripts/oe-bridge.sh begin RUN BRIEF.txt [MAX_TURNS] [--text]' \
-    '       scripts/oe-bridge.sh step RUN RESPONSE.json [--text]' \
+    '       scripts/oe-bridge.sh step RUN [RESPONSE.json] [--call N] [--text]' \
     '       scripts/oe-bridge.sh show RUN [--text]' \
     '       scripts/oe-bridge.sh prompt' \
     '       scripts/oe-bridge.sh tools [RUN]' >&2
@@ -71,8 +82,12 @@ check_run() {
 }
 
 [[ "$QOS" =~ ^[A-Za-z0-9_-]+$ ]] || fail "OE_BRIDGE_QOS must be a QOS name"
-[[ -z "$READ_ONLY" || "$READ_ONLY" == 1 ]] ||
-  fail "OE_BRIDGE_READ_ONLY must be 1 or unset"
+[[ -z "$ALLOW_WRITES" || "$ALLOW_WRITES" == 1 ]] ||
+  fail "OE_BRIDGE_ALLOW_WRITES must be 1 or unset"
+# Before 31 October 2026 read-only was opt-in (OE_BRIDGE_READ_ONLY=1); it is
+# the default now, and that variable contradicts an opt-out of it.
+[[ -z "${OE_BRIDGE_READ_ONLY:-}" || "$ALLOW_WRITES" != 1 ]] ||
+  fail "OE_BRIDGE_READ_ONLY and OE_BRIDGE_ALLOW_WRITES=1 contradict each other"
 
 # The remote command: one srun step that runs the bridge with the given
 # arguments. Every word is quoted for the remote shell with printf %q.
@@ -80,7 +95,7 @@ bridge_cmd() {
   local cmd arg
   cmd="$SRUN bash -c $(printf '%q' "$INNER") oe-bridge"
   cmd+=" $(printf '%q' "$OUTPUTS")"
-  if [[ -n "$READ_ONLY" ]]; then
+  if [[ "$ALLOW_WRITES" != 1 ]]; then
     cmd+=" env OLMOEARTH_READ_ONLY=1"
   fi
   cmd+=" $(printf '%q' "$BIN")"
@@ -117,21 +132,42 @@ case "$action" in
       ${extra[@]+"${extra[@]}"})" < "$brief"
     ;;
   step)
-    [[ $# -ge 2 ]] || usage
+    [[ $# -ge 1 ]] || usage
     run="$1"
-    response="$2"
-    shift 2
+    shift
     check_run "$run"
-    [[ -f "$response" && -r "$response" ]] ||
-      fail "cannot read the response file '$response'"
+    response=""
+    if [[ $# -ge 1 && "$1" != --* ]]; then
+      response="$1"
+      shift
+      [[ -f "$response" && -r "$response" ]] ||
+        fail "cannot read the response file '$response'"
+    fi
     extra=()
-    for arg in "$@"; do
-      [[ "$arg" == "--text" ]] ||
-        fail "step takes only --text after the response file (got '$arg')"
-      extra+=(--text)
+    while [[ $# -ge 1 ]]; do
+      case "$1" in
+        --text)
+          extra+=(--text)
+          shift
+          ;;
+        --call)
+          [[ $# -ge 2 && "$2" =~ ^[0-9]{1,4}$ ]] ||
+            fail "--call takes the pending model call's number (got '${2:-}')"
+          extra+=(--call "$2")
+          shift 2
+          ;;
+        *)
+          fail "step takes --call N and --text after the response file (got '$1')"
+          ;;
+      esac
     done
-    ssh -T "$HOST" "$(bridge_cmd step --run-dir "$RUNS/$run" --response-file - \
-      ${extra[@]+"${extra[@]}"})" < "$response"
+    if [[ -n "$response" ]]; then
+      ssh -T "$HOST" "$(bridge_cmd step --run-dir "$RUNS/$run" --response-file - \
+        ${extra[@]+"${extra[@]}"})" < "$response"
+    else
+      ssh -T "$HOST" "$(bridge_cmd step --run-dir "$RUNS/$run" \
+        ${extra[@]+"${extra[@]}"})" < /dev/null
+    fi
     ;;
   show)
     [[ $# -ge 1 ]] || usage

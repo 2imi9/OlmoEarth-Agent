@@ -340,6 +340,33 @@ SEED_FROM_MAP_NOTE = (
     "shows these settings were fixed before any label. It cannot show the "
     "sample was drawn only once."
 )
+#: The same, for a zone read from a Studio result's own files: the map the
+#: seed is drawn from is the raster the agent decoded from Studio's native
+#: file (``olmoearth_scores_from_studio``), which a holder of Studio's file
+#: does not hold.
+SEED_FROM_STUDIO_RASTER_NOTE = (
+    "The seed is taken from the digest of the raster the agent decoded from "
+    "Studio's file and the draw's settings, alpha, delta and the rule included "
+    "(oe-inferencex sample --seed-from-map): anyone holding that decoded "
+    "raster, not Studio's own file, draws these windows again, and a "
+    "certificate shows these settings were fixed before any label. It cannot "
+    "show the sample was drawn only once."
+)
+
+
+def _certificate_holder(decoded: bool) -> str:
+    """Who can check a certificate: the map's holder, or the decoded raster's.
+
+    ``decoded`` for a zone read from a Studio result's own files, whose map is
+    the raster the agent decoded, not Studio's native file.
+    """
+    if decoded:
+        return (
+            "anyone holding the decoded raster this plan drew from (not Studio's "
+            "own file)"
+        )
+    return "anyone holding the map"
+
 
 #: Stated with every certify_zone output: exp86 round 2's model recommended a
 #: confidence design for certification, which the tool refuses, and round
@@ -749,7 +776,7 @@ async def _class_map_population(
     n_points = grid * grid
     n_valid = sum(1 for c in codes if c >= 0)
     n_failed = sum(1 for _v, _c, status in reads if status == FAILED)
-    # Points outside the result's files (Studio answered 404) are neither
+    # Points Studio answered with HTTP 404 (where it answered others) are neither
     # failed calls nor no-data pixels.
     n_outside = sum(1 for _v, _c, status in reads if status == OUTSIDE)
     n_nodata = n_points - n_valid - n_failed - n_outside
@@ -858,7 +885,7 @@ def _budget_refusal(budget: int, pop: Population) -> str:
         works.append(
             f"a finer grid, up to {FROM_RESULT_MAX_GRID} ({FROM_RESULT_MAX_GRID}x"
             f"{FROM_RESULT_MAX_GRID} = {most} points at most, fewer once no-data "
-            "and points outside the result's files are dropped), with the same "
+            "and points Studio answers with HTTP 404 are dropped), with the same "
             f"budget: at grid {FROM_RESULT_MAX_GRID} "
             "a budget above the valid windows is planned at all of them, and "
             "the labels left over are stated"
@@ -886,7 +913,7 @@ def _budget_refusal(budget: int, pop: Population) -> str:
     )
     rest = " (the rest were no-data or failed)" if n_valid < n_points else ""
     if rest and sampling.get("n_outside_dropped"):
-        rest = " (the rest were no-data, failed or outside the result's files)"
+        rest = " (the rest were no-data, failed, or answered HTTP 404)"
     return (
         f"{head}budget {budget} is more than the {n_valid} valid windows: a "
         f"Studio result sampled at {side}x{side} = {n_points} points has "
@@ -1611,7 +1638,8 @@ def _refused_class_map(refusal: dict[str, Any], design: str) -> dict[str, Any]:
         "design": design,
         "reason": (
             f"design='{design}' stratifies the map by its confidence margin, which "
-            "a class map does not have. " + rules.CLASS_MAP_REFUSAL
+            "a class map without top-k scores does not have. "
+            + rules.CLASS_MAP_REFUSAL
         ),
         "designs_for_a_class_map": list(CLASS_MAP_DESIGNS),
         "next_steps": [
@@ -2479,21 +2507,24 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     unused = requested - budget
     out["next_steps"] = _plan_next_steps(design, csv_path, budget, pop, unused)
     if certificate is not None:
+        # A zone read from Studio's own files: the map the seed is drawn from
+        # is the raster the agent decoded, not Studio's file.
+        decoded = file_studio_kind(pop.source) is not None
         out["seed_from_map"] = {
             "seed": seed,
             "map_sha256": certificate["map_sha256"],
             "alpha": certificate["alpha"],
             "delta": certificate["delta"],
             "rule": certificate["rule"],
-            "note": SEED_FROM_MAP_NOTE,
+            "note": SEED_FROM_STUDIO_RASTER_NOTE if decoded else SEED_FROM_MAP_NOTE,
             "package_sheet": certificate["sample_csv"],
         }
         out["next_steps"].append(
             f"After labelling: olmoearth_certify_zone with this design_path at "
             f"alpha={certificate['alpha']:g} (alpha, delta and rule are fixed by "
             "this plan), then olmoearth_write_certificate with the same labels "
-            "and the map's date packs a certified zone into a certificate anyone "
-            "holding the map can check."
+            "and the map's date packs a certified zone into a certificate "
+            f"{_certificate_holder(decoded)} can check."
         )
     facts = [_unused_labels(requested, budget, pop)] if unused else []
     if advice is not None:
@@ -3534,8 +3565,10 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     )
     out["next_steps"] = _certify_next_steps(out)
     if fixed and out["certified"]:
+        decoded = file_studio_kind(design["population"].get("source") or {})
+        holder = _certificate_holder(decoded is not None)
         out["next_steps"].append(
-            "Pack this zone into a certificate anyone holding the map can check: "
+            f"Pack this zone into a certificate {holder} can check: "
             "olmoearth_write_certificate with this design_path, the same labels "
             "and the map's date."
         )
@@ -4237,8 +4270,8 @@ async def _plan_two_maps(
     if not n_compared:
         msg = (
             f"no window holds a class in both maps (each of the {len(valid)} "
-            "windows is no-data, failed or outside a result's files, where Studio "
-            "answered 404, in one of them), so none can be compared"
+            "windows is no-data, failed or answered HTTP 404 where Studio answered "
+            "other points, in one of them), so none can be compared"
         )
         raise ValueError(msg)
     try:

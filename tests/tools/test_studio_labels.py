@@ -574,7 +574,12 @@ async def test_a_failed_search_reaches_the_model_without_studios_text(
     assert envelope["error"].startswith(error), envelope["error"]
     assert _leaks(json.dumps(envelope)) == []
     if status == 403:
-        assert envelope["hint"] == StudioAccessError.hint
+        # A refused search is a read: the read's hint, which names no
+        # read-only key (a read-only key reads freely).
+        read = StudioAccessError("POST", "/annotations/search", 403)
+        assert envelope["hint"] == read.hint
+        assert "read-only" not in envelope["hint"]
+        assert "read-only" not in envelope["must_state"][0]
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
 
@@ -801,6 +806,48 @@ async def test_selectors_and_their_keys_are_bounded(
     assert any(
         n.startswith("Only the first 1 of the record's 2 selectors were replayed")
         for n in out["selector_notes"]
+    )
+
+
+@pytest.mark.parametrize("unread", ["filterless", "past_the_bound"])
+@pytest.mark.asyncio
+async def test_a_selector_not_read_leaves_later_annotations_unknown(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch, unread: str
+) -> None:
+    """A selector with no filter, or past the bound, is not read: it may select
+    annotations the counts miss, so the complete read of the others does not
+    rule out later ones, and the hedged sentence is stated."""
+    if unread == "filterless":
+        selectors = [
+            _selector(PROJECT),
+            {"sort_by": "creation_time", "sort_direction": "asc"},
+        ]
+    else:
+        monkeypatch.setattr(studio_labels, "_MAX_SELECTORS", 1)
+        selectors = [_selector(PROJECT), _selector(PROJECT, status={"eq": "pending"})]
+    _mock_model(httpx_mock, _model(selectors))
+    _mock_search(httpx_mock, _kelp_annotations(), [])
+    async with _studio() as studio:
+        envelope = await _call(studio, model_id=MODEL)
+    assert envelope["ok"] is True, envelope
+    out = envelope["result"]
+    assert out["complete"] is True
+    assert out["created_after_model_creation"] == 0
+    assert out["must_state"] == [
+        studio_labels.NOT_A_SAMPLE,
+        studio_labels.TRAIN_VAL_BEFORE,
+        studio_labels.TEST_SHARE_ZERO,
+    ]
+
+
+def test_the_training_sentences_state_their_assumption() -> None:
+    """That Studio trained on what the selector selects is assumed, not
+    verified live: neither sentence states it as a fact."""
+    assert studio_labels.TRAIN_VAL_USED.startswith(
+        "If training used the record's selector,"
+    )
+    assert studio_labels.TRAIN_VAL_BEFORE.startswith(
+        "Assuming training used the record's selector,"
     )
 
 

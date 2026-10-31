@@ -50,6 +50,7 @@ from olmoearth_agent.tools.estimation import (
 )
 from olmoearth_agent.tools.registry import RegisteredTool, ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
+from olmoearth_agent.tools.sampling import summarize_model
 
 estimate = pytest.importorskip("oe_inferencex.estimate")
 
@@ -264,6 +265,48 @@ def test_the_labels_in_studio_fact_names_each_model_trained_on_labels() -> None:
     )
     assert rules.labels_in_studio_fact([{"name": "E"}, None]) is None
     assert rules.labels_in_studio_fact([]) is None
+
+
+def test_a_split_field_beside_the_proportions_is_not_stated_as_the_split() -> None:
+    """live3 (31 October 2026): the kelp model's record names a split field
+    and proportions 0.75/0.25/0, while the inventory counted 436 train, 63
+    val and 557 test by the field. The fact says the proportions sit beside a
+    split field and which training followed is not recorded; it never states
+    them as the training split."""
+    kelp = {"train_prop": 0.75, "val_prop": 0.25, "test_prop": 0.0}
+    fact = rules.labels_in_studio_fact(
+        [
+            {
+                "name": "Kelp",
+                "model_id": "mk",
+                "trained_on_labels": True,
+                "split": kelp,
+                "split_field_named": True,
+            }
+        ]
+    )
+    assert fact is not None
+    assert "train/val split 0.75/0.25" not in fact["sentence"]
+    assert (
+        "(split proportions train/val/test 0.75/0.25/0 recorded beside a split "
+        "field; which of the two training followed is not recorded)"
+    ) in fact["sentence"]
+    assert fact["models"][0]["split_field_named"] is True
+    # Without a split field the proportions are the split, as before.
+    plain = rules.labels_in_studio_fact(
+        [{"name": "Karst", "trained_on_labels": True, "split": kelp}]
+    )
+    assert plain is not None and "(train/val split 0.75/0.25)" in plain["sentence"]
+    # The model summary carries whether the record names a split field.
+    wizard: dict[str, Any] = {
+        "label_field_id": "lf",
+        "split_field_id": "sf",
+        "split_proportions": kelp,
+    }
+    record = {"id": "mk", "name": "Kelp", "wizard_answers": wizard}
+    assert summarize_model(record)["split_field_named"] is True
+    del wizard["split_field_id"]
+    assert summarize_model(record)["split_field_named"] is False
 
 
 def test_no_labels_given_is_never_no_labels_exist() -> None:

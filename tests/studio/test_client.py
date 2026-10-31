@@ -512,6 +512,53 @@ async def test_a_refused_delete_raises_studio_access_error(
             await studio.delete_area("a1")
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "status", "cause"),
+    [
+        ("GET", "/users/me", 401, "was not accepted (missing, invalid, expired"),
+        ("POST", "/annotations/search", 403, "this key may not read this resource"),
+        ("POST", "/annotations/aggregate", 403, "this key may not read this resource"),
+        ("GET", "/prediction-results/r1", 403, "this key may not read this resource"),
+        ("POST", "/predictions", 403, "the API key may be read-only or lack"),
+        ("POST", "/projects", 401, "was not accepted (missing, invalid, expired"),
+        ("GET", "/prediction-results/files", 403, "the download token (perhaps"),
+    ],
+)
+def test_a_refusal_states_the_cause_its_status_and_request_allow(
+    method: str, path: str, status: int, cause: str
+) -> None:
+    """Only a 403 on a write may be a read-only key: a 401 is a key Studio
+    did not accept, and a read-only key reads freely (31 October 2026)."""
+    err = StudioAccessError(method, path, status, "permission_error")
+    (sentence,) = err.contract["must_state"]
+    assert cause in sentence
+    assert sentence.startswith(f"Studio refused this request (HTTP {status}): ")
+    assert sentence.endswith(", and nothing was created or changed.")
+    assert len(sentence.split()) <= 25
+    write = method == "POST" and status == 403 and path == "/predictions"
+    for text in (str(err), sentence, err.hint):
+        assert ("read-only" in text) is write, text
+        assert "nothing was created or changed" in text
+    assert ("writes to Studio" in err.hint) is write
+    if status == 401 and "files" not in path:
+        assert "OLMOEARTH_API_KEY" in err.hint
+    if "files" in path:
+        assert "download token" in str(err) and "download token" in err.hint
+
+
+@pytest.mark.asyncio
+async def test_an_expired_key_is_not_called_read_only(
+    config: StudioConfig, httpx_mock: HTTPXMock
+) -> None:
+    httpx_mock.add_response(url=f"{BASE}/users/me", status_code=401)
+    async with StudioClient(config) as studio:
+        with pytest.raises(StudioAccessError) as caught:
+            await studio.users_me()
+    text = str(caught.value)
+    assert text.startswith("Studio refused GET /users/me (HTTP 401). Studio did not")
+    assert "read-only" not in text and "renewed" in caught.value.hint
+
+
 # --------------------------------------------------------------------------- submit
 
 
@@ -547,13 +594,15 @@ async def test_submit_prediction_sends_target_area_ids_and_top_k(
     }
 
 
-@pytest.mark.parametrize("top_k", [0, -1, True])
+@pytest.mark.parametrize("top_k", [0, -1, 1, True])
 @pytest.mark.asyncio
-async def test_submit_prediction_refuses_a_top_k_below_one(
+async def test_submit_prediction_refuses_a_top_k_below_two(
     top_k: int, config: StudioConfig, httpx_mock: HTTPXMock
 ) -> None:
+    """Every reader of top-k scores needs rank 2: top_k=1 would be a paid
+    prediction no tool reads."""
     async with StudioClient(config) as studio:
-        with pytest.raises(ValueError, match="probability_top_k"):
+        with pytest.raises(ValueError, match="probability_top_k must be .* 2 or"):
             await studio.submit_prediction(
                 name="n",
                 project_id="pr",

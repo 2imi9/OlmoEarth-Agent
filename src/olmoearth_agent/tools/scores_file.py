@@ -471,6 +471,28 @@ def _centres(np: Any, geo: Any, idx: Any, cols: int, patch: int) -> list[Any] | 
     return [[float(a), float(b)] for a, b in zip(lon, lat)]
 
 
+def smallest_patch(height: int, width: int, start: int = DEFAULT_PATCH) -> int:
+    """The smallest window side from ``start`` up whose windows a ranking takes.
+
+    A map of ``height`` x ``width`` pixels has ``(height // patch) * (width //
+    patch)`` whole windows of ``patch`` pixels, at most
+    :data:`~olmoearth_agent.analysis.review_set.MAX_WINDOWS` of which a
+    ranking takes (:func:`_check_size`). ``olmoearth_scores_from_studio``
+    pools a zone at this side when the caller passed no patch.
+
+    Examples
+    --------
+    >>> smallest_patch(4000, 4000)
+    9
+    >>> smallest_patch(64, 64)
+    4
+    """
+    patch = max(1, int(start))
+    while (height // patch) * (width // patch) > MAX_WINDOWS:
+        patch += 1
+    return patch
+
+
 def _check_size(rasterio: Any, path: Path, patch: int) -> None:
     """Refuse a raster too large to read, or with more windows than a ranking takes.
 
@@ -494,9 +516,7 @@ def _check_size(rasterio: Any, path: Path, patch: int) -> None:
         raise ValueError(f"patch {patch} px is larger than the {height} x {width} map")
     n = (height // patch) * (width // patch)
     if n > MAX_WINDOWS:
-        smallest = patch
-        while (height // smallest) * (width // smallest) > MAX_WINDOWS:
-            smallest += 1
+        smallest = smallest_patch(height, width, patch)
         raise ValueError(
             f"{n:,} windows of {patch} px exceed the {MAX_WINDOWS:,} a ranking "
             f"takes; pass patch >= {smallest}"

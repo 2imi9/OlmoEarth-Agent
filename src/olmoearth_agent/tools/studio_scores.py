@@ -54,8 +54,11 @@ own, and no tool combines them.
 The zip is untrusted input. Only the native GeoTIFFs and the README are read,
 never extracted by name, and only when stored or deflated (CPython
 decompresses a bzip2 or LZMA entry with no bound before cutting it to its
-declared size); the zip's list of entries, the sizes it declares and each
-zone's size are capped before anything is read. Labels and property names,
+declared size); the zip's list of entries (by the largest size any of its
+end records declares), the sizes it declares and each zone's size are capped
+before anything is read. A native file must be a TIFF by its first bytes and
+is opened with the GeoTIFF driver alone, so a VRT under that name never
+reads another file or a URL. Labels and property names,
 written by the result's owner (often another organisation), are read only as
 short printable text.
 
@@ -90,6 +93,7 @@ from pathlib import Path
 from typing import Any
 
 from olmoearth_agent.analysis.output_contract import MUST_STATE_MAX
+from olmoearth_agent.analysis.review_set import MAX_WINDOWS
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.security.paths import safe_path
 from olmoearth_agent.studio.client import DEFAULT_MAX_FILES_BYTES
@@ -118,6 +122,13 @@ README_FORMULA = "(value - 1) / 254"
 #: A top-k file's no-data value (the README's, 31 October 2026): band 1
 #: holding it is the only mark of an invalid pixel.
 TOPK_NODATA = 255
+
+#: The first bytes of a TIFF or BigTIFF, either byte order: a zone's entry
+#: must start with one, and is opened with the GeoTIFF driver alone, since
+#: GDAL would otherwise choose a driver by the content and follow the paths
+#: inside a VRT (to local rasters or URLs), as ``tools/certificate.py``
+#: refuses for a map it checks.
+TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
 #: Most bytes, uncompressed, of the entries read from one zip, checked against
 #: the sizes the zip declares before any entry is read (a zip bomb). zipfile
@@ -261,10 +272,12 @@ class ZipEntries:
 
 @dataclass
 class Zone:
-    """One zone read from the zip: its file, run directory and counts.
+    """One zone read from the zip: its file, run directory, size and counts.
 
     ``reused`` when its raster was written by an earlier call, ``updated``
-    when its manifest was written again over that call's.
+    when its manifest was written again over that call's. ``height`` and
+    ``width`` are the zone's in pixels, from which a patch that fits it is
+    chosen when the caller passed none (``scores_file.smallest_patch``).
     """
 
     file: str
@@ -273,6 +286,8 @@ class Zone:
     reused: bool
     updated: bool = False
     counts: dict[str, Any] = field(default_factory=dict)
+    height: int = 0
+    width: int = 0
 
 
 @dataclass(frozen=True)
@@ -548,25 +563,32 @@ def _plain(folder: str | None) -> bool:
 
 
 def directory_size(data: bytes) -> int | None:
-    """The size a zip's end record declares for its list of entries, or ``None``.
+    """The largest size a zip declares for its list of entries, or ``None``.
 
-    Read as zipfile reads it, from the end-of-central-directory record (its
-    ZIP64 record when the size there is 0xFFFFFFFF), before zipfile builds
-    an object for every entry; ``None`` when no such record is found.
+    Read before zipfile builds an object for every entry, from each record
+    that may declare it: the end-of-central-directory record (unless its
+    size is 0xFFFFFFFF, which defers to a ZIP64 record) and every ZIP64 end
+    record a reader could take. CPython's zipfile applies a ZIP64 record
+    whenever a ZIP64 locator sits right before the end record, whatever the
+    32-bit size says, and reads it from the 56 bytes before the locator
+    (3.11 to 3.13); another reader follows the locator's offset. Both places
+    are read, and the largest size declared is returned, so a small 32-bit
+    size cannot hide a large ZIP64 one. ``None`` when there is no end
+    record, or its size defers to a ZIP64 record that is not there.
     """
     end = data.rfind(b"PK\x05\x06", max(0, len(data) - 65_557))
     if end < 0 or len(data) < end + 22:
         return None
     size = int.from_bytes(data[end + 12 : end + 16], "little")
-    if size != 0xFFFFFFFF:
-        return size
+    sizes = [] if size == 0xFFFFFFFF else [size]
     locator = end - 20
-    if locator < 0 or data[locator : locator + 4] != b"PK\x06\x07":
-        return None
-    at = int.from_bytes(data[locator + 8 : locator + 16], "little")
-    if data[at : at + 4] != b"PK\x06\x06":
-        return None
-    return int.from_bytes(data[at + 40 : at + 48], "little")
+    if locator >= 0 and data[locator : locator + 4] == b"PK\x06\x07":
+        at = int.from_bytes(data[locator + 8 : locator + 16], "little")
+        # the locator's offset, and the 56 bytes before the locator
+        for start in (at, locator - 56):
+            if start >= 0 and data[start : start + 4] == b"PK\x06\x06":
+                sizes.append(int.from_bytes(data[start + 40 : start + 48], "little"))
+    return max(sizes) if sizes else None
 
 
 def _check_readable(info: zipfile.ZipInfo, name: str) -> None:
@@ -1092,6 +1114,12 @@ def read_zones(
         zones: list[Zone] = []
         for entry in entries.tifs:
             raw = _read_entry(zf, entry.info, entry.file)
+            if not raw.startswith(TIFF_MAGIC):
+                raise ValueError(
+                    f"{entry.file}: not a GeoTIFF by its first bytes (a VRT or "
+                    "another format would let GDAL follow the paths inside it); "
+                    "nothing was read"
+                )
             digest = hashlib.sha256(raw).hexdigest()
             zone = f"epsg{entry.epsg}_{entry.index}-{digest[:8]}"
             zone_dir = safe_path(f"{STUDIO_DIR}/{folder}/{zone}", root=write_root())
@@ -1101,7 +1129,9 @@ def read_zones(
             del raw
             with memory:
                 try:
-                    src = memory.open()
+                    # The GeoTIFF driver alone: no other driver, a VRT's
+                    # least of all, is ever chosen for the zip's bytes.
+                    src = memory.open(driver="GTiff")
                 except rasterio.errors.RasterioIOError as exc:
                     raise ValueError(
                         f"{entry.file}: not a GeoTIFF rasterio can read ({exc})"
@@ -1111,6 +1141,7 @@ def read_zones(
                         array, counts = decode_topk(np, src, plan, entry.file)
                     else:
                         array, counts = decode_unit(np, src, plan, entry.file, clip)
+                    height, width = int(array.shape[1]), int(array.shape[2])
                     fresh = _manifest(info, plan, entry.file, digest, counts)
                     stored = _reusable(zone_dir, digest, fresh)
                     updated = False
@@ -1133,6 +1164,8 @@ def read_zones(
                     reused=stored is not None,
                     updated=updated,
                     counts=counts,
+                    height=height,
+                    width=width,
                 )
             )
     return zones, entries.ignored, unused
@@ -1251,6 +1284,38 @@ def _zone_facts(zone: Zone, plan: FilesPlan, unused: bool) -> list[dict[str, Any
     return out
 
 
+def _zone_patch(zone: Zone, asked: int | None) -> tuple[int, dict[str, Any] | None]:
+    """The patch a zone is pooled at, and the fact saying why when it was chosen.
+
+    A patch the caller passed is used as given. With none, the default
+    (``scores_file.DEFAULT_PATCH``), unless the zone holds more windows of it
+    than a ranking takes (:data:`MAX_WINDOWS`): then the smallest side from
+    the default up that fits (``scores_file.smallest_patch``), stated as a
+    fact. Studio's native-resolution zones are large: live3's kelp zones held
+    327,680 and 1,376,256 windows of 4 px.
+    """
+    if asked is not None:
+        return asked, None
+    default = scores_file.DEFAULT_PATCH
+    chosen = scores_file.smallest_patch(zone.height, zone.width, default)
+    if chosen == default:
+        return default, None
+    n = (zone.height // default) * (zone.width // default)
+    sentence = (
+        f"{zone.file}: at patch {default} it would hold {n:,} windows, more than "
+        f"the {MAX_WINDOWS:,} a ranking takes, so with no patch passed it was "
+        f"pooled at patch {chosen}, the smallest that fits."
+    )
+    fact = rules.fact(
+        "studio_zone_patch",
+        sentence,
+        file=zone.file,
+        patch=chosen,
+        windows_at_default_patch=n,
+    )
+    return chosen, fact
+
+
 def _zones_fact(zones: list[Zone]) -> dict[str, Any]:
     """The fact that several UTM zones are several maps, with each one's share."""
     total = sum(int(zone.counts["valid_pixels"]) for zone in zones)
@@ -1307,8 +1372,14 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
             "result_id must be a Studio result id, a UUID (the API's format for "
             "it); nothing was asked of Studio"
         ) from None
-    patch = int(args.get("patch", scores_file.DEFAULT_PATCH))
-    if patch < 1:
+    # A patch the caller passed is used for every zone as given; with none,
+    # each zone is pooled at the smallest side from the default up whose
+    # windows a ranking takes (_zone_patch), so no download is spent on a
+    # call that must be made again at another patch (live3: patch 4 was
+    # refused for both kelp zones).
+    asked = args.get("patch")
+    patch = int(asked) if asked is not None else None
+    if patch is not None and patch < 1:
         raise ValueError(f"patch must be a positive number of pixels, got {patch}")
     max_mb = int(args.get("max_mb", DEFAULT_MAX_MB))
     if max_mb < 1:
@@ -1376,9 +1447,13 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         }
         if zone.updated:
             entry["manifest_rewritten"] = True
+        zone_patch, chosen = _zone_patch(zone, patch)
+        entry["patch"] = zone_patch
+        if chosen is not None:
+            facts.append(chosen)
         try:
             pooled = await scores_file._scores_from_file(
-                {"run_dir": str(zone.run_dir), "patch": patch}, ctx
+                {"run_dir": str(zone.run_dir), "patch": zone_patch}, ctx
             )
         except ValueError as exc:
             # One zone that cannot be pooled (more windows than a ranking takes
@@ -1386,7 +1461,7 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
             # others; its run directory stays, for a call with another patch.
             entry["scores_path"] = None
             entry["refused"] = str(exc)
-            refused.append(f"{zone.file}: {exc}")
+            refused.append(f"{zone.file}: {exc} (run_dir {zone.run_dir})")
             not_pooled = rules.fact(
                 "studio_zone_not_pooled",
                 f"{zone.file} was written but not pooled: {exc}.",
@@ -1405,7 +1480,9 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
     if len(refused) == len(listed):
         raise ValueError(
             "no zone could be pooled, though each was written under the scores "
-            "root (a later call reuses it): " + "; ".join(refused)
+            "root (a later call reuses it, and olmoearth_scores_from_file pools "
+            "a zone's run_dir at another patch with no download): "
+            + "; ".join(refused)
         )
     if len(zones) > 1:
         facts.append(_zones_fact(zones))
@@ -1495,8 +1572,7 @@ def build_studio_scores_tools() -> list[RegisteredTool]:
                         "result_id": {"type": "string"},
                         "patch": {
                             "type": "integer",
-                            "default": scores_file.DEFAULT_PATCH,
-                            "description": "Window side in pixels.",
+                            "description": "Window side in pixels; default per zone.",
                         },
                         "clip_out_of_range": {
                             "type": "boolean",

@@ -4038,10 +4038,12 @@ def _offers_a_new_topk_prediction(p: _Parse, start: int, end: int) -> bool:
 def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     """A certified zone, certification or a certificate offered for a class map.
 
-    A class map has no confidence to rank its windows by, so no zone of it
-    can be certified, whatever the design, budget or alpha
-    (``olmoearth_certify_zone`` refuses it). "A class map has no confidence
-    to rank or certify", "no zone of it can be certified",
+    A class map without top-k scores has no confidence to rank its windows
+    by, so no zone of it can be certified, whatever the design, budget or
+    alpha (``olmoearth_certify_zone`` refuses it). "A class map without
+    top-k scores has no confidence to rank or certify" (the tools' sentence,
+    ``statistical_rules.CLASS_MAP_NO_CONFIDENCE``), "A class map has no
+    confidence to rank or certify", "no zone of it can be certified",
     "olmoearth_certify_zone refuses it" (a negation in the clause), a
     requirement that names what a class map lacks ("certification needs
     per-window probabilities") and a quoted or example mention pass; "with

@@ -15,8 +15,13 @@ record when there is one, after checking it is the same call (same tool,
 same arguments; else "the run diverged at call k"). Past the cache, the
 handler runs and its outcome is appended, before the loop goes on. A handler
 that raised is replayed by raising an exception with the same class name,
-text and ``contract``, which is all the registry builds the failed envelope
-from (``ToolRegistry._execute``).
+text and ``contract``, and, for a refused key
+(:class:`~olmoearth_agent.studio.client.StudioAccessError`), the same
+``hint``, which is all the registry builds the failed envelope from
+(``ToolRegistry._execute``, ``registry.own_hint``): the first, live call is
+served from its record too, so every step's envelope is the live loop's. A
+record cached before the hint was kept has none, and its refusal gets the
+generic hint.
 
 Each record names the model call whose response made it. A step saves the
 response it was given only once it has stopped cleanly, so a step that
@@ -41,6 +46,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 from olmoearth_agent.bridge.errors import BridgeHalt
+from olmoearth_agent.studio.client import StudioAccessError
 from olmoearth_agent.tools.registry import Handler, ToolContext, ToolRegistry
 
 if TYPE_CHECKING:
@@ -83,11 +89,16 @@ class ReplayedToolError(Exception):
     """A handler's exception as the cache recorded it, raised again on replay.
 
     Each is an instance of a subclass named as the original class, with the
-    original text and ``contract``, so ``type(exc).__name__``, ``str(exc)``
-    and ``exc.contract`` give the registry the envelope the live call gave.
+    original text, ``contract`` and ``hint``, so ``type(exc).__name__``,
+    ``str(exc)``, ``exc.contract`` and ``exc.hint`` give the registry the
+    envelope the live call gave. ``replays_hint`` tells the registry
+    (``registry.own_hint``, which cannot import this module) that a hint here
+    is a recorded one: the cache records only a refused key's.
     """
 
     contract: dict[str, Any] | None = None
+    hint: str | None = None
+    replays_hint = True
 
 
 _ERROR_CLASSES: dict[str, type[ReplayedToolError]] = {}
@@ -95,6 +106,10 @@ _ERROR_CLASSES: dict[str, type[ReplayedToolError]] = {}
 
 def replayed_error(error: dict[str, Any]) -> ReplayedToolError:
     """The exception to raise for a cached ``{"type", "message", "contract"}``.
+
+    The record's ``hint``, kept only for a refused key
+    (:class:`~olmoearth_agent.studio.client.StudioAccessError`), is put on
+    the exception too.
 
     Examples
     --------
@@ -111,6 +126,9 @@ def replayed_error(error: dict[str, Any]) -> ReplayedToolError:
     contract = error.get("contract")
     if isinstance(contract, dict):
         exc.contract = contract
+    hint = error.get("hint")
+    if isinstance(hint, str) and hint:
+        exc.hint = hint
     return exc
 
 
@@ -288,6 +306,11 @@ class ToolCache:
                 "message": str(exc),
                 "contract": contract,
             }
+            # A refused key's own hint, which the registry gives in place of
+            # the generic one; no other exception's attributes are kept.
+            hint = exc.hint if isinstance(exc, StudioAccessError) else None
+            if isinstance(hint, str) and hint:
+                record["error"]["hint"] = hint
             return record
         record["result"] = _as_json(value, f"the result of call {k} ({name})")
         return record

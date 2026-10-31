@@ -30,8 +30,9 @@ and :attr:`ToolRegistry.cannot` puts the reason on the capability card.
 
 A handler's exception becomes a failed envelope with a generic hint; a
 :class:`~olmoearth_agent.studio.client.StudioAccessError` (Studio refused the
-key) brings its own hint instead, and any exception's ``contract`` keys are
-put beside the error.
+key), or the bridge's replay of one, brings its own hint instead
+(:func:`own_hint`), and any exception's ``contract`` keys are put beside the
+error.
 """
 
 from __future__ import annotations
@@ -125,6 +126,25 @@ Handler = Callable[[dict[str, Any], ToolContext], Awaitable[Any]]
 
 #: The output contract's keys a refusal may carry onto its failed envelope.
 _CONTRACT_KEYS = ("facts", "must_state", "forbidden_claims")
+
+
+def own_hint(exc: BaseException) -> str | None:
+    """The hint a handler's exception brings in place of the generic one, if any.
+
+    A :class:`~olmoearth_agent.studio.client.StudioAccessError` brings one
+    (Studio refused the request: no id is wrong and a retry cannot help), and
+    so does the bridge's replay of one, which carries the recorded hint and
+    marks its class ``replays_hint`` (``bridge.replay.ReplayedToolError``;
+    the bridge imports this module, so its class is not imported here). No
+    other exception's ``hint`` attribute is read.
+    """
+    if not (
+        isinstance(exc, StudioAccessError)
+        or getattr(type(exc), "replays_hint", False) is True
+    ):
+        return None
+    hint = getattr(exc, "hint", None)
+    return hint if isinstance(hint, str) and hint else None
 
 
 @dataclass(frozen=True)
@@ -329,10 +349,12 @@ class ToolRegistry:
                 "argument values are valid; do not retry with identical "
                 "arguments.",
             }
-            if isinstance(exc, StudioAccessError):
-                # Studio refused the key (HTTP 401/403): no id is wrong and a
-                # retry cannot help, so the error's own hint replaces the above.
-                failed["hint"] = exc.hint
+            hint = own_hint(exc)
+            if hint is not None:
+                # Studio refused the key (HTTP 401/403), live or replayed by
+                # the bridge: no id is wrong and a retry cannot help, so the
+                # error's own hint replaces the above.
+                failed["hint"] = hint
             # A refusal can carry the output contract's keys (e.g. the labels
             # a budget leaves over; statistical_rules.refusal): stated beside
             # the error, which is unchanged.

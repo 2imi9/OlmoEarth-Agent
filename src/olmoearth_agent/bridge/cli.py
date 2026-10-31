@@ -6,7 +6,7 @@ Each command is a fresh process; the run lives in its directory
 (:mod:`olmoearth_agent.bridge.store`).
 
     olmoearth-agent-bridge begin --run-dir D --brief "How many projects do I have?"
-    olmoearth-agent-bridge step --run-dir D --response-file response.json
+    olmoearth-agent-bridge step --run-dir D --response-file response.json --call 2
     olmoearth-agent-bridge step --run-dir D --response '{"content": "..."}'
     olmoearth-agent-bridge show --run-dir D --text
     olmoearth-agent-bridge prompt
@@ -14,6 +14,9 @@ Each command is a fresh process; the run lives in its directory
 
 ``begin``, ``step`` and ``show`` print the step's view as JSON (``--text``:
 readable); an error prints ``{"status": "error", "error": ...}`` and exits 1.
+``step --call N`` names the model call the response answers, and is refused
+when another is pending; ``step`` with no response starts a run whose first
+step failed.
 ``--brief-file -`` and ``--response-file -`` read the text from stdin, as
 ``scripts/oe-bridge.sh`` sends it, so it passes through no shell.
 """
@@ -73,6 +76,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--response-file", help="a file holding the response JSON (- stdin)"
     )
     response.add_argument("--response", help="the response JSON itself")
+    move.add_argument(
+        "--call",
+        type=int,
+        help="the model call the response answers (the view's model_call); "
+        "refused when another is pending",
+    )
     move.add_argument("--text", action="store_true", help="print readable text")
 
     again = commands.add_parser("show", help="the pending call again; nothing runs")
@@ -127,7 +136,7 @@ def _view(args: argparse.Namespace) -> dict[str, Any]:
         return asyncio.run(
             begin(args.run_dir, brief, max_turns=args.max_turns, history=history)
         )
-    return asyncio.run(step(args.run_dir, _response(args)))
+    return asyncio.run(step(args.run_dir, _response(args), call=args.call))
 
 
 def main(argv: list[str] | None = None) -> int:

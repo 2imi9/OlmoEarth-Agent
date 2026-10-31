@@ -94,6 +94,7 @@ from olmoearth_agent.tools.sampling import (
     ResultNodata,
     band_by_name,
     default_property,
+    dropped_text,
     model_summary,
     prediction_meta,
     prediction_of,
@@ -605,9 +606,10 @@ def _pair(
 ) -> dict[str, Any]:
     """Pair mode: two-way divergence (or change) statistics.
 
-    A cell dropped is counted once: no-data in either map first, then outside
-    either result's files (Studio answered 404, ``n_outside_dropped``), then a
-    failed call (``n_failed_dropped``, every other failure).
+    A cell dropped is counted once: no-data in either map first, then a 404
+    from Studio in either map where it answered other points
+    (``n_outside_dropped``), then a failed call (``n_failed_dropped``, every
+    other failure).
     """
     pairs: list[tuple[Any, Any]] = []
     n_nodata = n_failed = n_outside = 0
@@ -747,15 +749,25 @@ def _series(
     tolerance: float,
     raw_range: Any,
 ) -> dict[str, Any]:
-    """Series mode: how one model's estimates shifted across dated results."""
+    """Series mode: how one model's estimates shifted across dated results.
+
+    A refusal for no usable sample counts the samples dropped as the result
+    does: no-data, failed, and those Studio answered with HTTP 404 where it
+    answered other points (:data:`OUTSIDE`), named when there are some.
+    """
     n_nodata = sum(1 for row in s.reads for _v, _c, st in row if st == NODATA)
     first = next((r for row in s.reads for r in row if r[2] == OK), None)
     if first is None:
+        n_failed = sum(1 for row in s.reads for _v, _c, st in row if st == FAILED)
+        n_outside = sum(1 for row in s.reads for _v, _c, st in row if st == OUTSIDE)
         return _refuse(
-            "no grid window returned a usable sample from any result "
-            f"({n_nodata} no-data samples dropped)",
+            "no grid window returned a usable sample from any result (samples "
+            f"dropped: {dropped_text(n_nodata, n_failed, n_outside)})",
             mode="series",
             result_ids=s.ids,
+            n_nodata_dropped=n_nodata,
+            n_failed_dropped=n_failed,
+            n_outside_dropped=n_outside,
         )
     categorical = first[1]
     series: list[list[Any]] = [[v for v, _c, _st in row] for row in s.reads]
@@ -806,17 +818,26 @@ def _series(
 
 
 def _ensemble(s: _Sampled, *, value_type: str | None) -> dict[str, Any]:
-    """Ensemble mode: per-window dispersion across results of one quantity."""
+    """Ensemble mode: per-window dispersion across results of one quantity.
+
+    A refusal for too few overlapping samples counts the samples dropped as
+    the series refusal does (no-data, failed, and HTTP 404s beside answered
+    points).
+    """
     samples: list[list[Any]] = []
     kept: list[int] = []
     detected: bool | None = None
-    n_dropped = n_nodata = 0
+    n_dropped = n_nodata = n_failed = n_outside = 0
     for pi in range(s.n_points):
         vals: list[Any] = []
         for row in s.reads:
             value, is_cat, status = row[pi]
             if status == NODATA:
                 n_nodata += 1
+            elif status == OUTSIDE:
+                n_outside += 1
+            elif status == FAILED:
+                n_failed += 1
             if status != OK:
                 continue
             if detected is None:
@@ -829,11 +850,15 @@ def _ensemble(s: _Sampled, *, value_type: str | None) -> dict[str, Any]:
         else:
             n_dropped += 1
     if not samples:
+        dropped = dropped_text(n_nodata, n_failed, n_outside)
         return _refuse(
             "no grid window had >= 2 overlapping valid samples across the "
-            f"ensemble ({n_nodata} no-data samples dropped)",
+            f"ensemble (samples dropped: {dropped})",
             mode="ensemble",
             result_ids=s.ids,
+            n_nodata_dropped=n_nodata,
+            n_failed_dropped=n_failed,
+            n_outside_dropped=n_outside,
         )
     if value_type in ("classification", "categorical"):
         vt = "categorical"
@@ -1042,7 +1067,7 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
     if out.get("comparable") is False:
         return out
     if mode != "pair":
-        # Samples read as outside a result's files (Studio answered 404) are
+        # Samples Studio answered with HTTP 404 where it answered others are
         # dropped as no-data ones are, and counted per sample as those are;
         # the pair counts cells (_pair).
         out["n_outside_dropped"] = sum(
@@ -1253,15 +1278,15 @@ def _sampling_note(s: _Sampled, out: dict[str, Any], mode: str) -> str:
     if mode == "pair":
         return note + (
             f"; {out['n_cells_compared']} compared, {out['n_cells_dropped']} "
-            "dropped (no-data, outside the result's files where Studio answered "
-            "404, or failed in either map; n_nodata_dropped, n_outside_dropped and "
-            "n_failed_dropped count those cells)"
+            "dropped (no-data, answered HTTP 404 where Studio answered other "
+            "points, or failed in either map; n_nodata_dropped, n_outside_dropped "
+            "and n_failed_dropped count those cells)"
         )
     note += "; n_nodata_dropped counts samples, not cells"
     if out.get("n_outside_dropped"):
         # Named only when some were, so a sampling with none reads as before.
         note += (
-            f"; {out['n_outside_dropped']} samples read as {OUTSIDE_REASON} were "
+            f"; {out['n_outside_dropped']} samples {OUTSIDE_REASON}, were "
             "dropped too (n_outside_dropped, also samples)"
         )
     if mode == "ensemble":

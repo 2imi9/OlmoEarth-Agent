@@ -12,6 +12,8 @@
 - ``events.jsonl``: the loop's events, as the last step's replay yielded them.
 - ``pending.json``: what the loop waits for (a model call), or its final answer.
 - ``provenance.json``: the run's provenance log, as the last step rebuilt it.
+- ``step.lock``: there only while a step runs: who runs it (host, pid, Slurm
+  job) and since when (:meth:`RunDir.locked`).
 
 A step appends to the tool cache as each new handler returns; it writes the
 response it was given, then the events, the provenance and ``pending.json``
@@ -21,21 +23,49 @@ the cache as provisional records (``replay.ToolCache``). A step stopped
 after saving the response but before writing ``pending.json`` is finished by
 the next ``step`` (``session.step``).
 
-The directory is made private to its owner (0700): its files hold the
-account's names and the tools' whole results.
+A step holds the run's lock from its first read of the run to its last
+write, so two steps never replay one run at once: after a dropped ssh
+connection the first may still run on the cluster, and a second is refused
+while the lock is held, which ``show`` reports. A lock older than
+:data:`STALE_LOCK_SECONDS` (srun's limit of 20 minutes, and a margin) is a
+dead step's and is taken over. The lock is a file made with ``O_EXCL``, not
+``flock``: successive srun steps run on different compute nodes, and
+``flock`` on a parallel filesystem may be node-local or not supported.
+
+An append cut off before its line ended (a killed step, a full disk) leaves
+a last line with no ``"\\n"``: that record was never saved, so a read drops
+it, in the file too (:meth:`RunDir._lines`), and the next append starts a
+line of its own. A handler whose record was cut off runs again on the next
+step; a response cut off counts as not saved.
+
+The directory is made readable by its owner only (0700), also when it existed
+empty, and a symlink is refused: its files hold the account's names and the
+tools' whole results.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import os
+import socket
+import time
+from collections.abc import Iterator
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from olmoearth_agent.bridge.errors import BridgeError
 from olmoearth_agent.bridge.scripted import RecordedResponse
 
-__all__ = ["RunDir"]
+logger = logging.getLogger(__name__)
+
+__all__ = ["STALE_LOCK_SECONDS", "RunDir"]
+
+#: A step's lock older than this many seconds is a dead step's: the srun step
+#: that runs a command is killed at 20 minutes (``scripts/oe-bridge.sh``).
+STALE_LOCK_SECONDS = 25 * 60
 
 
 class RunDir:
@@ -47,6 +77,7 @@ class RunDir:
     EVENTS = "events.jsonl"
     PENDING = "pending.json"
     PROVENANCE = "provenance.json"
+    LOCK = "step.lock"
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -55,19 +86,123 @@ class RunDir:
         """The path of one of the run's files."""
         return self.path / name
 
+    # --- the lock ---------------------------------------------------------
+
+    @contextlib.contextmanager
+    def locked(self) -> Iterator[None]:
+        """Hold the run's lock for the block: no other step changes the run meanwhile.
+
+        The lock file records the host, the pid, ``SLURM_JOB_ID`` and the UTC
+        start time, and is removed at the block's end, whatever ends it, when
+        it is still this block's.
+
+        Raises
+        ------
+        BridgeError
+            When another step holds a lock younger than
+            :data:`STALE_LOCK_SECONDS`.
+        """
+        holder = {
+            "host": socket.gethostname(),
+            "pid": os.getpid(),
+            "job": os.environ.get("SLURM_JOB_ID"),
+            "started": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        text = json.dumps(holder)
+        self._take_lock(text)
+        try:
+            yield
+        finally:
+            self._release_lock(text)
+
+    def read_lock(self) -> dict[str, Any] | None:
+        """Who holds the run's lock and since when, or ``None`` when no step does.
+
+        A lock older than :data:`STALE_LOCK_SECONDS` is a dead step's and reads
+        as ``None``; one whose text cannot be read gives ``{}``.
+        """
+        age = self._lock_age()
+        if age is None or age >= STALE_LOCK_SECONDS:
+            return None
+        try:
+            held = json.loads(self.file(self.LOCK).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return held if isinstance(held, dict) else {}
+
+    @staticmethod
+    def running_text(held: dict[str, Any]) -> str:
+        """A held lock in words: since when, which Slurm job, which host."""
+        return (
+            f"a step is still running on this run (since "
+            f"{held.get('started') or 'an unknown time'}, job "
+            f"{held.get('job') or 'unknown'}, host {held.get('host') or 'unknown'})"
+        )
+
+    def _lock_age(self) -> float | None:
+        """Seconds since the lock was taken, or ``None`` when there is none."""
+        try:
+            return time.time() - self.file(self.LOCK).stat().st_mtime
+        except FileNotFoundError:
+            return None
+
+    def _take_lock(self, text: str) -> None:
+        """Create the lock file with ``text``; a stale one is taken over."""
+        path = self.file(self.LOCK)
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        try:
+            fd = os.open(path, flags, 0o600)
+        except FileExistsError:
+            held = self.read_lock()
+            if held is not None:
+                raise BridgeError(
+                    f"{self.running_text(held)}: wait for it to end, then run show"
+                ) from None
+            logger.warning(
+                "bridge: took over %s, older than %d s (a dead step's lock)",
+                path,
+                STALE_LOCK_SECONDS,
+            )
+            with contextlib.suppress(FileNotFoundError):
+                path.unlink()
+            try:
+                fd = os.open(path, flags, 0o600)
+            except FileExistsError:
+                raise BridgeError(
+                    "another step took this run's lock meanwhile: wait for it to "
+                    "end, then run show"
+                ) from None
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def _release_lock(self, text: str) -> None:
+        """Remove the lock if it is still the one ``text`` wrote."""
+        path = self.file(self.LOCK)
+        with contextlib.suppress(FileNotFoundError):
+            if path.read_text(encoding="utf-8") == text:
+                path.unlink()
+
     # --- writing ---------------------------------------------------------
 
     def create(self, brief: dict[str, Any]) -> None:
         """Make the run's directory with its ``brief.json``; it must be new or empty.
 
-        A new directory is made readable by its owner only (mode 0700).
+        The directory is made readable by its owner only (mode 0700), also
+        when it existed empty; a symlink is refused, since where it points and
+        that directory's mode are not this run's to set.
         """
+        if self.path.is_symlink():
+            raise BridgeError(
+                f"{self.path} is a symlink: begin needs a real run directory"
+            )
         if self.path.exists() and (not self.path.is_dir() or any(self.path.iterdir())):
             raise BridgeError(
                 f"{self.path} exists and is not an empty directory: begin needs a "
                 "new run directory"
             )
         self.path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # mkdir leaves an existing directory's mode as it was.
+        os.chmod(self.path, 0o700)
         self._write(self.BRIEF, json.dumps(brief, indent=2, ensure_ascii=False))
 
     def append_response(self, response: RecordedResponse) -> None:
@@ -138,13 +273,31 @@ class RunDir:
         return view if isinstance(view, dict) else None
 
     def _lines(self, name: str) -> list[dict[str, Any]]:
+        """A JSON-lines file's records; an unfinished last line is dropped.
+
+        Lines end at ``"\\n"`` only: a JSON string may hold U+2028 or U+0085
+        (``json.dumps`` leaves them as they are), which ``splitlines()``
+        splits at. The file is split as bytes, so a line cut inside a
+        multi-byte character is dropped with its line, not met as a decode
+        error. A last segment with no ``"\\n"`` is an append that never
+        finished: it is dropped, and the file rewritten without it, so the
+        next append is not glued onto it, whether or not it parses.
+        """
         path = self.file(name)
         if not path.is_file():
             return []
+        segments = path.read_bytes().split(b"\n")
+        tail = segments.pop()  # b"" when the file ends with "\n"
+        if tail.strip():
+            logger.warning(
+                "bridge: dropped the unfinished last line of %s (an append cut "
+                "off: that record was never saved)",
+                path,
+            )
+            self._write(name, b"".join(s + b"\n" for s in segments).decode("utf-8"))
         out: list[dict[str, Any]] = []
-        # Lines end at "\n" only: a JSON string may hold U+2028 or U+0085
-        # (json.dumps leaves them as they are), which splitlines() splits at.
-        for n, line in enumerate(path.read_text(encoding="utf-8").split("\n"), 1):
+        for n, raw in enumerate(segments, 1):
+            line = raw.decode("utf-8")
             if not line.strip():
                 continue
             record = json.loads(line)

@@ -224,6 +224,7 @@ async def _search_gives_no_training(_tmp: Path) -> None:
         "nodata_value",
         "trained_on_labels",
         "label_field_id",
+        "split_field_named",
         "split",
     }
     assert model.get("trained_on_labels") is True
@@ -365,7 +366,7 @@ async def _from_result_refuses_classes(_tmp: Path) -> None:
     """A class map without top-k scores (one with them is ranked: test_topk_scores)."""
     studio = _Studio(results={"lc": _result("lc", "landcover", _CLASSIFICATION)})
     out = await _call("olmoearth_review_set_from_result", {"result_id": "lc"}, studio)
-    _refused(out, "A class map has no confidence to rank or certify")
+    _refused(out, "A class map without top-k scores has no confidence to rank")
     _refused(out, "probability_output")
 
 
@@ -395,7 +396,7 @@ async def _plan_takes_random_or_class_for_a_class_map(_tmp: Path) -> None:
             {"result_id": "lc", "budget": 20, "design": design},
             studio,
         )
-        _refused(out, "A class map has no confidence to rank or certify")
+        _refused(out, "A class map without top-k scores has no confidence to rank")
         assert out["result"]["designs_for_a_class_map"] == ["random", "class"]
 
 
@@ -415,7 +416,7 @@ async def _certify_refuses_a_class_map(_tmp: Path) -> None:
         "olmoearth_certify_zone",
         {"design_path": plan["result"]["design_path"], "wrong": [0] * 4, "alpha": 0.1},
     )
-    _refused(out, "A class map has no confidence to rank or certify")
+    _refused(out, "A class map without top-k scores has no confidence to rank")
 
 
 @probe("olmoearth_compare_review", "both inferences over the same windows")

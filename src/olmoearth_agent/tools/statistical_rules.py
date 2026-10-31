@@ -282,6 +282,41 @@ def _split_text(split: Any) -> str | None:
     )
 
 
+def _model_split_text(model: Mapping[str, Any]) -> str | None:
+    """A trained model's split in words, as far as its record says it.
+
+    The record's proportions as the split (:func:`_split_text`), unless it
+    also names a split field (``split_field_named``): then the proportions,
+    a test share of 0 kept, are said to be recorded beside it, and which of
+    the two training followed is not recorded. The kelp model's record names
+    both, train/val/test 0.75/0.25/0, while its split field tags 557 of its
+    1056 annotations test (live3, 31 October 2026): its proportions are no
+    statement of the split training used.
+
+    Examples
+    --------
+    >>> _model_split_text({"split": {"train_prop": 0.75, "val_prop": 0.25}})
+    'train/val split 0.75/0.25'
+    """
+    split = model.get("split")
+    if not model.get("split_field_named"):
+        return _split_text(split)
+    parts: list[tuple[str, float]] = []
+    if isinstance(split, Mapping):
+        for name in ("train", "val", "test"):
+            value = split.get(f"{name}_prop")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                parts.append((name, float(value)))
+    if not parts:
+        return "a split field recorded; whether training followed it is not recorded"
+    names = "/".join(n for n, _ in parts)
+    shares = "/".join(f"{v:g}" for _, v in parts)
+    return (
+        f"split proportions {names} {shares} recorded beside a split field; "
+        "which of the two training followed is not recorded"
+    )
+
+
 def labels_in_studio_fact(
     models: Iterable[Mapping[str, Any] | None],
 ) -> dict[str, Any] | None:
@@ -303,21 +338,24 @@ def labels_in_studio_fact(
     maps, and a search lists models, not maps. The sentence holds
     whether or not the run called the inventory (live3, 31 Oct 2026, called
     it in the run that stated this fact, whose sentence then said no tool of
-    the run had looked the labels up). No person's id or name is read or
-    stated; ``label_field_id`` is the id of the label field.
+    the run had looked the labels up). A record that names a split field
+    beside its proportions has them stated as recorded beside it, not as the
+    training split (:func:`_model_split_text`): the inventory counts the
+    annotations by that field. No person's id or name is read or stated;
+    ``label_field_id`` is the id of the label field.
 
     Returns
     -------
     dict or None
         ``id``, ``sentence``, ``models`` (``name``, ``model_id``,
-        ``label_field_id`` and ``split`` of each), or ``None`` when no model
-        names a label field.
+        ``label_field_id``, ``split`` and ``split_field_named`` of each), or
+        ``None`` when no model names a label field.
     """
     trained = [m for m in models if m and m.get("trained_on_labels")]
     if not trained:
         return None
     names = [str(m.get("name") or m.get("model_id")) for m in trained]
-    splits = {_split_text(m.get("split")) for m in trained}
+    splits = {_model_split_text(m) for m in trained}
     split = splits.pop() if len(splits) == 1 else None
     one = len(trained) == 1
     sentence = (
@@ -339,6 +377,7 @@ def labels_in_studio_fact(
                 "model_id": m.get("model_id"),
                 "label_field_id": m.get("label_field_id"),
                 "split": m.get("split"),
+                "split_field_named": m.get("split_field_named"),
             }
             for m in trained
         ],
@@ -657,8 +696,8 @@ def whole_map_rate_for_a_zone(
 #: (:data:`TOPK_MAP_KIND`) is never refused this way: its rank-1 minus rank-2
 #: score is its margin.
 CLASS_MAP_NO_CONFIDENCE = (
-    "A class map has no confidence to rank or certify, so it gets no review "
-    "set and no certified zone; it can still be measured "
+    "A class map without top-k scores has no confidence to rank or certify, so "
+    "it gets no review set and no certified zone; it can still be measured "
     "(olmoearth_plan_label_sample with design='random' or 'class', then "
     "olmoearth_estimate_map_error) or compared with another map of the same "
     "time (olmoearth_plan_label_sample with design='disagreement')."

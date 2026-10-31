@@ -107,6 +107,84 @@ class _RedactDownloadToken(logging.Filter):
 logging.getLogger("httpx").addFilter(_RedactDownloadToken())
 
 
+#: The hint of a refused write (HTTP 403 on a request that is no read).
+WRITE_REFUSED_HINT = (
+    "Studio refused this request for the API key in use. Do not retry it, "
+    "and do not try another call that writes to Studio in this run: tell "
+    "the user that Studio refused it, that the key may be read-only or lack "
+    "the permission, and that nothing was created or changed."
+)
+#: The hint of a refused read (HTTP 403 on a GET, a search or an aggregate),
+#: which a read-only key does not cause: it read every resource tried with
+#: it (31 October 2026).
+READ_REFUSED_HINT = (
+    "Studio refused this read for the API key in use. Do not retry it with the "
+    "same ids: tell the user that Studio refused it, that this key may not "
+    "read this resource, and that nothing was created or changed."
+)
+#: The hint when Studio did not accept the key at all (HTTP 401).
+KEY_REJECTED_HINT = (
+    "Studio did not accept the API key. Do not retry: tell the user that "
+    "Studio rejected the key, that OLMOEARTH_API_KEY may be missing, invalid, "
+    "expired or revoked and should be checked or renewed, and that nothing was "
+    "created or changed."
+)
+#: The hint when Studio refused a result's files download (HTTP 401 or 403).
+FILES_REFUSED_HINT = (
+    "Studio refused the download of this result's files. Do not retry it: "
+    "tell the user that Studio refused it, that the API key or the result's "
+    "download token was not accepted (the token may have expired, or not be "
+    "valid for this key), and that nothing was created or changed."
+)
+#: The path of the result files download, whose query carries a token.
+_FILES_PATH = "/prediction-results/files"
+
+
+def _refusal_cause(method: str, path: str, status_code: int) -> tuple[str, str, str]:
+    """Why Studio refused a request: the error text's cause, must_state's, the hint.
+
+    Chosen from the status and the request, so no text states a cause the
+    request rules out: a 401 is a key Studio did not accept (missing,
+    invalid, expired or revoked), not a read-only one; a 403 on a read is
+    not a read-only key, which reads freely (every GET, search and aggregate
+    tried with one answered 200 on 31 October 2026); a 403 on any other
+    request may be. A files download may also carry a token that expired.
+
+    Examples
+    --------
+    >>> _refusal_cause("POST", "/projects", 403)[1]
+    'the API key may be read-only or lack the permission'
+    >>> _refusal_cause("POST", "/annotations/search", 403)[1]
+    'this key may not read this resource'
+    """
+    if path == _FILES_PATH:
+        return (
+            "The Studio API key or the result's download token was not accepted "
+            "(the token may have expired, or not be valid for this key)",
+            "the API key or the download token (perhaps expired) was not accepted",
+            FILES_REFUSED_HINT,
+        )
+    if status_code == 401:
+        return (
+            "Studio did not accept the API key (it may be missing, invalid, "
+            "expired or revoked)",
+            "the API key was not accepted (missing, invalid, expired or revoked)",
+            KEY_REJECTED_HINT,
+        )
+    if method == "GET" or path.endswith(("/search", "/aggregate")):
+        return (
+            "This Studio API key may not read this resource",
+            "this key may not read this resource",
+            READ_REFUSED_HINT,
+        )
+    return (
+        "The Studio API key may be read-only or lack the permission for this "
+        "request",
+        "the API key may be read-only or lack the permission",
+        WRITE_REFUSED_HINT,
+    )
+
+
 class StudioAccessError(RuntimeError):
     """Studio refused a request with HTTP 401 or 403: the key may not do it.
 
@@ -114,11 +192,17 @@ class StudioAccessError(RuntimeError):
     key's access does not change on a second try. Studio's keys can be
     read-only, and ``/users/me`` does not show a key's access level (measured
     on 2026-10-31 with a read-only key: its ``permissions`` list the user's
-    full set), so a refusal is the only signal; the spec declares a 403 on
-    ``POST /predictions``. A read-only key never tried a write, so how Studio
-    words that refusal is unverified. The text names the method, the path
-    without its query string (a download token travels in one) and Studio's
-    ``errors[0]`` code and message when the body has them.
+    full set), so a refusal of a write is the only signal; the spec declares
+    a 403 on ``POST /predictions``. A read-only key never tried a write, so
+    how Studio words that refusal is unverified. The text names the method,
+    the path without its query string (a download token travels in one) and
+    Studio's ``errors[0]`` code and message when the body has them.
+
+    The cause stated is chosen from the status and the request
+    (:func:`_refusal_cause`): a 401 is a key Studio did not accept, a 403 on
+    a read is a resource this key may not read, and only a 403 on a write
+    says the key may be read-only. Every one says nothing was created or
+    changed, which holds for any refused request.
 
     ``contract`` carries the sentence the model must state (the registry puts
     it on the failed envelope, beside the error), and :attr:`hint` replaces
@@ -135,15 +219,14 @@ class StudioAccessError(RuntimeError):
         Studio's ``errors[0].code`` (e.g. ``permission_error``), or ``None``.
     contract
         ``{"must_state": [sentence]}``.
+    hint
+        The failed envelope's hint, for this status and request; the class's
+        own is a refused write's.
     """
 
-    #: The failed envelope's hint in place of the registry's generic one.
-    hint = (
-        "Studio refused this request for the API key in use. Do not retry it, "
-        "and do not try another call that writes to Studio in this run: tell "
-        "the user that Studio refused it, that the key may be read-only or lack "
-        "the permission, and that nothing was created or changed."
-    )
+    #: The failed envelope's hint in place of the registry's generic one; each
+    #: instance sets its own (:func:`_refusal_cause`), this is a write's.
+    hint: str = WRITE_REFUSED_HINT
 
     def __init__(
         self,
@@ -157,19 +240,18 @@ class StudioAccessError(RuntimeError):
         self.path = path.split("?", 1)[0]
         self.status_code = status_code
         self.code = code
+        cause, stated, self.hint = _refusal_cause(self.method, self.path, status_code)
         detail = f"HTTP {status_code}" + (f", {code}" if code else "")
         if message:
             detail += f": {message}"
         super().__init__(
-            f"Studio refused {self.method} {self.path} ({detail}). The Studio API "
-            "key may be read-only or lack the permission for this request; "
+            f"Studio refused {self.method} {self.path} ({detail}). {cause}; "
             "nothing was created or changed."
         )
         self.contract: dict[str, Any] = {
             "must_state": [
-                f"Studio refused this request (HTTP {status_code}): the API key "
-                "may be read-only or lack the permission, and nothing was "
-                "created or changed."
+                f"Studio refused this request (HTTP {status_code}): {stated}, and "
+                "nothing was created or changed."
             ]
         }
 
@@ -724,7 +806,9 @@ class StudioClient:
         Raises
         ------
         ValueError
-            If ``probability_top_k`` is given and is not an integer of 1 or more.
+            If ``probability_top_k`` is given and is not an integer of 2 or more:
+            every reader of top-k scores takes the rank-1 minus rank-2 margin,
+            so one rank is a prediction no tool reads.
         """
         body: dict[str, Any] = {
             "name": name,
@@ -736,8 +820,11 @@ class StudioClient:
         }
         if probability_top_k is not None:
             top_k = probability_top_k
-            if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 1:
-                raise ValueError("probability_top_k must be an integer of 1 or more")
+            if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k < 2:
+                raise ValueError(
+                    "probability_top_k must be an integer of 2 or more (a margin "
+                    "needs two ranks); nothing was submitted"
+                )
             body["probability_output"] = {"top_k": top_k}
         env = await self.post("/predictions", body)
         return env.one or {}

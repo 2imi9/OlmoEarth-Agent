@@ -15,9 +15,20 @@ and the step stops at the first model call nothing answers yet, or at the
 What a step returns (:func:`pending_view`, :func:`final_view`) is what the
 model needs next: for a model call, the messages it has not seen since its
 last response (tool results as the loop feeds them, spilled when large; the
-harness's notes), the system prompt when it changed, the tools offered and
-the sampling mode; for the end, the answer with its flags and the notes
-``olmoearth-agent`` prints beside it.
+harness's notes), the system prompt when it changed, the tools offered, with
+their specs on the first call and whenever the tools offered change (an
+argument a spec does not declare is passed through and ignored by its
+handler, so the model needs the names), and the sampling mode; for the end,
+the answer with its flags and the notes ``olmoearth-agent`` prints beside
+it.
+
+A step holds the run's lock (:meth:`RunDir.locked`) from its first read to
+its last write, so a step sent again after a dropped connection, while the
+first still runs on the cluster, is refused, and ``show`` says a step is
+running. A response may name the model call it answers (``call``), so one
+sent again after that call was answered is refused, never played on the
+next. Whether the run's Studio key is declared read-only
+(``OLMOEARTH_READ_ONLY``) is recorded at ``begin`` and must stay so.
 
 The one draw of chance in what the loop shows the model, besides what the
 tools return (served from the cache), is the name of a spilled result's file
@@ -32,6 +43,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import uuid
 from collections.abc import Callable, Iterable, Iterator
@@ -52,8 +64,9 @@ from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message, Role, ToolSpec
 from olmoearth_agent.provenance.log import ProvenanceLog
 from olmoearth_agent.skills import SkillLoader, build_default_registry
+from olmoearth_agent.skills.registry import READ_ONLY_ENV
 from olmoearth_agent.studio.client import StudioClient
-from olmoearth_agent.tools.registry import ToolRegistry
+from olmoearth_agent.tools.registry import ToolRegistry, opted_in
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +259,11 @@ def _answered(
 
 
 def _check_switches(agent: LeadAgent, settings: dict[str, Any]) -> None:
-    """The answer checks must stay as they were when the run began."""
+    """The answer checks and the read-only switch must stay as they were.
+
+    A run begun before ``read_only`` was recorded has no such setting, and
+    only a divergence shows a change of it.
+    """
     for name, variable in (
         ("check_numbers", "OLMOEARTH_CHECK_NUMBERS"),
         ("check_answer", "OLMOEARTH_CHECK_ANSWER"),
@@ -256,6 +273,15 @@ def _check_switches(agent: LeadAgent, settings: dict[str, Any]) -> None:
             raise BridgeError(
                 f"{name} was {settings.get(name)} when the run began and is {now} "
                 f"now ({variable}): keep it as it was for the whole run"
+            )
+    if "read_only" in settings:
+        now = opted_in(READ_ONLY_ENV)
+        if now != bool(settings["read_only"]):
+            raise BridgeError(
+                f"read_only was {settings['read_only']} when the run began and is "
+                f"{now} now ({READ_ONLY_ENV}, which scripts/oe-bridge.sh sets "
+                "unless OE_BRIDGE_ALLOW_WRITES=1): keep it as it was for the whole "
+                "run"
             )
 
 
@@ -319,6 +345,9 @@ async def begin(
             "check_claims": False,
             "skill_index": skill_index,
             "memory_block": memory_block,
+            # It decides the tools offered and the capability card: a later
+            # step with another setting is refused (_check_switches).
+            "read_only": opted_in(READ_ONLY_ENV),
         },
     }
     factory = registry_factory or build_default_registry
@@ -333,6 +362,7 @@ async def step(
     run_dir: str | Path,
     response: Any = None,
     *,
+    call: int | None = None,
     registry_factory: RegistryFactory | None = None,
     studio: StudioClient | None = None,
 ) -> dict[str, Any]:
@@ -347,6 +377,11 @@ async def step(
         "arguments"}]}`` or ``{"content": "..."}``. ``None`` only to start a
         run whose first step failed, or to finish a step that saved its
         response and stopped before it ended.
+    call
+        The model call ``response`` answers (the view's ``model_call``), or
+        ``None``; another pending call is refused before anything runs, so a
+        response sent again after its call was answered is never played on
+        the next.
     registry_factory, studio
         As for :func:`begin`.
 
@@ -359,8 +394,9 @@ async def step(
     Raises
     ------
     BridgeError
-        No run, a malformed response, a run that is not waiting for one, or a
-        replay that diverged from the recorded run.
+        No run, a step running on the run (its lock held), a malformed
+        response, a response for another call, a run that is not waiting for
+        one, or a replay that diverged from the recorded run.
 
     Notes
     -----
@@ -370,9 +406,43 @@ async def step(
     (:class:`~olmoearth_agent.bridge.replay.ToolCache`; a Studio write among
     them may already have happened). A step stopped after it saved the
     response and before it wrote ``pending.json`` is finished by the next
-    step, given no response or the same one.
+    step, given no response or the same one. The whole step holds the run's
+    lock (:meth:`~olmoearth_agent.bridge.store.RunDir.locked`).
     """
     run = RunDir(run_dir)
+    run.read_brief()  # no run: refused before a lock is made in no directory
+    with run.locked():
+        return await _step(
+            run, response, call=call, registry_factory=registry_factory, studio=studio
+        )
+
+
+def _unchanged(run: RunDir, saved: int, pending: dict[str, Any] | None) -> None:
+    """Refuse to save when the run's responses or pending call changed meanwhile.
+
+    The lock keeps a second step out; this check keeps ``responses.jsonl`` and
+    ``pending.json`` consistent even so (a lock taken over from a step that
+    was not dead, say).
+    """
+    now = run.read_pending()
+    before = None if pending is None else pending.get("request_sha256")
+    after = None if now is None else now.get("request_sha256")
+    if len(run.read_responses()) != saved or before != after:
+        raise BridgeError(
+            "another step saved a response or a view on this run meanwhile; this "
+            "step saved nothing: run show"
+        )
+
+
+async def _step(
+    run: RunDir,
+    response: Any,
+    *,
+    call: int | None,
+    registry_factory: RegistryFactory | None,
+    studio: StudioClient | None,
+) -> dict[str, Any]:
+    """:func:`step` under the run's lock."""
     brief = run.read_brief()
     pending = run.read_pending()
     responses = run.read_responses()
@@ -390,7 +460,14 @@ async def step(
     else:
         if pending is None:
             raise BridgeError(
-                "the run has not started: run step without a response first"
+                "the run has not started: run step without a response first "
+                "(scripts/oe-bridge.sh step RUN, with no response file)"
+            )
+        if call is not None and call != pending.get("model_call"):
+            raise BridgeError(
+                f"the response answers model call {call}, and the pending call is "
+                f"model call {pending.get('model_call')}: nothing ran; run show "
+                "and answer the pending call"
             )
         parsed = RecordedResponse.parse(
             response, request_sha256=str(pending["request_sha256"])
@@ -444,6 +521,7 @@ async def step(
         view = final_view(brief, events, agent.state)
     else:  # pragma: no cover - run_stream always ends with its final event
         raise BridgeError("the loop stopped without a final event")
+    _unchanged(run, saved, pending)
     cache.drop_unread()
     if cache.dropped:
         view["dropped_tool_calls"] = cache.dropped
@@ -457,15 +535,29 @@ async def step(
 
 
 def show(run_dir: str | Path) -> dict[str, Any]:
-    """The last step's view again (``pending.json``); nothing runs."""
+    """The last step's view again (``pending.json``); nothing runs.
+
+    While a step holds the run's lock, the view carries ``step_running`` (who
+    and since when): the pending call shown is then the one that step is
+    answering, and the response is not to be sent again.
+    """
     run = RunDir(run_dir)
     run.read_brief()
+    held = run.read_lock()
     view = run.read_pending()
     if view is None:
+        if held is not None:
+            raise BridgeError(
+                f"{run.running_text(held)}: the run's first step has not ended; "
+                "wait for it to end, then run show"
+            )
         raise BridgeError(
             "the run has no pending call yet: its first step did not end; run "
-            "step without a response to start it"
+            "step without a response to start it (scripts/oe-bridge.sh step RUN, "
+            "with no response file), or begin again under a new run name"
         )
+    if held is not None:
+        view = {**view, "step_running": held}
     return view
 
 
@@ -553,7 +645,12 @@ def pending_view(
     ``messages`` are the ones it has not seen: everything after its last
     response (all of them on the first call). ``system`` holds the system
     prompt's text on the first call and whenever it changed (a loaded group
-    adds its tools to the card), else only its sha256.
+    adds its tools to the card), else only its sha256. ``tool_specs`` holds
+    the offered tools' whole specs (name, description, JSON Schema) on the
+    first call and whenever the tools offered changed, which
+    ``tool_specs_changed`` says: the capability card names required
+    arguments only, and an argument a spec does not declare is passed
+    through and ignored, so a misnamed one would run the tool on its default.
     """
     call = llm.pending
     if call is None:
@@ -566,7 +663,8 @@ def pending_view(
     system: dict[str, Any] = {"sha256": _sha256(call.system), "changed": changed}
     if changed:
         system["text"] = call.system
-    return {
+    specs_changed = previous is None or previous.tool_names != call.tool_names
+    view: dict[str, Any] = {
         "status": MODEL_CALL,
         "run_id": brief["run_id"],
         "model_call": call.index,
@@ -574,11 +672,15 @@ def pending_view(
         "max_turns": brief["settings"]["max_turns"],
         "mode": call.mode,
         "tools": call.tool_names,
+        "tool_specs_changed": specs_changed,
         "system": system,
         "messages": [_message_view(m) for m in call.messages[seen:]],
         "request_sha256": call.sha256,
         "respond": RESPOND_WITH_TOOLS if call.tools else RESPOND_WITHOUT_TOOLS,
     }
+    if specs_changed and call.tools:
+        view["tool_specs"] = [_spec_view(t) for t in call.tools]
+    return view
 
 
 def _collect(events: Iterable[dict[str, Any]], state: ThreadState) -> AgentResult:
@@ -705,6 +807,35 @@ def _dropped_text(view: dict[str, Any]) -> list[str]:
     ]
 
 
+def _running_text(view: dict[str, Any]) -> list[str]:
+    """The bridge's note that a step still runs on the run, if ``show`` saw one."""
+    held = view.get("step_running")
+    if not isinstance(held, dict):
+        return []
+    return [
+        f"(bridge: {RunDir.running_text(held)}: the view below is from before "
+        "it; wait for it to end, then run show again, and do not send the "
+        "response again meanwhile)"
+    ]
+
+
+def _specs_text(view: dict[str, Any]) -> list[str]:
+    """The offered tools' specs as ``--text`` prints them, when the view has them."""
+    specs = view.get("tool_specs")
+    if not specs:
+        if view.get("tools"):
+            return ["-- tool specs unchanged since the last call --"]
+        return []
+    lines = ["-- tool specs (use only the argument names each declares) --"]
+    for spec in specs:
+        parameters = json.dumps(spec.get("parameters"), ensure_ascii=False)
+        lines += [
+            f"- {spec.get('name')}: {spec.get('description')}",
+            f"  parameters: {parameters}",
+        ]
+    return lines
+
+
 def render_text(view: dict[str, Any]) -> str:
     """The readable form of a view (``--text``)."""
     if view.get("status") == FINAL:
@@ -713,6 +844,7 @@ def render_text(view: dict[str, Any]) -> str:
         if view.get("marked"):
             flags.append("marked: " + ", ".join(view["marked"]))
         lines = [
+            *_running_text(view),
             f"== final answer (run {view.get('run_id')}) ==",
             "(no answer)" if content is None else str(content),
             "== " + ("; ".join(flags) if flags else "not revised, not marked") + " ==",
@@ -723,11 +855,13 @@ def render_text(view: dict[str, Any]) -> str:
     tools = view.get("tools")
     system = view.get("system") or {}
     lines = [
+        *_running_text(view),
         f"== model call {view.get('model_call')} "
         f"(turn {view.get('turn')} of {view.get('max_turns')}) ==",
         *_dropped_text(view),
         f"mode: {view.get('mode')}",
         "tools: " + (", ".join(tools) if tools else "none"),
+        *_specs_text(view),
     ]
     if system.get("changed"):
         lines.append(f"-- system prompt (sha256 {system.get('sha256')}) --")

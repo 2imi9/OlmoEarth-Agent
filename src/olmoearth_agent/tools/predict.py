@@ -331,7 +331,7 @@ def build_predict_tools() -> list[RegisteredTool]:
                         "end_time": {"type": "string"},
                         "probability_top_k": {
                             "type": "integer",
-                            "minimum": 1,
+                            "minimum": 2,
                             "description": "Ask Studio for the top-k class scores "
                             "of a segmentation model, which the verification tools "
                             "need for a class map's review set. Unverified with a "

@@ -1277,15 +1277,16 @@ def sampling_block(
     n_sampled, n_valid, n_nodata, n_failed
         The windows sampled, those holding a usable value, and those dropped
         as no-data or as a failed pixel-value call (any failure but a 404
-        read as outside the result's files).
+        beside answered points).
     n_outside
-        The windows dropped as outside the result's files: Studio answered
-        their pixel-value call with HTTP 404 ``not_found_error`` while it
-        answered other points of the result
-        (:func:`~olmoearth_agent.tools.sampling.sample_records`). Probe 5
-        (31 October 2026) got 60 such 404s on the kelp result's 16 x 16
-        grid, the same count the live run had counted as failed; it did not
-        test which file covers which point.
+        The windows dropped because Studio answered their pixel-value call
+        with HTTP 404 ``not_found_error`` while it answered other points of
+        the result (:func:`~olmoearth_agent.tools.sampling.sample_records`),
+        read as points where no file is served. Probe 5 (31 October 2026)
+        got 60 such 404s on the kelp result's 16 x 16 grid, the same count
+        the live run had counted as failed; it did not test which file covers
+        which point, so the note states the 404, not that the windows lie
+        outside the result's files.
     nodata_rule
         How a sample is judged no-data, as the calling tool applies it.
 
@@ -1294,7 +1295,7 @@ def sampling_block(
     dict
         :func:`grid_block`'s keys, the counts (``n_outside_dropped`` among
         them), ``what_a_window_is``, ``nodata_rule`` and, when a window was
-        outside the result's files, ``outside_note``.
+        answered with a 404, ``outside_note``.
     """
     block: dict[str, Any] = {
         **grid_block(grid, grid_requested),
@@ -1313,9 +1314,9 @@ def sampling_block(
     }
     if n_outside:
         block["outside_note"] = (
-            f"{n_outside} of the {n_sampled} windows are read as {OUTSIDE_REASON}, "
-            "since other windows of the result answered: they are dropped and "
-            "counted apart from failed calls (n_failed_dropped)"
+            f"{n_outside} of the {n_sampled} windows were {OUTSIDE_REASON}: they "
+            "are dropped and counted apart from failed calls (n_failed_dropped); "
+            "which of the result's files covers which point was not tested"
         )
     return block
 
@@ -1360,8 +1361,8 @@ class SampledScores:
     top_k: dict[str, Any] | None = None
     margin: list[float] | None = None
     threshold_note: str | None = None
-    #: Windows outside the result's files (Studio answered 404); ``n_failed``
-    #: counts every other failed call.
+    #: Windows Studio answered with HTTP 404 where it answered others
+    #: (``sampling.OUTSIDE``); ``n_failed`` counts every other failed call.
     n_outside: int = 0
 
     def grid_block(self) -> dict[str, Any]:

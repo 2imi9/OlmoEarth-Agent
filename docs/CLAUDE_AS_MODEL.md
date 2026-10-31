@@ -49,7 +49,10 @@ Each command is a fresh process on a run directory:
    has it. Only a call past the cache runs, and its outcome is appended at
    once, with the model call whose response made it.
 5. A cached exception is raised again with the same class name, text and
-   `contract`, so its envelope is the live one.
+   `contract`, and, for a refused key (`StudioAccessError`), the same
+   `hint`, so its envelope is the live one. The first, live call is served
+   from its record too. A record cached before the hint was kept has none,
+   and replays with the generic hint it had then.
 6. `olmoearth_load_skill` runs again on every step. It sets the run's loaded
    tool groups, which a fresh process does not have.
 7. The step stops at the first model call nothing answers yet. It writes that
@@ -68,29 +71,38 @@ On aicr (each a fresh process):
 
 ```bash
 olmoearth-agent-bridge begin --run-dir D --brief-file brief.txt
-olmoearth-agent-bridge step --run-dir D --response-file response.json
+olmoearth-agent-bridge step --run-dir D --response-file response.json --call N
+olmoearth-agent-bridge step --run-dir D   # starts a run whose first step failed
 olmoearth-agent-bridge show --run-dir D --text
 olmoearth-agent-bridge prompt           # the system prompt: soul + card + skill index
 olmoearth-agent-bridge tools [--run-dir D]
 ```
 
 `--brief` takes the text itself; `--brief-file -` and `--response-file -`
-read stdin.
+read stdin. `--call N` names the model call the response answers (the view's
+`model_call`): the step is refused before anything runs when another call is
+pending, so a response sent again after its call was answered never answers
+the next one.
 
 From the Mac, `scripts/oe-bridge.sh` runs the same commands through
-`ssh aicr srun`. Nothing runs locally but ssh, and nothing on the login node
-but srun. A brief or a response is a file on the Mac. It goes over ssh's
-stdin, which srun forwards to the bridge, so its text passes through no
-shell. Its paths are variables at the top: `AGENT_DIR`, `RUNS` and `OUTPUTS`.
+`ssh aicr srun` (`step RUN [RESPONSE.json] [--call N] [--text]`). Nothing
+runs locally but ssh, and nothing on the login node but srun. A brief or a
+response is a file on the Mac. It goes over ssh's stdin, which srun forwards
+to the bridge, so its text passes through no shell. Its paths are variables
+at the top: `AGENT_DIR`, `RUNS` and `OUTPUTS`. A missing
+`~/.config/olmoearth-agent/studio.env` on aicr stops a command before the
+bridge runs, so a missing key file leaves no half-made run behind.
 
-With a read-only Studio key, run every command of a run with
-`OE_BRIDGE_READ_ONLY=1`. The wrapper then runs the bridge with
-`OLMOEARTH_READ_ONLY=1`: the two Studio write tools
+The wrapper is read-only by default: it runs the bridge with
+`OLMOEARTH_READ_ONLY=1`, so the two Studio write tools
 (`olmoearth_create_project`, `olmoearth_submit_prediction`) are not offered,
-and the capability card says why. `olmoearth_request_aoi` is still offered:
-it calls no Studio endpoint itself, and it is the web UI that saves the
-drawn area (answering a refused save with 403). Changing the setting within
-a run shows as a divergence.
+and the capability card says why. Only the owner sets
+`OE_BRIDGE_ALLOW_WRITES=1`, for a key that can write, to offer them.
+`olmoearth_request_aoi` is still offered: it calls no Studio endpoint
+itself, and it is the web UI that saves the drawn area (answering a refused
+save with 403). The run records the setting at `begin` (`brief.json`), and a
+step with the other setting is refused. (Until 31 October 2026 read-only was
+opt-in, with `OE_BRIDGE_READ_ONLY=1`.)
 
 A response is `{"tool_calls": [{"name": ..., "arguments": {...}}]}` or
 `{"content": "..."}`. When a call offers no tools (the turn cap, the answer
@@ -102,18 +114,25 @@ Each step prints a view. For a pending call, it holds:
   as the loop feeds them, spilled when large, and the harness's notes);
 - the system prompt: in full on the first call and whenever it changed, else
   its sha256;
-- the tools offered and the mode.
+- the tools offered and the mode;
+- the offered tools' specs (name, description, JSON Schema) on the first call
+  and whenever the tools offered change (`tool_specs`). The capability card
+  names required arguments only, and an argument a spec does not declare is
+  passed through and ignored by its handler, so a misnamed one runs the tool
+  on its default: use only the names the specs declare.
 
 For the end, it holds the answer, whether it was revised, marked or forced
-by the turn cap, and the notes `olmoearth-agent` prints.
+by the turn cap, and the notes `olmoearth-agent` prints. While a step holds
+the run's lock, `show` adds `step_running` (since when, which Slurm job).
 
 The skills `.claude/skills/olmoearth-agent-model` (playing the model) and
 `.claude/skills/olmoearth-agent-bridge` (operations) say how to use it.
 
 ### The run directory
 
-It is readable by its owner only (0700): its files hold the account's names
-and the tools' whole results.
+It is readable by its owner only (0700), also when `begin` was given an
+empty directory that existed; a symlink is refused. Its files hold the
+account's names and the tools' whole results.
 
 - `brief.json`: the brief, the history and the settings.
 - `responses.jsonl`: one response per model call, with the request's sha256.
@@ -122,16 +141,34 @@ and the tools' whole results.
 - `events.jsonl`: the loop's events from the last replay.
 - `pending.json`: the pending call, or the final answer.
 - `provenance.json`: the provenance log from the last replay.
+- `step.lock`: there only while a step runs (host, pid, Slurm job, start
+  time). A second step is refused while it is held. One older than 25
+  minutes (srun's 20-minute limit and a margin) is a dead step's, and the
+  next step takes it over. It is a file made with `O_EXCL`, not `flock`,
+  since successive srun steps run on different nodes.
 
 ### A failed step
 
 A step writes the response it was given, then the other files, only once
 the loop has stopped cleanly. `pending.json` comes last.
 
+- Give each `scripts/oe-bridge.sh` call the Bash tool's longest timeout
+  (600000 ms); the srun limit is 20 minutes, so a slow step can still
+  outlast it. After a timeout or a dropped connection the step may still be
+  running, or waiting in the queue, on aicr: `ssh -T` has no terminal to hang
+  up, so srun may go on (not tested live).
+- Then run `show`. If it says a step is running (`step_running`), wait and
+  run `show` again later (one more after a few minutes, never a polling
+  loop, at most the 20-minute limit); do not send the response meanwhile,
+  which the lock would refuse anyway. If the pending call has moved on, the
+  step finished: answer the new call.
 - A step that failed (an error, the srun time limit) has saved no response,
-  and `pending.json` is as it was. Send the same response again. After a
-  dropped connection, check with `show` first: the step may have finished on
-  the cluster, and then the same response would answer the next call.
+  and `pending.json` is as it was. When `show` reports no running step and
+  the pending call is still the one answered, send the same response file
+  again, with `--call N`.
+- A step refused for its response (not JSON, unknown keys, a tool call's name
+  or arguments, no `tool_calls` or `content`, "No tools are offered on this
+  call", another call pending) ran nothing: fix the file and step again.
 - The tool calls it ran are in the cache already, as provisional records.
   The same response reuses them. Another response drops them from the first
   call it makes otherwise, or at its end if it makes fewer. A dropped call
@@ -140,6 +177,13 @@ the loop has stopped cleanly. `pending.json` comes last.
 - A step stopped after it saved the response but before it wrote
   `pending.json` is finished by the next step, given the same response or
   none.
+- A step killed while it appended a record leaves a cut-off last line; the
+  next step drops it (that record was never saved), so a handler cut off
+  runs again and a cut-off response counts as not saved.
+- If `begin` failed after it made the run (say `OLMOEARTH_API_KEY is not
+  set`, or `show` says the first step did not end), fix the cause, then run
+  `scripts/oe-bridge.sh step RUN --text` with no response file to start it,
+  or begin again under a new run name.
 
 ### Costs
 
@@ -157,9 +201,10 @@ the loop has stopped cleanly. `pending.json` comes last.
 ### Where the bridge differs from a live run
 
 - **The model's context.** The Claude Code session also holds its own system
-  prompt, the skill and its chat with the user. The agent's system prompt and
-  messages reach it as command output, and the tool specs as `tools` prints
-  them. Only the native route gives the model the loop's request alone.
+  prompt, the skill and its chat with the user. The agent's system prompt,
+  messages and tool specs reach it as command output: the specs in the view
+  on the first call and whenever the tools offered change. Only the native
+  route gives the model the loop's request alone.
 - **Sampling.** The mode is shown but sets nothing: there is no temperature
   to set. No reasoning is passed back unless a response has `"thinking"`.
 - **Results through JSON.** Tool results go through JSON once, on the live
@@ -178,12 +223,14 @@ the loop has stopped cleanly. `pending.json` comes last.
 - **The claim check.** It is off, as by default. A claim-check call reaching
   `ScriptedLLM` stops the step.
 - **A killed step.** A handler cut off mid-call (a killed process, the srun
-  time limit) is not recorded, and the next step runs it again. A call a
-  failed step finished is kept, and dropped if the next response differs
-  (see "A failed step").
+  time limit) is not recorded, and the next step runs it again; so is one
+  whose record was cut off mid-write. A call a failed step finished is kept,
+  and dropped if the next response differs (see "A failed step").
 - **Settings.** Keep the answer-check switches (`OLMOEARTH_CHECK_NUMBERS`,
-  `OLMOEARTH_CHECK_ANSWER`), the soul and the code as they were at `begin`.
-  A changed switch stops the step. Any other change shows as a divergence.
+  `OLMOEARTH_CHECK_ANSWER`), the read-only switch (`OLMOEARTH_READ_ONLY`,
+  which the wrapper sets unless `OE_BRIDGE_ALLOW_WRITES=1`), the soul and the
+  code as they were at `begin`. A changed switch stops the step. Any other
+  change shows as a divergence.
 
 ### Status
 
@@ -199,7 +246,13 @@ Written 31 October 2026. The tests in `tests/bridge/` cover:
 - skill loading;
 - the command line;
 - the registry's `cannot` lines in the replay (the requests compared with
-  `LeadAgent`'s).
+  `LeadAgent`'s);
+- a refused key's hint through the replay (the envelope compared with
+  `LeadAgent`'s, on the live call and on a later step);
+- the run's lock (a second step refused while it is held, a stale one taken
+  over, `show` reporting it), a response for another call refused, the
+  read-only setting kept, a cut-off last line dropped, the tool specs in the
+  view, and a run directory made private when it existed.
 
 Checked live on 31 October 2026: two runs on aicr through
 `scripts/oe-bridge.sh`, a Claude Code session as the model, with a read-only
@@ -230,5 +283,10 @@ Not checked yet:
 
 - writes with the read-only key, which are expected to fail with 403
   (unverified with a read-only key): `OE_BRIDGE_READ_ONLY=1` left the write
-  tools out of both runs, so none was tried;
-- a run with a key that can write, without `OE_BRIDGE_READ_ONLY`.
+  tools out of both runs, and the wrapper now leaves them out by default, so
+  none was tried;
+- a run with a key that can write, with `OE_BRIDGE_ALLOW_WRITES=1`;
+- the run's lock, `--call`, a step with no response file, the wrapper's
+  read-only default and its stop on a missing `studio.env`, which came after
+  the two runs: unit tests cover the bridge's side, and no live run has used
+  them.

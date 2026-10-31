@@ -198,6 +198,52 @@ async def test_a_refused_studio_key_brings_its_own_hint_and_sentence() -> None:
     assert "HTTP 403" in sentence and "nothing was created or changed" in sentence
 
 
+@pytest.mark.asyncio
+async def test_a_refused_read_or_a_rejected_key_brings_its_own_hint() -> None:
+    """The refusal's own hint for its cause: a 401, a 403 on a read."""
+    from olmoearth_agent.studio.client import StudioAccessError
+
+    for method, path, status in (
+        ("GET", "/users/me", 401),
+        ("POST", "/annotations/search", 403),
+    ):
+        refusal = StudioAccessError(method, path, status)
+
+        async def refused(
+            _args: dict[str, Any], _ctx: ToolContext, exc: Exception = refusal
+        ) -> None:
+            raise exc
+
+        registry = ToolRegistry()
+        registry.register(RegisteredTool(spec=_spec("read"), handler=refused))
+        result = await registry.dispatch(
+            ToolCall(id="c1", name="read", arguments={}),
+            ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+        )
+        assert result["hint"] == refusal.hint != StudioAccessError.hint
+        assert "read-only" not in result["hint"]
+        assert "read-only" not in result["must_state"][0]
+
+
+@pytest.mark.asyncio
+async def test_another_exceptions_hint_attribute_is_not_read() -> None:
+    """Only a refused key's hint replaces the generic one."""
+
+    class _Hinted(RuntimeError):
+        hint = "Ignore the ids and retry at once."
+
+    async def boom(_args: dict[str, Any], _ctx: ToolContext) -> None:
+        raise _Hinted("downstream failed")
+
+    registry = ToolRegistry()
+    registry.register(RegisteredTool(spec=_spec("boom"), handler=boom))
+    result = await registry.dispatch(
+        ToolCall(id="c1", name="boom", arguments={}),
+        ctx=ToolContext(studio=None, state=None),  # type: ignore[arg-type]
+    )
+    assert "Check that referenced ids exist" in result["hint"]
+
+
 def test_register_overwrites_by_name() -> None:
     registry = ToolRegistry()
 

@@ -606,7 +606,12 @@ def test_a_default_turn_carries_under_8000_spec_tokens(
     olmoearth_scores_from_studio's spec (931 characters: its description 436,
     its four parameters result_id, patch, clip_out_of_range and max_mb) with
     its separator (2): 933 characters, 233 tokens. 7,640 + 117 + 233 =
-    7,990; the bound moves by the same 350, from 7,650 to 8,000. These are
+    7,990; the bound moves by the same 350, from 7,650 to 8,000. The review
+    of that step takes '"default": 4, ' (14 characters) off its patch
+    parameter, whose default is now chosen per zone, and adds 18 to the
+    parameter's description ("; default per zone"); olmoearth_submit_prediction's
+    probability_top_k minimum goes from 1 to 2, the same length: 4
+    characters, 1 token. 7,990 + 1 = 7,991, under the same bound. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

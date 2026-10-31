@@ -173,8 +173,9 @@ def _status_error(code: int) -> httpx.HTTPStatusError:
 
 @pytest.mark.asyncio
 async def test_sample_records_tells_a_404_from_a_failed_call() -> None:
-    """Probe 5 (31 October 2026): a 404 where another point answered is read
-    as outside the result's files (OUTSIDE); a 500, a transport error or
+    """Probe 5 (31 October 2026): a 404 where another point answered is
+    counted apart (OUTSIDE) and stated as the 404 seen, not as a point outside
+    the result's files, which no probe tested; a 500, a transport error or
     anything else stays FAILED."""
     record = {"bands": [_band("p", 0.4)]}
     studio: Any = _AnsweringStudio(
@@ -191,7 +192,8 @@ async def test_sample_records_tells_a_404_from_a_failed_call() -> None:
     assert read_sample(records[1], "p", exact=True) == (None, False, OUTSIDE)
     assert dropped_text(2, 1) == "2 no-data, 1 failed"
     assert dropped_text(2, 1, 3) == (
-        "2 no-data, 1 failed, 3 outside the result's files, where Studio answered 404"
+        "2 no-data, 1 failed, 3 answered HTTP 404 (not_found_error) where Studio "
+        "answered other points"
     )
 
 
@@ -623,9 +625,110 @@ async def test_ensemble_counts_samples_outside_a_results_files(
     assert out["n_outside_dropped"] == 2  # points 1 and 2 of e1
     assert out["n_points_dropped"] == 5  # 0, 3 and 6 empty; 1 and 2 one value
     assert (
-        "; 2 samples read as outside the result's files (Studio answered 404) "
-        "were dropped too (n_outside_dropped, also samples)"
+        "; 2 samples answered with HTTP 404 (not_found_error) by Studio, which "
+        "answered other points of the result, were dropped too "
+        "(n_outside_dropped, also samples)"
     ) in out["sampling_note"]
+    assert "outside the result's files" not in out["sampling_note"]
+
+
+def _nodata_and_404s() -> Any:
+    """Each result answers the 3x3 grid's points 0 to 5 with Studio's -1
+    sentinel (no-data) and points 6 to 8 with HTTP 404: no usable sample."""
+    index = {pt: i for i, pt in enumerate(grid_points([0.0, 0.0, 10.0, 10.0], 3))}
+
+    def pixel(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        q = parse_qs(urlparse(url).query)
+        i = index[(round(float(q["lon"][0]), 6), round(float(q["lat"][0]), 6))]
+        if i >= 6:
+            return httpx.Response(404, json={"code": "not_found_error"})
+        band = _band("sample_karst_score", -1.0)
+        return httpx.Response(200, json={"records": [{"bands": [band]}]})
+
+    return pixel
+
+
+#: The refusals' words for the counts above, over three results and two.
+_THREE_DROPPED = (
+    "(samples dropped: 18 no-data, 0 failed, 9 answered HTTP 404 "
+    "(not_found_error) where Studio answered other points)"
+)
+_TWO_DROPPED = (
+    "(samples dropped: 12 no-data, 0 failed, 6 answered HTTP 404 "
+    "(not_found_error) where Studio answered other points)"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_series_refusal_counts_and_names_the_404s(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """The review of 31 October: a coastal map's grid holds no-data and 404
+    points only; the series refusal named the no-data samples alone, so the
+    404s vanished. It names and counts them, and the failed calls."""
+    prop = "sample_karst_score"
+    dates = {"t1": "2024-01-01", "t2": "2024-02-01", "t3": "2024-03-01"}
+    for rid, start in dates.items():
+        httpx_mock.add_response(
+            url=f"{BASE}/prediction-results/{rid}",
+            json=_result(rid, prop, prediction_id=f"p-{rid}"),
+        )
+        httpx_mock.add_response(
+            url=f"{BASE}/predictions/p-{rid}",
+            json={
+                "records": [{"id": f"p-{rid}", "start_time": start, "model_id": "m1"}]
+            },
+        )
+    httpx_mock.add_response(
+        url=f"{BASE}/models/m1", json={"records": [{"id": "m1", "wizard_answers": {}}]}
+    )
+    httpx_mock.add_callback(
+        _nodata_and_404s(),
+        url=re.compile(r".*/pixel-value\?.*"),
+        is_reusable=True,
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _compare(
+            {"result_ids": list(dates), "grid": 3, "mode": "series"}, ctx
+        )
+    assert out["comparable"] is False and out["mode"] == "series"
+    assert out["reason"] == (
+        f"no grid window returned a usable sample from any result {_THREE_DROPPED}"
+    )
+    assert (out["n_nodata_dropped"], out["n_failed_dropped"]) == (18, 0)
+    assert out["n_outside_dropped"] == 9
+
+
+@pytest.mark.asyncio
+async def test_an_ensemble_refusal_counts_and_names_the_404s(
+    httpx_mock: HTTPXMock,
+) -> None:
+    """As the series refusal: the 404s are named and counted beside the
+    no-data and failed samples."""
+    prop = "sample_karst_score"
+    for rid in ("e1", "e2"):
+        httpx_mock.add_response(
+            url=f"{BASE}/prediction-results/{rid}", json=_result(rid, prop)
+        )
+    httpx_mock.add_callback(
+        _nodata_and_404s(),
+        url=re.compile(r".*/pixel-value\?.*"),
+        is_reusable=True,
+    )
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _compare(
+            {"result_ids": ["e1", "e2"], "grid": 3, "mode": "ensemble"}, ctx
+        )
+    assert out["comparable"] is False and out["mode"] == "ensemble"
+    assert out["reason"] == (
+        "no grid window had >= 2 overlapping valid samples across the ensemble "
+        f"{_TWO_DROPPED}"
+    )
+    assert (out["n_nodata_dropped"], out["n_failed_dropped"]) == (12, 0)
+    assert out["n_outside_dropped"] == 6
 
 
 @pytest.mark.asyncio

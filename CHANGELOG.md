@@ -33,7 +33,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     compare a rank's score or class.
   - The first of two live runs (31 October 2026, a kelp result with top-2
     scores): at the grid's maximum, 16 x 16, 7 windows were valid, 189
-    no-data and 60 points no result file covers (HTTP 404 each time).
+    no-data and 60 points answered HTTP 404 `not_found_error` each time
+    (which result file covers which point was not tested).
     `olmoearth_scores_from_studio` (below) reads the whole map.
   - Tests: `tests/tools/test_topk_scores.py`.
 - **`olmoearth_scores_from_studio` reads a Studio result's own
@@ -67,9 +68,10 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     does not expose"; any other manifest keeps its results byte for byte.
   - The second live run (31 October 2026, read-only key, the same kelp
     result): at patch 11 its two zones gave 2,468 and 2,837 valid windows,
-    against 7 on the first run's 16 x 16 grid. At the default patch 4 both
-    zones were written and refused for pooling: more windows than a ranking
-    takes (200,000).
+    against 7 on the first run's 16 x 16 grid. At patch 4, then the default,
+    both zones were written and refused for pooling: more windows than a
+    ranking takes (200,000). With no patch given, each zone now takes the
+    smallest side from 4 up that fits (see Fixed).
   - Assumed, not verified: the README's layout for k above 2; that Studio's
     zips are stored or deflated; the result's model as its prediction's
     `model_id`; a `[0, 1]` score read as a probability.
@@ -89,10 +91,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     error text.
   - Its `must_state`: Studio records no random design for its annotations,
     so they give no design-based error rate (the next step is
-    `olmoearth_plan_label_sample`). With a split field, train and val
-    annotations fit or tuned the model (hedged when some were created or
-    updated after it, or the read is incomplete), and test ones were held
-    out only if training honoured the split field. Its forbidden claim,
+    `olmoearth_plan_label_sample`). With a split field, and if Studio
+    trained on what the selector selects (not confirmed, and the sentence
+    says so), train and val annotations fit or tuned the model (hedged when
+    some were created or updated after it, the read is incomplete, or a
+    selector was not read), and test ones were held out only if training
+    honoured the split field. Its forbidden claim,
     `accuracy_not_measured`, is enforced only in a run that measured no
     accuracy, and only for the accuracy and error-rate figures the check
     detects (not an F1 or an IoU). The capability card now lists, among
@@ -118,8 +122,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     otherwise they are dropped and listed.
   - `scripts/oe-bridge.sh` runs each command on aicr from the Mac: one ssh
     connection and one srun step, the brief and responses sent over stdin,
-    nothing on the login node but srun. `OE_BRIDGE_READ_ONLY=1` runs the
-    bridge with `OLMOEARTH_READ_ONLY=1`. The project skills
+    nothing on the login node but srun. It runs the bridge read-only
+    (`OLMOEARTH_READ_ONLY=1`) unless the owner sets
+    `OE_BRIDGE_ALLOW_WRITES=1`; the run records the setting. The project skills
     `olmoearth-agent-model` and `olmoearth-agent-bridge` say how to play the
     model and operate the bridge; `docs/CLAUDE_AS_MODEL.md` compares it with
     the native `AnthropicLLM` route and lists where a replay differs from a
@@ -1111,14 +1116,66 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
     the scan remains only for a server that answers them with HTTP 422.
 - **A refused key no longer reads as a wrong id.** Before, the model saw
   httpx's raw `403 Forbidden` and the hint to check its ids. Now HTTP 401 or
-  403 raises `StudioAccessError`, never retried: it says the key may be
-  read-only or lack the permission, and its `must_state` that nothing was
-  created or changed. The web UI's area save answers it with 403, not 502.
+  403 raises `StudioAccessError`, never retried, with its own hint and a
+  `must_state` that nothing was created or changed. The cause it states
+  follows the status and the request: a 401 is a key Studio did not accept
+  (missing, invalid, expired or revoked); a 403 on a read (a GET, a search,
+  an aggregate) is a resource this key may not read; only a 403 on a write
+  says the key may be read-only; a refused files download names the
+  download token too. The web UI's area save answers it with 403, not 502.
 - **The bridge's replay keeps the capability card's setting lines.** Its
   registry copy dropped `ToolRegistry.cannot`, so on a read-only run the
   system prompt left out the two write tools, as it should, and also the
   card's line saying why. Found by a `begin` on aicr before the two live
   runs; a test compares the requests with `LeadAgent`'s.
+- **Review fixes of 31 October 2026 (the Studio-API step).**
+  - **The bridge gives a refused key's hint.** The replay raised every
+    handler error as a stand-in class that only shared the name, so the
+    registry gave the generic "check the ids" hint where the live loop
+    tells the model to stop and report the refusal. The cache now keeps a
+    `StudioAccessError`'s hint and the replayed error carries it.
+  - **A certificate on a Studio-files zone says what it binds.** Its map is
+    the raster the agent decoded from Studio's native file, not that file:
+    the result names it (`map_bound`, with the native file, its sha256 and
+    the decoding), a fact says Studio's native GeoTIFF does not verify, and
+    the first next step names the decoded raster. The plan's seed note and
+    the zone's and plan's next steps say who can check it; a failed check
+    of such a certificate says Studio's native file fails without tampering.
+  - **`olmoearth_scores_from_studio` picks a patch that fits.** With no
+    `patch` given, each zone takes the smallest side from 4 up whose windows
+    a ranking takes, stated as a fact, so no second download is needed; a
+    refusal of every zone names each run directory for
+    `olmoearth_scores_from_file`.
+  - **`probability_top_k` must be 2 or more** (the schema and the client),
+    since every reader takes the rank-1 minus rank-2 margin; 1 would have
+    paid for a prediction no tool reads.
+  - **A pixel-value 404 is stated as what was seen**, HTTP 404
+    `not_found_error` where other points answered, not as a point outside
+    the result's files, which no probe tested; the series and ensemble
+    refusals now count and name those points and the failed calls.
+  - **The labels fact no longer states a split it does not know.** A model
+    record that names a split field beside its proportions has them stated
+    as recorded beside it, with which training followed not recorded.
+  - **The inventory's training sentences state their assumption** ("If
+    training used the record's selector ..."), and a selector not read
+    (no filter, or past the cap) leaves later annotations unknown.
+  - **"A class map without top-k scores has no confidence"**, in the
+    class-map sentence and the ranking designs' refusal.
+  - **The files zip:** a native file must be a TIFF by its first bytes and
+    is opened by the GeoTIFF driver alone (a VRT under that name would read
+    other files or URLs), and the list of entries is capped by the largest
+    size any end record declares, ZIP64 ones included, as zipfile reads it.
+  - **The bridge:** a step holds the run's lock, so a step sent again while
+    the first still runs is refused and `show` says a step is running;
+    `step --call N` refuses a response meant for another call; `step` with
+    no response file starts a run whose first step failed, and the wrapper
+    stops before the bridge when `studio.env` is missing; the view carries
+    the tool specs on the first call and when the tools change; the wrapper
+    is read-only by default (`OE_BRIDGE_ALLOW_WRITES=1` opts out) and the
+    run records the setting; a cut-off last line of a run file is dropped;
+    a run directory that existed empty is made private, and a symlink
+    refused. The skills say when to retry, give each command the longest
+    Bash timeout, and set up the checkout without git on the login node.
 - **Post-merge fixes:** a missing `UNSCORED` import in the review set's
   top-k path, and lint, type and test fixes.
 - **Six fixes from a blind audit of agent trial 12** (27 false statements in
