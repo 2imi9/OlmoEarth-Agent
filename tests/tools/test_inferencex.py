@@ -88,7 +88,7 @@ def test_load_refuses_an_older_release_whose_modules_import(
     with pytest.raises(inferencex.InferencexMissingError) as caught:
         inferencex.load("certify.certificate")
     assert str(caught.value) == (
-        f"olmoearth-inferencex {installed} is installed; the tools need >= 1.20.3"
+        f"version {installed} is installed; the tools need >= 1.20.3"
     )
     out = inferencex.missing_extra("Writing a certificate")
     assert f"has version {installed}, which is older" in out["reason"]
@@ -172,6 +172,11 @@ async def test_the_tools_refuse_a_release_older_than_the_minimum(
     assert "this environment has version 1.20.2, which is older" in out["reason"]
     assert "not installed" not in out["reason"]
     assert out["install"] == inferencex.UPGRADE_HINT
+    if tool == "olmoearth_scores_from_file":  # the one answer that keeps the error
+        assert out["missing"] == (
+            "olmoearth-inferencex: version 1.20.2 is installed; "
+            "the tools need >= 1.20.3"
+        )
 
 
 @pytest.mark.asyncio

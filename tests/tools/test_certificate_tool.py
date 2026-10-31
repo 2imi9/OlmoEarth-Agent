@@ -24,6 +24,7 @@ import asyncio
 import csv
 import json
 import shutil
+import struct
 import subprocess
 import sys
 import threading
@@ -163,6 +164,27 @@ async def _south_up_run(root: Path) -> dict[str, Any]:
     manifest = {"scores": {"file": SOUTH_UP_RASTER, "values": "probabilities"}}
     (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return await _ok("olmoearth_scores_from_file", {"run_dir": SOUTH_UP})
+
+
+#: GeoTIFF's ModelTransformation tag, and its ModelPixelScale and
+#: ModelTiepoint tags: GDAL writes a grid as the one or as the other two.
+MATRIX_TAG, PIXEL_GRID_TAGS = 34264, {33550, 33922}
+
+
+def _first_page_tags(path: Path) -> set[int]:
+    """The tag numbers on a classic TIFF's first page, read from its bytes.
+
+    Not through rasterio, which reads the same grid back from either form.
+    """
+    raw = path.read_bytes()
+    order = "<" if raw[:2] == b"II" else ">"
+    magic, start = struct.unpack_from(f"{order}HI", raw, 2)
+    assert magic == 42  # a classic TIFF, as GDAL writes a mask this small
+    (count,) = struct.unpack_from(f"{order}H", raw, start)
+    return {
+        struct.unpack_from(f"{order}H", raw, start + 2 + 12 * k)[0]
+        for k in range(count)
+    }
 
 
 async def _map_plan(scores_path: str) -> dict[str, Any]:
@@ -350,8 +372,11 @@ async def test_a_south_up_map_gets_a_certificate_that_verifies(
     cert_path = Path(written["certificate_path"])
     with rasterio.open(cert_path.parent / "zone_mask.tif") as mask_src:
         mask_grid = tuple(mask_src.transform)[:6]
-    # The mask's grid is the map's in windows of 4 px: south up too.
+    # The mask's grid is the map's in windows of 4 px: south up too, so GDAL
+    # wrote it as the matrix alone, the mask 1.17.0 to 1.20.2 refused.
     assert mask_grid == (40.0, 0.0, X0, 0.0, 40.0, Y0 - 320.0)
+    tags = _first_page_tags(cert_path.parent / "zone_mask.tif")
+    assert MATRIX_TAG in tags and not tags & PIXEL_GRID_TAGS
 
     copy = _scores_root / "my_south_up_copy.tif"
     shutil.copyfile(raster, copy)

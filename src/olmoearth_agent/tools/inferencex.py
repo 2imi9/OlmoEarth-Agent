@@ -89,7 +89,9 @@ def load(module: str) -> ModuleType:
         raise InferencexMissingError(str(exc)) from exc
     old = older_version()
     if old is not None:
-        msg = f"{DISTRIBUTION} {old} is installed; the tools need >= {MIN_VERSION}"
+        # No package name: a caller that reports the message prefixes it, as
+        # it does an import error's.
+        msg = f"version {old} is installed; the tools need >= {MIN_VERSION}"
         raise InferencexMissingError(msg)
     return found
 
