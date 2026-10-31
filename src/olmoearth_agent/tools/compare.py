@@ -88,6 +88,8 @@ from olmoearth_agent.tools.sampling import (
     NODATA,
     NODATA_RULE,
     OK,
+    OUTSIDE,
+    OUTSIDE_REASON,
     SAMPLE_CONCURRENCY,
     ResultNodata,
     band_by_name,
@@ -601,14 +603,21 @@ def _pair(
     tolerance: float,
     different: bool,
 ) -> dict[str, Any]:
-    """Pair mode: two-way divergence (or change) statistics."""
+    """Pair mode: two-way divergence (or change) statistics.
+
+    A cell dropped is counted once: no-data in either map first, then outside
+    either result's files (Studio answered 404, ``n_outside_dropped``), then a
+    failed call (``n_failed_dropped``, every other failure).
+    """
     pairs: list[tuple[Any, Any]] = []
-    n_nodata = n_failed = 0
+    n_nodata = n_failed = n_outside = 0
     for (va, _ca, sa), (vb, _cb, sb) in zip(s.reads[0], s.reads[1]):
         if sa == OK and sb == OK:
             pairs.append((va, vb))
         elif NODATA in (sa, sb):
             n_nodata += 1
+        elif OUTSIDE in (sa, sb):
+            n_outside += 1
         else:
             n_failed += 1
     first = next((r for r in s.reads[0] + s.reads[1] if r[2] == OK), None)
@@ -635,6 +644,7 @@ def _pair(
         "n_cells_dropped": s.n_points - stats.get("n_samples", 0),
         "n_nodata_dropped": n_nodata,
         "n_failed_dropped": n_failed,
+        "n_outside_dropped": n_outside,
         "stats": stats,
         "method": "pointwise pixel-value sampled on a grid over the shared "
         "extent (an estimate, not every pixel); windows where either map is "
@@ -1031,6 +1041,13 @@ async def _compare_results(args: dict[str, Any], ctx: ToolContext) -> dict[str, 
         out = _ensemble(s, value_type=value_type)
     if out.get("comparable") is False:
         return out
+    if mode != "pair":
+        # Samples read as outside a result's files (Studio answered 404) are
+        # dropped as no-data ones are, and counted per sample as those are;
+        # the pair counts cells (_pair).
+        out["n_outside_dropped"] = sum(
+            1 for row in s.reads for _v, _c, st in row if st == OUTSIDE
+        )
     claims: list[dict[str, str]] = []
     if unthresholded := _unthresholded_regression(s, out):
         claims.append(rules.unthresholded_regression(unthresholded))
@@ -1236,10 +1253,17 @@ def _sampling_note(s: _Sampled, out: dict[str, Any], mode: str) -> str:
     if mode == "pair":
         return note + (
             f"; {out['n_cells_compared']} compared, {out['n_cells_dropped']} "
-            "dropped (no-data or failed in either map; n_nodata_dropped and "
+            "dropped (no-data, outside the result's files where Studio answered "
+            "404, or failed in either map; n_nodata_dropped, n_outside_dropped and "
             "n_failed_dropped count those cells)"
         )
     note += "; n_nodata_dropped counts samples, not cells"
+    if out.get("n_outside_dropped"):
+        # Named only when some were, so a sampling with none reads as before.
+        note += (
+            f"; {out['n_outside_dropped']} samples read as {OUTSIDE_REASON} were "
+            "dropped too (n_outside_dropped, also samples)"
+        )
     if mode == "ensemble":
         note += (
             f"; {out.get('n_points_dropped', 0)} cells were dropped for holding "

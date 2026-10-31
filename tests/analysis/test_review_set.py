@@ -358,6 +358,15 @@ def test_the_suites_evidence_is_stated_against_a_random_order() -> None:
             "yes",
             "top-1 probability over 9 classes",
         ),
+        # A Studio model's scores pooled from its result's files (live3
+        # called the model "not an OlmoEarth model" by its id).
+        (
+            "studio_window_confidence",
+            2,
+            "model-kelp-test",
+            "no",
+            "not on a Studio model's top-k softmax scores (or [0, 1] score)",
+        ),
     ],
 )
 def test_the_scope_sentence_says_whether_the_evidence_covers_the_case(
@@ -396,6 +405,7 @@ def test_must_state_is_short_and_never_the_long_scope_sentence() -> None:
         ("logit", 2, "someone/Other-Model"),
         ("logit", 9, "allenai/OlmoEarth-v1-FT-AWF-Base"),
         ("window_confidence_logit", 9, "allenai/OlmoEarth-v1-FT-AWF-Base"),
+        ("studio_window_confidence", 2, "model-kelp-test"),
     ]
     for kind, n_classes, model in cases:
         rows = [[0.2 + 0.1 * i] + [0.0] * (n_classes - 1) for i in range(4)]

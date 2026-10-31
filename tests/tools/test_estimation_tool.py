@@ -973,6 +973,30 @@ def test_a_budget_error_says_raised_for_a_grid_below_two() -> None:
     assert "grid 1 was raised to 2" in message and "capped" not in message
 
 
+def test_a_budget_error_names_the_points_outside_the_results_files() -> None:
+    """The review of 31 October: points read as outside the result's files
+    (Studio answered 404) are neither no-data nor failed, and the refusal
+    names them when there are some; with none, it reads as it did."""
+    from olmoearth_agent.tools.estimation import _budget_refusal, population_from_rows
+
+    def message(n_outside: int) -> str:
+        pop = population_from_rows(
+            [[0.3, 0.7]] * 3,
+            grid=(2, 2),
+            windows=[0, 1, 2],
+            source={"result_id": "kb", "sampling": {"n_outside_dropped": n_outside}},
+        )
+        return _budget_refusal(5, pop)
+
+    outside = message(1)
+    assert "(the rest were no-data, failed or outside the result's files)" in outside
+    assert (
+        "fewer once no-data and points outside the result's files are dropped"
+        in outside
+    )
+    assert "(the rest were no-data or failed)" in message(0)
+
+
 # --------------------------------------------------------------------------- exp86 round 2: the levels tested
 
 

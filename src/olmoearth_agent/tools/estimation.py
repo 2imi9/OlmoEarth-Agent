@@ -164,9 +164,11 @@ from olmoearth_agent.tools.review_set import (
     FROM_RESULT_MAX_GRID,
     FROM_RESULT_MIN_GRID,
     PARTLY_DATED_MUST_STATE,
+    STUDIO_TOPK,
     ClassReads,
     SampledScores,
     _check_date_form,
+    file_studio_kind,
     load_json_file,
     load_scores_file,
     read_roots,
@@ -181,7 +183,9 @@ from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA_RULE,
     OK,
+    OUTSIDE,
     default_property,
+    dropped_text,
     prediction_period,
     topk_part_reason,
     topk_scores,
@@ -641,6 +645,10 @@ async def _population(
         if isinstance(meta.get("provenance"), str):
             source["provenance"] = meta["provenance"]
             source["model"] = meta.get("model")
+        if isinstance(meta.get("studio"), dict):
+            # Pooled from a Studio result's own files: the design file keeps
+            # how, so its estimate and certification state what the plan does.
+            source["studio"] = meta["studio"]
         pop = population_from_rows(
             loaded.scores,
             grid=loaded.grid,
@@ -741,12 +749,15 @@ async def _class_map_population(
     n_points = grid * grid
     n_valid = sum(1 for c in codes if c >= 0)
     n_failed = sum(1 for _v, _c, status in reads if status == FAILED)
-    n_nodata = n_points - n_valid - n_failed
+    # Points outside the result's files (Studio answered 404) are neither
+    # failed calls nor no-data pixels.
+    n_outside = sum(1 for _v, _c, status in reads if status == OUTSIDE)
+    n_nodata = n_points - n_valid - n_failed - n_outside
     if n_valid < 2:
         msg = (
             f"only {n_valid} of {n_points} sampled windows hold a class "
-            f"({n_nodata} no-data, {n_failed} failed); a labelled sample needs "
-            "at least two"
+            f"({dropped_text(n_nodata, n_failed, n_outside)}); a labelled sample "
+            "needs at least two"
         )
         raise ValueError(msg)
     return Population(
@@ -766,6 +777,7 @@ async def _class_map_population(
                 n_valid=n_valid,
                 n_nodata=n_nodata,
                 n_failed=n_failed,
+                n_outside=n_outside,
                 nodata_rule=NODATA_RULE,
             ),
         },
@@ -846,7 +858,8 @@ def _budget_refusal(budget: int, pop: Population) -> str:
         works.append(
             f"a finer grid, up to {FROM_RESULT_MAX_GRID} ({FROM_RESULT_MAX_GRID}x"
             f"{FROM_RESULT_MAX_GRID} = {most} points at most, fewer once no-data "
-            f"is dropped), with the same budget: at grid {FROM_RESULT_MAX_GRID} "
+            "and points outside the result's files are dropped), with the same "
+            f"budget: at grid {FROM_RESULT_MAX_GRID} "
             "a budget above the valid windows is planned at all of them, and "
             "the labels left over are stated"
         )
@@ -872,6 +885,8 @@ def _budget_refusal(budget: int, pop: Population) -> str:
         "population)"
     )
     rest = " (the rest were no-data or failed)" if n_valid < n_points else ""
+    if rest and sampling.get("n_outside_dropped"):
+        rest = " (the rest were no-data, failed or outside the result's files)"
     return (
         f"{head}budget {budget} is more than the {n_valid} valid windows: a "
         f"Studio result sampled at {side}x{side} = {n_points} points has "
@@ -2560,12 +2575,23 @@ def _topk_must_state(score_kind: Any, source: dict[str, Any]) -> list[str]:
     are Studio's uncalibrated softmax scores, quantized unless the field
     read (``source["top_k"]``) says otherwise
     (:func:`~olmoearth_agent.tools.statistical_rules.topk_scores_must_state`).
+    A scores file pooled from a Studio class map's own files
+    (``olmoearth_scores_from_studio``; ``source["studio"]``, kind
+    :data:`~olmoearth_agent.tools.review_set.STUDIO_TOPK`) states what its
+    window scores pool
+    (:data:`~olmoearth_agent.tools.statistical_rules.STUDIO_WINDOW_SCORES_MUST_STATE`):
+    its windows are ranked by their pooled top-1 score, not a margin, and a
+    pooled mean is not on the pixels' 1/254 grid. Each caller places it as
+    the pixel-value route's sentence, within the cap of three; the estimate
+    of windows labelled with no design states it too, for such a file only.
     """
-    if score_kind != TOPK_SCORE:
-        return []
-    top_k = source.get("top_k")
-    quantized = not (isinstance(top_k, dict) and top_k.get("quantized") is False)
-    return [rules.topk_scores_must_state(quantized)]
+    if score_kind == TOPK_SCORE:
+        top_k = source.get("top_k")
+        quantized = not (isinstance(top_k, dict) and top_k.get("quantized") is False)
+        return [rules.topk_scores_must_state(quantized)]
+    if file_studio_kind(source) == STUDIO_TOPK:
+        return [rules.STUDIO_WINDOW_SCORES_MUST_STATE]
+    return []
 
 
 def _scores_route(pop: Population) -> str | None:
@@ -3167,10 +3193,18 @@ async def _estimate_map_error(
         + "."
     )
     out["next_steps"] = _estimate_next_steps(NO_DESIGN, from_design=False)
+    # A Studio class map's top-k scores pooled from its own files say what
+    # they are here too, as on the design route; the pixel-value top-k
+    # route's sentence stays on its design route, as before.
+    pooled = (
+        [rules.STUDIO_WINDOW_SCORES_MUST_STATE]
+        if file_studio_kind(pop.source) == STUDIO_TOPK
+        else []
+    )
     return rules.add_contract(
         out,
         facts=[_whole_map_estimate(out)],
-        must_state=_studio_scope(pop.source, out.get("n_population")),
+        must_state=_studio_scope(pop.source, out.get("n_population")) + pooled,
         # Every estimate's next steps name a certified zone: exp86 round 8
         # (B5/files/2) read them as "a guaranteed-certifiable region".
         forbidden_claims=[_estimate_certification_claim(NO_DESIGN, from_design=False)],
@@ -3279,15 +3313,19 @@ def _rows_args(args: dict[str, Any]) -> dict[str, Any]:
         }
     if args.get("scores_path"):
         loaded = load_scores_file(str(args["scores_path"]))
+        source: dict[str, Any] = {
+            "scores_path": str(args["scores_path"]),
+            "result_id": loaded.meta.get("result_id"),
+        }
+        if isinstance(loaded.meta.get("studio"), dict):
+            # Pooled from a Studio result's own files, as the plan keeps it.
+            source["studio"] = loaded.meta["studio"]
         return {
             "rows": loaded.scores,
             "grid": loaded.grid,
             "windows": loaded.windows,
             "score_kind": str(loaded.meta.get("score_kind") or "class_scores"),
-            "source": {
-                "scores_path": str(args["scores_path"]),
-                "result_id": loaded.meta.get("result_id"),
-            },
+            "source": source,
             "p1": loaded.meta.get("p1"),
             "map_class": loaded.meta.get("map_class"),
             "margin": _topk_file_margin(loaded.meta),
@@ -4199,7 +4237,8 @@ async def _plan_two_maps(
     if not n_compared:
         msg = (
             f"no window holds a class in both maps (each of the {len(valid)} "
-            "windows is no-data or failed in one of them), so none can be compared"
+            "windows is no-data, failed or outside a result's files, where Studio "
+            "answered 404, in one of them), so none can be compared"
         )
         raise ValueError(msg)
     try:

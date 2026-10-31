@@ -350,7 +350,8 @@ async def test_a_comparison_says_its_models_were_fine_tuned_on_labels(
     """exp86 round 9 (B3/studio run 1): "no ground-truth labels exist", of two
     models whose Studio records named a label field of the user's project. The
     comparison, which is given no labels, says the models were trained on
-    some, and that no tool of the run looked them up."""
+    some, which tool counts them, and that none can be taken as a random
+    sample of a map."""
     _mock_pair(
         httpx_mock,
         {"a1": "sample_karst_score", "b1": "sample_karst_score"},
@@ -368,8 +369,10 @@ async def test_a_comparison_says_its_models_were_fine_tuned_on_labels(
     assert fact["sentence"] == (
         "KarstBinary and KarstNumber were each fine-tuned in Studio on a label "
         "field of their project (train/val split 0.75/0.25), so labels for this "
-        "project may exist in Studio; no tool of this run looked them up for this "
-        "area."
+        "project may exist in Studio; olmoearth_studio_label_inventory counts "
+        "those their training selectors select, and Studio records no random "
+        "design over a map for them, so none can be taken as a random sample of "
+        "a map."
     )
     assert [m["label_field_id"] for m in fact["models"]] == [
         "0bc0d29c-1553-4a86-be1b-a6a5a4205bac",

@@ -301,7 +301,12 @@ def build_predict_tools() -> list[RegisteredTool]:
             capability=Capability(
                 does="this account's predictions, and each model's name, type, "
                 "prediction_type and, when fine-tuned, its label field and split",
-                cannot=("say what a model's training data held, or its metrics",),
+                # its summary names the label field, never what it holds: the
+                # inventory counts the annotations (the step of 31 Oct 2026)
+                cannot=(
+                    "say a model's metrics, or count its Studio annotations "
+                    "(olmoearth_studio_label_inventory does)",
+                ),
             ),
         ),
         RegisteredTool(
