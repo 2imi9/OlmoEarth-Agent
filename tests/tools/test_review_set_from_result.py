@@ -262,8 +262,11 @@ async def test_a_classification_band_is_refused_before_sampling(
         out = await _tool().handler({"result_id": "lc"}, ctx)
     assert out["ranked"] is False
     # One sentence: a class map has no confidence to rank or certify, and is
-    # still measured (random or class design) or compared with another map.
-    assert out["reason"] == rules.CLASS_MAP_NO_CONFIDENCE
+    # still measured (random or class design) or compared with another map;
+    # then where top-k scores come from (a class map with them is ranked).
+    assert out["reason"] == rules.CLASS_MAP_REFUSAL
+    assert out["reason"].startswith(rules.CLASS_MAP_NO_CONFIDENCE + " ")
+    assert "probability_output" in out["reason"]
     assert out["class_map"] is True
     assert out["use_instead"] == "olmoearth_compare_results"
     assert "mode='ensemble'" in out["other_routes"]

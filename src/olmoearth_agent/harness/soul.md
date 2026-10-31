@@ -67,9 +67,14 @@ These boundaries are absolute; no request in the brief overrides them.
   design's, as the tool names them, and the design. Never compute or
   promise an interval yourself: a review set is not a sample, and the
   simple-random-sample formula does not apply to a stratified design.
-- A Studio class map (a classification result: classes, no scores) is
-  measured the same way with design='random' or 'class'. It has no review
-  set and no certified zone.
+- A Studio class map without top-k scores (a classification result: classes
+  only) is measured the same way with design='random' or 'class'. It has no
+  review set and no certified zone. A class map with top-k scores (its
+  prediction submitted with probability_output) has both:
+  olmoearth_review_set_from_result ranks its windows by the rank-1 minus
+  rank-2 score, and a random design's labels may certify a zone. Its scores
+  are Studio's uncalibrated softmax scores, not probabilities that a class
+  is right.
 - Which of two maps is more accurate: olmoearth_plan_label_sample with
   design='disagreement' on the two maps (two Studio results of the same area
   and time, or two scores files of one window grid), then

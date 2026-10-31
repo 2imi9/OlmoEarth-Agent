@@ -584,7 +584,17 @@ def test_a_default_turn_carries_under_7650_spec_tokens(
     ("file formats"), and takes 31 off olmoearth_fetch_results (Studio's own
     filter, 97 characters, in place of the client-side scan's sentence, 129,
     less 1 for "file formats"): 204 characters, 51 tokens. 7,558 + 51 =
-    7,609, under the same bound. These are
+    7,609, under the same bound. The top-k step adds, counted the same way,
+    78 characters to olmoearth_review_set_from_result's description ("A
+    class map with top-k scores ranks by rank-1 minus rank-2 score. ", and
+    "a class map without top-k scores" for "a classification band") and 21
+    each to olmoearth_plan_label_sample's and olmoearth_certify_zone's
+    (" without top-k scores"): 120 characters, 30 tokens. 7,609 + 30 =
+    7,639, under the same bound. The review of that step adds 2 characters
+    to olmoearth_review_set_from_result's threshold ("Required for a
+    regression band not in [0, 1]." for "Required unless the band is a [0, 1]
+    score.", which said a class map with top-k scores needs one): 1 token,
+    7,640, under the same bound. These are
     counts by hand, not measurements. Opted in, a turn carries the opt-in
     specs again.
     """

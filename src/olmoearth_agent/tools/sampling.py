@@ -22,15 +22,29 @@ once, for both the no-data context and the comparison's choice of mode;
 :func:`prediction_of` is that one lookup, and :func:`prediction_period` the
 period a prediction's map describes (its start and end times), which the
 two-map label plan reads its dates from.
+
+A class map with top-k scores (a Studio segmentation prediction submitted
+with ``probability_output``) carries each rank's class and softmax score as
+bands of their own: :func:`topk_scores` recognises one from a result's
+property names and declared outputs, and :func:`read_topk` reads one window's
+rank-1 class, its rank-1 and rank-2 scores and their margin, each band by its
+own name (:func:`select_band`'s fall back to the first band never applies
+there).
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Any
 
-from olmoearth_agent.analysis.raster_compare import band_is_nodata, declared_fields
+from olmoearth_agent.analysis.raster_compare import (
+    band_is_nodata,
+    declared_fields,
+    declared_range,
+)
 from olmoearth_agent.tools.registry import ToolContext
 
 #: Concurrency for grid pixel-value sampling (bounds load on Studio + proxy).
@@ -50,7 +64,13 @@ NODATA_RULE = (
 def select_band(
     record: dict[str, Any], property_name: str | None
 ) -> dict[str, Any] | None:
-    """Pick the pixel-value band to read: the named property, else the first."""
+    """Pick the pixel-value band to read: the named property, else the first.
+
+    The first band stands in for a named property the record lacks: the
+    grid tools' fakes and older records carry one band with no
+    ``property_name``. A read that must not take another band, a class map's
+    top-k scores above all, uses :func:`band_by_name`.
+    """
     bands: list[dict[str, Any]] = record.get("bands") or []
     if not bands:
         return None
@@ -59,6 +79,19 @@ def select_band(
             (b for b in bands if b.get("property_name") == property_name), bands[0]
         )
     return bands[0]
+
+
+def band_by_name(record: dict[str, Any], property_name: str) -> dict[str, Any] | None:
+    """The pixel-value band of ``property_name`` itself, or ``None``: never another."""
+    bands: list[Any] = record.get("bands") or []
+    return next(
+        (
+            b
+            for b in bands
+            if isinstance(b, dict) and b.get("property_name") == property_name
+        ),
+        None,
+    )
 
 
 def default_property(record: dict[str, Any], prop: str | None) -> str | None:
@@ -294,6 +327,8 @@ def read_sample(
     record: dict[str, Any] | None,
     property_name: str | None,
     nodata: ResultNodata | None = None,
+    *,
+    exact: bool = False,
 ) -> tuple[Any, bool, str]:
     """One sampled value: ``(value, categorical, status)``.
 
@@ -301,10 +336,17 @@ def read_sample(
     :func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata` said so)
     or :data:`FAILED` (the pixel-value call itself failed). ``value`` is
     ``None`` unless the status is :data:`OK`; a class reads as its label.
+    With ``exact``, a named property is read from its own band only
+    (:func:`band_by_name`): a record without it is :data:`NODATA`, never
+    read from the first band (the class of a map with top-k scores is read
+    this way).
     """
     if record is None:
         return None, False, FAILED
-    band = select_band(record, property_name)
+    if exact and property_name:
+        band = band_by_name(record, property_name)
+    else:
+        band = select_band(record, property_name)
     if band is None:
         return None, False, NODATA
     ctx = nodata or ResultNodata()
@@ -317,3 +359,377 @@ def read_sample(
     cls = band.get("classification")
     value = class_value(cls) if cls is not None else band.get("raw_value")
     return value, categorical, OK
+
+
+# --------------------------------------------------------------------------- a class map with top-k scores
+
+#: Rank ``k``'s softmax score of class property ``P`` (``P_rank<k>_prob``) or
+#: rank ``k``'s class (``P_rank<k>_class``): the bands a Studio segmentation
+#: result submitted with ``probability_output`` adds beside ``P``, whose own
+#: band is rank 1's class.
+_TOPK_PART_RE = re.compile(r"^(?P<base>.+)_rank(?P<rank>[1-9][0-9]*)_(?:prob|class)$")
+
+#: The declared range of Studio's uint8 top-k scores, read as
+#: ``(raw - 1) / 254`` (the files zip's README; raw 255, above the declared
+#: maximum and the files' no-data value, is a score of 1.0, and raw 0 reads
+#: 0.0: :func:`topk_probability`; the margin is read from the raw levels,
+#: :func:`read_topk`), and the range of a score already in ``[0, 1]``, read
+#: as it is.
+TOPK_UINT8_RANGE = (0.0, 254.0)
+TOPK_UNIT_RANGE = (0.0, 1.0)
+
+#: How a window of a class map with top-k scores is judged no-data, stated in
+#: every sampling of one.
+TOPK_NODATA_RULE = (
+    "a window is no-data, and never enters a statistic, when its rank-1 class "
+    "band is missing or NaN, equals the model's nodata_value or carries no "
+    "class; a score never makes a window no-data (a raw 255 is a score of "
+    "1.0), and a window with a class but no rank-1 or rank-2 score, or a "
+    "rank-2 score above its rank-1, refuses the sampling instead of being "
+    "dropped"
+)
+
+#: The status :func:`read_topk` gives a window whose rank-1 class band holds
+#: a class but whose rank-1 or rank-2 score band is missing or holds no
+#: number: not no-data, since a score never decides whether a pixel is valid,
+#: and not readable, so a sampling that meets one is refused rather than
+#: dropping a valid window of the map.
+UNSCORED = "unscored"
+
+
+def _is_number(value: Any) -> bool:
+    """True for an int or float that is not a bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def class_key(value: Any) -> str:
+    """How a class is matched: its text, case and outer spaces aside; ``3.0`` is ``3``.
+
+    As the estimation tools match the classes a reviewer writes.
+    """
+    text = str(value).strip().lower()
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return str(int(number)) if number.is_integer() else text
+
+
+@dataclass(frozen=True)
+class TopKScores:
+    """A class map with top-k scores, as a Studio result names its bands.
+
+    ``base`` is the class property ``P``, whose band is the map's (rank-1)
+    class. ``score_properties`` and ``class_properties`` name rank 1's to
+    rank ``k``'s score and class (rank 1's class is ``base``; a rank whose
+    class the result does not name is ``None``). ``classes`` are the declared
+    classes, ``(value, label)`` in ``allowed_values`` order, or empty where
+    the result declares none.
+    """
+
+    base: str
+    k: int
+    score_properties: tuple[str, ...]
+    class_properties: tuple[str | None, ...]
+    classes: tuple[tuple[Any, str], ...] = ()
+
+    @property
+    def labels(self) -> list[str]:
+        """The declared classes' labels, in ``allowed_values`` order."""
+        return [label for _value, label in self.classes]
+
+    def reads_a_part(self, prop: str | None) -> bool:
+        """Whether ``prop`` names a rank's score or class of ``base``, not the map.
+
+        By the rank's name (``P_rank<k>_prob`` or ``P_rank<k>_class``), named
+        by the result or not. Any other property (a mistyped ``P`` among
+        them) reads the map, as :func:`default_property` falls back to the
+        result's first property.
+        """
+        part = _TOPK_PART_RE.match(prop or "")
+        return part is not None and part["base"] == self.base
+
+    def describe(self) -> dict[str, Any]:
+        """The field as a result states it: property names and counts only."""
+        return {
+            "class_property": self.base,
+            "k": self.k,
+            "score_properties": list(self.score_properties),
+            "class_properties": list(self.class_properties),
+            "n_classes_declared": len(self.classes),
+        }
+
+    def code_classes(self, values: list[Any]) -> tuple[list[int], list[Any]]:
+        """Each window's rank-1 class as a code, and the classes the codes stand for.
+
+        Codes follow the declared classes' order; a class read is matched to
+        a declared one by its label, else its value (:func:`class_key`). A
+        class read that the legend does not hold (every class, where the
+        result declares none) gets the next code, written as read.
+        """
+        table: list[Any] = self.labels
+        code_of: dict[str, int] = {}
+        for code, label in enumerate(table):
+            code_of.setdefault(class_key(label), code)
+        for code, (value, _label) in enumerate(self.classes):
+            if value is not None:
+                code_of.setdefault(class_key(value), code)
+        codes: list[int] = []
+        for value in values:
+            key = class_key(value)
+            if key not in code_of:
+                code_of[key] = len(table)
+                whole = isinstance(value, float) and value.is_integer()
+                table.append(int(value) if whole else value)
+            codes.append(code_of[key])
+        return codes, table
+
+
+def _field_named(fields: Any, name: str) -> dict[str, Any] | None:
+    """The declared output field of property ``name`` in ``fields``, or ``None``."""
+    return next(
+        (
+            f
+            for f in fields or []
+            if isinstance(f, dict) and f.get("property_name") == name
+        ),
+        None,
+    )
+
+
+def topk_scores(record: dict[str, Any], prop: str | None = None) -> TopKScores | None:
+    """The class map with top-k scores read as ``prop`` of ``record``, or ``None``.
+
+    The property read is resolved as :func:`default_property` resolves it:
+    ``prop`` when the result names it, else the first the result names; a
+    rank's score or class of a top-k field the result names
+    (``P_rank3_prob`` of a top-2 result) is read as that rank, so it is
+    refused as the map (:meth:`TopKScores.reads_a_part`), never read as
+    ``P``. It meets a top-k field when it is a class property ``P``, or one
+    of ``P``'s ranks' properties, and the result names ``P``,
+    ``P_rank1_prob`` and ``P_rank2_prob``; ``k`` counts the score ranks
+    named from 1 up. Where ``result_metadata`` declares the result's fields,
+    Studio's own pairing is required: ``P`` is a classification field whose
+    ``confidence_band_index`` is the ``band_index`` of ``P_rank1_prob``,
+    else the bands are not taken for top-k scores; its ``allowed_values``
+    are the classes. ``None`` for any other property, so a result without
+    top-k scores is read as before.
+    """
+    names = [n for n in record.get("property_names") or [] if isinstance(n, str)]
+    if not names:
+        names = list(declared_fields(record))
+    if not names:
+        return None
+    asked = _TOPK_PART_RE.match(prop or "")
+    target = names[0]
+    if prop and (
+        prop in names or (asked is not None and f"{asked['base']}_rank1_prob" in names)
+    ):
+        target = prop
+    part = _TOPK_PART_RE.match(target)
+    base = target if f"{target}_rank1_prob" in names else None
+    if base is None and part is not None:
+        base = part["base"]
+    if base is None or not (
+        {base, f"{base}_rank1_prob", f"{base}_rank2_prob"} <= set(names)
+    ):
+        return None
+    meta = record.get("result_metadata") or {}
+    field = _field_named(meta.get("classification_fields"), base)
+    rank1 = _field_named(meta.get("regression_fields"), f"{base}_rank1_prob")
+    # With no result_metadata (search records carry it null), or one that
+    # declares no field, the bands are taken by their names alone, as Studio
+    # names a top-k result's bands (P_rank<k>_prob is rank k's score of P,
+    # rank 1's class is P itself: the files zip's README and the pixel-value
+    # records of 31 October 2026), and the classes are the ones the reads
+    # carry. Metadata that declares fields but not P as a classification
+    # field paired with its rank-1 score says the bands are something else.
+    if meta.get("classification_fields") or meta.get("regression_fields"):
+        band = (field or {}).get("confidence_band_index")
+        if band is None or rank1 is None or band != rank1.get("band_index"):
+            return None
+    k = 2
+    while f"{base}_rank{k + 1}_prob" in names:
+        k += 1
+    runners = [f"{base}_rank{r}_class" for r in range(2, k + 1)]
+    values = [
+        v for v in (field or {}).get("allowed_values") or [] if isinstance(v, dict)
+    ]
+    return TopKScores(
+        base=base,
+        k=k,
+        score_properties=tuple(f"{base}_rank{r}_prob" for r in range(1, k + 1)),
+        class_properties=tuple([base, *[n if n in names else None for n in runners]]),
+        classes=tuple(
+            (v.get("value"), str(v.get("label", v.get("value")))) for v in values
+        ),
+    )
+
+
+def topk_part_reason(prop: str, topk: TopKScores) -> str:
+    """Why a rank's score or class is refused as the property read: it is no map."""
+    return (
+        f"{prop!r} is a rank's score or class of {topk.base!r}, a class map with "
+        f"top-k scores: the map is {topk.base!r}, its rank-1 class, read with its "
+        f"scores; pass property_name={topk.base!r} or leave it out"
+    )
+
+
+def _range_reason(name: str, rng: tuple[float, float] | None) -> str:
+    """Why a top-k score band's declared range is not read."""
+    shown = f"the range [{rng[0]:g}, {rng[1]:g}]" if rng else "no range"
+    return (
+        f"the top-k score {name!r} declares {shown}: a top-k score is read only "
+        "as Studio's uint8 score, declared [0, 254] and read as (raw - 1) / 254, "
+        "or as a score declared [0, 1], so no margin is read from this one"
+    )
+
+
+def topk_range_refusal(
+    topk: TopKScores, declared: dict[str, dict[str, Any]]
+) -> str | None:
+    """Why a rank-1 or rank-2 score's declared range is not read, or ``None``.
+
+    From the result's declared outputs (:func:`declared_fields`), before any
+    pixel is sampled; a score the result declares nothing about is judged by
+    its band's own range when read (:func:`topk_probability`).
+    """
+    for name in topk.score_properties[:2]:
+        decl = declared.get(name)
+        if decl is not None:
+            rng = declared_range(None, decl)
+            if rng not in (TOPK_UINT8_RANGE, TOPK_UNIT_RANGE):
+                return _range_reason(name, rng)
+    return None
+
+
+def topk_probability(raw: float, rng: tuple[float, float] | None, name: str) -> float:
+    """One top-k score as a probability, by the range its band declares.
+
+    Declared ``[0, 254]`` (Studio's uint8 scores): ``(raw - 1) / 254``, so
+    raw 1 reads 0.0 and raw 255 reads 1.0; raw 0 reads 0.0 too. The README
+    calls raw 0 reserved and unused, but the two-class kelp result measured
+    on 31 October 2026 has ``p1 + p2 = 252/254`` on every valid pixel and a
+    median ``p1`` of raw 254, so its rank-2 score is raw 0 on at least half
+    of them: it is read as the least score, and never drops a window.
+    Declared ``[0, 1]``: as it is.
+
+    Raises
+    ------
+    ValueError
+        For any other declared range, or none, and for a value that reads
+        outside ``[0, 1]`` otherwise.
+    """
+    if rng == TOPK_UINT8_RANGE:
+        prob = 0.0 if raw == 0.0 else (raw - 1.0) / 254.0
+    elif rng == TOPK_UNIT_RANGE:
+        prob = raw
+    else:
+        raise ValueError(_range_reason(name, rng))
+    if not -1e-9 <= prob <= 1.0 + 1e-9:
+        msg = (
+            f"the top-k score {name!r} holds {raw:g}, which reads {prob:.6g}, "
+            "outside [0, 1]: no score of Studio's top-k format, so no margin is "
+            "read from it"
+        )
+        raise ValueError(msg)
+    return min(1.0, max(0.0, prob))
+
+
+def topk_quantized(
+    topk: TopKScores,
+    nodata: ResultNodata | None,
+    records: list[dict[str, Any] | None],
+) -> bool:
+    """Whether the rank-1 score is Studio's uint8 score (declared ``[0, 254]``).
+
+    From the result's declared outputs, else from the first sampled record
+    whose rank-1 score band declares its range.
+    """
+    name = topk.score_properties[0]
+    decl = (nodata or ResultNodata()).declared.get(name)
+    rng = declared_range(None, decl) if decl else None
+    for rec in records:
+        if rng is not None:
+            break
+        if rec is not None:
+            rng = declared_range(band_by_name(rec, name))
+    return rng == TOPK_UINT8_RANGE
+
+
+def read_topk(
+    record: dict[str, Any] | None,
+    topk: TopKScores,
+    nodata: ResultNodata | None = None,
+) -> tuple[tuple[Any, float, float, float] | None, str]:
+    """One window of a class map with top-k scores, and the window's status.
+
+    The window is ``(class, p1, p2, margin)``: ``class`` is the rank-1 class
+    as :func:`read_sample` reads a class (its label), ``p1`` and ``p2`` are
+    the rank-1 and rank-2 scores as probabilities (:func:`topk_probability`,
+    by the range each band declares), and ``margin`` is the rank-1 minus the
+    rank-2 score. For Studio's uint8 scores the margin is their raw levels'
+    difference over 254 (at most 1), which is ``p1 - p2`` under the README's
+    ``(raw - 1) / 254`` and under ``raw / 254`` alike (the measured kelp
+    scores fit the second better), and keeps a rank-2 raw 0 one level below
+    a raw 1, although both read 0.0. Every band is found by its own property
+    name (:func:`band_by_name`), never by position: :func:`select_band`
+    would read the class band for a missing score.
+
+    ``status`` is :data:`FAILED` for a failed call, :data:`NODATA` when the
+    rank-1 class band is missing or no-data
+    (:func:`~olmoearth_agent.analysis.raster_compare.band_is_nodata`, the
+    band judged as a class band whether or not the result declares it, so a
+    band with no class is no-data) and :data:`UNSCORED` when that band holds
+    a class but the rank-1 or rank-2 score band is missing or holds no
+    number. A score never makes a window no-data: the files zip's README
+    says a valid pixel's score may equal the no-data value, and that only
+    the rank-1 class band says whether a pixel is valid.
+
+    Raises
+    ------
+    ValueError
+        From :func:`topk_probability`, for a score whose declared range is
+        neither ``[0, 254]`` nor ``[0, 1]``, or that reads outside ``[0, 1]``;
+        and for a rank-2 score above the rank-1 score, which no one top-k
+        field holds at one pixel.
+    """
+    if record is None:
+        return None, FAILED
+    ctx = nodata or ResultNodata()
+    band = band_by_name(record, topk.base)
+    # P is a class property by construction: a band of it with no class is
+    # no-data, whether or not the result declares P (topk_scores takes the
+    # bands by their names alone where the result declares no field).
+    declared = ctx.declared.get(topk.base) or {"value_type": "classification"}
+    if band is None or band_is_nodata(
+        band, nodata_value=ctx.nodata_value, declared=declared
+    ):
+        return None, NODATA
+    cls = band.get("classification")
+    value = class_value(cls) if cls is not None else band.get("raw_value")
+    names = topk.score_properties[:2]
+    raws: list[float] = []
+    ranges: list[tuple[float, float] | None] = []
+    for name in names:
+        score = band_by_name(record, name)
+        raw = (score or {}).get("raw_value")
+        if not _is_number(raw) or not isfinite(float(raw)):
+            return None, UNSCORED
+        raws.append(float(raw))
+        ranges.append(declared_range(score, ctx.declared.get(name)))
+    p1 = topk_probability(raws[0], ranges[0], names[0])
+    p2 = topk_probability(raws[1], ranges[1], names[1])
+    if ranges[0] == ranges[1] == TOPK_UINT8_RANGE:
+        margin = min(1.0, (raws[0] - raws[1]) / 254.0)
+    else:
+        margin = p1 - p2
+    if margin < -1e-9:
+        msg = (
+            f"a window's rank-2 score ({names[1]!r}, raw {raws[1]:g}) is above its "
+            f"rank-1 score ({names[0]!r}, raw {raws[0]:g}): no one top-k field "
+            "holds that at one pixel, so these bands were not read together and "
+            "no margin is read from them"
+        )
+        raise ValueError(msg)
+    return (value, p1, p2, max(0.0, margin)), OK

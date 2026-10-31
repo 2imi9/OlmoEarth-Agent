@@ -389,9 +389,12 @@ SKILLS: list[SkillSpec] = [
     ),
     # #18 closes the gap #9 cannot: ranking WHICH windows are wrong, from the
     # model's own top-1-minus-top-2 margin. Studio's pixel-value returns only
-    # raw_value/classification (no probabilities, no logits), which is exactly
-    # why #9 reached for ensemble disagreement -- with hard classes it is the
-    # only signal available. Given real scores the ordering flips: upstream
+    # raw_value/classification per band (no logits), which is exactly why #9
+    # reached for ensemble disagreement -- with hard classes it is the only
+    # signal available. A class map with top-k scores (a prediction submitted
+    # with probability_output) carries its rank-1 and rank-2 softmax scores as
+    # bands of their own, and #18 reads its margin from them. Given real
+    # scores the ordering flips: upstream
     # (2imi9/olmoearth_inferenceX-record) measured ensemble disagreement, cross-model
     # disagreement, two-view disagreement and feature-space typicality against
     # the margin on seven expert-labelled testbeds and none of them won. So the
@@ -406,7 +409,8 @@ SKILLS: list[SkillSpec] = [
         "which windows to check first at a budget (from caller scores, from a "
         "direct model run's files, score_area.py's scores raster and manifest "
         "or what oe-inferencex from-olmoearth writes, or from a Studio "
-        "result whose band is a binary score in [0, 1], sampled on a grid), "
+        "result whose band is a binary score in [0, 1], or a class map with "
+        "top-k scores, sampled on a grid), "
         "boundary-first ordering, the attainable-ceiling arithmetic, and "
         "(opt-in) a grader for any candidate audit rule. Then how wrong the "
         "map is: a labelled sample drawn by a design, its error rate with the "

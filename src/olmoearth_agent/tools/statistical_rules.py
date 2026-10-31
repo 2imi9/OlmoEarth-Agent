@@ -81,8 +81,9 @@ MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
 #: winner read off point metrics with no design, interval or test.
 MORE_ACCURATE_WITHOUT_ITS_TEST = "more_accurate_without_its_test"
 #: A certified, certifiable or trusted zone, or a certificate, offered or
-#: stated for a class map: it has no confidence to rank its windows by, so no
-#: zone of it can be certified, whatever the design, budget or alpha.
+#: stated for a class map without top-k scores: it has no confidence to rank
+#: its windows by, so no zone of it can be certified, whatever the design,
+#: budget or alpha.
 ZONE_FOR_A_CLASS_MAP = "zone_for_a_class_map"
 #: An error rate, accuracy or share wrong stated in the answer for a map whose
 #: error rate the request did not estimate (olmoearth_estimate_map_error or
@@ -633,14 +634,17 @@ def whole_map_rate_for_a_zone(
 
 # --------------------------------------------------------------------------- a class map
 
-#: What a class map gets, in one sentence, stated by every tool that refuses
-#: one: the review-set tools, ``olmoearth_certify_zone`` and a ranking design
-#: of ``olmoearth_plan_label_sample``. A Studio classification band's
+#: What a class map without top-k scores gets, in one sentence, stated by
+#: every tool that refuses one: the review-set tools,
+#: ``olmoearth_certify_zone`` and a ranking design of
+#: ``olmoearth_plan_label_sample``. A Studio classification band's
 #: pixel-value carries the class only, with no probability: nothing ranks its
 #: windows, so it has no review set and no certified zone, and a random or
 #: class-design sample of it still measures its error rate and per-class
 #: accuracy, as labels where it differs from another map of one time say
-#: which of the two is more accurate.
+#: which of the two is more accurate. A class map with top-k scores
+#: (:data:`TOPK_MAP_KIND`) is never refused this way: its rank-1 minus rank-2
+#: score is its margin.
 CLASS_MAP_NO_CONFIDENCE = (
     "A class map has no confidence to rank or certify, so it gets no review "
     "set and no certified zone; it can still be measured "
@@ -649,23 +653,64 @@ CLASS_MAP_NO_CONFIDENCE = (
     "time (olmoearth_plan_label_sample with design='disagreement')."
 )
 
+#: The kind of map a Studio segmentation result is when its prediction was
+#: submitted with ``probability_output``: each window's class, as a class map
+#: has, and each rank's softmax score as bands of their own (``P_rank1_prob``
+#: and ``P_rank2_prob`` beside the class property ``P``). Every text that
+#: tells it from a class map without them names it so.
+TOPK_MAP_KIND = "class map with top-k scores"
+
+#: Where a class map's confidence comes from, stated after
+#: :data:`CLASS_MAP_NO_CONFIDENCE` in every refusal of a class map without
+#: top-k scores. Studio's ``PredictionWrite.probability_output`` asks for
+#: the top-k softmax scores beside the classes ("segmentation only"); a
+#: margin needs two ranks. Worded as a requirement that names the scores, so
+#: an answer repeating it offers no zone (``zone_for_a_class_map``).
+TOPK_FROM_PROBABILITY_OUTPUT = (
+    "A review set or a certified zone of a Studio class map needs its top-k "
+    "class scores: a new prediction of a segmentation model, submitted with "
+    "probability_output (top_k of 2 or more), carries them."
+)
+
+#: A refusal of a class map without top-k scores: the class-map sentence,
+#: then where top-k scores come from.
+CLASS_MAP_REFUSAL = f"{CLASS_MAP_NO_CONFIDENCE} {TOPK_FROM_PROBABILITY_OUTPUT}"
+
+
+def topk_scores_must_state(quantized: bool = True) -> str:
+    """What every result read from a class map's top-k scores must state.
+
+    Studio's top-k scores are a model's softmax, uncalibrated (the files
+    zip's README: "These are uncalibrated softmax scores, not calibrated
+    probabilities"), stored as uint8 levels of 1/254 (``quantized``, a score
+    declared ``[0, 254]``): their margin orders windows for review and
+    certification, and is no probability that a window's class is right.
+    """
+    form = ", quantized to 1/254" if quantized else ""
+    return (
+        f"The top-k scores are Studio's uncalibrated softmax scores{form}: their "
+        "margin ranks windows and is not a probability the class is right."
+    )
+
 
 def zone_for_a_class_map(detail: str | None = None) -> dict[str, str]:
-    """No certified zone, and no certificate, for a class map.
+    """No certified zone, and no certificate, for a class map without top-k scores.
 
     A certified zone is the most confident share of a map whose error rate an
-    exact test bounds; a class map has no confidence to order its windows by,
-    so ``olmoearth_certify_zone`` refuses its designs, random ones included.
-    Emitted by every result about a class map: its plan, its estimate, the
-    refusals. ``detail`` says what this result adds.
+    exact test bounds; a class map without top-k scores has no confidence to
+    order its windows by, so ``olmoearth_certify_zone`` refuses its designs,
+    random ones included. Emitted by every result about such a class map:
+    its plan, its estimate, the refusals; never by a result about a
+    :data:`TOPK_MAP_KIND`, whose random design can certify a zone.
+    ``detail`` says what this result adds.
     """
     return forbidden(
         ZONE_FOR_A_CLASS_MAP,
-        "a class map has no confidence to rank its windows by, so no zone of it "
-        "can be certified (olmoearth_certify_zone refuses it) whatever the "
-        "design, budget or alpha: no certified, certifiable or trusted zone "
-        "and no certificate may be offered or stated for it; labels give it "
-        "an error rate and per-class accuracy, each with its interval"
+        "a class map without top-k scores has no confidence to rank its windows "
+        "by, so no zone of it can be certified (olmoearth_certify_zone refuses "
+        "it) whatever the design, budget or alpha: no certified, certifiable or "
+        "trusted zone and no certificate may be offered or stated for it; labels "
+        "give it an error rate and per-class accuracy, each with its interval"
         + (f"; {detail}" if detail else ""),
     )
 

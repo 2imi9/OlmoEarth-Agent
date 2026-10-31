@@ -401,7 +401,8 @@ async def test_a_class_map_is_refused_under_a_ranking_design(design: str) -> Non
     assert out["ok"] is True
     result = out["result"]
     assert result["ranked"] is False and result["class_map"] is True
-    assert result["reason"].endswith(rules.CLASS_MAP_NO_CONFIDENCE)
+    # The class-map sentence, then where top-k scores come from.
+    assert result["reason"].endswith(rules.CLASS_MAP_REFUSAL)
     assert "confidence margin" in result["reason"]
     assert result["designs_for_a_class_map"] == ["random", "class"]
     # The class design's floor, as the package allocates it: a smaller class
@@ -813,7 +814,8 @@ async def test_certify_refuses_a_class_map_in_one_sentence(design: str) -> None:
     assert out["ok"] is True
     result = out["result"]
     assert result["certified"] is False and result["class_map"] is True
-    assert result["reason"] == rules.CLASS_MAP_NO_CONFIDENCE
+    # The class-map sentence, then where top-k scores come from.
+    assert result["reason"] == rules.CLASS_MAP_REFUSAL
     assert _ids(result) == [rules.ZONE_FOR_A_CLASS_MAP]
     # A random design does not help a class map: no step says it would.
     assert "design_requirement" not in result
@@ -827,7 +829,7 @@ async def test_the_review_set_refuses_a_class_map_in_one_sentence() -> None:
     assert out["ok"] is True
     result = out["result"]
     assert result["ranked"] is False
-    assert result["reason"] == rules.CLASS_MAP_NO_CONFIDENCE
+    assert result["reason"] == rules.CLASS_MAP_REFUSAL
     assert _ids(result) == [rules.ZONE_FOR_A_CLASS_MAP]
     assert studio.pixel_calls == 0
 

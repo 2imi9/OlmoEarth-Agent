@@ -73,7 +73,11 @@ from functools import cached_property, lru_cache, partial
 from typing import Any
 
 from olmoearth_agent.analysis.output_contract import NOT_A_SOURCE
-from olmoearth_agent.analysis.review_set import MOSTLY_EDGES, MOSTLY_INTERIOR
+from olmoearth_agent.analysis.review_set import (
+    MOSTLY_EDGES,
+    MOSTLY_INTERIOR,
+    TOPK_SCORE,
+)
 from olmoearth_agent.harness.grounding import NumberPool, tokenize
 
 logger = logging.getLogger(__name__)
@@ -3902,6 +3906,24 @@ _CLASS_MAP_NAME_RE = re.compile(
     r"|\bclassification\s+(?:results?|bands?|outputs?|layers?)\b",
     re.I,
 )
+#: A class map's top-k scores named: "top-k" (``rules.TOPK_MAP_KIND``, "the
+#: top-k class map", "its top-k margin"), "top_k", "the top-2 class map", "its
+#: top-2 scores", "the rank-2 score", "probability_output". A class map named
+#: with them in its clause is the one a random design can certify a zone of;
+#: a class map without them has no rank-2 score to name. "The top 40%" and
+#: "its top half" name a share of a map, not its scores.
+_TOPK_MAP_NAME_RE = re.compile(
+    r"\btop[_-]?k\b|\brank[_-][1-9]\b|\bprobability_output\b"
+    r"|\btop-\d+\s+(?:softmax\s+|class\s+)?(?:scores?|margins?|probabilit\w*)\b"
+    r"|\btop-\d+\s+class(?:ification)?[\s-]+maps?\b",
+    re.I,
+)
+#: A new prediction, or a run again: with ``probability_output`` or top-k
+#: scores named beside it, where a class map's scores would come from
+#: (:func:`_offers_a_new_topk_prediction`).
+_NEW_PREDICTION_RE = re.compile(
+    r"\bnew\s+(?:\w+\s+){0,2}?predictions?\b|\bre-?(?:run|submit)\w*", re.I
+)
 
 
 def _claim_records(run: RunEvidence, claim_id: str) -> list[ToolRecord]:
@@ -3919,8 +3941,10 @@ def _scores_map_in_run(run: RunEvidence) -> bool:
 
     Every result about such a map that names certification forbids
     ``certification_guaranteed`` (its plan, its estimate, its certify call,
-    a certified zone included); no class-map result does, and a two-map
-    design's refused certify call is about two maps' classes, not scores.
+    a certified zone included); so does every result about a class map with
+    top-k scores, its review set included, whose margin ranks its windows.
+    No result about a class map without them does, and a two-map design's
+    refused certify call is about two maps' classes, not scores.
     """
     for record in _claim_records(run, "certification_guaranteed"):
         result = record.result
@@ -3942,18 +3966,73 @@ def _class_map_ids(run: RunEvidence) -> list[str]:
     return ids
 
 
-def _names_a_class_map(p: _Parse, start: int, end: int, ids: list[str]) -> bool:
-    """Whether the clause around ``s[start:end]`` names a class map.
+def _topk_map_ids(run: RunEvidence) -> list[str]:
+    """The result ids the run's calls on a class map with top-k scores read.
 
-    By its kind ("the class map", "the classification result") or by the
-    result id a class-map call of the run read.
+    A review set of one (its ``score_kind``) and a plan of one (its
+    ``population``'s), by their ``result_id``.
     """
-    if p.in_clause(_CLASS_MAP_NAME_RE, start, end):
-        return True
+    ids: list[str] = []
+    for record in run.tools:
+        result = record.result if record.ok else None
+        if not isinstance(result, Mapping):
+            continue
+        population = result.get("population")
+        kinds = (
+            result.get("score_kind"),
+            population.get("score_kind") if isinstance(population, Mapping) else None,
+        )
+        rid = record.arguments.get("result_id")
+        if TOPK_SCORE in kinds and isinstance(rid, str) and rid.strip():
+            if rid.strip() not in ids:
+                ids.append(rid.strip())
+    return ids
+
+
+def _names_id(rid: str, text: str) -> bool:
+    """Whether ``text`` names the result id ``rid``, as a word of its own."""
+    return re.search(rf"(?<![\w-]){re.escape(rid)}(?![\w-])", text) is not None
+
+
+def _names_a_class_map(
+    p: _Parse, start: int, end: int, ids: list[str], topk_ids: list[str]
+) -> bool:
+    """Whether the clause of ``s[start:end]`` names a class map without top-k scores.
+
+    By the result id a class-map call of the run read, or by its kind ("the
+    class map", "the classification result") where the clause names neither
+    top-k scores (:data:`_TOPK_MAP_NAME_RE`: "the class map with top-k
+    scores", "the class map (top-2 scores)", "the top-10 class map") nor the
+    result id a call on a class map with them read (``topk_ids``). "The kelp
+    class map's top half" names neither, and is read as a class map: in a run
+    with both kinds it may be either, and both may be kelp maps.
+    """
     lo, hi, _ = p.region(start, end)
-    return any(
-        re.search(rf"(?<![\w-]){re.escape(rid)}(?![\w-])", p.s[lo:hi]) for rid in ids
+    clause = p.s[lo:hi]
+    if any(_names_id(rid, clause) for rid in ids):
+        return True
+    if not p.in_clause(_CLASS_MAP_NAME_RE, start, end):
+        return False
+    return not (
+        _TOPK_MAP_NAME_RE.search(clause)
+        or any(_names_id(rid, clause) for rid in topk_ids)
     )
+
+
+def _offers_a_new_topk_prediction(p: _Parse, start: int, end: int) -> bool:
+    """Whether the clause around ``s[start:end]`` names where top-k scores come from.
+
+    ``probability_output``, or a new prediction (a run again) with top-k
+    scores: "a new prediction with probability_output would allow a
+    certified zone" paraphrases the class-map refusal's own hint
+    (``rules.TOPK_FROM_PROBABILITY_OUTPUT``) and offers a zone of another
+    map, not of the class map refused.
+    """
+    lo, hi, _ = p.region(start, end)
+    clause = p.s[lo:hi]
+    if re.search(r"\bprobability_output\b", clause, re.I):
+        return True
+    return bool(_NEW_PREDICTION_RE.search(clause) and _TOPK_MAP_NAME_RE.search(clause))
 
 
 def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
@@ -3969,20 +4048,27 @@ def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
     200 random labels I can certify the top 30%", "the top half is
     certified", "next, olmoearth_certify_zone on these labels" and a
     requirement that names only a design, labels or alpha ("a certified
-    zone of this map needs 200 random labels") are flagged.
+    zone of this map needs 200 random labels") are flagged. A clause that
+    names where top-k scores come from ("a new prediction with
+    probability_output would allow a certified zone",
+    :func:`_offers_a_new_topk_prediction`) offers a zone of another map, and
+    passes.
 
     The claim is the run's, not one sentence's: in a run whose maps are all
     class maps, any such mention is read as about one. A run that also holds
-    a map with scores (:func:`_scores_map_in_run`) can certify that map, so
-    there only a clause that names a class map, by its kind or by the result
-    id a class-map call read (:func:`_names_a_class_map`), is read: "the
-    flood map's top 40% is certified" passes, "the class map's top half is
-    certified" is flagged, and a class map named by neither ("its top half")
-    is not read.
+    a map with scores (:func:`_scores_map_in_run`), a class map with top-k
+    scores among them, can certify that map, so there only a clause that
+    names a class map without top-k scores, by its kind or by the result id
+    a class-map call read (:func:`_names_a_class_map`), is read: "the flood
+    map's top 40% is certified", "the class map with top-k scores is
+    certified at coverage 0.4" and "the class map's top-k margin certifies
+    40%" pass, "the class map's top half is certified" is flagged, and a
+    class map named by neither ("its top half") is not read.
     """
     p = _parse(s)
     scoped = _scores_map_in_run(run)
     ids = _class_map_ids(run) if scoped else []
+    topk_ids = _topk_map_ids(run) if scoped else []
     for m in _CLASS_MAP_ZONE_RE.finditer(s):
         start, end = m.start(), m.end()
         if (
@@ -3994,9 +4080,10 @@ def _zone_for_a_class_map(s: str, record: ToolRecord, run: RunEvidence) -> bool:
                 p.in_clause(_REQUIREMENT_RE, start, end, own=True)
                 and p.in_clause(_WHAT_A_CLASS_MAP_LACKS_RE, start, end, own=True)
             )
+            or _offers_a_new_topk_prediction(p, start, end)
         ):
             continue
-        if scoped and not _names_a_class_map(p, start, end, ids):
+        if scoped and not _names_a_class_map(p, start, end, ids, topk_ids):
             continue
         return True
     return False

@@ -90,6 +90,7 @@ from olmoearth_agent.tools.sampling import (
     OK,
     SAMPLE_CONCURRENCY,
     ResultNodata,
+    band_by_name,
     default_property,
     model_summary,
     prediction_meta,
@@ -98,6 +99,8 @@ from olmoearth_agent.tools.sampling import (
     result_nodata_context,
     sample_records,
     select_band,
+    topk_part_reason,
+    topk_scores,
 )
 
 #: Most results one call compares (a series of 8 at 3x3 = 72 pixel-value
@@ -251,11 +254,21 @@ def _sampled_property(
     reads: list[tuple[Any, bool, str]],
     recs: list[dict[str, Any] | None],
     prop: str | None,
+    *,
+    exact: bool = False,
 ) -> str | None:
-    """The property name the sampled bands actually carried (first usable one)."""
+    """The property name the sampled bands actually carried (first usable one).
+
+    With ``exact`` (a class map with top-k scores, read by name), only a band
+    of ``prop`` itself counts: a record without it names no property, where
+    :func:`select_band` would name its first band (a score, say).
+    """
     for rec, (_value, _cat, status) in zip(recs, reads):
         if rec is not None and status != FAILED:
-            band = select_band(rec, prop)
+            if exact and prop:
+                band = band_by_name(rec, prop)
+            else:
+                band = select_band(rec, prop)
             if band is not None and isinstance(band.get("property_name"), str):
                 return str(band["property_name"])
     return None
@@ -331,9 +344,28 @@ async def _sample_on_grid(
     records declare, and again from the bands sampled, unless
     ``allow_different``; samples that mix numbers with classes are refused
     unless ``check_types`` is off (an ensemble given its ``value_type``).
+    A class map with top-k scores
+    (:func:`~olmoearth_agent.tools.sampling.topk_scores`) is read as its
+    class, the rank-1 class band by its own name, whatever ``prop`` and the
+    band order say; a ``prop`` naming one of its ranks' scores or classes is
+    refused before any sampling, never read as a map of its own.
     Returns the samples, or the refusal in ``mode``'s shape.
     """
-    names = [default_property(rec, prop) for rec in records]
+    tops = [topk_scores(rec, prop) for rec in records]
+    for top in tops:
+        if top is not None and top.reads_a_part(prop):
+            return _refuse(
+                topk_part_reason(str(prop), top),
+                mode=mode,
+                result_ids=ids,
+                top_k=top.describe(),
+            )
+    # The property each result is read by: a top-k result's class, by name.
+    props = [top.base if top is not None else prop for top in tops]
+    names = [
+        top.base if top is not None else default_property(rec, prop)
+        for rec, top in zip(records, tops)
+    ]
     if len({n for n in names if n}) > 1 and not allow_different:
         return _property_refusal(mode, ids, names, nodata)
     cells = grid_windows(bbox, grid)
@@ -343,11 +375,14 @@ async def _sample_on_grid(
         await asyncio.gather(*[sample_records(ctx, rid, points, sem) for rid in ids])
     )
     reads = [
-        [read_sample(r, prop, nd) for r in row] for row, nd in zip(sampled, nodata)
+        [read_sample(r, name, nd, exact=top is not None) for r in row]
+        for row, nd, name, top in zip(sampled, nodata, props, tops)
     ]
     names = [
-        _sampled_property(row_reads, row, prop) or name
-        for row_reads, row, name in zip(reads, sampled, names)
+        _sampled_property(row_reads, row, name, exact=top is not None) or default
+        for row_reads, row, name, default, top in zip(
+            reads, sampled, props, names, tops
+        )
     ]
     if len({n for n in names if n}) > 1 and not allow_different:
         return _property_refusal(mode, ids, names, nodata)
