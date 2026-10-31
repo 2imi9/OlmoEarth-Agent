@@ -63,6 +63,9 @@ Issues = "https://github.com/2imi9/OlmoEarth-Agent/issues"
 [project.scripts]
 olmoearth-agent = "olmoearth_agent.cli:main"
 olmoearth-agent-serve = "olmoearth_agent.serve:main"
+# A Claude Code session as the agent's model, one model call per command
+# (docs/CLAUDE_AS_MODEL.md).
+olmoearth-agent-bridge = "olmoearth_agent.bridge.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/olmoearth_agent"]
