@@ -141,7 +141,7 @@ OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same se
 
 </details>
 
-[**`docs/SHOWCASE.md`**](docs/SHOWCASE.md) has captured runs of skills #1-#16 with real outputs, driven by the live Qwen3.6 backbone. They were captured with an earlier tool set; some call tools that are now opt-in ([`SKILLS.md`](SKILLS.md#opt-in-tools)). Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses and operational rules are in [`PLAN.md`](PLAN.md).
+Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses and operational rules are in [`PLAN.md`](PLAN.md).
 
 ## Stack
 
@@ -163,7 +163,6 @@ OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same se
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
 - [**SKILLS.md**](SKILLS.md): the 18-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
 - [**docs/VERIFICATION_DEMO.md**](docs/VERIFICATION_DEMO.md): the verification tools on a real map, written by `make verify-demo`
-- [**docs/SHOWCASE.md**](docs/SHOWCASE.md): captured runs of skills #1-#16
 - [**docs/CLAUDE_AS_MODEL.md**](docs/CLAUDE_AS_MODEL.md): a Claude Code session as the agent's model, and what was checked live
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to
 - [**CONTRIBUTING.md**](CONTRIBUTING.md) | [**CHANGELOG.md**](CHANGELOG.md) | [**AGENTS.md**](AGENTS.md)

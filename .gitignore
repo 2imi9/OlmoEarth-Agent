@@ -124,8 +124,6 @@ webui/demo/_rec/
 webui/demo/_palette.png
 
 # --- Geospatial / EO outputs ---
-# Output written by scripts/generate_showcase.py's negative-sampler (#18) demo.
-docs/showcase_fixtures/*_with_negatives.geojson
 *.tif
 *.tiff
 *.cog.tif

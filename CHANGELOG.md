@@ -1102,6 +1102,30 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   to 7, all derived (11 of them "~23%"), and removes none. The `inferencex`
   extra requires olmoearth-inferencex 1.3.1.
 
+### Removed
+- **The trim to a verification layer, step 0: what blocked the deletions.**
+  The `analysis` and `evaluation` packages no longer re-export their
+  modules' names (no code imported them from the package; the re-exports
+  loaded the opt-in modules on every import of a core one, so deleting one
+  of those modules would have broken the core at import time); each module
+  is imported by its own path. `olmoearth_compare_results` (series mode)
+  parses dates with its own helper instead of change detection's. The
+  ensemble confidence's caveat (`CONFIDENCE_CAVEAT`, in every
+  `mode='ensemble'` result) no longer points at the Area-of-Applicability
+  flag, which is opt-in and not in the default registry. The soul's rule
+  that some tools are sent only once their skill is loaded is gone: with
+  the default settings no tool is deferred. The catalog test asks for rows
+  numbered from 0 in increasing order (gaps allowed until the rows are
+  renumbered).
+- **The showcase.** `docs/SHOWCASE.md`, `scripts/generate_showcase.py` and
+  `docs/showcase_fixtures/karst_presence.geojson`: every run was captured in
+  May and June 2026 with an earlier tool set (it called the removed
+  `list_skills` and showed skill #6 naming a winner without a test, the
+  claim the answer checks now flag), the script imported eight tool modules
+  whose tools are all opt-in and needed a live model and Studio, and
+  nothing tested it; the README's two links and the fixture's `.gitignore`
+  line go with them.
+
 ### Fixed
 - **Studio fields the agent read as always empty.**
   - Results list their formats as `file_formats` (e.g. `["png"]`). The

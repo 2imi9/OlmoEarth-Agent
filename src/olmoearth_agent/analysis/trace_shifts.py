@@ -46,7 +46,7 @@ from olmoearth_agent.analysis.raster_compare import (
 
 #: A trace needs at least three results: a two-date diff is just a pair
 #: (``olmoearth_compare_results``, kind="temporal") and cannot tell a steady
-#: trend from a reversal (same rationale as change detection's MIN_DATES).
+#: trend from a reversal (a flood that peaked and receded reads as no change).
 MIN_RESULTS = 3
 
 #: Cap on the most-shifted points listed for follow-up.

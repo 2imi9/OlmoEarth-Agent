@@ -102,10 +102,14 @@ def _turn_chars(registry: ToolRegistry) -> int:
     return len(json.dumps([asdict(s) for s in registry.active_specs()]))
 
 
-def test_catalog_covers_all_18_skills() -> None:
-    numbered = [s for s in SKILLS if s.number >= 1]
-    assert len(numbered) == 18
-    assert {s.number for s in numbered} == set(range(1, 19))
+def test_catalog_rows_are_numbered_from_0_in_increasing_order() -> None:
+    """Row #0 first, then each row's number above the one before it.
+
+    Gaps are allowed while the trim removes rows; the renumbering closes them.
+    """
+    numbers = [s.number for s in SKILLS]
+    assert numbers[0] == 0
+    assert all(a < b for a, b in zip(numbers, numbers[1:]))
 
 
 def test_every_catalogued_tool_is_actually_registered(default_env: None) -> None:

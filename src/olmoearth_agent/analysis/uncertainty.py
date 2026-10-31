@@ -48,9 +48,7 @@ CONFIDENCE_CAVEAT = (
     "ensemble members, NOT a calibrated probability that a prediction is "
     "correct. Low dispersion (high confidence) means the models are "
     "self-consistent -- necessary but not sufficient for correctness (an "
-    "ensemble can agree and still be wrong under domain shift). Complements, "
-    "does not replace, the Area-of-Applicability OOD flag; trust a prediction "
-    "most when it is both inside the AOA and low-dispersion."
+    "ensemble can agree and still be wrong under domain shift)."
 )
 
 

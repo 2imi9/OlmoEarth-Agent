@@ -57,7 +57,6 @@ from datetime import datetime, timezone
 from math import cos, radians
 from typing import Any
 
-from olmoearth_agent.analysis.change_detect import _try_parse
 from olmoearth_agent.analysis.output_contract import add_must_state
 from olmoearth_agent.analysis.raster_compare import (
     COMPARISON_KINDS,
@@ -218,6 +217,14 @@ def _extent_km2(bbox: list[float]) -> float:
     minx, miny, maxx, maxy = bbox
     mid = radians((miny + maxy) / 2)
     return round((maxx - minx) * 111.32 * cos(mid) * (maxy - miny) * 110.57, 1)
+
+
+def _try_parse(value: str) -> datetime | None:
+    """Parse an ISO date, or ``None`` if it isn't one (ordinal labels)."""
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
 
 
 def _sort_instant(parsed: datetime) -> datetime:

@@ -2647,7 +2647,7 @@ _MORE_ACCURATE_RE = re.compile(
 )
 #: What a model of a baseline comparison is named more accurate by: the
 #: claims above, or "outperforms" / "beats" ("OlmoEarth clearly outperforms
-#: the AlphaEarth baseline", skill #6's showcase answer).
+#: the AlphaEarth baseline", skill #6's answer in a June 2026 capture).
 _MODEL_MORE_ACCURATE = (
     r"(?:\s+(?:model|map|predictions?|results?|side|baseline))?"
     r"(?:\s*\([^)]{0,60}\))?"
