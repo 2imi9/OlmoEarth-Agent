@@ -284,23 +284,29 @@ def _forced_as_sent(monkeypatch: pytest.MonkeyPatch, slugs: Iterable[str]) -> li
     return forwarded
 
 
-def test_rslearn_stays_forced_without_tools_of_its_own(
+def test_studio_job_config_stays_forced_without_tools_of_its_own(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """rslearn's tools are gone, but its SKILL.md loads, so it stays forced."""
-    assert _forced_as_sent(monkeypatch, ("rslearn",)) == ["rslearn"]
+    """studio-job-config lists no tool of its own, but its SKILL.md loads, so
+    it stays forced."""
+    sent = _forced_as_sent(monkeypatch, ("studio-job-config",))
+    assert sent == ["studio-job-config"]
 
 
 def test_the_rows_that_went_are_not_forced(monkeypatch: pytest.MonkeyPatch) -> None:
     """Change detection and uncertainty folded into predict's comparison tool,
-    and evaluate, the QGIS bridge and the data export went: an old "/" menu
-    slug of theirs pins nothing."""
+    and evaluate, the QGIS bridge, the data export and the training-side
+    packages (data prep, embeddings, rslearn) went: an old "/" menu slug of
+    theirs pins nothing."""
     slugs = (
         "change-detection",
         "uncertainty",
         "evaluate",
         "qgis-bridge",
         "data-export",
+        "data-prep",
+        "embeddings",
+        "rslearn",
     )
     assert _forced_as_sent(monkeypatch, slugs) == [""] * len(slugs)
 
@@ -331,17 +337,17 @@ def _offered_per_forced_skill(
     return offered
 
 
-def test_forcing_rslearn_offers_no_tool_of_its_own(
+def test_forcing_studio_job_config_offers_no_tool_of_its_own(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """rslearn's four tools went with their code: forcing the skill offers the
+    """The instruction skill has no deferred tools: forcing it offers the
     first turn the same tools as no forced skill.
 
     A forced skill's deferred group from turn one is tested on the agent
     (tests/harness/test_agent.py); no tool of the agent's is deferred.
     """
-    offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
-    assert offered["rslearn"] == offered[""]
+    offered = _offered_per_forced_skill(monkeypatch, ("studio-job-config", ""))
+    assert offered["studio-job-config"] == offered[""]
     assert "olmoearth_compare_results" in offered[""]
 
 

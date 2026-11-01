@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Stakeholder narrative: freshness gate and measured accuracy (skill #6).
+"""Stakeholder narrative: freshness gate and measured accuracy (skill #4).
 
 Assembles a Markdown report from prediction results + the run's
 provenance, and **refuses to render stale tiles** past a configurable

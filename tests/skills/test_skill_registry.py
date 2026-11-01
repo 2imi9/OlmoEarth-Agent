@@ -88,12 +88,12 @@ def _turn_chars(registry: ToolRegistry) -> int:
     return len(json.dumps([asdict(s) for s in registry.active_specs()]))
 
 
-def test_catalog_covers_its_8_skills_numbered_1_to_8() -> None:
-    """Row #0 first, then the 8 numbered rows 1..8 in order, with no gap.
+def test_catalog_covers_its_5_skills_numbered_1_to_5() -> None:
+    """Row #0 first, then the 5 numbered rows 1..5 in order, with no gap.
 
     The trim of 31 October 2026 renumbered the rows it kept.
     """
-    assert [s.number for s in SKILLS] == list(range(9))
+    assert [s.number for s in SKILLS] == list(range(6))
 
 
 def test_every_catalogued_tool_is_actually_registered(default_env: None) -> None:
@@ -211,10 +211,10 @@ def test_the_skills_that_were_opt_in_whole_are_gone() -> None:
 
 
 def test_the_rows_left_with_no_tool_of_their_own_are_gone() -> None:
-    """Change detection and uncertainty folded into #4; the rest went.
+    """Change detection and uncertainty folded into #2; the rest went.
 
     Change detection and ensemble disagreement are olmoearth_compare_results'
-    series and ensemble modes, which #4 lists; evaluate, the QGIS bridge and
+    series and ensemble modes, which #2 lists; evaluate, the QGIS bridge and
     the data export lost their tools on 31 October 2026.
     """
     names = {s.name for s in SKILLS}
@@ -227,7 +227,7 @@ def test_the_rows_left_with_no_tool_of_their_own_are_gone() -> None:
     ):
         assert gone not in names, gone
     (predict,) = [s for s in SKILLS if s.name == "olmoearth-predict"]
-    assert predict.number == 4
+    assert predict.number == 2
     assert "olmoearth_compare_results" in predict.tools
     assert "mode='series'" in predict.summary
     assert "mode='ensemble'" in predict.summary
@@ -329,15 +329,21 @@ def test_foundational_entry_is_implemented() -> None:
     assert any(s.name == "studio-core" for s in implemented)
 
 
-def test_vendored_skills_match_the_four_packages() -> None:
-    # Four SKILL.md packages = four dirs under src/olmoearth_agent/skills/packages/.
+def test_vendored_skills_match_the_one_package() -> None:
+    """One SKILL.md package = one dir under src/olmoearth_agent/skills/packages/.
+
+    The training-side packages (data prep, embeddings, rslearn) and their
+    rows went on 31 October 2026.
+    """
     vendored = {s.name for s in skills_by_status("vendored")}
-    assert vendored == {
+    assert vendored == {"olmoearth-studio-job-config"}
+    names = {s.name for s in SKILLS}
+    for gone in (
         "olmoearth-data-prep",
-        "olmoearth-studio-job-config",
         "olmoearth-embeddings",
         "olmoearth-rslearn",
-    }
+    ):
+        assert gone not in names, gone
 
 
 def test_provenance_skill_is_implemented() -> None:

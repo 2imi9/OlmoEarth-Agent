@@ -1,6 +1,6 @@
 ---
 name: olmoearth-studio-job-config
-description: Walk OlmoEarth Studio's "new model" wizard end to end (model name, model type, foundation model, label field, training data, data split, temporal context, image sources, surrounding area) from a plain-English task description. Use whenever the user is creating or configuring a Studio model and asking "which model type / fine-tuned vs embeddings / Nano vs Tiny vs Base / per-pixel vs window / how much before-after context / Sentinel-1 or just S2 / how much surrounding area / full data vs a proportion / spatial split or a metadata field" — or pasting fragments of the wizard (e.g. "What should this model produce?", "Which OlmoEarth foundation model should we fine-tune?", "What time frame is important context", "How should your data be split?", "How much surrounding area should the model use?"). Trigger even when "Studio" isn't said explicitly: any "I want to predict X from satellite imagery, what settings should I pick" question in an OlmoEarth / Sentinel-2 context warrants this skill. Studio trains on Ai2's compute — never ask the user about their own CPU/GPU. Pairs with `olmoearth-data-prep` (this skill chooses the config, that skill produces the data the config consumes).
+description: Walk OlmoEarth Studio's "new model" wizard end to end (model name, model type, foundation model, label field, training data, data split, temporal context, image sources, surrounding area) from a plain-English task description. Use whenever the user is creating or configuring a Studio model and asking "which model type / fine-tuned vs embeddings / Nano vs Tiny vs Base / per-pixel vs window / how much before-after context / Sentinel-1 or just S2 / how much surrounding area / full data vs a proportion / spatial split or a metadata field" — or pasting fragments of the wizard (e.g. "What should this model produce?", "Which OlmoEarth foundation model should we fine-tune?", "What time frame is important context", "How should your data be split?", "How much surrounding area should the model use?"). Trigger even when "Studio" isn't said explicitly: any "I want to predict X from satellite imagery, what settings should I pick" question in an OlmoEarth / Sentinel-2 context warrants this skill. Studio trains on Ai2's compute — never ask the user about their own CPU/GPU.
 ---
 
 # OlmoEarth Studio "New Model" Wizard Recommender
@@ -40,8 +40,8 @@ Trigger on any of:
 
 Routing:
 
-- If the user is asking *how to prepare the labels* themselves (field names, schema, AOI fetching, audit), route to the sibling skill `olmoearth-data-prep` instead.
-- Only if the user **explicitly** wants to run training themselves outside Studio (their own rslearn pipeline, their own machines) route to a self-run training skill. "Create/configure/build a model" in a Studio context always means this wizard.
+- If the user is asking *how to prepare the labels* themselves (field names, schema, AOI fetching, audit), this skill does not cover it, and the agent has no skill that does: say so.
+- If the user **explicitly** wants to run training themselves outside Studio (their own rslearn pipeline, their own machines), that is outside this agent: say so. "Create/configure/build a model" in a Studio context always means this wizard.
 
 ## Workflow — the wizard, step by step
 
@@ -91,9 +91,9 @@ See [`references/model_sizes.md`](references/model_sizes.md) for the tradeoff cu
 
 The metadata field on the labels GeoJSON whose values the model learns. This is project-specific — read it from the user's data, don't invent it.
 
-If the user has run the sibling `olmoearth-data-prep` skill, the schema audit already names it (`oe_labels.{key}` for production, `es_label` for Studio export, `sample_category` for Studio import). Confirm with the user that the wizard's "Which label should the model learn to predict?" dropdown shows that exact field.
+The usual names are `oe_labels.{key}` for production, `es_label` for Studio export and `sample_category` for Studio import. Confirm with the user that the wizard's "Which label should the model learn to predict?" dropdown shows that exact field.
 
-If the user hasn't prepared data yet, stop here and route to `olmoearth-data-prep` first — pick this field after the schema is settled, not before. (Embeddings: skip this step.)
+If the user hasn't prepared data yet, stop here — pick this field after the schema is settled, not before. (Embeddings: skip this step.)
 
 ### 5. Training data — full vs a proportion
 
@@ -107,7 +107,7 @@ How much of the labeled dataset Studio uses for this training run.
 How Studio assigns train / validation / test.
 
 - **Spatial (recommended).** Studio partitions by location, so validation areas are spatially separate from training areas. This is the default because neighboring EO samples are nearly identical (spatial autocorrelation) — a random split leaks neighbors across sets and inflates validation accuracy.
-- **Use a metadata field.** A property on each labeled feature whose values assign `train` / `val` / `test`. Pick this only when the user brings a curated split — e.g. folds engineered by `olmoearth-data-prep`'s spatial cross-validation, or a split that must stay identical across tools/runs.
+- **Use a metadata field.** A property on each labeled feature whose values assign `train` / `val` / `test`. Pick this only when the user brings a curated split — e.g. spatial cross-validation folds they engineered, or a split that must stay identical across tools/runs.
 
 See [`references/data_split.md`](references/data_split.md) for the leakage rationale and anti-patterns. (Embeddings: skip this step.)
 
@@ -260,9 +260,9 @@ Task shape: "score every pixel for a stable landscape property" — e.g. karst-a
 
 - Ask about, or plan for, the user's compute — Studio trains on Ai2's infrastructure. If the user explicitly wants self-run training outside Studio, that's a different (rslearn-side) workflow, not this wizard.
 - Choose the **label field value** for the user — that's their project metadata. The skill names the field; the user picks the value.
-- Generate the labels themselves — that's `olmoearth-data-prep`.
+- Generate or audit the labels themselves.
 - Run training — Studio runs training. This skill stops at the "Create model" button.
-- Tell the user whether the task is *solvable* with their data — only the audit (sibling skill) can do that. This skill assumes labels are already validated.
+- Tell the user whether the task is *solvable* with their data. This skill assumes labels are already validated.
 
 ## Reference docs (loaded on demand)
 

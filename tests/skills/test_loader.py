@@ -15,13 +15,15 @@ from olmoearth_agent.skills.loader import (
 )
 from olmoearth_agent.skills.registry import skills_by_status
 
-#: The four instruction packages that ship inside the agent package.
-PACKAGED_SKILLS = {
+#: The instruction package that ships inside the agent package.
+PACKAGED_SKILLS = {"olmoearth-studio-job-config"}
+
+#: The training-side packages removed on 31 October 2026.
+REMOVED_PACKAGES = (
     "olmoearth-data-prep",
-    "olmoearth-studio-job-config",
     "olmoearth-embeddings",
     "olmoearth-rslearn",
-}
+)
 
 _SKILL_MD = (
     "---\n"
@@ -84,10 +86,10 @@ def test_default_dir_is_inside_the_package() -> None:
     assert (DEFAULT_SKILLS_DIR / "LICENSE").is_file()
 
 
-def test_default_dir_holds_the_four_packages(
+def test_default_dir_holds_the_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No checkout step is needed: the four packages are always present."""
+    """No checkout step is needed: the package is always present."""
     monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
     loader = SkillLoader()
     assert {s.name for s in loader.discover()} == PACKAGED_SKILLS
@@ -102,20 +104,25 @@ def test_packages_match_the_catalog_rows(monkeypatch: pytest.MonkeyPatch) -> Non
     assert catalog == {s.name for s in SkillLoader().discover()}
 
 
-def test_rslearn_skill_gives_its_python_to_the_user(
+def test_the_package_routes_to_no_removed_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The rslearn skill names no tool that runs Python, and no preloaded sandbox.
+    """studio-job-config sends the model to no skill load_skill cannot load.
 
-    The agent has no such tool (``olmoearth_run_python`` was removed), so a
-    snippet goes to the user, with its own imports.
+    Its SKILL.md and every file beside it (references, script) name none of
+    the removed packages.
     """
     monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
-    body = SkillLoader().load("olmoearth-rslearn")
-    assert "are preloaded" not in body
-    assert "without `import`" not in body
-    assert "bans `import`" not in body
-    assert "from rslearn.dataset import Dataset" in body
-    assert "olmoearth_run_python" not in body
-    assert "OLMOEARTH_RUN_PYTHON" not in body
-    assert "give each snippet to the user" in body
+    folder = DEFAULT_SKILLS_DIR / "olmoearth-studio-job-config"
+    texts = {"load": SkillLoader().load("olmoearth-studio-job-config")}
+    for path in sorted(folder.rglob("*")):
+        if path.is_file() and path.suffix in (".md", ".py"):
+            name = path.relative_to(folder).as_posix()
+            texts[name] = path.read_text(encoding="utf-8")
+    assert "references/data_split.md" in texts
+    for where, text in texts.items():
+        for gone in REMOVED_PACKAGES:
+            assert gone not in text, (where, gone)
+    for gone in REMOVED_PACKAGES:
+        with pytest.raises(KeyError):
+            SkillLoader().load(gone)

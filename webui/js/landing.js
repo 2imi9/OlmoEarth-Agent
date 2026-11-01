@@ -1,6 +1,6 @@
-/* Landing example briefs: each tab (Run a prediction / Analyze results / Prep &
-   configure) suggests briefs that fit that stage of the workflow, so picking a
-   mode also swaps the suggested examples. */
+/* Landing example briefs: each tab (Run a prediction / Analyze results /
+   Configure a model) suggests briefs that fit that stage of the workflow, so
+   picking a mode also swaps the suggested examples. */
 
 import { escapeHtml, autosize } from './util.js';
 
@@ -17,10 +17,10 @@ const EXAMPLE_BRIEFS = {
     'Which windows of my flood-probability result should a reviewer check first?',
     'How wrong is this probability map? I can label 300 windows.',
   ],
-  prep: [
-    'I have 200 labels and a T4: embeddings or fine-tune?',
-    'Audit my labels for the 8 data-prep pitfalls.',
-    'Turn my GeoJSON labels into a Studio-ready dataset.',
+  configure: [
+    'I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard.',
+    'Nano, Tiny or Base for a crop-type model with 25,000 labels in Studio?',
+    'Should my Studio flood model use Sentinel-1 too, and how much surrounding area?',
   ],
 };
 

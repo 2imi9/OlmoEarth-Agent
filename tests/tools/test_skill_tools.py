@@ -70,7 +70,7 @@ async def test_load_skill_loads_a_deferred_group(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_load_skill_returns_steps_and_tools_together(tmp_path: Path) -> None:
-    """An instruction skill whose tools are deferred (like olmoearth-rslearn)."""
+    """An instruction skill whose tools are deferred (no catalog row has one now)."""
     _make_skill(tmp_path, "beta")
     registry = _registry_with_deferred_group()
     tools = build_skill_tools(SkillLoader(root=tmp_path), registry=registry)

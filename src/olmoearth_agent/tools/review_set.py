@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-review-set`` tool bundle (skill #8).
+"""The ``olmoearth-review-set`` tool bundle (skill #5).
 
 Four tools:
 
@@ -28,7 +28,7 @@ score as bands of their own: the margin is the rank-1 score minus the
 rank-2), both of which ``olmoearth_review_set_from_result`` reads, or from
 any band once a decision threshold is named. When all you have is hard
 classes from two or more Studio results, ``olmoearth_compare_results`` with
-``mode='ensemble'`` (skill #4's disagreement signal) is the tool that still
+``mode='ensemble'`` (skill #2's disagreement signal) is the tool that still
 works. A model run's own raster (every pixel's scores, e.g. from a GPU
 cluster) goes through ``olmoearth_scores_from_file``
 (:mod:`olmoearth_agent.tools.scores_file`), whose scores file these tools

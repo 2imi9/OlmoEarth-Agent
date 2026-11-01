@@ -710,7 +710,7 @@ async def api_create_area(request: Request) -> dict[str, Any]:
     Body: ``{"name": str, "geom": <GeoJSON Polygon/MultiPolygon>,
     "project_id": str}``. The geometry is the polygon the user drew on the
     chat map; it is stored via ``POST /areas`` so the returned ``area_id``
-    can drive a prediction (skill #4) and the derived ``bbox`` can drive a
+    can drive a prediction (skill #2) and the derived ``bbox`` can drive a
     bbox-based skill. Returns ``{ok, area: {id, name, project_id, bbox}}``.
     When Studio refuses the key (HTTP 401/403, e.g. a read-only key), the
     answer is a 403 whose detail says so and that nothing was created.

@@ -15,7 +15,7 @@ This effect is strongest exactly where models are usually built: dense label clu
 
 ## When a metadata field is right
 
-- **You engineered the split yourself** — e.g. spatial cross-validation folds or a nearest-neighbour-distance-matched (NNDM-style) split produced during data prep. The sibling skill `olmoearth-data-prep` can emit such an assignment as a property on each feature.
+- **You engineered the split yourself** — e.g. spatial cross-validation folds or a nearest-neighbour-distance-matched (NNDM-style) split produced during data prep, written as a property on each feature.
 - **The split must be identical across tools or runs** — comparing Studio against an external baseline on the *same* held-out samples, or re-training without reshuffling.
 - **Domain-structured holdouts** — e.g. hold out whole years, whole administrative regions, or whole label campaigns to test a specific kind of generalization the default spatial split doesn't target.
 
@@ -28,6 +28,6 @@ The field must exist on every labeled feature and contain only the split values 
 - **Tiny validation sets** — holding out one small corner of the AOI gives a noisy estimate; if the user controls the field, keep validation a meaningful share (~10–20%) and spatially representative.
 - **Splitting after augmentation/duplication** — duplicates of one source label must never straddle the split boundary.
 
-## Pairing with `olmoearth-data-prep`
+## Pairing with the user's data prep
 
-Data prep decides *what* the labels are; this step decides *how they're partitioned*. If the user already ran data prep's audit and split tooling, prefer **Use a metadata field** pointing at that assignment. Otherwise **Spatial** — never re-implement a split by hand when the wizard's default does it correctly.
+Data prep decides *what* the labels are; this step decides *how they're partitioned*. If the user's own data prep already wrote a split assignment, prefer **Use a metadata field** pointing at that assignment. Otherwise **Spatial** — never re-implement a split by hand when the wizard's default does it correctly.

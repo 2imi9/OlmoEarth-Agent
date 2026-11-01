@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""A certified zone as a certificate anyone holding the map can check (skill #8).
+"""A certified zone as a certificate anyone holding the map can check (skill #5).
 
 olmoearth-inferencex packs a certified zone into a bundle that travels with the
 map (``oe_inferencex.certify.certificate``, from 1.17.0; the agent requires
@@ -823,7 +823,7 @@ async def _verify_certificate(
 
 
 def build_certificate_tools() -> list[RegisteredTool]:
-    """Return the certificate tools (skill #8; the optional ``inferencex`` extra)."""
+    """Return the certificate tools (skill #5; the optional ``inferencex`` extra)."""
     return [
         RegisteredTool(
             spec=ToolSpec(

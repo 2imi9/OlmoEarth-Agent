@@ -2,11 +2,12 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Progressive-disclosure loader for the agent's agentskills.io packages.
 
-The four instruction skills (catalog #1-#3 and #7: data-prep,
-studio-job-config, embeddings, rslearn) ship inside this package, under
-``olmoearth_agent/skills/packages/``, so a wheel install carries them. They
-were moved here from ``2imi9/OlmoEarth-Skills`` (now frozen); that
-directory's ``LICENSE`` and ``README.md`` keep the licence and attribution.
+The instruction skill (catalog #1, studio-job-config) ships inside this
+package, under ``olmoearth_agent/skills/packages/``, so a wheel install
+carries it. It was moved here from ``2imi9/OlmoEarth-Skills`` (now frozen);
+that directory's ``LICENSE`` and ``README.md`` keep the licence and
+attribution. The data-prep, embeddings and rslearn packages were removed on
+31 October 2026.
 
 Each is a ``SKILL.md`` instruction package (not a Python tool bundle), so
 the harness consumes them the agentskills.io way: the LLM sees each

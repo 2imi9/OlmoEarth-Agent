@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The scores provider: a model run's full output as review-set input (skill #8).
+"""The scores provider: a model run's full output as review-set input (skill #5).
 
 Studio's API returns map tiles, a point lookup and, from its files endpoint, a
 result's native-resolution files, whose scores are at most the top-k softmax
@@ -1042,7 +1042,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
 
 
 def build_scores_file_tools() -> list[RegisteredTool]:
-    """Return the scores-provider tool (skill #8; the optional ``inferencex`` extra)."""
+    """Return the scores-provider tool (skill #5; the optional ``inferencex`` extra)."""
     return [
         RegisteredTool(
             spec=ToolSpec(

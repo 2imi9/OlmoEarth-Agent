@@ -1217,6 +1217,28 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   default registry holds 25 tools, all sent on every turn; the soul drops
   its memory rule and the metrics sentence, and its typical order's last
   step names only kept skills.
+- **The training-side instruction packages, and the catalog renumbered
+  again.** `olmoearth-data-prep` (label preparation for training: Studio
+  import shards, an rslearn `dataset.json` and Lightning YAML, a 7-criteria
+  audit), `olmoearth-embeddings` (an embeddings-vs-fine-tune decision and a
+  notebook that trains kNN and linear-probe heads, asking about the user's
+  GPU) and `olmoearth-rslearn` (running rslearn training outside Studio,
+  which the soul already told the agent not to load) go from
+  `skills/packages/`, with their catalog rows and web UI cards, as outside
+  what the agent verifies. `olmoearth-studio-job-config`, the skill loader
+  and `olmoearth_load_skill` stay, and so do the packages' lint and type
+  exclusions, which name the folder; its `SKILL.md` and
+  `references/data_split.md` no longer route to the removed data-prep skill
+  or to a self-run training skill, and the soul's rule on model creation
+  says training outside Studio is outside the agent instead of naming the
+  rslearn skill. The rows left are renumbered 1 to 5 (studio-job-config #1,
+  predict #2, provenance #3, case narrative #4, review set #5) in the
+  registry, SKILLS.md (its upstream table, headings and anchors), the
+  README, PLAN, CANON, the packages' README, the web UI's cards, tagline,
+  "/" menu and landing tab ("Configure a model", with wizard briefs), and
+  the docstrings and tests that cite a row. The default registry is
+  unchanged (25 tools); the skill index in the system prompt lists one
+  package. A forced "/" slug of a removed package pins nothing.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

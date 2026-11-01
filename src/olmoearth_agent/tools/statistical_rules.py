@@ -214,7 +214,7 @@ def error_rate_without_labels() -> dict[str, str]:
     )
 
 
-#: What a stakeholder report (skill #6) of a request that estimated no error
+#: What a stakeholder report (skill #4) of a request that estimated no error
 #: rate states. A request is one run of the agent: on the web UI, one message.
 NOT_MEASURED_MUST_STATE = (
     "No error rate of this map has been estimated in this request; "

@@ -1,4 +1,4 @@
-/* In-chat skill slash-commands. Type "/" in the composer to pick one of the 8
+/* In-chat skill slash-commands. Type "/" in the composer to pick one of the 5
    skills (see skills.js) (like Claude Code's /commands); the picked skill is
    then routed to the agent. The displayed message stays as the user typed it;
    the brief is sent CLEAN and the skill is pinned SERVER-SIDE via a structured

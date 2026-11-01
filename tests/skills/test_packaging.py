@@ -22,13 +22,8 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: The four instruction packages that must ship in the wheel.
-_SKILLS = (
-    "olmoearth-data-prep",
-    "olmoearth-embeddings",
-    "olmoearth-rslearn",
-    "olmoearth-studio-job-config",
-)
+#: The instruction package that must ship in the wheel.
+_SKILLS = ("olmoearth-studio-job-config",)
 _PREFIX = "olmoearth_agent/skills/packages/"
 
 
@@ -58,7 +53,7 @@ def test_wheel_contains_the_skill_packages(built: tuple[Path, Path]) -> None:
         assert f"{_PREFIX}{skill}/SKILL.md" in names, skill
     assert f"{_PREFIX}LICENSE" in names
     assert f"{_PREFIX}README.md" in names
-    assert f"{_PREFIX}olmoearth-data-prep/scripts/audit.py" in names
+    assert f"{_PREFIX}olmoearth-studio-job-config/scripts/recommend.py" in names
     assert f"{_PREFIX}olmoearth-studio-job-config/references/presets.md" in names
 
 
@@ -74,7 +69,7 @@ def test_sdist_contains_the_skill_packages(built: tuple[Path, Path]) -> None:
 def test_loader_finds_the_skills_in_the_unpacked_wheel(
     built: tuple[Path, Path], tmp_path: Path
 ) -> None:
-    """The default loader, imported from the wheel, discovers all four."""
+    """The default loader, imported from the wheel, discovers the package."""
     _, wheel = built
     site = tmp_path / "site"
     zipfile.ZipFile(wheel).extractall(site)  # noqa: S202 - our own wheel

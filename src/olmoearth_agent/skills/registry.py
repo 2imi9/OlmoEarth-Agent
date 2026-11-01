@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 8 skills.
+"""Skill catalog manifest, the harness's view of all 5 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -67,7 +67,7 @@ class SkillSpec:
 
     number: int
     name: str
-    category: Literal["Foundational", "Prep", "Configure", "Run", "Analyze", "Report"]
+    category: Literal["Foundational", "Configure", "Run", "Analyze", "Report"]
     status: SkillStatus
     summary: str
     tools: list[str] = field(default_factory=list)
@@ -93,21 +93,11 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_studio_label_inventory",
         ],
     ),
-    # #1 unifies the former studio-upload + rslearn-config rows: they were two
-    # catalog entries for the single vendored `olmoearth-data-prep` SKILL.md
-    # package (loaded by SkillLoader). One package -> one entry.
+    # #1 is the one instruction package left (loaded by SkillLoader through
+    # olmoearth_load_skill); data prep, embeddings and rslearn, the
+    # training-side packages, were removed on 31 October 2026.
     SkillSpec(
         1,
-        "olmoearth-data-prep",
-        "Prep",
-        "vendored",
-        "Labels -> Studio import (MIME/10K/multi-metric guards) AND rslearn "
-        "dataset.json + Lightning YAML with a 7-criteria audit. The single "
-        "vendored olmoearth-data-prep SKILL.md package.",
-        ["olmoearth_load_skill"],
-    ),
-    SkillSpec(
-        2,
         "olmoearth-studio-job-config",
         "Configure",
         "vendored",
@@ -116,26 +106,11 @@ SKILLS: list[SkillSpec] = [
         "14 presets + validator. Studio trains on Ai2 compute.",
         ["olmoearth_load_skill"],
     ),
-    # #3: the vendored SKILL.md is the embeddings-vs-fine-tune guidance and
-    # notebook generator (load via olmoearth_load_skill).
-    SkillSpec(
-        3,
-        "olmoearth-embeddings",
-        "Configure",
-        "vendored",
-        "Embeddings-vs-fine-tune decision: the vendored guidance + runnable "
-        "notebook. Ai2's precomputed OlmoEarth v1.3 embeddings "
-        "(source.coop/olmoearth/olmoearth-v1-3-embeddings; one vector per 10 m "
-        "pixel per year) replace computing them yourself for an annual task in "
-        "an area and year they cover; a task that needs dates within a year "
-        "still needs the notebook.",
-        ["olmoearth_load_skill"],
-    ),
-    # #4 holds the comparison tool's four modes: a pair, a group, change over
+    # #2 holds the comparison tool's four modes: a pair, a group, change over
     # time (series; once its own row) and ensemble disagreement (ensemble;
     # once its own row too).
     SkillSpec(
-        4,
+        2,
         "olmoearth-predict",
         "Run",
         "implemented",
@@ -149,7 +124,7 @@ SKILLS: list[SkillSpec] = [
         "estimate movement, not verified ground change), or "
         "ensemble-disagreement confidence across distinct results "
         "(mode='ensemble'), the signal that works when Studio gives you hard "
-        "classes only; when per-class scores exist, #8 ranks errors better "
+        "classes only; when per-class scores exist, #5 ranks errors better "
         "(measured).",
         [
             "olmoearth_search_predictions",
@@ -162,7 +137,7 @@ SKILLS: list[SkillSpec] = [
         ],
     ),
     SkillSpec(
-        5,
+        3,
         "olmoearth-provenance",
         "Report",
         "implemented",
@@ -171,7 +146,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_provenance_summary"],
     ),
     SkillSpec(
-        6,
+        4,
         "olmoearth-case-narrative",
         "Report",
         "implemented",
@@ -180,33 +155,21 @@ SKILLS: list[SkillSpec] = [
         "was.",
         ["olmoearth_case_narrative"],
     ),
-    # #7 promotes the vendored olmoearth-rslearn SKILL.md (it OPERATES rslearn,
-    # the data + training engine under OlmoEarth) to a catalog row.
-    SkillSpec(
-        7,
-        "olmoearth-rslearn",
-        "Configure",
-        "vendored",
-        "Operate rslearn (the data + training engine under OlmoEarth): the vendored "
-        "SKILL.md guides add_windows -> prepare -> ingest -> materialize -> model "
-        "fit/predict, as commands the user runs.",
-        ["olmoearth_load_skill"],
-    ),
-    # #8 closes the gap #4's ensemble mode cannot: ranking WHICH windows are
+    # #5 closes the gap #2's ensemble mode cannot: ranking WHICH windows are
     # wrong, from the model's own top-1-minus-top-2 margin. Studio's
     # pixel-value returns only raw_value/classification per band (no logits),
     # which is exactly why the ensemble mode reaches for disagreement -- with
     # hard classes it is the only signal available. A class map with top-k
     # scores (a prediction submitted with probability_output) carries its
-    # rank-1 and rank-2 softmax scores as bands of their own, and #8 reads its
+    # rank-1 and rank-2 softmax scores as bands of their own, and #5 reads its
     # margin from them. Given real scores the ordering flips: upstream
     # (2imi9/olmoearth_inferenceX-record) measured ensemble disagreement, cross-model
     # disagreement, two-view disagreement and feature-space typicality against
     # the margin on seven expert-labelled testbeds and none of them won. So the
     # two are complementary, not rivals: the ensemble mode for hard-class
-    # Studio results, #8 whenever per-class scores exist.
+    # Studio results, #5 whenever per-class scores exist.
     SkillSpec(
-        8,
+        5,
         "olmoearth-review-set",
         "Analyze",
         "implemented",
@@ -297,26 +260,26 @@ def build_default_registry() -> ToolRegistry:
     # set or estimate.
     add(build_studio_label_tools())
     add(build_predict_tools())
-    # How Studio results differ (#4: a pair, a group, a series, an ensemble):
+    # How Studio results differ (#2: a pair, a group, a series, an ensemble):
     # one tool.
     add(build_compare_tools())
-    # Label-free error ranking (skill #8); complements #4's ensemble mode,
+    # Label-free error ranking (skill #5); complements #2's ensemble mode,
     # which is what remains reachable when Studio yields only hard classes.
     add(build_review_set_tools())
-    # The scores provider (#8): a direct model run's raster + manifest as the
+    # The scores provider (#5): a direct model run's raster + manifest as the
     # review set's and the estimation tools' input. Core, not deferred: it is
     # the entry point of a path whose other tools are all core, and deferring
     # it would put a load_skill turn before the first useful call.
     add(build_scores_file_tools())
     # A Studio result's own native-resolution files (top-k scores or a [0, 1]
-    # score) as the same run directories and scores files (#8); core for the
+    # score) as the same run directories and scores files (#5); core for the
     # same reason.
     add(build_studio_scores_tools())
-    # How wrong is the map (skill #8, second half): design-based estimation
+    # How wrong is the map (skill #5, second half): design-based estimation
     # through the optional inferencex extra; the tools say so when it is absent.
     add(build_estimation_tools())
     # A certified zone of a direct run's map packed into a certificate, and its
-    # check (#8): the same extra, no other dependency, so core like the rest.
+    # check (#5): the same extra, no other dependency, so core like the rest.
     add(build_certificate_tools())
     add(build_narrative_tools())
     add(build_provenance_tools())

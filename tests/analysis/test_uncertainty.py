@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Tests for the ensemble confidence map (skill #4, compare_results' ensemble mode)."""
+"""Tests for the ensemble confidence map (skill #2, compare_results' ensemble mode)."""
 
 from __future__ import annotations
 
