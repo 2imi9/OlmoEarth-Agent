@@ -13,7 +13,7 @@ const EXAMPLE_BRIEFS = {
   analyze: [
     'Compare my two prediction runs over the same area and show the difference map.',
     'Did karst-positive area trend up across these 4 quarterly snapshots?',
-    'Compare OlmoEarth vs AlphaEarth on a transfer region.',
+    'These two land-cover results cover the same month: which is more accurate? I can label 100 windows.',
     'Which windows of my flood-probability result should a reviewer check first?',
     'How wrong is this probability map? I can label 300 windows.',
   ],

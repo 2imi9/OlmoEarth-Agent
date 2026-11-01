@@ -1,11 +1,10 @@
-/* In-chat skill slash-commands. Type "/" in the composer to pick one of the 18
-   skills (five of them opt-in; see skills.js) (like Claude Code's /commands);
-   the picked skill is then routed to the agent. The displayed message stays as
-   the user typed it; the brief is sent CLEAN and the skill is pinned
-   SERVER-SIDE via a structured `forced_skill` field (see serve.py / LeadAgent),
-   instead of rewriting the brief into a "use the X skill" directive. The bridge
-   ignores an opt-in skill while OLMOEARTH_OPT_IN_TOOLS is off. In demo mode (no
-   server) the clean brief still drives the canned scenario. */
+/* In-chat skill slash-commands. Type "/" in the composer to pick one of the 13
+   skills (see skills.js) (like Claude Code's /commands); the picked skill is
+   then routed to the agent. The displayed message stays as the user typed it;
+   the brief is sent CLEAN and the skill is pinned SERVER-SIDE via a structured
+   `forced_skill` field (see serve.py / LeadAgent), instead of rewriting the
+   brief into a "use the X skill" directive. In demo mode (no server) the clean
+   brief still drives the canned scenario. */
 
 import { SKILL_LIST } from './skills.js';
 import { escapeHtml, autosize } from './util.js';

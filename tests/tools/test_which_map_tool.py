@@ -10,8 +10,7 @@ not read as one time, and draws the windows to label where the maps differ
 (``estimate.sample_disagreement``); ``olmoearth_estimate_map_error`` grades
 the reviewer's classes with ``estimate.compare_from_disagreement``. These run
 the real package (``uv sync --all-extras``) and hold every number to it: the
-agent computes no verdict and no interval. ``olmoearth_baseline_compare``,
-whose winner has no test, is opt-in.
+agent computes no verdict and no interval.
 """
 
 from __future__ import annotations
@@ -34,13 +33,7 @@ from olmoearth_agent.harness.checks import (
 )
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
-from olmoearth_agent.skills.registry import (
-    OPT_IN_ENV,
-    OPT_IN_TOOLS,
-    build_default_registry,
-)
 from olmoearth_agent.tools import statistical_rules as rules
-from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.estimation import (
     UNSTATED_DATES_MUST_STATE,
     _jsonable,
@@ -726,57 +719,3 @@ async def test_map_b_needs_the_two_map_design(tmp_path: Path) -> None:
     alone = {"scores_path": path, "budget": 4, "design": "disagreement"}
     one = await _call(PLAN, alone)
     assert one["ok"] is False and "compares two maps of one time" in one["error"]
-
-
-# --------------------------------------------------------------------------- baseline_compare
-
-
-@pytest.mark.asyncio
-async def test_baseline_compare_is_opt_in_and_its_winner_is_untested(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Skill #6 named a winner from point metrics with no design, interval or
-    test: off by default, back (deferred under its skill) when opted in, and
-    every result forbids reading its winner as the more accurate map."""
-    monkeypatch.delenv(OPT_IN_ENV, raising=False)
-    default = build_default_registry()
-    assert "olmoearth_baseline_compare" not in default.names()
-    assert "olmoearth-baseline-compare" not in default.groups()
-    reason = OPT_IN_TOOLS["olmoearth_baseline_compare"]
-    assert reason.startswith("names a winner from point metrics")
-    assert reason.endswith("with no design, interval or test")
-    monkeypatch.setenv(OPT_IN_ENV, "1")
-    opted = build_default_registry()
-    assert opted.group_of("olmoearth_baseline_compare") == "olmoearth-baseline-compare"
-    spec = opted.spec_of("olmoearth_baseline_compare")
-    assert spec is not None
-    assert "olmoearth_plan_label_sample with design='disagreement'" in spec.description
-    (tool,) = build_baseline_compare_tools()
-    result = await tool.handler(
-        {
-            "y_true": [1, 1, 0, 0],
-            "olmoearth_pred": [1, 1, 0, 0],
-            "alphaearth_pred": [1, 0, 0, 1],
-        },
-        ToolContext(studio=None, state=ThreadState()),  # type: ignore[arg-type]
-    )
-    assert result["overall_winner"] == "olmoearth"  # the table is unchanged
-    assert rules.WHICH_MAP_ROUTE in result["winner_note"]
-    (claim,) = result["forbidden_claims"]
-    assert claim["id"] == rules.MORE_ACCURATE_WITHOUT_ITS_TEST
-    assert "this table's winner (olmoearth)" in claim["why"]
-    # The claim is read by the table's own model labels, not only by letter.
-    run = RunEvidence(tools=[_record("olmoearth_baseline_compare", {}, result)])
-    for said in (
-        "OlmoEarth is more accurate than AlphaEarth.",
-        "OlmoEarth clearly outperforms the AlphaEarth baseline.",
-        "The alphaearth model is the better one.",
-        "Map a is the better map.",
-    ):
-        assert [v["text"] for v in check_forbidden_claims(said, run)] == [said]
-    for fine in (
-        "Whether OlmoEarth is more accurate needs labels where the maps differ.",
-        "The table's overall winner is olmoearth, a point metric with no test.",
-        "OlmoEarth is not shown more accurate by this table.",
-    ):
-        assert check_forbidden_claims(fine, run) == [], fine

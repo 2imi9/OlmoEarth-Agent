@@ -38,11 +38,11 @@ _BOX = {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 
 def _registry() -> ToolRegistry:
     """The default registry with every opt-in tool enabled too.
 
-    ``olmoearth_run_python`` and the tools trimmed from the default registry
-    (``OLMOEARTH_OPT_IN_TOOLS``): an opt-in tool's card line is shown when it
-    is on, so its declarations are probed all the same.
+    The tools trimmed from the default registry (``OLMOEARTH_OPT_IN_TOOLS``):
+    an opt-in tool's card line is shown when it is on, so its declarations are
+    probed all the same.
     """
-    with mock.patch.dict(os.environ, {"OLMOEARTH_RUN_PYTHON": "1", OPT_IN_ENV: "1"}):
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
         return build_default_registry()
 
 
@@ -62,7 +62,6 @@ def _stated() -> list[tuple[str, str]]:
 
 def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
     registry = _registry()
-    assert "olmoearth_run_python" in registry.names()
     assert "olmoearth_change_detect" in registry.names()  # opt-in, on here
     missing = [n for n in registry.names() if registry.capability_of(n) is None]
     assert missing == [], f"tools with no capability declared: {missing}"
@@ -710,14 +709,6 @@ async def _qgis_returns_a_cog_command(tmp: Path) -> None:
     assert out["ok"] is True
     assert "gdal_translate" in out["result"]["cog_recipe"]["command"]
     assert not list(tmp.rglob("*.tif"))
-
-
-@probe("olmoearth_negative_sampler", "positives_path inside the workspace")
-async def _negatives_read_only_the_workspace(tmp: Path) -> None:
-    outside = tmp.parent / f"{tmp.name}_positives.geojson"
-    outside.write_text('{"type": "FeatureCollection", "features": []}')
-    out = await _call("olmoearth_negative_sampler", {"positives_path": str(outside)})
-    _refused(out, "resolves outside the workspace root")
 
 
 # --------------------------------------------------------------------------- the check

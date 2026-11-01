@@ -2645,21 +2645,6 @@ _MORE_ACCURATE_RE = re.compile(
     r"more\s+reliable|better(?:\s+(?:map|one))?)\b",
     re.I,
 )
-#: What a model of a baseline comparison is named more accurate by: the
-#: claims above, or "outperforms" / "beats" ("OlmoEarth clearly outperforms
-#: the AlphaEarth baseline", skill #6's answer in a June 2026 capture).
-_MODEL_MORE_ACCURATE = (
-    r"(?:\s+(?:model|map|predictions?|results?|side|baseline))?"
-    r"(?:\s*\([^)]{0,60}\))?"
-    r"(?:\s+(?:is|was|looks|seems|appears)\s+(?:probably\s+|likely\s+|clearly\s+)?"
-    r"(?:the\s+)?(?:more\s+accurate|right|correct|closer\s+to\s+(?:the\s+)?truth|"
-    r"winner|more\s+reliable|better(?:\s+(?:map|one|model))?)"
-    r"|\s+(?:clearly\s+)?(?:outperform(?:s|ed)?|beats?))\b"
-)
-#: The tool whose model labels name the maps of a baseline comparison.
-_BASELINE_COMPARE = "olmoearth_baseline_compare"
-#: A map's letter inside a claim naming a model ("OlmoEarth (map a) is ...").
-_LETTER_RE = re.compile(r"\b(?:map|side)\s+([ab])\b", re.I)
 #: What a which-map verdict rests on, named: the exact sign test, or the
 #: interval (or its level, "at 95% confidence").
 _WHICH_MAP_BASIS_RE = re.compile(r"\bsign\s+test\b|\binterval\b|\bconfidence\b", re.I)
@@ -2703,55 +2688,6 @@ def _rests_on_a_grading(s: str, letter: str, run: RunEvidence) -> bool:
     return False
 
 
-def _baseline_labels(run: RunEvidence) -> list[str]:
-    """The model labels of this run's baseline comparisons, longest first.
-
-    ``olmoearth_baseline_compare`` names its two maps by label
-    (``model_a`` / ``model_b``; ``olmoearth`` and ``alphaearth`` unless the
-    caller gives others). A label of one character is left out: "a" is the
-    article.
-    """
-    labels: set[str] = set()
-    for rec in run.tools:
-        if rec.name != _BASELINE_COMPARE or not rec.ok:
-            continue
-        result = rec.result
-        if not isinstance(result, Mapping):
-            continue
-        for side in ("model_a", "model_b"):
-            model = result.get(side)
-            label = model.get("label") if isinstance(model, Mapping) else None
-            if isinstance(label, str) and len(label.strip()) > 1:
-                labels.add(label.strip())
-    return sorted(labels, key=lambda x: (-len(x), x))
-
-
-def _more_accurate_matches(
-    s: str, run: RunEvidence
-) -> list[tuple[re.Match[str], str | None]]:
-    """Each map named more accurate in ``s``, with its letter (``None``: a model label).
-
-    A map is named by its letter ("map a", "side B"), or, after a baseline
-    comparison in this run, by one of its model labels ("OlmoEarth is more
-    accurate", "olmoearth clearly outperforms the AlphaEarth baseline"); a
-    label's claim that names a letter too ("OlmoEarth (map a) is ...") takes
-    that letter.
-    """
-    found: list[tuple[re.Match[str], str | None]] = [
-        (m, m.group("map").lower()) for m in _MORE_ACCURATE_RE.finditer(s)
-    ]
-    labels = _baseline_labels(run)
-    if labels:
-        names = "|".join(re.escape(label) for label in labels)
-        model_re = re.compile(
-            rf"(?<![\w-])(?:{names})(?![\w-]){_MODEL_MORE_ACCURATE}", re.I
-        )
-        for m in model_re.finditer(s):
-            letter = _LETTER_RE.search(m.group())
-            found.append((m, letter.group(1).lower() if letter else None))
-    return found
-
-
 def _more_accurate_without_its_test(
     s: str, record: ToolRecord, run: RunEvidence
 ) -> bool:
@@ -2759,18 +2695,16 @@ def _more_accurate_without_its_test(
 
     Forbidden by every which-map grading (a map its verdict does not name,
     any map when it names neither, the named map without its test and
-    labels) and by the opt-in baseline comparison, whose winner is a point
-    metric. The map is read by its letter, or by a baseline comparison's
-    model labels (:func:`_more_accurate_matches`); a map named another way
-    ("the OlmoEarth result") is not read. A claim under a negation, a hedge
-    ("if map A is more accurate"), in an example or in quotes is no claim;
-    one that states the grading that names its letter
-    (:func:`_rests_on_a_grading`) is the rule followed, and a model label
-    with no letter has no grading to state.
+    labels). The map is read by its letter ("map a", "side B"); a map named
+    another way ("the OlmoEarth result") is not read. A claim under a
+    negation, a hedge ("if map A is more accurate"), in an example or in
+    quotes is no claim; one that states the grading that names its letter
+    (:func:`_rests_on_a_grading`) is the rule followed.
     """
     p: _Parse | None = None
     graded: dict[str, bool] = {}
-    for m, letter in _more_accurate_matches(s, run):
+    for m in _MORE_ACCURATE_RE.finditer(s):
+        letter = m.group("map").lower()
         p = p or _parse(s)
         if (
             p.negated(m.start(), m.end())
@@ -2781,8 +2715,6 @@ def _more_accurate_without_its_test(
         lo, _hi = p.span(m.start(), m.end())
         if p.find(_WINNER_HEDGE_RE, lo, m.start()) is not None:
             continue
-        if letter is None:
-            return True
         if letter not in graded:
             graded[letter] = _rests_on_a_grading(s, letter, run)
         if not graded[letter]:

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Skill catalog manifest, the harness's view of all 18 skills.
+"""Skill catalog manifest, the harness's view of all 13 skills.
 
 This is the structural "slot" for every skill in ``SKILLS.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
@@ -12,8 +12,8 @@ By default the agent is the Studio run loop and a verification layer (review
 sets, label samples, error rates and certified zones). A tool a catalog row
 lists under ``opt_in`` is left out of the default registry, with its one-line
 reason; it stays in the code and is registered as before when
-``OLMOEARTH_OPT_IN_TOOLS`` is set (:data:`OPT_IN_ENV`), the same switch as
-``OLMOEARTH_RUN_PYTHON`` (:func:`olmoearth_agent.tools.registry.opted_in`).
+``OLMOEARTH_OPT_IN_TOOLS`` is set (:data:`OPT_IN_ENV`, read by
+:func:`olmoearth_agent.tools.registry.opted_in`).
 ``OLMOEARTH_READ_ONLY`` (:data:`READ_ONLY_ENV`, the same values) declares this
 run's Studio key read-only: the tools that write to Studio
 (:data:`STUDIO_WRITE_TOOLS`) are left out, and the capability card says why.
@@ -31,30 +31,24 @@ from typing import Literal
 from olmoearth_agent.harness.capabilities import READ_ONLY_STUDIO
 from olmoearth_agent.provenance.tools import build_provenance_tools
 from olmoearth_agent.tools.automate import build_automate_tools
-from olmoearth_agent.tools.baseline_compare import build_baseline_compare_tools
 from olmoearth_agent.tools.certificate import build_certificate_tools
 from olmoearth_agent.tools.change_detect import build_change_detect_tools
-from olmoearth_agent.tools.cloud_mask_audit import build_cloud_mask_audit_tools
 from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.export import build_export_tools
-from olmoearth_agent.tools.litsearch import build_litsearch_tools
 from olmoearth_agent.tools.memory import build_memory_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
-from olmoearth_agent.tools.negative_sampler import build_negative_sampler_tools
 from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import RegisteredTool, ToolRegistry, opted_in
 from olmoearth_agent.tools.review_set import build_review_set_tools
 from olmoearth_agent.tools.rslearn import build_rslearn_tools
 from olmoearth_agent.tools.scores_file import build_scores_file_tools
-from olmoearth_agent.tools.similarity import build_similarity_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.studio_labels import build_studio_label_tools
 from olmoearth_agent.tools.studio_scores import build_studio_scores_tools
-from olmoearth_agent.tools.system import build_system_tools
 from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
@@ -213,26 +207,6 @@ SKILLS: list[SkillSpec] = [
             "mode='series'",
         },
     ),
-    # #6 names a winner from point metrics, with no design, interval or test;
-    # which of two maps is more accurate is #18's two-map route
-    # (olmoearth_plan_label_sample, design='disagreement', then
-    # olmoearth_estimate_map_error).
-    SkillSpec(
-        6,
-        "olmoearth-baseline-compare",
-        "Run",
-        "implemented",
-        "Opt-in. OlmoEarth vs a baseline foundation model (e.g. AlphaEarth) "
-        "side-by-side on transfer regions; bring-your-own exported "
-        "embeddings/predictions (no live GEE connection). Its winner is a point "
-        "metric with no test; #18's two-map route says which map is more "
-        "accurate.",
-        ["olmoearth_baseline_compare"],
-        opt_in={
-            "olmoearth_baseline_compare": "names a winner from point metrics, with "
-            "no design, interval or test",
-        },
-    ),
     SkillSpec(
         7,
         "olmoearth-evaluate",
@@ -252,19 +226,6 @@ SKILLS: list[SkillSpec] = [
         },
     ),
     SkillSpec(
-        8,
-        "olmoearth-similarity",
-        "Analyze",
-        "implemented",
-        "Opt-in. Exact top-K kNN over supplied embeddings (e.g. OlmoEarth "
-        "Base); geographic-prior warning.",
-        ["olmoearth_similarity_search"],
-        opt_in={
-            "olmoearth_similarity_search": "Ai2's Explorer and AlphaEarth in "
-            "Earth Engine search every pixel",
-        },
-    ),
-    SkillSpec(
         9,
         "olmoearth-uncertainty",
         "Analyze",
@@ -278,18 +239,6 @@ SKILLS: list[SkillSpec] = [
         opt_in={
             "olmoearth_area_of_applicability": "no tool produces its input, and "
             "it was measured not to rank errors better than the margin",
-        },
-    ),
-    SkillSpec(
-        10,
-        "olmoearth-cloud-mask-audit",
-        "Analyze",
-        "implemented",
-        "Opt-in. CFMask/s2cloudless/Sen2Cor/MAJA ensemble disagreement.",
-        ["olmoearth_cloud_mask_audit"],
-        opt_in={
-            "olmoearth_cloud_mask_audit": "no tool produces its input; "
-            "inferencex's condition layer records cloud where a run has SCL",
         },
     ),
     SkillSpec(
@@ -331,33 +280,6 @@ SKILLS: list[SkillSpec] = [
         "the accuracy the request's verification tools measured, or that none "
         "was.",
         ["olmoearth_case_narrative"],
-    ),
-    SkillSpec(
-        15,
-        "olmoearth-litsearch",
-        "Report",
-        "implemented",
-        "Opt-in. arXiv + OpenAlex literature search + DOI/arXiv-id resolution "
-        "to ground citations (key-free; deduped across sources).",
-        ["olmoearth_litsearch"],
-        opt_in={
-            "olmoearth_litsearch": "it costs a core slot every turn; it is the "
-            "agent's own route to Ai2's Asta, not a copy of it",
-        },
-    ),
-    SkillSpec(
-        16,
-        "olmoearth-negative-sampler",
-        "Prep",
-        "implemented",
-        "Opt-in. Presence-only labels -> trainable set: generate a buffered, "
-        "spatially-thinned (optionally embedding-dissimilar) negative class "
-        "so the data-prep audit's negative-class check passes.",
-        ["olmoearth_negative_sampler"],
-        opt_in={
-            "olmoearth_negative_sampler": "prepares labels for model training "
-            "outside Studio",
-        },
     ),
     # #17 promotes the vendored olmoearth-rslearn SKILL.md (it OPERATES rslearn,
     # the data + training engine under OlmoEarth) to a catalog row, and adds
@@ -542,8 +464,6 @@ def build_default_registry() -> ToolRegistry:
     # check (#18): the same extra, no other dependency, so core like the rest.
     add(build_certificate_tools())
     add(build_narrative_tools())
-    # Opt-in: literature search (#15).
-    add(build_litsearch_tools())
     add(build_export_tools())
     add(build_qgis_tools())
     add(build_provenance_tools())
@@ -552,23 +472,16 @@ def build_default_registry() -> ToolRegistry:
     # model themselves; Studio trains on Ai2's compute (soul.md).
     add(build_automate_tools(), group="olmoearth-embeddings")
     add(build_rslearn_tools(), group="olmoearth-rslearn")
-    # Caller-array tools (the opt-in #6, #7 spatial CV, #8, #9 AOA, #10):
-    # their inputs are arrays the user supplies inline, which no agent tool
-    # produces. With the opt-in tools off, no group is deferred.
-    add(build_baseline_compare_tools(), group="olmoearth-baseline-compare")
+    # Caller-array tools (the opt-in #7 spatial CV and #9 AOA): their inputs
+    # are arrays the user supplies inline, which no agent tool produces. With
+    # the opt-in tools off, no group is deferred.
     add(
         (t for t in evaluate if t.spec.name not in _EVALUATE_CORE),
         group="olmoearth-evaluate",
     )
-    add(build_similarity_tools(), group="olmoearth-similarity")
     add(build_uncertainty_tools(), group="olmoearth-uncertainty")
-    add(build_cloud_mask_audit_tools(), group="olmoearth-cloud-mask-audit")
-    # Label preparation from the user's own presence-only file (#16), opt-in.
-    add(build_negative_sampler_tools(), group="olmoearth-negative-sampler")
     # Skill loading, after the deferred bundles so its description lists them.
     add(build_skill_tools(registry=registry))
     # Cross-thread preference memory (remember/forget); core, not a skill.
     add(build_memory_tools())
-    # Opt-in code execution (OLMOEARTH_RUN_PYTHON); an empty bundle otherwise.
-    add(build_system_tools())
     return registry

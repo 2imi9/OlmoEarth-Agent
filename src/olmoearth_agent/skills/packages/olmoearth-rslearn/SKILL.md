@@ -23,12 +23,10 @@ short of running anything:
 
 > **Execution reality.** rslearn's heavy stages (`ingest`, `materialize`,
 > `model fit`) are minutes-to-hours and network/GPU-bound, and rslearn, GDAL and
-> torch are **not** dependencies of this agent. So: use the
-> `olmoearth_run_python` tool, when it is enabled, only for **light
-> orchestration/inspection** (write a config, open a `Dataset`, tag a split,
-> count windows). **Surface** the long CLI commands for the user to run — do not
-> try to run `ingest`/`materialize`/`fit` inside the agent loop (they will time
-> out).
+> torch are **not** dependencies of this agent, and the agent runs no Python.
+> So: **surface** both the long CLI commands and the light Python (write a
+> config, open a `Dataset`, tag a split, count windows) for the user to run — do
+> not try to run `ingest`/`materialize`/`fit` inside the agent loop.
 
 ## When to use
 
@@ -113,23 +111,13 @@ Both stage their windows with the same `prepare/ingest/materialize` steps, then
 `RslearnWriter` writes predictions back as a dataset layer. These are long/GPU
 jobs — **surface them for the user**, don't run them in the agent loop.
 
-## Light Python you CAN run (`olmoearth_run_python`)
+## Light Python for the user to run
 
-How the tool works, so a snippet runs the first time:
-
-- It exists only when the operator started the agent with
-  `OLMOEARTH_RUN_PYTHON=1`. If it is not in your tool list, give the snippet to
-  the user to run instead.
-- Each call runs the snippet in a **fresh, isolated subprocess** (`python -I -c`)
-  of the agent's own interpreter, in a throwaway temporary directory. Nothing is
-  preloaded and **no state carries over** between calls: write normal `import`
-  statements and use absolute paths.
-- `rslearn` and `upath` import only if the user installed them in the agent's
-  environment; an `ImportError` means they are absent, so surface the snippet.
-- There is a wall-clock limit (30 s by default, `OLMOEARTH_RUN_PYTHON_TIMEOUT`)
-  and stdout/stderr are truncated at 8,000 characters each; `print()` what you
-  need back. Known credential variables are removed from its environment, but
-  the subprocess is not network-isolated.
+The agent has no tool that runs Python, so give each snippet to the user. Write
+it so it runs the first time in a fresh interpreter: nothing is preloaded, so
+include the normal `import` statements and use absolute paths; it needs
+`rslearn` and `upath` installed where the user runs it; `print()` what the user
+should report back.
 
 Tagging a split, for example:
 

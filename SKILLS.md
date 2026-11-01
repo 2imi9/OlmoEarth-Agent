@@ -1,10 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 18 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 13 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
 
 `PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
 
-**Status:** 18 skills, all implemented in this repo. By default the agent is the Studio run loop and a verification layer: which windows to review, which to label, how wrong a map is and where it can be trusted (#18, through `olmoearth-inferencex`, for a map that carries scores: a Studio result whose band is a `[0, 1]` score or a regression band given a threshold, a Studio class map with top-k scores, or a direct model run's scores; a Studio class map without top-k scores gets its error rate and per-class accuracy from labels, but no review set and no certified zone), and which of two maps of one time is more accurate (#18's two-map route, class maps included: labels where they differ), with the comparison tools of #4, #5 and #9. The foundational Studio tools include `olmoearth_studio_label_inventory`, which counts the Studio annotations a model's training selector selects now (no error rate: Studio records no random design for them). Fifteen tools are opt-in ([Opt-in tools](#opt-in-tools)): they leave the default registry, stay in the code, and come back with `OLMOEARTH_OPT_IN_TOOLS=1`. Skills #6, #8, #10, #15 and #16 are opt-in whole. History: v1.0 shipped the originals on 2026-05-31; `olmoearth-litsearch` and the `olmoearth_automate` facet were added post-1.0, `olmoearth-negative-sampler` post-1.1, #17 `olmoearth-rslearn` post-1.2 (a vendored "operate rslearn" SKILL.md plus four torch-free tools), #18 `olmoearth-review-set` post-1.4 (label-free error ranking from the model's own margin, the half of the uncertainty question #9 cannot reach), and in the unreleased version (`CHANGELOG.md`, Unreleased) the default registry is the verification layer. A JEPA latent-change detector lives in the separate repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change); it is not connected to this agent. See `CHANGELOG.md`.
+**Status:** 13 skills, all implemented in this repo. By default the agent is the Studio run loop and a verification layer: which windows to review, which to label, how wrong a map is and where it can be trusted (#18, through `olmoearth-inferencex`, for a map that carries scores: a Studio result whose band is a `[0, 1]` score or a regression band given a threshold, a Studio class map with top-k scores, or a direct model run's scores; a Studio class map without top-k scores gets its error rate and per-class accuracy from labels, but no review set and no certified zone), and which of two maps of one time is more accurate (#18's two-map route, class maps included: labels where they differ), with the comparison tools of #4, #5 and #9. The foundational Studio tools include `olmoearth_studio_label_inventory`, which counts the Studio annotations a model's training selector selects now (no error rate: Studio records no random design for them). Ten tools are opt-in ([Opt-in tools](#opt-in-tools)): they leave the default registry, stay in the code, and come back with `OLMOEARTH_OPT_IN_TOOLS=1`. History: v1.0 shipped the originals on 2026-05-31; the `olmoearth_automate` facet was added post-1.0, #17 `olmoearth-rslearn` post-1.2 (a vendored "operate rslearn" SKILL.md plus four torch-free tools), #18 `olmoearth-review-set` post-1.4 (label-free error ranking from the model's own margin, the half of the uncertainty question #9 cannot reach), and in the unreleased version (`CHANGELOG.md`, Unreleased) the default registry is the verification layer, and five skills outside inference examination (#6, #8, #10, #15 and #16) were removed. A JEPA latent-change detector lives in the separate repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change); it is not connected to this agent. See `CHANGELOG.md`.
 
 ## Existing implementations (upstream)
 
@@ -31,45 +31,33 @@ Skills #4-#18 are implemented in this repo (see `CHANGELOG.md`).
 | 3 | Configure | [`olmoearth-embeddings`](#3-olmoearth-embeddings) | Embeddings-vs-fine-tune decision: **guidance + a runnable notebook** (you run it); Ai2's precomputed [OlmoEarth v1.3 embeddings](https://source.coop/olmoearth/olmoearth-v1-3-embeddings) (one vector per 10 m pixel per year) replace computing them yourself for an annual task in an area and year they cover. The **one-call** `olmoearth_automate` (decide + propose a config; optional HF-dataset introspection) is opt-in. |
 | 4 | Run | [`olmoearth-predict`](#4-olmoearth-predict) | The core run primitive: submit / poll / fetch results; sample the model output at a point (pixel-value); compare results. |
 | 5 | Run | [`olmoearth-change-detection`](#5-olmoearth-change-detection) | Change over time: one model's dated Studio results traced as a series (`olmoearth_compare_results` in series mode: date-ordered, legend-calibrated). The trajectory of the caller's own dated values (`olmoearth_change_detect`) is opt-in. |
-| 6 | Run | [`olmoearth-baseline-compare`](#6-olmoearth-baseline-compare) | *Opt-in.* Studio vs. a baseline foundation model (e.g. AlphaEarth), side-by-side on transfer regions; its winner has no test, so which map is more accurate is #18's two-map route (two Studio results or two scores files of one window grid). |
 | 7 | Analyze | [`olmoearth-evaluate`](#7-olmoearth-evaluate) | Classification metrics against the user's labels; spatial-block CV and NNDM-LOO are opt-in. |
-| 8 | Analyze | [`olmoearth-similarity`](#8-olmoearth-similarity) | *Opt-in.* Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base); geographic-prior warning. |
 | 9 | Analyze | [`olmoearth-uncertainty`](#9-olmoearth-uncertainty) | Ensemble-disagreement confidence (across distinct results); the Meyer-Pebesma Area of Applicability is opt-in. |
-| 10 | Analyze | [`olmoearth-cloud-mask-audit`](#10-olmoearth-cloud-mask-audit) | *Opt-in.* CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement. |
 | 11 | Integrate | [`olmoearth-qgis-bridge`](#11-olmoearth-qgis-bridge) | Tile URLs -> a QGIS `.qlr` layer + a GDAL_WMS/XYZ descriptor + XYZ URLs + an SLD style + a local `gdal_translate` COG recipe. |
 | 12 | Integrate | [`olmoearth-data-export`](#12-olmoearth-data-export) | Export Studio projects + predictions to JSON, grouped by project or status. |
 | 13 | Report | [`olmoearth-provenance`](#13-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
 | 14 | Report | [`olmoearth-case-narrative`](#14-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate; the accuracy the verification tools measured in the same request, with the map, its intervals, labels, design and seed, or a plain statement that none was estimated. |
-| 15 | Report | [`olmoearth-litsearch`](#15-olmoearth-litsearch) | *Opt-in.* arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional Asta full-text backend. |
-| 16 | Prep | [`olmoearth-negative-sampler`](#16-olmoearth-negative-sampler) | *Opt-in.* Presence-only labels -> trainable set: buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes. |
 | 17 | Configure | [`olmoearth-rslearn`](#17-olmoearth-rslearn) | Operate rslearn (the engine under OlmoEarth): vendored SKILL.md; four torch-free tools (recommend / validate / compose / diagnose), opt-in. |
 | 18 | Analyze | [`olmoearth-review-set`](#18-olmoearth-review-set) | Label-free review set from the model's own top-1-minus-top-2 margin: which windows to check first at a budget (caller scores, a direct model run's files, or a Studio result's `[0, 1]` score or top-k class scores, on a grid or from its native files), boundary-first ordering, the attainable-ceiling arithmetic, a grader for any candidate audit rule (opt-in); then how wrong the map is, from a labelled sample drawn by a design, with a direct run's certified zone packed into a certificate anyone holding the map can check, and which of two maps of one time is more accurate, from labels where they differ (optional `inferencex` extra). |
 
-**Tools sent on demand.** Every default tool is sent on every turn. Opted in, the tools of #3, #6, #8, #10, #16 and #17, #7's spatial-CV tools and #9's Area of Applicability are sent to the model only after it loads their skill with `olmoearth_load_skill`, or when the web UI's "/" menu forces the skill, to keep each turn's tool list short.
+**Tools sent on demand.** Every default tool is sent on every turn. Opted in, the tools of #3 and #17, #7's spatial-CV tools and #9's Area of Applicability are sent to the model only after it loads their skill with `olmoearth_load_skill`, or when the web UI's "/" menu forces the skill, to keep each turn's tool list short.
 
 ### Opt-in tools
 
-These tools are not in the default registry. They stay in the code, and setting `OLMOEARTH_OPT_IN_TOOLS=1` (or `true`, `yes`, `on`; the same values as `OLMOEARTH_RUN_PYTHON`) before the agent or the bridge starts registers every one of them: `olmoearth_change_detect`, `olmoearth_litsearch` and `olmoearth_grade_review_rule` on every turn, the others once their skill is loaded. Off, the model can neither call nor load them, and no text the default agent sends it (tool descriptions, the capability card, the soul, the `SKILL.md` packages) names one; a test checks that. The web UI's "/" menu still lists the five skills that are opt-in whole, but with the setting off the bridge ignores the pick and runs the brief unpinned. The reasons, as `skills/registry.py` records them:
+These tools are not in the default registry. They stay in the code, and setting `OLMOEARTH_OPT_IN_TOOLS=1` (or `true`, `yes`, `on`) before the agent or the bridge starts registers every one of them: `olmoearth_change_detect` and `olmoearth_grade_review_rule` on every turn, the others once their skill is loaded. Off, the model can neither call nor load them, and no text the default agent sends it (tool descriptions, the capability card, the soul, the `SKILL.md` packages) names one; a test checks that. The reasons, as `skills/registry.py` records them:
 
 | Tool | Skill | Why it is off by default |
 |---|---|---|
 | `olmoearth_automate` | #3 | for an annual task, Ai2's v1.3 embeddings and its Explorer replace computing embeddings |
 | `olmoearth_change_detect` | #5 | superseded by olmoearth_compare_results, mode='series' |
-| `olmoearth_baseline_compare` | #6 | names a winner from point metrics, with no design, interval or test |
 | `olmoearth_cv_inflation_check` | #7 | a training-side check, run outside Studio |
 | `olmoearth_nndm_cv` | #7 | a training-side check, run outside Studio |
-| `olmoearth_similarity_search` | #8 | Ai2's Explorer and AlphaEarth in Earth Engine search every pixel |
 | `olmoearth_area_of_applicability` | #9 | no tool produces its input, and it was measured not to rank errors better than the margin |
-| `olmoearth_cloud_mask_audit` | #10 | no tool produces its input; inferencex's condition layer records cloud where a run has SCL |
-| `olmoearth_litsearch` | #15 | it costs a core slot every turn; it is the agent's own route to Ai2's Asta, not a copy of it |
-| `olmoearth_negative_sampler` | #16 | prepares labels for model training outside Studio |
 | `olmoearth_rslearn_recommend` | #17 | model training outside Studio |
 | `olmoearth_rslearn_validate` | #17 | model training outside Studio |
 | `olmoearth_rslearn_compose` | #17 | model training outside Studio |
 | `olmoearth_rslearn_diagnose` | #17 | model training outside Studio |
 | `olmoearth_grade_review_rule` | #18 | needs per-unit error labels a Studio user rarely has |
-
-The input-condition layer is `oe-inferencex assess --condition`: each recorded condition (a cloud flag, the inputs present) is ranked on its own. `oe-inferencex from-olmoearth --conditions` builds one from an OlmoEarth run, recording scene coverage per input and, where the run's data hold Sentinel-2's SCL band, cloud; no published project stores SCL, so without it the layer records coverage alone. Both are companion CLI steps on a direct OlmoEarth run: no agent tool runs them, and a Studio result has no condition layer. See the companion package's [Usage](https://github.com/2imi9/olmoearth_inferenceX/blob/main/docs/Usage.md).
 
 ### Example briefs
 
@@ -82,17 +70,12 @@ A realistic prompt that routes to each skill - what a user would actually type (
 | 3 | `olmoearth-embeddings` | "I have 150 labels and a Colab T4 - should I fine-tune or use embeddings? Give me a notebook." (the one-call set-up, "or just set it up", is opt-in) |
 | 4 | `olmoearth-predict` | "Run a flood-extent prediction over this AOI for last month and return the result tiles." |
 | 5 | `olmoearth-change-detection` | "Did forest cover decline across these four quarterly snapshots, or is it just noise?" |
-| 6 | `olmoearth-baseline-compare` (opt-in) | "Compare OlmoEarth vs AlphaEarth for land cover in a region where AlphaEarth struggles." (which map is more accurate: #18's two-map route) |
 | 7 | `olmoearth-evaluate` | "Here are my 200 field labels and the map's classes at those points: what are its per-class precision and recall?" (the spatial cross-validation check, "my model reports 92% accuracy - re-check it with spatial CV", is opt-in) |
-| 8 | `olmoearth-similarity` (opt-in) | "Find the 20 patches most similar to this illegal-mining site across the basin." |
 | 9 | `olmoearth-uncertainty` | "Where do my three runs of this model disagree most?" (the out-of-distribution flag, "which parts of my AOI fall outside the training distribution?", is opt-in) |
-| 10 | `olmoearth-cloud-mask-audit` (opt-in) | "My prediction looks wrong over this scene - bad cloud mask or bad model?" |
 | 11 | `olmoearth-qgis-bridge` | "Give me a QGIS layer + SLD style for this prediction so I can open it on my desktop." |
 | 12 | `olmoearth-data-export` | "Export all my Studio projects and their predictions to JSON, grouped by status." |
 | 13 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
 | 14 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
-| 15 | `olmoearth-litsearch` (opt-in) | "Find and cite the paper behind the Area-of-Applicability method I used." |
-| 16 | `olmoearth-negative-sampler` (opt-in) | "My karst-site labels are presence-only and the audit fails for a missing negative class -- generate background samples." |
 | 17 | `olmoearth-rslearn` | "I train my own model with rslearn: give me the commands to stage this dataset and fit the model." (the set-up and config-check tools, "set one up and check it before I burn GPU hours", are opt-in) |
 | 18 | `olmoearth-review-set` | "The map is done and I can only check 200 of these 4,000 windows. Which 200, and how much of the error will I actually catch?" / "How wrong is this probability map? I can label 300 windows." (a map with scores) / "How wrong is this Studio land-cover result, class by class? I can label 100 windows." (a class map without top-k scores: error rate and per-class accuracy, no review set) / "These two land-cover results cover the same area and month: which is more accurate? I can label 100 windows." (two maps of one time, class maps included) |
 
@@ -114,7 +97,6 @@ A realistic prompt that routes to each skill - what a user would actually type (
 **Tools composed.**
 - `olmoearth_load_skill` (pulls the vendored `SKILL.md` into context on demand).
 - Upstream skill-local: `validate_studio_mime`, `shard_at_10k`, `split_multi_metric`, `write_rslearn_config`, `audit_7_criteria`, `rename_es_label`; `eo.window_tile` / `olmoearth.resolve_to_aoi` (`PLAN.md` §1).
-- Composes with skill #16 `olmoearth-negative-sampler`, whose output round-trips back through this skill's audit.
 
 ---
 
@@ -149,7 +131,7 @@ A realistic prompt that routes to each skill - what a user would actually type (
 
 **Tools composed.**
 - `olmoearth_load_skill` (the vendored guidance + notebook generator) and, opt-in, `olmoearth_automate` (the in-repo one-call decision + config + optional HF-dataset introspection).
-- Logic in `analysis/automate.py` (decision port + `propose_config` + `fetch_hf_dataset_profile`); `system:python` (opt-in subprocess) for light checks only — the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack the sandbox does not guarantee). No tool fetches embeddings.
+- Logic in `analysis/automate.py` (decision port + `propose_config` + `fetch_hf_dataset_profile`); the generated notebook is meant for the **user** to run (it needs the geospatial/GPU stack). No tool fetches embeddings.
 
 ---
 
@@ -172,7 +154,7 @@ A realistic prompt that routes to each skill - what a user would actually type (
 
 **AOI input (draw-in-chat).** `submit_prediction` needs an `area_id`, which it sends to Studio as `target_area_ids`. Rather than ask the user to type a bbox, the agent calls the foundational `olmoearth_request_aoi` tool, which surfaces an interactive map in the web UI; the user **draws** a rectangle or polygon, it is stored as a Studio area (`POST /areas` -> `area_id`), and its `area_id` + bounding box are fed back on the next turn.
 
-**First skill to ship.** Foundation that #5, #6, #8, #9 all reuse.
+**First skill to ship.** Foundation that #5 and #9 reuse.
 
 ---
 
@@ -188,25 +170,6 @@ A realistic prompt that routes to each skill - what a user would actually type (
 **Trajectory of the caller's own values (opt-in).** `olmoearth_change_detect` turns a dated series of per-date values the caller gives into trajectory metrics: step deltas, net change, the largest-change interval, a reversal count, and a trend label. It refuses fewer than 3 dates, because a 2-date diff cannot tell a steady trend from a flood that peaked then receded. It is opt-in (`OLMOEARTH_OPT_IN_TOOLS=1`): series mode above reads the dated results themselves, so it superseded this tool.
 
 **Not connected: the JEPA latent-change detector.** A change detector on frozen OlmoEarth embeddings (the residual of predicting the time-2 embedding from time-1) lives in the separate repo [`2imi9/olmoearth-jepa-change`](https://github.com/2imi9/olmoearth-jepa-change). No tool of this agent calls it, and connecting it is not planned: label-free change maps are what Google's and Ai2's own tools already make, and this agent verifies maps instead of making them.
-
----
-
-### 6. `olmoearth-baseline-compare`
-
-**In:** Studio project + area + transfer-region AOI.
-**Out:** difference raster + per-metric comparison table.
-
-**What.** Side-by-side OlmoEarth vs a baseline foundation model (AlphaEarth in the worked example) on transfer regions where the baseline is documented to underperform; bring-your-own exported embeddings/predictions for the baseline. Returns a difference raster plus a per-metric comparison table.
-
-**Why.** AlphaEarth-based models are documented to underperform under cross-region transfer ([Ma et al. arXiv:2601.00857](https://arxiv.org/abs/2601.00857), preprint; specific magnitudes may revise). Side-by-side runs in transfer regions, where AlphaEarth is said to fail rather than on home-turf regions where it is competitive, show where the two models differ. A claim that one outperforms the other needs labels where they differ, graded by #18's two-map route.
-
-**Dependency.** The AlphaEarth side is data you export from the public Google Earth Engine "Satellite Embedding" dataset; the skill takes those bring-your-own predictions / scores and makes no live GEE or MCP connection. (AlphaEarth embeddings are now public via GEE, so no Trusted-Tester access is required.)
-
-**Opt-in** (`OLMOEARTH_OPT_IN_TOOLS=1`): the table's winner is a point metric on whatever labels the caller gives, with no design, no interval and no test, so it does not say which map is more accurate. Each result says so (`winner_note`) and forbids reading the winner as the more accurate map (`more_accurate_without_its_test`); the answer check reads a map named by the table's model labels ("OlmoEarth is more accurate", "olmoearth outperforms ...") or by its letter (map a / map b), not one named another way. Which of two maps of the same area and time is more accurate is [#18's two-map route](#18-olmoearth-review-set): `olmoearth_plan_label_sample` with `design='disagreement'`, then `olmoearth_estimate_map_error` on the class seen in each planned window. Both maps must be Studio results, or scores files of one window grid (`olmoearth_scores_from_file`); the arrays this tool takes do not enter it.
-
-**Tools composed.**
-- Skill #4.
-- Skill-local: `compare_metrics`, `difference_raster`, exposed as the opt-in `olmoearth_baseline_compare` tool (operates on the two metric sets the caller already has).
 
 ---
 
@@ -228,24 +191,6 @@ A realistic prompt that routes to each skill - what a user would actually type (
 
 ---
 
-### 8. `olmoearth-similarity`
-
-**In:** query AOI / patch.
-**Out:** top-K similar patches with similarity scores + geographic-prior warning.
-
-**Opt-in** (`OLMOEARTH_OPT_IN_TOOLS=1`): Ai2's Explorer and AlphaEarth in Earth Engine search every pixel, which a tool over embeddings the caller pastes in cannot match.
-
-**What.** Exact brute-force top-K kNN (cosine or Euclidean) over the embeddings the caller supplies (e.g. OlmoEarth Base); exact kNN is correct and dependency-free at the sizes the agent passes in. Returns top-K patches with similarity scores plus a geographic-prior warning when results cluster in the same biome as the query.
-
-**Why.** [NASA Earthdata's Similarity Search tool](https://www.earthdata.nasa.gov/dashboard/services/similarity-search) helps scientists avoid manually inspecting large satellite-imagery regions. Public AlphaEarth demos show similarity search correlates well with independent risk models in match tasks. OlmoEarth has competitive embeddings (Base wins 15 of 24 kNN tasks per [arXiv:2511.13655](https://arxiv.org/abs/2511.13655)) but no skill exposing similarity search. This is the most-requested missing primitive.
-
-**Tools composed.**
-- Bring-your-own embedding vectors: no tool fetches embeddings.
-- The kNN search runs in-process inside the `olmoearth_similarity_search` tool handler (opt-in) (pure Python, no heavy deps), not the `system:python` sandbox.
-- Skill-local: `similarity_search` (exact brute-force kNN), `geographic_prior_check`.
-
----
-
 ### 9. `olmoearth-uncertainty`
 
 **In:** *(confidence)* two or more prediction results over a shared area; *(OOD, opt-in)* training-data feature vectors + the AOI points to assess.
@@ -258,23 +203,6 @@ A realistic prompt that routes to each skill - what a user would actually type (
 **Tools composed.**
 - `olmoearth_area_of_applicability` (opt-in: the AOA / OOD flag over caller-supplied feature vectors, which no tool produces, and measured not to rank errors better than the margin) and `olmoearth_compare_results` with `mode="ensemble"` (samples >= 2 results via `olmoearth.pixel_value`, `PLAN.md` §1, into an ensemble-disagreement confidence map, each cell named by grid `(row, col)`).
 - Logic in `analysis/uncertainty.py`: `area_of_applicability` + `ood_flag` (AOA), and `prediction_confidence` (the pure dispersion / entropy statistics).
-
----
-
-### 10. `olmoearth-cloud-mask-audit`
-
-**In:** aligned binary cloud masks the caller supplies (CFMask / s2cloudless / Sen2Cor / MAJA, or others), and optionally a 0/1 model-error indicator.
-**Out:** a mask-disagreement summary + bad-mask-vs-bad-model verdict.
-
-**Opt-in** (`OLMOEARTH_OPT_IN_TOOLS=1`): no tool produces its input. For a direct OlmoEarth run, `olmoearth-inferencex`'s input-condition layer covers the question of a map read through cloud, through the companion CLI (`oe-inferencex from-olmoearth --conditions`, then `assess --condition`, which ranks the windows of each recorded condition on their own); it records cloud only where the run's data hold Sentinel-2's SCL band, which no published project stores. No agent tool does this, and a Studio result has no condition layer.
-
-**What.** Ensemble of CFMask, s2cloudless, Sen2Cor, MAJA: flags whether a bad prediction is caused by a bad cloud mask or a bad model. Surfaces ensemble disagreement, not a single ground-truth mask.
-
-**Why.** [Skakun et al. CMIX (RSE 274:112990, 2022)](https://doi.org/10.1016/j.rse.2022.112990) compared 10 cloud algorithms across 5 reference datasets and found large disagreement on thin and semi-transparent clouds. HLS v1.3 documentation flags Sentinel-2 cloud-mask quality as an open issue. Cloud-mask accuracy is also known to drop in snow / ice conditions (Yan et al. RSE 2025). Without an audit, practitioners cannot tell whether their model is wrong or just looking at cloud.
-
-**Tools composed.**
-- `olmoearth_cloud_mask_audit` (opt-in) over the masks the caller supplies; no tool fetches imagery or masks.
-- Skill-local: `ensemble_disagree`, `verdict_classifier`.
 
 ---
 
@@ -364,42 +292,6 @@ A plan still awaiting labels is listed with its design and seed. Without an esti
 
 ---
 
-### 15. `olmoearth-litsearch`
-
-**In:** a free-text query, or a single DOI / arXiv id.
-**Out:** curated paper records (id, title, authors, year, venue, doi, arxiv_id, url, cited_by_count; abstract optional), deduped across sources.
-
-**Opt-in** (`OLMOEARTH_OPT_IN_TOOLS=1`): only because it costs a core slot on every turn. It is the agent's own route to Ai2's [Asta](https://github.com/allenai/asta-plugins) (the asta-plugins CLI's `asta literature find`), with arXiv and OpenAlex beside it; it does not copy Asta.
-
-**What.** Searches arXiv (Atom API) and OpenAlex (`/works`), and resolves a DOI or arXiv id to one record. Key-free -- OpenAlex is queried via the documented polite-pool `mailto` (set `OLMOEARTH_OPENALEX_MAILTO` to opt in). Round-robin blends the two sources, then dedups on DOI -> arXiv id -> normalized title. Returns bibliographic metadata only -- never full text / PDF bytes and never geometry -- so it is provenance-safe. **Optional Asta backend:** `source="asta"` routes to Ai2's [Asta CLI](https://github.com/allenai/asta-plugins) (`asta literature find`, invoked argv-only, artifact kept in the workspace) for full-text ranked retrieval with AI relevance judgements and supporting snippets. A paper Asta marks not legal to show (`legalToShow: false`) keeps its title, authors, year, venue, url, id and scores; its abstract, snippets and relevance summary are dropped, and `content_withheld` says why. The CLI's own JSON (`saved_to`) is rewritten without that paper's text too; if it cannot be, its path is left out and a warning says so. Detection-gated: without the CLI the tool answers with install guidance and the key-free sources keep working (`OLMOEARTH_ASTA_BIN` / `OLMOEARTH_ASTA_TIMEOUT`; auth is the CLI's own `asta auth login`).
-
-**Why.** The catalog already *cites* a body of EO literature (spatial CV, cloud masking, OlmoEarth / AlphaEarth embeddings, WorldCereal), but before this skill the agent could only lean on world-knowledge or hallucinate links -- the exact failure mode Google DeepMind's Science Skills report documents and that its own arXiv/OpenAlex skills fix. This grounds the case-narrative / research workflow in real, citable sources. **No fabrication:** never invents DOIs / ids / titles, reports empty results as empty, and returns a real `url` to cite for every record.
-
-**Tools composed.**
-- `olmoearth_litsearch` (opt-in; unified arXiv + OpenAlex search; `source="asta"` for the optional full-text backend; given an `identifier` instead of a `query`, it resolves one DOI / arXiv id to one record).
-- Logic in `analysis/litsearch.py` (query-build / parse / cross-source dedup); shared `httpx` retry on transient {429, 5xx}; optional Asta subprocess adapter in `analysis/asta.py` (credential-scrubbed env, `ASTA_*` passthrough).
-
----
-
-## Prep (continued)
-
-### 16. `olmoearth-negative-sampler`
-
-**In:** a presence-only labels GeoJSON path (`positives_path`); optional `candidates_path`, `negative_label`, `n_negatives`, `exclusion_km`, `min_separation_km`, `contamination_threshold`.
-**Out:** a combined GeoJSON (positives + generated negatives) written to `out_path`, plus a counts/ranking summary and a `quality` report (no raw coordinates in chat).
-
-**Opt-in** (`OLMOEARTH_OPT_IN_TOOLS=1`): it prepares labels for model training outside Studio.
-
-**What.** Generates the missing negative/background class for a presence-only label set as **buffered, spatially-thinned pseudo-absences** (Barbet-Massin et al. 2012): candidate background points within `exclusion_km` of any positive are dropped, accepted negatives are kept `min_separation_km` apart, and -- when the inputs carry per-feature `properties.embedding` vectors -- candidates are ranked by environmental *dissimilarity* to the positive centroid (the inverse of skill #8's similarity search). With `contamination_threshold` set, the embedding path also drops candidates whose similarity to *any* positive meets the threshold -- likely **unmapped positives** -- guarding against environmental contamination on top of the spatial buffer. Defaults to a balanced 1:1 set and writes the negatives under the same schema field the positives use (`sample_category` / `es_label` / `oe_labels.category`). Deterministic; no GDAL.
-
-**Why.** A presence-only set is not trainable -- a classifier with no counter-examples predicts the positive class everywhere (the "false positives everywhere" failure, pitfall #8 in `olmoearth-data-prep`). That skill's `audit.py` *detects* the gap (it hard-FAILs `check_negative_class`) but its `--negative-class auto` was deferred, so the agent could previously only report the dataset as unusable and stop. This skill converts that dead-end into a finished artifact: the combined file round-trips straight back through the skill #1 `olmoearth-data-prep` audit and clears the negative-class check. **Honest by construction:** pseudo-absences are a heuristic, never verified absences, so every result carries a `quality` report (nearest-positive distance + similarity-to-positive stats) for the user to judge and tune; the negative label must be one the audit recognizes; and a placement shortfall (buffer / thinning / contamination / extent too tight) is surfaced as a warning rather than silently under-filled.
-
-**Tools composed.**
-- `olmoearth_negative_sampler` (opt-in; file -> file; counts + path returned).
-- Logic in `analysis/negative_sampler.py` (buffer + farthest-point/embedding-dissimilarity selection, reusing `evaluation.spatial_cv.haversine_km`); composes the data-prep audit's negative-class contract.
-
----
-
 ## Configure (continued)
 
 ### 17. `olmoearth-rslearn`
@@ -446,7 +338,7 @@ A plan still awaiting labels is listed with its design and seed. Without an esti
 
 **A Studio class map without top-k scores.** A classification result without top-k scores gives each window's class and no probability, so nothing ranks its windows: it gets no review set and no certified zone, and the review set, `olmoearth_certify_zone` and the ranking designs refuse it in one sentence (`zone_for_a_class_map` forbids offering a zone of it; in a run that also holds a map with scores, the answer check reads only a clause that names the class map, by its kind or its result id). Labels still measure it, over the result's sampled grid points (at most 16 x 16, one pixel each), not every pixel. `olmoearth_plan_label_sample` with `design='random'`, or `design='class'` (the class design of Olofsson et al. 2014: strata by map class, at least `min_per_class` labels each (50 by default), or all its windows if it has fewer, the rest by class size; its result lists each stratum's class as the map writes it (with the agent's internal `code`), windows and labels as `per_stratum`, since the strata are the classes the map holds, in order, and stratum h need not be class h), reads each window's class as the two-map design does and gives olmoearth-inferencex's label budgets: `plan.plan_error_rate`, the random labels for a whole-map interval no wider than a stated `width` (0.10 by default; at 50% wrong unless `expected_error_rate` is given), and `plan.plan_class` for a stated `class_share`: the random labels that flag a class of that share drawn by the map at half of it, all classes' intervals together at 95% (not a per-class accuracy budget). Both plan a random sample, not the class design. The reviewer writes the class seen in each window (blind under the class design: map_class and stratum hidden, the rows shown shuffled, as the package's `CLASS_BLIND_NOTE` says). `olmoearth_estimate_map_error` reports, as for a map with scores, the interval valid at every sample size first (`estimate_error_rate(valid=True)`), then the design's own (under the random design the same exact interval; under the class design, of a class map or of a map with scores, the union bound over the classes, which covers at least 95% too), and each class's accuracy the same way (`estimate_per_class(valid=True)`), with the package's notes word for word; the answer must state the valid interval and the design (`must_state`). On the sheet, a `reference_class` filled on some windows only is refused, and a `wrong` filled beside a full `reference_class` must agree with it.
 
-**Which of two maps is more accurate (the two-map design).** Where two maps of the same windows at the same time give the same class, both are right or both are wrong, so their accuracies differ only through the windows where they differ, and labels there say which map is more accurate with far fewer labels than a sample of the whole map. No score is needed, so a Studio class map gets it. `olmoearth_plan_label_sample` with `design='disagreement'` takes two Studio results of the same area (`result_id` for map a, `result_id_b` for map b; sampled on one grid by `olmoearth_compare_results`' own pair sampler, at most 12 points a side, no-data dropped; a classification band read as its class, a `[0, 1]` score cut at 0.5 and any other regression band only with a `threshold`) or two scores files of one window grid (`scores_path`, `scores_path_b`; each window's `map_class`). It reads the dates the maps describe (a Studio prediction's start and end times, else `date_a` / `date_b`) with `oe_inferencex.compare.dates_reading` and refuses maps of different or overlapping times, or with one date only, stating the package's reading: across dates a window where the maps differ can be a change on the ground, and labels seen at one date grade both maps against it. Maps that never differ are refused in the package's words. It then draws the windows to label at random among those where the maps differ (`estimate.sample_disagreement`, with its `seed`), lists them by index and `(row, col)` with both maps' classes (locations only in the labelling sheet), gives the windows compared (N) and differing (D), and `plan.plan_which_map`'s budget advice for a stated `difference` in accuracy (0.05 unless given; the `which_map_budget` fact). The reviewer writes the class seen in each window, or `?` where it cannot be judged. `olmoearth_estimate_map_error` on that design (`reference`, or the sheet's `reference_class`) grades it with `estimate.compare_from_disagreement`: which map is more accurate, or neither (`which_map`), by the exact sign test while the labels are at most a fifth of the differing windows and by the interval past that (`verdict_rule`; the sign test's own sentence in `sign_test_statement`), the 95% interval on the difference in accuracy, a minus b, over the N windows, the counts (right in a, right in b, in neither, not judged) and the package's notes word for word (`note`, `verdict_note`, `method`). Every number is the package's. The result's contract requires the answer to state the test or interval and the number of labels (`must_state`, and the `which_map` fact) and forbids naming a map the grading does not name (`more_accurate_without_its_test`); the plan, which holds no labels, forbids naming any (`winner_without_labels`). The answer check reads a map named by its letter (map a / map b, in either case) or, after a baseline comparison, by that table's model labels; "the OlmoEarth result is more accurate" is not read. A reference class neither map writes is right in neither and counted in the `references_outside_the_maps_classes` fact; references that all lie outside the maps' classes are refused. Two scores files must share their grid's shape and, where both locate a window, its centre. It says which map is better, not either map's accuracy, and `olmoearth_certify_zone` refuses the design.
+**Which of two maps is more accurate (the two-map design).** Where two maps of the same windows at the same time give the same class, both are right or both are wrong, so their accuracies differ only through the windows where they differ, and labels there say which map is more accurate with far fewer labels than a sample of the whole map. No score is needed, so a Studio class map gets it. `olmoearth_plan_label_sample` with `design='disagreement'` takes two Studio results of the same area (`result_id` for map a, `result_id_b` for map b; sampled on one grid by `olmoearth_compare_results`' own pair sampler, at most 12 points a side, no-data dropped; a classification band read as its class, a `[0, 1]` score cut at 0.5 and any other regression band only with a `threshold`) or two scores files of one window grid (`scores_path`, `scores_path_b`; each window's `map_class`). It reads the dates the maps describe (a Studio prediction's start and end times, else `date_a` / `date_b`) with `oe_inferencex.compare.dates_reading` and refuses maps of different or overlapping times, or with one date only, stating the package's reading: across dates a window where the maps differ can be a change on the ground, and labels seen at one date grade both maps against it. Maps that never differ are refused in the package's words. It then draws the windows to label at random among those where the maps differ (`estimate.sample_disagreement`, with its `seed`), lists them by index and `(row, col)` with both maps' classes (locations only in the labelling sheet), gives the windows compared (N) and differing (D), and `plan.plan_which_map`'s budget advice for a stated `difference` in accuracy (0.05 unless given; the `which_map_budget` fact). The reviewer writes the class seen in each window, or `?` where it cannot be judged. `olmoearth_estimate_map_error` on that design (`reference`, or the sheet's `reference_class`) grades it with `estimate.compare_from_disagreement`: which map is more accurate, or neither (`which_map`), by the exact sign test while the labels are at most a fifth of the differing windows and by the interval past that (`verdict_rule`; the sign test's own sentence in `sign_test_statement`), the 95% interval on the difference in accuracy, a minus b, over the N windows, the counts (right in a, right in b, in neither, not judged) and the package's notes word for word (`note`, `verdict_note`, `method`). Every number is the package's. The result's contract requires the answer to state the test or interval and the number of labels (`must_state`, and the `which_map` fact) and forbids naming a map the grading does not name (`more_accurate_without_its_test`); the plan, which holds no labels, forbids naming any (`winner_without_labels`). The answer check reads a map named by its letter (map a / map b, in either case); "the OlmoEarth result is more accurate" is not read. A reference class neither map writes is right in neither and counted in the `references_outside_the_maps_classes` fact; references that all lie outside the maps' classes are refused. Two scores files must share their grid's shape and, where both locate a window, its centre. It says which map is better, not either map's accuracy, and `olmoearth_certify_zone` refuses the design.
 
 **Tools composed.**
 - `olmoearth_review_set` (scores → the ordered review set at a budget, confidence or boundary-first), `olmoearth_review_set_from_result` (a Studio result's `[0, 1]` score, or a class map's top-k scores → the same ranking), `olmoearth_compare_review` (two inferences of the same windows; the side question declined), `olmoearth_grade_review_rule` (opt-in; candidate vs margin vs no-model control, with a per-group sign test), `olmoearth_review_budget_ceiling` (`min(1, budget/error_rate)`, and what share of it a quoted capture reached).
@@ -460,9 +352,9 @@ A plan still awaiting labels is listed with its design and seed. Without an esti
 
 ## Roadmap reference
 
-Implementation order tracks `PLAN.md` §6. First skill to ship was **#4 `olmoearth-predict`** (the foundation that #5, #6, #8, #9 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
+Implementation order tracks `PLAN.md` §6. First skill to ship was **#4 `olmoearth-predict`** (the foundation that #5 and #9 reuse). After that, prioritization is driven by the case-study queue, not this catalog order.
 
-Candidate skills beyond the current 18 (prioritized) are researched in [`docs/archive/eo-skills-shortlist.md`](docs/archive/eo-skills-shortlist.md); its build-first pick, `olmoearth-negative-sampler`, shipped as #16.
+Candidate skills beyond the current 13 (prioritized) were researched in [`docs/archive/eo-skills-shortlist.md`](docs/archive/eo-skills-shortlist.md).
 
 ## Adding a skill
 

@@ -88,7 +88,7 @@ function liveResultHtml(ev) {
    A horizontal progress rail above "Reasoning & tools" mapping the agent's tool
    calls to the OlmoEarth pipeline. Only the stages RELEVANT to the run are shown:
    a real prediction run gets the full pipeline; an advisory task (e.g. the
-   negative-sampler, which never submits) gets just Load context -> Report -- so
+   review set, which never submits) gets just Load context -> Report -- so
    the rail never shows submit/poll/fetch stuck "pending". Stage keys/predicates
    mirror src/olmoearth_agent/harness/workflow.py (and GET /api/skills). */
 const WF_PIPELINE = [

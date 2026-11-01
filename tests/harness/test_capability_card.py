@@ -150,15 +150,6 @@ def test_the_card_counts_studio_annotations_but_takes_no_sample_or_training() ->
     assert "say whether any exist" not in card
 
 
-def test_the_opt_in_python_tool_takes_files_and_model_runs_off_the_list() -> None:
-    with mock.patch.dict(os.environ, {"OLMOEARTH_RUN_PYTHON": "1"}):
-        registry = build_default_registry()
-    beyond = beyond_tools(registry)
-    assert NO_TOOL_CAN["files"] not in beyond
-    assert NO_TOOL_CAN["run_model"] not in beyond
-    assert NO_TOOL_CAN["labels"] in beyond and NO_TOOL_CAN["training"] in beyond
-
-
 def test_a_read_only_key_puts_its_line_on_the_card(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -180,7 +171,7 @@ def test_a_read_only_key_puts_its_line_on_the_card(
 
 
 def test_covers_names_only_what_no_tool_can() -> None:
-    with mock.patch.dict(os.environ, {"OLMOEARTH_RUN_PYTHON": "1"}):
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
         registry = build_default_registry()
     for name in registry.names():
         capability = registry.capability_of(name)
@@ -235,7 +226,9 @@ def test_the_card_fits_its_budget() -> None:
     does)" (94 characters) for "say what a model's training data held, or
     its metrics" (53): 41 characters, 10 tokens, on both cards. The opted-in
     card, estimated near 1,655, would be near 1,665, under the budget of
-    1,700, which stays.
+    1,700, which stays. The trim of 31 October takes olmoearth_litsearch's
+    core line and four deferred groups' names off the opted-in card only; the
+    default card is unchanged.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
@@ -245,26 +238,18 @@ def test_the_card_fits_its_budget() -> None:
 
 
 def test_the_default_card_names_no_opt_in_tool_or_group() -> None:
-    """A trimmed tool is off the card, and so is the group it would load.
-
-    #6's baseline comparison was the last default deferred group; opt-in
-    since the which-map step, it is off the default card too.
-    """
+    """A trimmed tool is off the card, and so is the group it would load."""
     with mock.patch.dict(os.environ, {OPT_IN_ENV: ""}):
         card = capability_card(build_default_registry())
     for gone in (
         "olmoearth_change_detect",
-        "olmoearth_litsearch",
         "olmoearth_grade_review_rule",
-        "olmoearth_baseline_compare",
-        "olmoearth-baseline-compare",
         "olmoearth-rslearn",
-        "olmoearth-similarity",
     ):
         assert gone not in card, gone
     with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
         opted = capability_card(build_default_registry())
-    assert "olmoearth-baseline-compare" in opted
+    assert "olmoearth-rslearn" in opted
 
 
 def test_an_undeclared_tool_is_listed_from_its_description() -> None:

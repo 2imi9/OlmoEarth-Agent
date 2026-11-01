@@ -20,8 +20,6 @@ from olmoearth_agent.security import egress
         ("https://api.anthropic.com", "llm-cloud"),
         ("https://api.openai.com/v1", "llm-cloud"),
         ("https://generativelanguage.googleapis.com/v1beta/openai/", "llm-cloud"),
-        ("http://export.arxiv.org/api/query", "litsearch"),
-        ("https://api.openalex.org/works", "litsearch"),
         ("https://datasets-server.huggingface.co/rows", "hf"),
     ],
 )
@@ -93,9 +91,9 @@ def test_unknown_capability_denied() -> None:
 
 def test_decision_records_host_only_not_url() -> None:
     decision = egress.check_endpoint(
-        "https://api.openalex.org/works?secret=abc", "litsearch"
+        "https://olmoearth.allenai.org/api/v1?secret=abc", "studio"
     )
-    assert decision.host == "api.openalex.org"
+    assert decision.host == "olmoearth.allenai.org"
     assert "secret" not in decision.host
 
 

@@ -1125,6 +1125,26 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   whose tools are all opt-in and needed a live model and Studio, and
   nothing tested it; the README's two links and the fixture's `.gitignore`
   line go with them.
+- **Five opt-in skills and the code runner.** Removed as outside inference
+  examination and not used, each with its tools, computations, tests,
+  catalog row, web UI card and text: #6 `olmoearth-baseline-compare`
+  (`olmoearth_baseline_compare` named a winner from point metrics with no
+  design, interval or test; which of two maps is more accurate is #18's
+  two-map route, and the answer check no longer reads a baseline table's
+  model labels, nor does the web UI draw its bar chart), #8
+  `olmoearth-similarity` (`olmoearth_similarity_search` searched embeddings
+  the caller pasted in, which no tool produces), #10
+  `olmoearth-cloud-mask-audit` (`olmoearth_cloud_mask_audit`: no tool
+  produces cloud masks), #15 `olmoearth-litsearch` (`olmoearth_litsearch`,
+  with its Asta adapter, the egress capability `litsearch` for arXiv and
+  OpenAlex, the child environment's `keep_prefixes` and the `.env.example`
+  Asta keys) and #16 `olmoearth-negative-sampler`
+  (`olmoearth_negative_sampler` prepared labels for model training outside
+  Studio). `olmoearth_run_python` (`OLMOEARTH_RUN_PYTHON`) goes too: it ran
+  arbitrary code, its stated uses were training glue, and no run enabled
+  it; the rslearn instruction package now gives its Python snippets to the
+  user. The default registry is unchanged (30 tools); 10 tools stay opt-in,
+  and no skill is opt-in whole.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

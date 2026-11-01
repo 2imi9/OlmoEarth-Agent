@@ -18,13 +18,12 @@ the next turn on.
 
 Opt-in tools. A tool behind an opt-in setting is not registered at all unless
 the operator sets that environment variable to a truthy value
-(:func:`opted_in`): ``OLMOEARTH_RUN_PYTHON`` for ``olmoearth_run_python``,
-and ``OLMOEARTH_OPT_IN_TOOLS`` for the tools left out of the default registry
-(``skills.registry.OPT_IN_TOOLS``). Unlike a deferred tool, an opt-in tool
-that is off cannot be called or loaded by the model, and no text the default
-agent sends it (tool descriptions, capability card, soul, SKILL.md packages)
-names one of ``OPT_IN_TOOLS``; ``tests/skills/test_skill_registry.py`` checks
-that. The opposite switch, ``OLMOEARTH_READ_ONLY`` (the same values), leaves
+(:func:`opted_in`): ``OLMOEARTH_OPT_IN_TOOLS`` for the tools left out of the
+default registry (``skills.registry.OPT_IN_TOOLS``). Unlike a deferred tool,
+an opt-in tool that is off cannot be called or loaded by the model, and no
+text the default agent sends it (tool descriptions, capability card, soul,
+SKILL.md packages) names one of ``OPT_IN_TOOLS``;
+``tests/skills/test_skill_registry.py`` checks that. The opposite switch, ``OLMOEARTH_READ_ONLY`` (the same values), leaves
 out the tools that write to Studio (``skills.registry.STUDIO_WRITE_TOOLS``),
 and :attr:`ToolRegistry.cannot` puts the reason on the capability card.
 
@@ -81,7 +80,7 @@ def opted_in(variable: str) -> bool:
     Parameters
     ----------
     variable
-        The environment variable's name, e.g. ``OLMOEARTH_RUN_PYTHON``.
+        The environment variable's name, e.g. ``OLMOEARTH_OPT_IN_TOOLS``.
 
     Returns
     -------
@@ -180,7 +179,7 @@ class Capability:
     covers
         Ids of :data:`olmoearth_agent.harness.capabilities.NO_TOOL_CAN` this
         tool can do after all; the card's list of what no tool can do drops
-        them (e.g. the opt-in ``olmoearth_run_python`` reads any file).
+        them (e.g. a tool that read any file would cover ``files``).
     """
 
     does: str

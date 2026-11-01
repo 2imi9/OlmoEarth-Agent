@@ -335,8 +335,8 @@ def test_run_cli_keeps_the_agents_keys_out_of_the_child(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     """The child gets the agent's environment without its Studio, LLM and
-    cloud keys (``security.child_env``, the list ``olmoearth_run_python``
-    uses), and keeps the rest: PATH, and GDAL's settings."""
+    cloud keys (``security.child_env``'s one list), and keeps the rest:
+    PATH, and GDAL's settings."""
     import subprocess
 
     seen: dict[str, Any] = {}

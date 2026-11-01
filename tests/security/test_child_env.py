@@ -4,13 +4,9 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
-from olmoearth_agent.analysis import asta
 from olmoearth_agent.security.child_env import scrubbed_env
-from olmoearth_agent.tools import system
 
 
 def test_the_agents_keys_are_left_out_and_the_rest_kept(
@@ -31,23 +27,7 @@ def test_the_agents_keys_are_left_out_and_the_rest_kept(
     for name, value in secrets.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setenv("GDAL_CACHEMAX", "512")
-    monkeypatch.setenv("ASTA_TOKEN", "asta")
     env = scrubbed_env()
-    for name in [*secrets, "ASTA_TOKEN"]:
+    for name in secrets:
         assert name not in env, name
     assert env["GDAL_CACHEMAX"] == "512" and env.get("PATH")
-    # A prefix kept passes whatever it holds, for a CLI's own login.
-    kept = scrubbed_env(keep_prefixes=("ASTA",))
-    assert kept["ASTA_TOKEN"] == os.environ["ASTA_TOKEN"]
-    assert "OLMOEARTH_API_KEY" not in kept
-
-
-def test_every_child_the_agent_starts_uses_the_one_list(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """olmoearth_run_python's snippet and the Asta CLI get the same scrubbed
-    environment as olmoearth-inferencex's command line (inferencex.run_cli)."""
-    monkeypatch.setenv("OLMOEARTH_API_KEY", "studio")
-    monkeypatch.setenv("ASTA_TOKEN", "asta")
-    assert system._scrubbed_env() == scrubbed_env()
-    assert asta._scrubbed_env() == scrubbed_env(keep_prefixes=("ASTA",))

@@ -309,39 +309,21 @@ def _forced_as_sent(monkeypatch: pytest.MonkeyPatch, slugs: Iterable[str]) -> li
     return forwarded
 
 
-#: The "/" menu slugs of the five skills that are opt-in whole.
-_OPT_IN_WHOLE = (
-    "baseline-compare",
-    "similarity",
-    "cloud-mask-audit",
-    "litsearch",
-    "negative-sampler",
-)
-
-
-def test_an_opt_in_skill_is_not_forced_while_its_tools_are_off(
+def test_rslearn_stays_forced_while_its_tools_are_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Forcing a skill that is opt-in whole would pin the run to absent tools.
-
-    rslearn's tools are opt-in too, but its SKILL.md loads, so it stays forced.
-    """
+    """rslearn's tools are opt-in, but its SKILL.md loads, so it stays forced."""
     monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
-    forwarded = _forced_as_sent(monkeypatch, (*_OPT_IN_WHOLE, "rslearn"))
-    assert forwarded == [""] * len(_OPT_IN_WHOLE) + ["rslearn"]
-
-
-def test_an_opt_in_skill_is_forced_when_its_tools_are_on(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The bridge reads the setting when it starts, as its registry does."""
-    monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", "1")
-    assert _forced_as_sent(monkeypatch, _OPT_IN_WHOLE) == list(_OPT_IN_WHOLE)
+    assert _forced_as_sent(monkeypatch, ("rslearn",)) == ["rslearn"]
 
 
 def test_the_bridges_opt_in_whole_skills_are_the_catalogs() -> None:
-    """The bridge's list is the catalog's ``opt_in_only`` rows, by slug."""
-    assert set(serve._OPT_IN_ONLY_SKILLS) == set(_OPT_IN_WHOLE)
+    """The bridge's list is the catalog's ``opt_in_only`` rows, by slug.
+
+    The five skills that were opt-in whole (#6, #8, #10, #15, #16) were
+    removed, so no row is, and the bridge drops no forced slug for that reason.
+    """
+    assert serve._OPT_IN_ONLY_SKILLS == {}
 
 
 def _offered_per_forced_skill(
@@ -379,31 +361,18 @@ def test_forced_skill_sends_its_deferred_tools_from_turn_one(
     when the test client starts.
     """
     monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", "1")
-    offered = _offered_per_forced_skill(
-        monkeypatch, ("rslearn", "baseline-compare", "")
-    )
+    offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
     assert "olmoearth_rslearn_compose" in offered["rslearn"]
     assert "olmoearth_rslearn_compose" not in offered[""]
-    assert "olmoearth_baseline_compare" in offered["baseline-compare"]
-    assert "olmoearth_baseline_compare" not in offered[""]
     assert "olmoearth_compare_results" in offered[""]
 
 
 def test_forced_skill_reaches_no_opt_in_tool_without_the_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without the opt-in setting, forcing rslearn or #6 offers none of their tools.
-
-    #6's baseline comparison was the default's one deferred tool; opt-in since
-    the which-map step, a forced #6 is dropped and the run goes unpinned (so
-    no run is recorded under its slug).
-    """
+    """Without the opt-in setting, forcing rslearn offers none of its tools."""
     monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
-    offered = _offered_per_forced_skill(
-        monkeypatch, ("baseline-compare", "rslearn", "")
-    )
-    assert "baseline-compare" not in offered
-    assert "olmoearth_baseline_compare" not in offered[""]
+    offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
     assert not any(n.startswith("olmoearth_rslearn_") for n in offered["rslearn"])
     assert offered["rslearn"] == offered[""]
 
@@ -419,8 +388,8 @@ def test_skills_endpoint_exposes_per_skill_stages() -> None:
     skills = {s["slug"]: s for s in body["skills"]}
     # a run skill gets the full pipeline; an advisory skill skips submit/poll/fetch
     assert "submit" in skills["predict"]["stages"]
-    assert "submit" not in skills["negative-sampler"]["stages"]
-    assert "fetch" not in skills["negative-sampler"]["stages"]
+    assert "submit" not in skills["review-set"]["stages"]
+    assert "fetch" not in skills["review-set"]["stages"]
 
 
 def test_health_reports_claude_available() -> None:

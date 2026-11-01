@@ -538,7 +538,7 @@ async def api_skills() -> dict[str, Any]:
 
     Returns each skill's slug / name / category and the run-pipeline ``stages``
     its tools actually touch, so the workflow rail can show only the relevant
-    ones (an advisory skill like negative-sampler skips submit/poll/fetch). The
+    ones (an advisory skill like review-set skips submit/poll/fetch). The
     full ordered stage list is included so the UI maps keys -> labels from one
     source of truth.
     """

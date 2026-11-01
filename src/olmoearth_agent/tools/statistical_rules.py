@@ -76,9 +76,8 @@ CERTIFICATION_GUARANTEED = "certification_guaranteed"
 #: B2/studio).
 MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
 #: A map named more accurate (or better, or right) without the test or
-#: interval of the which-map grading that names it and its number of labels:
-#: where the grading names neither map, the map it does not name, or a
-#: winner read off point metrics with no design, interval or test.
+#: interval of the which-map grading that names it and its number of labels,
+#: any map where the grading names neither, or the map it does not name.
 MORE_ACCURATE_WITHOUT_ITS_TEST = "more_accurate_without_its_test"
 #: A certified, certifiable or trusted zone, or a certificate, offered or
 #: stated for a class map without top-k scores: it has no confidence to rank

@@ -39,7 +39,6 @@ def test_readme_tool_counts_match_the_registry(
 ) -> None:
     """The default tools, those sent every turn, and the opt-in ones, by count."""
     monkeypatch.delenv(OPT_IN_ENV, raising=False)
-    monkeypatch.delenv("OLMOEARTH_RUN_PYTHON", raising=False)
     registry = build_default_registry()
     text = _README.read_text(encoding="utf-8")
     assert re.findall(r"\b(\d+) tools by default\b", text) == [

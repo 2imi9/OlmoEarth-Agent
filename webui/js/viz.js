@@ -702,23 +702,6 @@ function bars(rows) {
   return wrap;
 }
 
-/* baseline-compare: grouped bars (model A vs model B) per headline metric. */
-function renderComparisonBars(container, inner) {
-  const la = (inner.model_a || {}).label || 'a';
-  const lb = (inner.model_b || {}).label || 'b';
-  const rows = [];
-  (inner.comparison || []).forEach((c) => {
-    rows.push({ label: `${c.metric} - ${la}`, value: c[la], color: 'var(--mint)' });
-    rows.push({ label: `${c.metric} - ${lb}`, value: c[lb], color: 'var(--pink)' });
-  });
-  container.appendChild(bars(rows));
-  const cap = document.createElement('div');
-  cap.className = 'viz-cap';
-  cap.innerHTML = `0-1 metric scores, ${escapeHtml(la)} vs ${escapeHtml(lb)}` +
-    (inner.overall_winner ? ` - overall winner: <strong>${escapeHtml(inner.overall_winner)}</strong>` : '') + '.';
-  container.appendChild(cap);
-}
-
 /* evaluate: overall metrics + per-class F1 bars. */
 function renderMetricsBars(container, inner) {
   const rows = [
@@ -773,11 +756,6 @@ export function renderResultViz(container, ev) {
     // The same tool's group / series / ensemble modes: a stat card.
     if (ev.name === 'olmoearth_compare_results' && inner.comparable === true && inner.mode) {
       renderCompareSummary(container, inner);
-      return true;
-    }
-    // baseline-compare: grouped metric bars.
-    if (Array.isArray(inner.comparison) && inner.model_a && inner.model_b) {
-      renderComparisonBars(container, inner);
       return true;
     }
     // evaluate: classification metrics bars.

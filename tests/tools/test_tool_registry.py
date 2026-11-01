@@ -39,22 +39,6 @@ def test_an_opt_in_setting_is_off_otherwise(
     assert opted_in(_SWITCH) is False
 
 
-def test_run_python_and_the_trimmed_tools_share_the_one_switch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Both opt-in bundles read their variable through opted_in, alike."""
-    from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
-    from olmoearth_agent.tools.system import build_system_tools
-
-    for value, on in (("yes", True), ("nope", False)):
-        monkeypatch.setenv("OLMOEARTH_RUN_PYTHON", value)
-        monkeypatch.setenv(OPT_IN_ENV, value)
-        names = build_default_registry().names()
-        assert (build_system_tools() != []) is on
-        assert ("olmoearth_run_python" in names) is on
-        assert ("olmoearth_litsearch" in names) is on
-
-
 def _spec(name: str) -> ToolSpec:
     return ToolSpec(name=name, description="t", parameters=_EMPTY_SCHEMA)
 

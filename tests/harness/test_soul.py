@@ -42,7 +42,6 @@ def test_soul_routes_which_map_is_more_accurate_to_the_two_map_design() -> None:
     assert "design='disagreement'" in text
     assert "with its test or interval and the number of labels" in text
     assert "a comparison without labels names none" in text
-    assert "olmoearth_baseline_compare" not in text
 
 
 def test_soul_routes_a_direct_model_runs_map_to_the_scores_provider() -> None:

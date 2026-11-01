@@ -45,8 +45,7 @@ no probabilities, no logits, no per-class scores (see
 :meth:`~olmoearth_agent.studio.client.StudioClient.pixel_value`). A margin
 cannot be recovered from a hard class label, so the scores must come from
 wherever inference actually ran (rslearn ``model predict``, an
-embeddings+probe pass, or any exported softmax). This mirrors skill #8,
-which likewise takes caller-supplied embeddings. Two Studio outputs do carry
+embeddings+probe pass, or any exported softmax). Two Studio outputs do carry
 a margin. A regression band that is a binary score in ``[0, 1]``:
 :func:`regression_scores` reads it as ``[1 - s, s]``, with the assumption
 stated in :data:`BINARY_SCORE_ASSUMPTION`. And a class map with top-k scores

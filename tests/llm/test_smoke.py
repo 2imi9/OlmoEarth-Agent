@@ -195,22 +195,22 @@ async def test_text_tool_call_hermes_xml_recovered(
     recover the call so the agent loop does not mistake it for an answer.
     """
     content = (
-        "<tool_call> <function=olmoearth_similarity_search>\n"
-        "<parameter=query>\n[0.9, 0.1, 0.0]\n</parameter>\n"
-        "<parameter=k>\n3\n</parameter>\n"
+        "<tool_call> <function=olmoearth_review_set>\n"
+        "<parameter=scores>\n[0.9, 0.1, 0.0]\n</parameter>\n"
+        "<parameter=budget>\n3\n</parameter>\n"
         '<parameter=ids>\n["site_A", "site_B"]\n</parameter>\n'
         "</function>\n</tool_call>"
     )
     mock_chat_response(content=content, finish_reason="stop")
     client = OlmoEarthLLM(serving_config)
-    response = await client.chat([Message(role="user", content="find similar")])
+    response = await client.chat([Message(role="user", content="rank these")])
     assert response.finish_reason == "tool_calls"
     assert len(response.tool_calls) == 1
     call = response.tool_calls[0]
-    assert call.name == "olmoearth_similarity_search"
+    assert call.name == "olmoearth_review_set"
     assert call.arguments == {
-        "query": [0.9, 0.1, 0.0],
-        "k": 3,
+        "scores": [0.9, 0.1, 0.0],
+        "budget": 3,
         "ids": ["site_A", "site_B"],
     }
     assert response.content is None

@@ -5,7 +5,7 @@
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
-[![Skills](https://img.shields.io/badge/skills-13%20default%20%2B%205%20opt--in-F0529C.svg)](SKILLS.md)
+[![Skills](https://img.shields.io/badge/skills-13%20default%20%2B%200%20opt--in-F0529C.svg)](SKILLS.md)
 [![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
@@ -90,7 +90,7 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 
 ## What it does
 
-- **The loop.** The LLM reads the brief and calls a tool. The harness runs it, feeds the result back, and repeats until the model can answer. Every tool call goes into a provenance manifest. An opt-in `system:python` subprocess (`OLMOEARTH_RUN_PYTHON=1`) handles light glue between calls.
+- **The loop.** The LLM reads the brief and calls a tool. The harness runs it, feeds the result back, and repeats until the model can answer. Every tool call goes into a provenance manifest.
 - **Soul and capability card.** The persona and guardrails live in a versioned soul file (`harness/soul.md`; swap it with `OLMOEARTH_SOUL_PATH`). The system prompt adds a capability card built from the tools' code: what each tool does, needs and cannot do, and what no tool can do (`harness/capabilities.py`).
 - **Checked arguments.** Tool arguments are schema-validated at dispatch.
 - **Result spill.** Oversized tool results go to workspace files, not the context window.
@@ -103,20 +103,20 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 - **Claim check (opt-in).** With `OLMOEARTH_CHECK_CLAIMS=1`, the agent's own model also reads the answer against the run's record. It flags statements no tool output supports and offers no tool can carry out, in the same rewrite and marking (`harness/claim_check.py`).
 - **Memory.** Durable user preferences (default project, area, sources), saved with `olmoearth_remember`, carry across conversations.
 
-> **Production posture:** the per-capability egress allowlist defaults to `audit` (log only), so a first run never breaks. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`: unknown hosts are then refused, not just logged. It checks the hosts the agent's own code calls; the opt-in `system:python` subprocess is not network-isolated, so `enforce` does not cover it. Add self-hosted endpoints with `OLMOEARTH_EGRESS_ALLOW`.
+> **Production posture:** the per-capability egress allowlist defaults to `audit` (log only), so a first run never breaks. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`: unknown hosts are then refused, not just logged. It checks the hosts the agent's own code calls; a child process the agent starts (olmoearth-inferencex's command line) is not network-isolated, so `enforce` does not cover it. Add self-hosted endpoints with `OLMOEARTH_EGRESS_ALLOW`.
 
-The capability set ships as **18 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
+The capability set ships as **13 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
 
 - The agent registers 30 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 30 are sent on every turn.
-- Another 15 opt-in tools stay off. They train models outside Studio, need inputs no Studio run produces, repeat Ai2's Explorer, cost a core slot every turn (literature search), or name a winner with no test.
-- Skills #6, #8, #10, #15 and #16 are opt-in whole, as is #18's rule grader. [`SKILLS.md`](SKILLS.md#opt-in-tools) gives each tool's reason and what the "/" menu does without the setting.
+- Another 10 opt-in tools stay off. They train models outside Studio, need inputs no Studio run produces, repeat Ai2's embeddings and Explorer, or are superseded by a default tool.
+- No skill is opt-in whole; #18's rule grader is opt-in. [`SKILLS.md`](SKILLS.md#opt-in-tools) gives each tool's reason.
 
 ```bash
 OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same setting works for make agent
 ```
 
 <details>
-<summary><strong>The 18 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report); <em>opt-in</em> marks what needs <code>OLMOEARTH_OPT_IN_TOOLS=1</code></summary>
+<summary><strong>The 13 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report); <em>opt-in</em> marks what needs <code>OLMOEARTH_OPT_IN_TOOLS=1</code></summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
@@ -125,17 +125,12 @@ OLMOEARTH_OPT_IN_TOOLS=1 make bridge   # registers the opt-in tools; the same se
 | 3 | `olmoearth-embeddings` | Embeddings-vs-fine-tune **guidance + a runnable notebook**; Ai2's precomputed [OlmoEarth v1.3 embeddings](https://source.coop/olmoearth/olmoearth-v1-3-embeddings) (one vector per 10 m pixel per year) replace computing them yourself for an annual task in an area and year they cover. The **one-call** `olmoearth_automate` (decide + propose a config; optional HuggingFace introspection) is *opt-in* | **Configure** |
 | 4 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results, sample the output at a point, compare results with no ground truth | **Run** |
 | 5 | `olmoearth-change-detection` | Change over time: one model's dated Studio results traced as a series (`olmoearth_compare_results`, mode `series`: date-ordered, legend-calibrated shifts; estimate movement, not verified ground change). The trajectory of your own dated values (`olmoearth_change_detect`, refuses fewer than 3 dates) is *opt-in* | **Run** |
-| 6 | `olmoearth-baseline-compare` | *Opt-in.* Studio vs. a baseline foundation model, side-by-side on transfer regions; its winner is a point metric with no test, so which map is more accurate is #18's two-map route (both maps as Studio results, or as scores files of one window grid) | **Run** |
 | 7 | `olmoearth-evaluate` | Per-class accuracy against your labels; spatial-block CV and NNDM-LOO are *opt-in* | **Analyze** |
-| 8 | `olmoearth-similarity` | *Opt-in.* Exact top-K kNN over supplied embeddings (e.g. OlmoEarth Base) | **Analyze** |
 | 9 | `olmoearth-uncertainty` | Ensemble-disagreement confidence across Studio results; the Meyer-Pebesma Area-of-Applicability (OOD) flag is *opt-in* | **Analyze** |
-| 10 | `olmoearth-cloud-mask-audit` | *Opt-in.* CFMask / s2cloudless / Sen2Cor / MAJA ensemble disagreement | **Analyze** |
 | 11 | `olmoearth-qgis-bridge` | Tile URLs -> a QGIS `.qlr` layer + GDAL_WMS descriptor + XYZ URLs + SLD ramp + legend + a local `gdal_translate` COG recipe (key never embedded) | **Integrate** |
 | 12 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
 | 13 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
 | 14 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate. It states the accuracy the verification tools (#18) measured in the same request, as they returned it: estimate, intervals, labels, design, seed. If none was measured, it says so. An accuracy figure the model typed is refused | **Report** |
-| 15 | `olmoearth-litsearch` | *Opt-in.* arXiv + OpenAlex literature search + DOI/arXiv-id resolution to ground citations; optional [Asta](https://github.com/allenai/asta-plugins) full-text ranked search when its CLI is installed; a paper Asta marks not legal to show comes back with its metadata, not its text | **Report** |
-| 16 | `olmoearth-negative-sampler` | *Opt-in.* Presence-only labels -> trainable set: generates a buffered, spatially-thinned (optionally embedding-dissimilar) negative class so the data-prep audit passes | **Prep** |
 | 17 | `olmoearth-rslearn` | Guidance for running rslearn (the data + training engine under OlmoEarth): the 4-stage pipeline and fit/predict, as commands for you to run. The torch-free tools to **recommend** a full setup from a plain-language goal and **validate** a config (shapes / label-type / bands) before a multi-hour run are *opt-in* | **Configure** |
 | 18 | `olmoearth-review-set` | **Which windows to check first, without labels.** Ranks windows by the model's own top-1-minus-top-2 margin at your review budget (boundary-first optional), reports the attainable ceiling `min(1, budget/error_rate)` so a capture is read against what was reachable, and (*opt-in*) grades any candidate audit rule against the margin and a no-model control with a per-group sign test. Scores: your own, a direct run's, or a Studio result's `[0, 1]` score or top-k class scores (a prediction submitted with `probability_output`); a Studio class map without them has hard classes only. Which of two class maps of one time is more accurate needs no scores: labels on a random sample of the windows where they differ (`design='disagreement'`). A direct model run's files (`score_area.py`'s or `from-olmoearth`'s), a Studio result's own files, the label-sample plan, the error estimate, the certified zone and its certificate, the two-map route and `olmoearth_compare_review`'s reading of dates need the `inferencex` extra (`pip install 'olmoearth-agent[inferencex]'`, olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13; `make setup` installs it there) | **Analyze** |
 
@@ -152,8 +147,8 @@ Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness d
 |---|---|
 | **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
-| **Harness** | A catalog of function-call tools (more behind `OLMOEARTH_OPT_IN_TOOLS=1`), an **opt-in** `system:python` subprocess for light glue (`OLMOEARTH_RUN_PYTHON=1`), and a provenance manifest per call ([`PLAN.md`](PLAN.md)) |
-| **Skills** | 18-skill catalog ([`SKILLS.md`](SKILLS.md)); the instruction packages for #1-#3 and #17 are in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) |
+| **Harness** | A catalog of function-call tools (more behind `OLMOEARTH_OPT_IN_TOOLS=1`) and a provenance manifest per call ([`PLAN.md`](PLAN.md)) |
+| **Skills** | 13-skill catalog ([`SKILLS.md`](SKILLS.md)); the instruction packages for #1-#3 and #17 are in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
 
 </details>
@@ -161,7 +156,7 @@ Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness d
 ## Docs & links
 
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
-- [**SKILLS.md**](SKILLS.md): the 18-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**SKILLS.md**](SKILLS.md): the 13-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
 - [**docs/VERIFICATION_DEMO.md**](docs/VERIFICATION_DEMO.md): the verification tools on a real map, written by `make verify-demo`
 - [**docs/CLAUDE_AS_MODEL.md**](docs/CLAUDE_AS_MODEL.md): a Claude Code session as the agent's model, and what was checked live
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to

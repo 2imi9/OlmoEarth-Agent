@@ -21,7 +21,7 @@ Five tools:
   ranker being talked down: no rule can catch more than
   ``min(1, budget / error_rate)`` of the errors at a given budget.
 
-Bring-your-own-scores, like skill #8's embeddings: Studio's pixel-value
+Bring-your-own-scores: Studio's pixel-value
 returns only ``raw_value`` and ``classification`` per band, never logits. A
 margin cannot be recovered from a hard class; it can be read from a Studio
 regression band that is a binary score in ``[0, 1]`` (decided at 0.5), from

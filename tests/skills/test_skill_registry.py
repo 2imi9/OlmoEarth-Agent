@@ -28,25 +28,19 @@ from olmoearth_agent.tools.registry import ToolRegistry
 _SKILLS_MD = Path(__file__).resolve().parents[2] / "SKILLS.md"
 
 #: The tools trimmed from the default registry on 27 October 2026 (the agent
-#: is a verification layer for Studio), and #6's baseline comparison, whose
-#: winner has no test (the which-map step): written out, so a change to the
-#: catalog's opt_in rows has to change this list too.
+#: is a verification layer for Studio) that are still in the code: written
+#: out, so a change to the catalog's opt_in rows has to change this list too.
 TRIMMED = (
     "olmoearth_automate",
     "olmoearth_cv_inflation_check",
     "olmoearth_nndm_cv",
-    "olmoearth_negative_sampler",
     "olmoearth_rslearn_recommend",
     "olmoearth_rslearn_validate",
     "olmoearth_rslearn_compose",
     "olmoearth_rslearn_diagnose",
-    "olmoearth_similarity_search",
     "olmoearth_area_of_applicability",
-    "olmoearth_cloud_mask_audit",
-    "olmoearth_litsearch",
     "olmoearth_grade_review_rule",
     "olmoearth_change_detect",
-    "olmoearth_baseline_compare",
 )
 
 #: Every tool the default registry keeps (the plan's Keep rows), by name.
@@ -86,9 +80,8 @@ KEPT = (
 
 @pytest.fixture
 def default_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Neither opt-in setting is on (whatever the shell running the tests holds)."""
+    """The opt-in setting is off (whatever the shell running the tests holds)."""
     monkeypatch.delenv(OPT_IN_ENV, raising=False)
-    monkeypatch.delenv("OLMOEARTH_RUN_PYTHON", raising=False)
 
 
 def _opted_in(monkeypatch: pytest.MonkeyPatch, value: str = "1") -> ToolRegistry:
@@ -158,7 +151,7 @@ def test_each_trimmed_tool_is_registered_when_opted_in(
 
 
 @pytest.mark.parametrize("value", ["1", "true", "Yes", " on "])
-def test_the_opt_in_setting_takes_the_run_python_switchs_values(
+def test_the_opt_in_setting_takes_the_documented_values(
     value: str, default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     names = set(_opted_in(monkeypatch, value).names())
@@ -211,7 +204,7 @@ def test_each_kept_tool_is_in_the_default_registry(
 def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     default_env: None,
 ) -> None:
-    """30 tools; the opt-in python tool is off too."""
+    """30 tools."""
     assert sorted(build_default_registry().names()) == sorted(KEPT)
     assert len(KEPT) == 30
 
@@ -225,7 +218,6 @@ def test_opting_in_restores_every_tool_where_it_was(
     core = {s.name for s in registry.active_specs()}
     for tool in (
         "olmoearth_change_detect",
-        "olmoearth_litsearch",
         "olmoearth_grade_review_rule",
     ):
         assert tool in core, tool
@@ -234,16 +226,14 @@ def test_opting_in_restores_every_tool_where_it_was(
     assert registry.group_of("olmoearth_rslearn_compose") == "olmoearth-rslearn"
     aoa = registry.group_of("olmoearth_area_of_applicability")
     assert aoa == "olmoearth-uncertainty"
-    baseline = registry.group_of("olmoearth_baseline_compare")
-    assert baseline == "olmoearth-baseline-compare"
     assert registry.group_of("olmoearth_classification_metrics") is None
 
 
 def test_no_tool_waits_for_its_skill_by_default(default_env: None) -> None:
-    """#6's baseline comparison was the last default deferred group; it is opt-in.
+    """No default tool is deferred: every deferred group is opt-in.
 
     olmoearth_load_skill then names no deferred group, and opted in it names
-    them again, #6's among them.
+    them again.
     """
     registry = build_default_registry()
     assert registry.groups() == {}
@@ -251,20 +241,19 @@ def test_no_tool_waits_for_its_skill_by_default(default_env: None) -> None:
     assert load is not None
     assert "not sent until their skill is loaded" not in load.description
     for gone in (
-        "olmoearth-baseline-compare",
         "olmoearth-rslearn",
         "olmoearth-evaluate",
-        "olmoearth-similarity",
+        "olmoearth-uncertainty",
     ):
         assert gone not in load.description
 
 
-def test_opted_in_the_load_tool_names_the_baseline_comparisons_group(
+def test_opted_in_the_load_tool_names_the_deferred_groups(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     load = _opted_in(monkeypatch).spec_of("olmoearth_load_skill")
     assert load is not None
-    assert "olmoearth-baseline-compare (baseline_compare)" in load.description
+    assert "olmoearth-uncertainty (area_of_applicability)" in load.description
 
 
 def test_skills_md_gives_each_opt_in_tool_its_reason() -> None:
@@ -277,15 +266,13 @@ def test_skills_md_gives_each_opt_in_tool_its_reason() -> None:
     assert f"{OPT_IN_ENV}=1" in text
 
 
-def test_litsearch_is_opt_in_for_its_core_slot_as_the_route_to_asta() -> None:
-    """#15 is off only for the core slot it costs; it is the agent's route to Asta.
+def test_no_page_says_asta_covers_the_literature_search() -> None:
+    """The literature search went as outside inference examination and unused.
 
-    The owner's correction of 28 October 2026: no page gives "Asta covers it"
-    as the reason (the CHANGELOG keeps its history).
+    The owner's correction of 28 October 2026 and decision of 31 October: no
+    page gives "Asta covers it" as the reason (the CHANGELOG keeps its
+    history).
     """
-    reason = OPT_IN_TOOLS["olmoearth_litsearch"]
-    assert "core slot every turn" in reason
-    assert "route to Ai2's Asta" in reason
     root = _SKILLS_MD.parent
     pages = [
         root / "README.md",
@@ -297,19 +284,11 @@ def test_litsearch_is_opt_in_for_its_core_slot_as_the_route_to_asta() -> None:
         text = path.read_text(encoding="utf-8")
         for stale in ("Asta covers", "Explorer or Asta", "Explorer and Asta"):
             assert stale not in text, (path.name, stale)
-    for path in pages[1:]:
-        assert "route to Ai2's Asta" in path.read_text(encoding="utf-8"), path.name
 
 
-def test_five_skills_are_opt_in_whole() -> None:
-    whole = {s.name for s in SKILLS if s.opt_in_only}
-    assert whole == {
-        "olmoearth-baseline-compare",
-        "olmoearth-similarity",
-        "olmoearth-cloud-mask-audit",
-        "olmoearth-litsearch",
-        "olmoearth-negative-sampler",
-    }
+def test_no_skill_is_opt_in_whole() -> None:
+    """The five skills that were opt-in whole (#6, #8, #10, #15, #16) are gone."""
+    assert not {s.name for s in SKILLS if s.opt_in_only}
 
 
 def test_compare_results_is_the_tool_for_a_series(default_env: None) -> None:
@@ -332,7 +311,9 @@ def _opt_in_tools_named(text: str) -> set[str]:
 
 
 def test_the_name_check_finds_a_name_and_a_pattern() -> None:
-    assert _opt_in_tools_named("see olmoearth_litsearch.") == {"olmoearth_litsearch"}
+    assert _opt_in_tools_named("see olmoearth_change_detect.") == {
+        "olmoearth_change_detect"
+    }
     assert len(_opt_in_tools_named("the olmoearth_rslearn_* tools")) == 4
     assert not _opt_in_tools_named("olmoearth_review_set and olmoearth_load_skill")
 
@@ -454,7 +435,8 @@ def test_default_registry_exposes_foundational_and_provenance_tools(
 def test_merged_and_removed_tools_are_gone(
     opt_in: bool, default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One comparison tool; search_projects, litsearch_resolve, list_skills merged."""
+    """One comparison tool; search_projects and list_skills merged; litsearch_resolve
+    merged, then removed with the literature search."""
     registry = _opted_in(monkeypatch) if opt_in else build_default_registry()
     names = set(registry.names())
     for gone in (
@@ -509,18 +491,15 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         "olmoearth_load_skill",
     ):
         assert tool in core, tool
-    assert "olmoearth_baseline_compare" not in core
     # Opted in, the self-run training and caller-array tools stay deferred.
     opted_core = {s.name for s in _opted_in(monkeypatch).active_specs()}
     for deferred in (
-        "olmoearth_baseline_compare",
         "olmoearth_automate",
         "olmoearth_rslearn_recommend",
         "olmoearth_rslearn_validate",
         "olmoearth_rslearn_compose",
         "olmoearth_rslearn_diagnose",
-        "olmoearth_cloud_mask_audit",
-        "olmoearth_similarity_search",
+        "olmoearth_nndm_cv",
         "olmoearth_area_of_applicability",
     ):
         assert deferred not in opted_core, deferred

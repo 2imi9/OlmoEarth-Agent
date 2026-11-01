@@ -80,7 +80,7 @@ Configured in `pyproject.toml` and run by the hooks in `.pre-commit-config.yaml`
 - **Framework:** [pytest](https://docs.pytest.org/).
 - **Coverage:** `fail_under = 90` (`[tool.coverage.report]` in `pyproject.toml`) applies when you run `uv run pytest --cov`. There is no CI: nothing runs the tests, the coverage check or pre-commit for you, so run them before opening a PR.
 - **Integration vs unit:** integration tests that hit the live OlmoEarth Studio API are tagged `@pytest.mark.integration` and require `OLMOEARTH_API_KEY` in the environment; unit tests must not.
-- **Operational-rule tests:** every rule in `PLAN.md` §3 should have a corresponding test, placed beside the tool that enforces it (e.g. `tests/tools/test_negative_sampler_tool.py` covers §3.1). Adding a new rule? Add its test in the same PR.
+- **Operational-rule tests:** every rule in `PLAN.md` §3 should have a corresponding test, placed beside the tool that enforces it (e.g. `tests/tools/test_compare_results.py::test_no_mode_returns_a_coordinate` covers §3.1). Adding a new rule? Add its test in the same PR.
 
 ---
 

@@ -43,7 +43,6 @@ def test_the_example_runs_call_only_default_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(OPT_IN_ENV, raising=False)
-    monkeypatch.delenv("OLMOEARTH_RUN_PYTHON", raising=False)
     calls = _example_calls()
     assert "olmoearth_compare_results" in calls
     assert "olmoearth_plan_label_sample" in calls
