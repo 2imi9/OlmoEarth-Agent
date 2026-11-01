@@ -1125,15 +1125,16 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   whose tools are all opt-in and needed a live model and Studio, and
   nothing tested it; the README's two links and the fixture's `.gitignore`
   line go with them.
-- **Five opt-in skills and the code runner.** Removed as outside inference
-  examination and not used, each with its tools, computations, tests,
-  catalog row, web UI card and text: #6 `olmoearth-baseline-compare`
-  (`olmoearth_baseline_compare` named a winner from point metrics with no
-  design, interval or test; which of two maps is more accurate is #18's
-  two-map route, and the answer check no longer reads a baseline table's
-  model labels, nor does the web UI draw its bar chart), #8
-  `olmoearth-similarity` (`olmoearth_similarity_search` searched embeddings
-  the caller pasted in, which no tool produces), #10
+- **Five opt-in skills and the code runner.** (Row numbers in this entry
+  and the next are the catalog's before the renumbering below.) Removed as
+  outside inference examination and not used, each with its tools,
+  computations, tests, catalog row, web UI card and text: #6
+  `olmoearth-baseline-compare` (`olmoearth_baseline_compare` named a winner
+  from point metrics with no design, interval or test; which of two maps is
+  more accurate is the review set's two-map route, and the answer check no
+  longer reads a baseline table's model labels, nor does the web UI draw
+  its bar chart), #8 `olmoearth-similarity` (`olmoearth_similarity_search`
+  searched embeddings the caller pasted in, which no tool produces), #10
   `olmoearth-cloud-mask-audit` (`olmoearth_cloud_mask_audit`: no tool
   produces cloud masks), #15 `olmoearth-litsearch` (`olmoearth_litsearch`,
   with its Asta adapter, the egress capability `litsearch` for arXiv and
@@ -1143,8 +1144,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   Studio). `olmoearth_run_python` (`OLMOEARTH_RUN_PYTHON`) goes too: it ran
   arbitrary code, its stated uses were training glue, and no run enabled
   it; the rslearn instruction package now gives its Python snippets to the
-  user. The default registry is unchanged (30 tools); 10 tools stay opt-in,
-  and no skill is opt-in whole.
+  user, and the studio-job-config package no longer tells the agent to run
+  `scripts/recommend.py --validate` (the agent re-checks the traps itself;
+  the script is the user's to run). The guard tests name these six tools
+  among the removed ones, so a tool text, the card, the soul or a
+  `SKILL.md` that points at one fails. The default registry is unchanged
+  (30 tools); 10 tools stay opt-in, and no skill is opt-in whole.
 - **The ten opt-in tools of the kept skills.** Removed as outside inference
   examination and not used, each with its computation, tests, catalog
   entry and web UI text: `olmoearth_automate` (#3; a hand-synced copy of
@@ -1160,10 +1165,17 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `prediction_confidence`, the ensemble mode's statistics, stays), the four
   `olmoearth_rslearn_*` tools (#17; model training outside Studio, with
   `analysis/rslearn_advisor.py` and the `pyyaml` dependency only
-  `olmoearth_rslearn_compose` used; the `olmoearth-rslearn` instruction
-  package stays) and `olmoearth_grade_review_rule` (#18; it needed
-  per-unit error labels no tool produces, and the companion package holds
-  the same grading; `attainable_ceiling` and the default budgets stay).
+  `olmoearth_rslearn_compose` used, which `uv.lock` no longer lists as the
+  agent's own (it stays there for packages that need it); the
+  `olmoearth-rslearn` instruction package stays) and
+  `olmoearth_grade_review_rule` (#18; it needed per-unit error labels no
+  tool produces, and the companion package holds the same grading;
+  `attainable_ceiling` and the default budgets stay). The text that
+  described the JEPA latent-change detector of the separate
+  `olmoearth-jepa-change` repo as not connected goes with them (SKILLS.md,
+  PLAN, CANON, the registry and the web UI; SKILLS.md says label-free
+  change maps are not built), and so do the docstrings that called the
+  drawn area's bounding box an input of bbox-driven skills.
   The default registry is unchanged (30 tools, none deferred); no tool is
   opt-in, so `OLMOEARTH_OPT_IN_TOOLS=1` registers nothing more.
 - **The opt-in machinery.** With no opt-in tool left, the setting and the
@@ -1270,7 +1282,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `types.py`), the §5 pseudocode example (§5 now points at the verification
   demo), §7.2's train-time track, and the rows of §4 and §6 that described
   no built code; rules 2, 3, 5, 6, 7, 10 and 12, which no tool applied, are
-  marked retired in place, so the other rules keep their numbers. SKILLS.md
+  marked retired in place, so the other rules keep their numbers, and so is
+  rule 8's clause that cached `olmoearth_load_context` (no code caches it;
+  the key cap and the rule against regenerating keys stay). Rule 4 no
+  longer tells the agent to surface rslearn jobs and Python snippets:
+  training outside Studio is outside the agent. SKILLS.md
   drops its history paragraph, its upstream section, its roadmap section and
   the skill-local functions no code defines. Provenance (#3) is described as
   it is everywhere it appeared (SKILLS.md, README, PLAN rule 13, the

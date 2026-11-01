@@ -3,13 +3,13 @@
 """Confine model-controlled tool file I/O to a workspace root (path-traversal guard).
 
 Tool handlers receive file-path arguments straight from the model
-(``output_path``, ``out_dir``, ``positives_path``, ...). The LLM is a
-semi-trusted component, so a prompt-injection payload (carried in a Studio
-project name, a fetched abstract, or any tool output the model reads) can steer
-it to a traversing (``../../``) or absolute path -- yielding arbitrary-location
-file read/write under the operator's account: clobbering served ``webui/js``
-modules, planting a startup script, or reflecting a JSON-ish secrets file back
-into chat.
+(``scores_path``, ``design_path``, ``labels_path``, ``certificate_path``,
+``map_path``, ...). The LLM is a semi-trusted component, so a prompt-injection
+payload (carried in a Studio project name or any tool output the model reads)
+can steer it to a traversing (``../../``) or absolute path -- yielding
+arbitrary-location file read/write under the operator's account: clobbering
+served ``webui/js`` modules, planting a startup script, or reflecting a
+JSON-ish secrets file back into chat.
 
 :func:`safe_path` resolves every such path under a single workspace root and
 rejects anything that escapes it. The *containment check on the resolved path*

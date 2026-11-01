@@ -565,19 +565,20 @@ async def test_a_result_holding_a_line_separator_replays(tmp_path: Path) -> None
 
 
 def _skill_registry(calls: dict[str, int]) -> ToolRegistry:
-    """measure and refuse (core), rs_tool deferred under olmoearth-rslearn, load_skill."""
+    """measure and refuse (core), deep_tool deferred under olmoearth-deep-skill,
+    and load_skill."""
     from olmoearth_agent.skills.loader import SkillLoader
     from olmoearth_agent.tools.skill_tools import build_skill_tools
 
     registry = _registry(calls)
 
     async def fit(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-        calls["rs_tool"] = calls.get("rs_tool", 0) + 1
+        calls["deep_tool"] = calls.get("deep_tool", 0) + 1
         return {"fitted": True}
 
     registry.register(
-        RegisteredTool(ToolSpec("rs_tool", "rs", _EMPTY_SCHEMA), fit),
-        group="olmoearth-rslearn",
+        RegisteredTool(ToolSpec("deep_tool", "deep", _EMPTY_SCHEMA), fit),
+        group="olmoearth-deep-skill",
     )
     empty = SkillLoader(root="/nonexistent-skills-dir")
     registry.register_all(build_skill_tools(empty, registry=registry))
@@ -590,24 +591,24 @@ async def test_a_loaded_skill_is_loaded_again_on_each_replay(tmp_path: Path) -> 
     factory = partial(_skill_registry, calls)
     run = tmp_path / "run"
     first = await _begin(run, factory)
-    assert "rs_tool" not in first["tools"]
-    assert "- rs_tool" not in first["system"]["text"]
-    load = _calls(("olmoearth_load_skill", {"name": "olmoearth-rslearn"}))
+    assert "deep_tool" not in first["tools"]
+    assert "- deep_tool" not in first["system"]["text"]
+    load = _calls(("olmoearth_load_skill", {"name": "olmoearth-deep-skill"}))
     second = await _step(run, load, factory)
-    assert "rs_tool" in second["tools"]
+    assert "deep_tool" in second["tools"]
     assert second["system"]["changed"] is True
-    assert "- rs_tool: rs." in second["system"]["text"]
+    assert "- deep_tool: deep." in second["system"]["text"]
 
     # The replay loads the group again (the handler runs again), so the loop's
     # requests are the ones the model answered and the card stays as it was.
-    third = await _step(run, _calls(("rs_tool", {})), factory)
-    assert "rs_tool" in third["tools"] and third["system"]["changed"] is False
+    third = await _step(run, _calls(("deep_tool", {})), factory)
+    assert "deep_tool" in third["tools"] and third["system"]["changed"] is False
     records = _jsonl(run / "tool_cache.jsonl")
     assert [(r["name"], r.get("rerun", False)) for r in records] == [
         ("olmoearth_load_skill", True),
-        ("rs_tool", False),
+        ("deep_tool", False),
     ]
-    assert calls == {"rs_tool": 1}
+    assert calls == {"deep_tool": 1}
 
 
 _CANNOT = "write to Studio: this run's key is read-only (a test's line)"
@@ -1010,11 +1011,11 @@ async def test_the_view_carries_the_tool_specs_when_they_are_new(
     assert second["tool_specs_changed"] is False and "tool_specs" not in second
     assert "-- tool specs unchanged since the last call --" in render_text(second)
 
-    load = _calls(("olmoearth_load_skill", {"name": "olmoearth-rslearn"}))
+    load = _calls(("olmoearth_load_skill", {"name": "olmoearth-deep-skill"}))
     third = await _step(run, load, factory)
     assert third["tool_specs_changed"] is True
-    assert "rs_tool" in [s["name"] for s in third["tool_specs"]]
-    assert "- rs_tool: rs" in render_text(third)
+    assert "deep_tool" in [s["name"] for s in third["tool_specs"]]
+    assert "- deep_tool: deep" in render_text(third)
 
 
 @pytest.mark.asyncio

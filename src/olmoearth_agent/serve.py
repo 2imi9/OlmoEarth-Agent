@@ -710,8 +710,9 @@ async def api_create_area(request: Request) -> dict[str, Any]:
     Body: ``{"name": str, "geom": <GeoJSON Polygon/MultiPolygon>,
     "project_id": str}``. The geometry is the polygon the user drew on the
     chat map; it is stored via ``POST /areas`` so the returned ``area_id``
-    can drive a prediction (skill #2) and the derived ``bbox`` can drive a
-    bbox-based skill. Returns ``{ok, area: {id, name, project_id, bbox}}``.
+    can drive a prediction (skill #2); the derived ``bbox`` goes back to the
+    web UI, which shows it and puts it in the brief with the ``area_id`` (no
+    skill takes a bbox). Returns ``{ok, area: {id, name, project_id, bbox}}``.
     When Studio refuses the key (HTTP 401/403, e.g. a read-only key), the
     answer is a 403 whose detail says so and that nothing was created.
     """
@@ -795,8 +796,8 @@ async def api_get_area(area_id: str, request: Request) -> dict[str, Any]:
     """Fetch one stored area with its geometry + derived bbox (for reuse).
 
     The list endpoint omits ``geom`` (lightweight); when the user picks a
-    saved area to reuse, the draw UI calls this to render it on the map and
-    feed its bbox to bbox-based skills.
+    saved area to reuse, the draw UI calls this to render it on the map,
+    show its bbox and put it in the brief with the area's id.
     """
     key = _studio_key(request)
     if not key:

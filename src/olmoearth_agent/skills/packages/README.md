@@ -25,6 +25,9 @@ Changes since the move:
 - `olmoearth-studio-job-config/SKILL.md` and `references/data_split.md` no longer route to the
   removed `olmoearth-data-prep` skill or to a self-run training skill: they say the agent does not
   prepare labels or configure training outside Studio.
+- `olmoearth-studio-job-config/SKILL.md` no longer tells the agent to run `scripts/recommend.py
+  --validate`: the agent re-checks the cross-field traps itself, and the script's commands are the
+  user's to run on their own machine (no tool of the agent runs code).
 
 The scripts are standalone command-line helpers for a user's own machine; the agent does not run
 them. They are excluded from the repository's black, ruff and mypy hooks.

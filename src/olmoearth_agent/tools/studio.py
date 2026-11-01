@@ -4,7 +4,7 @@
 
 This is the minimal bundle every Studio-calling skill builds on:
 context (identity plus a page of projects), project creation, prediction
-status. Skills add their own tools (predict, evaluate, …) as separate bundles
+status. Skills add their own tools (predict, review set, …) as separate bundles
 registered alongside these.
 """
 

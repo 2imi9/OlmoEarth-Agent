@@ -73,9 +73,11 @@ class SkillSpec:
     tools: list[str] = field(default_factory=list)
 
 
-#: The full catalog. ``foundational`` = base Studio tools (not a SKILLS.md
-#: entry); ``upstream`` = exists in 2imi9/OlmoEarth-Skills (vendor, don't
-#: rebuild); ``planned`` = to build; ``implemented`` = wired in this repo.
+#: The full catalog. ``implemented`` = the row's tools are built and wired in
+#: this repo (row #0 included: the base Studio tools, not a SKILLS.md entry);
+#: ``vendored`` = an instruction package moved into ``skills/packages/`` from
+#: 2imi9/OlmoEarth-Skills (frozen upstream), served by olmoearth_load_skill.
+#: No row is ``foundational`` or ``planned``.
 SKILLS: list[SkillSpec] = [
     SkillSpec(
         0,

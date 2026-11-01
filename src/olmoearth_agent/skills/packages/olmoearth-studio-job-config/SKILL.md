@@ -175,7 +175,7 @@ See [`references/patch_sizes.md`](references/patch_sizes.md) for object-size-vs-
 
 ### 10. Review and create
 
-The wizard ends with a summary of every answer. Re-check the cross-field traps before "Create model" (or run `scripts/recommend.py --validate`): detection with a small patch, embeddings with a label field, mode-B with zero before AND after, Landsat selected, moving targets on a multi-month period. Then create — Studio queues and trains the model on Ai2's compute; there is nothing for the user to install or provision.
+The wizard ends with a summary of every answer. Re-check the cross-field traps before "Create model" yourself (no tool runs code; the user can run `scripts/recommend.py --validate` on their own machine): detection with a small patch, embeddings with a label field, mode-B with zero before AND after, Landsat selected, moving targets on a multi-month period. Then create — Studio queues and trains the model on Ai2's compute; there is nothing for the user to install or provision.
 
 ## Recommendation output
 
@@ -210,6 +210,8 @@ The skill's deliverable is a single filled-in config matching the wizard's steps
 Always include the `rationale` — the user is making a budget decision on Studio's side (Base costs ~60x Nano to train), and a recommendation without reasoning isn't actionable.
 
 ## Bundled script
+
+A command-line helper for the user's own machine: the agent does not run it (no tool runs code), so give the commands to the user if they want it.
 
 ```bash
 # Recommend from a one-line task description

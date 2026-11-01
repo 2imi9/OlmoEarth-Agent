@@ -249,8 +249,12 @@ def test_the_card_names_no_removed_tool_or_group() -> None:
     card = capability_card(build_default_registry())
     for gone in (
         "olmoearth_change_detect",
+        "olmoearth_litsearch",
         "olmoearth_grade_review_rule",
+        "olmoearth_baseline_compare",
+        "olmoearth-baseline-compare",
         "olmoearth-rslearn",
+        "olmoearth-similarity",
         "olmoearth_qgis_bridge",
         "olmoearth_export_data",
         "olmoearth_classification_metrics",

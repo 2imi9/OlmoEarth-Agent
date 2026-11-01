@@ -26,10 +26,17 @@ from olmoearth_agent.tools.registry import ToolRegistry
 _SKILLS_MD = Path(__file__).resolve().parents[2] / "SKILLS.md"
 
 #: The opt-in tools removed on 31 October 2026 with their code (outside
-#: inference examination, and not used), and the five default tools removed
-#: the same day (outside the verification scope): written out, so a catalog
-#: row or a text the agent sends that still names one is caught.
+#: inference examination, and not used: the five skills that were opt-in
+#: whole, the code runner and the ten inside kept rows), and the five default
+#: tools removed the same day (outside the verification scope): written out,
+#: so a catalog row or a text the agent sends that still names one is caught.
 REMOVED = (
+    "olmoearth_baseline_compare",
+    "olmoearth_similarity_search",
+    "olmoearth_cloud_mask_audit",
+    "olmoearth_litsearch",
+    "olmoearth_negative_sampler",
+    "olmoearth_run_python",
     "olmoearth_automate",
     "olmoearth_cv_inflation_check",
     "olmoearth_nndm_cv",

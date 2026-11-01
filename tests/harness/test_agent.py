@@ -178,7 +178,7 @@ class _RecordingLLM(_FakeLLM):
 
 
 def _registry_with_deferred_skill() -> ToolRegistry:
-    """echo (core), a deferred tool under olmoearth-rslearn, and load_skill."""
+    """echo (core), a deferred tool under olmoearth-deep-skill, and load_skill."""
     from olmoearth_agent.skills.loader import SkillLoader
     from olmoearth_agent.tools.skill_tools import build_skill_tools
 
@@ -189,10 +189,12 @@ def _registry_with_deferred_skill() -> ToolRegistry:
 
     registry.register(
         RegisteredTool(
-            spec=ToolSpec(name="rs_tool", description="rs", parameters=_EMPTY_SCHEMA),
+            spec=ToolSpec(
+                name="deep_tool", description="deep", parameters=_EMPTY_SCHEMA
+            ),
             handler=fit,
         ),
-        group="olmoearth-rslearn",
+        group="olmoearth-deep-skill",
     )
     empty = SkillLoader(root="/nonexistent-skills-dir")
     registry.register_all(build_skill_tools(empty, registry=registry))
@@ -208,14 +210,14 @@ async def test_deferred_tools_arrive_the_turn_after_their_skill_loads() -> None:
                 ToolCall(
                     id="c1",
                     name="olmoearth_load_skill",
-                    arguments={"name": "olmoearth-rslearn"},
+                    arguments={"name": "olmoearth-deep-skill"},
                 )
             ],
             finish_reason="tool_calls",
         ),
         ChatResponse(
             content=None,
-            tool_calls=[ToolCall(id="c2", name="rs_tool", arguments={})],
+            tool_calls=[ToolCall(id="c2", name="deep_tool", arguments={})],
             finish_reason="tool_calls",
         ),
         ChatResponse(content="done", tool_calls=[], finish_reason="stop"),
@@ -226,10 +228,10 @@ async def test_deferred_tools_arrive_the_turn_after_their_skill_loads() -> None:
         _registry_with_deferred_skill(),
         studio=None,  # type: ignore[arg-type]
     )
-    result = await agent.run("write me an rslearn model.yaml")
-    assert "rs_tool" not in llm.offered[0]  # core only on the first turn
-    assert "rs_tool" in llm.offered[1]  # loaded by olmoearth_load_skill
-    assert result.tool_calls == [("olmoearth_load_skill", True), ("rs_tool", True)]
+    result = await agent.run("use the deep skill")
+    assert "deep_tool" not in llm.offered[0]  # core only on the first turn
+    assert "deep_tool" in llm.offered[1]  # loaded by olmoearth_load_skill
+    assert result.tool_calls == [("olmoearth_load_skill", True), ("deep_tool", True)]
 
 
 @pytest.mark.asyncio
@@ -241,10 +243,10 @@ async def test_a_forced_skill_has_its_deferred_tools_from_turn_one() -> None:
         llm,  # type: ignore[arg-type]
         _registry_with_deferred_skill(),
         studio=None,  # type: ignore[arg-type]
-        forced_skill="rslearn",
+        forced_skill="deep-skill",
     )
     await agent.run("configure it")
-    assert "rs_tool" in llm.offered[0]
+    assert "deep_tool" in llm.offered[0]
     assert "FORCED SKILL" in agent.system_prompt
     # A forced skill with no deferred group changes nothing.
     other = _RecordingLLM(
@@ -257,4 +259,4 @@ async def test_a_forced_skill_has_its_deferred_tools_from_turn_one() -> None:
         forced_skill="predict",
     )
     await plain.run("run it")
-    assert "rs_tool" not in other.offered[0]
+    assert "deep_tool" not in other.offered[0]
