@@ -27,10 +27,10 @@ from olmoearth_agent.tools.registry import ToolRegistry
 
 _SKILLS_MD = Path(__file__).resolve().parents[2] / "SKILLS.md"
 
-#: The tools trimmed from the default registry on 27 October 2026 (the agent
-#: is a verification layer for Studio) that are still in the code: written
-#: out, so a change to the catalog's opt_in rows has to change this list too.
-TRIMMED = (
+#: The opt-in tools removed on 31 October 2026 with their code (outside
+#: inference examination, and not used): written out, so a catalog row or a
+#: text the agent sends that still names one is caught.
+REMOVED = (
     "olmoearth_automate",
     "olmoearth_cv_inflation_check",
     "olmoearth_nndm_cv",
@@ -106,11 +106,7 @@ def test_catalog_rows_are_numbered_from_0_in_increasing_order() -> None:
 
 
 def test_every_catalogued_tool_is_actually_registered(default_env: None) -> None:
-    """A catalog row that names a tool the registry never builds is a lie.
-
-    An opt-in tool is checked with its setting on
-    (``test_each_trimmed_tool_is_registered_when_opted_in``).
-    """
+    """A catalog row that names a tool the registry never builds is a lie."""
     registered = set(build_default_registry().names())
     for skill in SKILLS:
         if skill.status in ("implemented", "foundational"):
@@ -123,47 +119,31 @@ def test_every_catalogued_tool_is_actually_registered(default_env: None) -> None
 # --------------------------------------------------------------------------- the trim
 
 
-def test_the_catalog_names_exactly_the_trimmed_tools_with_a_reason() -> None:
-    assert sorted(OPT_IN_TOOLS) == sorted(TRIMMED)
-    for skill in SKILLS:
-        for tool, reason in skill.opt_in.items():
-            assert tool in skill.tools, f"#{skill.number} opts in {tool}, not its own"
-            assert reason.strip() == reason and reason, tool
-            assert "\n" not in reason and not reason.endswith("."), tool
-            assert len(reason) <= 100, tool
+def test_no_catalog_row_opts_a_tool_in() -> None:
+    """The last opt-in tools went on 31 October 2026, with their code."""
+    assert OPT_IN_TOOLS == {}
+    assert not [skill.number for skill in SKILLS if skill.opt_in]
 
 
-@pytest.mark.parametrize("tool", TRIMMED)
-def test_each_trimmed_tool_is_absent_from_the_default_registry(
-    tool: str, default_env: None
-) -> None:
-    registry = build_default_registry()
-    assert tool not in registry.names()
-    assert tool not in {s.name for s in registry.active_specs()}
-    assert registry.group_of(tool) is None
-
-
-@pytest.mark.parametrize("tool", TRIMMED)
-def test_each_trimmed_tool_is_registered_when_opted_in(
+@pytest.mark.parametrize("tool", REMOVED)
+def test_each_removed_tool_is_gone_even_opted_in(
     tool: str, default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert tool in _opted_in(monkeypatch).names()
+    for registry in (build_default_registry(), _opted_in(monkeypatch)):
+        assert tool not in registry.names()
+        assert registry.group_of(tool) is None
+    for skill in SKILLS:
+        assert tool not in skill.tools, f"#{skill.number} lists {tool}"
 
 
-@pytest.mark.parametrize("value", ["1", "true", "Yes", " on "])
-def test_the_opt_in_setting_takes_the_documented_values(
+@pytest.mark.parametrize(
+    "value", ["1", "true", "Yes", " on ", "", "0", "false", "no", "off", "maybe"]
+)
+def test_the_opt_in_setting_adds_no_tool(
     value: str, default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    names = set(_opted_in(monkeypatch, value).names())
-    assert set(TRIMMED) <= names
-
-
-@pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "maybe"])
-def test_any_other_value_leaves_the_opt_in_tools_out(
-    value: str, default_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    names = set(_opted_in(monkeypatch, value).names())
-    assert not set(TRIMMED) & names
+    """No tool is opt-in, so whatever the setting holds the registry is KEPT."""
+    assert sorted(_opted_in(monkeypatch, value).names()) == sorted(KEPT)
 
 
 @pytest.mark.parametrize("value", ["1", "true", "Yes", " on "])
@@ -179,9 +159,8 @@ def test_a_read_only_key_leaves_out_exactly_the_studio_write_tools(
     registry = build_default_registry()
     assert sorted(registry.names()) == sorted(set(KEPT) - STUDIO_WRITE_TOOLS)
     assert "studio_write" in registry.cannot
-    # The opt-in tools come back with their own switch; the write tools do not.
-    names = set(_opted_in(monkeypatch).names())
-    assert set(TRIMMED) <= names and not STUDIO_WRITE_TOOLS & names
+    # The opt-in setting brings no write tool back.
+    assert not STUDIO_WRITE_TOOLS & set(_opted_in(monkeypatch).names())
 
 
 @pytest.mark.parametrize("value", ["", "0", "off", "maybe"])
@@ -209,32 +188,15 @@ def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     assert len(KEPT) == 30
 
 
-def test_opting_in_restores_every_tool_where_it_was(
+def test_no_tool_waits_for_its_skill(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On, a trimmed tool is core or deferred under its skill, as before the trim."""
-    registry = _opted_in(monkeypatch)
-    assert sorted(registry.names()) == sorted(KEPT + TRIMMED)
-    core = {s.name for s in registry.active_specs()}
-    for tool in (
-        "olmoearth_change_detect",
-        "olmoearth_grade_review_rule",
-    ):
-        assert tool in core, tool
-    assert registry.group_of("olmoearth_automate") == "olmoearth-embeddings"
-    assert registry.group_of("olmoearth_nndm_cv") == "olmoearth-evaluate"
-    assert registry.group_of("olmoearth_rslearn_compose") == "olmoearth-rslearn"
-    aoa = registry.group_of("olmoearth_area_of_applicability")
-    assert aoa == "olmoearth-uncertainty"
-    assert registry.group_of("olmoearth_classification_metrics") is None
+    """No tool is deferred, opted in or not.
 
-
-def test_no_tool_waits_for_its_skill_by_default(default_env: None) -> None:
-    """No default tool is deferred: every deferred group is opt-in.
-
-    olmoearth_load_skill then names no deferred group, and opted in it names
-    them again.
+    olmoearth_load_skill then names no deferred group.
     """
+    assert _opted_in(monkeypatch).groups() == {}
+    monkeypatch.delenv(OPT_IN_ENV)
     registry = build_default_registry()
     assert registry.groups() == {}
     load = registry.spec_of("olmoearth_load_skill")
@@ -246,14 +208,6 @@ def test_no_tool_waits_for_its_skill_by_default(default_env: None) -> None:
         "olmoearth-uncertainty",
     ):
         assert gone not in load.description
-
-
-def test_opted_in_the_load_tool_names_the_deferred_groups(
-    default_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    load = _opted_in(monkeypatch).spec_of("olmoearth_load_skill")
-    assert load is not None
-    assert "olmoearth-uncertainty (area_of_applicability)" in load.description
 
 
 def test_skills_md_gives_each_opt_in_tool_its_reason() -> None:
@@ -292,40 +246,40 @@ def test_no_skill_is_opt_in_whole() -> None:
 
 
 def test_compare_results_is_the_tool_for_a_series(default_env: None) -> None:
-    """change_detect left the default: compare_results' description takes series."""
+    """change_detect is gone: compare_results' description takes series."""
     spec = build_default_registry().spec_of("olmoearth_compare_results")
     assert spec is not None
     assert "the tool for a time series" in spec.description
     assert "olmoearth_change_detect" not in spec.description
 
 
-def _opt_in_tools_named(text: str) -> set[str]:
-    """The opt-in tools ``text`` names, by name or by a ``prefix_*`` pattern."""
+def _removed_tools_named(text: str) -> set[str]:
+    """The removed tools ``text`` names, by name or by a ``prefix_*`` pattern."""
     named: set[str] = set()
     for token in re.findall(r"olmoearth_[a-z0-9_]+\*?", text):
         if token.endswith("*"):
-            named |= {t for t in OPT_IN_TOOLS if t.startswith(token[:-1])}
-        elif token in OPT_IN_TOOLS:
+            named |= {t for t in REMOVED if t.startswith(token[:-1])}
+        elif token in REMOVED:
             named.add(token)
     return named
 
 
 def test_the_name_check_finds_a_name_and_a_pattern() -> None:
-    assert _opt_in_tools_named("see olmoearth_change_detect.") == {
+    assert _removed_tools_named("see olmoearth_change_detect.") == {
         "olmoearth_change_detect"
     }
-    assert len(_opt_in_tools_named("the olmoearth_rslearn_* tools")) == 4
-    assert not _opt_in_tools_named("olmoearth_review_set and olmoearth_load_skill")
+    assert len(_removed_tools_named("the olmoearth_rslearn_* tools")) == 4
+    assert not _removed_tools_named("olmoearth_review_set and olmoearth_load_skill")
 
 
-def test_nothing_the_default_agent_sends_names_an_opt_in_tool(
+def test_nothing_the_agent_sends_names_a_removed_tool(
     default_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Off, an opt-in tool is neither offered nor pointed at (SKILLS.md, Opt-in tools).
+    """A removed tool is neither offered nor pointed at.
 
-    The texts the model reads: every default tool's description and parameter
-    texts, the capability card with every group loaded, the soul, the skill
-    index and every SKILL.md package (what ``olmoearth_load_skill`` returns).
+    The texts the model reads: every tool's description and parameter texts,
+    the capability card with every group loaded, the soul, the skill index and
+    every SKILL.md package (what ``olmoearth_load_skill`` returns).
     """
     monkeypatch.delenv("OLMOEARTH_SOUL_PATH", raising=False)
     monkeypatch.delenv("OLMOEARTH_SKILLS_DIR", raising=False)
@@ -340,7 +294,7 @@ def test_nothing_the_default_agent_sends_names_an_opt_in_tool(
     texts["skill index"] = loader.index(brief=False)
     for skill in loader.discover():
         texts[skill.name] = loader.load(skill.name)
-    named = {where: _opt_in_tools_named(text) for where, text in texts.items()}
+    named = {where: _removed_tools_named(text) for where, text in texts.items()}
     assert not {where: n for where, n in named.items() if n}
     assert len(texts) > len(registry.names())
 
@@ -467,7 +421,7 @@ def test_deferred_groups_are_catalog_skills(
 
 
 def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
-    default_env: None, monkeypatch: pytest.MonkeyPatch
+    default_env: None,
 ) -> None:
     core = {s.name for s in build_default_registry().active_specs()}
     for tool in (
@@ -491,18 +445,6 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         "olmoearth_load_skill",
     ):
         assert tool in core, tool
-    # Opted in, the self-run training and caller-array tools stay deferred.
-    opted_core = {s.name for s in _opted_in(monkeypatch).active_specs()}
-    for deferred in (
-        "olmoearth_automate",
-        "olmoearth_rslearn_recommend",
-        "olmoearth_rslearn_validate",
-        "olmoearth_rslearn_compose",
-        "olmoearth_rslearn_diagnose",
-        "olmoearth_nndm_cv",
-        "olmoearth_area_of_applicability",
-    ):
-        assert deferred not in opted_core, deferred
 
 
 def test_a_default_turn_carries_under_8000_spec_tokens(
@@ -595,9 +537,10 @@ def test_a_default_turn_carries_under_8000_spec_tokens(
     parameter's description ("; default per zone"); olmoearth_submit_prediction's
     probability_top_k minimum goes from 1 to 2, the same length: 4
     characters, 1 token. 7,990 + 1 = 7,991, under the same bound. These are
-    counts by hand, not measurements. Opted in, a turn carries the opt-in
-    specs again.
+    counts by hand, not measurements. The trim of 31 October 2026 took no
+    default spec and left no opt-in tool, so an opted-in turn carries the
+    default specs.
     """
     default = _turn_chars(build_default_registry())
     assert default / 4 < 8_000
-    assert _turn_chars(_opted_in(monkeypatch)) > default
+    assert _turn_chars(_opted_in(monkeypatch)) == default

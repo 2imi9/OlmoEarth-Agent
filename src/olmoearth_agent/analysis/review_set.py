@@ -32,12 +32,11 @@ answer against: ``facts`` (one-sentence statements computed by code, each
 with an ``id`` and its fields), ``must_state`` (what an answer reporting the
 result must convey) and ``forbidden_claims`` (claims it must not make).
 
-Scope, stated plainly because the neighbouring skill #9 owns the other
-half: this module ranks *relative* suspicion so a finite review budget is
-spent well. It is **not** a calibrated probability of correctness and it is
-**not** out-of-distribution detection -- a model can be confidently wrong on
-data unlike its training set, which is what
-:func:`~olmoearth_agent.analysis.uncertainty.area_of_applicability` is for.
+Scope, stated plainly: this module ranks *relative* suspicion so a finite
+review budget is spent well. It is **not** a calibrated probability of
+correctness and it is **not** out-of-distribution detection -- a model can be
+confidently wrong on data unlike its training set, and no tool here flags
+that.
 
 Why this is a bring-your-own-scores tool: the Studio API exposes only
 ``raw_value`` (regression) and ``classification`` (categorical) per band --
@@ -759,139 +758,7 @@ def boundary_counts(classes: Sequence[int], rows: int, cols: int) -> list[int]:
     return out
 
 
-# --------------------------------------------------------------------------- estimators
-# Ports of oe_inferencex.common.metrics (pure numpy there, pure Python here). Ties
-# are resolved by expectation under random tie-breaking so no result depends
-# on the raster order of the input -- which matters because the boundary
-# indicator has only nine levels and therefore ties heavily.
-
-
-def _group_starts(sorted_scores: Sequence[float]) -> list[int]:
-    """Index where each run of equal scores begins."""
-    return [0] + [
-        i
-        for i in range(1, len(sorted_scores))
-        if sorted_scores[i] != sorted_scores[i - 1]
-    ]
-
-
-def _sorted_by(
-    uncertainty: Sequence[float], errors: Sequence[float], *, descending: bool
-) -> tuple[list[float], list[float]]:
-    """Stable co-sort of ``(uncertainty, errors)``."""
-    idx = sorted(
-        range(len(uncertainty)),
-        key=lambda i: -uncertainty[i] if descending else uncertainty[i],
-    )
-    return (
-        [float(uncertainty[i]) for i in idx],
-        [1.0 if errors[i] else 0.0 for i in idx],
-    )
-
-
-def _prefix(values: Sequence[float]) -> list[float]:
-    """Prefix sums with a leading zero."""
-    out = [0.0]
-    for v in values:
-        out.append(out[-1] + v)
-    return out
-
-
-def aurc_expected(uncertainty: Sequence[float], errors: Sequence[float]) -> float:
-    """Area under the risk-coverage curve, tie-aware. Lower ranks errors better."""
-    n = len(errors)
-    if n == 0:
-        raise ValueError("aurc_expected needs at least one unit")
-    s, e = _sorted_by(uncertainty, errors, descending=False)
-    starts = _group_starts(s)
-    sizes = [
-        (starts[k + 1] if k + 1 < len(starts) else n) - starts[k]
-        for k in range(len(starts))
-    ]
-    pre = _prefix(e)
-    e_before = [pre[st] for st in starts]
-    e_group = [pre[st + sz] - pre[st] for st, sz in zip(starts, sizes)]
-    total, g = 0.0, 0
-    for i in range(n):
-        if g + 1 < len(starts) and i >= starts[g + 1]:
-            g += 1
-        pos = i - starts[g] + 1
-        total += (e_before[g] + e_group[g] * pos / sizes[g]) / (i + 1)
-    return total / n
-
-
-def oracle_aurc(n: int, k: int) -> float:
-    """AURC of the perfect ranker: ``n`` units, ``k`` errors, errors rejected first."""
-    if n <= 0:
-        raise ValueError("oracle_aurc needs n > 0")
-    return sum(max(0, i - (n - k)) / i for i in range(1, n + 1)) / n
-
-
-def excess_aurc(uncertainty: Sequence[float], errors: Sequence[float]) -> float:
-    """E-AURC: AURC minus the oracle's, comparable across differing error rates."""
-    k = int(sum(1 for x in errors if x))
-    return aurc_expected(uncertainty, errors) - oracle_aurc(len(errors), k)
-
-
-def capture_at_budget(
-    uncertainty: Sequence[float],
-    errors: Sequence[float],
-    budgets: Sequence[float] = DEFAULT_BUDGETS,
-) -> dict[float, float]:
-    """Share of all errors inside the most suspect fraction ``b`` of windows.
-
-    Tie-aware: a run of equal scores straddling the cut contributes its
-    errors in proportion to the share of the run inside the budget.
-    """
-    n = len(errors)
-    if n == 0:
-        raise ValueError("capture_at_budget needs at least one unit")
-    s, e = _sorted_by(uncertainty, errors, descending=True)
-    starts = _group_starts(s)
-    sizes = [
-        (starts[k + 1] if k + 1 < len(starts) else n) - starts[k]
-        for k in range(len(starts))
-    ]
-    pre = _prefix(e)
-    e_group = [pre[st + sz] - pre[st] for st, sz in zip(starts, sizes)]
-    total = max(sum(e), 1.0)
-    out: dict[float, float] = {}
-    for b in budgets:
-        k = max(1, int(round(b * n)))
-        captured = 0.0
-        for gi, (st, sz) in enumerate(zip(starts, sizes)):
-            if st + sz <= k:
-                captured += e_group[gi]
-            elif st < k:
-                captured += e_group[gi] * (k - st) / sz
-        out[b] = captured / total
-    return out
-
-
-def auroc(uncertainty: Sequence[float], errors: Sequence[float]) -> float | None:
-    """AUROC of a suspicion score against the error indicator, ties counted half.
-
-    ``None`` when every unit is an error or none is. Unlike capture at a
-    budget this has no base-rate ceiling, so it is the statistic for
-    comparing two populations with different error rates.
-    """
-    n = len(errors)
-    pos = sum(1 for x in errors if x)
-    if pos == 0 or pos == n:
-        return None
-    s, e = _sorted_by(uncertainty, errors, descending=False)
-    starts = _group_starts(s)
-    sizes = [
-        (starts[k + 1] if k + 1 < len(starts) else n) - starts[k]
-        for k in range(len(starts))
-    ]
-    total, g = 0.0, 0
-    for i in range(n):
-        if g + 1 < len(starts) and i >= starts[g + 1]:
-            g += 1
-        if e[i]:
-            total += starts[g] + 0.5 * sizes[g]
-    return (total - pos * pos / 2.0) / (pos * (n - pos))
+# --------------------------------------------------------------------------- the budget ceiling
 
 
 def attainable_ceiling(budget: float, error_rate: float) -> float:
@@ -909,14 +776,6 @@ def attainable_ceiling(budget: float, error_rate: float) -> float:
     if error_rate == 0.0:
         return 0.0
     return min(1.0, budget / error_rate)
-
-
-def sign_test_p(wins: int, decisive: int) -> float:
-    """One-sided exact sign test: P(X >= wins) under Binomial(decisive, 1/2)."""
-    if decisive <= 0:
-        return 1.0
-    tail = sum(math.comb(decisive, i) for i in range(wins, decisive + 1))
-    return tail / (2.0**decisive)
 
 
 # --------------------------------------------------------------------------- a Studio regression band as scores
@@ -1487,163 +1346,6 @@ def margin_summary(
         },
         "reading": reading,
     }
-
-
-def grade_rule(
-    signal: Sequence[float],
-    errors: Sequence[float],
-    *,
-    baseline: Sequence[float] | None = None,
-    control: Sequence[float] | None = None,
-    groups: Sequence[str] | None = None,
-    budgets: Sequence[float] = DEFAULT_BUDGETS,
-    higher_is_suspect: bool = True,
-) -> dict[str, Any]:
-    """Grade a candidate audit rule against confidence and a no-model control.
-
-    This is the honest-broker half of the skill: it answers "is my clever
-    new suspicion signal actually better than the model's own margin?" with
-    the same machinery that rejected ensemble disagreement, cross-model
-    disagreement and feature-space typicality upstream. A signal that
-    sounds principled and loses here should not ship.
-
-    Parameters
-    ----------
-    signal
-        The candidate suspicion score, one per graded unit.
-    errors
-        0/1 error indicator per unit (1 = the model was wrong here).
-    baseline
-        The incumbent, normally negated margin. Compared head to head.
-    control
-        A no-model control (e.g. a band index, or pixel variance). A
-        candidate that cannot beat this is measuring the scene, not the
-        model.
-    groups
-        Optional per-unit group id (scene, event, region). When given, the
-        comparison is also run per group and summarised with a one-sided
-        exact sign test -- the right unit of replication, because units
-        inside a scene are not independent.
-    budgets
-        Review budgets to report capture at.
-    higher_is_suspect
-        Set ``False`` if a *low* value of ``signal`` means suspect; the
-        signal is negated so every arm is compared in one direction.
-
-    Returns
-    -------
-    dict
-        Per-arm E-AURC / AUROC / capture, the head-to-head verdict, and
-        the per-group sign test when ``groups`` is given.
-    """
-    n = len(errors)
-    if n == 0:
-        raise ValueError("grade_rule needs at least one graded unit")
-    if len(signal) != n:
-        raise ValueError(f"signal length {len(signal)} != errors length {n}")
-    err = [1.0 if x else 0.0 for x in errors]
-    n_err = int(sum(err))
-    if n_err == 0 or n_err == n:
-        return {
-            "gradable": False,
-            "reason": (
-                f"{n_err} of {n} units are errors; a ranking comparison needs "
-                "both errors and non-errors present"
-            ),
-            "n_units": n,
-        }
-
-    arms: dict[str, list[float]] = {}
-    sign = 1.0 if higher_is_suspect else -1.0
-    arms["candidate"] = [sign * float(v) for v in signal]
-    if baseline is not None:
-        if len(baseline) != n:
-            raise ValueError(f"baseline length {len(baseline)} != {n}")
-        arms["baseline"] = [float(v) for v in baseline]
-    if control is not None:
-        if len(control) != n:
-            raise ValueError(f"control length {len(control)} != {n}")
-        arms["control"] = [float(v) for v in control]
-
-    scored: dict[str, dict[str, Any]] = {}
-    for name, values in arms.items():
-        cap = capture_at_budget(values, err, budgets)
-        scored[name] = {
-            "excess_aurc": round(excess_aurc(values, err), 6),
-            "auroc": (lambda a: None if a is None else round(a, 6))(auroc(values, err)),
-            "capture_at_budget": {str(b): round(cap[b], 6) for b in budgets},
-        }
-
-    out: dict[str, Any] = {
-        "gradable": True,
-        "n_units": n,
-        "n_errors": n_err,
-        "error_rate": round(n_err / n, 6),
-        "arms": scored,
-        "ceiling_at_budget": {
-            str(b): round(attainable_ceiling(b, n_err / n), 6) for b in budgets
-        },
-        "note": (
-            "E-AURC: lower is better, 0 is the oracle. Capture is bounded by "
-            "ceiling_at_budget, so read it as a share of that ceiling. AUROC "
-            "has no base-rate ceiling."
-        ),
-    }
-
-    if "baseline" in scored:
-        delta = scored["candidate"]["excess_aurc"] - scored["baseline"]["excess_aurc"]
-        out["verdict"] = {
-            "candidate_beats_baseline_pooled": bool(delta < 0),
-            "excess_aurc_delta": round(delta, 6),
-            "reading": (
-                "negative delta = the candidate ranks errors better than the "
-                "baseline on the pooled units"
-            ),
-        }
-    if "control" in scored:
-        d = scored["candidate"]["excess_aurc"] - scored["control"]["excess_aurc"]
-        out.setdefault("verdict", {})["candidate_beats_control_pooled"] = bool(d < 0)
-
-    if groups is not None:
-        if len(groups) != n:
-            raise ValueError(f"groups length {len(groups)} != {n}")
-        if baseline is None:
-            raise ValueError(
-                "a per-group sign test needs a baseline to compare against"
-            )
-        buckets: dict[str, list[int]] = {}
-        for i, g in enumerate(groups):
-            buckets.setdefault(str(g), []).append(i)
-        wins = losses = skipped = 0
-        for members in buckets.values():
-            ge = [err[i] for i in members]
-            if sum(ge) in (0, len(ge)):
-                skipped += 1
-                continue
-            c = excess_aurc([arms["candidate"][i] for i in members], ge)
-            b = excess_aurc([arms["baseline"][i] for i in members], ge)
-            if c < b:
-                wins += 1
-            elif c > b:
-                losses += 1
-        decisive = wins + losses
-        out["per_group"] = {
-            "n_groups": len(buckets),
-            "n_gradable_groups": len(buckets) - skipped,
-            "n_skipped_groups": skipped,
-            "candidate_wins": wins,
-            "baseline_wins": losses,
-            # Not rounded: a p-value rounded to 6dp reports 1/1024 as
-            # 0.000977 and anything below 5e-7 as exactly 0.
-            "sign_test_p_one_sided": sign_test_p(wins, decisive),
-            "note": (
-                "The group (scene / event / region) is the unit of "
-                "replication; units inside one group are not independent, so "
-                "a pooled win on many correlated units is weaker evidence "
-                "than a win on many groups."
-            ),
-        }
-    return out
 
 
 def _class_label(k: Any, names: dict[str, str] | None) -> str:

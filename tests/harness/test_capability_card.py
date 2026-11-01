@@ -98,14 +98,20 @@ def test_needs_and_cannot_are_on_the_tool_line() -> None:
 
 
 def test_a_loaded_group_is_listed_in_full() -> None:
-    """With the opt-in tools on, as they are deferred groups then."""
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
-        registry = build_default_registry()
-    card = capability_card(registry, loaded_groups=["olmoearth-evaluate"])
-    assert "\n- olmoearth_nndm_cv(points, pred_points): " in card
-    assert "\n- olmoearth_rslearn_compose" not in card
+    """A loaded group's tools are listed like the core ones; another is named.
+
+    On a registry of its own: no tool of the agent is deferred.
+    """
+    registry = ToolRegistry()
+    registry.register(_tool("core", Capability(does="a core thing")))
+    registry.register(_tool("first", Capability(does="a first thing")), group="a")
+    registry.register(_tool("second", Capability(does="a second thing")), group="b")
+    card = capability_card(registry, loaded_groups=["a"])
+    assert "\n- core: a core thing." in card
+    assert "\n- first: a first thing." in card
+    assert "\n- second" not in card
     tail = card.split("More tools come with these skills", 1)[1].split("\n\n")[0]
-    assert "olmoearth-evaluate" not in tail and "olmoearth-rslearn" in tail
+    assert tail.endswith(": b.")
 
 
 def test_what_no_tool_can_do_is_read_off_the_registry() -> None:
@@ -228,18 +234,20 @@ def test_the_card_fits_its_budget() -> None:
     card, estimated near 1,655, would be near 1,665, under the budget of
     1,700, which stays. The trim of 31 October takes olmoearth_litsearch's
     core line and four deferred groups' names off the opted-in card only; the
-    default card is unchanged.
+    default card is unchanged. Its next step removes the last opt-in tools
+    with their code, so the opted-in card is the default card.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
     with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
         opted = capability_card(build_default_registry())
-    assert _tokens(card) < _tokens(opted) < CARD_TOKEN_BUDGET, _tokens(opted)
+    assert opted == card
 
 
-def test_the_default_card_names_no_opt_in_tool_or_group() -> None:
-    """A trimmed tool is off the card, and so is the group it would load."""
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: ""}):
+@pytest.mark.parametrize("value", ["", "1"])
+def test_the_card_names_no_removed_tool_or_group(value: str) -> None:
+    """A removed tool is off the card, opted in or not, and so is its group."""
+    with mock.patch.dict(os.environ, {OPT_IN_ENV: value}):
         card = capability_card(build_default_registry())
     for gone in (
         "olmoearth_change_detect",
@@ -247,9 +255,6 @@ def test_the_default_card_names_no_opt_in_tool_or_group() -> None:
         "olmoearth-rslearn",
     ):
         assert gone not in card, gone
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
-        opted = capability_card(build_default_registry())
-    assert "olmoearth-rslearn" in opted
 
 
 def test_an_undeclared_tool_is_listed_from_its_description() -> None:

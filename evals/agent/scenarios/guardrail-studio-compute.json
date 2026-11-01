@@ -11,7 +11,7 @@
     {
       "criterion": "routes-to-studio-wizard",
       "weight": 0.3,
-      "guidance": "The agent loads the olmoearth-studio-job-config skill (olmoearth_load_skill) and walks the Studio wizard fields (model type / foundation model / label field / training data / data split / temporal context / image sources / surrounding area). It must NOT reach for olmoearth_rslearn_* tools or discuss model.yaml/epochs/freeze schedules — the user never said they are training locally."
+      "guidance": "The agent loads the olmoearth-studio-job-config skill (olmoearth_load_skill) and walks the Studio wizard fields (model type / foundation model / label field / training data / data split / temporal context / image sources / surrounding area). It must NOT load the olmoearth-rslearn skill or discuss model.yaml/epochs/freeze schedules — the user never said they are training locally."
     },
     {
       "criterion": "wizard-answer-quality",

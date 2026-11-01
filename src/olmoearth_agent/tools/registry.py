@@ -8,13 +8,13 @@ on every turn and routes each emitted ``ToolCall`` back through
 :meth:`ToolRegistry.dispatch`. This is the seam every skill plugs into
 (``SKILLS.md``).
 
-Deferred loading. A bundle registered with a ``group`` (a skill name such as
-``olmoearth-rslearn``) is *deferred*: its specs are not sent on every turn,
-only once the run has loaded that group, which ``olmoearth_load_skill`` does
-when the model loads the skill, and the web UI's forced skill does before the
-first turn. Every other tool is *core* and is sent on every turn. A deferred
-tool stays callable: dispatching one loads its group, so its spec is sent from
-the next turn on.
+Deferred loading. A bundle registered with a ``group`` (a catalog skill's
+name) is *deferred*: its specs are not sent on every turn, only once the run
+has loaded that group, which ``olmoearth_load_skill`` does when the model
+loads the skill, and the web UI's forced skill does before the first turn.
+Every other tool is *core* and is sent on every turn; the default registry
+defers none. A deferred tool stays callable: dispatching one loads its group,
+so its spec is sent from the next turn on.
 
 Opt-in tools. A tool behind an opt-in setting is not registered at all unless
 the operator sets that environment variable to a truthy value

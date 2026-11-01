@@ -951,9 +951,8 @@ button.is-busy > .ic { display: none; }
    container becomes a cohesive card with a flex-gap rhythm + a faint "RESULT"
    eyebrow, and the parts/buttons get polished spacing + hover/active states.
    Aligned to our app: color-mix() -> rgba(); .viz-bar-fill gets display:block
-   (our fills are <span>, the demo used <div>); .viz-chart carries its own gap
-   (our caption is nested inside it, not a sibling); the inline diff legend and
-   the trajectory axis size are kept for our narrower SVG chart. */
+   (our fills are <span>, the demo used <div>); the inline diff legend is
+   kept. */
 .tc-viz { margin-top: 10px; }
 
 /* CARD */
@@ -1112,17 +1111,8 @@ button.is-busy > .ic { display: none; }
   flex: none; box-shadow: 0 0 0 1px var(--line-soft);
 }
 
-/* CAPTION + CHART */
+/* CAPTION */
 .viz-cap { font-size: 12px; line-height: 1.45; color: var(--text-faint); text-wrap: pretty; }
-.viz-chart { display: flex; flex-direction: column; gap: 6px; }
-.viz-svg {
-  width: 100%; max-width: 560px; height: auto; display: block;
-  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
-}
-.viz-line { fill: none; stroke: var(--mint); stroke-width: 2; }
-.viz-dot { fill: var(--pink); }
-.viz-axt { fill: var(--text-faint); font-size: 9px; font-family: ui-monospace, Menlo, Consolas, monospace; }
-.viz-axis { stroke: var(--line); stroke-width: 1; }
 .viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
 .viz-map .leaflet-control-layers { font-size: 12px; }
 

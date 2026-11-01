@@ -486,7 +486,7 @@ def compare_group_narration(
 
     Group compare has one meaning — N different models over the same area —
     so unlike :func:`compare_narration` there is no kind branch (a multi-DATE
-    series belongs to the change-detection trajectory, not here).
+    series belongs to the comparison tool's series mode, not here).
     """
     ensemble = group.get("ensemble") or {}
     used = ensemble.get("n_points_used", 0)

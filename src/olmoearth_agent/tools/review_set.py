@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """The ``olmoearth-review-set`` tool bundle (skill #18).
 
-Five tools:
+Four tools:
 
 - ``olmoearth_review_set`` -- rank windows by the model's own top-1 minus
   top-2 margin and return the ones a reviewer should open first at a budget.
@@ -14,9 +14,6 @@ Five tools:
   how much they differ and where, with the side question declined on evidence
   (and, with the ``inferencex`` extra, what a difference means at the maps'
   dates).
-- ``olmoearth_grade_review_rule`` -- grade any candidate suspicion signal
-  against the margin baseline and a no-model control, with a per-group sign
-  test, so a signal that merely sounds principled cannot ship unmeasured.
 - ``olmoearth_review_budget_ceiling`` -- the arithmetic that stops a good
   ranker being talked down: no rule can catch more than
   ``min(1, budget / error_rate)`` of the errors at a given budget.
@@ -73,7 +70,6 @@ from olmoearth_agent.analysis.review_set import (
     attainable_ceiling,
     compare_scores,
     evidence_detail,
-    grade_rule,
     regression_scores,
     review_set,
     topk_assumption,
@@ -1978,20 +1974,6 @@ async def _review_set_from_result(
     return out
 
 
-async def _grade_review_rule(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-    """Handler for ``olmoearth_grade_review_rule``."""
-    budgets = args.get("budgets") or list(DEFAULT_BUDGETS)
-    return grade_rule(
-        args["signal"],
-        args["errors"],
-        baseline=args.get("baseline"),
-        control=args.get("control"),
-        groups=args.get("groups"),
-        budgets=[float(b) for b in budgets],
-        higher_is_suspect=bool(args.get("higher_is_suspect", True)),
-    )
-
-
 async def _budget_ceiling(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_review_budget_ceiling``."""
     budget = float(args["budget"])
@@ -2292,84 +2274,6 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "say which map is right, even with labels_date (it takes no "
                     "labels)",
                 ),
-            ),
-        ),
-        RegisteredTool(
-            spec=ToolSpec(
-                name="olmoearth_grade_review_rule",
-                description=(
-                    "Measure whether a CANDIDATE suspicion signal is actually "
-                    "better than the model's own confidence at finding errors, "
-                    "on units where you DO have labels. Give the candidate "
-                    "signal, a 0/1 error indicator, optionally the baseline "
-                    "(negated margin) and a no-model control, and optionally "
-                    "group ids (scene / event / region). Returns E-AURC "
-                    "(lower is better, 0 = oracle), AUROC, error capture at "
-                    "each budget with the attainable ceiling, a head-to-head "
-                    "verdict, and a one-sided exact sign test across groups -- "
-                    "the group is the unit of replication because units inside "
-                    "one scene are not independent. Use this before adopting "
-                    "ANY new reliability heuristic: upstream this same "
-                    "machinery rejected ensemble disagreement, cross-model "
-                    "disagreement, two-view disagreement and feature-space "
-                    "typicality, all of which sounded principled. A candidate "
-                    "that cannot beat the no-model control is measuring the "
-                    "scene, not the model. Read-only."
-                ),
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "signal": dict(
-                            _SERIES,
-                            description="Candidate suspicion score per graded unit.",
-                        ),
-                        "errors": dict(
-                            _SERIES,
-                            description=(
-                                "0/1 per unit; 1 = the model was wrong there."
-                            ),
-                        ),
-                        "baseline": dict(
-                            _SERIES,
-                            description=(
-                                "The incumbent, normally the NEGATED margin so "
-                                "higher means more suspect."
-                            ),
-                        ),
-                        "control": dict(
-                            _SERIES,
-                            description=(
-                                "A no-model control (band index, pixel "
-                                "variance, class rarity)."
-                            ),
-                        ),
-                        "groups": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "Optional group id per unit (scene / event / "
-                                "region) for the sign test."
-                            ),
-                        },
-                        "budgets": dict(
-                            _SERIES,
-                            description="Review budgets; default 0.01/0.05/0.10.",
-                        ),
-                        "higher_is_suspect": {
-                            "type": "boolean",
-                            "default": True,
-                            "description": (
-                                "False if a LOW candidate value means suspect."
-                            ),
-                        },
-                    },
-                    "required": ["signal", "errors"],
-                },
-            ),
-            handler=_grade_review_rule,
-            capability=Capability(
-                does="whether a candidate suspicion signal finds errors better "
-                "than the margin, on units with 0/1 error labels the caller gives"
             ),
         ),
         RegisteredTool(

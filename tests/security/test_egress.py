@@ -20,7 +20,6 @@ from olmoearth_agent.security import egress
         ("https://api.anthropic.com", "llm-cloud"),
         ("https://api.openai.com/v1", "llm-cloud"),
         ("https://generativelanguage.googleapis.com/v1beta/openai/", "llm-cloud"),
-        ("https://datasets-server.huggingface.co/rows", "hf"),
     ],
 )
 def test_allowlisted_hosts_pass(url: str, capability: str) -> None:

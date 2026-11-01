@@ -62,7 +62,6 @@ def _stated() -> list[tuple[str, str]]:
 
 def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
     registry = _registry()
-    assert "olmoearth_change_detect" in registry.names()  # opt-in, on here
     missing = [n for n in registry.names() if registry.capability_of(n) is None]
     assert missing == [], f"tools with no capability declared: {missing}"
 
@@ -301,31 +300,6 @@ async def _series_needs_three_dates_of_one_model(_tmp: Path) -> None:
         "olmoearth_compare_results", {"result_ids": ids, "mode": "series"}, shared
     )
     _refused(same_dates, "needs >= 3 distinct dates")
-
-
-@probe("olmoearth_change_detect", "3 or more dates")
-async def _change_needs_three_dates(_tmp: Path) -> None:
-    two = await _call(
-        "olmoearth_change_detect",
-        {
-            "series": [
-                {"date": "2022-01-01", "value": 0.1},
-                {"date": "2023-01-01", "value": 0.2},
-            ]
-        },
-    )
-    _refused(two, "needs >= 3 distinct dates")
-    repeated = await _call(
-        "olmoearth_change_detect",
-        {
-            "series": [
-                {"date": "2022-01-01", "value": 0.1},
-                {"date": "2022-01-01", "value": 0.3},
-                {"date": "2023-01-01", "value": 0.2},
-            ]
-        },
-    )
-    _refused(repeated, "needs >= 3 distinct dates")
 
 
 @probe("olmoearth_classification_metrics", "y_true and y_pred of the same length")

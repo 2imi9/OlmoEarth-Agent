@@ -50,11 +50,11 @@ gh pr create --base main --title "..." --body "..."
 - **No AI co-author trailers in commits.** Do NOT add `Co-Authored-By: Claude`, `Co-Authored-By: Codex`, etc. AI involvement, if substantial, belongs in the PR description (see §8), not the commit trailer.
 - **Commit message format:** free-form, but readable. A short imperative subject line under 72 characters, blank line, then optional body.
   ```
-  Add spatial CV split utility for class-imbalanced AOIs
+  Refuse a review set as an error-rate sample
 
-  Uses k-fold contiguous polygon assignment so train/val splits
-  respect spatial autocorrelation. Refuses random splits per
-  PLAN.md operational rule §3.6.
+  The review set is chosen to hold errors, so its labels divided
+  by its size overstate the error rate. estimate_map_error now
+  refuses it and names olmoearth_plan_label_sample.
 
   Signed-off-by: Your Name <your.email@example.com>
   ```

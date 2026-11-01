@@ -30,9 +30,7 @@ from typing import Literal
 
 from olmoearth_agent.harness.capabilities import READ_ONLY_STUDIO
 from olmoearth_agent.provenance.tools import build_provenance_tools
-from olmoearth_agent.tools.automate import build_automate_tools
 from olmoearth_agent.tools.certificate import build_certificate_tools
-from olmoearth_agent.tools.change_detect import build_change_detect_tools
 from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.estimation import build_estimation_tools
 from olmoearth_agent.tools.evaluate import build_evaluate_tools
@@ -43,13 +41,11 @@ from olmoearth_agent.tools.predict import build_predict_tools
 from olmoearth_agent.tools.qgis import build_qgis_tools
 from olmoearth_agent.tools.registry import RegisteredTool, ToolRegistry, opted_in
 from olmoearth_agent.tools.review_set import build_review_set_tools
-from olmoearth_agent.tools.rslearn import build_rslearn_tools
 from olmoearth_agent.tools.scores_file import build_scores_file_tools
 from olmoearth_agent.tools.skill_tools import build_skill_tools
 from olmoearth_agent.tools.studio import build_studio_tools
 from olmoearth_agent.tools.studio_labels import build_studio_label_tools
 from olmoearth_agent.tools.studio_scores import build_studio_scores_tools
-from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
 
@@ -145,11 +141,8 @@ SKILLS: list[SkillSpec] = [
         "14 presets + validator. Studio trains on Ai2 compute.",
         ["olmoearth_load_skill"],
     ),
-    # #3 unifies the former embeddings + automate rows: both decide
-    # embeddings-vs-fine-tune. The vendored SKILL.md is the guidance + notebook
-    # generator (load via olmoearth_load_skill); olmoearth_automate is the
-    # in-repo one-call version (decide + propose a config + HF introspection),
-    # which reuses the same decision table, and is opt-in.
+    # #3: the vendored SKILL.md is the embeddings-vs-fine-tune guidance and
+    # notebook generator (load via olmoearth_load_skill).
     SkillSpec(
         3,
         "olmoearth-embeddings",
@@ -160,12 +153,8 @@ SKILLS: list[SkillSpec] = [
         "(source.coop/olmoearth/olmoearth-v1-3-embeddings; one vector per 10 m "
         "pixel per year) replace computing them yourself for an annual task in "
         "an area and year they cover; a task that needs dates within a year "
-        "still needs the notebook. The one-call olmoearth_automate is opt-in.",
-        ["olmoearth_load_skill", "olmoearth_automate"],
-        opt_in={
-            "olmoearth_automate": "for an annual task, Ai2's v1.3 embeddings and "
-            "its Explorer replace computing embeddings",
-        },
+        "still needs the notebook.",
+        ["olmoearth_load_skill"],
     ),
     SkillSpec(
         4,
@@ -187,10 +176,7 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_compare_results",
         ],
     ),
-    # #5: change over time is olmoearth_compare_results' series mode, which
-    # superseded the caller-series trajectory tool olmoearth_change_detect
-    # (opt-in). The JEPA latent-change detector in the separate torch repo
-    # 2imi9/olmoearth-jepa-change is not connected: no tool here calls it.
+    # #5: change over time is olmoearth_compare_results' series mode.
     SkillSpec(
         5,
         "olmoearth-change-detection",
@@ -199,31 +185,16 @@ SKILLS: list[SkillSpec] = [
         "Change over time: one model's dated Studio results traced as a series "
         "(olmoearth_compare_results, mode='series': date-ordered, "
         "legend-calibrated shifts; estimate movement, not verified ground "
-        "change). The trajectory of the caller's own dated values "
-        "(olmoearth_change_detect, refuses fewer than 3 dates) is opt-in.",
-        ["olmoearth_change_detect", "olmoearth_compare_results"],
-        opt_in={
-            "olmoearth_change_detect": "superseded by olmoearth_compare_results, "
-            "mode='series'",
-        },
+        "change).",
+        ["olmoearth_compare_results"],
     ),
     SkillSpec(
         7,
         "olmoearth-evaluate",
         "Analyze",
         "implemented",
-        "Classification metrics against the user's labels; the "
-        "random-vs-spatial CV inflation check and NNDM-LOO cross-validation "
-        "(CAST port) are opt-in.",
-        [
-            "olmoearth_cv_inflation_check",
-            "olmoearth_classification_metrics",
-            "olmoearth_nndm_cv",
-        ],
-        opt_in={
-            "olmoearth_cv_inflation_check": "a training-side check, run outside Studio",
-            "olmoearth_nndm_cv": "a training-side check, run outside Studio",
-        },
+        "Classification metrics against the user's labels.",
+        ["olmoearth_classification_metrics"],
     ),
     SkillSpec(
         9,
@@ -233,13 +204,8 @@ SKILLS: list[SkillSpec] = [
         "Ensemble-disagreement confidence (across distinct results: "
         "olmoearth_compare_results, mode='ensemble'), the signal that works "
         "when Studio gives you hard classes only; when per-class scores "
-        "exist, #18 ranks errors better (measured). The Meyer-Pebesma "
-        "Area-of-Applicability OOD flag is opt-in.",
-        ["olmoearth_area_of_applicability", "olmoearth_compare_results"],
-        opt_in={
-            "olmoearth_area_of_applicability": "no tool produces its input, and "
-            "it was measured not to rank errors better than the margin",
-        },
+        "exist, #18 ranks errors better (measured).",
+        ["olmoearth_compare_results"],
     ),
     SkillSpec(
         11,
@@ -282,11 +248,7 @@ SKILLS: list[SkillSpec] = [
         ["olmoearth_case_narrative"],
     ),
     # #17 promotes the vendored olmoearth-rslearn SKILL.md (it OPERATES rslearn,
-    # the data + training engine under OlmoEarth) to a catalog row, and adds
-    # four in-repo TORCH-FREE tools so a scientist who doesn't know rslearn can
-    # be guided + checked (recommend, validate, compose, diagnose). The tools
-    # are opt-in (training outside Studio); the SKILL.md loads by default.
-    # Mirrors #3's vendored-SKILL.md + in-repo-tool pattern.
+    # the data + training engine under OlmoEarth) to a catalog row.
     SkillSpec(
         17,
         "olmoearth-rslearn",
@@ -294,25 +256,8 @@ SKILLS: list[SkillSpec] = [
         "vendored",
         "Operate rslearn (the data + training engine under OlmoEarth): the vendored "
         "SKILL.md guides add_windows -> prepare -> ingest -> materialize -> model "
-        "fit/predict, as commands the user runs. Four opt-in torch-free tools for "
-        "non-experts -- recommend "
-        "a full setup from a plain-language research goal (+ a pre/mid/post fusion "
-        "strategy for multiple modalities), validate a config (encoder/decoder/head "
-        "shapes, task<->label-type, bands) before training, compose a valid finetune "
-        "model.yaml, and diagnose a failing prepare/ingest/materialize run.",
-        [
-            "olmoearth_load_skill",
-            "olmoearth_rslearn_recommend",
-            "olmoearth_rslearn_validate",
-            "olmoearth_rslearn_compose",
-            "olmoearth_rslearn_diagnose",
-        ],
-        opt_in={
-            "olmoearth_rslearn_recommend": "model training outside Studio",
-            "olmoearth_rslearn_validate": "model training outside Studio",
-            "olmoearth_rslearn_compose": "model training outside Studio",
-            "olmoearth_rslearn_diagnose": "model training outside Studio",
-        },
+        "fit/predict, as commands the user runs.",
+        ["olmoearth_load_skill"],
     ),
     # #18 closes the gap #9 cannot: ranking WHICH windows are wrong, from the
     # model's own top-1-minus-top-2 margin. Studio's pixel-value returns only
@@ -326,7 +271,7 @@ SKILLS: list[SkillSpec] = [
     # disagreement, two-view disagreement and feature-space typicality against
     # the margin on seven expert-labelled testbeds and none of them won. So the
     # two skills are complementary, not rivals: #9 for hard-class Studio
-    # results and for the OOD regime, #18 whenever per-class scores exist.
+    # results, #18 whenever per-class scores exist.
     SkillSpec(
         18,
         "olmoearth-review-set",
@@ -339,11 +284,10 @@ SKILLS: list[SkillSpec] = [
         "result whose band is a binary score in [0, 1], or a class map with "
         "top-k scores, sampled on a grid or read from its native-resolution "
         "files, one scores file per UTM zone), "
-        "boundary-first ordering, the attainable-ceiling arithmetic, and "
-        "(opt-in) a grader for any candidate audit rule. Then how wrong the "
-        "map is: a labelled sample drawn by a design, its error rate with the "
-        "interval valid at every sample size first, then the one that design "
-        "earns, per-class accuracy and a certified zone "
+        "boundary-first ordering, and the attainable-ceiling arithmetic. Then "
+        "how wrong the map is: a labelled sample drawn by a design, its error "
+        "rate with the interval valid at every sample size first, then the one "
+        "that design earns, per-class accuracy and a certified zone "
         "(the optional olmoearth-inferencex extra), which a direct run's map "
         "can carry as a certificate anyone holding the map can check. A "
         "review set is not a sample. Which of two class maps of one time is "
@@ -356,7 +300,6 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_scores_from_file",
             "olmoearth_scores_from_studio",
             "olmoearth_compare_review",
-            "olmoearth_grade_review_rule",
             "olmoearth_review_budget_ceiling",
             "olmoearth_plan_label_sample",
             "olmoearth_estimate_map_error",
@@ -364,10 +307,6 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_write_certificate",
             "olmoearth_verify_certificate",
         ],
-        opt_in={
-            "olmoearth_grade_review_rule": "needs per-unit error labels a Studio "
-            "user rarely has",
-        },
     ),
 ]
 
@@ -376,9 +315,6 @@ SKILLS: list[SkillSpec] = [
 OPT_IN_TOOLS: dict[str, str] = {
     tool: reason for skill in SKILLS for tool, reason in skill.opt_in.items()
 }
-
-#: The one #7 tool sent on every turn; the spatial-CV tools are opt-in.
-_EVALUATE_CORE = frozenset({"olmoearth_classification_metrics"})
 
 
 def skills_by_status(status: SkillStatus) -> list[SkillSpec]:
@@ -389,15 +325,15 @@ def skills_by_status(status: SkillStatus) -> list[SkillSpec]:
 def build_default_registry() -> ToolRegistry:
     """Assemble a :class:`ToolRegistry` from every implemented skill bundle.
 
-    Core bundles are sent to the LLM on every turn. Deferred bundles are
-    registered under their skill's name (``group=``) and sent only once that
-    skill is loaded (``olmoearth_load_skill``) or forced from the web UI; see
+    Core bundles are sent to the LLM on every turn; every bundle below is
+    core. A deferred bundle would be registered under its skill's name
+    (``group=``) and sent only once that skill is loaded
+    (``olmoearth_load_skill``) or forced from the web UI; see
     :mod:`olmoearth_agent.tools.registry`. A new skill adds its
     ``build_*_tools()`` bundle here and flips its catalog ``status``.
 
-    The tools in :data:`OPT_IN_TOOLS` are left out unless :data:`OPT_IN_ENV`
-    (``OLMOEARTH_OPT_IN_TOOLS``) is on; on, each is registered core or
-    deferred under its skill, as the comments below say. While
+    The tools in :data:`OPT_IN_TOOLS` (none is left) are left out unless
+    :data:`OPT_IN_ENV` (``OLMOEARTH_OPT_IN_TOOLS``) is on. While
     :data:`READ_ONLY_ENV` (``OLMOEARTH_READ_ONLY``) is on, the tools in
     :data:`STUDIO_WRITE_TOOLS` are left out too, and the registry's ``cannot``
     gives the capability card its line
@@ -438,15 +374,12 @@ def build_default_registry() -> ToolRegistry:
     add(build_predict_tools())
     # How Studio results differ (#4, #5 series, #9 ensemble): one tool.
     add(build_compare_tools())
-    # Opt-in: superseded by compare_results' series mode.
-    add(build_change_detect_tools())
     # Accuracy against labels stays core (the comparison and review tools
-    # route to it); #7's spatial-CV tools are opt-in, deferred below.
-    evaluate = build_evaluate_tools()
-    add(t for t in evaluate if t.spec.name in _EVALUATE_CORE)
-    # Label-free error ranking (skill #18); complements #9's ensemble/OOD
-    # signals, which are what remain reachable when Studio yields only
-    # hard classes. Its rule grader is opt-in.
+    # route to it).
+    add(build_evaluate_tools())
+    # Label-free error ranking (skill #18); complements #9's ensemble
+    # signal, which is what remains reachable when Studio yields only hard
+    # classes.
     add(build_review_set_tools())
     # The scores provider (#18): a direct model run's raster + manifest as the
     # review set's and the estimation tools' input. Core, not deferred: it is
@@ -467,20 +400,8 @@ def build_default_registry() -> ToolRegistry:
     add(build_export_tools())
     add(build_qgis_tools())
     add(build_provenance_tools())
-    # --- Deferred: sent once their skill is loaded. ---
-    # Self-run training (#3, #17), opt-in: only when the user trains the
-    # model themselves; Studio trains on Ai2's compute (soul.md).
-    add(build_automate_tools(), group="olmoearth-embeddings")
-    add(build_rslearn_tools(), group="olmoearth-rslearn")
-    # Caller-array tools (the opt-in #7 spatial CV and #9 AOA): their inputs
-    # are arrays the user supplies inline, which no agent tool produces. With
-    # the opt-in tools off, no group is deferred.
-    add(
-        (t for t in evaluate if t.spec.name not in _EVALUATE_CORE),
-        group="olmoearth-evaluate",
-    )
-    add(build_uncertainty_tools(), group="olmoearth-uncertainty")
-    # Skill loading, after the deferred bundles so its description lists them.
+    # Skill loading, last among the bundles so its description lists any
+    # deferred group.
     add(build_skill_tools(registry=registry))
     # Cross-thread preference memory (remember/forget); core, not a skill.
     add(build_memory_tools())

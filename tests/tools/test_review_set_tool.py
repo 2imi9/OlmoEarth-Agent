@@ -31,7 +31,6 @@ from olmoearth_agent.tools.review_set import (
     build_review_set_tools,
     review_set_classes_fact,
 )
-from olmoearth_agent.tools.uncertainty import build_uncertainty_tools
 
 #: 4x4 grid, two classes. Column 0 is the minority class AND carries the low
 #: margin, so the same fixture exercises ranking and the boundary indicator.
@@ -60,12 +59,11 @@ def _registry() -> ToolRegistry:
     return registry
 
 
-def test_bundle_exposes_the_five_catalogued_tools() -> None:
+def test_bundle_exposes_the_four_catalogued_tools() -> None:
     assert set(_tools()) == {
         "olmoearth_review_set",
         "olmoearth_review_set_from_result",
         "olmoearth_compare_review",
-        "olmoearth_grade_review_rule",
         "olmoearth_review_budget_ceiling",
     }
 
@@ -97,24 +95,6 @@ async def test_review_set_echoes_caller_ids() -> None:
         {"scores": _SCORES, "budget": 0.125, "ids": ids}, _ctx()
     )  # type: ignore[attr-defined]
     assert result["review"][0]["id"].startswith("w")
-
-
-@pytest.mark.asyncio
-async def test_grade_review_rule_compares_against_baseline_and_control() -> None:
-    tool = _tools()["olmoearth_grade_review_rule"]
-    errors = [1, 1, 0, 0, 0, 0]
-    result = await tool.handler(
-        {
-            "signal": [0.9, 0.8, 0.1, 0.1, 0.0, 0.0],
-            "errors": errors,
-            "baseline": [0.0, 0.0, 0.9, 0.9, 0.9, 0.9],
-            "control": [0.5] * 6,
-        },
-        _ctx(),
-    )  # type: ignore[attr-defined]
-    assert result["gradable"] is True
-    assert result["verdict"]["candidate_beats_baseline_pooled"] is True
-    assert result["verdict"]["candidate_beats_control_pooled"] is True
 
 
 @pytest.mark.asyncio
@@ -153,12 +133,13 @@ async def test_bad_arguments_come_back_as_an_error_envelope() -> None:
 async def test_missing_required_argument_is_rejected_before_the_handler() -> None:
     result = await _registry().dispatch(
         ToolCall(
-            id="2", name="olmoearth_grade_review_rule", arguments={"signal": [1.0]}
+            id="2", name="olmoearth_review_budget_ceiling", arguments={"budget": 0.1}
         ),
         _ctx(),
     )
     assert result["ok"] is False
-    assert "errors" in result["error"]
+    assert "invalid arguments" in result["error"]
+    assert "error_rate" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -338,97 +319,27 @@ async def test_review_set_places_a_files_rows_on_the_files_own_grid(
 
 
 def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
-    """#9 owns self-consistency and OOD; #18 owns which windows are wrong.
+    """#9 owns self-consistency; #18 owns which windows are wrong.
 
     #9's disagreement signal is the comparison tool's ensemble mode, so that
-    tool routes the question to #18 too.
+    tool routes the question to #18.
     """
-    for tool in [*build_uncertainty_tools(), *build_compare_tools()]:
+    for tool in build_compare_tools():
         assert "olmoearth_review_set" in tool.spec.description
 
 
 def test_skill_18_says_it_is_not_ood_detection_and_routes_back_to_skill_9() -> None:
     """Neither skill silently answers the other's question.
 
-    #9's Area of Applicability is opt-in (``OLMOEARTH_OPT_IN_TOOLS``), so this
-    description, sent on every turn, does not name it: off, the model would be
-    pointed at a tool it cannot call. #9's default signal, the ensemble mode,
-    is named.
+    #9's signal, the ensemble mode, is named; the Area of Applicability, which
+    left the agent in the trim of 31 October 2026, is not, so the model is
+    never pointed at a tool it cannot call.
     """
     review = {t.spec.name: t for t in build_review_set_tools()}["olmoearth_review_set"]
     assert "not OOD detection" in review.spec.description
     assert "olmoearth_area_of_applicability" not in review.spec.description
     assert "olmoearth-uncertainty" not in review.spec.description
     assert "olmoearth_compare_results (mode='ensemble')" in review.spec.description
-
-
-def test_skill_9_and_18_signals_are_comparable_on_identical_windows() -> None:
-    """#9's ensemble dispersion and #18's margin can be graded head to head.
-
-    This exercises the seam between the two skills: skill #9's own
-    ``prediction_confidence`` produces the candidate, skill #18's margin is
-    the baseline, and skill #18's grader scores both on the same windows.
-
-    The data is simulated with a planted margin signal, so this asserts that
-    the plumbing discriminates -- it is NOT evidence for the ordering. The
-    evidence is the measured result cited in ``EVIDENCE``.
-    """
-    import math
-    import random
-
-    from olmoearth_agent.analysis.review_set import grade_rule, margins
-    from olmoearth_agent.analysis.uncertainty import prediction_confidence
-
-    random.seed(42)
-    rows = cols = 40
-    n_classes = 3
-    scores, members, errors = [], [], []
-    for i in range(rows * cols):
-        r, c = divmod(i, cols)
-        truth = 0 if r + c < 26 else (1 if r + c < 52 else 2)
-        edge = min(abs(r + c - 26), abs(r + c - 52))
-        conf = 1.0 - math.exp(-edge / 3.0)
-        wrong = random.random() > (0.35 + 0.65 * conf)
-        pred = (truth + 1) % n_classes if wrong else truth
-        logits = [0.0] * n_classes
-        logits[pred] = 0.6 + 5.0 * conf + random.gauss(0, 0.25)
-        logits[(pred + 1) % n_classes] = 0.5 + random.gauss(0, 0.25)
-        scores.append(logits)
-        members.append(
-            [
-                (
-                    pred
-                    if random.random() < 0.4 + 0.6 * conf
-                    else random.randrange(n_classes)
-                )
-                for _ in range(3)
-            ]
-        )
-        errors.append(
-            1 if max(range(n_classes), key=logits.__getitem__) != truth else 0
-        )
-
-    dispersion = [
-        float(pt["entropy"])
-        for pt in prediction_confidence(members, value_type="categorical")["per_point"]
-    ]
-    graded = grade_rule(
-        dispersion,
-        errors,
-        baseline=[-m for m in margins(scores)],
-        control=[random.random() for _ in range(rows * cols)],
-        budgets=[0.10],
-    )
-    assert graded["gradable"] is True
-    arms = graded["arms"]
-    # Both real signals beat the no-model control; the grader separates them.
-    assert arms["candidate"]["excess_aurc"] < arms["control"]["excess_aurc"]
-    assert arms["baseline"]["excess_aurc"] < arms["control"]["excess_aurc"]
-    assert graded["verdict"]["candidate_beats_baseline_pooled"] is False
-    # Capture never exceeds the attainable ceiling, for any arm.
-    ceiling = graded["ceiling_at_budget"]["0.1"]
-    for arm in arms.values():
-        assert arm["capture_at_budget"]["0.1"] <= ceiling + 1e-9
 
 
 @pytest.mark.asyncio

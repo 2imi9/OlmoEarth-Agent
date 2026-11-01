@@ -78,7 +78,6 @@ _register(
     ("api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com"),
 )
 _register("llm-local", (), allow_loopback=True)
-_register("hf", ("datasets-server.huggingface.co",))
 
 #: Reserved IPv4 ranges that ``ipaddress`` does not flag as private on every
 #: supported interpreter: RFC 6598 carrier-grade NAT and the 0.0.0.0/8 block.

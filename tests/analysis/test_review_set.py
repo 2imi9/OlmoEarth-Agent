@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import random
-
 import pytest
 
 from olmoearth_agent.analysis.output_contract import (
@@ -28,28 +26,21 @@ from olmoearth_agent.analysis.review_set import (
     NOT_COVERED,
     RANKING_SOURCE,
     attainable_ceiling,
-    aurc_expected,
-    auroc,
     boundary_counts,
-    capture_at_budget,
     compare_scores,
     detect_score_type,
     differing_patches,
     dominant_change_fact,
     evidence_detail,
     evidence_outside_scope,
-    excess_aurc,
-    grade_rule,
     margin_ratio_fact,
     margin_summary,
     margins,
     more_confident_fact,
     must_state_other_model,
-    oracle_aurc,
     predicted_classes,
     ranking_evidence_scope,
     review_set,
-    sign_test_p,
     spatial_breakdown,
 )
 
@@ -90,67 +81,7 @@ def test_uniform_grid_has_no_boundary() -> None:
     assert boundary_counts([0] * 9, 3, 3) == [0] * 9
 
 
-# --------------------------------------------------------------------------- estimators
-
-
-def test_perfect_ranker_has_zero_excess_aurc() -> None:
-    errors = [0, 0, 1, 1]
-    assert excess_aurc(errors, errors) == pytest.approx(0.0, abs=1e-12)
-
-
-def test_oracle_aurc_closed_form_matches_aurc_of_errors() -> None:
-    errors = [0, 1, 0, 1, 1]
-    assert oracle_aurc(len(errors), 3) == pytest.approx(
-        aurc_expected(errors, errors), abs=1e-12
-    )
-
-
-def test_anti_ranker_is_worse_than_perfect() -> None:
-    errors = [0, 0, 1, 1]
-    anti = [1, 1, 0, 0]
-    assert excess_aurc(anti, errors) > excess_aurc(errors, errors)
-
-
-def test_auroc_perfect_reversed_and_tied() -> None:
-    assert auroc([0.0, 1.0], [0, 1]) == pytest.approx(1.0)
-    assert auroc([1.0, 0.0], [0, 1]) == pytest.approx(0.0)
-    assert auroc([0.0, 0.0], [0, 1]) == pytest.approx(0.5)
-
-
-def test_auroc_undefined_without_both_classes() -> None:
-    assert auroc([0.1, 0.2], [0, 0]) is None
-    assert auroc([0.1, 0.2], [1, 1]) is None
-
-
-def test_capture_is_bounded_by_the_attainable_ceiling() -> None:
-    random.seed(3)
-    n = 200
-    errors = [1 if i % 5 == 0 else 0 for i in range(n)]  # 20% error rate
-    signal = [random.random() for _ in range(n)]
-    got = capture_at_budget(signal, errors, [0.10])[0.10]
-    ceiling = attainable_ceiling(0.10, 0.2)
-    assert ceiling == pytest.approx(0.5)
-    assert got <= ceiling + 1e-9
-
-
-def test_tie_aware_statistics_do_not_depend_on_input_order() -> None:
-    # The nine-level boundary indicator ties heavily; a coarse score must not
-    # be credited or penalised for raster order.
-    random.seed(11)
-    n = 300
-    signal = [float(random.randint(0, 8)) for _ in range(n)]
-    errors = [1 if random.random() < 0.25 else 0 for _ in range(n)]
-    base_aurc = aurc_expected(signal, errors)
-    base_cap = capture_at_budget(signal, errors, [0.1])[0.1]
-    base_auc = auroc(signal, errors)
-    for _ in range(5):
-        idx = list(range(n))
-        random.shuffle(idx)
-        s = [signal[i] for i in idx]
-        e = [errors[i] for i in idx]
-        assert aurc_expected(s, e) == pytest.approx(base_aurc, abs=1e-12)
-        assert capture_at_budget(s, e, [0.1])[0.1] == pytest.approx(base_cap, abs=1e-12)
-        assert auroc(s, e) == pytest.approx(base_auc, abs=1e-12)
+# --------------------------------------------------------------------------- the budget ceiling
 
 
 def test_attainable_ceiling_formula_and_validation() -> None:
@@ -161,13 +92,6 @@ def test_attainable_ceiling_formula_and_validation() -> None:
         attainable_ceiling(0.0, 0.2)
     with pytest.raises(ValueError, match="error_rate must be"):
         attainable_ceiling(0.1, 1.5)
-
-
-def test_sign_test_matches_the_binomial_tail() -> None:
-    assert sign_test_p(10, 10) == pytest.approx(1 / 1024)
-    assert sign_test_p(0, 10) == pytest.approx(1.0)
-    assert sign_test_p(5, 10) == pytest.approx(0.623046875)
-    assert sign_test_p(3, 0) == 1.0
 
 
 # --------------------------------------------------------------------------- review_set
@@ -1090,96 +1014,6 @@ def test_review_set_emits_no_coordinates() -> None:
     out = review_set(scores, budget=1.0, grid=(3, 3), ids=[f"w{i}" for i in range(9)])
     for row in out["review"]:
         assert not {"lat", "lon", "latitude", "longitude", "geometry"} & set(row)
-
-
-# --------------------------------------------------------------------------- grade_rule
-
-
-def test_grade_rule_scores_a_good_candidate_against_a_useless_one() -> None:
-    random.seed(5)
-    n = 300
-    errors = [1 if random.random() < 0.2 else 0 for _ in range(n)]
-    good = [0.9 + random.random() * 0.1 if e else random.random() * 0.1 for e in errors]
-    noise = [random.random() for _ in range(n)]
-    out = grade_rule(good, errors, baseline=noise, control=noise)
-    assert out["gradable"] is True
-    assert out["verdict"]["candidate_beats_baseline_pooled"] is True
-    assert out["verdict"]["candidate_beats_control_pooled"] is True
-    assert out["arms"]["candidate"]["auroc"] > 0.95
-
-
-def test_grade_rule_reports_the_ceiling_next_to_capture() -> None:
-    errors = [1 if i % 4 == 0 else 0 for i in range(100)]
-    out = grade_rule([float(e) for e in errors], errors, budgets=[0.1])
-    assert out["ceiling_at_budget"]["0.1"] == pytest.approx(0.4)
-    assert out["arms"]["candidate"]["capture_at_budget"]["0.1"] <= 0.4 + 1e-9
-
-
-def test_grade_rule_refuses_a_degenerate_label_set() -> None:
-    out = grade_rule([0.1, 0.2, 0.3], [0, 0, 0])
-    assert out["gradable"] is False
-    assert "both errors and non-errors" in out["reason"]
-
-
-def test_grade_rule_honours_higher_is_suspect_false() -> None:
-    errors = [0, 0, 1, 1]
-    low_means_suspect = [1.0, 1.0, 0.0, 0.0]
-    flipped = grade_rule(low_means_suspect, errors, higher_is_suspect=False)
-    straight = grade_rule(low_means_suspect, errors, higher_is_suspect=True)
-    assert flipped["arms"]["candidate"]["auroc"] == pytest.approx(1.0)
-    assert straight["arms"]["candidate"]["auroc"] == pytest.approx(0.0)
-
-
-def test_grade_rule_sign_test_uses_groups_as_the_unit_of_replication() -> None:
-    # Ten scenes; the candidate wins every one.
-    signal, errors, groups = [], [], []
-    for g in range(10):
-        for i in range(10):
-            err = i < 3
-            errors.append(1 if err else 0)
-            signal.append(1.0 if err else 0.0)  # perfect
-            groups.append(f"scene{g}")
-    baseline = [1.0 - s for s in signal]  # exactly wrong
-    out = grade_rule(signal, errors, baseline=baseline, groups=groups)
-    pg = out["per_group"]
-    assert pg["n_groups"] == 10
-    assert pg["candidate_wins"] == 10
-    assert pg["baseline_wins"] == 0
-    assert pg["sign_test_p_one_sided"] == pytest.approx(1 / 1024, abs=1e-12)
-
-
-def test_grade_rule_skips_groups_with_no_errors() -> None:
-    signal = [0.9, 0.1, 0.9, 0.1]
-    errors = [1, 0, 0, 0]
-    groups = ["a", "a", "b", "b"]  # group b has no errors
-    out = grade_rule(signal, errors, baseline=[0.1, 0.9, 0.1, 0.9], groups=groups)
-    assert out["per_group"]["n_skipped_groups"] == 1
-    assert out["per_group"]["n_gradable_groups"] == 1
-
-
-def test_grade_rule_needs_a_baseline_for_the_sign_test() -> None:
-    with pytest.raises(ValueError, match="needs a baseline"):
-        grade_rule([0.1, 0.9], [0, 1], groups=["a", "b"])
-
-
-def test_grade_rule_validates_lengths() -> None:
-    with pytest.raises(ValueError, match="signal length"):
-        grade_rule([0.1], [0, 1])
-    with pytest.raises(ValueError, match="baseline length"):
-        grade_rule([0.1, 0.9], [0, 1], baseline=[0.1])
-    with pytest.raises(ValueError, match="control length"):
-        grade_rule([0.1, 0.9], [0, 1], control=[0.1])
-    with pytest.raises(ValueError, match="groups length"):
-        grade_rule([0.1, 0.9], [0, 1], baseline=[0.1, 0.9], groups=["a"])
-
-
-def test_a_monotone_reparametrisation_of_the_baseline_ties_exactly() -> None:
-    # Guards the estimator: rescaling a signal must not change its ranking.
-    random.seed(9)
-    errors = [1 if random.random() < 0.3 else 0 for _ in range(120)]
-    base = [random.random() for _ in range(120)]
-    out = grade_rule([3.0 * b + 7.0 for b in base], errors, baseline=base)
-    assert out["verdict"]["excess_aurc_delta"] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_ties_are_broken_as_the_companion_package_breaks_them() -> None:

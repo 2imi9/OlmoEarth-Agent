@@ -419,8 +419,8 @@ def test_the_tile_is_the_one_the_package_ships(script: ModuleType) -> None:
 async def test_a_call_that_does_not_succeed_stops_the_run(
     script: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A failed call raises with its envelope, recorded all the same; an
-    opt-in tool is never called."""
+    """A failed call raises with its envelope, recorded all the same; a tool
+    that is not one of the default tools is never called."""
     monkeypatch.setenv(SCORES_ROOT_ENV, str(tmp_path))
     monkeypatch.setenv(OUTPUT_ROOT_ENV, str(tmp_path))
     run = script.Run(log=tmp_path / script.ENVELOPES)
@@ -437,7 +437,7 @@ async def test_a_call_that_does_not_succeed_stops_the_run(
     assert run.calls == [caught.value.call]
     assert len(run.state.provenance.entries) == 1
     with pytest.raises(script.DemoError, match="default tools"):
-        await run.call("grade", "olmoearth_grade_review_rule", {})
+        await run.call("unknown", "olmoearth_not_a_tool", {})
     assert len(run.calls) == 1
 
 

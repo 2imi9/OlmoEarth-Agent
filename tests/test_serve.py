@@ -309,10 +309,10 @@ def _forced_as_sent(monkeypatch: pytest.MonkeyPatch, slugs: Iterable[str]) -> li
     return forwarded
 
 
-def test_rslearn_stays_forced_while_its_tools_are_off(
+def test_rslearn_stays_forced_without_tools_of_its_own(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """rslearn's tools are opt-in, but its SKILL.md loads, so it stays forced."""
+    """rslearn's tools are gone, but its SKILL.md loads, so it stays forced."""
     monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
     assert _forced_as_sent(monkeypatch, ("rslearn",)) == ["rslearn"]
 
@@ -352,29 +352,22 @@ def _offered_per_forced_skill(
     return offered
 
 
-def test_forced_skill_sends_its_deferred_tools_from_turn_one(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("value", ["", "1"])
+def test_forcing_rslearn_offers_no_tool_of_its_own(
+    value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The web UI's "/" menu still reaches deferred tools (e.g. rslearn, opted in).
+    """rslearn's four tools went with their code: forcing the skill offers the
+    first turn the same tools as no forced skill, whatever the opt-in setting.
 
-    The bridge builds its registry at startup, so the opt-in setting is read
-    when the test client starts.
+    The bridge builds its registry at startup, so the setting is read when the
+    test client starts. A forced skill's deferred group from turn one is
+    tested on the agent (tests/harness/test_agent.py); no tool of the agent's
+    is deferred.
     """
-    monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", "1")
+    monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", value)
     offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
-    assert "olmoearth_rslearn_compose" in offered["rslearn"]
-    assert "olmoearth_rslearn_compose" not in offered[""]
-    assert "olmoearth_compare_results" in offered[""]
-
-
-def test_forced_skill_reaches_no_opt_in_tool_without_the_setting(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without the opt-in setting, forcing rslearn offers none of its tools."""
-    monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
-    offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
-    assert not any(n.startswith("olmoearth_rslearn_") for n in offered["rslearn"])
     assert offered["rslearn"] == offered[""]
+    assert "olmoearth_compare_results" in offered[""]
 
 
 def test_skills_endpoint_exposes_per_skill_stages() -> None:

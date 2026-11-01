@@ -9,8 +9,7 @@ tool.
 A skill whose tools are deferred (registered with a ``group``; see
 :mod:`olmoearth_agent.tools.registry`) has its group loaded for the rest of
 the run, so those tools' specs are sent from the next turn on. A skill can be
-both (``olmoearth-rslearn``: its SKILL.md and, with ``OLMOEARTH_OPT_IN_TOOLS``
-on, its four tools; off, only the SKILL.md).
+both. No tool is deferred now.
 """
 
 from __future__ import annotations

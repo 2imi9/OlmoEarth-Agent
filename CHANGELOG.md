@@ -1145,6 +1145,27 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   it; the rslearn instruction package now gives its Python snippets to the
   user. The default registry is unchanged (30 tools); 10 tools stay opt-in,
   and no skill is opt-in whole.
+- **The ten opt-in tools of the kept skills.** Removed as outside inference
+  examination and not used, each with its computation, tests, catalog
+  entry and web UI text: `olmoearth_automate` (#3; a hand-synced copy of
+  the vendored embeddings decision that proposed a fine-tune schedule, with
+  the egress capability `hf` for the Hugging Face datasets-server it read),
+  `olmoearth_change_detect` (#5; `olmoearth_compare_results`' series mode
+  reads the dated results themselves, and the web UI's trajectory chart,
+  drawn only for its result, goes with it), `olmoearth_cv_inflation_check`
+  and `olmoearth_nndm_cv` (#7; spatial cross-validation of a model trained
+  outside Studio, with `evaluation/spatial_cv.py` and `evaluation/nndm.py`),
+  `olmoearth_area_of_applicability` (#9; no tool produced its feature
+  vectors, and it was measured not to rank errors better than the margin;
+  `prediction_confidence`, the ensemble mode's statistics, stays), the four
+  `olmoearth_rslearn_*` tools (#17; model training outside Studio, with
+  `analysis/rslearn_advisor.py` and the `pyyaml` dependency only
+  `olmoearth_rslearn_compose` used; the `olmoearth-rslearn` instruction
+  package stays) and `olmoearth_grade_review_rule` (#18; it needed
+  per-unit error labels no tool produces, and the companion package holds
+  the same grading; `attainable_ceiling` and the default budgets stay).
+  The default registry is unchanged (30 tools, none deferred); no tool is
+  opt-in, so `OLMOEARTH_OPT_IN_TOOLS=1` registers nothing more.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**
