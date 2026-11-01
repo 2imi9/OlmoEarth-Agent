@@ -3,7 +3,7 @@
 """``olmoearth-agent-bridge``: each command a fresh process on one run directory.
 
 The session's production pieces (the default registry, the Studio client
-from the environment, the skill index and the memory block) are swapped for
+from the environment and the skill index) are swapped for
 fakes, as ``tests/harness/test_answer_check_loop.py`` swaps them in
 ``cli.py``. Nothing here touches the network.
 """
@@ -61,7 +61,6 @@ def _fakes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(session, "build_default_registry", _registry)
     monkeypatch.setattr(session, "StudioClient", _Studio)
     monkeypatch.setattr(session, "SkillLoader", _Skills)
-    monkeypatch.setattr(session, "preferences_block", lambda: "")
 
 
 def _out(capsys: pytest.CaptureFixture[str]) -> Any:
@@ -165,7 +164,6 @@ def test_prompt_and_tools_print_what_the_model_is_given(
         _registry(),
         None,  # type: ignore[arg-type]
         skill_index="",
-        memory_block="",
     ).system_prompt
     assert capsys.readouterr().out == expected + "\n"
     assert cli.main(["tools"]) == 0

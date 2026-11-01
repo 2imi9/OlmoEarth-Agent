@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Label-free review-set ranking (skill #18, ``olmoearth-review-set``).
+"""Label-free review-set ranking (skill #8, ``olmoearth-review-set``).
 
 Pure Python, no heavy deps. Given the per-class scores a model emitted for
 a grid of windows, this module answers the question a practitioner asks

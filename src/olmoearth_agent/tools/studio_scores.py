@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""A Studio result's own model output files as scores files (skill #18).
+"""A Studio result's own model output files as scores files (skill #8).
 
 Studio's files endpoint (``GET /prediction-results/files?download_token=``)
 returns a zip of a result's model output at native resolution. Measured live on
@@ -1552,7 +1552,7 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
 
 
 def build_studio_scores_tools() -> list[RegisteredTool]:
-    """Return the Studio-files scores tool (skill #18; the ``inferencex`` extra)."""
+    """Return the Studio-files scores tool (skill #8; the ``inferencex`` extra)."""
     return [
         RegisteredTool(
             spec=ToolSpec(

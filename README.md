@@ -5,7 +5,7 @@
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
-[![Skills](https://img.shields.io/badge/skills-13-F0529C.svg)](SKILLS.md)
+[![Skills](https://img.shields.io/badge/skills-8-F0529C.svg)](SKILLS.md)
 [![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
@@ -101,32 +101,26 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
   - the claims the tools forbid or require.
 - **Rewrite and marking.** One request asks the model to fix every problem found. A sentence that still fails is marked `[unverified: <check>]`. `OLMOEARTH_CHECK_NUMBERS=0` turns off the number check; `OLMOEARTH_CHECK_ANSWER=0` turns off the rest.
 - **Claim check (opt-in).** With `OLMOEARTH_CHECK_CLAIMS=1`, the agent's own model also reads the answer against the run's record. It flags statements no tool output supports and offers no tool can carry out, in the same rewrite and marking (`harness/claim_check.py`).
-- **Memory.** Durable user preferences (default project, area, sources), saved with `olmoearth_remember`, carry across conversations.
 
 > **Production posture:** the per-capability egress allowlist defaults to `audit` (log only), so a first run never breaks. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`: unknown hosts are then refused, not just logged. It checks the hosts the agent's own code calls; a child process the agent starts (olmoearth-inferencex's command line) is not network-isolated, so `enforce` does not cover it. Add self-hosted endpoints with `OLMOEARTH_EGRESS_ALLOW`.
 
-The capability set ships as **13 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
+The capability set ships as **8 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #7) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
 
-- The agent registers 30 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 30 are sent on every turn.
+- The agent registers 25 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, the report, skill loading). All 25 are sent on every turn.
 
 <details>
-<summary><strong>The 13 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>
+<summary><strong>The 8 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Report)</summary>
 
 | # | Skill | What it does | Stage |
 |---|---|---|---|
 | 1 | `olmoearth-data-prep` | Labels (GeoJSON/CSV/Shapefile) -> Studio-importable file (MIME / 10K / multi-metric guards) AND `rslearn` `dataset.json` + Lightning YAML, with a 7-criteria audit | **Prep** |
 | 2 | `olmoearth-studio-job-config` | Task description -> Studio wizard answers, 14 presets + cross-field validator | **Configure** |
 | 3 | `olmoearth-embeddings` | Embeddings-vs-fine-tune **guidance + a runnable notebook**; Ai2's precomputed [OlmoEarth v1.3 embeddings](https://source.coop/olmoearth/olmoearth-v1-3-embeddings) (one vector per 10 m pixel per year) replace computing them yourself for an annual task in an area and year they cover | **Configure** |
-| 4 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results, sample the output at a point, compare results with no ground truth | **Run** |
-| 5 | `olmoearth-change-detection` | Change over time: one model's dated Studio results traced as a series (`olmoearth_compare_results`, mode `series`: date-ordered, legend-calibrated shifts; estimate movement, not verified ground change) | **Run** |
-| 7 | `olmoearth-evaluate` | Per-class accuracy against your labels | **Analyze** |
-| 9 | `olmoearth-uncertainty` | Ensemble-disagreement confidence across Studio results | **Analyze** |
-| 11 | `olmoearth-qgis-bridge` | Tile URLs -> a QGIS `.qlr` layer + GDAL_WMS descriptor + XYZ URLs + SLD ramp + legend + a local `gdal_translate` COG recipe (key never embedded) | **Integrate** |
-| 12 | `olmoearth-data-export` | Export Studio projects + predictions to JSON, grouped by project or status | **Integrate** |
-| 13 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
-| 14 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate. It states the accuracy the verification tools (#18) measured in the same request, as they returned it: estimate, intervals, labels, design, seed. If none was measured, it says so. An accuracy figure the model typed is refused | **Report** |
-| 17 | `olmoearth-rslearn` | Guidance for running rslearn (the data + training engine under OlmoEarth): the 4-stage pipeline and fit/predict, as commands for you to run | **Configure** |
-| 18 | `olmoearth-review-set` | **Which windows to check first, without labels.** Ranks windows by the model's own top-1-minus-top-2 margin at your review budget (boundary-first optional), and reports the attainable ceiling `min(1, budget/error_rate)` so a capture is read against what was reachable. Scores: your own, a direct run's, or a Studio result's `[0, 1]` score or top-k class scores (a prediction submitted with `probability_output`); a Studio class map without them has hard classes only. Which of two class maps of one time is more accurate needs no scores: labels on a random sample of the windows where they differ (`design='disagreement'`). A direct model run's files (`score_area.py`'s or `from-olmoearth`'s), a Studio result's own files, the label-sample plan, the error estimate, the certified zone and its certificate, the two-map route and `olmoearth_compare_review`'s reading of dates need the `inferencex` extra (`pip install 'olmoearth-agent[inferencex]'`, olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13; `make setup` installs it there) | **Analyze** |
+| 4 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results, sample the output at a point, compare results with no ground truth (`olmoearth_compare_results`): a pair, a group, change over time as one model's dated results traced as a series (mode `series`: date-ordered, legend-calibrated shifts; estimate movement, not verified ground change), or ensemble-disagreement confidence across Studio results (mode `ensemble`) | **Run** |
+| 5 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
+| 6 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate. It states the accuracy the verification tools (#8) measured in the same request, as they returned it: estimate, intervals, labels, design, seed. If none was measured, it says so. An accuracy figure the model typed is refused | **Report** |
+| 7 | `olmoearth-rslearn` | Guidance for running rslearn (the data + training engine under OlmoEarth): the 4-stage pipeline and fit/predict, as commands for you to run | **Configure** |
+| 8 | `olmoearth-review-set` | **Which windows to check first, without labels.** Ranks windows by the model's own top-1-minus-top-2 margin at your review budget (boundary-first optional), and reports the attainable ceiling `min(1, budget/error_rate)` so a capture is read against what was reachable. Scores: your own, a direct run's, or a Studio result's `[0, 1]` score or top-k class scores (a prediction submitted with `probability_output`); a Studio class map without them has hard classes only. Which of two class maps of one time is more accurate needs no scores: labels on a random sample of the windows where they differ (`design='disagreement'`). A direct model run's files (`score_area.py`'s or `from-olmoearth`'s), a Studio result's own files, the label-sample plan, the error estimate, the certified zone and its certificate, the two-map route and `olmoearth_compare_review`'s reading of dates need the `inferencex` extra (`pip install 'olmoearth-agent[inferencex]'`, olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13; `make setup` installs it there) | **Analyze** |
 
 </details>
 
@@ -142,7 +136,7 @@ Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness d
 | **LLM** | **Default:** [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) (35B total / 3B active, hybrid Gated-DeltaNet + MoE), served locally as a 4-bit GGUF ([`unsloth/Qwen3.6-35B-A3B-GGUF`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) `UD-IQ4_XS`, ~17.7 GB). **Optional:** bring your own **cloud API** key, selected in the web UI (model autodetect; key never stored) |
 | **Serving** | [llama.cpp](https://github.com/ggml-org/llama.cpp) (`ghcr.io/ggml-org/llama.cpp:server-cuda`), OpenAI-compatible API, `--jinja` for tool calling: see [`docs/serving.md`](docs/serving.md) |
 | **Harness** | A catalog of function-call tools and a provenance manifest per call ([`PLAN.md`](PLAN.md)) |
-| **Skills** | 13-skill catalog ([`SKILLS.md`](SKILLS.md)); the instruction packages for #1-#3 and #17 are in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) |
+| **Skills** | 8-skill catalog ([`SKILLS.md`](SKILLS.md)); the instruction packages for #1-#3 and #7 are in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) |
 | **Studio API** | `https://olmoearth.allenai.org/api/v1`, Bearer `OLMOEARTH_API_KEY` ([docs](https://docs.olmoearth.allenai.org/)) |
 
 </details>
@@ -150,7 +144,7 @@ Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness d
 ## Docs & links
 
 - [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
-- [**SKILLS.md**](SKILLS.md): the 13-skill catalog (Prep / Configure / Run / Analyze / Integrate / Report)
+- [**SKILLS.md**](SKILLS.md): the 8-skill catalog (Prep / Configure / Run / Analyze / Report)
 - [**docs/VERIFICATION_DEMO.md**](docs/VERIFICATION_DEMO.md): the verification tools on a real map, written by `make verify-demo`
 - [**docs/CLAUDE_AS_MODEL.md**](docs/CLAUDE_AS_MODEL.md): a Claude Code session as the agent's model, and what was checked live
 - [**docs/CANON.md**](docs/CANON.md): the canonical facts the repo holds itself to

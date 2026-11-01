@@ -242,13 +242,13 @@ async def test_forced_skill_pins_run_via_system_prompt() -> None:
         llm,  # type: ignore[arg-type]
         _echo_registry(),
         studio=None,  # type: ignore[arg-type]
-        forced_skill="change-detection",
+        forced_skill="review-set",
     )
-    await _collect(agent, "did forest cover decline?")
+    await _collect(agent, "which windows should I check first?")
     system = llm.messages[0]
     assert system.role == "system"
     assert "FORCED SKILL" in system.content
-    assert "change-detection" in system.content
+    assert "review-set" in system.content
 
 
 @pytest.mark.asyncio

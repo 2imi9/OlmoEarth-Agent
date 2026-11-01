@@ -40,7 +40,7 @@ Full ~45 s walkthrough: [MP4](demo/olmoearth-agent-showcase.mp4); regenerate wit
 > appears the first time the agent calls `request_aoi`, `load_skill`,
 > `submit_prediction`, `get_prediction`, or `fetch_results`, then advances through
 > AOI → model → submit → poll → fetch → report. Plain Q&A, project lookups,
-> change-detection trajectories, and **comparisons** don't show it (they use their
+> series trajectories, and **comparisons** don't show it (they use their
 > own inline feedback, e.g. the "Scanning N/N" pill during a difference scan), so
 > a non-pipeline run never gets a misleading 7-step rail. Mapping lives in
 > [`js/run.js`](js/run.js) (`WF_STAGES`).

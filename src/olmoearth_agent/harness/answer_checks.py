@@ -190,7 +190,7 @@ class AnswerChecksMiddleware(AgentMiddleware):
         history = runtime.context.history
         return RunEvidence(
             tools=state.get("tool_records", []),
-            # The user's own words; never the saved preferences. An earlier
+            # The user's own words; never the system prompt. An earlier
             # assistant message is a source on the web only, where it was
             # checked when it was shown (a derived number is not a source on
             # the command line).

@@ -152,7 +152,7 @@ def test_the_verification_calls_are_kept_whole_with_their_seeds() -> None:
 
 
 def test_the_summary_lists_each_verification_call_with_what_repeats_it() -> None:
-    """Skill #13: the design, budget and seed (and the inputs, inline arrays
+    """Skill #5: the design, budget and seed (and the inputs, inline arrays
     counted, not copied), so a reader can draw the same sample again."""
     calls = _verified_log().verification_calls()
     assert calls[0] == {

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""How wrong is the map? Design-based estimation (skill #18, second half).
+"""How wrong is the map? Design-based estimation (skill #8, second half).
 
 The review set answers *which windows to open first*; it cannot say how wrong
 the map is, because it is chosen to hold errors: labelling it and dividing

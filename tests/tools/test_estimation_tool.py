@@ -1095,7 +1095,7 @@ async def test_certify_zone_with_too_few_labels_tests_no_level() -> None:
 
 @pytest.mark.asyncio
 async def test_an_estimate_and_a_zone_return_their_design_files_seed() -> None:
-    """The stakeholder report (skill #14) states the seed beside each estimate
+    """The stakeholder report (skill #6) states the seed beside each estimate
     and zone: each returns the seed of the design file it read, and a
     certified zone also returns the package's ISSUED_NOTE on its own."""
     zone_module = pytest.importorskip("oe_inferencex.certify.zone")

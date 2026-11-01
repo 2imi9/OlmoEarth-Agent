@@ -26,8 +26,9 @@ from olmoearth_agent.tools.registry import ToolRegistry
 _SKILLS_MD = Path(__file__).resolve().parents[2] / "SKILLS.md"
 
 #: The opt-in tools removed on 31 October 2026 with their code (outside
-#: inference examination, and not used): written out, so a catalog row or a
-#: text the agent sends that still names one is caught.
+#: inference examination, and not used), and the five default tools removed
+#: the same day (outside the verification scope): written out, so a catalog
+#: row or a text the agent sends that still names one is caught.
 REMOVED = (
     "olmoearth_automate",
     "olmoearth_cv_inflation_check",
@@ -39,6 +40,11 @@ REMOVED = (
     "olmoearth_area_of_applicability",
     "olmoearth_grade_review_rule",
     "olmoearth_change_detect",
+    "olmoearth_qgis_bridge",
+    "olmoearth_export_data",
+    "olmoearth_classification_metrics",
+    "olmoearth_remember",
+    "olmoearth_forget",
 )
 
 #: Every tool the default registry keeps (the plan's Keep rows), by name.
@@ -53,9 +59,7 @@ KEPT = (
     "olmoearth_fetch_results",
     "olmoearth_get_prediction_result",
     "olmoearth_pixel_value",
-    "olmoearth_export_data",
     "olmoearth_compare_results",
-    "olmoearth_classification_metrics",
     "olmoearth_review_set",
     "olmoearth_review_set_from_result",
     "olmoearth_scores_from_file",
@@ -68,11 +72,8 @@ KEPT = (
     "olmoearth_write_certificate",
     "olmoearth_verify_certificate",
     "olmoearth_case_narrative",
-    "olmoearth_qgis_bridge",
     "olmoearth_provenance_summary",
     "olmoearth_load_skill",
-    "olmoearth_remember",
-    "olmoearth_forget",
 )
 
 
@@ -87,14 +88,12 @@ def _turn_chars(registry: ToolRegistry) -> int:
     return len(json.dumps([asdict(s) for s in registry.active_specs()]))
 
 
-def test_catalog_rows_are_numbered_from_0_in_increasing_order() -> None:
-    """Row #0 first, then each row's number above the one before it.
+def test_catalog_covers_its_8_skills_numbered_1_to_8() -> None:
+    """Row #0 first, then the 8 numbered rows 1..8 in order, with no gap.
 
-    Gaps are allowed while the trim removes rows; the renumbering closes them.
+    The trim of 31 October 2026 renumbered the rows it kept.
     """
-    numbers = [s.number for s in SKILLS]
-    assert numbers[0] == 0
-    assert all(a < b for a, b in zip(numbers, numbers[1:]))
+    assert [s.number for s in SKILLS] == list(range(9))
 
 
 def test_every_catalogued_tool_is_actually_registered(default_env: None) -> None:
@@ -155,9 +154,9 @@ def test_each_kept_tool_is_in_the_default_registry(
 def test_the_default_registry_is_the_kept_tools_and_nothing_else(
     default_env: None,
 ) -> None:
-    """30 tools."""
+    """25 tools."""
     assert sorted(build_default_registry().names()) == sorted(KEPT)
-    assert len(KEPT) == 30
+    assert len(KEPT) == 25
 
 
 def test_no_tool_waits_for_its_skill(default_env: None) -> None:
@@ -199,7 +198,7 @@ def test_no_page_says_asta_covers_the_literature_search() -> None:
 
 
 def test_the_skills_that_were_opt_in_whole_are_gone() -> None:
-    """The five skills that were opt-in whole (#6, #8, #10, #15, #16) are gone."""
+    """The five skills that were opt-in whole are gone."""
     names = {s.name for s in SKILLS}
     for gone in (
         "olmoearth-baseline-compare",
@@ -209,6 +208,29 @@ def test_the_skills_that_were_opt_in_whole_are_gone() -> None:
         "olmoearth-negative-sampler",
     ):
         assert gone not in names, gone
+
+
+def test_the_rows_left_with_no_tool_of_their_own_are_gone() -> None:
+    """Change detection and uncertainty folded into #4; the rest went.
+
+    Change detection and ensemble disagreement are olmoearth_compare_results'
+    series and ensemble modes, which #4 lists; evaluate, the QGIS bridge and
+    the data export lost their tools on 31 October 2026.
+    """
+    names = {s.name for s in SKILLS}
+    for gone in (
+        "olmoearth-change-detection",
+        "olmoearth-evaluate",
+        "olmoearth-uncertainty",
+        "olmoearth-qgis-bridge",
+        "olmoearth-data-export",
+    ):
+        assert gone not in names, gone
+    (predict,) = [s for s in SKILLS if s.name == "olmoearth-predict"]
+    assert predict.number == 4
+    assert "olmoearth_compare_results" in predict.tools
+    assert "mode='series'" in predict.summary
+    assert "mode='ensemble'" in predict.summary
 
 
 def test_compare_results_is_the_tool_for_a_series(default_env: None) -> None:
@@ -339,10 +361,7 @@ def test_default_registry_exposes_foundational_and_provenance_tools(
         "olmoearth_get_prediction_result",
         "olmoearth_pixel_value",
         "olmoearth_compare_results",
-        "olmoearth_classification_metrics",
         "olmoearth_case_narrative",
-        "olmoearth_export_data",
-        "olmoearth_qgis_bridge",
         "olmoearth_provenance_summary",
         "olmoearth_load_skill",
     ):
@@ -400,7 +419,6 @@ def test_the_core_set_keeps_the_studio_review_estimation_and_compare_tools(
         "olmoearth_plan_label_sample",
         "olmoearth_estimate_map_error",
         "olmoearth_certify_zone",
-        "olmoearth_classification_metrics",
         "olmoearth_studio_label_inventory",
         "olmoearth_load_skill",
     ):
@@ -423,9 +441,9 @@ def test_a_default_turn_carries_under_8000_spec_tokens(default_env: None) -> Non
     design), 298 to olmoearth_estimate_map_error (the class seen; the map it
     names, or neither, by the sign test or interval) and 76 to
     olmoearth_compare_results (its pointer to the route), less the 101 of
-    olmoearth_load_skill's note on #6's group, now opt-in: 977 characters,
-    244 tokens. 6,575 + 244 = 6,819, so the bound was 6,850. The class-map
-    step adds, counted the same way, 476 characters to
+    olmoearth_load_skill's note on the baseline group, then opt-in: 977
+    characters, 244 tokens. 6,575 + 244 = 6,819, so the bound was 6,850. The
+    class-map step adds, counted the same way, 476 characters to
     olmoearth_plan_label_sample (the class design in its enum and
     description, the sentence on a Studio class map, and min_per_class with
     its "(all of a smaller class)", width, expected_error_rate and
@@ -497,6 +515,13 @@ def test_a_default_turn_carries_under_8000_spec_tokens(default_env: None) -> Non
     characters, 1 token. 7,990 + 1 = 7,991, under the same bound. These are
     counts by hand, not measurements. The trim of 31 October 2026 took no
     default spec and left no opt-in tool, and then the opt-in setting went
-    too, so every turn carries the default specs.
+    too, so every turn carries the default specs. It then took five default
+    specs off every turn (olmoearth_qgis_bridge, olmoearth_export_data,
+    olmoearth_classification_metrics, olmoearth_remember and
+    olmoearth_forget: about 3,000 characters, some 750 tokens, estimated from
+    their source rather than counted) and added 8 characters to
+    olmoearth_compare_results (the label route, plan then estimate, in place
+    of the metrics tool): about 7,991 - 750 + 2 = 7,243. The bound stays at
+    8,000, now looser by about that much.
     """
     assert _turn_chars(build_default_registry()) / 4 < 8_000

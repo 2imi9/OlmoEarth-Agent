@@ -59,7 +59,7 @@ def test_every_tool_of_the_default_registry_declares_its_capability() -> None:
 
 
 def test_every_declaration_is_one_short_line() -> None:
-    """The card's 30 default core tools fit 1,700 tokens; a line is a line."""
+    """The card's 25 default core tools fit 1,700 tokens; a line is a line."""
     registry = _registry()
     for name in registry.names():
         capability = registry.capability_of(name)
@@ -292,14 +292,6 @@ async def _series_needs_three_dates_of_one_model(_tmp: Path) -> None:
         "olmoearth_compare_results", {"result_ids": ids, "mode": "series"}, shared
     )
     _refused(same_dates, "needs >= 3 distinct dates")
-
-
-@probe("olmoearth_classification_metrics", "y_true and y_pred of the same length")
-async def _metrics_need_aligned_labels(_tmp: Path) -> None:
-    out = await _call(
-        "olmoearth_classification_metrics", {"y_true": [1, 2, 1], "y_pred": [1, 2]}
-    )
-    _refused(out, "must have the same length")
 
 
 @probe(
@@ -644,37 +636,6 @@ async def _verify_reads_only_the_scores_root(tmp: Path) -> None:
         },
     )
     _refused(out, "map_path must be under")
-
-
-@probe("olmoearth_export_data", "out_dir inside the workspace")
-async def _export_writes_only_the_workspace(tmp: Path) -> None:
-    out = await _call(
-        "olmoearth_export_data", {"out_dir": str(tmp.parent / "elsewhere")}
-    )
-    _refused(out, "resolves outside the workspace root")
-
-
-_STUDIO_TILES = "/api/v1/prediction-results/abc/tiles/{z}/{x}/{y}.png?property_name=s"
-
-
-@probe("olmoearth_qgis_bridge", "tile URLs on the Studio host")
-async def _qgis_needs_studio_tiles(_tmp: Path) -> None:
-    out = await _call(
-        "olmoearth_qgis_bridge",
-        {"tile_urls": ["https://tiles.example.org/{z}/{x}/{y}.png?property_name=s"]},
-    )
-    _refused(out, "refusing to build a QGIS auth pack for non-Studio host")
-
-
-@probe(
-    "olmoearth_qgis_bridge",
-    "make a Cloud-Optimized GeoTIFF (it returns a command for the user to run)",
-)
-async def _qgis_returns_a_cog_command(tmp: Path) -> None:
-    out = await _call("olmoearth_qgis_bridge", {"tile_urls": [_STUDIO_TILES]})
-    assert out["ok"] is True
-    assert "gdal_translate" in out["result"]["cog_recipe"]["command"]
-    assert not list(tmp.rglob("*.tif"))
 
 
 # --------------------------------------------------------------------------- the check

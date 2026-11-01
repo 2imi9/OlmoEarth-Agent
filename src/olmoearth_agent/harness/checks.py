@@ -31,8 +31,7 @@ themselves. Besides numbers, they read three keys a tool's result may carry
   with the test or interval and the labels of a grading that names it is
   the which-map rule followed, not a claim without labels. It reads
   whether ``whole_map_estimate`` is in the run (``accuracy_not_measured``
-  and ``error_rate_without_labels`` hold only while it is not, and while no
-  ``olmoearth_classification_metrics`` call computed an accuracy); that and
+  and ``error_rate_without_labels`` hold only while it is not); that and
   any other id are shown, never checked. ``mostly_edges`` reads every
   listing comparison's own ``differing_interior`` (the share of its
   differing windows whose every neighbour on the grid differs too), and
@@ -156,7 +155,7 @@ class RunEvidence:
     """What the answer may rest on: the run's tool calls and the user's words.
 
     ``user_messages`` are the brief and the user's turns of the history,
-    never the system prompt, the saved preferences or an assistant message.
+    never the system prompt or an assistant message.
     ``assistant_messages`` are the assistant's earlier turns of the history:
     on the ``"web"`` surface they were checked when first shown, so a number
     they state may be restated; on ``"cli"`` they are no source.
@@ -2178,8 +2177,6 @@ _TWO_MAP_DIFFERENCE_RE = re.compile(
     r"|\bpoints?\s+(?:higher|lower|more|less|above|below|ahead|behind)\b",
     re.I,
 )
-#: The tool that computes accuracy against labels the caller gives (skill #7).
-CLASSIFICATION_METRICS_TOOL = "olmoearth_classification_metrics"
 
 
 def _states_error_rate(s: str) -> bool:
@@ -2240,21 +2237,18 @@ def _two_map_difference(s: str, run: RunEvidence) -> bool:
 
 
 def _measured(run: RunEvidence) -> bool:
-    """Whether the run holds a measured error rate or accuracy.
+    """Whether the run holds a measured error rate.
 
     A ``whole_map_estimate`` fact (``olmoearth_estimate_map_error``,
     ``olmoearth_certify_zone`` and ``olmoearth_write_certificate`` return
-    one, from graded labels), or an accuracy
-    ``olmoearth_classification_metrics`` computed against the caller's
-    labels. The claims that no figure exists yet
-    (``error_rate_without_labels``, ``accuracy_not_measured``) are not read
-    in that run; the number check holds such a figure to the run's tool
-    results and user messages (:attr:`RunEvidence.pool`), not to that
-    estimate alone.
+    one, from graded labels) is the only measure: no tool of the agent
+    computes an accuracy against labels outside a design. The claims that no
+    figure exists yet (``error_rate_without_labels``,
+    ``accuracy_not_measured``) are not read in that run; the number check
+    holds such a figure to the run's tool results and user messages
+    (:attr:`RunEvidence.pool`), not to that estimate alone.
     """
-    return bool(run.facts("whole_map_estimate")) or any(
-        t.ok and t.name == CLASSIFICATION_METRICS_TOOL for t in run.tools
-    )
+    return bool(run.facts("whole_map_estimate"))
 
 
 def _error_rate_without_labels(s: str, record: ToolRecord, run: RunEvidence) -> bool:
@@ -2297,10 +2291,9 @@ def _accuracy_not_measured(s: str, record: ToolRecord, run: RunEvidence) -> bool
     accurate" repeated from a title (the report refuses a title or result
     typed with such a figure, :func:`states_accuracy_figure`). Not read once
     the run holds a measured error rate (a ``whole_map_estimate`` fact of
-    ``olmoearth_estimate_map_error`` or ``olmoearth_certify_zone``) or an
-    accuracy ``olmoearth_classification_metrics`` computed against the
-    caller's labels (:func:`_measured`); the number check holds a figure to
-    the run's tool results and user messages. Nor for a which-map grading's
+    ``olmoearth_estimate_map_error`` or ``olmoearth_certify_zone``,
+    :func:`_measured`); the number check holds a figure to the run's tool
+    results and user messages. Nor for a which-map grading's
     difference in accuracy (a minus b), which its next steps tell the
     answer to report, or, on the web surface, for a figure an earlier turn
     stated.
@@ -2324,7 +2317,9 @@ def _error_rate_regression(s: str, record: ToolRecord, run: RunEvidence) -> bool
         _unnegated(
             r"\b(?:error\s+rates?|accuracy|classification\s+metrics|confusion\s+matrix|"
             r"precision|recall|f1|misclassif\w*|how\s+wrong|"
-            r"olmoearth_classification_metrics|olmoearth_estimate_map_error)\b",
+            # any tool name with metrics in it: the agent has none, so a model
+            # that offers one offers accuracy it cannot compute
+            r"olmoearth_\w*metrics|olmoearth_estimate_map_error)\b",
             s,
         )
     )

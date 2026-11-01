@@ -39,14 +39,12 @@ from olmoearth_agent.reporting.narrative import (
     HOW_TO_MEASURE,
     INTERVAL_NAMES,
     LABELS_CHANGED,
-    LABELS_METRICS_NOTE,
     MEASURED_LEAD,
     NOT_MEASURED,
     ZONE_MEANING,
 )
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import build_estimation_tools
-from olmoearth_agent.tools.evaluate import build_evaluate_tools
 from olmoearth_agent.tools.narrative import build_narrative_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.statistical_rules import percent
@@ -54,7 +52,6 @@ from olmoearth_agent.tools.statistical_rules import percent
 PLAN = "olmoearth_plan_label_sample"
 GRADE = "olmoearth_estimate_map_error"
 CERTIFY = "olmoearth_certify_zone"
-METRICS = "olmoearth_classification_metrics"
 NARRATIVE = "olmoearth_case_narrative"
 
 
@@ -107,7 +104,6 @@ class _Run:
         self.records: list[ToolRecord] = []
         self.registry = ToolRegistry()
         self.registry.register_all(build_estimation_tools())
-        self.registry.register_all(build_evaluate_tools())
         self.registry.register_all(build_narrative_tools())
 
     async def dispatch(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -585,7 +581,6 @@ async def test_a_report_without_measurement_says_so_and_states_no_figure() -> No
     assert report["accuracy"] == {
         "measured": False,
         "which_map": False,
-        "labels_metrics": False,
         "statements": [],
     }
     assert report["must_state"] == [rules.NOT_MEASURED_MUST_STATE]
@@ -652,27 +647,6 @@ async def test_a_which_map_grading_alone_measures_neither_maps_accuracy(
     assert check_forbidden_claims(difference, evidence) == []
     own = "Map a's accuracy is 94%."
     assert [v["text"] for v in check_forbidden_claims(own, evidence)] == [own]
-
-
-@pytest.mark.asyncio
-async def test_accuracy_against_given_labels_is_not_an_estimated_error_rate() -> None:
-    """olmoearth_classification_metrics (skill #7) computes accuracy against
-    labels the caller gives: the report says it is not the map's error rate
-    from a planned sample, and an answer may state that accuracy."""
-    run = _Run()
-    metrics = await run.call(METRICS, {"y_true": [0, 1, 1, 0], "y_pred": [0, 1, 0, 0]})
-    assert metrics["accuracy"] == 0.75
-    report = await run.call(NARRATIVE, _brief())
-    section = _section(report["markdown"])
-    assert section == (
-        f"{ACCURACY_HEADING}\n\n{NOT_MEASURED}\n\n{LABELS_METRICS_NOTE}\n\n"
-        f"{HOW_TO_MEASURE}\n"
-    )
-    assert report["accuracy"]["labels_metrics"] is True
-    # Its must_state holds beside that accuracy: no error rate was estimated.
-    assert report["must_state"] == [rules.NOT_MEASURED_MUST_STATE]
-    stated = "Accuracy against the 4 labels you gave is 75.0%."
-    assert check_forbidden_claims(stated, run.evidence()) == []
 
 
 # --------------------------------------------------------------------------- a figure the model typed

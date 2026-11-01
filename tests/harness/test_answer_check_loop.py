@@ -311,7 +311,6 @@ def _patch_cli(monkeypatch: pytest.MonkeyPatch, llm: Any) -> Any:
     monkeypatch.setattr(cli, "StudioClient", _Studio)
     monkeypatch.setattr(cli, "build_default_registry", _registry)
     monkeypatch.setattr(cli, "SkillLoader", _Skills)
-    monkeypatch.setattr(cli, "preferences_block", lambda: "")
     return cli
 
 
@@ -327,15 +326,12 @@ def test_the_cli_prints_the_marked_answer_and_names_the_check(
     assert "(the direction check still flags 1 statement(s)" in out.err
 
 
-def test_the_web_bridge_streams_the_checks_on_the_web_surface(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_web_bridge_streams_the_checks_on_the_web_surface() -> None:
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
     from olmoearth_agent import serve
 
-    monkeypatch.setattr(serve, "preferences_block", lambda: "")
     answer = f"{_BACKWARDS} The first 30 windows are listed above."
     with TestClient(serve.app) as client:
         serve.app.state.llm = _Scripted(

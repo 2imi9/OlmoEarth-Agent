@@ -11,8 +11,8 @@ The verification tools' calls (:data:`VERIFICATION_TOOLS`: the label plan,
 the error estimate, the certified zone, and the certificate written and
 checked, through olmoearth-inferencex) are also kept whole, as
 :class:`VerificationCall` (``ProvenanceLog.verification``): the stakeholder
-report (skill #14) states their numbers as the tools returned them, and the
-provenance summary (skill #13) lists each call's design and seed, from which a
+report (skill #6) states their numbers as the tools returned them, and the
+provenance summary (skill #5) lists each call's design and seed, from which a
 reader can draw the same sample again (a certificate's seed is the one its
 plan took from the map).
 """

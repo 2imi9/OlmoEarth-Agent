@@ -1183,6 +1183,40 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   opted-in registry, card or turn with the default one, or counted opt-in
   tools, rows or skills, are deleted or test the default registry alone;
   the registry tests' fixture now clears `OLMOEARTH_READ_ONLY` instead.
+- **Default tools outside the verification scope, and the catalog
+  renumbered.** Removed with their code and tests, as outside checking a
+  map: `olmoearth_qgis_bridge` (`tools/qgis.py`, `reporting/qgis.py`: a
+  desktop layer pack that read no score and no label, which no live run
+  used; the web UI's SLD download goes with it), `olmoearth_export_data`
+  (`tools/export.py`, `reporting/export.py`: a metadata dump that repeated
+  `olmoearth_load_context` and `olmoearth_search_predictions`),
+  `olmoearth_remember` and `olmoearth_forget` (`tools/memory.py`,
+  `harness/memory.py`: the cross-thread preference memory, which its own
+  docstring called a persistence vector for prompt injection; the command
+  line, the web bridge and the replay bridge no longer put a memory block
+  in the system prompt, and a bridge run begun before this still loads,
+  its recorded `memory_block` no longer read) and
+  `olmoearth_classification_metrics` (`tools/evaluate.py` and the
+  `evaluation` package: accuracy against labels outside a design, with no
+  interval, which every brief of agent trial 13 forbade). The answer checks
+  get stricter: a successful call of that tool no longer exempts an answer
+  from `accuracy_not_measured` and `error_rate_without_labels`, so only a
+  `whole_map_estimate` (an estimate, a zone or a certificate from graded
+  labels) does; the stakeholder report drops `LABELS_METRICS_NOTE` and its
+  accuracy result's `labels_metrics` key, and the web UI its metrics bar
+  chart. `olmoearth_compare_results`' description points accuracy at the
+  label plan and its estimate instead. The catalog rows left with no tool
+  of their own go: change detection and uncertainty become #4's text (the
+  comparison tool's series and ensemble modes stay), and evaluate, the QGIS
+  bridge and the data export are dropped with their web UI cards, the
+  Integrate stage with them. The rows left are renumbered 1 to 8
+  (provenance #5, case narrative #6, rslearn #7, review set #8) in the
+  registry, SKILLS.md (its headings and anchors), the README, PLAN, CANON,
+  the web UI's cards, landing page and "/" menu, the docstrings that cite a
+  row, and the tests, which again ask for rows 1 to N with no gap. The
+  default registry holds 25 tools, all sent on every turn; the soul drops
+  its memory rule and the metrics sentence, and its typical order's last
+  step names only kept skills.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

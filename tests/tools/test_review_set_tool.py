@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Tests for the olmoearth-review-set tool bundle (skill #18)."""
+"""Tests for the olmoearth-review-set tool bundle (skill #8)."""
 
 from __future__ import annotations
 
@@ -318,20 +318,20 @@ async def test_review_set_places_a_files_rows_on_the_files_own_grid(
     assert "names no grid" in ungridded["grid_note"]
 
 
-def test_skill_9_routes_the_error_ranking_question_to_skill_18() -> None:
-    """#9 owns self-consistency; #18 owns which windows are wrong.
+def test_the_ensemble_mode_routes_the_error_ranking_question_to_skill_8() -> None:
+    """The ensemble mode owns self-consistency; #8 owns which windows are wrong.
 
-    #9's disagreement signal is the comparison tool's ensemble mode, so that
-    tool routes the question to #18.
+    The disagreement signal (once skill #9, now #4's) is the comparison tool's
+    ensemble mode, so that tool routes the question to #8.
     """
     for tool in build_compare_tools():
         assert "olmoearth_review_set" in tool.spec.description
 
 
-def test_skill_18_says_it_is_not_ood_detection_and_routes_back_to_skill_9() -> None:
-    """Neither skill silently answers the other's question.
+def test_skill_8_is_not_ood_detection_and_routes_back_to_the_ensemble() -> None:
+    """Neither answers the other's question unasked.
 
-    #9's signal, the ensemble mode, is named; the Area of Applicability, which
+    The ensemble mode's signal is named; the Area of Applicability, which
     left the agent in the trim of 31 October 2026, is not, so the model is
     never pointed at a tool it cannot call.
     """

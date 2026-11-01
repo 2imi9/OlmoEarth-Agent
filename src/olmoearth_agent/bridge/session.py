@@ -3,8 +3,8 @@
 """One bridge step: a fresh ``LeadAgent`` replays the run, then waits or ends.
 
 :func:`step` builds the agent as ``olmoearth-agent`` does (``cli.py``: the
-default registry, ``StudioClient.from_env``, a fresh ``ThreadState``, the
-skill index and the memory block), with :class:`ScriptedLLM` as its model,
+default registry, ``StudioClient.from_env``, a fresh ``ThreadState`` and the
+skill index), with :class:`ScriptedLLM` as its model,
 the claim check off, not ``local`` (the budget clause is for the small local
 model) and on the command line's surface. It runs ``run_stream`` as a task:
 the recorded responses are replayed and the cached tool results served
@@ -58,7 +58,6 @@ from olmoearth_agent.bridge.scripted import RecordedResponse, ScriptedLLM
 from olmoearth_agent.bridge.store import RunDir
 from olmoearth_agent.harness import spill
 from olmoearth_agent.harness.agent import AgentResult, LeadAgent
-from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message, Role, ToolSpec
@@ -122,9 +121,12 @@ def build_agent(
 ) -> LeadAgent:
     """A ``LeadAgent`` as ``olmoearth-agent`` builds one, for the run ``brief``.
 
-    ``cli.py``'s ``run_brief`` with the run's skill index and memory block,
-    the claim check off, ``local`` off and the command line's surface. The
-    provenance log takes the run's id, so each step's log names the run.
+    ``cli.py``'s ``run_brief`` with the run's skill index, the claim check
+    off, ``local`` off and the command line's surface. The provenance log
+    takes the run's id, so each step's log names the run. A run begun before
+    the preference memory went (31 October 2026) also recorded a
+    ``memory_block``; it is no longer read, so its directory still loads, and
+    a missing ``skill_index`` reads as ``''``.
     """
     settings = brief["settings"]
     return LeadAgent(
@@ -132,8 +134,7 @@ def build_agent(
         registry,
         cast(StudioClient, studio),
         state=ThreadState(provenance=ProvenanceLog(run_id=str(brief["run_id"]))),
-        skill_index=str(settings["skill_index"]),
-        memory_block=str(settings["memory_block"]),
+        skill_index=str(settings.get("skill_index", "")),
         local=False,
         check_claims=False,
         surface=SURFACE,
@@ -295,7 +296,6 @@ async def begin(
     max_turns: int = DEFAULT_MAX_TURNS,
     history: Any = None,
     skill_index: str | None = None,
-    memory_block: str | None = None,
     registry_factory: RegistryFactory | None = None,
     studio: StudioClient | None = None,
 ) -> dict[str, Any]:
@@ -311,10 +311,9 @@ async def begin(
         The turn cap, as ``olmoearth-agent --max-turns``.
     history
         Prior turns, ``[{"role": "user" | "assistant", "content": ...}]``.
-    skill_index, memory_block
-        The system prompt's skill index and memory block; by default read now
-        (``SkillLoader().index()``, ``preferences_block()``) and kept for the
-        whole run.
+    skill_index
+        The system prompt's skill index; by default read now
+        (``SkillLoader().index()``) and kept for the whole run.
     registry_factory
         Builds the tool registry each step; ``build_default_registry``.
     studio
@@ -330,8 +329,6 @@ async def begin(
         raise BridgeError("the brief is empty")
     if skill_index is None:
         skill_index = SkillLoader().index()
-    if memory_block is None:
-        memory_block = preferences_block()
     record: dict[str, Any] = {
         "bridge": BRIDGE_VERSION,
         "run_id": uuid.uuid4().hex,
@@ -344,7 +341,6 @@ async def begin(
             "local": False,
             "check_claims": False,
             "skill_index": skill_index,
-            "memory_block": memory_block,
             # It decides the tools offered and the capability card: a later
             # step with another setting is refused (_check_switches).
             "read_only": opted_in(READ_ONLY_ENV),
@@ -565,20 +561,17 @@ def system_prompt(
     *,
     registry_factory: RegistryFactory | None = None,
     skill_index: str | None = None,
-    memory_block: str | None = None,
 ) -> str:
     """The system prompt a new run's first model call gets.
 
-    The soul, the capability card of the registry's tools, the skill index and
-    the memory block, as :func:`begin` would build them now.
+    The soul, the capability card of the registry's tools and the skill
+    index, as :func:`begin` would build them now.
     """
     if skill_index is None:
         skill_index = SkillLoader().index()
-    if memory_block is None:
-        memory_block = preferences_block()
     record: dict[str, Any] = {
         "run_id": "prompt",
-        "settings": {"skill_index": skill_index, "memory_block": memory_block},
+        "settings": {"skill_index": skill_index},
     }
     factory = registry_factory or build_default_registry
     return build_agent(ScriptedLLM([]), factory(), None, record).system_prompt

@@ -50,8 +50,7 @@ uv run pytest -m integration        # needs OLMOEARTH_API_KEY
 │   ├── bridge/          # `olmoearth-agent-bridge`: a Claude Code session as the model (docs/CLAUDE_AS_MODEL.md)
 │   ├── skills/          # catalog (registry.py), loader, SKILL.md packages (packages/)
 │   ├── analysis/        # computations behind the tools (comparison, review set, ...)
-│   ├── evaluation/      # classification metrics
-│   ├── reporting/       # case narrative + QGIS export
+│   ├── reporting/       # case narrative
 │   ├── provenance/      # tool-call manifest + replay
 │   └── security/        # egress allowlist + SSRF guard (PLAN.md §3.4)
 └── tests/               # unit + integration (mirrors the package layout)

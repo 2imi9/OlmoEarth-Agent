@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Stakeholder narrative: freshness gate and measured accuracy (skill #14).
+"""Stakeholder narrative: freshness gate and measured accuracy (skill #6).
 
 Assembles a Markdown report from prediction results + the run's
 provenance, and **refuses to render stale tiles** past a configurable
@@ -57,9 +57,6 @@ CERTIFY_TOOL = "olmoearth_certify_zone"
 #: The certificate a certified zone is packed into, and its check.
 WRITE_CERTIFICATE_TOOL = "olmoearth_write_certificate"
 VERIFY_CERTIFICATE_TOOL = "olmoearth_verify_certificate"
-#: The tool that computes accuracy against labels the caller gives (skill #7):
-#: agreement with those labels, not an error rate estimated from a design.
-METRICS_TOOL = "olmoearth_classification_metrics"
 
 #: The accuracy section's heading.
 ACCURACY_HEADING = "## How accurate is this map"
@@ -85,13 +82,6 @@ HOW_TO_MEASURE = (
     "its own: an error rate estimated in an earlier message is stated here only "
     "when olmoearth_estimate_map_error is called again in this request, with "
     "that design_path and its labels."
-)
-#: Said beside :data:`NOT_MEASURED` when the request computed accuracy
-#: against labels the caller gave (``olmoearth_classification_metrics``).
-LABELS_METRICS_NOTE = (
-    "olmoearth_classification_metrics computed accuracy in this request against "
-    "labels given to it: agreement with those labels, which this section does "
-    "not state, not the map's error rate estimated from a planned sample."
 )
 #: Said when the request graded only which of two maps is more accurate.
 NEITHER_MAP_MEASURED = (
@@ -929,9 +919,7 @@ def _which_map(
     return lines, statement
 
 
-def accuracy_section(
-    verification: Iterable[Any], *, labels_metrics: bool = False
-) -> tuple[list[str], dict[str, Any]]:
+def accuracy_section(verification: Iterable[Any]) -> tuple[list[str], dict[str, Any]]:
     """The report's "How accurate is this map" section, from the request's calls.
 
     Parameters
@@ -940,10 +928,6 @@ def accuracy_section(
         The request's verification calls (``ProvenanceLog.verification``, or
         mappings with ``tool``, ``arguments``, ``ok`` and ``result``), in
         call order. Only calls that ran and computed are read.
-    labels_metrics
-        Whether the request computed accuracy against labels the caller gave
-        (``olmoearth_classification_metrics``): said beside a section that
-        states no error rate, as what that accuracy is not.
 
     Returns
     -------
@@ -955,7 +939,7 @@ def accuracy_section(
         carries that estimate, certificate written or not; a certificate
         result without it states no error rate and measures nothing),
         ``which_map`` (a which-map grading
-        was), ``labels_metrics``, and ``statements``, each statement's kind,
+        was), and ``statements``, each statement's kind,
         map, design, seed, design file, labels and figures, copied from the
         tool result, with whether its labels changed after an earlier result
         on its design file and, for a zone, what it changed after an earlier
@@ -1111,14 +1095,10 @@ def accuracy_section(
     elif graded:
         lines += [MEASURED_LEAD, "", *body, NEITHER_MAP_MEASURED, ""]
     else:
-        lines += [NOT_MEASURED, ""]
-        if labels_metrics:
-            lines += [LABELS_METRICS_NOTE, ""]
-        lines += [HOW_TO_MEASURE, "", *body]
+        lines += [NOT_MEASURED, "", HOW_TO_MEASURE, "", *body]
     accuracy: dict[str, Any] = {
         "measured": measured,
         "which_map": bool(graded),
-        "labels_metrics": labels_metrics,
         "statements": statements,
     }
     return lines, accuracy
@@ -1129,21 +1109,6 @@ def _entry_field(entry: Any, key: str) -> Any:
     if isinstance(entry, Mapping):
         return entry.get(key)
     return getattr(entry, key, None)
-
-
-def labels_metrics_ran(entries: Iterable[Any]) -> bool:
-    """Whether a provenance log's entries hold a successful metrics call.
-
-    ``olmoearth_classification_metrics`` computes accuracy against labels the
-    caller gives; its entry's ``response_summary`` records whether it ran.
-    """
-    for entry in entries:
-        summary = _entry_field(entry, "response_summary")
-        if _entry_field(entry, "api_call") == METRICS_TOOL and (
-            isinstance(summary, Mapping) and summary.get("ok")
-        ):
-            return True
-    return False
 
 
 # --------------------------------------------------------------------------- the report
@@ -1232,9 +1197,7 @@ def build_narrative(
     entries = list(getattr(provenance, "entries", provenance) or [])
     if verification is None:
         verification = getattr(provenance, "verification", None) or []
-    section, accuracy = accuracy_section(
-        verification, labels_metrics=labels_metrics_ran(entries)
-    )
+    section, accuracy = accuracy_section(verification)
     lines += section
 
     calls: list[dict[str, Any]] = []

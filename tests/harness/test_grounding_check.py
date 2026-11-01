@@ -275,10 +275,10 @@ async def test_the_brief_and_the_users_history_are_sources() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_earlier_answer_and_the_saved_preferences_are_not_sources() -> None:
+async def test_an_earlier_answer_and_the_skill_index_are_not_sources() -> None:
     """A number the model derived in an earlier answer ("~23%", exp86's
-    69/300) is not evidence for the next one, and neither is the memory
-    block, which is part of the system prompt."""
+    69/300) is not evidence for the next one, and neither is the skill
+    index, which is part of the system prompt."""
     history = [
         Message(role="user", content="how wrong is it?"),
         Message(role="assistant", content="About 23% of windows are wrong."),
@@ -287,8 +287,8 @@ async def test_an_earlier_answer_and_the_saved_preferences_are_not_sources() -> 
     events = await _events(_agent(llm), "and now?", history=history)
     assert _checks(events)[0]["unsupported"] == ["23%"]
 
-    llm = _Scripted([_answer("The grid is 16."), _answer("The grid is as saved.")])
-    agent = _agent(llm, memory_block="Saved preferences: grid 16")
+    llm = _Scripted([_answer("The grid is 16."), _answer("The grid is as listed.")])
+    agent = _agent(llm, skill_index="- olmoearth-predict: grid 16")
     events = await _events(agent, "which grid?")
     assert _checks(events)[0]["unsupported"] == ["16"]
 
@@ -366,7 +366,6 @@ def _patch_cli(monkeypatch: pytest.MonkeyPatch, llm: Any) -> Any:
     monkeypatch.setattr(cli, "StudioClient", _Studio)
     monkeypatch.setattr(cli, "build_default_registry", _registry)
     monkeypatch.setattr(cli, "SkillLoader", _Skills)
-    monkeypatch.setattr(cli, "preferences_block", lambda: "")
     return cli
 
 
@@ -394,13 +393,12 @@ def test_the_cli_names_numbers_still_unsupported_on_stderr(
     assert "[numbers]" not in out.err  # the rewrite request is trace-only
 
 
-def test_the_web_bridge_streams_the_check(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_web_bridge_streams_the_check() -> None:
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
     from olmoearth_agent import serve
 
-    monkeypatch.setattr(serve, "preferences_block", lambda: "")
     with TestClient(serve.app) as client:
         serve.app.state.llm = _Scripted(
             [_summary_call(), _answer(_DRAFT), _answer(_STILL)]

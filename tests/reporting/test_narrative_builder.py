@@ -14,7 +14,6 @@ from olmoearth_agent.reporting.narrative import (
     HOW_TO_MEASURE,
     INTERVAL_NAMES,
     LABELS_CHANGED,
-    LABELS_METRICS_NOTE,
     MAP_NOT_GIVEN,
     MAP_NOT_IN_REQUEST,
     MEASURED_LEAD,
@@ -26,7 +25,6 @@ from olmoearth_agent.reporting.narrative import (
     accuracy_section,
     build_narrative,
     freshness_check,
-    labels_metrics_ran,
     typed_text,
 )
 
@@ -459,25 +457,7 @@ def test_labels_changed_on_a_design_file_are_said() -> None:
 def test_the_section_says_when_nothing_was_measured() -> None:
     lines, accuracy = accuracy_section([])
     assert lines == [ACCURACY_HEADING, "", NOT_MEASURED, "", HOW_TO_MEASURE, ""]
-    assert accuracy == {
-        "measured": False,
-        "which_map": False,
-        "labels_metrics": False,
-        "statements": [],
-    }
-    # Accuracy against given labels (skill #7) is said to be no error rate.
-    lines, accuracy = accuracy_section([], labels_metrics=True)
-    assert lines == [
-        ACCURACY_HEADING,
-        "",
-        NOT_MEASURED,
-        "",
-        LABELS_METRICS_NOTE,
-        "",
-        HOW_TO_MEASURE,
-        "",
-    ]
-    assert accuracy["labels_metrics"] is True
+    assert accuracy == {"measured": False, "which_map": False, "statements": []}
     # A which-map grading alone says which map is more accurate, not how
     # accurate either is.
     graded, _ = accuracy_section([_call(_GRADE, _GRADED)])
@@ -487,9 +467,10 @@ def test_the_section_says_when_nothing_was_measured() -> None:
 
 def test_build_narrative_reads_the_logs_verification_calls() -> None:
     """The report takes the verification calls the way it takes provenance:
-    from the run's log, never from the caller's arguments; a successful
-    classification-metrics call in the log is said beside a section that
-    states no error rate."""
+    from the run's log, never from the caller's arguments; a call of the
+    classification-metrics tool, which went on 31 October 2026, in an older
+    log measures nothing and adds nothing to a section that states no error
+    rate."""
     log = ProvenanceLog(run_id="r9")
     log.record_tool_call(
         _GRADE,
@@ -510,13 +491,9 @@ def test_build_narrative_reads_the_logs_verification_calls() -> None:
         {"ok": True, "result": {"accuracy": 1.0, "n": 1}},
     )
     out = build_narrative("Run", [], provenance=metrics, now=NOW)
-    assert out["accuracy"]["labels_metrics"] is True
-    assert LABELS_METRICS_NOTE in out["markdown"]
-    failed = ProvenanceLog(run_id="r11")
-    failed.record_tool_call(
-        "olmoearth_classification_metrics", {}, {"ok": False, "error": "e"}
-    )
-    assert labels_metrics_ran(failed.entries) is False
+    assert out["accuracy"] == {"measured": False, "which_map": False, "statements": []}
+    section = [ACCURACY_HEADING, "", NOT_MEASURED, "", HOW_TO_MEASURE, ""]
+    assert "\n".join(section) in out["markdown"]
 
 
 def test_the_text_the_report_renders_from_its_caller() -> None:

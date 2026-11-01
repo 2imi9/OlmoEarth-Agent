@@ -3,7 +3,7 @@
 """The skill-loading tool: ``olmoearth_load_skill``.
 
 Two kinds of skill load through it. An instruction skill (a ``SKILL.md``
-package, #1-#3 and #17, in ``skills/packages/``) returns its full steps; the
+package, #1-#3 and #7, in ``skills/packages/``) returns its full steps; the
 index of those skills is already in the system prompt, so there is no listing
 tool.
 A skill whose tools are deferred (registered with a ``group``; see

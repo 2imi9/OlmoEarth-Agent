@@ -134,7 +134,6 @@ def test_the_cli_prints_the_forced_answer(
     monkeypatch.setattr(cli, "StudioClient", _Studio)
     monkeypatch.setattr(cli, "build_default_registry", _registry)
     monkeypatch.setattr(cli, "SkillLoader", _Skills)
-    monkeypatch.setattr(cli, "preferences_block", lambda: "")
     code = cli.main(["plan 300 labels", "--max-turns", "3", "--show-trace"])
     out = capsys.readouterr()
     assert code == 0
@@ -143,15 +142,12 @@ def test_the_cli_prints_the_forced_answer(
     assert out.err.count("[FAIL] olmoearth_plan_label_sample") == 3
 
 
-def test_the_web_bridge_streams_the_same_events(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_web_bridge_streams_the_same_events() -> None:
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
 
     from olmoearth_agent import serve
 
-    monkeypatch.setattr(serve, "preferences_block", lambda: "")
     with TestClient(serve.app) as client:
         serve.app.state.llm = _NeverGivesUp()
         serve.app.state.registry = _registry()

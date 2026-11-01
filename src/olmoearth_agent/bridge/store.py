@@ -3,8 +3,8 @@
 """A bridge run's directory: what one step reads and writes.
 
 - ``brief.json``: the brief, the history and the run's settings, written once
-  by ``begin`` (the skill index and memory block are kept as they were then,
-  as one ``olmoearth-agent`` run builds its prompt once).
+  by ``begin`` (the skill index is kept as it was then, as one
+  ``olmoearth-agent`` run builds its prompt once).
 - ``responses.jsonl``: the model's responses so far, one line per model call,
   each with the fingerprint of the request it answered.
 - ``tool_cache.jsonl``: each tool handler invocation's outcome, in call order,

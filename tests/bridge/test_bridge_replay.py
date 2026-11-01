@@ -168,12 +168,11 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 async def _begin(run: Path, factory: Factory) -> dict[str, Any]:
-    """Begin a run of the brief, with no skill index and no memory."""
+    """Begin a run of the brief, with no skill index."""
     return await begin(
         run,
         _BRIEF,
         skill_index="",
-        memory_block="",
         registry_factory=factory,
         studio=_studio(),
     )
@@ -219,7 +218,6 @@ async def test_a_run_step_by_step_is_the_loop_run_at_once(tmp_path: Path) -> Non
         _studio(),
         state=ThreadState(provenance=ProvenanceLog(run_id="direct")),
         skill_index="",
-        memory_block="",
         local=False,
         check_claims=False,
         surface="cli",
@@ -501,7 +499,6 @@ def test_the_final_notes_are_the_command_line_s(
     monkeypatch.setattr(cli, "StudioClient", _Studio)
     monkeypatch.setattr(cli, "build_default_registry", factory)
     monkeypatch.setattr(cli, "SkillLoader", _Skills)
-    monkeypatch.setattr(cli, "preferences_block", lambda: "")
     assert cli.main([_BRIEF, "--show-trace"]) == 0
     printed = capsys.readouterr()
 
@@ -641,7 +638,6 @@ async def test_a_setting_s_card_line_reaches_the_model_through_the_replay(
         _studio(),
         state=ThreadState(provenance=ProvenanceLog(run_id="direct")),
         skill_index="",
-        memory_block="",
         local=False,
         check_claims=False,
         surface="cli",
@@ -687,7 +683,6 @@ async def test_a_refused_key_s_hint_reaches_the_model_through_the_replay(
         _studio(),
         state=ThreadState(provenance=ProvenanceLog(run_id="direct")),
         skill_index="",
-        memory_block="",
         local=False,
         check_claims=False,
         surface="cli",
@@ -898,6 +893,28 @@ async def test_the_read_only_switch_is_kept_for_the_whole_run(
     assert calls == {}
     monkeypatch.delenv(READ_ONLY_ENV)
     assert (await _step(run, _MEASURE_A, factory))["model_call"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_run_recorded_with_a_memory_block_still_steps(tmp_path: Path) -> None:
+    # A run begun before the preference memory went (31 October 2026)
+    # recorded a memory_block, which is no longer read, and a missing
+    # skill_index reads as "": such a run directory still loads and steps.
+    # The replay checks the first call's fingerprint, system prompt included,
+    # so a prompt that took the old block in would stop the step.
+    calls: dict[str, int] = {}
+    factory = partial(_registry, calls)
+    run = tmp_path / "run"
+    await _begin(run, factory)
+    path = run / "brief.json"
+    brief = json.loads(path.read_text())
+    assert "memory_block" not in brief["settings"]
+    brief["settings"]["memory_block"] = "Durable user preferences: grid 16"
+    del brief["settings"]["skill_index"]
+    path.write_text(json.dumps(brief))
+    view = await _step(run, _MEASURE_A, factory)
+    assert view["model_call"] == 2
+    assert "Durable user preferences" not in json.dumps(view)
 
 
 def _lines_ok(path: Path) -> bool:

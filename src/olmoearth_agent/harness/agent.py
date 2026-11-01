@@ -157,7 +157,7 @@ def _forced_skill_clause(skill: str) -> str:
     (instead of the client rewriting the user's brief). Works for both the
     vendored instruction skills - loaded via ``olmoearth_load_skill`` - and the
     Python tool-bundle skills, which are invoked directly. ``skill`` is the webui
-    slug (e.g. ``change-detection``); the model resolves it against the skill
+    slug (e.g. ``review-set``); the model resolves it against the skill
     index and tool names.
     """
     return (
@@ -231,7 +231,6 @@ class LeadAgent:
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         skill_index: str = "",
         forced_skill: str = "",
-        memory_block: str = "",
         local: bool = False,
         check_numbers: bool = True,
         check_answer: bool = True,
@@ -253,7 +252,7 @@ class LeadAgent:
         self.forced_skill = forced_skill
         #: The prompt the card follows (the soul, unless one was passed).
         self._soul = system_prompt
-        #: What follows the card: skill index, memory, forced skill, budget.
+        #: What follows the card: skill index, forced skill, budget.
         tail = ""
         # Check the answer against the run before it is shown, unless
         # switched off here or by OLMOEARTH_CHECK_NUMBERS=0 (the numbers) and
@@ -275,10 +274,6 @@ class LeadAgent:
                 "\n\nAvailable instruction skills (call olmoearth_load_skill "
                 "with the name to get full steps):\n" + skill_index
             )
-        if memory_block:
-            # Cross-thread memory: durable user preferences (rendered by
-            # harness/memory.py, already framed as data-not-instructions).
-            tail += "\n\n" + memory_block
         if forced_skill:
             # Server-side skill routing: pin this run to the user-chosen skill.
             tail += _forced_skill_clause(forced_skill)

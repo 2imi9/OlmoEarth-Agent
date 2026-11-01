@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Progressive-disclosure loader for the agent's agentskills.io packages.
 
-The four instruction skills (catalog #1-#3 and #17: data-prep,
+The four instruction skills (catalog #1-#3 and #7: data-prep,
 studio-job-config, embeddings, rslearn) ship inside this package, under
 ``olmoearth_agent/skills/packages/``, so a wheel install carries them. They
 were moved here from ``2imi9/OlmoEarth-Skills`` (now frozen); that

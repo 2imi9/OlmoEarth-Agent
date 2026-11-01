@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Tests for the label-free review-set ranking (skill #18)."""
+"""Tests for the label-free review-set ranking (skill #8)."""
 
 from __future__ import annotations
 

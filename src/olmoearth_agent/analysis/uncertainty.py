@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Ensemble-disagreement confidence (skill #9, ``olmoearth-uncertainty``).
+"""Ensemble-disagreement confidence (skill #4, compare_results' ensemble mode).
 
 Pure Python, no heavy deps. :func:`prediction_confidence` is the
 ensemble-disagreement *confidence map*: epistemic uncertainty from the spread

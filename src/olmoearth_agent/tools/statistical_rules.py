@@ -214,7 +214,7 @@ def error_rate_without_labels() -> dict[str, str]:
     )
 
 
-#: What a stakeholder report (skill #14) of a request that estimated no error
+#: What a stakeholder report (skill #6) of a request that estimated no error
 #: rate states. A request is one run of the agent: on the web UI, one message.
 NOT_MEASURED_MUST_STATE = (
     "No error rate of this map has been estimated in this request; "
@@ -238,10 +238,9 @@ def accuracy_not_measured(*, which_map: bool = False) -> dict[str, str]:
     accuracy figure in the answer has no tool behind it, and the report
     refuses a title or result typed with one. ``harness/checks.py`` reads it
     (:func:`~olmoearth_agent.harness.checks.states_accuracy_figure`), and not
-    once the run holds a measured error rate (a ``whole_map_estimate`` fact)
-    or an accuracy ``olmoearth_classification_metrics`` computed against the
-    caller's labels. ``which_map`` is set when the request graded which of two
-    maps is more accurate, which says neither map's own accuracy.
+    once the run holds a measured error rate (a ``whole_map_estimate`` fact).
+    ``which_map`` is set when the request graded which of two maps is more
+    accurate, which says neither map's own accuracy.
     """
     graded = (
         "; the which-map grading of this request says which map is more "

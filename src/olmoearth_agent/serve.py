@@ -50,7 +50,6 @@ from fastapi.staticfiles import StaticFiles
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
 from olmoearth_agent.analysis.raster_compare import band_is_nodata
 from olmoearth_agent.harness import LeadAgent, ThreadState
-from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.workflow import WORKFLOW_STAGES, skill_workflow_stages
 from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
@@ -656,9 +655,6 @@ async def api_run(request: Request) -> StreamingResponse:
         await llm.aclose()  # release the unused hosted client
         llm = app.state.llm
     skill_index: str = app.state.skill_index
-    # Cross-thread memory: read per request so a preference remembered in one
-    # conversation applies to the next without a server restart.
-    memory_block = preferences_block()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -672,7 +668,6 @@ async def api_run(request: Request) -> StreamingResponse:
                     state=ThreadState(),
                     skill_index=skill_index,
                     forced_skill=forced_skill,
-                    memory_block=memory_block,
                     # The shared app.state.llm is the local model; a per-request
                     # hosted client (Claude/OpenAI/Gemini) is not. Only the local
                     # model gets the brevity/budget clause.
@@ -715,7 +710,7 @@ async def api_create_area(request: Request) -> dict[str, Any]:
     Body: ``{"name": str, "geom": <GeoJSON Polygon/MultiPolygon>,
     "project_id": str}``. The geometry is the polygon the user drew on the
     chat map; it is stored via ``POST /areas`` so the returned ``area_id``
-    can drive a prediction (skill #5) and the derived ``bbox`` can drive a
+    can drive a prediction (skill #4) and the derived ``bbox`` can drive a
     bbox-based skill. Returns ``{ok, area: {id, name, project_id, bbox}}``.
     When Studio refuses the key (HTTP 401/403, e.g. a read-only key), the
     answer is a 403 whose detail says so and that nothing was created.

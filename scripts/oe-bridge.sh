@@ -39,7 +39,7 @@ AGENT_DIR=/scratch/qi_zim_neu/olmoearth_inferenceX/agent-checks/bridge/src
 # The run directories (scratch is purged after 30 days).
 RUNS=/scratch/qi_zim_neu/olmoearth_inferenceX/agent-checks/bridge/runs
 # The agent's workspace root (OLMOEARTH_OUTPUT_ROOT): spilled results, files
-# the tools write, the preference memory.
+# the tools write.
 OUTPUTS=/scratch/qi_zim_neu/olmoearth_inferenceX/agent-checks/bridge/outputs
 # The srun step. The AICR guide lists QOS normal for the cpu partition; if
 # srun refuses the QOS, run with OE_BRIDGE_QOS=normal.

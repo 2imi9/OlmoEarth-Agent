@@ -74,7 +74,6 @@ function tileEntries(inner) {
     const id = o.result_id || o.id || null;
     add(o.tile_url, id);
     (o.tile_urls || []).forEach((t) => add(t, id));
-    add(o.xyz_url, id);  // qgis-bridge
   };
   if (!inner || typeof inner !== 'object') return out;
   fromObj(inner);
@@ -108,8 +107,7 @@ function labelFor(entry, i) {
   return 'layer ' + (i + 1);
 }
 
-/* The 5-stop YlOrRd ramp (mirrors reporting/qgis.py _YLORRD), so a result-raster
-   legend reads the same low->high direction as the QGIS SLD export. */
+/* The 5-stop YlOrRd ramp, so a result-raster legend reads low->high. */
 const _RAMP = ['#ffffb2', '#fecc5c', '#fd8d3c', '#f03b20', '#bd0026'];
 
 /* Drag/hover the gradient bar to read the mapped score at that position. */
@@ -643,38 +641,6 @@ export async function renderStoredComparison(container, record) {
   ]));
 }
 
-/* Horizontal bars for 0..1 metric rows [{label, value, color}]. */
-function bars(rows) {
-  const wrap = document.createElement('div');
-  wrap.className = 'viz-bars';
-  wrap.innerHTML = rows.map((r) => {
-    const v = Number(r.value);
-    const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, v * 100)) : 0;
-    return '<div class="viz-bar-row">' +
-      `<span class="viz-bar-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</span>` +
-      `<span class="viz-bar-track"><span class="viz-bar-fill" style="width:${pct.toFixed(1)}%;background:${r.color || 'var(--mint)'}"></span></span>` +
-      `<span class="viz-bar-val">${Number.isFinite(v) ? v.toFixed(3) : 'n/a'}</span>` +
-    '</div>';
-  }).join('');
-  return wrap;
-}
-
-/* evaluate: overall metrics + per-class F1 bars. */
-function renderMetricsBars(container, inner) {
-  const rows = [
-    { label: 'accuracy', value: inner.accuracy, color: 'var(--mint)' },
-    { label: 'macro F1', value: inner.macro_f1, color: 'var(--mint)' },
-    { label: 'mean IoU', value: inner.mean_iou, color: 'var(--mint)' },
-  ];
-  Object.entries(inner.per_class || {}).slice(0, 10).forEach(([cls, m]) =>
-    rows.push({ label: `${cls} F1`, value: (m || {}).f1, color: 'var(--pink)' }));
-  container.appendChild(bars(rows));
-  const cap = document.createElement('div');
-  cap.className = 'viz-cap';
-  cap.innerHTML = `Accuracy <strong>${((inner.accuracy || 0) * 100).toFixed(0)}%</strong> over n=${escapeHtml(String(inner.n))}; per-class F1 in pink.`;
-  container.appendChild(cap);
-}
-
 /* Render the best inline visual for a tool-result event into `container`.
    Returns true if it rendered something. */
 export function renderResultViz(container, ev) {
@@ -684,17 +650,7 @@ export function renderResultViz(container, ev) {
     if (!inner || typeof inner !== 'object') return false;
     let any = false;
 
-    // Downloadable text artifacts (don't early-return: a qgis result also maps).
-    if (typeof inner.sld === 'string' && inner.sld) {
-      const name = (inner.layer_name || 'style') + '.sld';
-      container.appendChild(downloadBar([
-        { label: 'Download .sld style', onClick: () => downloadText(name, inner.sld, 'application/vnd.ogc.sld+xml') },
-        { label: 'Save to Results', onClick: () => document.dispatchEvent(new CustomEvent('oe:save-result', { detail: {
-          type: 'file', format: 'sld', filename: name, mime: 'application/vnd.ogc.sld+xml',
-          text: inner.sld, title: (inner.layer_name || 'QGIS') + ' style (SLD)' } })) },
-      ]));
-      any = true;
-    }
+    // A downloadable report (don't early-return: the result may also map).
     if (typeof inner.markdown === 'string' && inner.markdown) {
       container.appendChild(downloadBar([
         { label: 'Download report (.md)', onClick: () => downloadText('case-narrative.md', inner.markdown, 'text/markdown') },
@@ -715,15 +671,10 @@ export function renderResultViz(container, ev) {
       renderCompareSummary(container, inner);
       return true;
     }
-    // evaluate: classification metrics bars.
-    if (inner.per_class && typeof inner.per_class === 'object' && inner.accuracy != null) {
-      renderMetricsBars(container, inner);
-      return true;
-    }
 
     const entries = tileEntries(inner);
     if (entries.length) { void renderResultMap(container, entries); return true; }
-    return any;  // true if a downloadable artifact (sld / markdown) was shown
+    return any;  // true if a downloadable report was shown
   } catch (e) {
     return false;
   }

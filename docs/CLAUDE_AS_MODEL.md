@@ -38,7 +38,7 @@ Each command is a fresh process on a run directory:
 
 1. It builds a `LeadAgent` as `olmoearth-agent` does. That means the default
    registry, `StudioClient.from_env()`, a fresh `ThreadState`, and the skill
-   index and memory block, kept from `begin`. The claim check is off, `local`
+   index, kept from `begin`. The claim check is off, `local`
    is off, and the surface is the command line's.
 2. `ScriptedLLM` stands in for the model. Its k-th call returns the model's
    k-th response (`responses.jsonl`), with tool-call ids `call_<k>_<j>`.

@@ -941,6 +941,8 @@ _FORBIDDEN_CASES: dict[str, tuple[list[str], list[str]]] = {
         [
             "Then estimate each map's error rate honestly.",
             "I'll score both against it (per-window error rates, classification metrics).",
+            # a metrics tool by name: the agent has none since 31 October 2026
+            "Then I'll run olmoearth_classification_metrics on both maps.",
         ],
         [
             "A regression score has no error rate without a threshold.",
@@ -1898,12 +1900,13 @@ def test_a_rate_the_run_measured_is_not_a_plans_error_rate() -> None:
     assert [v["text"] for v in flagged] == [own]
 
 
-def test_accuracy_another_tool_measured_is_not_read_as_unmeasured() -> None:
-    """accuracy_not_measured leaves alone what another tool of the request
-    measured: the accuracy olmoearth_classification_metrics computed against
-    the caller's labels, and a which-map grading's difference in accuracy,
-    which its next steps tell the answer to report. A map's own accuracy
-    beside the grading is still flagged."""
+def test_only_a_which_map_difference_is_read_as_measured_beside_no_estimate() -> None:
+    """accuracy_not_measured leaves alone a which-map grading's difference in
+    accuracy, which its next steps tell the answer to report. Accuracy against
+    labels outside a design is no measure: the classification-metrics tool
+    went on 31 October 2026, and a record of a call of it (an earlier run's)
+    no longer excuses the figure. A map's own accuracy beside the grading is
+    still flagged."""
     report = _record(
         "olmoearth_case_narrative",
         {"forbidden_claims": [{"id": "accuracy_not_measured", "why": "x"}]},
@@ -1911,11 +1914,7 @@ def test_accuracy_another_tool_measured_is_not_read_as_unmeasured() -> None:
     claim = "Overall accuracy on the 500 reference points is 94.0%."
     assert [v["text"] for v in check_forbidden_claims(claim, _run(report))] == [claim]
     metrics = _record("olmoearth_classification_metrics", {"accuracy": 0.94, "n": 500})
-    assert check_forbidden_claims(claim, _run(report, metrics)) == []
-    failed = ToolRecord(
-        "olmoearth_classification_metrics", {}, {"ok": False, "error": "e"}
-    )
-    flagged = check_forbidden_claims(claim, _run(report, failed))
+    flagged = check_forbidden_claims(claim, _run(report, metrics))
     assert [v["text"] for v in flagged] == [claim]
     # The which-map grading's difference, as its next steps word it.
     difference = "The difference in accuracy, a minus b, is 8.3 points."

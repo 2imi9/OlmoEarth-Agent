@@ -233,7 +233,12 @@ def test_the_card_fits_its_budget() -> None:
     core line and four deferred groups' names off the opted-in card only; the
     default card is unchanged. Its next step removes the last opt-in tools
     with their code, so the opted-in card is the default card, and the step
-    after it the opt-in setting, so there is one card.
+    after it the opt-in setting, so there is one card. The step after that
+    takes five lines off it (olmoearth_qgis_bridge, olmoearth_export_data,
+    olmoearth_classification_metrics, olmoearth_remember and
+    olmoearth_forget: about 690 characters with their line breaks, some 170
+    tokens, estimated from their declarations), so the budget of 1,700,
+    which stays, is looser by that much.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
@@ -246,6 +251,11 @@ def test_the_card_names_no_removed_tool_or_group() -> None:
         "olmoearth_change_detect",
         "olmoearth_grade_review_rule",
         "olmoearth-rslearn",
+        "olmoearth_qgis_bridge",
+        "olmoearth_export_data",
+        "olmoearth_classification_metrics",
+        "olmoearth_remember",
+        "olmoearth_forget",
     ):
         assert gone not in card, gone
 

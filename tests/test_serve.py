@@ -207,7 +207,7 @@ def test_run_auto_route_demotes_simple_brief_to_local(
         # brief itself reads like a lookup.
         client.post(
             "/api/run",
-            json={"brief": "list my projects", "forced_skill": "change-detection"},
+            json={"brief": "list my projects", "forced_skill": "predict"},
             headers=hosted,
         )
         assert captured["local"] is False
@@ -216,31 +216,6 @@ def test_run_auto_route_demotes_simple_brief_to_local(
         no_route = {k: v for k, v in hosted.items() if k != "X-LLM-Route"}
         client.post("/api/run", json={"brief": "list my projects"}, headers=no_route)
     assert captured["local"] is False
-
-
-def test_run_forwards_memory_block(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
-) -> None:
-    from olmoearth_agent.harness import memory
-    from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
-
-    monkeypatch.setenv(OUTPUT_ROOT_ENV, str(tmp_path))
-    memory.remember("default_area", "Delaware basin (area_id a9)", tmp_path)
-    captured: dict[str, Any] = {}
-
-    class _CapAgent:
-        def __init__(self, *_a: Any, **kw: Any) -> None:
-            captured["memory_block"] = kw.get("memory_block")
-
-        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
-            yield {"type": "final", "turn": 1, "content": "ok"}
-
-    monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
-    with TestClient(serve.app) as client:
-        client.post("/api/run", json={"brief": "hi"}, headers={"X-Olmoearth-Key": "k"})
-    # A preference saved in an earlier conversation reaches the next run's
-    # prompt without a server restart.
-    assert "default_area: Delaware basin (area_id a9)" in captured["memory_block"]
 
 
 def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,10 +233,10 @@ def test_run_forwards_forced_skill(monkeypatch: pytest.MonkeyPatch) -> None:
         # A valid slug is forwarded, lower-cased.
         client.post(
             "/api/run",
-            json={"brief": "hi", "forced_skill": "Change-Detection"},
+            json={"brief": "hi", "forced_skill": "Review-Set"},
             headers={"X-Olmoearth-Key": "k"},
         )
-        assert captured["forced_skill"] == "change-detection"
+        assert captured["forced_skill"] == "review-set"
         captured.clear()
         # A malformed value is ignored (empty), not rejected with an error.
         resp = client.post(
@@ -314,6 +289,20 @@ def test_rslearn_stays_forced_without_tools_of_its_own(
 ) -> None:
     """rslearn's tools are gone, but its SKILL.md loads, so it stays forced."""
     assert _forced_as_sent(monkeypatch, ("rslearn",)) == ["rslearn"]
+
+
+def test_the_rows_that_went_are_not_forced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Change detection and uncertainty folded into predict's comparison tool,
+    and evaluate, the QGIS bridge and the data export went: an old "/" menu
+    slug of theirs pins nothing."""
+    slugs = (
+        "change-detection",
+        "uncertainty",
+        "evaluate",
+        "qgis-bridge",
+        "data-export",
+    )
+    assert _forced_as_sent(monkeypatch, slugs) == [""] * len(slugs)
 
 
 def _offered_per_forced_skill(

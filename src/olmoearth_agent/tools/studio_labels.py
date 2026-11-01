@@ -277,10 +277,9 @@ def _annotation_rate_claim() -> dict[str, str]:
     detector is narrower than this ``why``: it reads only a figure
     ``states_accuracy_figure`` finds (an error rate, an accuracy or a share
     wrong, "94% accurate"; not an F1 or an IoU), and only in a run that
-    measured none. Once the run holds a ``whole_map_estimate`` fact or a
-    successful ``olmoearth_classification_metrics`` call (on labels the
-    caller gives, which may be these annotations exported), it is not read,
-    and a figure from annotations meets only the number check. In a run that
+    measured none. Once the run holds a ``whole_map_estimate`` fact, it is
+    not read, and a figure from annotations meets only the number check. In a
+    run that
     measured none, every such figure is flagged, from annotations or not.
     The checks keep one ``why`` per id, the first tool's, so this one also
     holds where the stakeholder report emits the id.

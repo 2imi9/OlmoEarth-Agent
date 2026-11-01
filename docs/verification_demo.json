@@ -3915,7 +3915,6 @@
     "ok": true,
     "result": {
      "accuracy": {
-      "labels_metrics": false,
       "measured": true,
       "statements": [
        {

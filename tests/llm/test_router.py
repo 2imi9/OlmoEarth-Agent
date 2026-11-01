@@ -48,9 +48,7 @@ def test_investigations_and_mutations_route_hosted(brief: str) -> None:
 
 
 def test_forced_skill_is_always_complex() -> None:
-    assert (
-        classify_brief("list my projects", forced_skill="change-detection") == "complex"
-    )
+    assert classify_brief("list my projects", forced_skill="predict") == "complex"
 
 
 def test_empty_brief_defaults_complex() -> None:
