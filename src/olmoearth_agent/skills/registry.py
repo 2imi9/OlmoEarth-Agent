@@ -9,14 +9,11 @@ tool bundles of the currently-implemented skills into a
 :class:`ToolRegistry` the lead agent can use.
 
 By default the agent is the Studio run loop and a verification layer (review
-sets, label samples, error rates and certified zones). A tool a catalog row
-lists under ``opt_in`` is left out of the default registry, with its one-line
-reason; it stays in the code and is registered as before when
-``OLMOEARTH_OPT_IN_TOOLS`` is set (:data:`OPT_IN_ENV`, read by
-:func:`olmoearth_agent.tools.registry.opted_in`).
-``OLMOEARTH_READ_ONLY`` (:data:`READ_ONLY_ENV`, the same values) declares this
-run's Studio key read-only: the tools that write to Studio
-(:data:`STUDIO_WRITE_TOOLS`) are left out, and the capability card says why.
+sets, label samples, error rates and certified zones); every tool a catalog
+row lists is registered. ``OLMOEARTH_READ_ONLY`` (:data:`READ_ONLY_ENV`, read
+by :func:`olmoearth_agent.tools.registry.opted_in`) declares this run's Studio
+key read-only: the tools that write to Studio (:data:`STUDIO_WRITE_TOOLS`)
+are left out, and the capability card says why.
 
 As each skill is implemented, flip its ``status`` to ``"implemented"``
 and add its ``build_*_tools`` bundle to :func:`build_default_registry`.
@@ -49,13 +46,10 @@ from olmoearth_agent.tools.studio_scores import build_studio_scores_tools
 
 SkillStatus = Literal["foundational", "implemented", "vendored", "planned"]
 
-#: The one setting that registers the opt-in tools (``1``, ``true``, ``yes``
-#: or ``on``; see :func:`olmoearth_agent.tools.registry.opted_in`).
-OPT_IN_ENV = "OLMOEARTH_OPT_IN_TOOLS"
-
-#: The setting that declares this run's Studio key read-only (the values of
-#: :func:`~olmoearth_agent.tools.registry.opted_in`). Studio's keys can be
-#: read-only, and ``/users/me`` does not show it, so the operator says so here.
+#: The setting that declares this run's Studio key read-only (``1``, ``true``,
+#: ``yes`` or ``on``; see :func:`~olmoearth_agent.tools.registry.opted_in`).
+#: Studio's keys can be read-only, and ``/users/me`` does not show it, so the
+#: operator says so here.
 #: Unset, the registry is unchanged.
 READ_ONLY_ENV = "OLMOEARTH_READ_ONLY"
 
@@ -72,9 +66,7 @@ STUDIO_WRITE_TOOLS = frozenset(
 class SkillSpec:
     """One row of the skill catalog (see ``SKILLS.md``).
 
-    ``tools`` names every tool the skill contributes; ``opt_in`` maps those of
-    them left out of the default registry to the one-line reason, and they
-    are registered only when :data:`OPT_IN_ENV` is set.
+    ``tools`` names every tool the skill contributes.
     """
 
     number: int
@@ -85,17 +77,6 @@ class SkillSpec:
     status: SkillStatus
     summary: str
     tools: list[str] = field(default_factory=list)
-    opt_in: dict[str, str] = field(default_factory=dict)
-
-    @property
-    def default_tools(self) -> list[str]:
-        """The skill's tools the default registry holds (``tools`` less ``opt_in``)."""
-        return [t for t in self.tools if t not in self.opt_in]
-
-    @property
-    def opt_in_only(self) -> bool:
-        """True when every tool of the skill is opt-in, so none is on by default."""
-        return bool(self.tools) and not self.default_tools
 
 
 #: The full catalog. ``foundational`` = base Studio tools (not a SKILLS.md
@@ -311,12 +292,6 @@ SKILLS: list[SkillSpec] = [
 ]
 
 
-#: Every opt-in tool, with the one-line reason it left the default registry.
-OPT_IN_TOOLS: dict[str, str] = {
-    tool: reason for skill in SKILLS for tool, reason in skill.opt_in.items()
-}
-
-
 def skills_by_status(status: SkillStatus) -> list[SkillSpec]:
     """All catalog entries with the given build status."""
     return [s for s in SKILLS if s.status == status]
@@ -332,10 +307,8 @@ def build_default_registry() -> ToolRegistry:
     :mod:`olmoearth_agent.tools.registry`. A new skill adds its
     ``build_*_tools()`` bundle here and flips its catalog ``status``.
 
-    The tools in :data:`OPT_IN_TOOLS` (none is left) are left out unless
-    :data:`OPT_IN_ENV` (``OLMOEARTH_OPT_IN_TOOLS``) is on. While
-    :data:`READ_ONLY_ENV` (``OLMOEARTH_READ_ONLY``) is on, the tools in
-    :data:`STUDIO_WRITE_TOOLS` are left out too, and the registry's ``cannot``
+    While :data:`READ_ONLY_ENV` (``OLMOEARTH_READ_ONLY``) is on, the tools in
+    :data:`STUDIO_WRITE_TOOLS` are left out, and the registry's ``cannot``
     gives the capability card its line
     (:data:`~olmoearth_agent.harness.capabilities.READ_ONLY_STUDIO`).
 
@@ -351,9 +324,9 @@ def build_default_registry() -> ToolRegistry:
     True
     """
     registry = ToolRegistry()
-    # The tools left out: the opt-in ones unless opted in, and with a
-    # read-only Studio key the ones that write to Studio.
-    skip: set[str] = set() if opted_in(OPT_IN_ENV) else set(OPT_IN_TOOLS)
+    # The tools left out: with a read-only Studio key, the ones that write
+    # to Studio.
+    skip: set[str] = set()
     if opted_in(READ_ONLY_ENV):
         skip |= STUDIO_WRITE_TOOLS
         registry.cannot["studio_write"] = READ_ONLY_STUDIO

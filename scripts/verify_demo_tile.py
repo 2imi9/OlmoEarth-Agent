@@ -86,7 +86,7 @@ from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.reporting.narrative import ACCURACY_HEADING, INTERVAL_NAMES
 from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
-from olmoearth_agent.skills.registry import OPT_IN_TOOLS, build_default_registry
+from olmoearth_agent.skills.registry import build_default_registry
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools.registry import ToolContext
 from olmoearth_agent.tools.review_set import SCORES_ROOT_ENV, load_scores_file
@@ -574,7 +574,7 @@ class Run:
     run's ``ThreadState`` provenance (``ProvenanceLog.record_tool_call``), as
     ``tests/tools/test_narrative_tool.py``'s ``_Run`` records it, so the
     report and the provenance summary read the calls as they read an
-    agent's. Only the default tools are called: an opt-in one is refused.
+    agent's. Only the default registry's tools are called: another is refused.
     With ``log``, every envelope so far is written there after each call
     (as :func:`envelopes_document` writes them, paths as they are), so a run
     that stops, whatever stops it, keeps its calls on disk.
@@ -591,7 +591,7 @@ class Run:
 
     async def dispatch(self, step: str, tool: str, args: dict[str, Any]) -> Call:
         """Dispatch one call and record it, whether it succeeded or not."""
-        if tool in OPT_IN_TOOLS or tool not in self.registry.names():
+        if tool not in self.registry.names():
             raise DemoError(f"{tool} is not one of the agent's default tools")
         envelope: dict[str, Any] = await self.registry.dispatch(
             ToolCall(id=str(len(self.calls)), name=tool, arguments=args),
@@ -1220,11 +1220,10 @@ def intro(demo: Demo, truth: dict[str, Any], tile: Tile) -> list[str]:
         "them, and recorded each call as the lead agent does. The tile went in as "
         "a direct run read by olmoearth_scores_from_file with windows of one "
         "pixel, since a certificate's sample is drawn from the map's own raster. "
-        "Every tool called is in the agent's default registry; none needed "
-        "OLMOEARTH_OPT_IN_TOOLS. Paths are written relative to the run's work "
-        f"folder, `{WORK}`. {credit(tile.meta)} olmoearth-inferencex averaged the "
-        "probabilities over windows and stores them as float16 (its "
-        "sample/NOTICE.txt)."
+        "Every tool called is in the agent's default registry. Paths are written "
+        f"relative to the run's work folder, `{WORK}`. {credit(tile.meta)} "
+        "olmoearth-inferencex averaged the probabilities over windows and stores "
+        "them as float16 (its sample/NOTICE.txt)."
     )
     return [what, "", how]
 

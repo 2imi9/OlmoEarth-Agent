@@ -3,9 +3,8 @@
 """The web UI shows what the default agent does and counts what the catalog has.
 
 The landing page's example runs and the demo mode's canned runs call only
-tools of the default registry, never an opt-in one; the tagline's, the skills
-button's and the "/" menu's skill counts, and the cards' opt-in marks, are the
-catalog's.
+tools of the default registry; the tagline's, the skills button's and the "/"
+menu's skill counts, and the cards, are the catalog's.
 """
 
 from __future__ import annotations
@@ -16,8 +15,7 @@ from pathlib import Path
 import pytest
 
 from olmoearth_agent.skills.registry import (
-    OPT_IN_ENV,
-    OPT_IN_TOOLS,
+    READ_ONLY_ENV,
     SKILLS,
     build_default_registry,
 )
@@ -42,27 +40,23 @@ def _example_calls() -> list[str]:
 def test_the_example_runs_call_only_default_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv(OPT_IN_ENV, raising=False)
+    monkeypatch.delenv(READ_ONLY_ENV, raising=False)
     calls = _example_calls()
     assert "olmoearth_compare_results" in calls
     assert "olmoearth_plan_label_sample" in calls
-    assert not set(calls) & set(OPT_IN_TOOLS), set(calls) & set(OPT_IN_TOOLS)
     assert set(calls) <= set(build_default_registry().names())
 
 
 def test_the_landing_page_and_the_slash_menu_count_the_catalog() -> None:
     numbered = [s for s in SKILLS if s.number >= 1]
     total = len(numbered)
-    whole = len([s for s in numbered if s.opt_in_only])
     page = _read("index.html")
-    tagline = re.findall(
-        r"<strong>(\d+) skills</strong>,\s*(\d+) on by default and (\d+) opt-in",
-        page,
-    )
-    assert tagline == [(str(total), str(total - whole), str(whole))]
+    tagline = re.findall(r"<strong>(\d+) skills</strong>", page)
+    assert tagline == [str(total)]
+    assert "opt-in" not in page
     assert re.findall(r"Browse the (\d+) skills", page) == [str(total)]
     slash = re.findall(r"pick one of the (\d+)\s+skills", _read("js", "slash.js"))
     assert slash == [str(total)]
     cards = _read("js", "skills.js")
     assert len(re.findall(r"\{ n: \d+,\s+slug: ", cards)) == total
-    assert cards.count("optIn: true, ex:") == whole
+    assert "optIn" not in cards

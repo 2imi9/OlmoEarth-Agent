@@ -313,17 +313,7 @@ def test_rslearn_stays_forced_without_tools_of_its_own(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """rslearn's tools are gone, but its SKILL.md loads, so it stays forced."""
-    monkeypatch.delenv("OLMOEARTH_OPT_IN_TOOLS", raising=False)
     assert _forced_as_sent(monkeypatch, ("rslearn",)) == ["rslearn"]
-
-
-def test_the_bridges_opt_in_whole_skills_are_the_catalogs() -> None:
-    """The bridge's list is the catalog's ``opt_in_only`` rows, by slug.
-
-    The five skills that were opt-in whole (#6, #8, #10, #15, #16) were
-    removed, so no row is, and the bridge drops no forced slug for that reason.
-    """
-    assert serve._OPT_IN_ONLY_SKILLS == {}
 
 
 def _offered_per_forced_skill(
@@ -352,19 +342,15 @@ def _offered_per_forced_skill(
     return offered
 
 
-@pytest.mark.parametrize("value", ["", "1"])
 def test_forcing_rslearn_offers_no_tool_of_its_own(
-    value: str, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """rslearn's four tools went with their code: forcing the skill offers the
-    first turn the same tools as no forced skill, whatever the opt-in setting.
+    first turn the same tools as no forced skill.
 
-    The bridge builds its registry at startup, so the setting is read when the
-    test client starts. A forced skill's deferred group from turn one is
-    tested on the agent (tests/harness/test_agent.py); no tool of the agent's
-    is deferred.
+    A forced skill's deferred group from turn one is tested on the agent
+    (tests/harness/test_agent.py); no tool of the agent's is deferred.
     """
-    monkeypatch.setenv("OLMOEARTH_OPT_IN_TOOLS", value)
     offered = _offered_per_forced_skill(monkeypatch, ("rslearn", ""))
     assert offered["rslearn"] == offered[""]
     assert "olmoearth_compare_results" in offered[""]

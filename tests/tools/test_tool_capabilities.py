@@ -15,19 +15,17 @@ with no probe fails, and so does a probe whose entry is gone.
 from __future__ import annotations
 
 import json
-import os
 import random
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
-from unittest import mock
 
 import pytest
 
 from olmoearth_agent.analysis.review_set import margins
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
-from olmoearth_agent.skills import OPT_IN_ENV, build_default_registry
+from olmoearth_agent.skills import build_default_registry
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.types import ApiEnvelope
@@ -36,14 +34,8 @@ _BOX = {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 
 
 
 def _registry() -> ToolRegistry:
-    """The default registry with every opt-in tool enabled too.
-
-    The tools trimmed from the default registry (``OLMOEARTH_OPT_IN_TOOLS``):
-    an opt-in tool's card line is shown when it is on, so its declarations are
-    probed all the same.
-    """
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
-        return build_default_registry()
+    """The default registry, whose tools' declarations the card shows."""
+    return build_default_registry()
 
 
 def _stated() -> list[tuple[str, str]]:

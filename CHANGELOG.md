@@ -1166,6 +1166,23 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the same grading; `attainable_ceiling` and the default budgets stay).
   The default registry is unchanged (30 tools, none deferred); no tool is
   opt-in, so `OLMOEARTH_OPT_IN_TOOLS=1` registers nothing more.
+- **The opt-in machinery.** With no opt-in tool left, the setting and the
+  code that served only it go: `OLMOEARTH_OPT_IN_TOOLS` (`OPT_IN_ENV`) and
+  `OPT_IN_TOOLS` in `skills/registry.py` and `skills/__init__.py`, the
+  catalog rows' `opt_in` field with `SkillSpec.default_tools` and
+  `SkillSpec.opt_in_only`, the opt-in branch of `build_default_registry`,
+  the bridge's `_OPT_IN_ONLY_SKILLS` check on a forced skill,
+  `scripts/verify_demo_tile.py`'s opt-in refusal and its page's sentence on
+  the setting, the `.env.example` section, SKILLS.md's "Opt-in tools"
+  section, the README's opt-in bullet (its badge now gives the skill count
+  alone), the landing page's "0 opt-in" and the skill cards' opt-in label.
+  The setting is no longer read; set, it changes nothing. `opted_in()`
+  stays, for `OLMOEARTH_READ_ONLY`, which still leaves out the two Studio
+  write tools (its truthy values are now `ON_VALUES`). The default registry
+  and every text the model reads are unchanged. Tests that compared an
+  opted-in registry, card or turn with the default one, or counted opt-in
+  tools, rows or skills, are deleted or test the default registry alone;
+  the registry tests' fixture now clears `OLMOEARTH_READ_ONLY` instead.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

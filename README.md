@@ -5,7 +5,7 @@
 **Drive [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from natural-language briefs - on a local LLM, or your own cloud API.**
 
 [![License](https://img.shields.io/badge/License-OlmoEarth%20Artifact-1f6feb.svg)](LICENSE)
-[![Skills](https://img.shields.io/badge/skills-13%20default%20%2B%200%20opt--in-F0529C.svg)](SKILLS.md)
+[![Skills](https://img.shields.io/badge/skills-13-F0529C.svg)](SKILLS.md)
 [![LLM](https://img.shields.io/badge/LLM-local%20Qwen3.6%20%2B%20hosted-0FCB8C.svg)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB.svg)](pyproject.toml)
 
@@ -108,7 +108,6 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 The capability set ships as **13 skills**, grouped by EO-workflow stage. Four of them (#1-#3 and #17) are instruction packages (`SKILL.md`) inside the Python package; `olmoearth_load_skill` loads them on demand.
 
 - The agent registers 30 tools by default: the Studio run loop, comparison, verification and plumbing (provenance, export, QGIS, memory). All 30 are sent on every turn.
-- There are 0 opt-in tools, and no skill is opt-in whole: the last ten, outside inference examination and not used, were removed with their code, so `OLMOEARTH_OPT_IN_TOOLS=1` registers nothing more ([`SKILLS.md`](SKILLS.md#opt-in-tools)).
 
 <details>
 <summary><strong>The 13 skills</strong>, by workflow stage (Prep / Configure / Run / Analyze / Integrate / Report)</summary>

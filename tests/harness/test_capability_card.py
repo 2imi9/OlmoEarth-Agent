@@ -11,9 +11,7 @@ the model to propose only what it lists.
 
 from __future__ import annotations
 
-import os
 from typing import Any
-from unittest import mock
 
 import pytest
 
@@ -27,7 +25,7 @@ from olmoearth_agent.harness.capabilities import (
 )
 from olmoearth_agent.harness.soul import load_soul
 from olmoearth_agent.llm.types import ChatResponse, Message, ToolCall, ToolSpec
-from olmoearth_agent.skills import OPT_IN_ENV, READ_ONLY_ENV, build_default_registry
+from olmoearth_agent.skills import READ_ONLY_ENV, build_default_registry
 from olmoearth_agent.tools.registry import (
     Capability,
     RegisteredTool,
@@ -177,8 +175,7 @@ def test_a_read_only_key_puts_its_line_on_the_card(
 
 
 def test_covers_names_only_what_no_tool_can() -> None:
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
-        registry = build_default_registry()
+    registry = build_default_registry()
     for name in registry.names():
         capability = registry.capability_of(name)
         assert capability is not None
@@ -235,20 +232,16 @@ def test_the_card_fits_its_budget() -> None:
     1,700, which stays. The trim of 31 October takes olmoearth_litsearch's
     core line and four deferred groups' names off the opted-in card only; the
     default card is unchanged. Its next step removes the last opt-in tools
-    with their code, so the opted-in card is the default card.
+    with their code, so the opted-in card is the default card, and the step
+    after it the opt-in setting, so there is one card.
     """
     card = capability_card(build_default_registry())
     assert _tokens(card) < CARD_TOKEN_BUDGET, _tokens(card)
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: "1"}):
-        opted = capability_card(build_default_registry())
-    assert opted == card
 
 
-@pytest.mark.parametrize("value", ["", "1"])
-def test_the_card_names_no_removed_tool_or_group(value: str) -> None:
-    """A removed tool is off the card, opted in or not, and so is its group."""
-    with mock.patch.dict(os.environ, {OPT_IN_ENV: value}):
-        card = capability_card(build_default_registry())
+def test_the_card_names_no_removed_tool_or_group() -> None:
+    """A removed tool is off the card, and so is its group."""
+    card = capability_card(build_default_registry())
     for gone in (
         "olmoearth_change_detect",
         "olmoearth_grade_review_rule",

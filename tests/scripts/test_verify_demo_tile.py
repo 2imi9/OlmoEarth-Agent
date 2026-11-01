@@ -29,7 +29,7 @@ import pytest
 from olmoearth_agent.provenance.log import VERIFICATION_TOOLS
 from olmoearth_agent.reporting.narrative import ACCURACY_HEADING, INTERVAL_NAMES
 from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
-from olmoearth_agent.skills.registry import OPT_IN_ENV, OPT_IN_TOOLS
+from olmoearth_agent.skills.registry import build_default_registry
 from olmoearth_agent.tools.review_set import SCORES_ROOT_ENV
 from olmoearth_agent.tools.statistical_rules import percent
 
@@ -141,7 +141,6 @@ def generated(
         # run_demo points both roots at the work folder; restored afterwards.
         mp.setenv(SCORES_ROOT_ENV, str(work))
         mp.setenv(OUTPUT_ROOT_ENV, str(work))
-        mp.delenv(OPT_IN_ENV, raising=False)
         try:
             return script.generate(tile, work, docs, review_budget=REVIEW_BUDGET)
         except script.CallFailed as exc:
@@ -189,7 +188,7 @@ def test_the_tools_run_in_the_agents_order(
     run = demo.run
     assert [c.tool for c in run.calls] == ORDER
     assert all(c.envelope["ok"] is True for c in run.calls)
-    assert not set(ORDER) & set(OPT_IN_TOOLS)
+    assert set(ORDER) <= set(build_default_registry().names())
     assert [e.api_call for e in run.state.provenance.entries] == ORDER
     recorded = [v.tool for v in run.state.provenance.verification]
     assert recorded == [t for t in ORDER if t in VERIFICATION_TOOLS]

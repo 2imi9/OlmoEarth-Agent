@@ -10,8 +10,7 @@ from pathlib import Path
 import pytest
 
 from olmoearth_agent.skills.registry import (
-    OPT_IN_ENV,
-    OPT_IN_TOOLS,
+    READ_ONLY_ENV,
     SKILLS,
     build_default_registry,
 )
@@ -20,15 +19,11 @@ _README = Path(__file__).resolve().parents[1] / "README.md"
 
 
 def test_readme_skill_counts_match_the_catalog() -> None:
-    """The badge's default and opt-in skills, and every "N skills" / "N-skill" mention.
-
-    A skill is opt-in when every tool it contributes is (``SkillSpec.opt_in_only``).
-    """
+    """The badge's skill count, and every "N skills" / "N-skill" mention."""
     text = _README.read_text(encoding="utf-8")
     numbered = [s for s in SKILLS if s.number >= 1]
-    opt_in = [s for s in numbered if s.opt_in_only]
-    badge = re.findall(r"badge/skills-(\d+)%20default%20%2B%20(\d+)%20opt--in-", text)
-    assert badge == [(str(len(numbered) - len(opt_in)), str(len(opt_in)))]
+    badge = re.findall(r"badge/skills-(\d+)-[0-9A-Fa-f]{6}\.svg", text)
+    assert badge == [str(len(numbered))]
     mentions = re.findall(r"\b(\d+)(?:-skill\b| skills\b)", text)
     assert mentions, "README no longer states the skill count"
     assert set(mentions) == {str(len(numbered))}
@@ -37,8 +32,12 @@ def test_readme_skill_counts_match_the_catalog() -> None:
 def test_readme_tool_counts_match_the_registry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The default tools, those sent every turn, and the opt-in ones, by count."""
-    monkeypatch.delenv(OPT_IN_ENV, raising=False)
+    """The default tools and those sent every turn, by count.
+
+    The opt-in setting went with the last opt-in tools, so the README names
+    neither.
+    """
+    monkeypatch.delenv(READ_ONLY_ENV, raising=False)
     registry = build_default_registry()
     text = _README.read_text(encoding="utf-8")
     assert re.findall(r"\b(\d+) tools by default\b", text) == [
@@ -47,5 +46,5 @@ def test_readme_tool_counts_match_the_registry(
     assert re.findall(r"\b(\d+) are sent on every turn\b", text) == [
         str(len(registry.active_specs()))
     ]
-    assert re.findall(r"\b(\d+) opt-in tools\b", text) == [str(len(OPT_IN_TOOLS))]
-    assert f"{OPT_IN_ENV}=1" in text
+    assert not re.findall(r"\b\d+ opt-in tools\b", text)
+    assert "OLMOEARTH_OPT_IN_TOOLS" not in text

@@ -1,9 +1,7 @@
 /* The 13-skill capability grid + the pop-out introduction modal + the in-app
    full-spec detail page. Self-contained: clicking a card opens the modal;
    "Full spec" opens the detail page; "Use this brief" drops the example into
-   the composer. A card with optIn: true is a skill whose tools are all
-   opt-in (OLMOEARTH_OPT_IN_TOOLS=1 on the bridge; SKILLS.md "Opt-in tools");
-   no card is, and no card names an opt-in tool. */
+   the composer. */
 
 import { escapeHtml, autosize } from './util.js';
 
@@ -38,11 +36,8 @@ const SKILLS = [
   { n: 18, slug: 'review-set',        cat: 'Analyze',   icon: 'filter',      desc: "Which windows to check first, without labels: rank by the model's own top-1-minus-top-2 margin, at your review budget, boundary-first if you want it - plus the ceiling arithmetic; then how wrong the map is, from a labelled sample, and which of two maps of one time is more accurate, from labels where they differ.", ex: 'The map is done and I can only check 200 of these 4,000 windows. Which 200, and how much of the error will I actually catch?' },
 ];
 
-/* The card's stage line: its category, and "opt-in" for an opt-in skill. */
-const catLabel = (s) => (s.optIn ? `${s.cat} · opt-in` : s.cat);
-
 /* Minimal {slug, desc, n} list for the composer's "/" skill slash-commands. */
-export const SKILL_LIST = SKILLS.map((s) => ({ slug: s.slug, desc: s.optIn ? `${s.desc} (opt-in)` : s.desc, n: s.n }));
+export const SKILL_LIST = SKILLS.map((s) => ({ slug: s.slug, desc: s.desc, n: s.n }));
 
 // Fuller "what it does + why" per skill, shown in the pop-out. The card shows
 // the one-line desc above; this is the spec summary. Full academic spec: SKILLS.md.
@@ -107,7 +102,7 @@ export function renderCards() {
         <span class="card-ic"><svg viewBox="0 0 24 24" class="ic">${ICONS[s.icon] || ''}</svg></span>
         <span class="card-num">#${s.n}</span>
       </div>
-      <div class="card-cat">${catLabel(s)}</div>
+      <div class="card-cat">${s.cat}</div>
       <div class="card-name">olmoearth-${s.slug}</div>
       <p class="card-desc">${s.desc}</p>
       <div class="card-hint">
@@ -132,7 +127,7 @@ function openSkillModal(s) {
         <span class="card-ic"><svg viewBox="0 0 24 24" class="ic">${ICONS[s.icon] || ''}</svg></span>
         <span class="modal-num">#${s.n}</span>
       </div>
-      <div class="card-cat">${catLabel(s)}</div>
+      <div class="card-cat">${s.cat}</div>
       <h3 class="modal-name" id="skillModalName">olmoearth-${s.slug}</h3>
       <p class="modal-desc">${SKILL_SPECS[s.n] || s.desc}</p>
       <div class="modal-ex-label">Example brief</div>
@@ -175,7 +170,7 @@ function openSkillDetail(s) {
       <div class="detail-head${s.pink ? ' is-pink' : ''}">
         <span class="card-ic"><svg viewBox="0 0 24 24" class="ic">${ICONS[s.icon] || ''}</svg></span>
         <div class="detail-head-txt">
-          <div class="card-cat">${catLabel(s)}</div>
+          <div class="card-cat">${s.cat}</div>
           <h2 class="detail-name">olmoearth-${s.slug}</h2>
         </div>
         <span class="detail-num">#${s.n}</span>
