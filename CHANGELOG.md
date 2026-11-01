@@ -1239,6 +1239,21 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the docstrings and tests that cite a row. The default registry is
   unchanged (25 tools); the skill index in the system prompt lists one
   package. A forced "/" slug of a removed package pins nothing.
+- **The evals and two scripts.** `evals/skillopt/` (a June benchmark of
+  the training-side instruction packages data-prep, embeddings and
+  studio-job-config on the local model, which needed an external SkillOpt
+  checkout and a core patch, and loaded `recommend.py` from a path that no
+  longer exists) and `evals/agent/` (six rubric scenarios whose runner and
+  judge were never built; nothing read them) go, so the `evals/` directory
+  is gone. `scripts/validate_answer_checks.py` (an offline replay of the
+  answer checks hard-wired to exp86 rounds 6 and 7, whose documented inputs
+  have moved, with no test) goes; git history keeps it, and the docstring
+  of `harness/checks.py` says so. `scripts/quickstart.sh` duplicated
+  `make setup` and `make serve`; the README's no-`make` line now gives the
+  commands the targets run. The `.env.example` lines for `PC_SDK_SUBSCRIPTION_KEY` and
+  `EARTHDATA_TOKEN` go (nothing reads either), and so does the pre-commit
+  trailing-whitespace hook's `\.patch$` exclusion, which served only the
+  SkillOpt patch.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

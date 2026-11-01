@@ -83,7 +83,7 @@ make serve && make agent       # make agent runs a sample brief; ask your own wi
 - `make help` lists every target; `make down` stops the LLM.
 - `make web` serves a backend-free **demo** UI on `:8080`.
 - `LLM_ENDPOINT` defaults to `http://localhost:8000/v1`.
-- No `make` (e.g. Windows + Git Bash)? [`./scripts/quickstart.sh`](scripts/quickstart.sh) runs setup + serve and prints the exact `uv run` commands.
+- No `make` (e.g. Windows + Git Bash)? Run what the targets run: `uv sync --all-extras` (setup), `./scripts/serve-llm.sh` (serve), then `uv run olmoearth-agent-serve --port 8088` (bridge) or `uv run olmoearth-agent "<brief>"` (agent).
 - [`docs/serving.md`](docs/serving.md) has the cloud-API setup and the raw `docker compose` invocations.
 - A read-only Studio key: set `OLMOEARTH_READ_ONLY=1`. The two tools that write to Studio (`olmoearth_create_project`, `olmoearth_submit_prediction`) are then left out, and the capability card says why. Drawing an area stays; the web UI answers a refused save with 403.
 - A Claude Code session can play the agent's model with `olmoearth-agent-bridge` (not `make bridge`, which serves the web UI). [`docs/CLAUDE_AS_MODEL.md`](docs/CLAUDE_AS_MODEL.md) says how, with the project skills `olmoearth-agent-model` and `olmoearth-agent-bridge`.

@@ -52,8 +52,9 @@ are conservative on purpose: a false alarm costs a rewrite and, when it
 persists, a marked sentence, so a sentence that negates, hedges or offers an
 example is left alone, and a rule fires only on the wording exp86's audits
 found. What a check cannot read (a paraphrase, a claim spread over two
-sentences) it misses; ``scripts/validate_answer_checks.py`` measures both
-kinds of error on exp86's recorded answers. Each sentence is read once into
+sentences) it misses; a replay over exp86's recorded answers measured both
+kinds of error (``scripts/validate_answer_checks.py``, removed on 31 October
+2026 and kept in git history). Each sentence is read once into
 its brackets, clauses and word spans (:class:`_Parse`), so the checks take
 time linear in its length, a listing of hundreds of windows in one line
 included.
