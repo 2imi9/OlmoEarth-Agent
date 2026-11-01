@@ -1,9 +1,9 @@
 # OlmoEarth Agent
 
-A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs and verifies what it returns. It exposes a compact set of functions covering Studio's HTTP API, the verification layer (review sets, label samples, error rates and certified zones, through `olmoearth-inferencex`), and geometry utilities; dispatches them as function-call tools (none of them runs code the model writes); and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
+A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) platform from natural-language briefs and verifies what it returns. It exposes a compact set of functions covering Studio's HTTP API and the verification layer (review sets, label samples, error rates and certified zones, through `olmoearth-inferencex`); dispatches them as function-call tools (none of them runs code the model writes); and enforces a small list of operational constraints. The agent's contract is the tool catalog in §1.
 
-**Status:** v1.4.0, 2026-08-14 (unreleased changes in [`CHANGELOG.md`](CHANGELOG.md)). All 5 skills implemented. In the unreleased version the default registry is the Studio run loop plus the verification layer, which includes which of two maps of one time is more accurate (`plan_label_sample` with `design="disagreement"`, then `estimate_map_error`); five skills (the baseline comparison, similarity search, cloud-mask audit, literature search and negative sampler) and the ten opt-in tools of the kept skills, outside inference examination and not used, were removed with their code, with the opt-in `system:python` tool and the opt-in setting itself, so no tool is opt-in; the default tools outside the verification scope (the QGIS bridge, the data export, the classification metrics and the preference memory) went too, change detection and uncertainty became the comparison tool's series and ensemble modes, the training-side instruction packages (data prep, embeddings and rslearn) went with their rows, and the catalog rows left were numbered 1 to 5. Runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6 and [`CHANGELOG.md`](CHANGELOG.md). (The catalog was consolidated 19 -> 16: data-prep #1/#2, embeddings #4/#17, and change-detection #6/#19 were each one capability split across two rows.)
-**Scope:** Text-only LLM with function calling. Local default: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`, via llama.cpp); the bridge also accepts a hosted Claude / ChatGPT / Gemini backend (bring-your-own-key) selected at runtime, and a Claude Code session can play the model with `olmoearth-agent-bridge`, a separate command that replays the run one model call at a time ([`docs/CLAUDE_AS_MODEL.md`](docs/CLAUDE_AS_MODEL.md)). Multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) and the train-time self-improvement loops are parked in §7 Future work; they re-activate only if a skill empirically needs them. Not built, by decision: data-layer catalogs, basemaps and layer styling, STAC or Earth Engine fetches, embedding fetches, and label-free change maps; Google Earth and Ai2's own tools do these, and this agent verifies their outputs instead.
+**Status:** v1.4.0, 2026-08-14 (unreleased changes in [`CHANGELOG.md`](CHANGELOG.md)). All 5 skills implemented. In the unreleased version the default registry is the Studio run loop plus the verification layer, which includes which of two maps of one time is more accurate (`plan_label_sample` with `design="disagreement"`, then `estimate_map_error`); no tool is opt-in, and what was removed on 31 October 2026 is listed in the changelog. Runs live against the Studio API and a local or hosted (Claude/ChatGPT/Gemini) LLM. See §6.
+**Scope:** Text-only LLM with function calling. Local default: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (4-bit `UD-IQ4_XS`, via llama.cpp); the bridge also accepts a hosted Claude / ChatGPT / Gemini backend (bring-your-own-key) selected at runtime, and a Claude Code session can play the model with `olmoearth-agent-bridge`, a separate command that replays the run one model call at a time ([`docs/CLAUDE_AS_MODEL.md`](docs/CLAUDE_AS_MODEL.md)). The multimodal stack (Prismatic + vision adapter + OlmoEarth embedding stream) is parked in §7 Future work; it re-activates only if a skill empirically needs it. Not built, by decision: data-layer catalogs, basemaps and layer styling, STAC or Earth Engine fetches, embedding fetches, and label-free change maps; Google Earth and Ai2's own tools do these, and this agent verifies their outputs instead.
 **Skill catalog:** [`SKILLS.md`](SKILLS.md): 5 skills (Configure / Run / Analyze / Report). The agent ships skills one PR at a time.
 **Verification discipline:** every external claim has a real URL. Unverified items are flagged **UNVERIFIED** inline.
 **Studio API spec version:** `0.1.0` (per `info.version` of [`openapi.json`](https://olmoearth.allenai.org/api/v1/openapi.json)). Pre-1.0: fields and enums may change without notice.
@@ -12,234 +12,32 @@ A tool that drives the [OlmoEarth Studio](https://allenai.org/blog/olmoearth) pl
 
 ## 1. Tool catalog
 
-The agent exposes the following functions. Code below the table renders the same content as CSV for easy copy-paste into a sheet. Rows built as tools today: `load_context`, `create_project`, `submit_prediction`, `poll_prediction` (`olmoearth_get_prediction`), `fetch_results`, `pixel_value`, `compare_results`, `studio_label_inventory`, `review_set_from_result`, `scores_from_file`, `scores_from_studio`, `plan_label_sample`, `estimate_map_error`, `certify_zone`, `write_certificate` and `verify_certificate`; an area is created by `olmoearth_request_aoi`, which the user draws. The other rows are the design target, not code. The registry also holds tools this table does not list (`SKILLS.md` names them).
+The agent exposes the following functions, each a tool: its name is `olmoearth_` and the row's name, except `poll_prediction`, which is `olmoearth_get_prediction`. An area is created by `olmoearth_request_aoi`, which the user draws. The registry also holds tools this table does not list (`SKILLS.md` names them).
 
-| Module | Type | Name | Args / Inputs | Returns | Description |
-|---|---|---|---|---|---|
-| `system` | Tool | `search` | `queries: list[str]` | `SearchResponse` | Web search for external references (docs, papers, code examples). |
-| `system` | Tool | `fetch` | `url: str`, `headers: dict = None` | `FetchResponse` | HTTP GET on documented endpoints (OlmoEarth Studio, NLDI). |
-| `olmoearth` | Function | `load_context` | `limit: int = 50`, `offset: int = 0` | `StudioContext` | Returns the user's identity, organization and one page of projects (id, name, creation time) with the total count; `offset` pages. (Areas, datasets and recent predictions are the design target, not yet returned.) |
-| `olmoearth` | Function | `resolve_to_aoi` | `locations: list[str]` (max 30) | `AOIWrapper` | Place names, watershed IDs (HUC-8/10/12), county FIPS, or free text -> polygon geometries. |
-| `olmoearth` | Function | `create_project` | `name: str`, `description: str` | `ProjectRef` | Wraps `POST /projects`. |
-| `olmoearth` | Function | `create_area` | `project: ProjectRef`, `aoi: AOIWrapper` | `AreaRef` | Wraps `POST /areas`. |
-| `olmoearth` | Function | `create_dataset` | `project: ProjectRef`, `area: AreaRef`, `bands: list[str]`, `time_range: TimeRange` | `DatasetRef` | Configures a Studio dataset. |
-| `olmoearth` | Function | `create_labelset` | `project: ProjectRef`, `spec: LabelsetSpec` | `LabelsetRef` | Wraps `POST /labelsets`. Creates labelset metadata (`name`, `description`, optional `template_id`); individual label classes are added with `create_label`. |
-| `olmoearth` | Function | `create_label` | `labelset: LabelsetRef`, `name: str`, `color: str` | `LabelDef` | Wraps `POST /labels`. Adds one class (e.g. `("alfalfa", "#33CC66")`) to a labelset. |
-| `olmoearth` | Function | `upload_labels` | `labelset: LabelsetRef`, `path: str` | `int` | Imports a normalized GeoJSON / CSV / Shapefile of labels; returns count. |
-| `olmoearth` | Function | `submit_prediction` | `kind: Literal["finetune","embed","reference"]`, `project: ProjectRef`, `dataset: DatasetRef`, `config: dict` | `PredictionRef` | Wraps `POST /predictions`. Three modes correspond to the three case-study methodologies. The built tool sends the area as `target_area_ids` and takes `probability_top_k`, sent as `probability_output` (a segmentation model's top-k class scores; from the spec, unverified with a read-only key); `OLMOEARTH_READ_ONLY=1` leaves it and `create_project` out. |
-| `olmoearth` | Function | `poll_prediction` | `ref: PredictionRef` | `PredictionStatus` | Wraps `GET /predictions/{id}`. Exponential backoff. |
-| `olmoearth` | Function | `fetch_results` | `ref: PredictionRef`, `kind: Literal["tiles","vectors","metrics"]` | `ResultBundle` | Wraps `GET /prediction-results/...` (XYZ raster tiles, MVT vector tiles, metrics JSON). The built tool asks Studio to filter by prediction with `include: ["result_metadata"]`, so each result's declared outputs and period come back, with its `file_formats`. |
-| `olmoearth` | Function | `studio_label_inventory` | exactly one of `prediction_id`, `model_id`, `project_id` | `LabelInventory` | Counts the Studio annotations a model's training selector (`data_selectors` on its model record) selects now, or a project's, by status, geometry type, split, class and split by class, with creation times against the model record's (`POST /annotations/search`; complete only when each selector returned its `meta.total`). Studio records no random design for them, so they give no design-based error rate; if Studio trained on what its selector selects (not confirmed), train and val ones fit or tuned the model, and test ones were held out only if training honoured the split field. No ids, geometry, coordinates, free text or person's ids. Read-only. |
-| `olmoearth` | Function | `pixel_value` | `ref: PredictionRef`, `aoi: AOIWrapper` | `list[PixelValueResult]` | Wraps `GET /prediction-results/{id}/pixel-value`. Pointwise model output per coord. Used by `compare_results` (skill #2) and `review_set_from_result` (#5). Studio returns no-data as a value (e.g. `-1` on a `[0, 1]` band): every grid sampler drops a value that is missing/NaN, equals the model's `nodata_value`, or lies outside the band's declared range, and reports `n_nodata_dropped`. |
-| `olmoearth` | Function | `compare_results` | `result_ids: list[str]` (2-8), `mode: Literal["auto","pair","group","series","ensemble"] = "auto"`, `kind: Literal["cross_model","temporal"] \| None`, `property_name: str \| None`, `grid: int \| None`, `tolerance: float = 0.1`, `value_range`, `value_type`, `allow_different_properties: bool = False` | `Comparison` | How Studio results differ, with no ground truth (skill #2): samples every result on one grid through `pixel_value` and reads a `pair` (difference, RMSE, correlation, agreement; cross-model or temporal), a `group` of 2-6 models (pairwise + consensus), a date-ordered `series` of one model (steps, trajectories, calibrated shift) or an `ensemble` (per-cell spread as a confidence). `auto` picks pair / series / group from the results' models and dates. No-data dropped and counted; different properties refused; cells by `(row, col)`, never coordinates. |
-| `olmoearth` | Function | `review_set_from_result` | `result_id: str`, `grid: int = 10` (2-16), `budgets: list[float] = [0.01, 0.05, 0.1]`, `property_name: str \| None`, `threshold: float \| None` | `ReviewSet` | Skill #5 for a Studio result: samples its band on a grid (one pixel-value per window), reads a `[0, 1]` score `s` as `[1 - s, s]` (stated assumption; other ranges need `threshold`) and ranks by margin, least decided first. A class map with top-k scores (`probability_output`) ranks by rank-1 minus rank-2 score (Studio's uncalibrated softmax scores, quantized to 1/254, stated); a class map without them is refused, with where top-k scores come from. Windows by `(row, col)` and index; locations only in the saved scores file. |
-| `olmoearth` | Function | `scores_from_file` | `run_dir: str` (under `OLMOEARTH_SCORES_ROOT`), `patch: int = 4`, `include_fill_class: bool = False` | `ScoresFile` | Skill #5 for a map from a direct model run (a scores raster and its `manifest.json`, e.g. `score_area.py` on a GPU cluster, or the `scores_<EPSG>.tif` and `olmoearth_output.json` that `oe-inferencex from-olmoearth DATASET --out RUN` writes; `run_dir` names the folder, the summary or one raster), or a zone `scores_from_studio` wrote, whose provenance it names as Studio's files endpoint; a run of class ids, the rslearn dataset itself and a per-window classification are refused, the first with how to get probabilities: pools every pixel's logits or probabilities to windows with `oe_inferencex.review.assess.assess_prediction` (`is_logit` from the manifest; the raster read by `oe_inferencex.common.raster.read_raster`, a file it cannot read refused; the optional `inferencex` extra, >= 1.20.3, which brings rasterio; an older release is refused), leaves out of the margin a label-fill channel the manifest marks, and writes a scores file that `review_set`, `plan_label_sample` and `compare_review` read. Returns the window grid, valid and no-data windows, classes, model and revision; no coordinates. |
-| `olmoearth` | Function | `scores_from_studio` | `result_id: str` (a UUID), `patch: int = 4`, `clip_out_of_range: bool = False`, `max_mb: int = 1024` | `list[ScoresFile]` | Skill #5 for a Studio result's own files: downloads its native-resolution model output (`GET /prediction-results/files`, one GeoTIFF per UTM zone) and reads a class map with top-k scores (decoded by the files README's `(value - 1) / 254`) or a `[0, 1]` score band, the kind decided from `result_metadata` before any download (a class map without top-k scores, a top-1 result and other layouts refused). Each zone is written under `<scores root>/studio_results/` (`scores.tif`, `manifest.json` with `source.kind` `studio_files`) and pooled by `scores_from_file`'s handler; each zone is its own map. The zip is read as untrusted input, and the download token reaches no result, file or log. Returns each zone's run directory, scores file, valid pixels and classes; no coordinates. |
-| `olmoearth` | Function | `plan_label_sample` | `scores \| scores_path \| result_id`, `budget: int`, `design: Literal["confidence","proportional","random","class","disagreement"] = "confidence"`, `grid: int \| [rows, cols]` (a `result_id`: N or `[N, N]`, 2-16, default 10; two results: at most 12); for `"class"`: `min_per_class: int = 50`; for a class map or `"class"`: `width: float = 0.10`, `expected_error_rate`, `class_share`; for `"disagreement"`: `result_id_b \| scores_path_b`, `date_a`, `date_b`, `difference: float = 0.05`; for `"random"` on a direct run's scores file: `seed_from_map: bool = False` with `alpha: float`, `delta: float = 0.1`, `rule` | `FilePath` (design) | Which windows to label for an error-rate estimate (`oe_inferencex.estimate.sample_for_estimation`, optional `inferencex` extra). A review set is not a sample. A Studio result's grid above 16 is capped, and the result's `sampling` states the grid used and the cap. A Studio classification result without top-k scores is a class map: `"random"` or `"class"` (strata by map class, Olofsson et al. 2014) only, with `plan.plan_error_rate`'s and `plan.plan_class`'s label budgets; the ranking designs are refused for it. A class map with top-k scores takes every design, the confidence design drawing on its rank-1 score and margin. A `"class"` plan returns `per_stratum` (each stratum's class, name where known, windows and labels, from the package's `condition.values`, `sizes` and `allocation`; a class map's class as the map writes it, with the agent's internal `code`); a confidence or proportional plan returns `strata_sizes` and `allocation` with `strata_meaning`. Every plan forbids calling part of its sheet enough (`subset_labelling_sufficient`). With `design="disagreement"`, which of two maps is more accurate: two Studio results of the same area (sampled by `compare_results`' pair sampler) or two scores files of one window grid, refused unless `compare.dates_reading` reads them as one time; the windows where they differ, drawn by `estimate.sample_disagreement`, with `plan.plan_which_map`'s budget advice. With `seed_from_map`, the sample a certificate rests on, only from a scores file `scores_from_file` wrote from a model run's output GeoTIFF (any other scores file, inline scores or a Studio result is refused): `oe-inferencex sample --design random --seed-from-map --alpha A` on the run's raster, in a working folder under `<scores root>/certificates/`, its seed taken from the map's digest and the settings; the design is that draw, checked against the package's sheet. Not drawn again over a sheet that holds labels; `alpha`, `delta` and `rule` without `seed_from_map` are refused. |
-| `olmoearth` | Function | `estimate_map_error` | `design_path: FilePath`, `wrong: list[int] \| labels_path`, `reference: list[int \| str] \| None` | `ErrorEstimate` | On every design file of one map (`"confidence"`, `"proportional"`, `"random"`, `"class"`; a map with scores or a class map), `estimate_error_rate(valid=True)`'s interval valid at every sample size first, then the interval the design earns and its `method` (nominal under the confidence and proportional designs, as the package's `VALID_NOTE` says), and `estimate_per_class(valid=True)` per class; a `seed_from_map` plan's labels are fixed once first graded. Windows labelled without a design are checked as a random sample (a review set is refused) and returned with `design` `none (checked as a random sample)`, the package's reading of them under `estimated_as`. On a `"disagreement"` design, the class seen per window (`?`: unjudged) graded by `estimate.compare_from_disagreement`: which map is more accurate, or neither (exact sign test up to a fifth of the differing windows, the interval past that), the 95% interval on the accuracy difference, the counts and the package's notes. Every estimate from a design file returns that file's `seed`. |
-| `olmoearth` | Function | `certify_zone` | `design_path: FilePath` (random design), `wrong`, `alpha: float`, `delta: float = 0.1`, `rule: Literal["prefix","bonferroni"]` | `CertifiedZone` | The largest most-confident share of the map with error rate at most `alpha` (`oe_inferencex.estimate.certify_zone`); a stratified design, or a class map without top-k scores (no confidence to rank), is refused. A certified zone's `meaning` ends with the package's `ISSUED_NOTE` (what delta counts), verbatim, and `issued_note` holds it on its own; the result names the design file's design and `seed`, and `labels_sha256`, a digest of the labels. A plan drawn with `seed_from_map` keeps its alpha, delta and rule, and the labels first graded on it (here, by `estimate_map_error` or by `write_certificate`) are fixed in its sheet: other labels are refused. |
-| `olmoearth` | Function | `write_certificate` | `design_path: FilePath` (a `seed_from_map` plan), `wrong \| labels_path`, `date: str` (default the date window a `score_area.py` manifest records; a `from-olmoearth` run records none, so pass it) | `Certificate` | The certified zone packed into olmoearth-inferencex's certificate (`certify.certificate.build`: a STAC Item, the zone mask, the labels, digests binding it to the map), after `oe-inferencex certify` on the plan's sheet gives the windows `certify_zone` computes on these labels; verified before it is written; no certificate written when no zone is certified, and none over one already written for the plan. States the statement, `ISSUED_NOTE`, the issuer's word and the whole-map estimate from the labels. |
-| `olmoearth` | Function | `verify_certificate` | `certificate_path: FilePath`, `map_path: FilePath \| None`, `window: [row, col] \| None` | `CertificateCheck` | `certify.certificate.verify` against a copy of the map under the scores root (a plain GeoTIFF or `.npy`, or the scores file that names it): each check, verified or not, the statement certify gives again; checked against the file the certificate names, says it shows only that the two agree; with `window`, whether that window is in the zone (`certificate.point`), never by coordinates. |
-| `olmoearth` | Function | `save_view` | `bundle: ResultBundle`, `name: str` | `FilePath` | Publishes layer back to the user's Studio project. |
-| `eo` | Function | `window_tile` | `aoi: AOIWrapper`, `size_m: int = 256` | `list[Window]` | Tiles AOI into fixed-size windows for rslearn dataset configs. |
-| `utils` | Function | `add_area` | `aoi: AOIWrapper` | `AOIWrapper` | Adds an `area_sq_meters` field. |
-| `utils` | Function | `add_buffer` | `aoi: AOIWrapper`, `distance_m: float` | `AOIWrapper` | Buffers geometries outward. |
-| `utils` | Function | `to_geodataframe` | `aoi: AOIWrapper` | `geopandas.GeoDataFrame` | Deserialize for complex spatial ops (e.g. `sjoin`). |
-| `utils` | Function | `from_geodataframe` | `gdf: geopandas.GeoDataFrame` | `AOIWrapper` | Re-serialize after manipulation. |
-| `utils` | Function | `equal_frequency_bins` | `series: pandas.Series`, `n: int` | `pandas.Series` | Equal-frequency binning for class-imbalanced labels. |
-| `utils` | Function | `spatial_train_val_split` | `aoi: AOIWrapper`, `k: int = 5` | `tuple[AOIWrapper, AOIWrapper]` | Spatial CV split (refuse random splits on auto-correlated AOIs). |
-| `utils` | Function | `organize_save_order` | `bundles: list[tuple[str, ResultBundle]]` | `list[tuple[str, ResultBundle]]` | Deduplicates + orders layers (rasters first, vectors second, POIs last). |
-
-Same catalog as CSV:
-
-```csv
-Module,Type,Name,Arguments,Return Type,Description
-system,Tool,search,queries (list[str]),SearchResponse,Web search for external references.
-system,Tool,fetch,url (str) | headers (dict),FetchResponse,HTTP GET on documented endpoints (OlmoEarth Studio / NLDI).
-olmoearth,Function,load_context,limit (int = 50) | offset (int = 0),StudioContext,Returns identity/organization and one page of projects with the total count (areas/datasets/recent predictions: design target).
-olmoearth,Function,resolve_to_aoi,locations (list[str] max 30),AOIWrapper,Place names / watershed IDs / county FIPS / free text -> polygon geometries.
-olmoearth,Function,create_project,name (str) | description (str),ProjectRef,POST /projects.
-olmoearth,Function,create_area,project (ProjectRef) | aoi (AOIWrapper),AreaRef,POST /areas.
-olmoearth,Function,create_dataset,project (ProjectRef) | area (AreaRef) | bands (list[str]) | time_range (TimeRange),DatasetRef,Configures a Studio dataset.
-olmoearth,Function,create_labelset,project (ProjectRef) | spec (LabelsetSpec),LabelsetRef,POST /labelsets: labelset metadata (name/description/template_id).
-olmoearth,Function,create_label,labelset (LabelsetRef) | name (str) | color (str),LabelDef,POST /labels: one class within a labelset.
-olmoearth,Function,upload_labels,labelset (LabelsetRef) | path (str),int,Imports normalized GeoJSON/CSV/Shapefile labels; returns count.
-olmoearth,Function,submit_prediction,kind ("finetune"|"embed"|"reference") | project (ProjectRef) | dataset (DatasetRef) | config (dict),PredictionRef,POST /predictions (built tool: target_area_ids; probability_top_k sent as probability_output; left out with OLMOEARTH_READ_ONLY=1).
-olmoearth,Function,poll_prediction,ref (PredictionRef),PredictionStatus,GET /predictions/{id} with exponential backoff.
-olmoearth,Function,fetch_results,ref (PredictionRef) | kind ("tiles"|"vectors"|"metrics"),ResultBundle,GET /prediction-results/... (filtered by Studio with result_metadata included: declared outputs + period + file_formats).
-olmoearth,Function,studio_label_inventory,prediction_id | model_id | project_id (exactly one),LabelInventory,Counts the Studio annotations a model's training selector selects now (or a project's) by status / geometry / split / class; no random design recorded so no error rate; no ids or geometry; read-only.
-olmoearth,Function,pixel_value,ref (PredictionRef) | aoi (AOIWrapper),list[PixelValueResult],GET /prediction-results/{id}/pixel-value (compare_results: skills 4/5/9; review_set_from_result: skill 18); no-data values (missing/NaN/model nodata_value/outside the declared range) dropped and counted.
-olmoearth,Function,compare_results,result_ids (list[str]; 2-8) | mode ("auto"|"pair"|"group"|"series"|"ensemble") | kind | property_name | grid | tolerance | value_range | value_type | allow_different_properties,Comparison,How Studio results differ with no ground truth: pair / group / date-ordered series / ensemble on one pixel-value grid; no-data dropped; different properties refused; cells by (row col) only.
-olmoearth,Function,review_set_from_result,result_id (str) | grid (int = 10) | budgets (list[float]) | property_name (str | None) | threshold (float | None),ReviewSet,Skill 18 for a Studio result: grid-sampled [0 1] score read as [1-s s] and ranked by margin; a class map with top-k scores ranked by rank-1 minus rank-2 score; a class map without them refused; windows by (row col) and index.
-olmoearth,Function,scores_from_file,run_dir (str; under OLMOEARTH_SCORES_ROOT) | patch (int = 4) | include_fill_class (bool = False),ScoresFile,Skill 18 for a direct model run's scores raster + manifest (or from-olmoearth's scores_<EPSG>.tif + olmoearth_output.json; class ids refused with how to get probabilities): pooled to windows by oe_inferencex assess (inferencex extra >= 1.20.3); label-fill channel left out; writes the scores file the review and estimation tools read; no coordinates.
-olmoearth,Function,scores_from_studio,result_id (str; a UUID) | patch (int = 4) | clip_out_of_range (bool = False) | max_mb (int = 1024),list[ScoresFile],Skill 18 for a Studio result's native-resolution files (GET /prediction-results/files): a class map with top-k scores or a [0 1] score band into one scores file per UTM zone pooled by scores_from_file's handler; class map without top-k scores refused; zip read as untrusted; no coordinates.
-olmoearth,Function,plan_label_sample,scores | scores_path | result_id; budget (int); design ("confidence"|"proportional"|"random"|"class"|"disagreement"); grid (int | [rows cols]; result_id: 2-16; two results: up to 12); class: min_per_class (int = 50); class map or class: width (float = 0.10) | expected_error_rate | class_share; disagreement: result_id_b | scores_path_b; date_a; date_b; difference (float = 0.05); random on a direct run's scores file: seed_from_map (bool) | alpha | delta (float = 0.1) | rule,FilePath,Which windows to label for an error-rate estimate (inferencex extra); a review set is not a sample; a capped Studio grid is stated; a Studio class map without top-k scores: random or class design only with plan_error_rate and plan_class budgets (with top-k scores: every design); disagreement: the windows where two maps of one time differ (sample_disagreement) with plan_which_map's budget advice; different dates refused; seed_from_map: oe-inferencex sample --seed-from-map on the run's raster (the sample a certificate rests on).
-olmoearth,Function,estimate_map_error,design_path (FilePath) | wrong (list[int]) or labels_path | reference (list[int | str] | None),ErrorEstimate,Error rate with the valid interval (estimate --valid) first and then the design's interval and method for every design of one map; per-class accuracy; a review set is refused as a sample; a disagreement design: which map is more accurate (or neither) by compare_from_disagreement (sign test or interval) and the accuracy difference's interval.
-olmoearth,Function,certify_zone,design_path (FilePath; random design) | wrong | alpha (float) | delta (float = 0.1) | rule ("prefix"|"bonferroni"),CertifiedZone,Largest most-confident share with error rate at most alpha; stratified designs and class maps without top-k scores refused; a seed_from_map plan keeps its alpha delta and rule and its first labels.
-olmoearth,Function,write_certificate,design_path (FilePath; seed_from_map plan) | wrong or labels_path | date (str),Certificate,The certified zone packed into olmoearth-inferencex's certificate (certificate.build) after oe-inferencex certify on the plan's sheet; verified before written; none when nothing is certified; written once.
-olmoearth,Function,verify_certificate,certificate_path (FilePath) | map_path (FilePath | None) | window ([row col] | None),CertificateCheck,certificate.verify against a copy of the map; whether a window is in the zone; no coordinates.
-olmoearth,Function,save_view,bundle (ResultBundle) | name (str),FilePath,Publishes layer back to user's Studio project.
-eo,Function,window_tile,aoi (AOIWrapper) | size_m (int = 256),list[Window],Tiles AOI into fixed-size windows.
-utils,Function,add_area,aoi (AOIWrapper),AOIWrapper,Adds area_sq_meters field.
-utils,Function,add_buffer,aoi (AOIWrapper) | distance_m (float),AOIWrapper,Buffers geometries outward.
-utils,Function,to_geodataframe,aoi (AOIWrapper),geopandas.GeoDataFrame,Deserialize for complex spatial ops.
-utils,Function,from_geodataframe,gdf (geopandas.GeoDataFrame),AOIWrapper,Re-serialize after manipulation.
-utils,Function,equal_frequency_bins,series (pandas.Series) | n (int),pandas.Series,Equal-frequency binning for imbalance.
-utils,Function,spatial_train_val_split,aoi (AOIWrapper) | k (int = 5),tuple[AOIWrapper AOIWrapper],Spatial CV split.
-utils,Function,organize_save_order,bundles (list[tuple[str ResultBundle]]),list[tuple[str ResultBundle]],Deduplicates and orders layers (rasters > vectors > POIs).
-```
+| Module | Type | Name | Args / Inputs | Description |
+|---|---|---|---|---|
+| `olmoearth` | Function | `load_context` | `limit: int = 50`, `offset: int = 0` | Returns the user's identity, organization and one page of projects (id, name, creation time) with the total count; `offset` pages. (Areas, datasets and recent predictions are not returned.) |
+| `olmoearth` | Function | `create_project` | `name: str`, `description: str` | Wraps `POST /projects`. |
+| `olmoearth` | Function | `submit_prediction` | `name: str`, `project_id: str`, `area_id: str`, `model_id: str`, `start_time: str`, `end_time: str`, `probability_top_k: int \| None` (at least 2) | Wraps `POST /predictions`. Sends the area as `target_area_ids` and `probability_top_k` as `probability_output` (a segmentation model's top-k class scores; from the spec, unverified with a read-only key); `OLMOEARTH_READ_ONLY=1` leaves it and `create_project` out. |
+| `olmoearth` | Function | `poll_prediction` | `prediction_id: str` | Wraps `GET /predictions/{id}`: the status (pending / running / completed / failed / cancelled) and `model_id`. |
+| `olmoearth` | Function | `fetch_results` | `prediction_id: str`, `scan_limit: int = 200` (at most 1000) | Wraps `GET /prediction-results/...` (tile URLs, property names, file formats). Asks Studio to filter by prediction with `include: ["result_metadata"]`, so each result's declared outputs and period come back, with its `file_formats`. |
+| `olmoearth` | Function | `studio_label_inventory` | exactly one of `prediction_id`, `model_id`, `project_id` | Counts the Studio annotations a model's training selector (`data_selectors` on its model record) selects now, or a project's, by status, geometry type, split, class and split by class, with creation times against the model record's (`POST /annotations/search`; complete only when each selector returned its `meta.total`). Studio records no random design for them, so they give no design-based error rate; if Studio trained on what its selector selects (not confirmed), train and val ones fit or tuned the model, and test ones were held out only if training honoured the split field. No ids, geometry, coordinates, free text or person's ids. Read-only. |
+| `olmoearth` | Function | `pixel_value` | `result_id: str`, `lon: float`, `lat: float`, `property_name: str \| None` | Wraps `GET /prediction-results/{id}/pixel-value`: the model output at one point the user gives. The endpoint is used by `compare_results` (skill #2) and `review_set_from_result` (#5). Studio returns no-data as a value (e.g. `-1` on a `[0, 1]` band): every grid sampler drops a value that is missing/NaN, equals the model's `nodata_value`, or lies outside the band's declared range, and reports `n_nodata_dropped`. |
+| `olmoearth` | Function | `compare_results` | `result_ids: list[str]` (2-8), `mode: Literal["auto","pair","group","series","ensemble"] = "auto"`, `kind: Literal["cross_model","temporal"] \| None`, `property_name: str \| None`, `grid: int \| None`, `tolerance: float = 0.1`, `value_range`, `value_type`, `allow_different_properties: bool = False` | How Studio results differ, with no ground truth (skill #2): samples every result on one grid through `pixel_value` and reads a `pair` (difference, RMSE, correlation, agreement; cross-model or temporal), a `group` of 2-6 models (pairwise + consensus), a date-ordered `series` of one model (steps, trajectories, calibrated shift) or an `ensemble` (per-cell spread as a confidence). `auto` picks pair / series / group from the results' models and dates. No-data dropped and counted; different properties refused; cells by `(row, col)`, never coordinates. |
+| `olmoearth` | Function | `review_set_from_result` | `result_id: str`, `grid: int = 10` (2-16), `budgets: list[float] = [0.01, 0.05, 0.1]`, `property_name: str \| None`, `threshold: float \| None` | Skill #5 for a Studio result: samples its band on a grid (one pixel-value per window), reads a `[0, 1]` score `s` as `[1 - s, s]` (stated assumption; other ranges need `threshold`) and ranks by margin, least decided first. A class map with top-k scores (`probability_output`) ranks by rank-1 minus rank-2 score (Studio's uncalibrated softmax scores, quantized to 1/254, stated); a class map without them is refused, with where top-k scores come from. Windows by `(row, col)` and index; locations only in the saved scores file. |
+| `olmoearth` | Function | `scores_from_file` | `run_dir: str` (under `OLMOEARTH_SCORES_ROOT`), `patch: int = 4`, `include_fill_class: bool = False` | Skill #5 for a map from a direct model run (a scores raster and its `manifest.json`, e.g. `score_area.py` on a GPU cluster, or the `scores_<EPSG>.tif` and `olmoearth_output.json` that `oe-inferencex from-olmoearth DATASET --out RUN` writes; `run_dir` names the folder, the summary or one raster), or a zone `scores_from_studio` wrote, whose provenance it names as Studio's files endpoint; a run of class ids, the rslearn dataset itself and a per-window classification are refused, the first with how to get probabilities: pools every pixel's logits or probabilities to windows with `oe_inferencex.review.assess.assess_prediction` (`is_logit` from the manifest; the raster read by `oe_inferencex.common.raster.read_raster`, a file it cannot read refused; the optional `inferencex` extra, >= 1.20.3, which brings rasterio; an older release is refused), leaves out of the margin a label-fill channel the manifest marks, and writes a scores file that `review_set`, `plan_label_sample` and `compare_review` read. Returns the window grid, valid and no-data windows, classes, model and revision; no coordinates. |
+| `olmoearth` | Function | `scores_from_studio` | `result_id: str` (a UUID), `patch: int = 4`, `clip_out_of_range: bool = False`, `max_mb: int = 1024` | Skill #5 for a Studio result's own files: downloads its native-resolution model output (`GET /prediction-results/files`, one GeoTIFF per UTM zone) and reads a class map with top-k scores (decoded by the files README's `(value - 1) / 254`) or a `[0, 1]` score band, the kind decided from `result_metadata` before any download (a class map without top-k scores, a top-1 result and other layouts refused). Each zone is written under `<scores root>/studio_results/` (`scores.tif`, `manifest.json` with `source.kind` `studio_files`) and pooled by `scores_from_file`'s handler; each zone is its own map. The zip is read as untrusted input, and the download token reaches no result, file or log. Returns each zone's run directory, scores file, valid pixels and classes; no coordinates. |
+| `olmoearth` | Function | `plan_label_sample` | `scores \| scores_path \| result_id`, `budget: int`, `design: Literal["confidence","proportional","random","class","disagreement"] = "confidence"`, `grid: int \| [rows, cols]` (a `result_id`: N or `[N, N]`, 2-16, default 10; two results: at most 12); for `"class"`: `min_per_class: int = 50`; for a class map or `"class"`: `width: float = 0.10`, `expected_error_rate`, `class_share`; for `"disagreement"`: `result_id_b \| scores_path_b`, `date_a`, `date_b`, `difference: float = 0.05`; for `"random"` on a direct run's scores file: `seed_from_map: bool = False` with `alpha: float`, `delta: float = 0.1`, `rule` | Which windows to label for an error-rate estimate (`oe_inferencex.estimate.sample_for_estimation`, optional `inferencex` extra). A review set is not a sample. A Studio result's grid above 16 is capped, and the result's `sampling` states the grid used and the cap. A Studio classification result without top-k scores is a class map: `"random"` or `"class"` (strata by map class, Olofsson et al. 2014) only, with `plan.plan_error_rate`'s and `plan.plan_class`'s label budgets; the ranking designs are refused for it. A class map with top-k scores takes every design, the confidence design drawing on its rank-1 score and margin. A `"class"` plan returns `per_stratum` (each stratum's class, name where known, windows and labels, from the package's `condition.values`, `sizes` and `allocation`; a class map's class as the map writes it, with the agent's internal `code`); a confidence or proportional plan returns `strata_sizes` and `allocation` with `strata_meaning`. Every plan forbids calling part of its sheet enough (`subset_labelling_sufficient`). With `design="disagreement"`, which of two maps is more accurate: two Studio results of the same area (sampled by `compare_results`' pair sampler) or two scores files of one window grid, refused unless `compare.dates_reading` reads them as one time; the windows where they differ, drawn by `estimate.sample_disagreement`, with `plan.plan_which_map`'s budget advice. With `seed_from_map`, the sample a certificate rests on, only from a scores file `scores_from_file` wrote from a model run's output GeoTIFF (any other scores file, inline scores or a Studio result is refused): `oe-inferencex sample --design random --seed-from-map --alpha A` on the run's raster, in a working folder under `<scores root>/certificates/`, its seed taken from the map's digest and the settings; the design is that draw, checked against the package's sheet. Not drawn again over a sheet that holds labels; `alpha`, `delta` and `rule` without `seed_from_map` are refused. |
+| `olmoearth` | Function | `estimate_map_error` | `design_path: str`, `wrong: list[int] \| labels_path`, `reference: list[int \| str] \| None` | On every design file of one map (`"confidence"`, `"proportional"`, `"random"`, `"class"`; a map with scores or a class map), `estimate_error_rate(valid=True)`'s interval valid at every sample size first, then the interval the design earns and its `method` (nominal under the confidence and proportional designs, as the package's `VALID_NOTE` says), and `estimate_per_class(valid=True)` per class; a `seed_from_map` plan's labels are fixed once first graded. Windows labelled without a design are checked as a random sample (a review set is refused) and returned with `design` `none (checked as a random sample)`, the package's reading of them under `estimated_as`. On a `"disagreement"` design, the class seen per window (`?`: unjudged) graded by `estimate.compare_from_disagreement`: which map is more accurate, or neither (exact sign test up to a fifth of the differing windows, the interval past that), the 95% interval on the accuracy difference, the counts and the package's notes. Every estimate from a design file returns that file's `seed`. |
+| `olmoearth` | Function | `certify_zone` | `design_path: str` (random design), `wrong`, `alpha: float`, `delta: float = 0.1`, `rule: Literal["prefix","bonferroni"]` | The largest most-confident share of the map with error rate at most `alpha` (`oe_inferencex.estimate.certify_zone`); a stratified design, or a class map without top-k scores (no confidence to rank), is refused. A certified zone's `meaning` ends with the package's `ISSUED_NOTE` (what delta counts), verbatim, and `issued_note` holds it on its own; the result names the design file's design and `seed`, and `labels_sha256`, a digest of the labels. A plan drawn with `seed_from_map` keeps its alpha, delta and rule, and the labels first graded on it (here, by `estimate_map_error` or by `write_certificate`) are fixed in its sheet: other labels are refused. |
+| `olmoearth` | Function | `write_certificate` | `design_path: str` (a `seed_from_map` plan), `wrong \| labels_path`, `date: str` (default the date window a `score_area.py` manifest records; a `from-olmoearth` run records none, so pass it) | The certified zone packed into olmoearth-inferencex's certificate (`certify.certificate.build`: a STAC Item, the zone mask, the labels, digests binding it to the map), after `oe-inferencex certify` on the plan's sheet gives the windows `certify_zone` computes on these labels; verified before it is written; no certificate written when no zone is certified, and none over one already written for the plan. States the statement, `ISSUED_NOTE`, the issuer's word and the whole-map estimate from the labels. |
+| `olmoearth` | Function | `verify_certificate` | `certificate_path: str`, `map_path: str \| None`, `window: [row, col] \| None` | `certify.certificate.verify` against a copy of the map under the scores root (a plain GeoTIFF or `.npy`, or the scores file that names it): each check, verified or not, the statement certify gives again; checked against the file the certificate names, says it shows only that the two agree; with `window`, whether that window is in the zone (`certificate.point`), never by coordinates. |
 
 ---
 
 ## 2. Harness data classes
 
-Internal types passed between tools. Plain Python dataclasses; no schema dependency.
-
-```python
-import dataclasses
-from typing import Literal, Union
-
-@dataclasses.dataclass
-class ToolExecutionError:
-    message: str | None = None
-    status_code: int | None = None
-
-@dataclasses.dataclass
-class TimeRange:
-    """ISO-8601 strings, inclusive."""
-    start: str
-    end: str
-
-@dataclasses.dataclass
-class AOIWrapper:
-    """Serialized geometry bundle. Mirrors Google Earth Agent's SGTWrapper."""
-    error: Union[ToolExecutionError, None] = None
-    count: int | None = None
-    serialized_geojson: str | None = None
-    crs: str | None = "EPSG:4326"
-
-@dataclasses.dataclass
-class StudioContext:
-    project: Union["ProjectRef", None] = None
-    areas: list["AreaRef"] | None = None
-    datasets: list["DatasetRef"] | None = None
-    recent_predictions: list["PredictionRef"] | None = None
-
-@dataclasses.dataclass
-class ProjectRef:
-    id: str
-    name: str
-
-@dataclasses.dataclass
-class AreaRef:
-    id: str
-    aoi: AOIWrapper
-
-@dataclasses.dataclass
-class DatasetRef:
-    id: str
-    bands: list[str]
-    time_range: TimeRange
-
-@dataclasses.dataclass
-class LabelsetSpec:
-    """Studio `LabelsetWrite`: metadata about a labelset.
-    Matches `components.schemas.LabelsetWrite` in openapi.json v0.1.0."""
-    name: str
-    description: str | None = None
-    template_id: str | None = None  # UUID of a Labelset template, if reusing
-
-@dataclasses.dataclass
-class LabelDef:
-    """Studio `LabelWrite`: one class within a labelset.
-    Matches `components.schemas.LabelWrite` in openapi.json v0.1.0."""
-    name: str
-    color: str           # hex, e.g. "#33CC66"
-    labelset_id: str     # UUID back-reference
-
-@dataclasses.dataclass
-class LabelsetRef:
-    id: str
-    spec: LabelsetSpec
-    labels: list[LabelDef]
-
-@dataclasses.dataclass
-class DataPrepLabelSchema:
-    """Field names used by the OlmoEarth dataset-prep / rslearn layer
-    (NOT Studio API). Used during label normalization BEFORE
-    upload_labels hands data through to Studio. See PLAN.md §4 for the
-    layer distinction."""
-    sample_category: str   # "train" / "val" / "test"
-    es_label: str
-    oe_labels: list[str]
-
-@dataclasses.dataclass
-class Window:
-    """Geographic window for tiling AOIs into rslearn dataset rows."""
-    bbox: tuple[float, float, float, float]
-    size_m: int
-    crs: str = "EPSG:4326"
-
-@dataclasses.dataclass
-class PredictionRef:
-    """Reference to a Studio Prediction.
-
-    `kind` is a CLIENT-SIDE dispatch key that selects the `config` shape
-    we send to `submit_prediction`. The Studio API itself does not
-    distinguish prediction kinds; every Prediction takes a `model_id`
-    UUID and the fine-tune-vs-inference distinction lives in that
-    UUID's lineage. See PLAN.md §4 for the model_id provenance gap.
-    """
-    id: str
-    kind: Literal["finetune", "embed", "reference"]
-
-@dataclasses.dataclass
-class PredictionStatus:
-    """Mirrors `components.schemas.PredictionStatus` in openapi.json v0.1.0.
-
-    The API returns one of five states; the harness exposes `progress`
-    as a normalized 0..1 float derived from the API's free-form
-    `Prediction.progress` object (which has no documented schema).
-    """
-    ref: PredictionRef
-    state: Literal["pending", "running", "completed", "failed", "cancelled"]
-    progress: float | None = None     # normalized 0..1; see docstring
-    eta_seconds: int | None = None    # client estimate; not from API
-
-@dataclasses.dataclass
-class ResultBundle:
-    ref: PredictionRef
-    tile_template: str | None = None  # XYZ template, e.g. /tiles/{z}/{x}/{y}.png
-    vector_url: str | None = None     # MVT or GeoJSON URL
-    metrics: dict | None = None
-
-@dataclasses.dataclass
-class PixelValueResult:
-    """One row from /prediction-results/{id}/pixel-value."""
-    lon: float
-    lat: float
-    value: float | int | None
-    class_name: str | None = None
-
-@dataclasses.dataclass
-class ProvenanceManifest:
-    """Append-only manifest written by ProvenanceLog.record_tool_call
-    (src/olmoearth_agent/provenance/log.py; rule §3.13). One entry per
-    tool call. Replay script reconstructs the PredictionRef chain from this."""
-    run_id: str
-    timestamp: str          # ISO-8601
-    api_call: str           # e.g. "POST /predictions"
-    request_hash: str       # sha256 of the request payload
-    response_summary: dict  # ids, status codes, hashes, no raw geometry
-    prediction_id: str | None = None
-    model_id: str | None = None
-    dataset_hashes: list[str] | None = None
-
-@dataclasses.dataclass
-class FilePath:
-    error: Union[ToolExecutionError, None] = None
-    path: str | None = None
-```
+The data classes the layers share are in `src/olmoearth_agent/types.py`: `ApiEnvelope` (Studio's `{records, meta, errors}` envelope), `ProjectRef`, `StudioContext` (what `load_context` returns) and `ProvenanceManifest` (one entry per tool call, rule §3.13). Tool results are plain JSON dicts.
 
 ---
 
@@ -247,21 +45,21 @@ class FilePath:
 
 Hard constraints the harness enforces: refusals where appropriate, defaults where not.
 
-1. **No raw coordinates in chat.** Never output lat/lon, WKT, or full GeoJSON in conversational responses. Save to a `FilePath` and reference the path. (Lat/lon and partner data are sensitive; traces must redact them.)
-2. **Default temporal window.** When the user does not specify a time range, default to the trailing 12 months from today; surface the choice in the response.
-3. **Default buffer.** When the user asks for "nearby" without a distance, use 1000 m via `utils.add_buffer`.
+1. **No raw coordinates in chat.** Never output lat/lon, WKT, or full GeoJSON in conversational responses. Save to a file and reference the path. (Lat/lon and partner data are sensitive; traces must redact them.)
+2. *Retired on 31 October 2026 (a default time window): no tool picks a time range.*
+3. *Retired on 31 October 2026 (a default buffer): no tool buffers an area.*
 4. **No code execution.** No tool runs code the model writes (the opt-in `system:python` tool, `olmoearth_run_python`, was removed). The one child process, olmoearth-inferencex's command line, runs with a **credential-scrubbed environment** (Studio/LLM keys removed) -- defence-in-depth, not a network sandbox. Surface long `rslearn ingest/materialize/fit` jobs and Python snippets to the user.
-   - **Egress guard.** Every outbound endpoint is validated against a per-capability host allowlist + an SSRF block (private/loopback/metadata ranges) before a request leaves the process (`security/egress.py`; `OLMOEARTH_EGRESS=audit` default / `enforce` / `off`, `OLMOEARTH_EGRESS_ALLOW` to extend). Redirects are re-validated against the allowlist (the fetchers do not blindly follow a 3xx off-allowlist). Informed by NVIDIA NemoClaw -- see [`docs/archive/nemoclaw-assessment.md`](docs/archive/nemoclaw-assessment.md).
-   - **Workspace path guard.** Model-controlled file paths in tools (`out_dir` / `output_path` / `positives_path` / ...) are confined to a workspace root via `security/paths.py` (`safe_path`), so a `../../` or absolute path cannot read or write outside it. The root is `OLMOEARTH_OUTPUT_ROOT` if set, else `<cwd>/olmoearth_outputs`.
-5. **Cost guard.** Refuse `submit_prediction(kind="finetune")` if the estimated cost exceeds the session budget. Surface the estimate and ask before proceeding.
-6. **Spatial cross-validation.** When AOIs are spatially auto-correlated, refuse random train/val splits: use `utils.spatial_train_val_split`.
-7. **Class-balance hygiene.** When label classes are skewed > 10:1, default to `utils.equal_frequency_bins` before submitting fine-tunes. Document in the run trace.
+   - **Egress guard.** Every outbound endpoint is validated against a per-capability host allowlist + an SSRF block (private/loopback/metadata ranges) before a request leaves the process (`security/egress.py`; `OLMOEARTH_EGRESS=audit` default / `enforce` / `off`, `OLMOEARTH_EGRESS_ALLOW` to extend). Redirects are re-validated against the allowlist (the fetchers do not blindly follow a 3xx off-allowlist). Informed by NVIDIA NemoClaw's sandbox and credential handling.
+   - **Workspace path guard.** Model-controlled file paths in tools are confined to a workspace root via `security/paths.py` (`safe_path`), so a `../../` or absolute path cannot read or write outside it. The root is `OLMOEARTH_OUTPUT_ROOT` if set, else `<cwd>/olmoearth_outputs`.
+5. *Retired on 31 October 2026 (a cost guard on fine-tune submissions): the agent submits no fine-tune and has no cost estimate.*
+6. *Retired on 31 October 2026 (spatial cross-validation): training-side; the agent splits no training data.*
+7. *Retired on 31 October 2026 (class-balance binning): training-side.*
 8. **Studio quota awareness.** OlmoEarth Studio caps API keys per account at 10. Cache `load_context` to one call per 5 minutes; do not regenerate keys programmatically.
-9. **Async job pattern.** `submit_prediction` returns immediately with a `PredictionRef`. Downstream tools accept the ref and poll. Never block on synchronous training.
-10. **Schema-validate labels before upload.** `create_labelset` rejects schemas missing the `sample_category` / `es_label` / `oe_labels` keys. MIME type and column types validated on `upload_labels`.
-11. **Refuse silent overwrites.** `save_view` with a name that exists in the target project must require an explicit `overwrite=True`. `write_certificate` never writes over a certificate already written for its plan, and a `seed_from_map` plan's sheet never takes other labels than the first graded (`tests/tools/test_certificate_tool.py::test_a_certificate_rests_on_the_labels_first_given`).
-12. **Trace redaction.** OpenTelemetry traces redact lat/lon, partner-controlled attributes, and full API keys before export.
-13. **Provenance manifest.** Every `olmoearth.*` API call writes a `ProvenanceManifest` entry via `ProvenanceLog.record_tool_call` (`src/olmoearth_agent/provenance/log.py`; surfaced by skill #3 in [`SKILLS.md`](SKILLS.md)). Sessions that disable provenance refuse to call `save_view`. The replay script is the single source of truth for "what did this run do?" The verification tools' calls (`plan_label_sample`, `estimate_map_error`, `certify_zone`, `write_certificate`, `verify_certificate`) are also kept whole (`ProvenanceLog.verification`): skill #4's report states their numbers from them, never from figures the model types (a title or result typed with an accuracy figure is refused; a zone tried again on the same labels with another alpha, delta, rule or labels is not stated as certified), and skill #3's summary lists each with its design and seed (inline labels by a digest). The log is one request's: on the web UI each message is a request with a fresh log.
+9. **Async job pattern.** `submit_prediction` returns immediately with the prediction's id. Downstream tools take the id and poll. Never block on synchronous training.
+10. *Retired on 31 October 2026 (label schema checks before upload): no tool uploads labels.*
+11. **Refuse silent overwrites.** `write_certificate` never writes over a certificate already written for its plan, and a `seed_from_map` plan's sheet never takes other labels than the first graded (`tests/tools/test_certificate_tool.py::test_a_certificate_rests_on_the_labels_first_given`).
+12. *Retired on 31 October 2026 (trace redaction on export): no trace is exported; rule 1 and the manifest's id-only summaries keep coordinates out.*
+13. **Provenance manifest.** Every tool call writes a `ProvenanceManifest` entry via `ProvenanceLog.record_tool_call` (`src/olmoearth_agent/provenance/log.py`; surfaced by skill #3 in [`SKILLS.md`](SKILLS.md)). The manifest is the record of "what did this run do?"; its replay skeleton lists the calls in order, each with its argument hash, and does not re-run them (the arguments are not stored). The verification tools' calls (`plan_label_sample`, `estimate_map_error`, `certify_zone`, `write_certificate`, `verify_certificate`) are also kept whole (`ProvenanceLog.verification`): skill #4's report states their numbers from them, never from figures the model types (a title or result typed with an accuracy figure is refused; a zone tried again on the same labels with another alpha, delta, rule or labels is not stated as certified), and skill #3's summary lists each with its design and seed (inline labels by a digest). The log is one request's: on the web UI each message is a request with a fresh log.
 
 ---
 
@@ -272,10 +70,10 @@ The tool catalog above is the contract. Everything in this section is implementa
 | Layer | Reference |
 |---|---|
 | LLM | [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) 4-bit `UD-IQ4_XS`: text-only with function calling (model has a native vision encoder; we don't use it -- multimodal is parked, §7.1). Served via **llama.cpp** (`ghcr.io/ggml-org/llama.cpp:server-cuda -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS --jinja -ngl 999 -c 16384 --parallel 1 --no-mmap`); see [`docs/serving.md`](docs/serving.md) and [`docs/CANON.md`](docs/CANON.md). Agent sessions set `chat_template_kwargs.preserve_thinking=True`. NVFP4 dropped (doesn't fit 24 GB; CANON C4/C7). |
-| Harness | [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow): LangGraph lead agent + subagents-as-tools + middleware chain + MCP-first tools. [`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md). |
-| Skills | 5 skills in [`SKILLS.md`](SKILLS.md), packaged per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference). The `SKILL.md` package for skill #1 ships inside the Python package, in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/), moved from the now-frozen [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills). Trigger-heavy `SKILL.md` frontmatter. |
-| Tooling protocol | In-process tool registry (`ToolRegistry`); outbound HTTP via `httpx`, gated by the per-capability egress allowlist + SSRF guard in `security/egress.py` (Studio, cloud-LLM endpoints, and a local LLM on loopback). External MCP connectors are a parked option (§7), not the current transport. |
-| Eval + observability | OpenTelemetry with lat/lon redaction; LangSmith dataset-from-traces; custom EO benchmark on a small frozen question set. Provenance manifest (rule §3.13) is the audit substrate. |
+| Harness | A single-agent tool-calling loop (`harness/agent.py`) shaped after [ByteDance DeerFlow v2](https://github.com/bytedance/deer-flow)'s lead agent ([`ARCHITECTURE.md`](https://github.com/bytedance/deer-flow/blob/main/backend/docs/ARCHITECTURE.md)), without its subagents or LangGraph; its behaviours are middleware with LangChain 1.x's hook interface (`harness/middleware.py`). |
+| Skills | 5 skills in [`SKILLS.md`](SKILLS.md). Skill #1 is an instruction package per the open [agentskills.io](https://agentskills.io) spec ([NVIDIA AI-Q](https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html) implementation reference); its `SKILL.md` package ships inside the Python package, in [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/), moved from the now-frozen [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills). Trigger-heavy `SKILL.md` frontmatter. |
+| Tooling protocol | In-process tool registry (`ToolRegistry`); outbound HTTP via `httpx`, gated by the per-capability egress allowlist + SSRF guard in `security/egress.py` (Studio, cloud-LLM endpoints, and a local LLM on loopback). External MCP connectors are not the transport. |
+| Audit | The provenance manifest (rule §3.13). |
 
 The Studio API itself:
 
@@ -291,15 +89,15 @@ The Studio API itself:
 
 - **Webhooks / push notifications: CLOSED, none exist.** No `/webhooks`, `/notifications`, `/events`, `/subscriptions` or `/callbacks` paths; no `Webhook` / `Notification` / `Callback` / `Subscription` / `Event` schemas; no top-level `webhooks` key; no `callbacks` field on any operation; no `webhook_url`/`notification_url`/`callback_url` property on `PredictionWrite`. **`GET /api/v1/predictions/{id}` polling is the only completion-detection path.** No documented polling interval or backoff guidance; the client picks its own. Operational rule §3.9 (async-by-ref) stands.
 - **Fine-tuned model reference: CLOSED by live probe, not by the spec.** `PredictionWrite.model_id` is a required UUID (`{"type": "string", "format": "uuid", "description": "ID of the model to run"}`). Same field appears on `PredictionRead.model_id` and `PredictionSearchRequest.model_id`. openapi v0.1.0 has no `/models` path and no `Model` / `ModelRead` / `ModelWrite` schema, and the `model-management/` docs page is a content stub, **but the live API serves `POST /models/search` and `GET /models/{id}`** (`GET /models` with no id is 404; verified 2026-05-30). The code uses both (`studio/client.py`): `StudioClient.search_models` lists the account's models (the web bridge labels the project tree's model level with it), and `StudioClient.get_model` reads one model record (`tools/sampling.model_summary`: name, `model_type` fine-tuned vs embeddings, `prediction_type`, no-data value, and whether a label field was trained on). The agent gets a reusable `model_id` from `olmoearth_search_predictions` (each prediction names its model, with that summary beside it); it never invents one.
-- **Rate limits / quotas / payload caps: CLOSED, undocumented at the API surface.** No `x-rateLimit-*` extensions, no `429` responses, no `Retry-After` headers, no `quota_*` fields on `UserReadMe` / `Project*`. The only quota documented anywhere is "max 10 API keys per account" from the auth doc. Pagination caps exist but are not rate limits: in the spec read on 2026-10-31, projects, prediction-results and labelsets take a `limit` of at most 1000, and predictions, areas, annotations, labels and datasets at most 10000 (`DatasetSearchRequest.limit <= 10000`, where the 2026-05-27 reading gave 1000). `studio/client.py` keeps every search within these bounds. `ApiErrorCode` enum is `["not_found_error", "permission_error", "server_error", "unauthorized_error", "validation_error", "not_implemented_error"]`, explicitly **no** `rate_limited_error`, reinforcing this. Operational rule §3.5 (cost guard) is precautionary; we keep it.
+- **Rate limits / quotas / payload caps: CLOSED, undocumented at the API surface.** No `x-rateLimit-*` extensions, no `429` responses, no `Retry-After` headers, no `quota_*` fields on `UserReadMe` / `Project*`. The only quota documented anywhere is "max 10 API keys per account" from the auth doc. Pagination caps exist but are not rate limits: in the spec read on 2026-10-31, projects, prediction-results and labelsets take a `limit` of at most 1000, and predictions, areas, annotations, labels and datasets at most 10000 (`DatasetSearchRequest.limit <= 10000`, where the 2026-05-27 reading gave 1000). `studio/client.py` keeps every search within these bounds. `ApiErrorCode` enum is `["not_found_error", "permission_error", "server_error", "unauthorized_error", "validation_error", "not_implemented_error"]`, explicitly **no** `rate_limited_error`, reinforcing this.
 
 **Other findings worth surfacing** (newly verified during the schema dive):
 
 - **API uses Firebase for identity.** `UserReadMe.firebase_user_id` is a real field. Public auth is bearer-token; the backend is Firebase. Affects how we'd ever extend to per-user OAuth.
 - **`PredictionResultAccessLevel` enum:** `["public", "restricted", "internal"]` in the spec and the records read on 2026-10-31 (the 2026-05-27 reading gave `["private", "organization", "public"]`), visibility scoping at the result level, not the prediction level. On 2026-10-31, 40 of the first 50 results the account could see were other organisations' public ones.
 - **`PredictionUpdate` is rename-only.** Only mutable field is `name`. Cannot change `model_id`, the target areas, or times after creation.
-- **`PredictionRead.progress`** is `{type: "object", additionalProperties: true}`: free-form. No documented shape. The harness normalizes this to a `0..1` float on `PredictionStatus.progress`; see §2 docstring.
-- **`PredictionWrite` required fields** are `{name, project_id, model_id}` in the spec read on 2026-10-31. The area goes in `target_area_ids` (a list of area ids, default empty); there is no `area_id` field (the 2026-05-27 reading listed `area_id`, `start_time` and `end_time` as required too). Optional: `start_time`, `end_time`, `geojson`, and `probability_output` (`top_k`, "Segmentation only"), which asks for a class map's top-k softmax scores. `olmoearth_submit_prediction` sends `target_area_ids` and `probability_output`; neither is verified with a read-only key. An area, not a `dataset_id`, is the primary geographic anchor for a prediction. `dataset` in our §1 tool catalog is a sibling concept (the band/time-range config). Future PR will reconcile.
+- **`PredictionRead.progress`** is `{type: "object", additionalProperties: true}`: free-form. No documented shape. The agent does not read it: `poll_prediction` returns the status and `model_id`.
+- **`PredictionWrite` required fields** are `{name, project_id, model_id}` in the spec read on 2026-10-31. The area goes in `target_area_ids` (a list of area ids, default empty); there is no `area_id` field (the 2026-05-27 reading listed `area_id`, `start_time` and `end_time` as required too). Optional: `start_time`, `end_time`, `geojson`, and `probability_output` (`top_k`, "Segmentation only"), which asks for a class map's top-k softmax scores. `olmoearth_submit_prediction` sends `target_area_ids` and `probability_output`; neither is verified with a read-only key. An area, not a `dataset_id`, is the primary geographic anchor for a prediction.
 - **`TaskStatus` enum** for annotation tasks is different from `PredictionStatus`: `["pending", "in_progress", "completed", "cancelled", "to_be_reviewed", "reviewed"]`. Don't conflate.
 - **Tile and pixel-value endpoints exist on prediction results:** `/prediction-results/{id}/tiles/{z}/{x}/{y}.{png|mvt}` and `/pixel-value`. Already reflected in §1 `fetch_results`. `pixel-value` reads the web-optimized GeoTIFF, which at a UTM-zone edge can differ from the native raster (measured 2026-10-31).
 - **A result's own files:** `GET /prediction-results/files?download_token=<token>` returns a zip of its model output at native resolution, one GeoTIFF per UTM zone and, for top-k scores, a `README.md` (measured live 2026-10-31 with a read-only key). The `download_token` on a result record is a credential: never returned to the model or logged. Read by §1 `scores_from_studio`.
@@ -314,49 +112,13 @@ The Studio API itself:
 
 ## 5. End-to-end example
 
-User: *"Map alfalfa fields in the Klamath basin from 2022-2024 Sentinel-2. I have ~300 ground-truth points in `points.geojson`."*
-
-```python
-# 1. Resolve the AOI
-ctx = olmoearth.load_context()
-basin = olmoearth.resolve_to_aoi(["Klamath HUC-8"])
-
-# 2. Prep labels (data-prep layer; NOT the Studio API schema)
-labels_gdf = utils.to_geodataframe(eo.read_file("points.geojson"))
-# ... data-prep schema mapping (DataPrepLabelSchema), equal-frequency binning if needed ...
-
-# 3. Studio project + dataset + labelset (Studio API schema)
-project   = olmoearth.create_project("Klamath alfalfa", "2022-2024")
-area      = olmoearth.create_area(project, basin)
-dataset   = olmoearth.create_dataset(project, area,
-                bands=["B2","B3","B4","B8","B11","B12"],
-                time_range=TimeRange("2022-01-01","2024-12-31"))
-labelset  = olmoearth.create_labelset(project,
-                LabelsetSpec(name="alfalfa", description="binary"))
-alfalfa   = olmoearth.create_label(labelset, name="alfalfa", color="#33CC66")
-n         = olmoearth.upload_labels(labelset, "points.geojson")
-
-# 4. Pick method (300 labels is below the FT threshold -> embed+LP)
-# Note: every Studio Prediction requires a model_id (UUID). The
-# OlmoEarth foundation model's UUID is resolved via load_context().
-pred = olmoearth.submit_prediction(
-    kind="embed", project=project, dataset=dataset,
-    config={"model_id": ctx.foundation_model_id,
-            "head": "linear_probe", "spatial_cv_k": 5})
-
-# 5. Wait, then publish
-status = olmoearth.poll_prediction(pred)   # backs off automatically
-bundle = olmoearth.fetch_results(pred, kind="tiles")
-view   = olmoearth.save_view(bundle, "alfalfa_2022_2024")
-```
-
-The §1 calls above are illustrative pseudocode (the design catalog), dispatched as separate function-call tools. Operational rules 5, 6, 7 apply: cost-guard runs before step 4, spatial-CV is the explicit `spatial_cv_k=5`, class-balance is checked in label prep. Rule 1 means the agent's chat response references `view.path`, not the raw geometries.
+[`docs/VERIFICATION_DEMO.md`](docs/VERIFICATION_DEMO.md) runs the verification tools end to end on a real map, the expert-annotated Dynamic World tile olmoearth-inferencex ships, and shows each result; `make verify-demo` writes it.
 
 ---
 
 ## 6. Roadmap
 
-Skills-first. Each P0-P3 phase is a single PR; each Skill-* row is one PR (per [`SKILLS.md`](SKILLS.md) numbering). Order beyond Skill-5 is driven by the case-study queue, not catalog order.
+Skills-first. Each P0-P3 phase was a single PR, and each skill one PR after them; their order followed the case-study queue, not catalog order.
 
 | Phase | Status | Deliverables | Exit criteria |
 |---|---|---|---|
@@ -364,11 +126,7 @@ Skills-first. Each P0-P3 phase is a single PR; each Skill-* row is one PR (per [
 | **P1 - Studio API gap closure** | done - [PR #3](https://github.com/2imi9/OlmoEarth-Agent/pull/3) | PLAN.md §4 verified findings; dataclass corrections | All three v0.1/v0.2 UNVERIFIED items resolved |
 | **P2 - Skills/scope rewrite** | done | PLAN.md v0.4 + SKILLS.md (18-skill catalog) | Multimodal parked; skills are the unit of progress |
 | **P3 - LLM serving + harness MVP** | done - PRs #5/#6 | 4-bit GGUF served via llama.cpp (`docs/serving.md`) with function calling + `preserve_thinking=True`; DeerFlow-style lead-agent + tool registry + provenance middleware (rule §3.13) | A function call round-trips through the LLM, verified live |
-| **Skill-5 - `olmoearth-predict`** | done - PRs #8/#11 | search / submit / poll / fetch-results | Verified live against the Studio API |
-| **Skill-8 - `olmoearth-evaluate`** | done - PR #10 | Spatial-block CV inflation diagnostic + metrics + NNDM-LOO CV (CAST port) | Reproduces Ploton-2020 inflation on clustered data |
-| **Skill-14 - `olmoearth-provenance`** | done - PR #7 | Manifest per tool call + replay skeleton | Recorded live during agent runs |
-| **Vendored skills** | vendored - PR #9 | submodule `vendor/olmoearth-skills` + SkillLoader (data-prep, studio-job-config, embeddings); the packages have since moved into `src/olmoearth_agent/skills/packages/` and the submodule is gone; data-prep and embeddings were removed on 2026-10-31, and studio-job-config is now #1 | Agent loads a SKILL.md via progressive disclosure |
-| **Skills #6, #7, #9, #10, #11, #12, #13, #15** | done - PRs #16-#21 | One PR per skill | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
+| **Skills** | done - PRs #7-#11, #16-#21 | One PR per skill: the run loop, provenance, the vendored instruction packages and their loader, and the rest; on 2026-10-31 the catalog was trimmed to the 5 skills of [`SKILLS.md`](SKILLS.md) and renumbered | All shipped; see [`CHANGELOG.md`](CHANGELOG.md) |
 
 P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records provenance, loads vendored skills, and computes honest accuracy. **All 5 skills are now shipped**, and in the unreleased version the default registry is the Studio run loop plus the verification layer, with no tool opt-in (see [`CHANGELOG.md`](CHANGELOG.md)); the remaining work is the verification layer on Studio results (class maps' error rates, which of two maps is more accurate, a class map's top-k scores and a result's own native-resolution files are built, unreleased) and live-smoke verification on real data.
 
@@ -376,11 +134,9 @@ P0-P3 are done: the agent talks to the live Studio API, drives the LLM, records 
 
 ## 7. Future work (parked)
 
-Two tracks were in scope through v0.3 and are now deferred. Re-activate only if a future skill empirically needs them.
+One track was in scope through v0.3 and is now deferred. Re-activate it only if a future skill empirically needs it.
 
 **7.1 Multimodal stack.** Text-only + function calling is sufficient when Studio returns metrics / GeoJSON / manifest hashes through tool returns. Parked: [Prismatic VLMs](https://arxiv.org/abs/2402.07865), [LLaVA-1.5](https://arxiv.org/abs/2310.03744)/[BLIP-2](https://arxiv.org/abs/2301.12597)/[Honeybee](https://arxiv.org/abs/2312.06742)/[MoVA](https://arxiv.org/abs/2404.13046)/[MoE-LLaVA](https://arxiv.org/abs/2401.15947) projector designs, [OlmoEarth-v1-Large](https://huggingface.co/allenai/OlmoEarth-v1-Large) embedding stream, [Unsloth fine-tuning](https://github.com/unslothai/unsloth). Note: the Qwen3.6 checkpoint *does* ship a native vision encoder: re-opening this track means using or replacing that tower, not training one from scratch.
-
-**7.2 Train-time self-improvement.** Inference-time techniques without weight updates ([Reflexion](https://arxiv.org/abs/2303.11366), [Self-Refine](https://arxiv.org/abs/2303.17651), repeated-sampling+verifier per [Monkeys](https://arxiv.org/abs/2407.21787)/[Archon](https://arxiv.org/abs/2409.15254)) may be folded into individual skills as they ship. Train-time ([STaR](https://arxiv.org/abs/2203.14465), [SWiRL](https://arxiv.org/abs/2504.04736), [GRPO](https://arxiv.org/abs/2402.03300), [DAPO](https://arxiv.org/abs/2503.14476)) parked until trace volume justifies. Eval framing: [METR horizon](https://arxiv.org/abs/2503.14499), [KernelBench](https://arxiv.org/abs/2502.10517). Source course: [Stanford CS329A](https://cs329a.stanford.edu/). An adopt-first proposal for the inference-time techniques (grounded per-skill self-check first; RL stays parked) is in [`docs/archive/self-improvement-proposal.md`](docs/archive/self-improvement-proposal.md).
 
 ---
 
@@ -398,10 +154,10 @@ https://docs.nvidia.com/aiq-blueprint/latest/integration/agent-skills.html | htt
 **LLM + serving**
 https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF | https://huggingface.co/Qwen/Qwen3.6-35B-A3B | https://github.com/QwenLM/Qwen3.6 | https://github.com/ggml-org/llama.cpp | [`docs/serving.md`](docs/serving.md) | [`docs/CANON.md`](docs/CANON.md)
 
-**Parked tracks:** see §7.1 (multimodal) and §7.2 (self-improvement) above for full reference lists.
+**Parked track:** see §7.1 (multimodal) above for its references.
 
-**Skill-layer citations:** see [`SKILLS.md`](SKILLS.md) (Ploton 2020, Meyer-Pebesma 2021, WorldCereal lessons, IAMAP, Samuel et al. reproducibility gap, Kedron-Holler 2022, AlphaEarth transfer literature).
+**Skill-layer citations:** see [`SKILLS.md`](SKILLS.md) (Olofsson et al. 2014, WorldCereal lessons, Samuel et al. reproducibility gap, Kedron-Holler 2022, Ma et al. 2026 on annual embeddings).
 
 ---
 
-*Skills are the unit of progress; multimodal and self-improvement tracks are parked (§7). All 5 skills are shipped, with no tool opt-in (see [`CHANGELOG.md`](CHANGELOG.md)); current work is the verification layer, live-smoke verification and refinement.*
+*Skills are the unit of progress; the multimodal track is parked (§7). All 5 skills are shipped, with no tool opt-in (see [`CHANGELOG.md`](CHANGELOG.md)); current work is the verification layer, live-smoke verification and refinement.*

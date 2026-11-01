@@ -18,16 +18,6 @@
 - It runs on a local Qwen3.6 model, or on your own cloud API key (Claude, ChatGPT or Gemini).
 - Its verification statistics (error rates and their intervals, the two-map test, certified zones and certificates) come from [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX), the `inferencex` extra.
 
-<div align="center">
-
-![OlmoEarth Agent live demo](webui/demo/olmoearth-agent-demo.gif)
-
-</div>
-
-<div align="center"><sub>Connect a Studio key and send a brief: the agent streams its reasoning, tool calls, results and a plain-English answer in a multi-turn chat. Draw an area of interest on a map in the chat, and it is stored as a Studio area. &nbsp; | &nbsp; <a href="webui/demo/olmoearth-agent-demo.mp4">walkthrough (MP4)</a></sub></div>
-
-<div align="center"><sub>Demo recorded on <a href="https://github.com/2imi9/OlmoEarth-Agent/releases/tag/v1.2.0">v1.2.0</a>.</sub></div>
-
 ---
 
 ## What it checks
@@ -115,13 +105,13 @@ The capability set ships as **5 skills**, grouped by EO-workflow stage. One of t
 |---|---|---|---|
 | 1 | `olmoearth-studio-job-config` | Task description -> Studio wizard answers, 14 presets + cross-field validator | **Configure** |
 | 2 | `olmoearth-predict` | Core run primitive: submit / poll / fetch results, sample the output at a point, compare results with no ground truth (`olmoearth_compare_results`): a pair, a group, change over time as one model's dated results traced as a series (mode `series`: date-ordered, legend-calibrated shifts; estimate movement, not verified ground change), or ensemble-disagreement confidence across Studio results (mode `ensemble`) | **Run** |
-| 3 | `olmoearth-provenance` | Manifest wrapper around every API call; emits a replay script | **Report** |
+| 3 | `olmoearth-provenance` | A manifest of every tool call, and a replay skeleton: the calls in order, which it does not re-run | **Report** |
 | 4 | `olmoearth-case-narrative` | Stakeholder writeup with live tiles + a freshness gate. It states the accuracy the verification tools (#5) measured in the same request, as they returned it: estimate, intervals, labels, design, seed. If none was measured, it says so. An accuracy figure the model typed is refused | **Report** |
 | 5 | `olmoearth-review-set` | **Which windows to check first, without labels.** Ranks windows by the model's own top-1-minus-top-2 margin at your review budget (boundary-first optional), and reports the attainable ceiling `min(1, budget/error_rate)` so a capture is read against what was reachable. Scores: your own, a direct run's, or a Studio result's `[0, 1]` score or top-k class scores (a prediction submitted with `probability_output`); a Studio class map without them has hard classes only. Which of two class maps of one time is more accurate needs no scores: labels on a random sample of the windows where they differ (`design='disagreement'`). A direct model run's files (`score_area.py`'s or `from-olmoearth`'s), a Studio result's own files, the label-sample plan, the error estimate, the certified zone and its certificate, the two-map route and `olmoearth_compare_review`'s reading of dates need the `inferencex` extra (`pip install 'olmoearth-agent[inferencex]'`, olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13; `make setup` installs it there) | **Analyze** |
 
 </details>
 
-Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness dataclasses and operational rules are in [`PLAN.md`](PLAN.md).
+Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog and operational rules are in [`PLAN.md`](PLAN.md).
 
 ## Stack
 
@@ -140,7 +130,7 @@ Per-skill specs are in [`SKILLS.md`](SKILLS.md); the function catalog, harness d
 
 ## Docs & links
 
-- [**PLAN.md**](PLAN.md): the function catalog, harness dataclasses, and operational rules
+- [**PLAN.md**](PLAN.md): the function catalog and operational rules
 - [**SKILLS.md**](SKILLS.md): the 5-skill catalog (Configure / Run / Analyze / Report)
 - [**docs/VERIFICATION_DEMO.md**](docs/VERIFICATION_DEMO.md): the verification tools on a real map, written by `make verify-demo`
 - [**docs/CLAUDE_AS_MODEL.md**](docs/CLAUDE_AS_MODEL.md): a Claude Code session as the agent's model, and what was checked live

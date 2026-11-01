@@ -5,7 +5,8 @@
 One :class:`~olmoearth_agent.types.ProvenanceManifest` entry per tool
 call. Records the tool name, a hash of the arguments, and an
 id-only summary of the result (no raw geometry, per operational rule
-§3.1). Emits a JSON manifest and a runnable replay script.
+§3.1). Emits a JSON manifest and a replay skeleton (the calls in order, as
+comments; it does not re-run them).
 
 The verification tools' calls (:data:`VERIFICATION_TOOLS`: the label plan,
 the error estimate, the certified zone, and the certificate written and
@@ -316,13 +317,13 @@ class ProvenanceLog:
         return json.dumps(self.to_dict(), indent=indent, default=str)
 
     def replay_script(self) -> str:
-        """Emit a runnable Python script that re-issues the recorded calls.
+        """Emit a replay skeleton: the recorded calls in order, as comments.
 
-        The script re-dispatches each recorded tool call (by name + the
-        original arguments are NOT stored verbatim (only their hash) so
-        the script is a skeleton that documents the sequence and leaves
-        argument reconstruction to the operator). This is enough to audit
-        *what* the run did and in what order. The verification calls follow,
+        Each recorded tool call is listed by name, argument hash and result
+        summary. The original arguments are NOT stored verbatim (only their
+        hash), so the skeleton documents the sequence and leaves argument
+        reconstruction to the operator; it re-runs nothing. This is enough to
+        audit *what* the run did and in what order. The verification calls follow,
         each with its design and seed, so the same sample can be drawn again.
         """
         lines = [

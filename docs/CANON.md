@@ -32,8 +32,8 @@ _Last aligned: 2026-10-31 (C9, C10); the other rows 2026-09-24._
 ## Banned as "the current approach"
 
 These must NOT appear as what we use today (historical mentions in
-`CHANGELOG.md` and `docs/archive/` are fine: they are dated records, not
-claims about the present):
+`CHANGELOG.md` are fine: it is a dated record, not a claim about the
+present):
 
 - **NVFP4 or vLLM as the local default**: the laptop path is llama.cpp +
   GGUF (C3/C4). Both are fine to name as the GPU-cluster option (C11).
@@ -50,7 +50,7 @@ Run this whenever a canonical fact changes (or to audit drift):
 # 1. Update the value in the table above.
 # 2. Find stale references to the OLD value (history is exempt):
 grep -rin "<old value>" --include="*.md" --include="*.py" --include="*.yml" . \
-  | grep -v CHANGELOG.md | grep -v docs/archive/
+  | grep -v CHANGELOG.md
 # 3. Fix every hit to match this file.
 # 4. Re-grep to confirm zero stale references (outside CHANGELOG history).
 # 5. Run the tests to confirm code defaults still work:

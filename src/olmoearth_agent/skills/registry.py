@@ -141,8 +141,8 @@ SKILLS: list[SkillSpec] = [
         "olmoearth-provenance",
         "Report",
         "implemented",
-        "Manifest wrapper over every tool call; emits replay script; lists "
-        "each verification call's design and seed.",
+        "Manifest of every tool call; emits a replay skeleton (the calls in "
+        "order, not re-run); lists each verification call's design and seed.",
         ["olmoearth_provenance_summary"],
     ),
     SkillSpec(

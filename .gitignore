@@ -118,11 +118,6 @@ exports/
 # path-guard workspace root (security/paths.py default; tool-written files)
 olmoearth_outputs/
 
-# --- webui demo recorder scratch (record_demo.py / record_showcase.py) ---
-# The committed deliverables are the .gif/.mp4; the raw .webm + palette are temp.
-webui/demo/_rec/
-webui/demo/_palette.png
-
 # --- Geospatial / EO outputs ---
 *.tif
 *.tiff

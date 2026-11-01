@@ -1,22 +1,10 @@
 # OlmoEarth Agent Skills Catalog
 
-Detailed spec for the 5 skills the agent ships with. Each skill is an [agentskills.io](https://agentskills.io)-spec package (`SKILL.md` + frontmatter + optional `scripts/`, `references/`, `assets/`, `skill-card.md`, `skill.oms.sig`).
+Detailed spec for the 5 skills the agent ships with. Skill #1 is an [agentskills.io](https://agentskills.io)-spec instruction package (`SKILL.md` with frontmatter, `references/` and `scripts/`) that `olmoearth_load_skill` loads; #2 to #5 are tools in this repository.
 
-`PLAN.md` is the runtime contract (tools, dataclasses, operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1 or skill-local), and the academic / engineering references that justify it.
+`PLAN.md` is the runtime contract (tools and operational rules). This file is the *skill-layer* contract: what each skill does, why, the tools it composes (from `PLAN.md` §1), and the academic / engineering references that justify it.
 
-**Status:** 5 skills, all implemented in this repo. By default the agent is the Studio run loop and a verification layer: which windows to review, which to label, how wrong a map is and where it can be trusted (#5, through `olmoearth-inferencex`, for a map that carries scores: a Studio result whose band is a `[0, 1]` score or a regression band given a threshold, a Studio class map with top-k scores, or a direct model run's scores; a Studio class map without top-k scores gets its error rate and per-class accuracy from labels, but no review set and no certified zone), and which of two maps of one time is more accurate (#5's two-map route, class maps included: labels where they differ), with #2's comparison tool (a pair, a group, a series over dates, an ensemble's disagreement). The foundational Studio tools include `olmoearth_studio_label_inventory`, which counts the Studio annotations a model's training selector selects now (no error rate: Studio records no random design for them). History: v1.0 shipped the originals on 2026-05-31; `olmoearth-rslearn` was added post-1.2 (a vendored "operate rslearn" SKILL.md), `olmoearth-review-set` (now #5) post-1.4 (label-free error ranking from the model's own margin, the half of the uncertainty question ensemble disagreement cannot reach), and in the unreleased version (`CHANGELOG.md`, Unreleased) the default registry is the verification layer: five skills and ten opt-in tools outside inference examination (the five were the baseline comparison, similarity search, cloud-mask audit, literature search and negative sampler) were removed with their code, and the opt-in setting with them; the default tools outside the verification scope (the QGIS bridge, the data export, the classification metrics and the preference memory) went too, change detection and uncertainty became the comparison tool's series and ensemble modes, the training-side instruction packages (data prep, embeddings and rslearn) went with their rows, and the rows left were numbered 1 to 5. See `CHANGELOG.md`.
-
-## Existing implementations (upstream)
-
-One skill came from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) (updated 2026-05-17), and its `SKILL.md` package is catalog skill #1. That repository is now frozen: the maintained copy ships inside the Python package under [`src/olmoearth_agent/skills/packages/`](src/olmoearth_agent/skills/packages/) (moved at commit `6839f1a`; origin, licence and changes since the move in its `README.md`). The link below is to the frozen original. The data-prep and embeddings packages from there, and the rslearn package added after the move, were removed on 31 October 2026 as training-side.
-
-| Upstream | Catalog mapping |
-|---|---|
-| [`olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) | Skill **#1**: 14 verified presets + cross-field validator. |
-
-Skills #2-#5 are implemented in this repo (see `CHANGELOG.md`).
-
-**Description convention.** Upstream uses trigger-heavy multi-sentence frontmatter ("Use whenever...", "Trigger even when...") because the description is the LLM's routing surface. Match it.
+**Status:** 5 skills, all implemented in this repo. By default the agent is the Studio run loop and a verification layer: which windows to review, which to label, how wrong a map is and where it can be trusted (#5, through `olmoearth-inferencex`, for a map that carries scores: a Studio result whose band is a `[0, 1]` score or a regression band given a threshold, a Studio class map with top-k scores, or a direct model run's scores; a Studio class map without top-k scores gets its error rate and per-class accuracy from labels, but no review set and no certified zone), and which of two maps of one time is more accurate (#5's two-map route, class maps included: labels where they differ), with #2's comparison tool (a pair, a group, a series over dates, an ensemble's disagreement). The foundational Studio tools include `olmoearth_studio_label_inventory`, which counts the Studio annotations a model's training selector selects now (no error rate: Studio records no random design for them). What was removed or merged on 31 October 2026 is in `CHANGELOG.md` (Unreleased).
 
 ---
 
@@ -26,7 +14,7 @@ Skills #2-#5 are implemented in this repo (see `CHANGELOG.md`).
 |---|---|---|---|
 | 1 | Configure | [`olmoearth-studio-job-config`](#1-olmoearth-studio-job-config) | Task description -> Studio wizard answers with 14 presets + cross-field validator. |
 | 2 | Run | [`olmoearth-predict`](#2-olmoearth-predict) | The core run primitive: submit / poll / fetch results; sample the model output at a point (pixel-value); compare results: a pair, a group, change over time as one model's dated results traced as a series (`olmoearth_compare_results` in series mode: date-ordered, legend-calibrated), or ensemble-disagreement confidence across distinct results (ensemble mode). |
-| 3 | Report | [`olmoearth-provenance`](#3-olmoearth-provenance) | Manifest wrapper around every API call; emits replay script. |
+| 3 | Report | [`olmoearth-provenance`](#3-olmoearth-provenance) | A manifest of every tool call, and a replay skeleton: the calls in order, which it does not re-run. |
 | 4 | Report | [`olmoearth-case-narrative`](#4-olmoearth-case-narrative) | Stakeholder writeup with live tiles + freshness gate; the accuracy the verification tools measured in the same request, with the map, its intervals, labels, design and seed, or a plain statement that none was estimated. |
 | 5 | Analyze | [`olmoearth-review-set`](#5-olmoearth-review-set) | Label-free review set from the model's own top-1-minus-top-2 margin: which windows to check first at a budget (caller scores, a direct model run's files, or a Studio result's `[0, 1]` score or top-k class scores, on a grid or from its native files), boundary-first ordering, the attainable-ceiling arithmetic; then how wrong the map is, from a labelled sample drawn by a design, with a direct run's certified zone packed into a certificate anyone holding the map can check, and which of two maps of one time is more accurate, from labels where they differ (optional `inferencex` extra). |
 
@@ -40,7 +28,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 |---|---|---|
 | 1 | `olmoearth-studio-job-config` | "I want per-pixel mangrove classification from Sentinel-2 - fill in the Studio job wizard." |
 | 2 | `olmoearth-predict` | "Run a flood-extent prediction over this AOI for last month and return the result tiles." / "Did forest cover decline across these four quarterly snapshots, or is it just noise?" (a series) / "Where do my three runs of this model disagree most?" (an ensemble) |
-| 3 | `olmoearth-provenance` | "Produce a replay script + manifest so an auditor can reproduce this prediction." |
+| 3 | `olmoearth-provenance` | "List every call this run made, with each label plan's design and seed, so an auditor can see what was done." |
 | 4 | `olmoearth-case-narrative` | "Write a stakeholder brief for this karst-vulnerability result with the live map tiles." |
 | 5 | `olmoearth-review-set` | "The map is done and I can only check 200 of these 4,000 windows. Which 200, and how much of the error will I actually catch?" / "How wrong is this probability map? I can label 300 windows." (a map with scores) / "How wrong is this Studio land-cover result, class by class? I can label 100 windows." (a class map without top-k scores: error rate and per-class accuracy, no review set) / "These two land-cover results cover the same area and month: which is more accurate? I can label 100 windows." (two maps of one time, class maps included) |
 
@@ -50,7 +38,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ### 1. `olmoearth-studio-job-config`
 
-**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config), moved as-is into `src/olmoearth_agent/skills/packages/`.
+**Upstream:** [`2imi9/OlmoEarth-Skills/skills/olmoearth-studio-job-config`](https://github.com/2imi9/OlmoEarth-Skills/tree/main/skills/olmoearth-studio-job-config) (frozen), moved into `src/olmoearth_agent/skills/packages/`, whose `README.md` records the changes since the move.
 
 **In:** task description.
 **Out:** Studio "new model" wizard answers.
@@ -60,7 +48,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **Why.** Cross-field traps exist: detection with a small patch fails silently, Landsat is not yet selectable as a source, embeddings mode is incompatible with the label-dependent steps, random splits leak spatial neighbors. Researchers without OlmoEarth-specific intuition iterate on a misconfigured wizard for days. The validator catches the trap before the model is created.
 
 **Tools composed.**
-- `olmoearth_load_skill`; skill-local: `studio_job_validate`, `apply_preset`, `cross_field_check`.
+- `olmoearth_load_skill`. The presets and the cross-field validator are also the package's `scripts/recommend.py` (`recommend`, `validate`), a command-line helper for the user's own machine; the agent does not run it.
 
 ---
 
@@ -68,10 +56,10 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ### 2. `olmoearth-predict`
 
-**In:** Studio project + area + model_id + time range + config.
-**Out:** `PredictionRef`, status, and result tiles / vectors / metrics.
+**In:** Studio project + area + model_id + time range.
+**Out:** the prediction's id and status, and its results (tile URLs, property names, file formats).
 
-**What.** Submit a prediction (`POST /predictions`), poll progress (`GET /predictions/{id}`), and fetch results (tiles / vectors / metrics). Pixel-value at a point (`/pixel-value`) is exposed as the `olmoearth_pixel_value` tool (the model's output sampled at one user-supplied lon/lat, not an interpolated read and not validated truth).
+**What.** Submit a prediction (`POST /predictions`), poll its status (`GET /predictions/{id}`), and fetch results (tiles / vectors / metrics). Pixel-value at a point (`/pixel-value`) is exposed as the `olmoearth_pixel_value` tool (the model's output sampled at one user-supplied lon/lat, not an interpolated read and not validated truth).
 
 **Why.** The Studio API is async with a 5-state status enum (`pending / running / completed / failed / cancelled`) and a `download_token` flow. Without a wrapper, every case study re-implements the polling loop, retry on result-creation failures, and the tile-vs-raw-output decision. This is the core run primitive every other skill depends on.
 
@@ -83,7 +71,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 **AOI input (draw-in-chat).** `submit_prediction` needs an `area_id`, which it sends to Studio as `target_area_ids`. Rather than ask the user to type a bbox, the agent calls the foundational `olmoearth_request_aoi` tool, which surfaces an interactive map in the web UI; the user **draws** a rectangle or polygon, it is stored as a Studio area (`POST /areas` -> `area_id`), and its `area_id` + bounding box are fed back on the next turn.
 
-**First skill to ship.** Change over time and ensemble disagreement, once catalog rows of their own, are its comparison tool's series and ensemble modes (below).
+Change over time and ensemble disagreement are its comparison tool's series and ensemble modes:
 
 #### Change over time (series mode)
 
@@ -115,18 +103,17 @@ A realistic prompt that routes to each skill - what a user would actually type:
 
 ### 3. `olmoearth-provenance`
 
-**In:** every API call (transparent wrap).
-**Out:** manifest + single-command replay script + the verification calls with their seeds.
+**In:** every tool call (the agent loop records each one).
+**Out:** the manifest, a replay skeleton and the verification calls with their seeds.
 
-**What.** Manifest of `prediction_id`, `model_id`, dataset hashes, time window, parameters, tile dates. Emits a single-command replay script so the case can be re-run by a third party. The verification calls (`olmoearth_plan_label_sample`, `olmoearth_estimate_map_error`, `olmoearth_certify_zone`, `olmoearth_write_certificate`, `olmoearth_verify_certificate`) are kept whole (`ProvenanceLog.verification`). `olmoearth_provenance_summary` lists each one with what repeats its sample (`verification_calls`): the design, the budget, the seed (for a plan drawn with `seed_from_map`, the one taken from the map, listed with `seed_from_map=True`: the plan is drawn again with that flag and its alpha, delta and rule, not with the seed), the maps or scores file it read, the design file and labels, the zone's alpha, delta and rule, and a certificate's date, path, the map copy checked against, the window asked about and whether it verified. Inline scores and labels are counted, not copied; inline labels also carry a short sha256 digest, so two calls that graded one design file with other labels show it. In the replay script, a value that holds a line break (an argument as given) is written as a JSON string, so every listed call stays on its comment line. The estimate and the zone return the seed of the design file they read. Windows labelled without a design (`window_indices`) have design `none (checked as a random sample)` and no seed.
+**What.** One manifest entry per tool call: the tool, a sha256 of its arguments, the time, and an id-only summary of the result (its ids, name, status and counts; never geometry). The replay skeleton lists the calls in order as comment lines, each with its argument hash and result summary; the arguments are not stored, so it records what the run did and in what order, and does not re-run it. The verification calls (`olmoearth_plan_label_sample`, `olmoearth_estimate_map_error`, `olmoearth_certify_zone`, `olmoearth_write_certificate`, `olmoearth_verify_certificate`) are kept whole (`ProvenanceLog.verification`). `olmoearth_provenance_summary` lists each one with what repeats its sample (`verification_calls`): the design, the budget, the seed (for a plan drawn with `seed_from_map`, the one taken from the map, listed with `seed_from_map=True`: the plan is drawn again with that flag and its alpha, delta and rule, not with the seed), the maps or scores file it read, the design file and labels, the zone's alpha, delta and rule, and a certificate's date, path, the map copy checked against, the window asked about and whether it verified. Inline scores and labels are counted, not copied; inline labels also carry a short sha256 digest, so two calls that graded one design file with other labels show it. In the replay skeleton, a value that holds a line break (an argument as given) is written as a JSON string, so every listed call stays on its comment line. The estimate and the zone return the seed of the design file they read. Windows labelled without a design (`window_indices`) have design `none (checked as a random sample)` and no seed.
 
 **Why.** ML pipelines have a documented reproducibility gap ([Samuel et al. arXiv:2006.12117](https://arxiv.org/abs/2006.12117)). [Kedron & Holler (Remote Sensing 14:5471, 2022)](https://doi.org/10.3390/rs14215471) call for benchmark datasets to test replicability in remote sensing specifically. EUDR and REDD+ MRV impose audit requirements that need traceable provenance, not just outputs. Without provenance, NGO and regulator-facing cases cannot be defended.
 
 **Tools composed.**
-- Hooks into every `PLAN.md` §1 `olmoearth.*` call via `provenance_middleware` (added to `PLAN.md` §3 as Rule 13).
-- Skill-local: `manifest_write`, `replay_script_emit`, `dataset_hash`.
+- `olmoearth_provenance_summary`; the agent loop (`LeadAgent`) records every call with `ProvenanceLog.record_tool_call` (`provenance/log.py`, which also writes the replay skeleton).
 
-**Operational rule.** Adds rule 13 to `PLAN.md` §3: *every Studio API call emits a manifest entry; sessions that disable provenance refuse to call `save_view`.*
+**Operational rule.** Rule 13 of `PLAN.md` §3: *every tool call writes a manifest entry.*
 
 ---
 
@@ -135,7 +122,7 @@ A realistic prompt that routes to each skill - what a user would actually type:
 **In:** `tile_urls` + provenance manifest + the request's recorded verification calls.
 **Out:** stakeholder writeup with live tiles + freshness gate + a "How accurate is this map" section.
 
-**What.** Stakeholder writeup with embedded live map tiles, citations to dataset hashes, and a freshness gate that refuses to render stale tiles past a configurable window.
+**What.** Stakeholder writeup with embedded live map tiles, a provenance section (each tool call with its argument hash), and a freshness gate that refuses to render stale tiles past a configurable window.
 
 **How accurate is this map.** The report reads the verification results the way it reads provenance: from the log of the same request (`ProvenanceLog.verification`), never from figures the model types. A request is one run of the agent. On the web UI each message is a request of its own, with a fresh log, so an estimate made in an earlier message is not in it: the report states it only when `olmoearth_estimate_map_error` is called again in this request, with that `design_path` and its labels. The report states, as the tools returned them:
 - each error rate (`olmoearth_estimate_map_error`), with the map it is of (named by its plan in the request), every interval it has, each named with its method and level: valid at every sample size; the design's own, exact or by the union bound; nominal and approximate where the package's method is a Wilson interval (the confidence and proportional designs; the package's `VALID_NOTE` gives the coverage it fell to); the number of labels, the design and its seed; the per-class ranking (`weakest_classes`);
@@ -153,8 +140,8 @@ A plan still awaiting labels is listed with its design and seed. Without an esti
 **Tools composed.**
 - Skill #3 (`olmoearth-provenance`) for manifest read, and the verification calls it keeps.
 - Skill #5's estimation and certificate tools (`olmoearth_estimate_map_error`, `olmoearth_certify_zone`, `olmoearth_write_certificate`, `olmoearth_verify_certificate`) for the accuracy section.
-- `olmoearth.fetch_results` for tile URLs.
-- Skill-local: `freshness_gate`, `narrative_template`, `tile_embed`.
+- `olmoearth_fetch_results` for tile URLs.
+- `olmoearth_case_narrative`; the logic is in `reporting/narrative.py` (`build_narrative`, `freshness_check`, `accuracy_section`).
 
 ---
 
@@ -197,16 +184,10 @@ A plan still awaiting labels is listed with its design and seed. Without an esti
 
 ---
 
-## Roadmap reference
-
-Implementation order tracks `PLAN.md` §6. First skill to ship was **#2 `olmoearth-predict`** (the run loop, and the comparison tool whose series and ensemble modes were once skills of their own). After that, prioritization is driven by the case-study queue, not this catalog order.
-
-Candidate skills beyond the current 5 (prioritized) were researched in [`docs/archive/eo-skills-shortlist.md`](docs/archive/eo-skills-shortlist.md).
-
 ## Adding a skill
 
 A new skill is one PR with:
-1. For an instruction skill, a folder under `src/olmoearth_agent/skills/packages/<skill-name>/` containing `SKILL.md` + optional `scripts/`, `references/`, `assets/`; it ships in the wheel and `SkillLoader` discovers it (`tests/skills/test_packaging.py`).
+1. For an instruction skill, a folder under `src/olmoearth_agent/skills/packages/<skill-name>/` containing `SKILL.md` + optional `scripts/`, `references/`, `assets/`; it ships in the wheel and `SkillLoader` discovers it (`tests/skills/test_packaging.py`). Its frontmatter description is trigger-heavy ("Use whenever...", "Trigger even when..."), since the description is the LLM's routing surface.
 2. Any new global tools added to `PLAN.md` §1.
 3. A `tests/skills/test_<skill_name>.py` exercising the skill end-to-end against the live Studio API (mark with `@pytest.mark.integration`).
 4. An entry in this `SKILLS.md` matching the per-skill template above.
@@ -216,4 +197,4 @@ See [`CONTRIBUTING.md` §3](CONTRIBUTING.md#3-branch-and-pr-workflow) for branch
 
 ## Vendoring policy
 
-Settled: the package lives in this repository. Three packages (data prep, studio-job-config, embeddings) were first vendored from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) as a git submodule (`vendor/olmoearth-skills`); the four `SKILL.md` packages (those three and rslearn) were then moved at commit `6839f1a` into `src/olmoearth_agent/skills/packages/`, and the submodule was removed. Data prep, embeddings and rslearn were removed on 31 October 2026 as training-side; studio-job-config (#1) stays. The upstream repository is frozen, so edits land here; the package keeps its MIT licence, and its `README.md` records the changes since the move.
+Settled: the package lives in this repository, in `src/olmoearth_agent/skills/packages/`. It was first vendored from [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills) as a git submodule and moved here at commit `6839f1a`. The upstream repository is frozen, so edits land here; the package keeps its MIT licence, and the folder's `README.md` records the changes since the move.

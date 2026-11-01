@@ -4,7 +4,8 @@
 
 The landing page's example runs and the demo mode's canned runs call only
 tools of the default registry; the tagline's, the skills button's and the "/"
-menu's skill counts, and the cards, are the catalog's.
+menu's skill counts, and the cards, are the catalog's. Every local file the page
+links is in ``webui/``.
 """
 
 from __future__ import annotations
@@ -21,6 +22,9 @@ from olmoearth_agent.skills.registry import (
 )
 
 _WEBUI = Path(__file__).resolve().parents[1] / "webui"
+
+#: Link targets that name no file: an anchor, inline data, a mail address.
+_NOT_A_FILE = ("#", "data:", "mailto:")
 
 
 def _read(*parts: str) -> str:
@@ -60,3 +64,15 @@ def test_the_landing_page_and_the_slash_menu_count_the_catalog() -> None:
     cards = _read("js", "skills.js")
     assert len(re.findall(r"\{ n: \d+,\s+slug: ", cards)) == total
     assert "optIn" not in cards
+
+
+def test_the_page_links_only_files_it_ships() -> None:
+    """Every local ``src`` and ``href`` of the page names a file in webui/.
+
+    The architecture diagram its menu linked went on 31 October 2026.
+    """
+    targets = re.findall(r'(?:src|href)="([^"]+)"', _read("index.html"))
+    local = [t for t in targets if "://" not in t and not t.startswith(_NOT_A_FILE)]
+    assert "styles.css" in local
+    missing = [t for t in local if not (_WEBUI / t).exists()]
+    assert not missing, missing

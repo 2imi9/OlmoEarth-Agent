@@ -6,8 +6,8 @@
 2026-05-28 (``{"records": [...], "meta": {...}, "errors": ...}``, not bare
 objects); ``ProjectRef`` and ``StudioContext`` carry ``load_context``;
 ``ProvenanceManifest`` is one provenance entry per tool call. The other
-classes sketched in ``PLAN.md`` §2 were never used by the code and are not
-defined here.
+classes ``PLAN.md`` §2 once sketched were never used by the code and are not
+defined here (§2 now names these four).
 """
 
 from __future__ import annotations

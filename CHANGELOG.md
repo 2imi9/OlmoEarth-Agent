@@ -1254,6 +1254,31 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   `EARTHDATA_TOKEN` go (nothing reads either), and so does the pre-commit
   trailing-whitespace hook's `\.patch$` exclusion, which served only the
   SkillOpt patch.
+- **Dated docs and media.** `docs/archive/` (seven dated notes; git history
+  keeps them, and CANON's alignment grep no longer exempts the folder), the
+  web UI's demo and showcase recordings (`webui/demo/`: two GIFs, two MP4s
+  and their recorders, captured on v1.2.0 and in a June UI pass; the README's
+  hero GIF and its MP4 link, and the web UI README's demo and showcase
+  sections, go with them), `webui/screenshots/desktop.png` (the May UI) and
+  `webui/assets/olmoearth-model.png` (with its link in the page's menu); the
+  `.gitignore` lines for the recorders' scratch go too. PLAN.md loses its
+  CSV copy of the tool catalog, the catalog's 17 rows no tool implements
+  (search, fetch, place resolution, dataset and label creation, label
+  upload, saved views and the geometry utilities), its Returns column and
+  design-only arguments (four Studio rows now give the tools' own), the
+  §2 sketch of data classes the code never used (§2 now names the four in
+  `types.py`), the §5 pseudocode example (§5 now points at the verification
+  demo), §7.2's train-time track, and the rows of §4 and §6 that described
+  no built code; rules 2, 3, 5, 6, 7, 10 and 12, which no tool applied, are
+  marked retired in place, so the other rules keep their numbers. SKILLS.md
+  drops its history paragraph, its upstream section, its roadmap section and
+  the skill-local functions no code defines. Provenance (#3) is described as
+  it is everywhere it appeared (SKILLS.md, README, PLAN rule 13, the
+  registry row, the web UI card and `provenance/log.py`): a manifest per
+  tool call and a replay skeleton that lists the calls, not a script that
+  re-runs them; the web UI's predict card no longer claims a cost guard or
+  backoff the tools do not have. Two tests check that every local file the
+  READMEs and the web page link exists.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**
