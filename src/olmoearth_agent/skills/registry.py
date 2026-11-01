@@ -95,9 +95,8 @@ SKILLS: list[SkillSpec] = [
             "olmoearth_studio_label_inventory",
         ],
     ),
-    # #1 is the one instruction package left (loaded by SkillLoader through
-    # olmoearth_load_skill); data prep, embeddings and rslearn, the
-    # training-side packages, were removed on 31 October 2026.
+    # #1 is the instruction package (loaded by SkillLoader through
+    # olmoearth_load_skill).
     SkillSpec(
         1,
         "olmoearth-studio-job-config",
@@ -108,9 +107,8 @@ SKILLS: list[SkillSpec] = [
         "14 presets + validator. Studio trains on Ai2 compute.",
         ["olmoearth_load_skill"],
     ),
-    # #2 holds the comparison tool's four modes: a pair, a group, change over
-    # time (series; once its own row) and ensemble disagreement (ensemble;
-    # once its own row too).
+    # #2's comparison tool has four modes: pair, group, series (change over
+    # time) and ensemble (disagreement).
     SkillSpec(
         2,
         "olmoearth-predict",

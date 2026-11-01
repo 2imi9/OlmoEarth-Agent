@@ -5,9 +5,8 @@
 ``ApiEnvelope`` wraps Studio responses, discovered from the live API on
 2026-05-28 (``{"records": [...], "meta": {...}, "errors": ...}``, not bare
 objects); ``ProjectRef`` and ``StudioContext`` carry ``load_context``;
-``ProvenanceManifest`` is one provenance entry per tool call. The other
-classes ``PLAN.md`` §2 once sketched were never used by the code and are not
-defined here (§2 now names these four).
+``ProvenanceManifest`` is one provenance entry per tool call. ``PLAN.md``
+§2 names these four.
 """
 
 from __future__ import annotations

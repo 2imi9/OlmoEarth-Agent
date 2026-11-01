@@ -14,7 +14,7 @@ It bundles one script (`scripts/recommend.py`) that runs standalone and emits a 
 Studio models train and run on Ai2's infrastructure. The user never provisions hardware, so:
 
 - **Never ask about the user's local compute** (CPU vs GPU, Colab, T4 vs A100, RAM). It is a non-question for Studio users.
-- **Never route a Studio model-creation request to a local training pipeline** (rslearn self-run, a local embeddings notebook). Those are for users who explicitly say they want to run training themselves, outside Studio.
+- **Never route a Studio model-creation request to local training** (an rslearn pipeline or notebook the user runs on their own machines). Training outside Studio is outside this agent: if the user explicitly asks for it, say so.
 - **Foundation model size is a quality vs Studio-job cost/speed tradeoff** — a bigger model costs more to train and is slower at inference *on Ai2's side*, not "do you have a GPU".
 - **Embeddings vs fine-tuned is just the Model type step** (step 2 below), not a separate local-vs-cloud decision.
 

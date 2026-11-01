@@ -363,13 +363,14 @@ class ProvenanceLog:
 
 
 def _one_line(value: Any) -> str:
-    """``value`` as one comment line of the replay script.
+    """``value`` as one comment line of the replay skeleton.
 
     A value given as a call's argument (a date, a path) can hold a line
     break, which would end the ``#`` comment and leave the rest of the value
-    as code in a script that says it is runnable. Such a value is written as
-    a JSON string instead, its breaks escaped (``ensure_ascii`` escapes the
-    Unicode line separators too); any other value is written as it is.
+    as an uncommented line (code, if the skeleton is saved and run as
+    Python). Such a value is written as a JSON string instead, its breaks
+    escaped (``ensure_ascii`` escapes the Unicode line separators too); any
+    other value is written as it is.
 
     Examples
     --------

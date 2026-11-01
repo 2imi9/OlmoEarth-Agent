@@ -1295,6 +1295,21 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   re-runs them; the web UI's predict card no longer claims a cost guard or
   backoff the tools do not have. Two tests check that every local file the
   READMEs and the web page link exists.
+- **What the trim left behind.** `olmoearth_load_skill`'s description no
+  longer asks for pitfall numbers, which only the removed data-prep package
+  had; `olmoearth_compare_results`' which-map pointer names
+  `olmoearth_plan_label_sample` with `design='disagreement'` again (the
+  name was lost with the metrics tool's pointer); studio-job-config's
+  `SKILL.md` no longer names the removed embeddings notebook as a local
+  training route; the web UI's AOI brief no longer tells the model to use the
+  bounding box for bbox-based tools (no tool takes one; the box is still
+  shown), and its Results panel no longer offers JSON or CSV results (a chat
+  saves a comparison or the case-narrative report); the `.gitignore` line
+  `exports/`, which served only `olmoearth_export_data`'s default folder,
+  goes. PLAN rule 1 no longer asks for trace redaction (retired rule 12),
+  and rule 4 no longer says redirects are re-validated: only the starting
+  endpoint is checked, the Studio client does not follow redirects and the
+  LLM SDK clients follow them unchecked.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

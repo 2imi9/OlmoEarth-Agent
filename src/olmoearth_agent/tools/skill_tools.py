@@ -96,8 +96,8 @@ def build_skill_tools(
                 description=(
                     "Load one OlmoEarth skill by name. An instruction skill "
                     "(listed in the system prompt) returns its SKILL.md steps: "
-                    "follow them, citing the pitfall numbers and reference docs "
-                    "they name." + _deferred_note(groups)
+                    "follow them, citing the reference docs they name."
+                    + _deferred_note(groups)
                 ),
                 parameters={
                     "type": "object",

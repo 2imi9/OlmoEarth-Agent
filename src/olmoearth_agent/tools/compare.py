@@ -1316,6 +1316,7 @@ def build_compare_tools() -> list[RegisteredTool]:
                     "truth: agreement or estimate movement, never accuracy "
                     "(how wrong a map is: olmoearth_plan_label_sample, then "
                     "olmoearth_estimate_map_error; which is more accurate: "
+                    "olmoearth_plan_label_sample with "
                     "design='disagreement'). Samples "
                     "each result on one grid of windows; no-data (e.g. -1 on a "
                     "[0, 1] score) is dropped and counted; results of different "

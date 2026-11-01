@@ -24,7 +24,8 @@ Changes since the move:
   training), outside what the agent verifies; git history keeps them.
 - `olmoearth-studio-job-config/SKILL.md` and `references/data_split.md` no longer route to the
   removed `olmoearth-data-prep` skill or to a self-run training skill: they say the agent does not
-  prepare labels or configure training outside Studio.
+  prepare labels or configure training outside Studio. The `SKILL.md`'s rule against routing to
+  local training no longer names the removed embeddings notebook.
 - `olmoearth-studio-job-config/SKILL.md` no longer tells the agent to run `scripts/recommend.py
   --validate`: the agent re-checks the cross-field traps itself, and the script's commands are the
   user's to run on their own machine (no tool of the agent runs code).

@@ -114,7 +114,6 @@ wandb/
 mlruns/
 outputs/
 artifacts/
-exports/
 # path-guard workspace root (security/paths.py default; tool-written files)
 olmoearth_outputs/
 

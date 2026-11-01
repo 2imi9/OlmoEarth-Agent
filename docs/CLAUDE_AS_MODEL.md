@@ -288,7 +288,8 @@ each zone; one ran `olmoearth_review_set_from_result` on a 16 x 16 grid. All
 three ended with an answer that passed the answer checks, not revised and not
 marked.
 
-- The read-only default: 28 tools were offered, without the two write tools;
+- The read-only default: 28 tools were offered, without the two write tools
+  (the registry held 30 before the trim; it holds 25 now, so 23 are offered);
   the capability card said why; each run's `brief.json` recorded
   `read_only` true; each run directory was mode 0700.
 - The tool specs: in full on the first call, "unchanged since the last call"

@@ -532,9 +532,12 @@ def test_a_default_turn_carries_under_8000_spec_tokens(default_env: None) -> Non
     specs off every turn (olmoearth_qgis_bridge, olmoearth_export_data,
     olmoearth_classification_metrics, olmoearth_remember and
     olmoearth_forget: about 3,000 characters, some 750 tokens, estimated from
-    their source rather than counted) and added 8 characters to
+    their source rather than counted) and added 41 characters to
     olmoearth_compare_results (the label route, plan then estimate, in place
-    of the metrics tool): about 7,991 - 750 + 2 = 7,243. The bound stays at
-    8,000, now looser by about that much.
+    of the metrics tool, with the plan tool named for the which-map design):
+    about 7,991 - 750 + 10 = 7,251. Its final review takes 20 characters off
+    olmoearth_load_skill's description ("pitfall numbers and ", which only
+    the removed data-prep package had): 5 tokens, 7,251 - 5 = 7,246. The
+    bound stays at 8,000, now looser by about that much.
     """
     assert _turn_chars(build_default_registry()) / 4 < 8_000

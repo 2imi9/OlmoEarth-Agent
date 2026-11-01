@@ -6,14 +6,13 @@ The instruction skill (catalog #1, studio-job-config) ships inside this
 package, under ``olmoearth_agent/skills/packages/``, so a wheel install
 carries it. It was moved here from ``2imi9/OlmoEarth-Skills`` (now frozen);
 that directory's ``LICENSE`` and ``README.md`` keep the licence and
-attribution. The data-prep, embeddings and rslearn packages were removed on
-31 October 2026.
+attribution.
 
-Each is a ``SKILL.md`` instruction package (not a Python tool bundle), so
-the harness consumes them the agentskills.io way: the LLM sees each
-skill's ``name`` + ``description`` up front (the index), and pulls the full
-``SKILL.md`` body into context only when a task matches (via the
-``olmoearth_load_skill`` tool).
+Every package there is a ``SKILL.md`` instruction package (not a Python
+tool bundle), so the harness consumes the packages the agentskills.io way:
+the LLM sees each skill's ``name`` + ``description`` up front (the index),
+and pulls the full ``SKILL.md`` body into context only when a task matches
+(via the ``olmoearth_load_skill`` tool).
 
 An explicit ``root`` or ``OLMOEARTH_SKILLS_DIR`` that does not exist gives
 an empty index rather than an error.
