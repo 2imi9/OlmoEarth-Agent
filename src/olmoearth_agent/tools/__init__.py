@@ -3,6 +3,7 @@
 """Tool registry and tool bundles the lead agent can call."""
 
 from olmoearth_agent.tools.registry import (
+    Capability,
     Handler,
     RegisteredTool,
     ToolContext,
@@ -11,6 +12,7 @@ from olmoearth_agent.tools.registry import (
 from olmoearth_agent.tools.studio import build_studio_tools
 
 __all__ = [
+    "Capability",
     "Handler",
     "RegisteredTool",
     "ToolContext",

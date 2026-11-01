@@ -4,14 +4,18 @@
 
 from olmoearth_agent.skills.loader import SkillLoader, VendoredSkill
 from olmoearth_agent.skills.registry import (
+    READ_ONLY_ENV,
     SKILLS,
+    STUDIO_WRITE_TOOLS,
     SkillSpec,
     build_default_registry,
     skills_by_status,
 )
 
 __all__ = [
+    "READ_ONLY_ENV",
     "SKILLS",
+    "STUDIO_WRITE_TOOLS",
     "SkillLoader",
     "SkillSpec",
     "VendoredSkill",

@@ -62,11 +62,14 @@ class ToolSpec:
 
 @dataclass
 class ChatResponse:
-    """Parsed completion from the vLLM server.
+    """Parsed completion from the OpenAI-compatible LLM server.
 
-    ``thinking`` carries the ``<think>...</think>`` block when the model
-    is in thinking mode (default for agent runs). It is informational
-    only and should not be fed back into the conversation; the model's
+    ``thinking`` carries the model's reasoning when it is in thinking mode
+    (default for agent runs): the inline ``<think>...</think>`` block, or
+    the field a reasoning parser put it in (``reasoning``, else
+    ``reasoning_content``). It is informational only (the harness logs it as
+    a ``thinking`` event) and is never fed back into the conversation: a
+    :class:`Message` has no field for it, and the model's
     ``preserve_thinking`` flag handles that internally.
     """
 

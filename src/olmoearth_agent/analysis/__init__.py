@@ -1,65 +1,9 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Analysis tools for the OlmoEarth agent.
+"""Analysis layer of the OlmoEarth agent.
 
-Pure Python (no heavy deps), operating on data the agent already has:
-
-- skill #5 (``olmoearth-change-detection``, Engine A): the in-process
-  change-detection trajectory diff that refuses the two-date case which
-  hides gradual drift (``SKILLS.md`` #5).
-- skill #6 (``olmoearth-baseline-compare``): OlmoEarth-vs-AlphaEarth
-  per-metric comparison + difference raster (``SKILLS.md`` #6).
-- skill #8 (``olmoearth-similarity``): embedding top-K similarity search
-  with a geographic-prior warning (``SKILLS.md`` #8).
-- skill #9 (``olmoearth-uncertainty``): the Meyer-Pebesma
-  Area-of-Applicability out-of-distribution flag (``SKILLS.md`` #9).
-- skill #10 (``olmoearth-cloud-mask-audit``): the cloud-mask ensemble
-  disagreement audit + bad-mask-vs-bad-model verdict (``SKILLS.md`` #10).
+Pure Python (no heavy deps), operating on data the agent already has. Each
+module is imported by its own path (for example
+``olmoearth_agent.analysis.raster_compare``); this package re-exports
+nothing, so importing one module never loads the others.
 """
-
-from olmoearth_agent.analysis.baseline import compare_metrics, difference_raster
-from olmoearth_agent.analysis.change_detect import (
-    MIN_DATES,
-    TooFewDatesError,
-    diff_layers,
-    enforce_min_3_dates,
-)
-from olmoearth_agent.analysis.cloud_mask import (
-    DEFAULT_VERDICT_THRESHOLD,
-    MIN_MASKS,
-    MaskShapeError,
-    ensemble_disagree,
-    verdict_classifier,
-)
-from olmoearth_agent.analysis.similarity import (
-    DEFAULT_K,
-    DEFAULT_PRIOR_RADIUS_KM,
-    geographic_prior_check,
-    similarity_search,
-)
-from olmoearth_agent.analysis.uncertainty import (
-    MIN_TRAIN,
-    area_of_applicability,
-    ood_flag,
-)
-
-__all__ = [
-    "DEFAULT_K",
-    "DEFAULT_PRIOR_RADIUS_KM",
-    "DEFAULT_VERDICT_THRESHOLD",
-    "MIN_DATES",
-    "MIN_MASKS",
-    "MIN_TRAIN",
-    "MaskShapeError",
-    "TooFewDatesError",
-    "area_of_applicability",
-    "compare_metrics",
-    "diff_layers",
-    "difference_raster",
-    "ensemble_disagree",
-    "enforce_min_3_dates",
-    "geographic_prior_check",
-    "ood_flag",
-    "similarity_search",
-    "verdict_classifier",
-]

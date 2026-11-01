@@ -29,8 +29,8 @@ def test_run_skill_gets_the_full_pipeline() -> None:
 
 
 def test_advisory_skill_skips_submit_poll_fetch() -> None:
-    neg = next(s for s in SKILLS if s.name == "olmoearth-negative-sampler")
-    stages = skill_workflow_stages(neg.tools)
+    review = next(s for s in SKILLS if s.name == "olmoearth-review-set")
+    stages = skill_workflow_stages(review.tools)
     assert "submit" not in stages and "poll" not in stages and "fetch" not in stages
     assert stages[0] == "context" and stages[-1] == "report"  # always bracketed
 

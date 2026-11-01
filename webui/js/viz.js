@@ -1,8 +1,7 @@
 /* In-chat result visuals. Given a tool result, render the most useful inline
    visual: the result's raster picture(s) on a Leaflet map fit to the raster's
-   extent (authenticated via the bridge /api/tile proxy), or an SVG trajectory
-   chart for change detection. Two-or-more rasters render side by side to
-   compare. Pure SVG charts (no deps); Leaflet is lazy-loaded (shared with the
+   extent (authenticated via the bridge /api/tile proxy). Two-or-more rasters
+   render side by side to compare. Leaflet is lazy-loaded (shared with the
    AOI widget via js/leaflet.js). Renders nothing for results with no visual. */
 
 import { escapeHtml, shortId } from './util.js';
@@ -75,7 +74,6 @@ function tileEntries(inner) {
     const id = o.result_id || o.id || null;
     add(o.tile_url, id);
     (o.tile_urls || []).forEach((t) => add(t, id));
-    add(o.xyz_url, id);  // qgis-bridge
   };
   if (!inner || typeof inner !== 'object') return out;
   fromObj(inner);
@@ -109,8 +107,7 @@ function labelFor(entry, i) {
   return 'layer ' + (i + 1);
 }
 
-/* The 5-stop YlOrRd ramp (mirrors reporting/qgis.py _YLORRD), so a result-raster
-   legend reads the same low->high direction as the QGIS SLD export. */
+/* The 5-stop YlOrRd ramp, so a result-raster legend reads low->high. */
 const _RAMP = ['#ffffb2', '#fecc5c', '#fd8d3c', '#f03b20', '#bd0026'];
 
 /* Drag/hover the gradient bar to read the mapped score at that position. */
@@ -241,48 +238,6 @@ async function renderResultMap(container, entries) {
         .catch(() => { btn.classList.remove('is-busy'); btn.textContent = 'Scan difference map'; });
     });
   }
-}
-
-/* A compact SVG line chart for a change-detection trajectory. Axis labels live
-   in dedicated gutters (a left margin for the y-range, a bottom margin for the
-   dates) so they never overlap the plotted line/points; first + last dates are
-   edge-anchored so they don't clip, and dates are thinned when there are many. */
-function renderTrajectory(container, dates, values, trend) {
-  const W = 480, H = 170;
-  const padL = 46, padR = 16, padT = 16, padB = 30;  // gutters: y-labels left, x-dates bottom
-  const n = values.length;
-  const plotW = W - padL - padR, plotH = H - padT - padB, y0 = H - padB;
-  const xs = values.map((_, i) => padL + (i * plotW) / Math.max(1, n - 1));
-  const lo = Math.min(...values), hi = Math.max(...values);
-  const span = hi - lo || 1;
-  const y = (v) => y0 - ((v - lo) / span) * plotH;
-  const pts = values.map((v, i) => `${xs[i].toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const dots = values.map((v, i) =>
-    `<circle cx="${xs[i].toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" class="viz-dot"/>`).join('');
-  // Date labels: always the first + last (edge-anchored), plus evenly-spaced
-  // middles with enough gap that none overlap — including a middle that would
-  // otherwise land right next to the forced last label.
-  const step = Math.max(1, Math.ceil((90 * (n - 1)) / plotW));
-  const showIdx = new Set([0, n - 1]);
-  for (let i = step; i < n - 1; i += step) if (n - 1 - i >= step) showIdx.add(i);
-  const xlab = dates.map((d, i) => {
-    if (!showIdx.has(i)) return '';
-    const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
-    return `<text x="${xs[i].toFixed(1)}" y="${H - 10}" class="viz-axt" text-anchor="${anchor}">${escapeHtml(String(d).slice(0, 10))}</text>`;
-  }).join('');
-  const svg =
-    `<svg viewBox="0 0 ${W} ${H}" class="viz-svg" role="img" aria-label="trajectory">` +
-      `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${y0}" class="viz-axis"/>` +
-      `<line x1="${padL}" y1="${y0}" x2="${W - padR}" y2="${y0}" class="viz-axis"/>` +
-      `<text x="${padL - 7}" y="${padT + 3}" class="viz-axt" text-anchor="end">${hi.toFixed(3)}</text>` +
-      `<text x="${padL - 7}" y="${y0}" class="viz-axt" text-anchor="end">${lo.toFixed(3)}</text>` +
-      `<polyline points="${pts}" class="viz-line" fill="none"/>` + dots + xlab +
-    `</svg>`;
-  const wrap = document.createElement('div');
-  wrap.className = 'viz-chart';
-  wrap.innerHTML = svg +
-    `<div class="viz-cap">Trajectory over ${values.length} dates${trend ? ` - trend: <strong>${escapeHtml(trend)}</strong>` : ''}.</div>`;
-  container.appendChild(wrap);
 }
 
 /* Diff color: blue where A>B, red where B>A; opacity scales with magnitude. */
@@ -496,7 +451,10 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   endProgress();
 
   const m = absd.length;
-  if (!m) { status.textContent = 'No overlapping valid pixels to difference.'; return null; }
+  // Cells where either map had no value: off-raster, or Studio's no-data
+  // sentinel, which the bridge (serve.py api_pixel_value) returns as null.
+  const skipped = total - m;
+  if (!m) { status.textContent = 'No overlapping valid pixels to difference (' + skipped + ' no-data cells skipped).'; return null; }
   const tol = opts.tolerance || 0.1;
   const diffs = cells.filter((c) => c.diff != null).map((c) => c.diff);
   const meanAbs = absd.reduce((p, q) => p + q, 0) / m;
@@ -520,7 +478,8 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     v.mapTitle + ' over ' + m + ' sampled cells · mean |' + v.diffWord + '| <strong>' + meanAbs.toFixed(3) +
     '</strong>' + (v.kind === 'temporal' ? ' · net <strong>' + meanDiff.toFixed(3) + '</strong>' : '') +
     ' · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
-    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + '). ' + legendHtml(v.kind);
+    (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + ')' +
+    (skipped ? ' · ' + skipped + ' no-data cells skipped' : '') + '. ' + legendHtml(v.kind);
 
   // Captured straight from the live scan (real values), so a saved comparison
   // is never fabricated. Offer to store it in the Results panel.
@@ -551,34 +510,94 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   return record;
 }
 
-/* A compact stat card from a compare `stats` object (real numbers only). */
-function statChips(s, caption) {
-  s = s || {};
-  const rows = [];
-  const add = (k, v) => { if (v !== undefined && v !== null) rows.push([k, v]); };
-  add('correlation', s.correlation);
-  add('agreement', s.agreement_fraction != null ? (s.agreement_fraction * 100).toFixed(0) + '%' : null);
-  add('mean |diff|', s.mean_abs_diff);
-  add('RMSE', s.rmse_between_models);
-  add('max |diff|', s.max_abs_diff);
-  add('samples', s.n_samples);
+/* A compact stat card from [label, value] rows; null/undefined values are
+   skipped (real numbers only, never a placeholder). */
+function chipCard(rows, caption) {
   const card = document.createElement('div');
   card.className = 'viz-statcard';
-  card.innerHTML = rows.map(([k, v]) =>
+  card.innerHTML = rows.filter(([, v]) => v !== undefined && v !== null).map(([k, v]) =>
     `<span class="viz-stat">${escapeHtml(k)}<b>${escapeHtml(String(v))}</b></span>`).join('') +
     (caption ? `<div class="viz-cap">${escapeHtml(caption)}</div>` : '');
   return card;
 }
 
-/* A compact stat card for olmoearth_compare_results, then the difference map
-   auto-scanned (so a quantitative compare appears with both the numbers and
-   the visual, no button needed). */
+const pctOf = (x) => (x != null ? (x * 100).toFixed(0) + '%' : null);
+
+/* A compact stat card from a compare `stats` object (real numbers only). */
+function statChips(s, caption) {
+  s = s || {};
+  return chipCard([
+    ['correlation', s.correlation],
+    ['agreement', pctOf(s.agreement_fraction)],
+    ['mean |diff|', s.mean_abs_diff],
+    ['RMSE', s.rmse_between_models],
+    ['max |diff|', s.max_abs_diff],
+    ['samples', s.n_samples],
+  ], caption);
+}
+
+/* olmoearth_compare_results in its group / series / ensemble modes: the
+   headline numbers the tool returned and its own headline + framing. (A pair
+   renders renderCompareCard: numbers plus the live difference scan.) */
+function renderCompareSummary(container, inner) {
+  const nar = inner.narration || {};
+  const cls = inner.value_type === 'classification';
+  let rows = [];
+  if (inner.mode === 'group') {
+    const e = inner.ensemble || {};
+    rows = [
+      ['results', (inner.result_ids || []).length],
+      [cls ? 'unanimous' : 'consensus', pctOf(cls ? e.unanimous_fraction : e.consensus_fraction)],
+      ['mean spread', e.mean_spread],
+      ['cells', e.n_points_used],
+    ];
+  } else if (inner.mode === 'series') {
+    const t = inner.trajectory || {};
+    rows = [
+      ['dates', (inner.dates || []).length],
+      ['mean net change', t.mean_total_change],
+      ['shifted', pctOf(cls ? t.net_changed_fraction : t.shifted_fraction)],
+      ['cells', t.n_points_used],
+    ];
+  } else if (inner.mode === 'ensemble') {
+    const sm = inner.summary || {};
+    rows = [
+      ['results', inner.n_results],
+      ['mean confidence', sm.mean_confidence],
+      [cls ? 'mean entropy' : 'mean CV', cls ? sm.mean_entropy : sm.mean_cv],
+      ['cells', inner.n_points],
+    ];
+  }
+  rows.push(['no-data dropped', inner.n_nodata_dropped]);
+  const caption = [nar.headline, nar.framing].filter(Boolean).join('. ');
+  container.appendChild(chipCard(rows, caption));
+  if (inner.warning) {
+    const warn = document.createElement('div');
+    warn.className = 'viz-cap';
+    warn.textContent = inner.warning;
+    container.appendChild(warn);
+  }
+}
+
+/* A compact stat card for olmoearth_compare_results' pair mode (which keeps
+   result_id_a / result_id_b), then the difference map auto-scanned (so a
+   quantitative compare appears with both the numbers and the visual, no
+   button needed). */
 function renderCompareCard(container, inner) {
   const s = inner.stats || {};
   const kind = inner.kind;
   const v = compareVocab(kind);
   container.appendChild(statChips(s, v.statCaption));
   container.appendChild(abLabel(inner.result_id_a, inner.result_id_b, kind));
+  if (inner.warning) {
+    // Two different properties (allow_different_properties): a B - A
+    // difference map would subtract two different quantities, so no scan.
+    const warn = document.createElement('div');
+    warn.className = 'viz-cap';
+    warn.textContent = inner.warning;
+    container.appendChild(warn);
+    return;
+  }
   if (inner.result_id_a && inner.result_id_b) {
     const out = document.createElement('div');
     out.className = 'viz-diff';
@@ -622,55 +641,6 @@ export async function renderStoredComparison(container, record) {
   ]));
 }
 
-/* Horizontal bars for 0..1 metric rows [{label, value, color}]. */
-function bars(rows) {
-  const wrap = document.createElement('div');
-  wrap.className = 'viz-bars';
-  wrap.innerHTML = rows.map((r) => {
-    const v = Number(r.value);
-    const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, v * 100)) : 0;
-    return '<div class="viz-bar-row">' +
-      `<span class="viz-bar-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</span>` +
-      `<span class="viz-bar-track"><span class="viz-bar-fill" style="width:${pct.toFixed(1)}%;background:${r.color || 'var(--mint)'}"></span></span>` +
-      `<span class="viz-bar-val">${Number.isFinite(v) ? v.toFixed(3) : 'n/a'}</span>` +
-    '</div>';
-  }).join('');
-  return wrap;
-}
-
-/* baseline-compare: grouped bars (model A vs model B) per headline metric. */
-function renderComparisonBars(container, inner) {
-  const la = (inner.model_a || {}).label || 'a';
-  const lb = (inner.model_b || {}).label || 'b';
-  const rows = [];
-  (inner.comparison || []).forEach((c) => {
-    rows.push({ label: `${c.metric} - ${la}`, value: c[la], color: 'var(--mint)' });
-    rows.push({ label: `${c.metric} - ${lb}`, value: c[lb], color: 'var(--pink)' });
-  });
-  container.appendChild(bars(rows));
-  const cap = document.createElement('div');
-  cap.className = 'viz-cap';
-  cap.innerHTML = `0-1 metric scores, ${escapeHtml(la)} vs ${escapeHtml(lb)}` +
-    (inner.overall_winner ? ` - overall winner: <strong>${escapeHtml(inner.overall_winner)}</strong>` : '') + '.';
-  container.appendChild(cap);
-}
-
-/* evaluate: overall metrics + per-class F1 bars. */
-function renderMetricsBars(container, inner) {
-  const rows = [
-    { label: 'accuracy', value: inner.accuracy, color: 'var(--mint)' },
-    { label: 'macro F1', value: inner.macro_f1, color: 'var(--mint)' },
-    { label: 'mean IoU', value: inner.mean_iou, color: 'var(--mint)' },
-  ];
-  Object.entries(inner.per_class || {}).slice(0, 10).forEach(([cls, m]) =>
-    rows.push({ label: `${cls} F1`, value: (m || {}).f1, color: 'var(--pink)' }));
-  container.appendChild(bars(rows));
-  const cap = document.createElement('div');
-  cap.className = 'viz-cap';
-  cap.innerHTML = `Accuracy <strong>${((inner.accuracy || 0) * 100).toFixed(0)}%</strong> over n=${escapeHtml(String(inner.n))}; per-class F1 in pink.`;
-  container.appendChild(cap);
-}
-
 /* Render the best inline visual for a tool-result event into `container`.
    Returns true if it rendered something. */
 export function renderResultViz(container, ev) {
@@ -680,17 +650,7 @@ export function renderResultViz(container, ev) {
     if (!inner || typeof inner !== 'object') return false;
     let any = false;
 
-    // Downloadable text artifacts (don't early-return: a qgis result also maps).
-    if (typeof inner.sld === 'string' && inner.sld) {
-      const name = (inner.layer_name || 'style') + '.sld';
-      container.appendChild(downloadBar([
-        { label: 'Download .sld style', onClick: () => downloadText(name, inner.sld, 'application/vnd.ogc.sld+xml') },
-        { label: 'Save to Results', onClick: () => document.dispatchEvent(new CustomEvent('oe:save-result', { detail: {
-          type: 'file', format: 'sld', filename: name, mime: 'application/vnd.ogc.sld+xml',
-          text: inner.sld, title: (inner.layer_name || 'QGIS') + ' style (SLD)' } })) },
-      ]));
-      any = true;
-    }
+    // A downloadable report (don't early-return: the result may also map).
     if (typeof inner.markdown === 'string' && inner.markdown) {
       container.appendChild(downloadBar([
         { label: 'Download report (.md)', onClick: () => downloadText('case-narrative.md', inner.markdown, 'text/markdown') },
@@ -706,25 +666,15 @@ export function renderResultViz(container, ev) {
       renderCompareCard(container, inner);
       return true;
     }
-    // baseline-compare: grouped metric bars.
-    if (Array.isArray(inner.comparison) && inner.model_a && inner.model_b) {
-      renderComparisonBars(container, inner);
-      return true;
-    }
-    // evaluate: classification metrics bars.
-    if (inner.per_class && typeof inner.per_class === 'object' && inner.accuracy != null) {
-      renderMetricsBars(container, inner);
+    // The same tool's group / series / ensemble modes: a stat card.
+    if (ev.name === 'olmoearth_compare_results' && inner.comparable === true && inner.mode) {
+      renderCompareSummary(container, inner);
       return true;
     }
 
     const entries = tileEntries(inner);
     if (entries.length) { void renderResultMap(container, entries); return true; }
-
-    if (Array.isArray(inner.dates) && Array.isArray(inner.values) && inner.values.length >= 2) {
-      renderTrajectory(container, inner.dates, inner.values, inner.trend);
-      return true;
-    }
-    return any;  // true if a downloadable artifact (sld / markdown) was shown
+    return any;  // true if a downloadable report was shown
   } catch (e) {
     return false;
   }

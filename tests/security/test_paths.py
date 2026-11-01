@@ -52,7 +52,9 @@ def test_empty_path_rejected(tmp_path: Path) -> None:
         safe_path("   ", root=tmp_path)
 
 
-def test_workspace_root_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workspace_root_from_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv(OUTPUT_ROOT_ENV, str(tmp_path))
     assert workspace_root() == tmp_path.resolve()
     # safe_path with no explicit root uses the env workspace.

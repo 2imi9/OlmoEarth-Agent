@@ -31,7 +31,7 @@ DEFAULT_MAX_OUTPUT_TOKENS = 32768
 
 @dataclass
 class ServingConfig:
-    """Static configuration for one vLLM endpoint.
+    """Static configuration for one OpenAI-compatible LLM endpoint.
 
     Build via :meth:`from_env` in production; pass an instance directly
     in tests so they don't depend on process environment.

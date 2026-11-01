@@ -2,23 +2,28 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Confine model-controlled tool file I/O to a workspace root (path-traversal guard).
 
-Tool handlers receive file-path arguments straight from the model
-(``output_path``, ``out_dir``, ``positives_path``, ...). The LLM is a
-semi-trusted component, so a prompt-injection payload (carried in a Studio
-project name, a fetched abstract, or any tool output the model reads) can steer
-it to a traversing (``../../``) or absolute path -- yielding arbitrary-location
-file read/write under the operator's account: clobbering served ``webui/js``
-modules, planting a startup script, or reflecting a JSON-ish secrets file back
-into chat.
+Tool handlers receive file-path arguments straight from the model, and the
+tools write files under names they build. The LLM is a semi-trusted
+component, so a prompt-injection payload (carried in a Studio project name
+or any tool output the model reads) can steer it to a traversing (``../../``)
+or absolute path -- yielding arbitrary-location file read/write under the
+operator's account: clobbering served ``webui/js`` modules, planting a
+startup script, or reflecting a JSON-ish secrets file back into chat.
 
-:func:`safe_path` resolves every such path under a single workspace root and
-rejects anything that escapes it. The *containment check on the resolved path*
-is the real guard -- a ``..`` escape, an absolute path elsewhere, a symlink
-target outside the root, or a repo-relative ``webui/js/x.js`` clobber are all
+:func:`safe_path` guards the files the tools write: it resolves each name the
+code builds (under ``tools/review_set.write_root``, which is this workspace
+root unless ``OLMOEARTH_SCORES_ROOT`` is set) and rejects anything that
+escapes the root. The model-chosen read paths (``scores_path``,
+``design_path``, ``labels_path``, ``certificate_path``, ``map_path``) do not
+go through it. They are confined by ``tools/review_set.read_roots``:
+``OLMOEARTH_SCORES_ROOT`` when set, else the working directory plus this
+workspace root. The *containment check on the resolved path* is the real
+guard -- a ``..`` escape, an absolute path elsewhere, a symlink target
+outside the root, or a repo-relative ``webui/js/x.js`` clobber are all
 refused, on POSIX and Windows alike.
 
 The root is ``OLMOEARTH_OUTPUT_ROOT`` if set, else ``<cwd>/olmoearth_outputs``.
-It is deliberately NOT the process CWD / repo, so a relative path lands
+It is deliberately NOT the process CWD / repo, so a written file lands
 harmlessly inside the workspace instead of overwriting served code or sources.
 """
 

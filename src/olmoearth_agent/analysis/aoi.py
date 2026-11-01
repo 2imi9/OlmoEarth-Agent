@@ -3,8 +3,9 @@
 """Pure-Python helpers for area-of-interest (AOI) GeoJSON geometries.
 
 The AOI-draw-in-chat flow captures a polygon the user drew on a map and
-hands it to Studio (``POST /areas``) and to bbox-driven skills. These
-helpers validate that geometry and derive its bounding box, with no GDAL
+hands it to Studio (``POST /areas``); its bounding box goes back to the web
+UI, which shows it and puts it in the brief the model reads. These helpers
+validate that geometry and derive its bounding box, with no GDAL
 or numpy dependency (the agent stays torch-free / no-GDAL): a drawn AOI is
 a small GeoJSON ``Polygon`` / ``MultiPolygon``, so plain coordinate
 arithmetic is enough.
@@ -69,8 +70,7 @@ def geometry_bbox(geom: Any) -> list[float]:
     """Return ``[min_lon, min_lat, max_lon, max_lat]`` for a GeoJSON geometry.
 
     Works for any geometry type (walks every position), but the AOI flow
-    only feeds it validated polygons. The bbox is what bbox-driven skills
-    (e.g. ``--bbox`` latent-change) consume.
+    only feeds it validated polygons.
 
     Raises
     ------
@@ -79,7 +79,9 @@ def geometry_bbox(geom: Any) -> list[float]:
     """
     lons: list[float] = []
     lats: list[float] = []
-    for lon, lat in _iter_positions(geom.get("coordinates") if isinstance(geom, dict) else geom):
+    for lon, lat in _iter_positions(
+        geom.get("coordinates") if isinstance(geom, dict) else geom
+    ):
         lons.append(lon)
         lats.append(lat)
     if not lons:

@@ -1,4 +1,4 @@
-/* Client-side file downloads for chat artifacts (compare results, SLD styles,
+/* Client-side file downloads for chat artifacts (compare results, reports,
    result JSON). Builds a Blob and triggers a save - no server round-trip. */
 
 export function downloadText(filename, text, mime) {

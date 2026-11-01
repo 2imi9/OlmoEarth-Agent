@@ -18,9 +18,8 @@ import time
 
 import pytest
 
-_ENABLED = (
-    os.environ.get("OLMOEARTH_WRITE_TESTS") == "1"
-    and bool(os.environ.get("OLMOEARTH_API_KEY"))
+_ENABLED = os.environ.get("OLMOEARTH_WRITE_TESTS") == "1" and bool(
+    os.environ.get("OLMOEARTH_API_KEY")
 )
 
 

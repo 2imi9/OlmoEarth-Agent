@@ -4,7 +4,7 @@
 
 The web UI shows a "Workflow" rail tracking a run through the OlmoEarth pipeline:
 ``Load context -> Define AOI -> Find model -> Submit run -> Poll status ->
-Fetch results -> Report``. For an **advisory** skill (e.g. ``negative-sampler``,
+Fetch results -> Report``. For an **advisory** skill (e.g. ``review-set``,
 which never submits a prediction) most of those stages are irrelevant and would
 sit forever "pending", reading as a stuck run. This module is the source of
 truth for which stages a skill's tools touch, so the UI can render only the
@@ -42,7 +42,9 @@ _ALWAYS = frozenset({"context", "report"})
 
 #: When a skill submits a prediction, the whole run pipeline applies (you can't
 #: submit without an AOI, poll without a submit, etc.).
-_RUN_PIPELINE = frozenset({"context", "aoi", "model", "submit", "poll", "fetch", "report"})
+_RUN_PIPELINE = frozenset(
+    {"context", "aoi", "model", "submit", "poll", "fetch", "report"}
+)
 
 
 def stage_for_tool(tool_name: str) -> str | None:
@@ -58,7 +60,7 @@ def skill_workflow_stages(tools: list[str] | None) -> list[str]:
     """The relevant stage keys for a skill, given its tools, in pipeline order.
 
     A **run** skill (one whose tools include ``submit_prediction``) gets the full
-    pipeline; an **advisory** skill (e.g. negative-sampler) gets just the stages
+    pipeline; an **advisory** skill (e.g. review-set) gets just the stages
     its tools touch, bracketed by ``context`` + ``report`` — so the rail never
     shows submit/poll/fetch it will never reach.
     """

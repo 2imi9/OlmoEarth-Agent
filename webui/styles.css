@@ -666,6 +666,7 @@ a:hover { color: var(--text); }
 /* Live mode (bridge): tool-result JSON + run-level error/notice banner. */
 .tc-result-json { flex: 1 1 100%; margin: 4px 0 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px; }
 .run-error { background: rgba(240,82,156,.07); border: 1px solid var(--line); border-left: 3px solid var(--pink); border-radius: 12px; padding: 11px 15px; font-size: 13.5px; color: var(--text); }
+.run-note { background: var(--bg-2); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 12px; padding: 11px 15px; font-size: 13.5px; color: var(--text-dim); }
 
 /* Rendered Markdown in agent answers (tables, bold, lists, code). */
 .answer.md { white-space: normal; }
@@ -949,10 +950,8 @@ button.is-busy > .ic { display: none; }
 /* Result-block treatment from the Claude-design "Result block" handoff: the
    container becomes a cohesive card with a flex-gap rhythm + a faint "RESULT"
    eyebrow, and the parts/buttons get polished spacing + hover/active states.
-   Aligned to our app: color-mix() -> rgba(); .viz-bar-fill gets display:block
-   (our fills are <span>, the demo used <div>); .viz-chart carries its own gap
-   (our caption is nested inside it, not a sibling); the inline diff legend and
-   the trajectory axis size are kept for our narrower SVG chart. */
+   Aligned to our app: color-mix() -> rgba(); the inline diff legend is
+   kept. */
 .tc-viz { margin-top: 10px; }
 
 /* CARD */
@@ -1016,13 +1015,6 @@ button.is-busy > .ic { display: none; }
 .viz-ab-b { color: var(--pink); font-weight: 600; }
 .viz-ab-d { color: var(--text-faint); }
 
-/* BARS (rows are CSS grid; fills are <span> -> need display:block) */
-.viz-bars { display: flex; flex-direction: column; gap: 9px; }
-.viz-bar-row { display: grid; grid-template-columns: minmax(72px, 120px) 1fr auto; align-items: center; gap: 12px; font-size: 13px; }
-.viz-bar-label { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.viz-bar-track { height: 10px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-pill); overflow: hidden; }
-.viz-bar-fill { display: block; height: 100%; background: var(--pink); border-radius: var(--radius-pill); }
-.viz-bar-val { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .cmp-modal-body { display: flex; flex-direction: column; gap: 8px; }
 /* Saved-comparison modal footer: keep the first action (Open overlay) left and
    push the download buttons to the right. */
@@ -1111,17 +1103,8 @@ button.is-busy > .ic { display: none; }
   flex: none; box-shadow: 0 0 0 1px var(--line-soft);
 }
 
-/* CAPTION + CHART */
+/* CAPTION */
 .viz-cap { font-size: 12px; line-height: 1.45; color: var(--text-faint); text-wrap: pretty; }
-.viz-chart { display: flex; flex-direction: column; gap: 6px; }
-.viz-svg {
-  width: 100%; max-width: 560px; height: auto; display: block;
-  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: var(--radius-sm);
-}
-.viz-line { fill: none; stroke: var(--mint); stroke-width: 2; }
-.viz-dot { fill: var(--pink); }
-.viz-axt { fill: var(--text-faint); font-size: 9px; font-family: ui-monospace, Menlo, Consolas, monospace; }
-.viz-axis { stroke: var(--line); stroke-width: 1; }
 .viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
 .viz-map .leaflet-control-layers { font-size: 12px; }
 

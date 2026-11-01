@@ -34,9 +34,7 @@ _SIMPLE_TYPES: dict[str, type | tuple[type, ...]] = {
 }
 
 
-def validate_arguments(
-    arguments: dict[str, Any], schema: dict[str, Any]
-) -> list[str]:
+def validate_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -> list[str]:
     """Check ``arguments`` against ``schema``; return problems (empty = valid).
 
     Each problem is a single human/model-readable sentence naming the argument,
@@ -89,9 +87,7 @@ def _check(path: str, value: Any, schema: dict[str, Any]) -> list[str]:
             return problems  # wrong shape: deeper checks would just cascade
     enum = schema.get("enum")
     if enum is not None and value not in enum:
-        problems.append(
-            f"argument {path!r} must be one of {enum!r}, got {value!r}"
-        )
+        problems.append(f"argument {path!r} must be one of {enum!r}, got {value!r}")
     if isinstance(value, list) and isinstance(schema.get("items"), dict):
         for i, item in enumerate(value):
             problems.extend(_check(f"{path}[{i}]", item, schema["items"]))

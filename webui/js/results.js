@@ -1,8 +1,8 @@
 /* Saved results: a sidebar section (parallel to Chats and Projects) that stores
    the outputs a chat produces. A result is either a quantitative two-raster
    COMPARISON (real stats + the sampled diff grid, captured from a live scan -
-   never fabricated) or a downloadable FILE artifact in some format (an SLD
-   style, a case-narrative report, exported JSON/CSV, ...). Each record carries a
+   never fabricated) or a downloadable FILE artifact (the case-narrative
+   report, format md). Each record carries a
    `type` ('comparison' | 'file') and a `format` badge; persisted to
    localStorage. Comparisons re-open in a difference-map modal; file results open
    a text preview + re-download. */
@@ -77,7 +77,7 @@ function deleteResult(id) { persist(load().filter((r) => r.id !== id)); renderRe
 /* A short uppercase badge for the format chip. */
 const FORMAT_BADGE = {
   'raster-diff': 'DIFF', json: 'JSON', csv: 'CSV', geojson: 'GEOJSON',
-  sld: 'SLD', md: 'MD', markdown: 'MD', qlr: 'QLR', xml: 'XML', file: 'FILE',
+  md: 'MD', markdown: 'MD', xml: 'XML', file: 'FILE',
 };
 function badgeFor(r) { return FORMAT_BADGE[r.format] || (r.format ? r.format.toUpperCase().slice(0, 7) : 'FILE'); }
 
@@ -124,7 +124,7 @@ export function renderResultsList() {
   const countEl = document.getElementById('resultsCount');
   if (countEl) countEl.textContent = items.length ? String(items.length) : '';
   if (!items.length) {
-    list.innerHTML = '<div class="side-note">No saved results yet. Save a comparison, or any downloadable output (SLD, report, JSON) a chat produces.</div>';
+    list.innerHTML = '<div class="side-note">No saved results yet. Save a comparison, or a case-narrative report a chat produces.</div>';
     return;
   }
   list.innerHTML = items.map((r) => {

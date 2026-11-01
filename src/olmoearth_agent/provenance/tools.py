@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""The ``olmoearth-provenance`` tool bundle (skill #13).
+"""The ``olmoearth-provenance`` tool bundle (skill #3).
 
 Exposes the run's provenance log to the agent so it can report what was
-done and emit a replay skeleton at the end of a task.
+done and emit a replay skeleton at the end of a task. The verification
+calls (the label plan, the error estimate and the certified zone) are listed
+with their design and seed, so a reader can draw the same sample again.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from olmoearth_agent.llm.types import ToolSpec
-from olmoearth_agent.tools.registry import RegisteredTool, ToolContext
+from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 
 
 async def _provenance_summary(
@@ -22,6 +24,8 @@ async def _provenance_summary(
         "run_id": log.run_id,
         "entry_count": len(log.entries),
         "calls": [e.api_call for e in log.entries],
+        # What repeats each sample: design, budget, seed, maps and labels.
+        "verification_calls": log.verification_calls(),
         "replay_script": log.replay_script(),
     }
 
@@ -34,11 +38,15 @@ def build_provenance_tools() -> list[RegisteredTool]:
                 name="olmoearth_provenance_summary",
                 description=(
                     "Summarize what this run did: the ordered list of tool "
-                    "calls and a replay skeleton. Call this at the end of a "
-                    "task to give the user an auditable record."
+                    "calls, the verification calls' seeds, and a replay "
+                    "skeleton. Call this at the end of a task to give the "
+                    "user an auditable record."
                 ),
                 parameters={"type": "object", "properties": {}, "required": []},
             ),
             handler=_provenance_summary,
+            capability=Capability(
+                does="this run's tool calls in order, and a replay skeleton"
+            ),
         ),
     ]

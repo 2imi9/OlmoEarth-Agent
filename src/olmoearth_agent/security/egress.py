@@ -23,8 +23,9 @@ What it stops
 Honest limits
 -------------
 - This is **not** a sandbox. It guards the URLs *this code* builds; it does not
-  constrain arbitrary egress from opt-in executed code
-  (:mod:`olmoearth_agent.tools.system`) or anything else on the host.
+  constrain egress from a child process the agent starts (olmoearth-inferencex's
+  command line, :mod:`olmoearth_agent.tools.inferencex`) or anything else on
+  the host.
 - It does **not** resolve DNS (NemoClaw pins post-resolution IPs to defeat DNS
   rebinding; an always-running container can afford that, a per-call interactive
   agent should not block on a lookup). The allowlist is therefore the primary
@@ -77,8 +78,6 @@ _register(
     ("api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com"),
 )
 _register("llm-local", (), allow_loopback=True)
-_register("litsearch", ("export.arxiv.org", "api.openalex.org"))
-_register("hf", ("datasets-server.huggingface.co",))
 
 #: Reserved IPv4 ranges that ``ipaddress`` does not flag as private on every
 #: supported interpreter: RFC 6598 carrier-grade NAT and the 0.0.0.0/8 block.

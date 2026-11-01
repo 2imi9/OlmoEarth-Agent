@@ -39,10 +39,10 @@ async def test_live_agent_counts_projects() -> None:
         )
 
     # The model should have ended with a text answer...
-    assert result.final_content is not None, (
-        f"agent hit max turns without answering; calls={result.tool_calls}"
-    )
+    assert (
+        result.final_content is not None
+    ), f"agent hit max turns without answering; calls={result.tool_calls}"
     # ...and at least one Studio tool call must have succeeded.
-    assert any(ok for _name, ok in result.tool_calls), (
-        f"no successful tool call; trace={result.tool_calls}"
-    )
+    assert any(
+        ok for _name, ok in result.tool_calls
+    ), f"no successful tool call; trace={result.tool_calls}"

@@ -13,12 +13,14 @@ import { renderResultViz } from './viz.js';
    In demo mode a brief plays a canned agent loop with the same event shape as
    the live SSE stream. */
 const SCENARIOS = {
+  // Honest demo, like `compare`: change over time is the comparison tool's
+  // series mode, which samples real rasters, so the demo shows no statistics.
   change: {
-    reasoning: "Four dates, that's ≥3, so a real trajectory diff is valid (a naive 2-date diff would hide the wobble). I'll call the change-detect skill.",
-    tool: 'olmoearth_change_detect',
-    args: '{\n  "series": [\n    {"date": "2024-03-01", "value": 0.12},\n    {"date": "2024-06-01", "value": 0.18},\n    {"date": "2024-09-01", "value": 0.15},\n    {"date": "2024-12-01", "value": 0.27}\n  ],\n  "metric": "karst_positive_fraction"\n}',
-    result: [['trend', 'oscillating'], ['net_change', '+0.15'], ['reversals', '2'], ['max_step', 'Sep→Dec +0.12']],
-    answer: "Net positive area rose +0.15 over the year, but it didn't trend cleanly upward. There were 2 reversals, and the Sep→Dec quarter (+0.12) drove most of the gain. I'd call this oscillating with an upward bias, not a steady increase. Want the per-quarter chart or a stakeholder brief?",
+    reasoning: "Several dated results of one model over one area: a series (3 or more dates; two cannot tell a trend from a wobble). I'll trace them with the comparison tool in series mode, which orders them by date and samples each on one grid. That needs your Studio key.",
+    tool: 'olmoearth_compare_results',
+    args: '{\n  "result_ids": ["<first date>", "<second date>", "<third date>", "<fourth date>"],\n  "mode": "series"\n}',
+    result: [['note', 'demo mode: connect a Studio key to sample the real rasters']],
+    answer: "This is the demo, so I can't sample your real results here. Connect your **Studio key** (top bar), then name three to eight dated results of one model over the same area. I'll order them by date and report each step's correlation and mean shift, each window's trajectory, and the shift sizes against the field's range. That is how the model's estimates moved between run dates, not verified ground change.",
   },
   projects: {
     reasoning: "I'll load the account context first (per the run rules, never invent ids), then count the projects it returns.",
@@ -31,7 +33,7 @@ const SCENARIOS = {
   compare: {
     reasoning: "Two runs over the same area with no ground-truth labels, so I compare them to each other (agreement), not accuracy. That needs to sample both rasters - which requires your Studio key.",
     tool: 'olmoearth_compare_results',
-    args: '{\n  "result_id_a": "<first result>",\n  "result_id_b": "<second result>"\n}',
+    args: '{\n  "result_ids": ["<first result>", "<second result>"]\n}',
     result: [['note', 'demo mode: connect a Studio key to sample the real rasters']],
     answer: "This is the demo, so I can't sample your real rasters here. Connect your **Studio key** (top bar), then either drag two prediction results into the chat or ask me to compare two runs. I'll report model-vs-model **agreement** (correlation, mean difference, agreement %) and scan a live **difference map** - blue where one run scores higher, pink where the other does. No ground-truth labels are needed; that would be *accuracy*, which is a different tool.",
   },
@@ -86,7 +88,7 @@ function liveResultHtml(ev) {
    A horizontal progress rail above "Reasoning & tools" mapping the agent's tool
    calls to the OlmoEarth pipeline. Only the stages RELEVANT to the run are shown:
    a real prediction run gets the full pipeline; an advisory task (e.g. the
-   negative-sampler, which never submits) gets just Load context -> Report -- so
+   review set, which never submits) gets just Load context -> Report -- so
    the rail never shows submit/poll/fetch stuck "pending". Stage keys/predicates
    mirror src/olmoearth_agent/harness/workflow.py (and GET /api/skills). */
 const WF_PIPELINE = [
@@ -276,7 +278,59 @@ export function handleRunEvent(body, ev, staticRender) {
     }
   } else if (ev.type === 'max_turns') {
     workflowOnFail(body, null);
-    body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+    // The harness now asks for an answer without tools at the cap (a `final`
+    // follows, forced_by_turn_cap); the same note goes to the CLI's stderr.
+    // An older saved chat has no such final, so it keeps the old message.
+    if (ev.final_answer_forced) {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">Reached the turn cap (' + escapeHtml(String(ev.turns)) + '): the answer below was written from what the tools returned, without further tool calls.</div>');
+    } else {
+      body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">Stopped at the turn cap (' + escapeHtml(String(ev.turns)) + ') without a final answer.</div>');
+    }
+  } else if (ev.type === 'grounding_check') {
+    // The harness checked the answer's numbers against the run's tool results
+    // (harness/grounding.py). 'revise': it asked the model to rewrite without
+    // them, noted in the steps; 'shown': the answer below still states them
+    // (the CLI prints the same note to stderr). A `final` follows either way.
+    const nums = (ev.unsupported || []).join(', ');
+    if (ev.action === 'shown') {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">Numbers in the answer below that no tool returned: ' + escapeHtml(nums) + '.</div>');
+    } else {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = 'Number check: ' + nums + ' found in no tool result; asked for a rewrite without them.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    }
+  } else if (ev.type === 'check' && ev.check !== 'numbers') {
+    // An answer check other than the numbers (harness/checks.py; the number
+    // check has its grounding_check above). 'revise': a rewrite was asked,
+    // noted in the steps; 'marked': the answer below carries
+    // "[unverified: <check>]" after each sentence still flagged. The claim
+    // check (harness/claim_check.py) reports every call: 'passed' flagged
+    // nothing and is not shown; 'failed_open' could not be read, and the
+    // answer was shown without it. 'appended': a statement a tool requires
+    // was added at the end of the answer, with no rewrite.
+    const n = (ev.violations || []).length;
+    const name = String(ev.check || 'answer');
+    if (ev.action === 'passed') {
+      // nothing to show
+    } else if (ev.action === 'marked') {
+      body.insertAdjacentHTML('beforeend', '<div class="run-note run-step">The ' + escapeHtml(name) + ' check still flags ' + n + ' statement(s) of the answer below; each is marked [unverified: ' + escapeHtml(name) + '].</div>');
+    } else if (ev.action === 'failed_open' || ev.action === 'appended') {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = ev.action === 'appended'
+        ? 'Answer check (' + name + '): a statement the tool requires was added at the end.'
+        : 'Answer check (' + name + '): not run (' + String(ev.error || 'no reply') + '); the answer is shown unchecked for it.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'think run-step';
+      row.textContent = 'Answer check (' + name + '): ' + n + ' sentence(s) flagged; asked for a rewrite.';
+      stepsBody(body).appendChild(row);
+      bumpStepsCount(body);
+    }
   } else if (ev.type === 'error') {
     workflowOnFail(body, null);
     body.insertAdjacentHTML('beforeend', '<div class="run-error run-step">⚠ ' + escapeHtml(ev.message || 'run failed') + '</div>');

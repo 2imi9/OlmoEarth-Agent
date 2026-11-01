@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Label-free review-set ranking (skill #18, ``olmoearth-review-set``).
+"""Label-free review-set ranking (skill #5, ``olmoearth-review-set``).
 
 Pure Python, no heavy deps. Given the per-class scores a model emitted for
 a grid of windows, this module answers the question a practitioner asks
@@ -8,21 +8,35 @@ the moment a prediction map lands: *which windows do I check first, and
 how much of the error do I catch if I only check 5% of them?*
 
 The signal is the model's own **top-1 minus top-2 margin**. That choice is
-not an aesthetic one. The companion research repository
-`2imi9/olmoearth_inferenceX <https://github.com/2imi9/olmoearth_inferenceX>`_
+not an aesthetic one. The companion package's research record
+`2imi9/olmoearth_inferenceX-record
+<https://github.com/2imi9/olmoearth_inferenceX-record>`_
 measured it against every alternative it could build -- ensemble
 disagreement, cross-model disagreement, feature-space typicality /
 distance-to-training-data, two-view disagreement, flip-and-rotate
 consistency -- on seven expert-labelled testbeds, and none of them ranked
 errors better than the margin. Those verdicts are carried here as
-:data:`EVIDENCE` so a tool result can cite them instead of asserting them.
+:data:`EVIDENCE`. A result states them as ONE scoped sentence,
+``evidence_scope``: what was measured, on what, and whether that covers the
+case at hand (:func:`ranking_evidence_scope`, :func:`comparison_evidence_scope`);
+the full text stays in :func:`evidence_detail`, which the tools save to a file
+and name by path. exp86 rounds 6 and 7 found answers widening the inline
+blocks to cases no experiment grades (a regression band read as a
+probability; "every no-model control" for a suite with two). Beating those
+two controls on all 24 of the suite's tasks says little on its own: a red
+team of 30 September 2026 found them near chance there, so the suite's
+evidence is stated against a random order instead (:data:`SUITE_MEASURED`).
 
-Scope, stated plainly because the neighbouring skill #9 owns the other
-half: this module ranks *relative* suspicion so a finite review budget is
-spent well. It is **not** a calibrated probability of correctness and it is
-**not** out-of-distribution detection -- a model can be confidently wrong on
-data unlike its training set, which is what
-:func:`~olmoearth_agent.analysis.uncertainty.area_of_applicability` is for.
+A result also carries the shared output contract the harness checks an
+answer against: ``facts`` (one-sentence statements computed by code, each
+with an ``id`` and its fields), ``must_state`` (what an answer reporting the
+result must convey) and ``forbidden_claims`` (claims it must not make).
+
+Scope, stated plainly: this module ranks *relative* suspicion so a finite
+review budget is spent well. It is **not** a calibrated probability of
+correctness and it is **not** out-of-distribution detection -- a model can be
+confidently wrong on data unlike its training set, and no tool here flags
+that.
 
 Why this is a bring-your-own-scores tool: the Studio API exposes only
 ``raw_value`` (regression) and ``classification`` (categorical) per band --
@@ -30,8 +44,15 @@ no probabilities, no logits, no per-class scores (see
 :meth:`~olmoearth_agent.studio.client.StudioClient.pixel_value`). A margin
 cannot be recovered from a hard class label, so the scores must come from
 wherever inference actually ran (rslearn ``model predict``, an
-embeddings+probe pass, or any exported softmax). This mirrors skill #8,
-which likewise takes caller-supplied embeddings.
+embeddings+probe pass, or any exported softmax). Two Studio outputs do carry
+a margin. A regression band that is a binary score in ``[0, 1]``:
+:func:`regression_scores` reads it as ``[1 - s, s]``, with the assumption
+stated in :data:`BINARY_SCORE_ASSUMPTION`. And a class map with top-k scores
+(a segmentation prediction submitted with ``probability_output``, whose
+result carries each rank's class and softmax score as bands of their own):
+its rows are ``[p1, p2]``, the rank-1 and rank-2 scores, ranked as
+probabilities (:data:`TOPK_SCORE`, :func:`topk_assumption`), and its classes
+are the rank-1 classes, passed beside them (``map_class``).
 
 Coordinates are never accepted or returned: windows are addressed by index
 and by caller-supplied id, so a review set cannot leak geometry into chat
@@ -44,27 +65,65 @@ import math
 from collections.abc import Sequence
 from typing import Any
 
+from olmoearth_agent.analysis.output_contract import add_must_state
+
 #: Default review budgets (fraction of all windows sent to a human).
 DEFAULT_BUDGETS: tuple[float, ...] = (0.01, 0.05, 0.10)
 
 #: Default cap on how many review rows are returned inline.
 DEFAULT_MAX_LISTED = 50
+#: Class pairs (A's class, B's class) listed by count in a comparison's class_changes.
+CLASS_CHANGES_LISTED = 10
+#: Bands per axis in a comparison's spatial breakdown (rows, and columns).
+SPATIAL_BANDS = 4
 
 #: Largest grid this tool will accept (keeps a pure-Python sort honest).
 MAX_WINDOWS = 200_000
 
-#: Measured verdicts from 2imi9/olmoearth_inferenceX, carried so a tool
-#: result can cite evidence rather than assert authority. Each entry names
-#: the claim id in that repository's ledger (``docs/claims.yaml``).
+#: Measured verdicts from the research record 2imi9/olmoearth_inferenceX-record,
+#: carried so a tool result can cite evidence rather than assert authority.
+#: Each entry names the claim id in that repository's ledger
+#: (``docs/claims.yaml``). The suite's entries follow the red team of 30
+#: September 2026: its two no-model controls are near chance, so the margin's
+#: lead over them says little, and the evidence is the margin against a random
+#: order (the 3,560 cells of exp79 and the 10% review of exp70).
 EVIDENCE: dict[str, str] = {
+    "exp79-margin-beats-random-everywhere": (
+        "The ranking's evidence. In every one of exp79's 3,560 cells (16 "
+        "encoders, OlmoEarth's four sizes among them, on the tasks of Ai2's "
+        "published embedding suite: each encoder's 20 to 24 tasks, ten probe "
+        "seeds each) the margin's AUROC for errors is above 0.5 and its excess "
+        "AURC is below a random order's. The lowest AUROC, 0.503 (Clay Large on "
+        "Nandi Sentinel-1), is close to chance."
+    ),
+    "suite-review-at-ten-percent": (
+        "On the suite's 24 tasks with OlmoEarth Base (exp70), reviewing the 10% "
+        "of units with the lowest margin finds a median 0.214 of the errors, "
+        "against 0.10 for a "
+        "random 10% and a median 0.410 for a perfect order. It finds more than "
+        "10% of the errors on every task; the lowest is 0.115, on Nandi "
+        "Sentinel-1."
+    ),
     "suite-margin-wins-every-task": (
-        "The headline result. On all 24 scored tasks of Ai2's own published "
-        "embedding suite -- tasks Ai2 chose for their own paper, 14 distinct "
-        "sources, 6,435,473 graded units, accuracy 0.333 to 0.979 -- the "
-        "model's own margin beat the best no-model control on every one. "
-        "Excess-AURC leads 0.0157 to 0.2278, median 0.1158; one-sided exact "
-        "sign test 24/24, p = 6e-08. One of the two controls is embedding "
-        "distance, i.e. a feature-space-typicality score."
+        "With OlmoEarth Base (exp70), on all 24 scored tasks of Ai2's own "
+        "published embedding suite -- tasks Ai2 chose for their own paper, 14 "
+        "distinct sources, 6,435,473 graded units, accuracy 0.333 to 0.979 -- "
+        "the model's own margin "
+        "ranked errors better than the better of the two no-model controls "
+        "computable from the embeddings (distance to the training mean, and "
+        "how rare the probe's predicted class is). Excess-AURC leads 0.0157 to "
+        "0.2278, median 0.1158; one-sided exact sign test 24/24, p = 6e-08. "
+        "This says little on its own: the two controls are near chance on the "
+        "suite (suite-controls-are-near-chance), so it mostly shows that the "
+        "margin beats a random order."
+    ),
+    "suite-controls-are-near-chance": (
+        "Found by the red team of 30 September 2026. Taking a random order's "
+        "excess AURC as the gap to close, the better of the suite's two "
+        "no-model controls closes a median 0.094 of it and does no better than "
+        "a random order on 9 of the 24 tasks, while the margin closes a median "
+        "0.680. The embedding-distance control ranks errors below chance "
+        "(AUROC under 0.5) on 21 of the 24 tasks."
     ),
     "shrug-signals-rejected": (
         "Ensemble mutual information (the disagreement component) and -NCDD "
@@ -132,6 +191,484 @@ EVIDENCE_LIMITS: tuple[str, ...] = (
     "These numbers order a review well and are badly miscalibrated as "
     "probabilities: good for deciding what to look at first, poor for "
     "deciding what to trust at a threshold.",
+)
+
+#: The measured reason a comparison declines to pick a side (upstream exp58).
+COMPARISON_EVIDENCE = (
+    "The more confident side is right on 51 to 70 percent of differing windows "
+    "(exp58, upstream) and confidence does not order the set, so this comparison "
+    "does not identify a winner; declining to pick a side is the correct answer."
+)
+
+# --------------------------------------------------------------------------- evidence, scoped to the case
+
+#: What the ranking evidence measured and on what: the opening of every
+#: ranking's ``evidence_scope`` (claims ``suite-review-at-ten-percent`` and
+#: ``exp79-margin-beats-random-everywhere``; the suite's margin is of the
+#: probe's probabilities, as exp70 computes it). Against a random order, not
+#: the suite's two no-model controls, which a red team of 30 September 2026
+#: found near chance (``suite-controls-are-near-chance``): beating them on 24
+#: of 24 tasks says little on its own. Each figure names the encoders it
+#: covers: exp70 is one encoder, OlmoEarth Base; exp79 is 16.
+SUITE_MEASURED = (
+    "Ai2's 24-task embedding suite (exp70: OlmoEarth Base; exp79: 16 encoders, "
+    "OlmoEarth's four sizes among them, ten probe seeds each; its two no-model "
+    "controls are near chance, so the margin's lead over them says little) "
+    "found the top-1 minus top-2 probability margin ranked errors better than a "
+    "random order: with OlmoEarth Base its 10% review set found more than 10% "
+    "of the errors on all 24 tasks (a median 21.4%, against 10% for a random "
+    "10%), and its AUROC for errors was above 0.5 in all 3,560 cells of the 16 "
+    "encoders"
+)
+
+#: What the comparison evidence measured and on what (claim
+#: ``tool-vs-diff-resolution``).
+COMPARISON_MEASURED = (
+    "On 15 pairs of Sen1Floods11 flood maps with expert labels (exp58: window "
+    "level; crop offsets, backbones, sensors, fine-tuning and encoders) the more "
+    "confident side was right on 51 to 70 percent of differing windows"
+)
+
+#: ``evidence_covers_this_case`` values; every value but ``"yes"`` puts a
+#: short sentence stating the limit in ``must_state``.
+COVERS = ("yes", "in part", "no", "not known")
+
+#: The values for which the evidence does not, or may not, cover the case: a
+#: field the answer reads then carries none of the experiment's numbers and
+#: not its dataset's name, and ``evidence_scope`` only names the source and
+#: says it does not cover the case. exp86 round 8: "the more confident side was
+#: only right 51-70% of the time in comparable cases" (brief 3 on the cluster)
+#: and "the two Sen1Floods11 flood maps" (brief 7 on files), for a pair the
+#: comparison said its evidence does not cover. ``"in part"`` (an OlmoEarth
+#: model's multi-class logits) keeps only exp76's figure about the logit margin
+#: itself, the case's own evidence; the suite's 24-task finding, measured on
+#: the probability margin, stays in the file (:data:`PARTLY_COVERED`).
+NOT_COVERED = ("no", "not known")
+
+#: The value for which the evidence covers the case's kind but not its form:
+#: the suite measured the probability margin, and these rows are logits.
+#: ``evidence_outside_its_scope`` is emitted, naming what the suite did not
+#: measure (the exp76 review of fix-r8: the 24-task figure sat in
+#: ``evidence_scope`` beside a ranking by the logit margin).
+PARTLY_COVERED = "in part"
+
+#: Where the ranking evidence was measured, named without its numbers or its
+#: dataset (the suite and its figures stay in :func:`evidence_detail`).
+RANKING_SOURCE = (
+    "The ranking evidence (exp70 of 2imi9/olmoearth_inferenceX-record) was "
+    "measured on OlmoEarth models' class-score margins"
+)
+
+#: Where the side-picking evidence was measured, named the same way.
+COMPARISON_SOURCE = (
+    "The side-picking evidence (exp58 of 2imi9/olmoearth_inferenceX-record) was "
+    "measured on other pairs of maps with labels"
+)
+
+#: Forbidden with every result whose evidence does not, or may not, cover the
+#: case (:data:`NOT_COVERED`); the contract's fixed id.
+EVIDENCE_OUTSIDE_ITS_SCOPE = "evidence_outside_its_scope"
+
+#: ``score_kind`` of a scores file ``olmoearth_scores_from_file`` writes
+#: (``tools/scores_file.SCORE_KIND``): each row holds the window's pooled
+#: confidence at its class and 0 elsewhere, an encoding read with
+#: ``score_type``.
+WINDOW_CONFIDENCE = "window_confidence"
+#: The ``score_kind`` the review set passes for such a file pooled from a
+#: Studio result's own files (``olmoearth_scores_from_studio``: a Studio
+#: model's top-k softmax scores, or its ``[0, 1]`` score), which no recorded
+#: experiment grades.
+STUDIO_WINDOW_CONFIDENCE = "studio_window_confidence"
+
+# The must_state sentence for each case the evidence does not cover: at most
+# 25 words, a limit the answer must convey, never an instruction (the long
+# scope sentence stays in ``evidence_scope``, the full text in the file).
+
+#: A Studio regression band in [0, 1] read as [1 - s, s].
+MUST_STATE_BINARY_SCORE = (
+    "No recorded experiment grades a regression score read as a probability."
+)
+#: A class map's top-k scores read as [p1, p2].
+MUST_STATE_TOPK_SCORE = (
+    "No recorded experiment grades a ranking by a Studio class map's top-k scores."
+)
+#: A Studio model's scores pooled to windows from its result's own files.
+MUST_STATE_STUDIO_FILES = (
+    "The ranking evidence was measured on OlmoEarth models' class-score margins, "
+    "not a Studio model's pooled scores, so it does not cover this case."
+)
+#: A regression band ranked by its distance from a threshold.
+MUST_STATE_THRESHOLD_DISTANCE = (
+    "No recorded experiment grades a regression band's distance from a decision "
+    "threshold."
+)
+#: Scores that do not name the model they came from.
+MUST_STATE_UNNAMED_MODEL = (
+    "The ranking evidence is for OlmoEarth models; these scores do not name their "
+    "model, so it may not apply."
+)
+#: Multi-class logits: the form this ranking uses is not the best measured one
+#: (claims top1-beats-the-margin-on-multiclass and
+#: no-whole-vector-score-beats-the-probability-forms: one minus the top
+#: probability beat the probability margin on 14 of 16, and the probability
+#: margin beat the logit margin on all 16, so it beat the logit margin on at
+#: least those 14). Also the reading of the scores provider's multi-class
+#: warning, whose own text ends in an argument no agent tool takes.
+MUST_STATE_MULTICLASS_LOGIT = (
+    "This ranking uses the logit margin; on Ai2's suite one minus the top "
+    "probability ranked errors better on 14 of 16 multi-class tasks."
+)
+#: A comparison: no side can be picked.
+MUST_STATE_NO_WINNER = (
+    "No recorded experiment grades which of these two maps is right; without "
+    "labels neither side can be picked."
+)
+
+
+def must_state_other_model(model: str) -> str:
+    """The must_state sentence for scores from a model outside the OlmoEarth family."""
+    name = model if len(model.split()) == 1 and len(model) <= 80 else "another model"
+    return (
+        f"The ranking evidence is for OlmoEarth models; these scores come from "
+        f"{name}, so it may not apply."
+    )
+
+
+def is_olmoearth(model: str | None) -> bool:
+    """Whether a model name (a repo such as ``allenai/OlmoEarth-v1-FT-AWF-Base``) is OlmoEarth's."""
+    return bool(model) and "olmoearth" in str(model).lower().replace("-", "").replace(
+        "_", ""
+    )
+
+
+def ranking_evidence_scope(
+    *, score_kind: str, n_classes: int, model: str | None = None
+) -> dict[str, str | None]:
+    """ONE sentence: what the ranking evidence measured, on what, and whether it covers this case.
+
+    Parameters
+    ----------
+    score_kind
+        What the rows are: ``"logit"`` or ``"probability"`` (class scores),
+        ``"window_confidence_logit"`` or ``"window_confidence_probability"``
+        (a scores provider's pooled confidence), ``"binary_score"`` (a
+        regression band in ``[0, 1]`` read as ``[1 - s, s]``),
+        ``"threshold_distance"`` (a regression band's distance from a
+        threshold), :data:`TOPK_SCORE` (a Studio class map's rank-1 and
+        rank-2 scores) or :data:`STUDIO_WINDOW_CONFIDENCE` (a Studio model's
+        scores pooled to windows from its result's own files).
+    n_classes
+        Classes per row.
+    model
+        The model the scores came from, when the input names one.
+
+    Returns
+    -------
+    dict
+        ``sentence`` (the scope, however long it needs to be), ``source``
+        (the experiment, ``"exp70"``), ``covers`` (one of :data:`COVERS`) and
+        ``must_state``: the limit in at most 25 words when the evidence does
+        not cover the case, else ``None``.
+    """
+    # Where the evidence does not, or may not, cover the case the sentence names
+    # its source only: none of the suite's figures, and not the suite (exp86
+    # round 8 carried a scope's numbers and dataset to cases it excluded).
+    if score_kind == "binary_score":
+        return {
+            "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
+            "recorded experiment grades a regression score read as a probability.",
+            "source": "exp70",
+            "covers": "no",
+            "must_state": MUST_STATE_BINARY_SCORE,
+        }
+    if score_kind == "threshold_distance":
+        return {
+            "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
+            "recorded experiment grades a regression band's distance from a "
+            "decision threshold.",
+            "source": "exp70",
+            "covers": "no",
+            "must_state": MUST_STATE_THRESHOLD_DISTANCE,
+        }
+    # Studio's top-k scores are a fine-tuned model's uncalibrated softmax,
+    # quantized; the suite's margins are a probe's, and no recorded
+    # experiment reads a Studio result's scores.
+    if score_kind == TOPK_SCORE:
+        return {
+            "sentence": f"{RANKING_SOURCE} and does not cover this case: no "
+            "recorded experiment grades a ranking by a Studio class map's top-k "
+            "scores.",
+            "source": "exp70",
+            "covers": "no",
+            "must_state": MUST_STATE_TOPK_SCORE,
+        }
+    # A Studio model's top-k softmax scores (or [0, 1] score), downloaded from
+    # its result's files and pooled to window confidence. Studio fine-tunes
+    # OlmoEarth foundation models (the kelp model's record names its
+    # foundation_model_version, v1.2, read live on 31 October 2026), so the
+    # model is never called "not an OlmoEarth model", as live3 did by its id;
+    # the suite's margins are a probe's class scores, and no recorded
+    # experiment reads a Studio result's scores.
+    if score_kind == STUDIO_WINDOW_CONFIDENCE:
+        return {
+            "sentence": f"{RANKING_SOURCE}, not on a Studio model's top-k softmax "
+            "scores (or [0, 1] score) pooled to window confidence, so it does not "
+            "cover this case.",
+            "source": "exp70",
+            "covers": "no",
+            "must_state": MUST_STATE_STUDIO_FILES,
+        }
+    if not is_olmoearth(model):
+        named = (
+            f"these scores come from {model}, not an OlmoEarth model"
+            if model
+            else "these scores do not name the model they came from"
+        )
+        return {
+            "sentence": f"{RANKING_SOURCE} and may not cover this case: {named}.",
+            "source": "exp70",
+            "covers": "not known",
+            "must_state": (
+                must_state_other_model(str(model))
+                if model
+                else MUST_STATE_UNNAMED_MODEL
+            ),
+        }
+    if n_classes <= 2:
+        return {
+            "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
+            "OlmoEarth model's two-class margin) but not this map itself.",
+            "source": "exp70",
+            "covers": "yes",
+            "must_state": None,
+        }
+    if score_kind == "window_confidence_probability":
+        return {
+            "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
+            f"OlmoEarth model's top-1 probability over {n_classes} classes, which "
+            "ranked errors slightly better than that margin on 14 of the suite's 16 "
+            "multi-class tasks, exp76) but not this map itself.",
+            "source": "exp70",
+            "covers": "yes",
+            "must_state": None,
+        }
+    if score_kind == "probability":
+        return {
+            "sentence": f"{SUITE_MEASURED}, which covers this case in kind (an "
+            f"OlmoEarth model's probability margin over {n_classes} classes) but not "
+            "this map itself; one minus the top probability ranked errors slightly "
+            "better on 14 of the suite's 16 multi-class tasks (exp76).",
+            "source": "exp70",
+            "covers": "yes",
+            "must_state": None,
+        }
+    # Logits: the suite's finding is about the probability margin, so none of
+    # its figures is stated; exp76's figure about the logit margin itself is.
+    return {
+        "sentence": "The ranking evidence (exp70 of "
+        "2imi9/olmoearth_inferenceX-record) measured OlmoEarth models' "
+        "probability margin, not the logit margin this "
+        f"ranking uses over {n_classes} classes, so it covers this case only in "
+        "part; on 14 of 16 multi-class suite tasks the logit margin ranked errors "
+        "worse than one minus the top probability (exp76).",
+        "source": "exp70",
+        "covers": PARTLY_COVERED,
+        "must_state": MUST_STATE_MULTICLASS_LOGIT,
+    }
+
+
+def comparison_evidence_scope() -> dict[str, Any]:
+    """ONE sentence: where the side-picking evidence was measured, and that it does not cover this pair.
+
+    The source only: exp58's figures and its dataset stay in the file
+    (:func:`evidence_detail`), since exp86 round 8 applied them to pairs this
+    sentence excluded ("the more confident side was only right 51-70% of the
+    time in comparable cases"; "the two Sen1Floods11 flood maps" for a pair of
+    GEOID-Flood maps).
+    """
+    return {
+        "sentence": f"{COMPARISON_SOURCE} and does not cover this pair: no recorded "
+        "experiment grades which of these two maps is right, and without labels "
+        "neither side can be picked.",
+        "source": "exp58",
+        "covers": "no",
+        "must_state": MUST_STATE_NO_WINNER,
+    }
+
+
+def evidence_outside_scope(scope: dict[str, Any]) -> list[dict[str, str]]:
+    """The ``evidence_outside_its_scope`` claim for a scope that does not cover the case.
+
+    Empty when the evidence covers the case. Covered only in part (multi-class
+    logits), the reason names what the suite did not measure, the logit
+    margin, and the one figure that is about it (exp76). Otherwise it names
+    the source, never its numbers or dataset.
+    """
+    if scope.get("covers") == PARTLY_COVERED:
+        return [
+            {
+                "id": EVIDENCE_OUTSIDE_ITS_SCOPE,
+                "why": "the ranking evidence (exp70) measured the probability "
+                "margin, and this ranking uses the logit margin, which the suite "
+                "did not measure as a ranker against no-model controls: its "
+                "findings about the probability margin (it ranked errors better "
+                "than a random order, and than two controls near chance on the "
+                "suite) do not carry over to this ranking, neither 'in comparable "
+                "cases' nor as 'the evidence behind this ranking'; the only "
+                "figure about this form is exp76's (the logit margin ranked "
+                "errors worse than one minus the top probability on 14 of 16 "
+                "multi-class suite tasks)",
+            }
+        ]
+    if scope.get("covers") not in NOT_COVERED:
+        return []
+    source = str(scope.get("source") or "upstream")
+    comparison = source == "exp58"
+    finding = (
+        "its finding about how often the more confident side was right"
+        if comparison
+        else "its finding that the margin ranks errors well"
+    )
+    does = "does not" if scope["covers"] == "no" else "may not"
+    case = "pair" if comparison else "case"
+    named = ", and the maps here are not named after its dataset" if comparison else ""
+    return [
+        {
+            "id": EVIDENCE_OUTSIDE_ITS_SCOPE,
+            "why": f"evidence_scope names upstream evidence ({source}) that the tool "
+            f"says {does} cover this {case}: none of its numbers, its dataset or "
+            f"{finding} applies here, neither 'in comparable cases' nor as "
+            f"'upstream evidence shows'{named}; the file at evidence_detail_path "
+            f"keeps that record, not a finding about this {case}",
+        }
+    ]
+
+
+def evidence_detail() -> dict[str, Any]:
+    """The full evidence text a result's ``evidence_scope`` stands for, for a file."""
+    return {
+        "format": "olmoearth-agent/review-evidence@1",
+        "source": (
+            "2imi9/olmoearth_inferenceX-record, docs/claims.yaml (claim ids below)"
+        ),
+        "ranking": {
+            "measured": SUITE_MEASURED + ".",
+            "claims": dict(EVIDENCE),
+            "limits": list(EVIDENCE_LIMITS),
+            "multi_class": (
+                "On the suite's 16 multi-class tasks one minus the top probability "
+                "ranked errors better than the top-1 minus top-2 probability margin "
+                "on 14, by a small amount (claim top1-beats-the-margin-on-multiclass), "
+                "and the logit margin ranked errors worse than the probability "
+                "margin on all 16 (claim "
+                "no-whole-vector-score-beats-the-probability-forms); exp76."
+            ),
+        },
+        "comparison": {
+            "measured": COMPARISON_MEASURED + ".",
+            "reading": COMPARISON_EVIDENCE,
+        },
+    }
+
+
+def _scope_fields(scope: dict[str, Any]) -> dict[str, Any]:
+    """``evidence_scope``, ``evidence_covers_this_case`` and the must_state it implies.
+
+    ``must_state`` gets the scope's short sentence, not the scope itself: the
+    scope sentence runs to 60 words and more, and the contract holds a
+    must_state sentence to 25 (exp87 review).
+    """
+    out: dict[str, Any] = {
+        "evidence_scope": scope["sentence"],
+        "evidence_covers_this_case": scope["covers"],
+        "must_state": [],
+    }
+    if scope.get("must_state"):
+        add_must_state(out, [scope["must_state"]])
+    return out
+
+
+#: Forbidden with every ranking: a window's margin read as how likely it is
+#: wrong. exp86 round 9 called the review set's windows "most likely
+#: mislabeled" and "most likely wrong" (B8/cluster runs 2 and 3), and "the
+#: likeliest spots for a wrong call" (B2/studio run 1), beside the tool's own
+#: "not a probability of error". On Bolivia's hand labels the windows of a 5%
+#: review set were wrong at 0.46 on a predicted boundary and 0.155 off one
+#: (exp37, claim explanation-cues-cover-errors), so "most likely wrong" is
+#: unsupported and, there, false. The contract's fixed id
+#: (``statistical_rules.MARGIN_AS_ERROR_PROBABILITY``).
+MARGIN_AS_ERROR_PROBABILITY = "margin_as_error_probability"
+
+#: Stated with every ranking: the margin orders a review; it is not an error
+#: rate (:func:`margin_as_error_probability` adds that it is not how likely a
+#: window is wrong).
+RANKING_FORBIDDEN: tuple[dict[str, str], ...] = (
+    {
+        "id": "error_rate_without_labels",
+        "why": "the margin orders windows for review; it is not a probability of "
+        "error, and the review set is chosen to hold errors, not sampled, so no "
+        "error rate follows from it without labelling a designed sample "
+        "(olmoearth_plan_label_sample)",
+    },
+)
+
+
+def margin_as_error_probability(covers: str | None) -> dict[str, str]:
+    """The ``margin_as_error_probability`` claim of a ranking, by what its evidence covers.
+
+    No window of a review set is probably wrong: "most likely mislabeled",
+    "probably an error". Where the ranking evidence covers the case, in
+    whole or in part, it measured that the margin ranks errors, so an order
+    ("the windows most likely to be wrong", "the likeliest spots for a wrong
+    call") has support: the blind audit of rounds 7 and 8 refuted "the most
+    likely places for a wrong label" of an OlmoEarth model's logits (B8/cluster
+    run 1) as that order. Where it does not, or may not, no recorded
+    experiment grades the order either (round 9, B2/studio run 1: "the
+    likeliest spots for a wrong call" of a Studio score read as a
+    probability), and the reason says so.
+    """
+    head = (
+        "the margin orders windows for review, least decided first; it is not "
+        "a probability of error, so no window of the review set is 'most likely "
+        "wrong', 'probably an error' or 'likely mislabeled', and a low margin "
+        "does not say a window is more likely wrong than right"
+    )
+    order = (
+        ", nor, since no recorded experiment grades this ranking, are they 'the "
+        "likeliest spots for a wrong call' or 'the windows most likely to be "
+        "wrong'"
+        if covers in NOT_COVERED or covers is None
+        else ""
+    )
+    return {
+        "id": MARGIN_AS_ERROR_PROBABILITY,
+        "why": head
+        + order
+        + ": call them the least decided, the most suspect or the windows to "
+        "check first; which of them are wrong is known only once they are "
+        "labelled",
+    }
+
+
+#: Stated with every comparison: no side is right without labels. The reason
+#: says none were given to this comparison, never that none exist (exp86
+#: round 9, B3/studio run 1: "no ground-truth labels exist").
+COMPARISON_FORBIDDEN: tuple[dict[str, str], ...] = (
+    {
+        "id": "winner_without_labels",
+        "why": "no labels were given to this comparison, so neither map can be "
+        "shown right where they differ, and nothing here says whether labels "
+        "for these maps exist; the more confident side is not the right one "
+        "(see evidence_scope)",
+    },
+)
+
+#: What ``boundary_neighbours`` counts, stated beside it (exp86 round 7 read it
+#: as "likely true class-boundary pixels" and as "edge cells").
+BOUNDARY_NEIGHBOURS_MEANS = (
+    "boundary_neighbours counts a window's 8 neighbours whose PREDICTED class "
+    "differs from its own (0 to 8): a boundary of the map, not a true class "
+    "boundary, and not a measure of error."
 )
 
 
@@ -221,139 +758,7 @@ def boundary_counts(classes: Sequence[int], rows: int, cols: int) -> list[int]:
     return out
 
 
-# --------------------------------------------------------------------------- estimators
-# Ports of oe_inferencex.metrics (pure numpy there, pure Python here). Ties
-# are resolved by expectation under random tie-breaking so no result depends
-# on the raster order of the input -- which matters because the boundary
-# indicator has only nine levels and therefore ties heavily.
-
-
-def _group_starts(sorted_scores: Sequence[float]) -> list[int]:
-    """Index where each run of equal scores begins."""
-    return [0] + [
-        i
-        for i in range(1, len(sorted_scores))
-        if sorted_scores[i] != sorted_scores[i - 1]
-    ]
-
-
-def _sorted_by(
-    uncertainty: Sequence[float], errors: Sequence[float], *, descending: bool
-) -> tuple[list[float], list[float]]:
-    """Stable co-sort of ``(uncertainty, errors)``."""
-    idx = sorted(
-        range(len(uncertainty)),
-        key=lambda i: -uncertainty[i] if descending else uncertainty[i],
-    )
-    return (
-        [float(uncertainty[i]) for i in idx],
-        [1.0 if errors[i] else 0.0 for i in idx],
-    )
-
-
-def _prefix(values: Sequence[float]) -> list[float]:
-    """Prefix sums with a leading zero."""
-    out = [0.0]
-    for v in values:
-        out.append(out[-1] + v)
-    return out
-
-
-def aurc_expected(uncertainty: Sequence[float], errors: Sequence[float]) -> float:
-    """Area under the risk-coverage curve, tie-aware. Lower ranks errors better."""
-    n = len(errors)
-    if n == 0:
-        raise ValueError("aurc_expected needs at least one unit")
-    s, e = _sorted_by(uncertainty, errors, descending=False)
-    starts = _group_starts(s)
-    sizes = [
-        (starts[k + 1] if k + 1 < len(starts) else n) - starts[k]
-        for k in range(len(starts))
-    ]
-    pre = _prefix(e)
-    e_before = [pre[st] for st in starts]
-    e_group = [pre[st + sz] - pre[st] for st, sz in zip(starts, sizes)]
-    total, g = 0.0, 0
-    for i in range(n):
-        if g + 1 < len(starts) and i >= starts[g + 1]:
-            g += 1
-        pos = i - starts[g] + 1
-        total += (e_before[g] + e_group[g] * pos / sizes[g]) / (i + 1)
-    return total / n
-
-
-def oracle_aurc(n: int, k: int) -> float:
-    """AURC of the perfect ranker: ``n`` units, ``k`` errors, errors rejected first."""
-    if n <= 0:
-        raise ValueError("oracle_aurc needs n > 0")
-    return sum(max(0, i - (n - k)) / i for i in range(1, n + 1)) / n
-
-
-def excess_aurc(uncertainty: Sequence[float], errors: Sequence[float]) -> float:
-    """E-AURC: AURC minus the oracle's, comparable across differing error rates."""
-    k = int(sum(1 for x in errors if x))
-    return aurc_expected(uncertainty, errors) - oracle_aurc(len(errors), k)
-
-
-def capture_at_budget(
-    uncertainty: Sequence[float],
-    errors: Sequence[float],
-    budgets: Sequence[float] = DEFAULT_BUDGETS,
-) -> dict[float, float]:
-    """Share of all errors inside the most suspect fraction ``b`` of windows.
-
-    Tie-aware: a run of equal scores straddling the cut contributes its
-    errors in proportion to the share of the run inside the budget.
-    """
-    n = len(errors)
-    if n == 0:
-        raise ValueError("capture_at_budget needs at least one unit")
-    s, e = _sorted_by(uncertainty, errors, descending=True)
-    starts = _group_starts(s)
-    sizes = [
-        (starts[k + 1] if k + 1 < len(starts) else n) - starts[k]
-        for k in range(len(starts))
-    ]
-    pre = _prefix(e)
-    e_group = [pre[st + sz] - pre[st] for st, sz in zip(starts, sizes)]
-    total = max(sum(e), 1.0)
-    out: dict[float, float] = {}
-    for b in budgets:
-        k = max(1, int(round(b * n)))
-        captured = 0.0
-        for gi, (st, sz) in enumerate(zip(starts, sizes)):
-            if st + sz <= k:
-                captured += e_group[gi]
-            elif st < k:
-                captured += e_group[gi] * (k - st) / sz
-        out[b] = captured / total
-    return out
-
-
-def auroc(uncertainty: Sequence[float], errors: Sequence[float]) -> float | None:
-    """AUROC of a suspicion score against the error indicator, ties counted half.
-
-    ``None`` when every unit is an error or none is. Unlike capture at a
-    budget this has no base-rate ceiling, so it is the statistic for
-    comparing two populations with different error rates.
-    """
-    n = len(errors)
-    pos = sum(1 for x in errors if x)
-    if pos == 0 or pos == n:
-        return None
-    s, e = _sorted_by(uncertainty, errors, descending=False)
-    starts = _group_starts(s)
-    sizes = [
-        (starts[k + 1] if k + 1 < len(starts) else n) - starts[k]
-        for k in range(len(starts))
-    ]
-    total, g = 0.0, 0
-    for i in range(n):
-        if g + 1 < len(starts) and i >= starts[g + 1]:
-            g += 1
-        if e[i]:
-            total += starts[g] + 0.5 * sizes[g]
-    return (total - pos * pos / 2.0) / (pos * (n - pos))
+# --------------------------------------------------------------------------- the budget ceiling
 
 
 def attainable_ceiling(budget: float, error_rate: float) -> float:
@@ -373,12 +778,112 @@ def attainable_ceiling(budget: float, error_rate: float) -> float:
     return min(1.0, budget / error_rate)
 
 
-def sign_test_p(wins: int, decisive: int) -> float:
-    """One-sided exact sign test: P(X >= wins) under Binomial(decisive, 1/2)."""
-    if decisive <= 0:
-        return 1.0
-    tail = sum(math.comb(decisive, i) for i in range(wins, decisive + 1))
-    return tail / (2.0**decisive)
+# --------------------------------------------------------------------------- a Studio regression band as scores
+
+#: The assumption that makes a binary score in [0, 1] rankable, returned with
+#: every ranking built from one (upstream documents the same reading of a
+#: Studio ``per_pixel_regression`` output of a two-class task).
+BINARY_SCORE_ASSUMPTION = (
+    "The band is a score in [0, 1] decided at 0.5 and is treated as "
+    "P(positive) for ranking only: each window's scores are [1 - s, s], so "
+    "its margin is |2s - 1| and the least decided windows (s nearest 0.5) are "
+    "opened first; the most confident windows (s near 0 or 1) come last. "
+    "Ranking by distance from 0.5 needs no calibration, but these numbers are "
+    "not probabilities of error, and no recorded experiment grades this case."
+)
+
+
+def regression_scores(
+    values: Sequence[float],
+    *,
+    min_value: float | None,
+    max_value: float | None,
+    threshold: float | None = None,
+) -> tuple[list[list[float]], str, str]:
+    """Two-class scores for a regression band, so the margin ranking applies.
+
+    Returns ``(rows, score_kind, assumption)``. A band whose declared range
+    is ``[0, 1]`` read at 0.5 (``threshold`` omitted or 0.5) is a binary
+    score: rows are ``[1 - s, s]`` (``score_kind="binary_score"``). Any other
+    band needs a decision threshold, because a margin is a distance from a
+    decision: rows are ``[-d / 2, d / 2]`` with ``d = (v - t) / (max - min)``,
+    so the margin is ``|v - t|`` scaled by the declared range
+    (``score_kind="threshold_distance"``; unscaled when no range is declared).
+    Class 1 is "above the threshold" in both cases.
+
+    Raises
+    ------
+    ValueError
+        For a non-binary band without ``threshold``, or a non-finite value.
+    """
+    vals = [float(v) for v in values]
+    if any(math.isnan(v) or math.isinf(v) for v in vals):
+        raise ValueError("a sampled value is not finite; drop no-data first")
+    binary = min_value == 0.0 and max_value == 1.0
+    if binary and (threshold is None or threshold == 0.5):
+        return [[1.0 - v, v] for v in vals], "binary_score", BINARY_SCORE_ASSUMPTION
+    if threshold is None:
+        declared = (
+            f"[{min_value}, {max_value}]"
+            if min_value is not None and max_value is not None
+            else "not declared"
+        )
+        raise ValueError(
+            f"this regression band's range is {declared}, not [0, 1]: a margin "
+            "is a distance from a decision, so it needs a decision threshold. "
+            "Pass threshold (the value at which the map's decision flips)."
+        )
+    t = float(threshold)
+    span = 1.0
+    scaled = "unscaled (the band declares no range)"
+    if min_value is not None and max_value is not None and max_value > min_value:
+        span = float(max_value) - float(min_value)
+        scaled = f"divided by the declared range {span:g}"
+    rows = [[-(v - t) / span / 2.0, (v - t) / span / 2.0] for v in vals]
+    assumption = (
+        f"The band is read as a decision at the threshold {t:g}: a window's "
+        f"margin is |value - {t:g}| {scaled}, and the windows nearest the "
+        "threshold are opened first. This assumes the map's decision flips at "
+        "that threshold; the distance is not a probability of error, and no "
+        "recorded experiment grades this case."
+    )
+    return rows, "threshold_distance", assumption
+
+
+# --------------------------------------------------------------------------- a Studio class map's top-k scores
+
+#: ``score_kind`` of a class map with top-k scores: a Studio segmentation
+#: result submitted with ``probability_output``, whose rank-1 class is the
+#: map's class and whose rank-1 and rank-2 softmax scores are bands of their
+#: own. Its rows are ``[p1, p2]``, read as probabilities whatever their sum
+#: (``p1 + p2`` is below 1 with more than two classes, and below 1 by the
+#: quantization with two), and its classes and margins are passed beside them
+#: (``map_class``, ``margin``).
+TOPK_SCORE = "topk_score"
+
+
+def topk_assumption(k: int, *, quantized: bool) -> str:
+    """The assumption that makes a class map's top-k scores rankable, as returned.
+
+    Parameters
+    ----------
+    k
+        The ranks the result keeps (``probability_output.top_k``).
+    quantized
+        Whether the scores are Studio's uint8 scores (``(raw - 1) / 254``),
+        whose margin is read from their levels.
+    """
+    form = "uncalibrated, quantized to 1/254" if quantized else "uncalibrated"
+    margin = "p1 - p2 (their levels' difference over 254)" if quantized else "p1 - p2"
+    return (
+        f"Each window's rank-1 and rank-2 scores, of the top-{k} softmax scores "
+        f"Studio returns with the class map ({form}), are read as [p1, p2]: its "
+        f"margin is {margin}, the least decided windows (margin near 0) are "
+        "opened first and the most confident come last, and its class is the "
+        "rank-1 class. Ranking by the margin needs no calibration, but these "
+        "scores are not probabilities that a class is right, and no recorded "
+        "experiment grades this case."
+    )
 
 
 # --------------------------------------------------------------------------- the two public entry points
@@ -394,6 +899,11 @@ def review_set(
     score_type: str | None = None,
     error_rate: float | None = None,
     max_listed: int = DEFAULT_MAX_LISTED,
+    score_kind: str | None = None,
+    model: str | None = None,
+    keep_full: bool = False,
+    map_class: Sequence[int] | None = None,
+    margin: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     """Rank windows by suspicion and return the ones to review first.
 
@@ -421,13 +931,40 @@ def review_set(
         attainable ceiling at this budget.
     max_listed
         Cap on inline review rows; the count is always reported in full.
+    score_kind
+        What the rows are when they are not class scores (see
+        :func:`ranking_evidence_scope`): ``"window_confidence"`` (a scores
+        provider's rows; read with ``score_type``), ``"binary_score"``,
+        ``"threshold_distance"``, :data:`TOPK_SCORE` or
+        :data:`STUDIO_WINDOW_CONFIDENCE`. Only the evidence scope reads it.
+    model
+        The model the scores came from, when known; only the evidence scope
+        reads it (the measurement is on the OlmoEarth family).
+    keep_full
+        Also return ``review_full``: every window of the review set at the
+        budget as its own row, listed or not, for the caller to save.
+    map_class
+        Each window's class, when its rows do not say it: a class map's
+        top-k rows are ``[p1, p2]``, whose arg-max is 0 on every window, and
+        its class is the rank-1 class. ``None`` (the default) takes the
+        arg-max of each row.
+    margin
+        Each window's margin, when its rows do not give it exactly: a class
+        map's top-k margin of Studio's uint8 scores is the levels' difference
+        over 254, which the gap of ``[p1, p2]`` misses by a level where a
+        rank-2 score is raw 0. ``None`` (the default) takes the top-1 minus
+        top-2 score of each row.
 
     Returns
     -------
     dict
         ``review`` (the ordered rows), ``n_review``, the margin summary,
-        the ceiling arithmetic when ``error_rate`` is given, plus the
-        ``evidence`` and ``caveats`` blocks.
+        the ceiling arithmetic when ``error_rate`` is given, the one-sentence
+        ``evidence_scope`` (and ``evidence_covers_this_case``), and the output
+        contract: ``facts`` (``margin_ratio``), ``must_state`` (a short
+        sentence stating the limit when the evidence does not cover this
+        case; the scope itself stays in ``evidence_scope``) and
+        ``forbidden_claims``.
 
     Notes
     -----
@@ -447,7 +984,15 @@ def review_set(
     used_type = score_type or detected
 
     marg = margins(matrix)
+    if margin is not None:
+        marg = [float(m) for m in margin]
+        if len(marg) != n or not all(math.isfinite(m) for m in marg):
+            raise ValueError(f"margin needs one finite margin per window ({n})")
     classes = predicted_classes(matrix)
+    if map_class is not None:
+        classes = [int(c) for c in map_class]
+        if len(classes) != n:
+            raise ValueError(f"map_class length {len(classes)} != {n} windows")
     bnd: list[int] | None = None
     if grid is not None:
         bnd = boundary_counts(classes, int(grid[0]), int(grid[1]))
@@ -463,20 +1008,24 @@ def review_set(
         touches = [b > 0 for b in (bnd or [])]
 
         def rank_key(i: int) -> tuple[float, ...]:
-            """Boundary windows first, ascending margin within each block."""
-            return (0.0 if touches[i] else 1.0, marg[i])
+            """Boundary windows first, ascending margin within each block; ties by
+            descending window index, as olmoearth-inferencex's ``review_order``."""
+            return (0.0 if touches[i] else 1.0, marg[i], -i)
 
     else:
 
         def rank_key(i: int) -> tuple[float, ...]:
-            """Ascending margin: the least confident window is opened first."""
-            return (marg[i],)
+            """Ascending margin: the least confident window is opened first; ties by
+            descending window index, as olmoearth-inferencex's ``review_order``, so the
+            two produce the same review set on a tied map."""
+            return (marg[i], -i)
 
     ranked = sorted(range(n), key=rank_key)
 
     k = max(1, int(round(budget * n)))
-    rows: list[dict[str, Any]] = []
-    for rank, i in enumerate(ranked[:k][:max_listed], start=1):
+
+    def review_row(rank: int, i: int) -> dict[str, Any]:
+        """One review row: its rank, window, class, margin and what else is known."""
         row: dict[str, Any] = {
             "rank": rank,
             "window_index": i,
@@ -487,9 +1036,29 @@ def review_set(
             row["id"] = ids[i]
         if bnd is not None:
             row["boundary_neighbours"] = bnd[i]
-        rows.append(row)
+        return row
 
-    ordered_margins = sorted(marg)
+    rows = [
+        review_row(rank, i) for rank, i in enumerate(ranked[:k][:max_listed], start=1)
+    ]
+
+    summary = margin_summary(marg, ranked, k, len(rows))
+    kind = score_kind or used_type
+    if kind == WINDOW_CONFIDENCE:
+        kind = f"window_confidence_{used_type}"
+    elif kind not in (
+        "binary_score",
+        "threshold_distance",
+        TOPK_SCORE,
+        STUDIO_WINDOW_CONFIDENCE,
+    ):
+        kind = used_type
+    scope = ranking_evidence_scope(
+        score_kind=kind, n_classes=len(matrix[0]), model=model
+    )
+    ratio = margin_ratio_fact(
+        summary, _margin_range([marg[i] for i in ranked[:MARGIN_RATIO_FIRST]])
+    )
     out: dict[str, Any] = {
         "n_windows": n,
         "n_classes": len(matrix[0]),
@@ -502,17 +1071,23 @@ def review_set(
         "score_type_detected": detected,
         "review": rows,
         "n_review_listed": len(rows),
-        "margin_summary": {
-            "min": round(ordered_margins[0], 6),
-            "median": round(ordered_margins[n // 2], 6),
-            "max": round(ordered_margins[-1], 6),
-            "cut_at_budget": round(sorted(marg)[min(k, n) - 1], 6),
-        },
-        "evidence": EVIDENCE,
-        "caveats": list(EVIDENCE_LIMITS),
+        "margin_summary": summary,
+        **_scope_fields(scope),
+        "facts": [ratio] if ratio else [],
+        "forbidden_claims": [dict(c) for c in RANKING_FORBIDDEN]
+        + [margin_as_error_probability(scope.get("covers"))]
+        + evidence_outside_scope(scope),
     }
+    if keep_full:
+        # Every window of the review set, listed or not, as rows of their own
+        # (a caller writes them to a file): exp86 round 8 (brief 8 on the
+        # cluster) said "the full list is saved" where no file held it.
+        out["review_full"] = [
+            review_row(rank, i) for rank, i in enumerate(ranked[:k], start=1)
+        ]
     if bnd is not None:
         out["n_boundary_windows"] = sum(1 for b in bnd if b > 0)
+        out["boundary_neighbours_means"] = BOUNDARY_NEIGHBOURS_MEANS
     if error_rate is not None:
         ceiling = attainable_ceiling(budget, error_rate)
         out["ceiling"] = {
@@ -524,178 +1099,932 @@ def review_set(
                 "this ceiling, not against 1.0."
             ),
         }
-    if used_type == "probability" and len(matrix[0]) > 2:
-        out["caveats"] = list(out["caveats"]) + [
-            "These look like probabilities over >2 classes. The measured "
-            "evidence is for the LOGIT margin; with more than two classes "
-            "the softmax margin can order windows differently. Pass logits "
-            "when you have them."
-        ]
     return out
 
 
-def grade_rule(
-    signal: Sequence[float],
-    errors: Sequence[float],
-    *,
-    baseline: Sequence[float] | None = None,
-    control: Sequence[float] | None = None,
-    groups: Sequence[str] | None = None,
-    budgets: Sequence[float] = DEFAULT_BUDGETS,
-    higher_is_suspect: bool = True,
-) -> dict[str, Any]:
-    """Grade a candidate audit rule against confidence and a no-model control.
+def _num(value: float) -> str:
+    """A number for a fact's sentence: at most 6 decimals, no trailing zeros."""
+    return f"{value:,.6f}".rstrip("0").rstrip(".")
 
-    This is the honest-broker half of the skill: it answers "is my clever
-    new suspicion signal actually better than the model's own margin?" with
-    the same machinery that rejected ensemble disagreement, cross-model
-    disagreement and feature-space typicality upstream. A signal that
-    sounds principled and loses here should not ship.
+
+def _pct(share: float) -> str:
+    """A share as a percent with one decimal, for a fact's sentence."""
+    return f"{share * 100:.1f}%"
+
+
+def _ratios(
+    median: float, rng: list[float] | None
+) -> tuple[float | None, float | None]:
+    """``(median / highest, median / lowest)`` of a margin range, rounded; a 0 end gives ``None``."""
+    if not rng:
+        return None, None
+    lo, hi = float(rng[0]), float(rng[1])
+    return (
+        round(median / hi, 2) if hi > 0 else None,
+        round(median / lo, 2) if lo > 0 else None,
+    )
+
+
+def _times(low: float | None, high: float | None) -> str:
+    """``13.00 to 41.00 times``, ``at least 13.00 times``, or ``no finite multiple of``."""
+    if low is None:
+        return "no finite multiple of"
+    if high is None:
+        return f"at least {low:,.2f} times"
+    if low == high:
+        return f"{low:,.2f} times"
+    return f"{low:,.2f} to {high:,.2f} times"
+
+
+def _range_text(rng: list[float]) -> str:
+    """``0.1 to 0.4``, or ``0.1`` when both ends are one value."""
+    lo, hi = float(rng[0]), float(rng[1])
+    return _num(lo) if lo == hi else f"{_num(lo)} to {_num(hi)}"
+
+
+#: The first listed windows an answer usually shows (a table of ten); the
+#: ``margin_ratio`` fact states their own ratio beside the listed windows'.
+#: exp86 round 8 (brief 8 on the cluster, run 2) showed ten windows and gave
+#: them the 50 listed windows' "13 to 41 times"; the ten shown are 20.68 to
+#: 41.31 times below the median.
+MARGIN_RATIO_FIRST = 10
+
+
+def margin_ratio_fact(
+    summary: dict[str, Any], first_range: list[float] | None = None
+) -> dict[str, Any] | None:
+    """The ``margin_ratio`` fact: the median margin over the listed windows' margins,
+    over the first listed ones', and over every margin in the review set.
+
+    exp86 round 6 (brief 8) called the listed windows "3-4 orders of magnitude
+    more uncertain" where the median margin was 13 to 41 times theirs. A
+    ratio's low end is the median over the highest margin of the range and
+    its high end the median over the lowest; an end whose margin is 0 (a tie
+    between a window's top two classes) is ``None``. The review set's range
+    covers all ``n_review`` windows at the budget, listed or not (exp87
+    review: an answer about the review set read the listed range as its).
+    ``listed_n`` says how many windows the listed ratio covers, and
+    ``first_range``, the margin range of the first
+    :data:`MARGIN_RATIO_FIRST` listed windows when more are listed, gives
+    theirs (exp86 round 8 put the 50 listed windows' ratio on the 10 shown).
+
+    Returns
+    -------
+    dict or None
+        ``id``, ``listed_n``, ``listed_low``, ``listed_high``,
+        ``review_set_low``, ``review_set_high``, ``versus`` (``"median"``),
+        with ``first_range`` also ``first_n``, ``first_low`` and
+        ``first_high``, and ``sentence``; ``None`` when the review set is
+        empty.
+    """
+    review = summary.get("review_set", {}).get("margin_range")
+    if not review:
+        return None
+    listed = summary["listed"]["margin_range"]
+    median = float(summary["median_margin"])
+    n, k = summary["n_windows"], summary["review_set"]["n"]
+    n_listed = summary["listed"]["n"]
+    listed_low, listed_high = _ratios(median, listed)
+    review_low, review_high = _ratios(median, review)
+    first_n = min(MARGIN_RATIO_FIRST, n_listed)
+    first = first_range if listed and first_range and n_listed > first_n else None
+    first_low, first_high = _ratios(median, first)
+    shown = (
+        f", {_times(first_low, first_high)} those of the first {first_n} listed "
+        f"({_range_text(first)})"
+        if first
+        else ""
+    )
+    head = f"The median margin over all {n:,} windows ({_num(median)}) is"
+    whole = (
+        f"all {k:,} windows in the review set"
+        if k > 1
+        else "the 1 window in the review set"
+    )
+    if not listed:
+        body = (
+            f"{_times(review_low, review_high)} the margins of {whole} "
+            f"({_range_text(review)}); none is listed"
+        )
+    elif n_listed >= k:
+        body = (
+            f"{_times(listed_low, listed_high)} the margins of {whole}, every one "
+            f"listed ({_range_text(listed)}){shown}"
+        )
+    else:
+        some = (
+            "the 1 listed window"
+            if n_listed == 1
+            else f"the {n_listed:,} listed windows"
+        )
+        body = (
+            f"{_times(listed_low, listed_high)} the margins of {some} "
+            f"({_range_text(listed)}){shown} and {_times(review_low, review_high)} "
+            f"those of {whole} ({_range_text(review)})"
+        )
+    # The listed windows are the first of the review set, so its lowest margin
+    # is the lowest of both.
+    tail = (
+        "; a margin of 0 is a tie between a window's top two classes, so no ratio "
+        "bounds it"
+        if float(review[0]) == 0.0
+        else ""
+    )
+    out: dict[str, Any] = {
+        "id": "margin_ratio",
+        "listed_n": n_listed,
+        "listed_low": listed_low,
+        "listed_high": listed_high,
+        "review_set_low": review_low,
+        "review_set_high": review_high,
+        "versus": "median",
+    }
+    if first:
+        out.update(first_n=first_n, first_low=first_low, first_high=first_high)
+    out["sentence"] = f"{head} {body}{tail}."
+    return out
+
+
+def _margin_range(values: list[float]) -> list[float] | None:
+    """``[lowest, highest]`` of some margins, rounded, or ``None`` for none."""
+    return [round(min(values), 6), round(max(values), 6)] if values else None
+
+
+def margin_summary(
+    marg: Sequence[float], ranked: Sequence[int], k: int, n_listed: int
+) -> dict[str, Any]:
+    """The margins of all windows, of the listed ones and of the rest, labelled.
+
+    exp86 round 2 (brief 2, run 3) read the summary's median as the lower end
+    of the unlisted windows' range ("scores ranged from ~0.96 to ~0.99 ...
+    (median margin 0.965)") where the lowest unlisted margin was 0.786. Every
+    field now says what it is, and the unlisted windows get their own range.
+
+    Each count says which ranks it covers: ``listed`` ranks 1 to the tool's
+    own ``n_listed``, ``not_listed`` the ranks after it, ``review_set`` ranks
+    1 to ``k``. exp86 round 9 (B2/studio run 1) showed 5 of the 8 listed
+    windows and called ``not_listed``'s 83 "the other 83 windows", margins
+    0.516 to 0.991, where 86 windows were not shown and three of them had
+    margins of 0.26 to 0.47. The reading says the count is the tool's
+    listing's, not a shorter table's.
 
     Parameters
     ----------
-    signal
-        The candidate suspicion score, one per graded unit.
-    errors
-        0/1 error indicator per unit (1 = the model was wrong here).
-    baseline
-        The incumbent, normally negated margin. Compared head to head.
-    control
-        A no-model control (e.g. a band index, or pixel variance). A
-        candidate that cannot beat this is measuring the scene, not the
-        model.
-    groups
-        Optional per-unit group id (scene, event, region). When given, the
-        comparison is also run per group and summarised with a one-sided
-        exact sign test -- the right unit of replication, because units
-        inside a scene are not independent.
-    budgets
-        Review budgets to report capture at.
-    higher_is_suspect
-        Set ``False`` if a *low* value of ``signal`` means suspect; the
-        signal is negated so every arm is compared in one direction.
+    marg
+        Every window's margin.
+    ranked
+        Window indices in review order.
+    k
+        Windows in the review set at the budget.
+    n_listed
+        Review rows listed inline (the first ``n_listed`` of ``ranked``).
 
     Returns
     -------
     dict
-        Per-arm E-AURC / AUROC / capture, the head-to-head verdict, and
-        the per-group sign test when ``groups`` is given.
+        ``n_windows``, ``lowest_margin``, ``median_margin``,
+        ``highest_margin``, ``margin_at_budget_cut``, ``listed``,
+        ``not_listed`` and ``review_set`` (every window at the budget, listed
+        or not; each ``{n, margin_range, ranks}``, ``ranks`` the first and
+        last rank it covers, ``None`` when it is empty) and a ``reading``.
     """
-    n = len(errors)
-    if n == 0:
-        raise ValueError("grade_rule needs at least one graded unit")
-    if len(signal) != n:
-        raise ValueError(f"signal length {len(signal)} != errors length {n}")
-    err = [1.0 if x else 0.0 for x in errors]
-    n_err = int(sum(err))
-    if n_err == 0 or n_err == n:
-        return {
-            "gradable": False,
-            "reason": (
-                f"{n_err} of {n} units are errors; a ranking comparison needs "
-                "both errors and non-errors present"
-            ),
-            "n_units": n,
-        }
+    n = len(marg)
+    ordered = sorted(marg)
+    listed = [marg[i] for i in ranked[:n_listed]]
+    rest = [marg[i] for i in ranked[n_listed:]]
+    in_review = [marg[i] for i in ranked[: min(k, n)]]
+    not_listed = _margin_range(rest)
 
-    arms: dict[str, list[float]] = {}
-    sign = 1.0 if higher_is_suspect else -1.0
-    arms["candidate"] = [sign * float(v) for v in signal]
-    if baseline is not None:
-        if len(baseline) != n:
-            raise ValueError(f"baseline length {len(baseline)} != {n}")
-        arms["baseline"] = [float(v) for v in baseline]
-    if control is not None:
-        if len(control) != n:
-            raise ValueError(f"control length {len(control)} != {n}")
-        arms["control"] = [float(v) for v in control]
+    def ranks(first: int, last: int) -> list[int] | None:
+        return [first, last] if last >= first else None
 
-    scored: dict[str, dict[str, Any]] = {}
-    for name, values in arms.items():
-        cap = capture_at_budget(values, err, budgets)
-        scored[name] = {
-            "excess_aurc": round(excess_aurc(values, err), 6),
-            "auroc": (lambda a: None if a is None else round(a, 6))(auroc(values, err)),
-            "capture_at_budget": {str(b): round(cap[b], 6) for b in budgets},
-        }
-
-    out: dict[str, Any] = {
-        "gradable": True,
-        "n_units": n,
-        "n_errors": n_err,
-        "error_rate": round(n_err / n, 6),
-        "arms": scored,
-        "ceiling_at_budget": {
-            str(b): round(attainable_ceiling(b, n_err / n), 6) for b in budgets
+    reading = (
+        f"Over all {n} windows: lowest_margin is the smallest margin (the most "
+        "suspect window) and highest_margin the largest; median_margin is the "
+        "middle value (half the windows lie below it), not a lower end. "
+        f"margin_at_budget_cut is the {min(k, n)}-th lowest margin (n_review at "
+        f"the budget); review_set is the margin range of all {len(in_review)} "
+        "windows in the review set, listed or not. "
+    )
+    if not_listed is None:
+        reading += "Every window is listed, so not_listed has no range."
+    elif not listed:
+        reading += (
+            f"No window is listed: not_listed holds all {n} (ranks 1 to {n}), "
+            f"margins from {not_listed[0]:g} to {not_listed[1]:g}."
+        )
+    else:
+        reading += (
+            f"The {len(rest)} windows ranked after the tool's {len(listed)} "
+            f"listed (ranks {len(listed) + 1} to {n}; not_listed) have margins "
+            f"from {not_listed[0]:g} to {not_listed[1]:g}. These counts are the "
+            f"tool's listing's: a table of fewer than {len(listed)} rows leaves out "
+            "more windows than not_listed counts, the extra ones with margins no "
+            f"higher than {not_listed[0]:g}."
+        )
+    return {
+        "n_windows": n,
+        "lowest_margin": round(ordered[0], 6),
+        "median_margin": round(ordered[n // 2], 6),
+        "highest_margin": round(ordered[-1], 6),
+        "margin_at_budget_cut": round(ordered[min(k, n) - 1], 6),
+        "listed": {
+            "n": len(listed),
+            "margin_range": _margin_range(listed),
+            "ranks": ranks(1, len(listed)),
         },
-        "note": (
-            "E-AURC: lower is better, 0 is the oracle. Capture is bounded by "
-            "ceiling_at_budget, so read it as a share of that ceiling. AUROC "
-            "has no base-rate ceiling."
-        ),
+        "not_listed": {
+            "n": len(rest),
+            "margin_range": not_listed,
+            "ranks": ranks(len(listed) + 1, n),
+            "after": f"the tool's {len(listed)} listed windows",
+        },
+        "review_set": {
+            "n": len(in_review),
+            "margin_range": _margin_range(in_review),
+            "ranks": ranks(1, len(in_review)),
+        },
+        "reading": reading,
     }
 
-    if "baseline" in scored:
-        delta = scored["candidate"]["excess_aurc"] - scored["baseline"]["excess_aurc"]
-        out["verdict"] = {
-            "candidate_beats_baseline_pooled": bool(delta < 0),
-            "excess_aurc_delta": round(delta, 6),
-            "reading": (
-                "negative delta = the candidate ranks errors better than the "
-                "baseline on the pooled units"
-            ),
-        }
-    if "control" in scored:
-        d = scored["candidate"]["excess_aurc"] - scored["control"]["excess_aurc"]
-        out.setdefault("verdict", {})["candidate_beats_control_pooled"] = bool(d < 0)
 
-    if groups is not None:
-        if len(groups) != n:
-            raise ValueError(f"groups length {len(groups)} != {n}")
-        if baseline is None:
-            raise ValueError(
-                "a per-group sign test needs a baseline to compare against"
-            )
-        buckets: dict[str, list[int]] = {}
-        for i, g in enumerate(groups):
-            buckets.setdefault(str(g), []).append(i)
-        wins = losses = skipped = 0
-        for members in buckets.values():
-            ge = [err[i] for i in members]
-            if sum(ge) in (0, len(ge)):
-                skipped += 1
-                continue
-            c = excess_aurc([arms["candidate"][i] for i in members], ge)
-            b = excess_aurc([arms["baseline"][i] for i in members], ge)
-            if c < b:
-                wins += 1
-            elif c > b:
-                losses += 1
-        decisive = wins + losses
-        out["per_group"] = {
-            "n_groups": len(buckets),
-            "n_gradable_groups": len(buckets) - skipped,
-            "n_skipped_groups": skipped,
-            "candidate_wins": wins,
-            "baseline_wins": losses,
-            # Not rounded: a p-value rounded to 6dp reports 1/1024 as
-            # 0.000977 and anything below 5e-7 as exactly 0.
-            "sign_test_p_one_sided": sign_test_p(wins, decisive),
-            "note": (
-                "The group (scene / event / region) is the unit of "
-                "replication; units inside one group are not independent, so "
-                "a pooled win on many correlated units is weaker evidence "
-                "than a win on many groups."
-            ),
-        }
+def _class_label(k: Any, names: dict[str, str] | None) -> str:
+    """``class 4 (grassland_barren)`` when the class has a name, else ``class 4``."""
+    name = names.get(str(k)) if names else None
+    return f"class {k} ({name})" if name else f"class {k}"
+
+
+def _bands(size: int, n_bands: int) -> list[tuple[int, int]]:
+    """Contiguous ``(first, last)`` index ranges splitting ``0 .. size - 1`` into
+    ``n_bands`` near-equal bands (one per index when ``size`` is smaller)."""
+    n = max(1, min(n_bands, size))
+    edges = [size * k // n for k in range(n + 1)]
+    return [(edges[k], edges[k + 1] - 1) for k in range(n)]
+
+
+#: How a grid's rows run on the ground, when the scores are georeferenced:
+#: row 0 in the north, or in the south. ``None`` is a grid with no
+#: georeference, whose rows need not run north to south at all.
+ROW_ORDERS = ("north_to_south", "south_to_north")
+
+#: The words for row band 0 by row order: exp86 round 8 (brief 7 on files)
+#: called row band 0 of a grid of 400 chips stacked in dataset order "the
+#: northmost band" and rows 2,800-4,199 "mid-south", from the tool's own "the
+#: north edge of a north-up map" for a file with no georeference.
+_BAND_0 = {
+    "north_to_south": "the north edge: the scores' window locations put row 0 north",
+    "south_to_north": "the south edge: the scores' window locations put row 0 south",
+}
+
+#: Said of a grid with no georeference.
+NO_GEOREFERENCE = (
+    "the scores carry no georeference (no window locations or transform), so the "
+    "rows need not run north to south and no band is a compass direction"
+)
+
+
+def spatial_breakdown(
+    differing: Sequence[int],
+    present: Sequence[int],
+    grid: tuple[int, int],
+    n_bands: int = SPATIAL_BANDS,
+    *,
+    row_order: str | None = None,
+) -> dict[str, Any]:
+    """Where the differing windows sit: their share in each row band and each column band.
+
+    exp86 rounds 6 and 7 read place off the first listed windows ("a long
+    strip along the north edge" for 1.3% of the differences; blocks invented
+    from ten windows). This counts every differing window instead.
+
+    Bands are numbered from 0: row band 0 holds row 0, the grid's first rows,
+    and column band 0 holds column 0. Row band 0 is called north (or south)
+    only with a ``row_order`` from georeferenced scores (:data:`ROW_ORDERS`);
+    without one the reading says the rows need not run north to south.
+
+    Parameters
+    ----------
+    differing
+        Row-major grid index of every differing window.
+    present
+        Row-major grid index of every compared window (the whole grid, or
+        the windows a scores file holds).
+    grid
+        ``(rows, cols)``.
+    n_bands
+        Bands per axis (fewer when the grid has fewer rows or columns).
+    row_order
+        ``"north_to_south"``, ``"south_to_north"`` or ``None`` (no
+        georeference).
+
+    Returns
+    -------
+    dict
+        ``row_bands`` and ``col_bands`` (each band's index range, windows,
+        differing windows, ``share_of_differing``, ``share_of_windows`` and
+        ``share_of_band_differing``), ``top_band_share`` (row band 0's share
+        of the differing windows), the ``max_band`` holding the most of them,
+        with ``n_tied`` other bands holding as many, ``row_order`` and a
+        ``reading``.
+    """
+    order = row_order if row_order in ROW_ORDERS else None
+    band_0 = f" ({_BAND_0[order]})" if order else ""
+    unreferenced = f"; {NO_GEOREFERENCE}" if order is None else ""
+    rows, cols = int(grid[0]), int(grid[1])
+    n_diff, n_present = len(differing), len(present)
+
+    def axis(size: int, coord: Any, label: str) -> list[dict[str, Any]]:
+        bands = _bands(size, n_bands)
+        band_of = [0] * size
+        for k, (first, last) in enumerate(bands):
+            for i in range(first, last + 1):
+                band_of[i] = k
+        n_w, n_d = [0] * len(bands), [0] * len(bands)
+        for w in present:
+            n_w[band_of[coord(w)]] += 1
+        for w in differing:
+            n_d[band_of[coord(w)]] += 1
+        return [
+            {
+                "band": k,
+                label: [first, last],
+                "of_grid": (
+                    f"{round(100 * first / size, 1):g}-"
+                    f"{round(100 * (last + 1) / size, 1):g}%"
+                ),
+                "n_windows": n_w[k],
+                "n_differing": n_d[k],
+                "share_of_differing": round(n_d[k] / n_diff, 6) if n_diff else None,
+                "share_of_windows": round(n_w[k] / n_present, 6) if n_present else None,
+                "share_of_band_differing": (
+                    round(n_d[k] / n_w[k], 6) if n_w[k] else None
+                ),
+            }
+            for k, (first, last) in enumerate(bands)
+        ]
+
+    row_bands = axis(rows, lambda w: int(w) // cols, "rows")
+    col_bands = axis(cols, lambda w: int(w) % cols, "cols")
+    out: dict[str, Any] = {
+        "grid": [rows, cols],
+        "n_bands": [len(row_bands), len(col_bands)],
+        "row_bands": row_bands,
+        "col_bands": col_bands,
+        "top_band_share": row_bands[0]["share_of_differing"],
+        "max_band": None,
+        "row_order": order,
+        "reading": (
+            "Each band is a strip of whole rows (row_bands) or whole columns "
+            "(col_bands) of the window grid, numbered from 0: row band 0 holds "
+            f"row 0, the grid's first rows{band_0}, and column band 0 holds column "
+            f"0{unreferenced}. share_of_differing is the band's share of ALL "
+            "differing windows; share_of_windows is its share of all compared "
+            "windows, the share an even spread would give it; "
+            "share_of_band_differing is the share of the band's own windows that "
+            "differ. top_band_share is row band 0's share_of_differing; max_band "
+            "is the band, of either axis, holding the most differing windows."
+        ),
+    }
+    if not n_diff:
+        return out
+    # The most differing windows, by count: rows before columns and the lower
+    # band on a tie, and the tie counted, so an even spread is not read as a
+    # concentration.
+    candidates = [("rows", b) for b in row_bands] + [("cols", b) for b in col_bands]
+    most = max(b["n_differing"] for _, b in candidates)
+    axis_name, top = next((a, b) for a, b in candidates if b["n_differing"] == most)
+    out["max_band"] = {
+        "axis": axis_name,
+        "band": top["band"],
+        "of_grid": top["of_grid"],
+        "share": top["share_of_differing"],
+        axis_name: top[axis_name],
+        "share_of_windows": top["share_of_windows"],
+        "n_tied": sum(1 for _, b in candidates if b["n_differing"] == most) - 1,
+    }
     return out
+
+
+def _band_where(axis: str, first: int, last: int) -> str:
+    """``rows 0-15``, ``column 3``."""
+    word = "row" if axis == "rows" else "column"
+    return f"{word}s {first}-{last}" if first != last else f"{word} {first}"
+
+
+def concentration_fact(
+    spatial: dict[str, Any], n_differing: int
+) -> dict[str, Any] | None:
+    """The ``concentration`` fact: row band 0's share of the differing windows,
+    and the band of either axis holding the most of them.
+
+    ``top_band_share`` is row band 0's share (the grid's first rows), whatever
+    band holds the most: exp86 round 7 put the differences "along the north
+    edge" where that band held 1.3% of them. Row band 0 is the northmost (or
+    southmost) band only with the ``row_order`` of georeferenced scores; exp86
+    round 8 (brief 7 on files) called it "the northmost band" for a grid of
+    chips stacked in dataset order, so without one the sentence names it by
+    its rows and says the rows need not run north to south.
+
+    Returns
+    -------
+    dict or None
+        ``id``, ``grid``, ``n_differing``, ``top_band_share``, ``max_band``
+        (``axis`` ``"rows"`` or ``"cols"``, ``band`` from 0, ``of_grid``,
+        ``share``), ``row_order`` and ``sentence``; ``None`` when nothing
+        differs.
+    """
+    top = spatial.get("max_band")
+    if not top or not n_differing:
+        return None
+    rows, cols = spatial["grid"]
+    n_row_bands, n_col_bands = spatial["n_bands"]
+    north = spatial["row_bands"][0]
+    north_where = _band_where("rows", *north["rows"])
+    order = spatial.get("row_order")
+    if order == "north_to_south":
+        band_0 = f"the northmost row band ({north_where}, band 0 of {n_row_bands})"
+    elif order == "south_to_north":
+        band_0 = (
+            f"the southmost row band ({north_where}, band 0 of {n_row_bands}; row 0 "
+            "is the south edge here)"
+        )
+    else:
+        band_0 = (
+            f"row band 0 ({north_where}, the grid's first rows, band 0 of "
+            f"{n_row_bands})"
+        )
+    unreferenced = (
+        " The scores carry no georeference, so the rows need not run north to " "south."
+        if order not in ROW_ORDERS
+        else ""
+    )
+    first, last = top[top["axis"]]
+    where = _band_where(top["axis"], first, last)
+    size, noun = (rows, "rows") if top["axis"] == "rows" else (cols, "columns")
+    tied = (
+        ""
+        if not top["n_tied"]
+        else f" (tied with {top['n_tied']} other band{'s' if top['n_tied'] > 1 else ''})"
+    )
+    head = (
+        f"Of the {n_differing:,} differing windows, {_pct(north['share_of_differing'])} "
+        f"lie in {band_0}, which holds {_pct(north['share_of_windows'])} of all "
+        "compared windows"
+    )
+    if top["axis"] == "rows" and top["band"] == 0:
+        body = (
+            f"; that is the most of any of the {n_row_bands} row and {n_col_bands} "
+            f"column bands{tied}."
+        )
+    else:
+        body = (
+            f"; the most in any band{tied}, {_pct(top['share'])}, lie in {where} "
+            f"({top['of_grid']} of the grid's {size:,} {noun}, band {top['band']}), "
+            f"which holds {_pct(top['share_of_windows'])} of all compared windows."
+        )
+    return {
+        "id": "concentration",
+        "grid": [rows, cols],
+        "n_differing": n_differing,
+        "top_band_share": spatial["top_band_share"],
+        "max_band": {
+            "axis": top["axis"],
+            "band": top["band"],
+            "of_grid": top["of_grid"],
+            "share": top["share"],
+        },
+        "row_order": order if order in ROW_ORDERS else None,
+        "sentence": head + body + unreferenced,
+    }
+
+
+def _class_pairs(
+    pairs: dict[tuple[Any, Any], int], n_diff: int, names: dict[str, str] | None
+) -> list[dict[str, Any]]:
+    """Class changes as unordered pairs, each with both directions' counts, largest first."""
+    merged: dict[tuple[Any, Any], dict[tuple[Any, Any], int]] = {}
+    for (pa, pb), n in pairs.items():
+        key = (pa, pb) if pa <= pb else (pb, pa)
+        merged.setdefault(key, {})[(pa, pb)] = n
+    out = []
+    for (x, y), dirs in merged.items():
+        total = sum(dirs.values())
+        directions = sorted(
+            (
+                {"class_a": pa, "class_b": pb, "n": dirs.get((pa, pb), 0)}
+                for pa, pb in ((x, y), (y, x))
+            ),
+            key=lambda d: -d["n"],
+        )
+        entry: dict[str, Any] = {
+            "pair": f"{x}<->{y}",
+            "classes": [x, y],
+            "n": total,
+            "share_of_differing": round(total / n_diff, 6),
+            "directions": directions,
+        }
+        if names:
+            entry["class_names"] = [names.get(str(x)), names.get(str(y))]
+        out.append(entry)
+    out.sort(key=lambda e: (-e["n"], str(e["classes"])))
+    return out
+
+
+def _change(pa: Any, pb: Any, names: dict[str, str] | None) -> str:
+    """``class 2 (grass) in map A to class 1 (forest) in map B``."""
+    return f"{_class_label(pa, names)} in map A to {_class_label(pb, names)} in map B"
+
+
+def _ranked_changes(
+    pairs: dict[tuple[Any, Any], int]
+) -> list[tuple[tuple[Any, Any], int]]:
+    """Directed class changes, largest count first, ties in a fixed order."""
+    return sorted(pairs.items(), key=lambda kv: (-kv[1], str(kv[0])))
+
+
+def dominant_change_fact(
+    pairs: dict[tuple[Any, Any], int],
+    n_diff: int,
+    names: dict[str, str] | None,
+) -> dict[str, Any] | None:
+    """The ``dominant_change`` fact: the largest directed class change A -> B, with its reverse.
+
+    Every direction whose count equals the top one is named in the sentence,
+    the reverse included (``tied_with_reverse``), so a tie is never read as
+    one direction winning. Counted over ``pairs``, every differing window's
+    ``(class in A, class in B)``.
+
+    Returns
+    -------
+    dict or None
+        ``id``, ``from_class``, ``to_class``, ``n``, ``share``,
+        ``reverse_n``, ``reverse_share``, ``tied_with_reverse`` and
+        ``sentence``; ``None`` when nothing differs.
+    """
+    if not pairs or not n_diff:
+        return None
+    ranked = _ranked_changes(pairs)
+    (pa, pb), n = ranked[0]
+    tied = [key for key, count in ranked[1:] if count == n]
+    rev = pairs.get((pb, pa), 0)
+    tied_with_reverse = (pb, pa) in tied
+    counted = f"{n:,} of the {n_diff:,} differing windows ({_pct(n / n_diff)})"
+    reverse = (
+        f"the reverse, {_change(pb, pa, names)}, is {rev:,} ({_pct(rev / n_diff)})"
+    )
+    if not tied:
+        sentence = (
+            f"The most common change is {_change(pa, pb, names)}: {counted}; {reverse}."
+        )
+    elif tied == [(pb, pa)]:
+        sentence = (
+            f"The most common change is a tie between a direction and its reverse, "
+            f"{counted} each: {_change(pa, pb, names)}, and {_change(pb, pa, names)}."
+        )
+    else:
+        named = [_change(a, b, names) for a, b in [(pa, pb), *tied]]
+        listed = ", ".join(named[:-1]) + ", and " + named[-1]
+        sentence = (
+            f"The most common change is a tie between {len(named)} directions, "
+            f"{counted} each: {listed}"
+            + ("." if tied_with_reverse else f"; for the first, {reverse}.")
+        )
+    return {
+        "id": "dominant_change",
+        "from_class": pa,
+        "to_class": pb,
+        "n": n,
+        "share": round(n / n_diff, 6),
+        "reverse_n": rev,
+        "reverse_share": round(rev / n_diff, 6),
+        "tied_with_reverse": tied_with_reverse,
+        "sentence": sentence,
+    }
+
+
+def more_confident_fact(a_more: int, b_more: int, n_diff: int) -> dict[str, Any] | None:
+    """The ``more_confident_side`` fact, stated with why it does not pick a winner.
+
+    The side is decided on counts (windows where A's margin is larger, where
+    B's is), never on rounded shares, and is ``"neither"`` when they are
+    equal. Returns ``None`` when nothing differs.
+    """
+    if not n_diff:
+        return None
+    equal = n_diff - a_more - b_more
+    share_a, share_b = round(a_more / n_diff, 6), round(b_more / n_diff, 6)
+    share_equal = round(equal / n_diff, 6)
+    tie_text = f", equal on {_pct(equal / n_diff)}" if equal else ""
+    # No upstream figure: the comparison's evidence does not cover this pair,
+    # and exp86 round 8 carried exp58's "51 to 70 percent" from this sentence
+    # to a pair it excludes ("in comparable cases", brief 3 on the cluster).
+    upstream = (
+        "a margin is not a label, and no recorded experiment grades which of "
+        "these two maps is right"
+    )
+    if a_more == b_more:
+        side = "neither"
+        sentence = (
+            f"Neither map is more often the more confident: maps A and B each have "
+            f"the larger margin on {_pct(a_more / n_diff)} of the {n_diff:,} "
+            f"differing windows{tie_text}; a larger margin would not make a side "
+            f"right anyway: {upstream}."
+        )
+    else:
+        side, other = ("A", "B") if a_more > b_more else ("B", "A")
+        mine, theirs = max(a_more, b_more), min(a_more, b_more)
+        sentence = (
+            f"Map {side} has the larger margin on {_pct(mine / n_diff)} of the "
+            f"{n_diff:,} differing windows (map {other} on {_pct(theirs / n_diff)}"
+            f"{tie_text}); this does not make {side} right there: {upstream}."
+        )
+    return {
+        "id": "more_confident_side",
+        "side": side,
+        "share_a": share_a,
+        "share_b": share_b,
+        "share_equal": share_equal,
+        "sentence": sentence,
+    }
+
+
+#: What a comparison's boundary shares count, stated beside them (exp86 round 6
+#: read a 78% boundary share as "boundary placement rather than whole-window
+#: flips"; round 9, B3/cluster run 3, as "mostly boundary reclassification
+#: rather than wholesale area flips", where a 467-window block had flipped).
+#: A window with one differing neighbour is on a boundary, so a region that
+#: flips whole has its every window on one: the share measures no contiguity.
+BOUNDARY_SHARE_MEANS = (
+    "boundary_share_overall and boundary_share_of_differing count windows with at "
+    "least one of their 8 neighbours of a different class in map A's PREDICTED "
+    "classes: a boundary of map A, not a true class boundary. Every differing "
+    "window is a change of that whole window's class, on a boundary or not. The "
+    "shares measure no contiguity: they do not show whether whole regions flip "
+    "or only their edges."
+)
+#: Appended to :data:`BOUNDARY_SHARE_MEANS` when windows differ, which is
+#: when the comparison carries these counts (the step 11 review: a
+#: comparison with no differing window named fields it did not have).
+CONTIGUITY_COUNTED_APART = (
+    "The contiguity is counted apart: n_patches, largest_patches, "
+    "differing_in_patches_ge_100 and differing_interior count the 8-connected "
+    "patches the differing windows form on the grid."
+)
+
+#: The patch size the contiguity counts name: agent trial 12 (B3/cluster run
+#: 25) called a pair's differences "mostly edges" where a recount found 57% of
+#: its differing windows in 8-connected patches of 100 windows or more.
+PATCH_MIN = 100
+#: How many of the largest patches the counts list.
+LARGEST_PATCHES = 5
+#: The share of the differing windows that are interior (every neighbour on
+#: the grid differs too) at or above which most of them lie inside solid
+#: patches, the contiguity fact says so, and "mostly edges" is flagged
+#: (``harness/checks.py``, ``mostly_edges``). A patch's size cannot tell a
+#: flipped area from a long strip along a class edge, which also forms one
+#: patch of 100 windows or more: trial 12's pair (run 25) had 57% of its
+#: differing windows in such patches, but only 12% interior, and 78% touched
+#: a boundary of map A (the step 11 review).
+MOSTLY_INTERIOR = 0.5
+#: The contract's fixed id (``statistical_rules.MOSTLY_EDGES``).
+MOSTLY_EDGES = "mostly_edges"
+
+
+def differing_patches(
+    differing: Sequence[int], grid: tuple[int, int]
+) -> dict[str, Any]:
+    """The 8-connected patches the differing windows form on the grid: plain counts.
+
+    ``differing`` are row-major grid indices. Two differing windows are in one
+    patch when they touch, sides or corners (8-connectivity), as the boundary
+    reading's neighbours do. Returns ``n_patches``, ``largest_patches`` (the
+    :data:`LARGEST_PATCHES` largest sizes, largest first),
+    ``differing_in_patches_ge_100`` (``n`` and ``share`` of the differing
+    windows in patches of at least ``min_windows``, :data:`PATCH_MIN`),
+    ``differing_interior`` (``n`` and ``share`` of the differing windows
+    whose every 8-neighbour on the grid differs too; a window on the grid's
+    edge counts its neighbours on the grid only) and ``patch_connectivity``
+    8. Nothing is estimated: every window is counted.
+
+    Examples
+    --------
+    >>> block = [r * 6 + c for r in range(3) for c in range(3)]
+    >>> out = differing_patches(block + [23, 35], (6, 6))
+    >>> out["n_patches"], out["largest_patches"]
+    (3, [9, 1, 1])
+    >>> out["differing_in_patches_ge_100"]
+    {'n': 0, 'share': 0.0, 'min_windows': 100}
+    >>> out["differing_interior"]  # the block sits on the grid's corner
+    {'n': 4, 'share': 0.363636}
+    """
+    rows, cols = int(grid[0]), int(grid[1])
+    cells = {int(w) for w in differing}
+
+    def around(w: int) -> list[int]:
+        """Window ``w``'s 8-neighbours on the grid."""
+        r, c = divmod(w, cols)
+        return [
+            (r + dr) * cols + c + dc
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+            if (dr or dc) and 0 <= r + dr < rows and 0 <= c + dc < cols
+        ]
+
+    def interior(w: int) -> bool:
+        """Whether every neighbour of ``w`` on the grid differs too."""
+        near = around(w)
+        return bool(near) and all(n in cells for n in near)
+
+    left = set(cells)
+    sizes: list[int] = []
+    while left:
+        stack = [left.pop()]
+        size = 0
+        while stack:
+            w = stack.pop()
+            size += 1
+            for n in around(w):
+                if n in left:
+                    left.remove(n)
+                    stack.append(n)
+        sizes.append(size)
+    sizes.sort(reverse=True)
+    total = sum(sizes)
+    big = sum(s for s in sizes if s >= PATCH_MIN)
+    inner = sum(1 for w in cells if interior(w))
+    return {
+        "n_patches": len(sizes),
+        "largest_patches": sizes[:LARGEST_PATCHES],
+        "differing_in_patches_ge_100": {
+            "n": big,
+            "share": round(big / total, 6) if total else None,
+            "min_windows": PATCH_MIN,
+        },
+        "differing_interior": {
+            "n": inner,
+            "share": round(inner / total, 6) if total else None,
+        },
+        "patch_connectivity": 8,
+    }
+
+
+def _mostly_interior(patches: dict[str, Any]) -> bool:
+    """Whether most differing windows are interior (:data:`MOSTLY_INTERIOR`)."""
+    share = patches["differing_interior"]["share"]
+    return bool(share is not None and share >= MOSTLY_INTERIOR)
+
+
+def contiguity_fact(patches: dict[str, Any], n_differing: int) -> dict[str, Any]:
+    """The ``contiguity`` fact: the patches the differing windows form, counted.
+
+    One sentence of :func:`differing_patches`' counts, so an answer that says
+    where the differences lie in kind (edges or whole regions) states them
+    rather than reading a boundary share (``mostly_edges``). It draws a
+    conclusion only from the interior share: at or above
+    :data:`MOSTLY_INTERIOR`, whole areas differ, not only edges; below it,
+    the counts do not show which, since a long strip along a class edge
+    forms a large patch too.
+    """
+    big = patches["differing_in_patches_ge_100"]
+    inner = patches["differing_interior"]
+    largest = [f"{s:,}" for s in patches["largest_patches"]]
+    if len(largest) == 1:
+        listed = largest[0]
+    else:
+        listed = ", ".join(largest[:-1]) + " and " + largest[-1]
+    if big["n"]:
+        held = (
+            f"{big['n']:,} of them ({_pct(big['share'])}) lie in patches of at "
+            f"least {PATCH_MIN} windows"
+        )
+    else:
+        held = f"none lies in a patch of {PATCH_MIN} windows or more"
+    if inner["n"]:
+        interior = (
+            f"{inner['n']:,} ({_pct(inner['share'])}) have every neighbour on the "
+            "grid differing too"
+        )
+    else:
+        interior = "none has every neighbour on the grid differing too"
+    if _mostly_interior(patches):
+        reading = (
+            "most differing windows lie inside solid patches, so whole areas "
+            "differ, not only edges"
+        )
+    else:
+        reading = "these counts do not show whether the differences are edges or areas"
+    n = patches["n_patches"]
+    formed = f"{n:,} 8-connected patch{'' if n == 1 else 'es'}"
+    hold = "holds" if len(largest) == 1 else "hold"
+    sentence = (
+        f"The {n_differing:,} differing windows form {formed} on the grid; the "
+        f"largest {hold} {listed} windows, {held}, and {interior}; {reading}."
+    )
+    return {
+        "id": "contiguity",
+        "sentence": sentence,
+        "n_differing": n_differing,
+        "n_patches": patches["n_patches"],
+        "largest_patches": list(patches["largest_patches"]),
+        "n_in_patches_ge_100": big["n"],
+        "share_in_patches_ge_100": big["share"],
+        "n_interior": inner["n"],
+        "share_interior": inner["share"],
+    }
+
+
+def mostly_edges(
+    patches: dict[str, Any], n_differing: int, *, boundary: bool = False
+) -> dict[str, str]:
+    """The ``mostly_edges`` claim of a comparison, with its contiguity counts.
+
+    Agent trial 12 (B3/cluster run 25) wrote "78.3% of differing windows
+    touch a predicted-class boundary in map A (vs 53.9% overall) - mostly
+    edges"; the boundary shares count neighbours, not regions. A patch's
+    size cannot tell a flipped area from a long strip along a class edge
+    (the trial's pair: 57% of its differing windows in 8-connected patches
+    of 100 or more, 12% interior), so the harness flags "mostly edges" while
+    the interior share is at least :data:`MOSTLY_INTERIOR`. ``boundary``:
+    whether the comparison carries the boundary shares (not when its rows
+    leave windows out), which the reason then names (the step 11 review).
+    """
+    inner = patches["differing_interior"]
+    share = _pct(inner["share"]) if inner["share"] is not None else "none"
+    shares = (
+        "the boundary shares count windows with a neighbour of another class, "
+        "not regions; "
+        if boundary
+        else ""
+    )
+    if _mostly_interior(patches):
+        reading = (
+            "most differing windows lie inside solid patches, so the differences "
+            "are not mostly at edges or boundaries"
+        )
+    else:
+        reading = (
+            "the counts do not show whether the differences are edges or areas, "
+            "so state them (the contiguity fact) rather than a reading of them"
+        )
+    return {
+        "id": MOSTLY_EDGES,
+        "why": f"{shares}a patch's size cannot tell a flipped area from a strip "
+        f"along a class edge, and the interior windows can: {share} of the "
+        f"{n_differing:,} differing windows have every neighbour on the grid "
+        f"differing too (largest patches: {patches['largest_patches']}); "
+        f"{reading}",
+    }
+
+
+#: The ``where`` of a comparison whose differing windows touch map A's predicted
+#: boundaries more often than windows overall, and otherwise. Round 9 read
+#: "mostly on class boundaries" as "mostly boundary reclassification".
+WHERE_MORE_ON_BOUNDARIES = (
+    "on map A's predicted-class boundaries more often than windows overall "
+    "(not whether whole regions flip)"
+)
+WHERE_NOT_MORE_ON_BOUNDARIES = (
+    "on map A's predicted-class boundaries no more often than windows overall "
+    "(not whether whole regions flip)"
+)
+
+
+def boundary_share_fact(
+    overall: float, of_differing: float | None, n_windows: int, n_differing: int
+) -> dict[str, Any] | None:
+    """The ``boundary_share`` fact: the differing windows on map A's predicted
+    boundaries, against all windows, and what that does not show.
+
+    exp86 round 9 (B3/cluster run 3) wrote "78.3% of the differing windows sit
+    on class boundaries (vs. 53.9% of all windows) - mostly boundary
+    reclassification rather than wholesale area flips"; the tool measures no
+    contiguity, and the round's audit found, on that pair's own scores,
+    connected blocks of 696, 543 and 467 differing windows. ``None`` when no
+    window differs.
+    """
+    if of_differing is None or not n_differing:
+        return None
+    return {
+        "id": "boundary_share",
+        "sentence": f"{_pct(of_differing)} of the {n_differing:,} differing windows "
+        "have a neighbour of another class in map A's predicted classes, against "
+        f"{_pct(overall)} of all {n_windows:,} windows; this counts neighbours, not "
+        "regions, so it does not show whether whole regions flip or only their "
+        "edges.",
+        "share_of_differing": of_differing,
+        "share_overall": overall,
+    }
 
 
 def compare_scores(
     scores_a: Sequence[Sequence[float]],
     scores_b: Sequence[Sequence[float]],
     grid: tuple[int, int] | None = None,
-    max_listed: int = DEFAULT_MAX_LISTED,
+    max_listed: int | None = DEFAULT_MAX_LISTED,
+    *,
+    windows: Sequence[int] | None = None,
+    class_names: dict[str, str] | None = None,
+    row_order: str | None = None,
 ) -> dict[str, Any]:
     """Compare two inferences of the same windows: how much they differ and where.
 
@@ -703,19 +2032,70 @@ def compare_scores(
     upstream measured that the more confident side is right on 51 to 70 percent
     of differing windows and that confidence does not order the set (exp58), so
     the honest answer to "which one do I believe" is to decline and say why.
+    That measurement does not cover the pair at hand, so no field of the result
+    carries its figures or its dataset (only :func:`evidence_detail` does).
+
+    Parameters
+    ----------
+    scores_a, scores_b
+        The two inferences' rows, one per window, in the same order.
+    grid
+        ``(rows, cols)`` of the window grid. With ``windows`` omitted the rows
+        are the whole grid row-major, and the boundary reading is made.
+    max_listed
+        Differing windows listed, first in window order; ``None`` lists all.
+    windows
+        The row-major grid index of each row, when the rows leave windows out
+        (a scores file's no-data windows). With ``grid``, the spatial breakdown
+        and the listing place rows by it; the boundary reading, which needs
+        every window, is not made.
+    class_names
+        Class id (as a string) to name, when the scores name their classes;
+        used in ``class_changes``, ``class_pairs``, the listing and the facts.
+    row_order
+        How the grid's rows run on the ground when the scores are
+        georeferenced (:data:`ROW_ORDERS`); ``None`` for scores with no
+        georeference, whose row bands are never called north or south.
+
+    Returns
+    -------
+    dict
+        The counts (``n_differing``, ``share_differing``), the directed
+        ``class_changes`` and undirected ``class_pairs``, each side's share of
+        the differing windows on which it is the more confident, the
+        ``spatial`` breakdown and the patches the differing windows form
+        (:func:`differing_patches`) when a grid is known, the listing
+        (``differing``), the one-sentence ``evidence_scope`` and the output
+        contract (``facts``, ``must_state``, ``forbidden_claims``).
     """
     a = _as_matrix(scores_a)
     b = _as_matrix(scores_b)
     if len(a) != len(b):
         msg = f"the two inferences cover different window counts: {len(a)} and {len(b)}"
         raise ValueError(msg)
+    n = len(a)
+    if windows is not None:
+        windows = [int(w) for w in windows]
+        if len(windows) != n:
+            msg = f"windows names {len(windows)} grid cells for {n} rows"
+            raise ValueError(msg)
+    if grid is not None:
+        rows_, cols_ = int(grid[0]), int(grid[1])
+        if windows is None and rows_ * cols_ != n:
+            msg = f"grid {grid} does not match {n} windows"
+            raise ValueError(msg)
+        if windows is not None and any(not 0 <= w < rows_ * cols_ for w in windows):
+            msg = f"a window index lies outside the {rows_}x{cols_} grid"
+            raise ValueError(msg)
+    names = class_names or None
     ca, cb = predicted_classes(a), predicted_classes(b)
     ma, mb = margins(a), margins(b)
-    diff = [i for i in range(len(a)) if ca[i] != cb[i]]
+    diff = [i for i in range(n) if ca[i] != cb[i]]
+    scope = comparison_evidence_scope()
     out: dict[str, Any] = {
-        "n_windows": len(a),
+        "n_windows": n,
         "n_differing": len(diff),
-        "share_differing": round(len(diff) / len(a), 6) if a else 0.0,
+        "share_differing": round(len(diff) / n, 6) if a else 0.0,
         "mean_margin_a_on_differing": (
             round(sum(ma[i] for i in diff) / len(diff), 6) if diff else None
         ),
@@ -723,43 +2103,125 @@ def compare_scores(
             round(sum(mb[i] for i in diff) / len(diff), 6) if diff else None
         ),
         "which_side_is_right": "not resolvable without labels",
-        "evidence": EVIDENCE,
-        "caveats": list(EVIDENCE_LIMITS)
-        + [
-            "The more confident side is right on 51 to 70 percent of differing windows "
-            "(exp58, upstream) and confidence does not order the set, so this comparison "
-            "does not identify a winner; declining to pick a side is the correct answer."
-        ],
+        **_scope_fields(scope),
     }
-    if grid is not None:
-        rows_, cols_ = grid
-        if rows_ * cols_ != len(a):
-            msg = f"grid {grid} does not match {len(a)} windows"
-            raise ValueError(msg)
+    if grid is not None and windows is None:
         bcount = boundary_counts(ca, rows_, cols_)
-        on_boundary = [bcount[i] > 0 for i in range(len(a))]
-        out["boundary_share_overall"] = round(sum(on_boundary) / len(a), 6)
+        on_boundary = [bcount[i] > 0 for i in range(n)]
+        out["boundary_share_overall"] = round(sum(on_boundary) / n, 6)
         out["boundary_share_of_differing"] = (
             round(sum(on_boundary[i] for i in diff) / len(diff), 6) if diff else None
         )
         out["where"] = (
-            "mostly on class boundaries"
+            WHERE_MORE_ON_BOUNDARIES
             if diff
             and out["boundary_share_of_differing"] > out["boundary_share_overall"]
-            else "spread across the scene"
+            else WHERE_NOT_MORE_ON_BOUNDARIES
         )
+        out["boundary_means"] = BOUNDARY_SHARE_MEANS
+    # What the differences are, over all of them: the listing below is the first
+    # few in window order (the top rows of the grid), and exp86 round 6's answers
+    # read patterns off it that the full set contradicts ("most flip 1 -> 0" when
+    # 1,247 of 1,570 flip 0 -> 1; "a strip along the north edge" for 1.3%).
+    pairs: dict[tuple[Any, Any], int] = {}
+    for i in diff:
+        pairs[(ca[i], cb[i])] = pairs.get((ca[i], cb[i]), 0) + 1
+    ranked = _ranked_changes(pairs)
+    out["class_changes"] = [
+        {
+            "class_a": pa,
+            "class_b": pb,
+            "n": count,
+            "share_of_differing": round(count / len(diff), 6),
+        }
+        for (pa, pb), count in ranked[:CLASS_CHANGES_LISTED]
+    ]
+    if names:
+        for change in out["class_changes"]:
+            change["class_name_a"] = names.get(str(change["class_a"]))
+            change["class_name_b"] = names.get(str(change["class_b"]))
+    out["n_class_changes"] = len(pairs)
+    # The same changes with direction set aside ("A <-> B 37%" was read as both
+    # directions, exp86 round 7): each pair carries both directions' counts.
+    all_pairs = _class_pairs(pairs, len(diff), names)
+    out["class_pairs"] = all_pairs[:CLASS_CHANGES_LISTED]
+    out["n_class_pairs"] = len(all_pairs)
+    out["class_pairs_reading"] = (
+        "class_pairs counts, for each unordered pair of classes, the windows where "
+        "one map has one class and the other map the other, both directions "
+        "together; 'directions' splits that count by which map has which class, "
+        "as class_changes does."
+    )
+    a_more = sum(ma[i] > mb[i] for i in diff)
+    b_more = sum(mb[i] > ma[i] for i in diff)
+    out["a_more_confident_share_of_differing"] = (
+        round(a_more / len(diff), 6) if diff else None
+    )
+    out["b_more_confident_share_of_differing"] = (
+        round(b_more / len(diff), 6) if diff else None
+    )
+    cols_of = int(grid[1]) if grid is not None else None
     listed = []
-    for i in diff[:max_listed]:
+    for i in diff if max_listed is None else diff[:max_listed]:
+        w = windows[i] if windows is not None else i
         row: dict[str, Any] = {
-            "window_index": i,
+            "window_index": w,
             "class_a": ca[i],
             "class_b": cb[i],
             "margin_a": round(ma[i], 6),
             "margin_b": round(mb[i], 6),
         }
-        if grid is not None:
-            row["row"], row["col"] = divmod(i, grid[1])
+        if names:
+            row["class_name_a"] = names.get(str(ca[i]))
+            row["class_name_b"] = names.get(str(cb[i]))
+        if cols_of:
+            row["row"], row["col"] = divmod(w, cols_of)
         listed.append(row)
     out["differing"] = listed
     out["n_differing_listed"] = len(listed)
+    out["listing_order"] = (
+        "the listed windows are the first differing windows in window order (from "
+        "the grid's first rows), not a sample of them: read which classes change "
+        "and in which direction from class_changes and the shares, not from the list"
+    )
+    facts: list[dict[str, Any]] = []
+    dominant = dominant_change_fact(pairs, len(diff), names)
+    if dominant:
+        facts.append(dominant)
+    confident = more_confident_fact(a_more, b_more, len(diff))
+    if confident:
+        facts.append(confident)
+    if "boundary_share_overall" in out:
+        boundary = boundary_share_fact(
+            out["boundary_share_overall"],
+            out["boundary_share_of_differing"],
+            n,
+            len(diff),
+        )
+        if boundary:
+            facts.append(boundary)
+    if grid is not None:
+        present = windows if windows is not None else range(n)
+        where_diff = [windows[i] for i in diff] if windows is not None else diff
+        out["spatial"] = spatial_breakdown(
+            where_diff, list(present), (rows_, cols_), row_order=row_order
+        )
+        concentration = concentration_fact(out["spatial"], len(diff))
+        if concentration:
+            facts.append(concentration)
+    claims = [dict(c) for c in COMPARISON_FORBIDDEN] + evidence_outside_scope(scope)
+    if grid is not None and diff:
+        # The contiguity the boundary shares do not measure, counted on the
+        # same grid: the 8-connected patches of the differing windows.
+        patches = differing_patches(where_diff, (rows_, cols_))
+        out.update(patches)
+        # The boundary note points at these counts, and the claim names the
+        # boundary shares, only where the result has them (the step 11 review).
+        has_shares = "boundary_share_overall" in out
+        if has_shares:
+            out["boundary_means"] += " " + CONTIGUITY_COUNTED_APART
+        facts.append(contiguity_fact(patches, len(diff)))
+        claims.append(mostly_edges(patches, len(diff), boundary=has_shares))
+    out["facts"] = facts
+    out["forbidden_claims"] = claims
     return out

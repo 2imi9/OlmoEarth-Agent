@@ -81,7 +81,8 @@ function renderAttachmentChips() {
 
 /* A drawn AOI attaches like a file: a chip in the composer + a structured
    block appended to the brief so the agent can feed it to AOI-needing skills
-   (area_id -> submit_prediction, bbox -> bbox-based tools). */
+   (area_id -> submit_prediction; the bbox is shown for reference, no tool
+   takes one). */
 export function addAoiAttachment(aoi) {
   if (!aoi || (!aoi.geom && !aoi.area_id)) return;
   const bbox = Array.isArray(aoi.bbox) ? aoi.bbox.map((n) => Number(n).toFixed(5)).join(', ') : '';
@@ -93,8 +94,8 @@ export function addAoiAttachment(aoi) {
   } else {
     lines.push('It is NOT stored in Studio (no project/key); store it first if a prediction needs an area_id.');
   }
-  if (bbox) lines.push('bbox (min_lon, min_lat, max_lon, max_lat): ' + bbox + '  (use for bbox-based tools)');
-  lines.push('Reference the area_id / bbox in tool calls; do not print raw coordinates back to the user.');
+  if (bbox) lines.push('bbox (min_lon, min_lat, max_lon, max_lat): ' + bbox);
+  lines.push('Reference the area_id in tool calls; do not print raw coordinates back to the user.');
   pendingAttachments.push({
     name: 'AOI: ' + (aoi.name || 'drawn area'),
     kind: 'aoi',

@@ -48,8 +48,8 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
+from olmoearth_agent.analysis.raster_compare import band_is_nodata
 from olmoearth_agent.harness import LeadAgent, ThreadState
-from olmoearth_agent.harness.memory import preferences_block
 from olmoearth_agent.harness.workflow import WORKFLOW_STAGES, skill_workflow_stages
 from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
@@ -58,7 +58,12 @@ from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
-from olmoearth_agent.studio.client import DEFAULT_BASE_URL, StudioConfig
+from olmoearth_agent.studio.client import (
+    DEFAULT_BASE_URL,
+    StudioAccessError,
+    StudioConfig,
+)
+from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
 _MAX_TURNS_CEILING = 12
@@ -113,8 +118,8 @@ def _key_hash(key: str) -> str:
 #: trip. Keyed by capability + key-hash + ids; TTL keeps it fresh enough.
 _READ_CACHE: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 _READ_CACHE_MAX = 512
-_READ_TTL_LONG = 300.0   # projects / areas / extent: rarely change in a session
-_READ_TTL_SHORT = 30.0   # predictions / results: change as runs progress
+_READ_TTL_LONG = 300.0  # projects / areas / extent: rarely change in a session
+_READ_TTL_SHORT = 30.0  # predictions / results: change as runs progress
 
 
 def _read_cache_get(k: str) -> dict[str, Any] | None:
@@ -183,7 +188,7 @@ async def _pooled_studio(key: str) -> StudioClient:
                 _, evicted = _STUDIO_POOL.popitem(last=False)
                 try:
                     await evicted.aclose()
-                except Exception:  # noqa: BLE001, S110 - best-effort close of an evicted client
+                except Exception:  # noqa: BLE001, S110 - best-effort close
                     pass
         _STUDIO_POOL.move_to_end(h)
     return client
@@ -218,10 +223,13 @@ def _studio_detail(exc: Exception) -> str:
 
     httpx raises ``HTTPStatusError`` carrying a ``.response``; surfacing its
     status code (instead of only the exception class) turns an opaque 502
-    into something debuggable.
+    into something debuggable. A refused key (HTTP 401/403) comes as a
+    :class:`StudioAccessError`, which carries its status itself.
     """
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
+    if isinstance(exc, StudioAccessError):
+        status = exc.status_code
     if status is not None:
         return f"Studio API returned HTTP {status}"
     return f"Studio call failed: {type(exc).__name__}"
@@ -458,7 +466,7 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     return _filter_models(backend, ids)
 
 
-async def _local_llm_up(endpoint: str) -> bool:
+async def _local_llm_up(endpoint: str, api_key: str | None = None) -> bool:
     """Best-effort check that the configured local LLM endpoint answers.
 
     Used only so the web UI can nudge the user when the default (local)
@@ -466,11 +474,28 @@ async def _local_llm_up(endpoint: str) -> bool:
     cloud provider). A localhost model probe must never traverse a proxy, so
     ``trust_env=False``. Any failure -> ``False``; bounded by a short timeout
     and never raises.
+
+    Parameters
+    ----------
+    endpoint : str
+        The OpenAI-compatible base URL (``LLM_ENDPOINT``); ``/models`` is
+        appended.
+    api_key : str or None, optional
+        The key the chat client sends (``LLM_API_KEY``). When set, the probe
+        sends it as ``Authorization: Bearer <api_key>``, as the OpenAI client
+        does, so a server started with an access token (vLLM or llama.cpp
+        ``--api-key``) is not reported down while it serves the agent.
+
+    Returns
+    -------
+    bool
+        ``True`` only when ``GET /models`` answers 200.
     """
     url = endpoint.rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         async with httpx.AsyncClient(timeout=2.0, trust_env=False) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers=headers)
         return resp.status_code == 200
     except Exception:
         return False
@@ -490,7 +515,7 @@ async def api_health() -> dict[str, Any]:
         "mode": "live",
         "llm_endpoint": llm.config.endpoint,
         "llm_model": llm.config.model,
-        "llm_local_up": await _local_llm_up(llm.config.endpoint),
+        "llm_local_up": await _local_llm_up(llm.config.endpoint, llm.config.api_key),
         "studio_base": _studio_base(),
         "claude_available": _claude_available(),
     }
@@ -502,7 +527,7 @@ async def api_skills() -> dict[str, Any]:
 
     Returns each skill's slug / name / category and the run-pipeline ``stages``
     its tools actually touch, so the workflow rail can show only the relevant
-    ones (an advisory skill like negative-sampler skips submit/poll/fetch). The
+    ones (an advisory skill like review-set skips submit/poll/fetch). The
     full ordered stage list is included so the UI maps keys -> labels from one
     source of truth.
     """
@@ -607,8 +632,12 @@ async def api_run(request: Request) -> StreamingResponse:
     # skill slug here, pinning the run to it. Malformed OR non-existent values are
     # ignored (not rejected) so a stray slug never breaks a run -- and a
     # well-formed but unknown slug is never injected into the prompt directive.
+    registry = app.state.registry
     forced_skill = str(body.get("forced_skill", "")).strip().lower()
-    if not _SKILL_SLUG_RE.match(forced_skill) or forced_skill not in _VALID_FORCED_SKILLS:
+    if (
+        not _SKILL_SLUG_RE.match(forced_skill)
+        or forced_skill not in _VALID_FORCED_SKILLS
+    ):
         forced_skill = ""
 
     llm = _llm_for_request(request)
@@ -625,11 +654,7 @@ async def api_run(request: Request) -> StreamingResponse:
     ):
         await llm.aclose()  # release the unused hosted client
         llm = app.state.llm
-    registry = app.state.registry
     skill_index: str = app.state.skill_index
-    # Cross-thread memory: read per request so a preference remembered in one
-    # conversation applies to the next without a server restart.
-    memory_block = preferences_block()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
@@ -643,11 +668,13 @@ async def api_run(request: Request) -> StreamingResponse:
                     state=ThreadState(),
                     skill_index=skill_index,
                     forced_skill=forced_skill,
-                    memory_block=memory_block,
                     # The shared app.state.llm is the local model; a per-request
                     # hosted client (Claude/OpenAI/Gemini) is not. Only the local
                     # model gets the brevity/budget clause.
                     local=llm is app.state.llm,
+                    # The web UI shows the tool results beside the answer, so
+                    # the answer check reads "listed above" as pointing at them.
+                    surface="web",
                 )
                 try:
                     async for event in agent.run_stream(
@@ -683,8 +710,11 @@ async def api_create_area(request: Request) -> dict[str, Any]:
     Body: ``{"name": str, "geom": <GeoJSON Polygon/MultiPolygon>,
     "project_id": str}``. The geometry is the polygon the user drew on the
     chat map; it is stored via ``POST /areas`` so the returned ``area_id``
-    can drive a prediction (skill #5) and the derived ``bbox`` can drive a
-    bbox-based skill. Returns ``{ok, area: {id, name, project_id, bbox}}``.
+    can drive a prediction (skill #2); the derived ``bbox`` goes back to the
+    web UI, which shows it and puts it in the brief with the ``area_id`` (no
+    skill takes a bbox). Returns ``{ok, area: {id, name, project_id, bbox}}``.
+    When Studio refuses the key (HTTP 401/403, e.g. a read-only key), the
+    answer is a 403 whose detail says so and that nothing was created.
     """
     key = _studio_key(request)
     if not key:
@@ -714,6 +744,10 @@ async def api_create_area(request: Request) -> dict[str, Any]:
             record = await studio.create_area(
                 name=name, geom=geom, project_id=project_id
             )
+    except StudioAccessError as exc:
+        # Studio refused the key (e.g. a read-only one): its words, as a 403,
+        # say that no area was saved, where a 502 would read as an outage.
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     # The project's area list changed -> drop its cached read (server + clients).
@@ -762,8 +796,8 @@ async def api_get_area(area_id: str, request: Request) -> dict[str, Any]:
     """Fetch one stored area with its geometry + derived bbox (for reuse).
 
     The list endpoint omits ``geom`` (lightweight); when the user picks a
-    saved area to reuse, the draw UI calls this to render it on the map and
-    feed its bbox to bbox-based skills.
+    saved area to reuse, the draw UI calls this to render it on the map,
+    show its bbox and put it in the brief with the area's id.
     """
     key = _studio_key(request)
     if not key:
@@ -862,7 +896,8 @@ async def api_prediction_results(
         {
             "id": r.get("id", ""),
             "property_names": r.get("property_names") or [],
-            "file_format": r.get("file_format") or "",
+            # Studio lists a result's formats (e.g. ["png"]); none is singular.
+            "file_formats": r.get("file_formats") or [],
             "tiles": len(r.get("tile_urls") or []),
             "tile_url": (r.get("tile_urls") or [""])[0],
         }
@@ -955,14 +990,21 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     bands = rec.get("bands") or []
     prop = q.get("property")
-    band = next((b for b in bands if b.get("property_name") == prop), bands[0] if bands else {})
+    band = next(
+        (b for b in bands if b.get("property_name") == prop), bands[0] if bands else {}
+    )
     cls = band.get("classification")
+    # Studio returns no-data as a value (e.g. -1 on a [0, 1] band); the scan
+    # must skip that cell, not paint the sentinel as a model output.
+    nodata = band_is_nodata(band)
     out = {
         "ok": True,
-        "value": cls if cls is not None else band.get("raw_value"),
+        "value": None if nodata else band_value({"bands": [band]}, None),
         "property": band.get("property_name"),
         "categorical": cls is not None,
     }
+    if nodata:
+        out["nodata"] = True
     _cache_put(_PV_CACHE, ckey, out)
     return out
 

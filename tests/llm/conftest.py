@@ -45,12 +45,14 @@ def mock_chat_response(
         tool_calls: list[dict[str, Any]] | None = None,
         thinking: str | None = None,
         reasoning_content: str | None = None,
+        reasoning: str | None = None,
         finish_reason: str = "stop",
     ) -> None:
-        # `reasoning_content` simulates a server started with
-        # `--reasoning-parser qwen3` (clean content + separate field);
-        # `thinking` simulates an inline `<think>` block in content.
-        if reasoning_content is not None:
+        # `reasoning_content` (older vLLM, llama.cpp) and `reasoning`
+        # (current vLLM) simulate a server started with a reasoning parser
+        # (clean content + separate field); `thinking` simulates an inline
+        # `<think>` block in content.
+        if reasoning_content is not None or reasoning is not None:
             full_content: str | None = content
         elif thinking and content:
             full_content = f"<think>{thinking}</think>\n{content}"
@@ -61,6 +63,8 @@ def mock_chat_response(
         message: dict[str, Any] = {"role": "assistant", "content": full_content}
         if reasoning_content is not None:
             message["reasoning_content"] = reasoning_content
+        if reasoning is not None:
+            message["reasoning"] = reasoning
         if tool_calls:
             message["tool_calls"] = tool_calls
             message["content"] = None
