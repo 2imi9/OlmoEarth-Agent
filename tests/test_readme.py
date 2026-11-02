@@ -26,8 +26,7 @@ def _anchors(page: Path) -> set[str]:
     """The GitHub anchors of a Markdown page's ``#`` headings."""
     headings = re.findall(r"^#+ (.+)$", page.read_text(encoding="utf-8"), re.M)
     return {
-        re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-")
-        for h in headings
+        re.sub(r"[^\w\- ]", "", h.strip().lower()).replace(" ", "-") for h in headings
     }
 
 
