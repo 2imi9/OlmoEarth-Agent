@@ -462,7 +462,7 @@ async def test_the_split_by_class_table_keeps_its_largest_cells_apart(
 async def test_no_id_person_token_geometry_or_free_text_reaches_the_result(
     httpx_mock: HTTPXMock,
 ) -> None:
-    """Annotations are counted, never listed (PLAN.md section 3.1 for places)."""
+    """Annotations are counted, never listed (docs/Usage.md, rule 1, for places)."""
     _mock_kelp(httpx_mock, [])
     async with _studio() as studio:
         envelope = await _call(studio, prediction_id=PREDICTION)

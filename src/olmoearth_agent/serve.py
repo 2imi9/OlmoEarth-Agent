@@ -16,7 +16,7 @@ Endpoints
 The caller's Studio API key rides in the ``X-Olmoearth-Key`` header (or
 ``Authorization: Bearer``); it is forwarded to Studio per request and
 never stored or logged. The LLM backbone is the env-configured
-(``LLM_*``) endpoint from ``docs/serving.md``; bring it up with
+(``LLM_*``) endpoint from ``docs/Usage.md``; bring it up with
 ``scripts/serve-llm.sh`` first.
 
 Run it::

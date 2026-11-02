@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format is based on
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 PR titles for each merged change appear under the appropriate section below.
-See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
+See [Development](docs/Usage.md#development) for the convention.
 
 ## [Unreleased]
 
@@ -1101,6 +1101,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   list"). The percent rule adds 13 flags over the 207 answers of rounds 1
   to 7, all derived (11 of them "~23%"), and removes none. The `inferencex`
   extra requires olmoearth-inferencex 1.3.1.
+- **The docs are one page, as in olmoearth-inferencex.** `docs/Usage.md` is
+  the reference: installation, quick start, the routes, the 5 skills, the 25
+  tools, the answer checks, the operational rules (the live ones, under their
+  old numbers), LLM backends and serving, Claude Code as the model, the web
+  UI, security, the Studio API notes and development. The README is
+  rewritten in olmoearth-inferencex's shape: what the agent does, install,
+  the main questions with their tools (every route collapsed), the replay
+  bridge, the answer checks, the verification demo's numbers and the limits.
+  Its badges and logos go, the Qwen3.6 one with them; the model's name and
+  size are in Usage. The README, the web UI's tagline and the package
+  description say this is a beta version developed by a collaborator, not
+  the final OlmoEarth Agent. Code comments, tests, scripts, the Makefile, the
+  compose file, `.env.example` and the web UI's catalog links point at
+  Usage's sections. `tests/test_readme.py` checks the skill and tool counts
+  on both pages, Usage's tool table and numbered skill headings, and that
+  every local link and heading anchor exists;
+  `tests/skills/test_skill_registry.py` reads Usage where it read
+  `SKILLS.md` and `PLAN.md`.
 
 ### Removed
 - **The trim to a verification layer, step 0: what blocked the deletions.**
@@ -1310,6 +1328,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   and rule 4 no longer says redirects are re-validated: only the starting
   endpoint is checked, the Studio client does not follow redirects and the
   LLM SDK clients follow them unchecked.
+- **The pages merged into `docs/Usage.md`.** `SKILLS.md`, `PLAN.md`,
+  `AGENTS.md`, `CONTRIBUTING.md`, `docs/CANON.md`, `docs/serving.md`,
+  `docs/CLAUDE_AS_MODEL.md` and `webui/README.md` go. Usage keeps what still
+  holds; their history, dated status notes, retired rules and roadmap are
+  left to git history and this changelog.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

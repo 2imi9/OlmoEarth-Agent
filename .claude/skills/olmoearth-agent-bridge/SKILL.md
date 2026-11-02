@@ -5,7 +5,7 @@ description: Operate the OlmoEarth Agent's replay bridge on aicr (scripts/oe-bri
 
 # Operate the agent bridge
 
-How the bridge works and what it costs: `docs/CLAUDE_AS_MODEL.md`.
+How the bridge works and what it costs: `docs/Usage.md`, section "Claude Code as the model".
 
 ## State the cost first
 

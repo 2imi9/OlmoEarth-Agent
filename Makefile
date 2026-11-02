@@ -1,6 +1,7 @@
 # OlmoEarth Agent: preset quickstart targets.
 # Run on Git Bash / WSL / Linux / macOS. GNU make; recipes use real TABs.
-# Canonical values live in docs/CANON.md. Keep these consistent with it.
+# The model, server and LLM_* values repeat in docs/Usage.md (LLM backends and
+# serving); keep them in step.
 
 # Default sample brief for `make agent`, override with: make agent Q="..."
 Q ?= How many OlmoEarth Studio projects do I have?

@@ -615,8 +615,7 @@ class StudioClient:
         """Search predictions (read-only), newest first. Optionally scope to a project.
 
         Each record carries a ``model_id``: this is how a client
-        discovers a reusable model id for a new prediction (resolves the
-        PLAN.md §4 ``model_id`` provenance gap for the reuse case).
+        discovers a reusable model id for a new prediction.
 
         Deleted predictions are left out with ``{"deleted_time": {"exists":
         false}}`` (accepted live on 2026-10-31; none of the account's

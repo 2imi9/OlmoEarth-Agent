@@ -3,7 +3,7 @@
 """LLM client for the 4-bit GGUF ``unsloth/Qwen3.6-35B-A3B-GGUF`` model.
 
 Talks to any OpenAI-compatible server; the documented stack is the
-llama.cpp server in ``docs/serving.md`` (see ``docs/CANON.md`` C1/C3).
+llama.cpp server in ``docs/Usage.md`` (LLM backends and serving).
 The public surface is :class:`OlmoEarthLLM` and the small dataclass
 types in :mod:`olmoearth_agent.llm.types`.
 """

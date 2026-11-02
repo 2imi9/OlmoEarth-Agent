@@ -23,7 +23,10 @@ from olmoearth_agent.skills.registry import (
 )
 from olmoearth_agent.tools.registry import ToolRegistry
 
-_SKILLS_MD = Path(__file__).resolve().parents[2] / "SKILLS.md"
+_ROOT = Path(__file__).resolve().parents[2]
+
+#: The reference page: the skill catalog, the tools and the rules.
+_USAGE_MD = _ROOT / "docs" / "Usage.md"
 
 #: The opt-in tools removed on 31 October 2026 with their code (outside
 #: inference examination, and not used: the five skills that were opt-in
@@ -191,12 +194,10 @@ def test_no_page_says_asta_covers_the_literature_search() -> None:
     page gives "Asta covers it" as the reason (the CHANGELOG keeps its
     history).
     """
-    root = _SKILLS_MD.parent
     pages = [
-        root / "README.md",
-        _SKILLS_MD,
-        root / "PLAN.md",
-        root / "webui" / "js" / "skills.js",
+        _ROOT / "README.md",
+        _USAGE_MD,
+        _ROOT / "webui" / "js" / "skills.js",
     ]
     for path in pages:
         text = path.read_text(encoding="utf-8")

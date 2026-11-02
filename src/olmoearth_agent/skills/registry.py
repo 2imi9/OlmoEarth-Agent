@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Skill catalog manifest, the harness's view of all 5 skills.
 
-This is the structural "slot" for every skill in ``SKILLS.md``. Each
+This is the structural "slot" for every skill in ``docs/Usage.md``. Each
 :class:`SkillSpec` records the skill's category, build status, and the
 tools it contributes. :func:`build_default_registry` assembles the
 tool bundles of the currently-implemented skills into a
@@ -60,7 +60,7 @@ STUDIO_WRITE_TOOLS = frozenset(
 
 @dataclass(frozen=True)
 class SkillSpec:
-    """One row of the skill catalog (see ``SKILLS.md``).
+    """One row of the skill catalog (see ``docs/Usage.md``, Skills).
 
     ``tools`` names every tool the skill contributes.
     """
@@ -74,7 +74,7 @@ class SkillSpec:
 
 
 #: The full catalog. ``implemented`` = the row's tools are built and wired in
-#: this repo (row #0 included: the base Studio tools, not a SKILLS.md entry);
+#: this repo (row #0 included: the base Studio tools, not a numbered skill);
 #: ``vendored`` = an instruction package moved into ``skills/packages/`` from
 #: 2imi9/OlmoEarth-Skills (frozen upstream), served by olmoearth_load_skill.
 #: No row is ``foundational`` or ``planned``.

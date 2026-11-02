@@ -1,8 +1,8 @@
 # Instruction skills
 
 The [agentskills.io](https://agentskills.io) package the agent loads with `olmoearth_load_skill`
-(catalog #1 in [`SKILLS.md`](../../../../SKILLS.md)). Its folder holds a `SKILL.md`, `references/`
-and `scripts/`. The folder ships inside the `olmoearth_agent` wheel, and
+(catalog #1 in [`docs/Usage.md`](../../../../docs/Usage.md#1-olmoearth-studio-job-config)). Its folder
+holds a `SKILL.md`, `references/` and `scripts/`. The folder ships inside the `olmoearth_agent` wheel, and
 `olmoearth_agent.skills.loader.SkillLoader` reads it by default (`OLMOEARTH_SKILLS_DIR` overrides it).
 
 | Folder | Catalog |
