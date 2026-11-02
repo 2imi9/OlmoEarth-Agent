@@ -41,7 +41,7 @@ writes; the agent's estimation tools compute on arrays and write neither. So:
 - ``olmoearth_verify_certificate`` calls ``certificate.verify`` against a copy
   of the map, and ``certificate.point`` for a window given by its
   ``[row, col]`` on the certificate's window grid, never by coordinates
-  (rule §3.1).
+  (rule 1).
 
 A zone read from a Studio result's own files (``olmoearth_scores_from_studio``)
 is the probability raster the agent decoded from Studio's native file, and

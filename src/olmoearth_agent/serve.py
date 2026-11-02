@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """A thin HTTP bridge that puts the live agent behind the ``webui/`` shell.
 
-This is the seam the ``webui`` README calls for: a small FastAPI app that
+This is the bridge ``docs/Usage.md`` (Web UI) describes: a small FastAPI app that
 serves the static front-end *and* exposes two JSON/SSE endpoints so a
 browser brief runs the real :class:`~olmoearth_agent.harness.LeadAgent`
 instead of the canned demo.

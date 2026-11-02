@@ -56,7 +56,7 @@ are the rank-1 classes, passed beside them (``map_class``).
 
 Coordinates are never accepted or returned: windows are addressed by index
 and by caller-supplied id, so a review set cannot leak geometry into chat
-(operational rule §3.1).
+(operational rule 1).
 """
 
 from __future__ import annotations
@@ -968,7 +968,7 @@ def review_set(
 
     Notes
     -----
-    No coordinates are accepted or emitted (operational rule §3.1).
+    No coordinates are accepted or emitted (operational rule 1).
     """
     if order not in ("confidence", "boundary_first"):
         raise ValueError(

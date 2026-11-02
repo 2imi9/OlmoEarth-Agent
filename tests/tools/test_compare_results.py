@@ -283,7 +283,7 @@ async def test_compare_group_pairwise_and_ensemble(httpx_mock: HTTPXMock) -> Non
     )
     spots = ens["top_disagreement_points"]
     assert spots
-    for spot in spots:  # rule 3.1: a window address, never a coordinate
+    for spot in spots:  # rule 1: a window address, never a coordinate
         assert "lon" not in spot and "lat" not in spot
         assert spot["window_index"] == spot["row"] * 3 + spot["col"]
     assert "shared_extent_bbox" not in out
@@ -340,7 +340,7 @@ async def test_compare_group_validates_id_count() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mode choice, refusals, and rule 3.1 across every mode
+# Mode choice, refusals, and rule 1 across every mode
 # ---------------------------------------------------------------------------
 
 
@@ -540,7 +540,7 @@ _FORBIDDEN = {"lon", "lat", "bbox", "coordinates", "geometry", "shared_extent_bb
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["pair", "group", "series", "ensemble"])
 async def test_no_mode_returns_a_coordinate(mode: str, httpx_mock: HTTPXMock) -> None:
-    """Rule 3.1: windows by (row, col) and index only, in every mode."""
+    """Rule 1: windows by (row, col) and index only, in every mode."""
     offsets = {"ra": 0.0, "rb": 0.3, "rc": 0.6}
     ids = ["ra", "rb"] if mode == "pair" else list(offsets)
     for day, rid in enumerate(ids, start=1):

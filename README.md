@@ -25,11 +25,12 @@ git clone https://github.com/2imi9/OlmoEarth-Agent.git && cd OlmoEarth-Agent
 make setup      # uv sync --all-extras
 ```
 
-- On a cloud API key: `make bridge` serves the live web UI on http://localhost:8088. Pick the provider in
-  **Settings -> LLM backend** and paste its key.
+- On a cloud API key: `make bridge` serves the live web UI on http://localhost:8088. In the status chip's menu (foot
+  of the sidebar), pick the provider under **Agent settings -> Model backend** and paste its key.
 - On the local LLM: `make up` starts it (the first run downloads the model), then the same web UI.
 
-Open the page, paste your Studio key and send a brief. Both keys go with each request; the server does not store them.
+Open the page, paste your Studio key and send a brief. Both keys stay in your browser and go with each request; the
+server does not store them.
 
 From the terminal, on the local LLM:
 
@@ -60,24 +61,29 @@ Ask in plain words; the agent picks the tools. The main questions:
   ensemble's disagreement, with no ground truth.
 
 <details>
-<summary>Every route, with what it needs and what it gives</summary>
+<summary>Every route, with the labels each needs</summary>
 
-| Route | Needs | Gives |
+| Question | Tools | Labels |
 |---|---|---|
-| **Which windows to check first**<br>`olmoearth_review_set`, `olmoearth_review_set_from_result` | A map with scores: a Studio `[0, 1]` score band (another regression band needs a `threshold`), a Studio class map with top-k scores, a direct run's scores, or your own. No labels. | The windows to open first at your review budget, least confident first. Boundary-first is optional. |
-| **How wrong one map is**<br>`olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error` / `olmoearth_certify_zone` | A map with scores and labels on a planned sample. A Studio result is sampled on at most 16 x 16 points (256 windows), so its figures cover those points, not every pixel; reading its own files (below) covers every valid window of the files instead. | The error rate: the interval valid at every sample size first, then the design's (approximate under the default confidence design, exact under a random one). Per-class accuracy where labels name the class, each class's valid interval first, its producer's accuracy beside its user's, and whether the map draws it too little or too much. A random design can certify a zone. |
-| **A Studio class map without top-k scores**<br>`olmoearth_plan_label_sample` (`design='random'` or `'class'`), then `olmoearth_estimate_map_error` | A classification result (classes, no scores) and labels on a random or class-stratified sample. The plan gives olmoearth-inferencex's label budget for a random sample. | The error rate and per-class accuracy, the interval valid at every sample size first. They cover the sampled grid points (at most 16 x 16, one pixel each), not every pixel. No review set, no certified zone. |
-| **A Studio result's own files**<br>`olmoearth_scores_from_studio` | A class map with top-k scores (its prediction submitted with `probability_output`) or a `[0, 1]` score band. | One scores file per UTM zone, pooled from the native-resolution files to windows of `patch` pixels (a window counts when at least half its pixels are valid; pixels past the last whole window are left out and counted as `pixels_outside_window_grid`), for the review set, plan, estimate and certified zone. With no `patch` given, each zone takes the smallest side from 4 up whose windows a ranking takes (at most 200,000). Each zone is its own map, and a certificate on one binds the raster the agent decoded, which Studio's own file is not. |
-| **A direct OlmoEarth run and its certificate**<br>`olmoearth_scores_from_file`, `olmoearth_write_certificate`, `olmoearth_verify_certificate` | `oe-inferencex from-olmoearth`'s `scores_<EPSG>.tif` and `olmoearth_output.json`, or `score_area.py`'s raster and `manifest.json`, with probabilities or logits (class ids are refused). A certificate needs a `seed_from_map` random plan; its labels are fixed once first graded. | Every window of the run, for the review set, estimate and two-map route. Its certified zone in a certificate anyone with the map can recheck; its labels, the map's date and single draw are the issuer's word. It adds no guarantee. |
-| **Which of two maps is more accurate**<br>`olmoearth_plan_label_sample` (`design='disagreement'`; `date_a` / `date_b` date a scores file), then `olmoearth_estimate_map_error` | Two maps of one area and time: two Studio results, or two scores files of one window grid (not class-map rasters). Labels where they differ; the plan advises how many. Different, overlapping or one-sided dates are refused when given; missing dates are noted. Maps of different times are measured each on its own sample. | Which map is more accurate, or neither (exact sign test; the interval past a fifth of the differing windows), and the accuracy difference with a 95% interval. Studio results cover at most 12 x 12 sampled points, not every pixel. |
-| **What labels Studio holds**<br>`olmoearth_studio_label_inventory` | A prediction, model or project id. | The annotations a model's training selector selects now, counted by status, split and class. No error rate: Studio records no random design for them. |
+| Which windows to check first | `olmoearth_review_set`, `olmoearth_review_set_from_result` | none |
+| How wrong one map is | `olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error` | a planned sample |
+| Which part to trust | `olmoearth_certify_zone` | a random sample |
+| A Studio class map without top-k scores | `olmoearth_plan_label_sample` (`design='random'` or `'class'`), then `olmoearth_estimate_map_error` | a random or class sample |
+| A Studio result's own files | `olmoearth_scores_from_studio` | none |
+| A direct run's certificate | `olmoearth_scores_from_file`, `olmoearth_write_certificate`, `olmoearth_verify_certificate` | a `seed_from_map` random sample |
+| Which of two maps is more accurate | `olmoearth_plan_label_sample` (`design='disagreement'`), then `olmoearth_estimate_map_error` | where they differ |
+| What labels Studio holds | `olmoearth_studio_label_inventory` | none |
+| How Studio results differ | `olmoearth_compare_results` | none |
+
+What each needs and gives: [What it checks](docs/Usage.md#what-it-checks).
 
 </details>
 
 - The agent registers 25 tools by default, in 5 skills: configure a Studio job, run and compare predictions, record
   provenance, write a stakeholder report and check a map. All 25 are sent on every turn. See
   [Skills](docs/Usage.md#skills) and [Tools](docs/Usage.md#tools).
-- The verification tools need the `inferencex` extra (olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13);
+- The label plans, error estimates, certified zones, certificates and the readers of a run's or a Studio result's files
+  need the `inferencex` extra (olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13); the review set does not.
   `make setup` installs it.
 
 
@@ -92,8 +98,8 @@ sha256 of the request it answered, so a replay that diverges stops. The project 
 [Claude Code as the model](docs/Usage.md#claude-code-as-the-model).
 
 
-What it checks
---------------
+Answer checks
+-------------
 
 Every tool call goes into a provenance manifest, and tool arguments are checked against each tool's schema. Before an
 answer is shown, the harness checks:
@@ -117,14 +123,13 @@ Example
 ships (southern Peru, 9 June 2019), with no Studio key and no LLM. It writes
 [docs/VERIFICATION_DEMO.md](docs/VERIFICATION_DEMO.md).
 
-- **The map.** 15,813 expert-annotated 40 m windows. Their true error rate is 19.3%, from every window's expert label,
-  which a user does not have. It is not Dynamic World's 10 m accuracy.
-- **The estimates.** 300 random labels give 19.0%, interval 14.8% to 23.9%. 360 class-design labels give 17.4%, valid
-  interval 11.8% to 25.2%. Both cover 19.3%; that is one draw, not evidence of how often such intervals do.
-- **The review set.** At a 5% budget it lists 791 windows to check first. Against every window's expert label (the
-  script's check), they hold 17.5% of the errors; the attainable ceiling is 26.0%.
-- **No certificate.** No zone was certified at alpha 0.1 with 300 labels, so none was written. The certificate round
-  trip and a tampered copy are tested on a synthetic tile.
+- **The map.** 15,813 expert-annotated 40 m windows; 19.3% are wrong (not Dynamic World's 10 m accuracy). The tools
+  saw only the labels their plans drew.
+- **The estimates.** 300 random labels give 19.0% (14.8% to 23.9%); 360 class-design labels give 17.4% (valid
+  interval 11.8% to 25.2%).
+- **The review set.** The 791 windows (5%) it flags first, with no labels, are wrong 67% of the time (532 of 791); a
+  random 5% would be wrong 19% of the time.
+- **No certificate.** No zone was certified at alpha 0.1 with 300 labels, so none was written.
 
 
 Limits

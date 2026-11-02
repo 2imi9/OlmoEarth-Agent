@@ -96,7 +96,7 @@ refused afterwards (:func:`hold_plan_labels`); and
 ``olmoearth_write_certificate`` (:mod:`olmoearth_agent.tools.certificate`)
 packs the zone into a certificate.
 
-Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
+Windows are addressed by index and grid ``(row, col)`` (rule 1); the
 locations a reviewer needs stay in the files.
 
 These package calls run in a worker thread (``asyncio.to_thread``), as

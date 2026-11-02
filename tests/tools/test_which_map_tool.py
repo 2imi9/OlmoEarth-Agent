@@ -379,7 +379,7 @@ async def test_the_plan_gives_the_packages_budget_advice_and_no_coordinates() ->
     assert subset.startswith("write a class, or ? where it cannot be judged")
     winner = plan["forbidden_claims"][0]["why"]
     assert winner.startswith("this plan holds no labels yet")
-    # Rule 3.1: the result holds no location; the reviewer's sheet does.
+    # Rule 1: the result holds no location; the reviewer's sheet does.
     assert not _BANNED_KEYS & _keys(plan)
     with open(plan["labels_csv_path"], encoding="utf-8", newline="") as fh:
         header = next(csv.reader(fh))
@@ -705,7 +705,7 @@ async def test_two_scores_files_of_one_shape_on_other_ground(tmp_path: Path) -> 
     assert moved["ok"] is False
     assert "not of one window grid" in moved["error"]
     assert "window 0 has another centre in each file" in moved["error"]
-    assert "10.5" not in moved["error"]  # rule 3.1: no location in the reply
+    assert "10.5" not in moved["error"]  # rule 1: no location in the reply
 
 
 @pytest.mark.asyncio

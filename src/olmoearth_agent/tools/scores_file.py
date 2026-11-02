@@ -61,7 +61,7 @@ Reading the GeoTIFF needs the optional ``inferencex`` extra (numpy and
 rasterio through ``olmoearth-inferencex[geo]``); without it the tool answers
 with the install line. A raster the package's reader cannot read is a refusal
 (it exits a command-line run; here its message becomes the tool's error). No
-coordinates in the result (rule §3.1): windows are a
+coordinates in the result (rule 1): windows are a
 grid ``(row, col)`` and index; each valid window's location stays in the file,
 for the labelling sheet.
 """

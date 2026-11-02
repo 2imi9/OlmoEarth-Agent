@@ -185,7 +185,7 @@ async def _get_prediction_result(
 ) -> dict[str, Any]:
     """Handler for ``olmoearth_get_prediction_result``.
 
-    ``result_metadata`` is returned without its ``geometry`` (rule §3.1): the
+    ``result_metadata`` is returned without its ``geometry`` (rule 1): the
     extent is raw coordinates, and the tools that need it read it themselves.
     """
     record = await ctx.studio.get_prediction_result(args["result_id"])
@@ -202,7 +202,7 @@ async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
     """Read one prediction result's model output at a single coordinate.
 
     The user supplies the point, so echoing it back with the value is rule
-    §3.1-compliant (no agent-derived geometry is leaked). Off-raster / nodata
+    1 compliant (no agent-derived geometry is leaked). Off-raster / nodata
     / a transient failure resolve to ``available: False`` with a reason rather
     than an exception, so the model gets a clean "no value there" answer.
     """

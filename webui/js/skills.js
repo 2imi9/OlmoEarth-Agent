@@ -44,7 +44,7 @@ const SKILL_TOOLS = {
 };
 
 // What each skill takes in and gives back, for the full-spec detail page.
-// Concise In -> Out, mirroring the "In:/Out:" lines in docs/Usage.md.
+// Concise In -> Out per skill, from docs/Usage.md, Skills.
 const SKILL_IO = {
   1:  { in: 'A free-text task description.', out: 'Studio job-wizard answers (output type, model size, time frame, sources, patch size) + a cross-field validation.' },
   2:  { in: 'A model_id, an AOI (draw it on the map), and a time range; to compare, 2-8 result ids (3-8 of one model over one area for a series, two or more of one quantity for ensemble disagreement).', out: 'A submitted prediction, then result tiles / pixel values (async by reference), and comparisons of results: agreement, a series\' per-step correlation, per-point trajectories and legend-calibrated shifts, or per-window ensemble spread as a confidence.' },

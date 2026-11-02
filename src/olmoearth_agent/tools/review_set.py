@@ -34,7 +34,7 @@ cluster) goes through ``olmoearth_scores_from_file``
 (:mod:`olmoearth_agent.tools.scores_file`), whose scores file these tools
 read.
 
-No coordinates in, no coordinates out (rule §3.1).
+No coordinates in, no coordinates out (rule 1).
 """
 
 from __future__ import annotations
@@ -195,7 +195,7 @@ def read_roots() -> list[str]:
 def write_root() -> Path:
     """Directory the tools write scores and design files to.
 
-    ``OLMOEARTH_SCORES_ROOT`` when set, else the workspace root (rule §3.4's
+    ``OLMOEARTH_SCORES_ROOT`` when set, else the workspace root (rule 4's
     path guard), which :func:`load_json_file` also reads from.
     """
     env = os.environ.get(SCORES_ROOT_ENV)
@@ -484,7 +484,7 @@ CLASSES_NAMED = 10
 
 #: A review list file's columns, in order: the first five always (``row`` and
 #: ``col`` empty without a grid), the rest when the rows have them. Never a
-#: coordinate, and never a caller's own window label (rule §3.1).
+#: coordinate, and never a caller's own window label (rule 1).
 REVIEW_LIST_COLUMNS = ("rank", "window_index", "row", "col", "margin")
 REVIEW_LIST_OPTIONAL = ("score", "predicted_class", "class_name", "boundary_neighbours")
 

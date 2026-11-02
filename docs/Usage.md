@@ -1,8 +1,6 @@
 # Usage
 
-This page is the reference for the OlmoEarth Agent: installing and running it, the questions it answers, its skills
-and tools, the checks on its answers, its rules, its LLM backends, the web UI, its security guards, what is known of
-the Studio API, and how to work on the code. Changes, release by release, are in [CHANGELOG.md](../CHANGELOG.md).
+This page is the reference for the OlmoEarth Agent. Changes are in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Installation
 
@@ -16,11 +14,15 @@ uv sync --all-extras          # what `make setup` runs
 
 The core package needs only `openai` and `httpx`. The extras are `serve` (FastAPI and uvicorn, for the web UI),
 `claude` (`anthropic`, for Claude as the web UI's backend), `inferencex` (`olmoearth-inferencex[geo]` 1.20.3 or later,
-which brings numpy and rasterio, on Python 3.11 to 3.13; for the verification tools of skill #5) and `dev` (pytest,
-ruff, black, mypy, interrogate, pre-commit). Without `inferencex` the verification tools compute nothing and give the
-install line, `pip install 'olmoearth-agent[inferencex]'`; an older olmoearth-inferencex is refused with the upgrade
-line. You also need a Studio API key (Studio UI -> profile -> **API Keys**). The local model needs Docker and an
-NVIDIA GPU ([LLM backends and serving](#llm-backends-and-serving)); the cloud-API path needs neither.
+which brings numpy and rasterio, on Python 3.11 to 3.13) and `dev` (pytest, ruff, black, mypy, interrogate,
+pre-commit). `inferencex` is for skill #5's `olmoearth_scores_from_file`, `olmoearth_scores_from_studio`,
+`olmoearth_plan_label_sample`, `olmoearth_estimate_map_error`, `olmoearth_certify_zone`, `olmoearth_write_certificate`,
+`olmoearth_verify_certificate` and `olmoearth_compare_review`'s reading of dates. Without it they compute nothing and
+give the install line, `pip install 'olmoearth-agent[inferencex]'`; an older olmoearth-inferencex is refused with the
+upgrade line. `olmoearth_review_set`, `olmoearth_review_set_from_result`, `olmoearth_review_budget_ceiling` and the
+rest of `olmoearth_compare_review` need no extra. You also need a Studio API key (Studio UI -> profile ->
+**API Keys**). The local model needs Docker and an NVIDIA GPU ([LLM backends and serving](#llm-backends-and-serving));
+the cloud-API path needs neither.
 
 ## Quick start
 
@@ -32,9 +34,10 @@ make bridge     # cloud API: the live web UI on http://localhost:8088, no local 
 make up         # or a local model: start the LLM (the first run downloads about 17.7 GB), then the web UI
 ```
 
-Open http://localhost:8088 and paste your Studio key. For a cloud API, open **Settings -> LLM backend**, pick Claude,
-ChatGPT or Gemini and paste its key. Send a brief. From the terminal, against the local model: set
-`OLMOEARTH_API_KEY`, then `make serve && make agent` (a sample brief; your own with `Q="..."`).
+Open http://localhost:8088 and paste your Studio key. For a cloud API, open the status chip's menu (foot of the
+sidebar), **Agent settings -> Model backend**, pick Claude, ChatGPT or Gemini and paste its key. Send a brief. From the
+terminal, against the local model: set `OLMOEARTH_API_KEY`, then `make serve && make agent` (a sample brief; your own
+with `Q="..."`).
 
 | Target | What it does |
 |---|---|
@@ -89,10 +92,8 @@ The settings ([.env.example](../.env.example) lists the main ones):
 | What labels Studio holds | `olmoearth_studio_label_inventory` | A prediction, model or project id | The annotations a model's training selector selects now, by status, split and class; no error rate, as Studio records no random design for them |
 | How Studio results differ | `olmoearth_compare_results` | 2 to 8 result ids | A pair, a group, a series over dates or an ensemble's disagreement, with no ground truth |
 
-On one kelp result the 16 x 16 grid held 7 valid windows; its own files gave 2,468 and 2,837 windows in its two zones
-at patch 11. Maps of different times are measured each on its own sample. Not built, by decision: data catalogs,
-basemaps and layer styling, STAC or Earth Engine fetches, embedding fetches and label-free change maps; Google Earth
-and Ai2's own tools do these, and this agent verifies their outputs.
+Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
+styling, STAC or Earth Engine fetches, embedding fetches and label-free change maps.
 
 ## Skills
 
@@ -220,7 +221,9 @@ embeddings probe, any exported softmax), or:
   names no model or classes, so classes are `class_0` and on) or what the research record's
   [`score_area.py`](https://github.com/2imi9/olmoearth_inferenceX-record/blob/main/scripts/score_area.py) writes
   (`scores.tif`, `manifest.json`). It pools to windows of `patch` pixels (4 by default; a window counts when half its
-  pixels are valid) with the package's `assess_prediction`, so the review set and label plans match the package's.
+  pixels are valid; pixels past the last whole window are left out and counted as `pixels_outside_window_grid`) with
+  the package's `assess_prediction`, so the review set and label plans match the package's.
+  A window's confidence is its mean top-1 minus top-2 margin for logits, its mean top-1 probability for probabilities.
   A label-fill channel the manifest marks (AWF's channel 9) is left out unless `include_fill_class`. Refused: a link or
   manifest pointing outside the root, a raster whose sha256 is not the manifest's, class ids (with how to get
   probabilities: `output_probs: true`, a float32 layer, the fine-tuned checkpoint) and the rslearn dataset itself.
@@ -257,7 +260,8 @@ with far fewer labels than a whole-map sample and no scores. `design='disagreeme
 (`result_id`, `result_id_b`; at most 12 points a side; a `[0, 1]` score cut at 0.5, another regression band only with
 a `threshold`) or two scores files of one grid (`scores_path`, `scores_path_b`). Dates come from the predictions or
 `date_a` and `date_b`: different, overlapping or one-sided dates are refused, since a difference can be change on the
-ground. It draws windows at random where the maps differ, with `plan.plan_which_map`'s budget for a `difference`
+ground. Missing dates are noted: a window where the maps differ is an error in one map only if both show one time. It
+draws windows at random where the maps differ, with `plan.plan_which_map`'s budget for a `difference`
 (0.05). The reviewer writes the class seen, or `?`. The estimate names the more accurate map or neither, by the exact
 sign test while the labels are at most a fifth of the differing windows and by the interval past that, with the 95%
 interval on a minus b. The answer must state the test or interval and the labels; naming a map without its grading is
@@ -275,8 +279,9 @@ guarantee, the zone as a GeoTIFF mask, the labels and digests binding them to th
    `rule` without `seed_from_map` are refused.
 2. The labels first graded on the plan are fixed in its sheet; other labels later are refused (rule 11).
 3. `olmoearth_write_certificate`, with those labels and the map's `date` (default: a `score_area.py` manifest's date
-   window), runs `oe-inferencex certify`, checks it gives the windows `olmoearth_certify_zone` gives, and builds and
-   verifies the bundle. No zone, no certificate; never a second one.
+   window; a `from-olmoearth` run records none, so pass `date`), runs `oe-inferencex certify`, checks it gives the
+   windows `olmoearth_certify_zone` gives, and builds and verifies the bundle. No zone, no certificate; never a second
+   one.
 4. `olmoearth_verify_certificate` checks it against a copy of the map under the scores root (`map_path` when the
    certificate names its map elsewhere); against the very file it names, it shows only that the two agree. `window`
    `[row, col]` asks whether a window is in the zone.
@@ -296,7 +301,7 @@ event a no-model NDWI control matched confidence; and scores that order a review
 
 ## Tools
 
-The agent registers 25 tools by default (`skills/registry.py`). All 25 are sent on every turn; none is opt-in.
+The agent registers 25 tools by default (`skills/registry.py`). All 25 are sent on every turn.
 
 | Tool | What |
 |---|---|
@@ -338,7 +343,7 @@ The model reads the brief and calls a tool; the harness runs it (its arguments c
 feeds the result back and repeats until the model answers. The system prompt is the soul (`harness/soul.md`) plus a
 capability card built from the tools' code: what each tool does, needs and cannot do (`harness/capabilities.py`). A
 large result goes to a workspace file. At the turn cap the last tools run, then one call without tools asks for an
-answer. From a tool's second alike failure in a run, its envelope tells the model to stop retrying and report the limit.
+answer. When a tool fails the same way twice in a run, its result tells the model to stop retrying and report the limit.
 
 Before an answer is shown, the harness checks (`harness/checks.py`) its numbers against the tool results and the
 user's messages; its directions, places and magnitudes against the facts the tools computed; its claims of files saved
@@ -351,8 +356,8 @@ most two more model calls).
 
 ## Operational rules
 
-The harness enforces these. They keep their numbers so code comments can cite them; the numbers not listed are
-retired.
+The harness enforces these. They keep their numbers so code comments can cite them as rule N; the numbers not listed
+are retired. One tool result and one tool schema still write rule 1 as "rule 3.1".
 
 **Rule 1. No raw coordinates in chat.** Never output lat/lon, WKT or full GeoJSON in a conversational response; save it
 to a file and give the path. Tools name windows and cells by `(row, col)` and index
@@ -373,8 +378,7 @@ pipeline code. The studio-job-config package's `scripts/recommend.py` is the use
   `tools/review_set.write_root`: `OLMOEARTH_SCORES_ROOT` when set, else the workspace root), so a `../../` or absolute
   name cannot write outside it. The model-chosen read paths (`scores_path`, `design_path`, `labels_path`,
   `certificate_path`, `map_path`) are confined by `tools/review_set.read_roots`: `OLMOEARTH_SCORES_ROOT` when set, else
-  the working directory plus the workspace root. The workspace root is `OLMOEARTH_OUTPUT_ROOT` if set, else
-  `<cwd>/olmoearth_outputs`.
+  the working directory plus the workspace root.
 
 **Rule 8. Studio quota awareness.** Studio caps API keys at 10 per account; never create or rotate keys from code.
 
@@ -387,8 +391,7 @@ its plan, and a `seed_from_map` plan's sheet never takes other labels than those
 
 **Rule 13. Provenance manifest.** Every tool call writes a `ProvenanceManifest` entry through
 `ProvenanceLog.record_tool_call` (`provenance/log.py`). The verification calls are also kept whole
-(`ProvenanceLog.verification`), and skill #4's report states their numbers from them. The log is one request's; on the
-web UI each message is a request with a fresh log.
+(`ProvenanceLog.verification`), and skill #4's report states their numbers from them.
 
 ## LLM backends and serving
 
@@ -413,39 +416,30 @@ once; `scripts/serve-llm.sh` sets `HF_CACHE_DIR` (default `$HF_HOME`, else `~/.c
 `C:/Users/<you>/...` form on Windows; from PowerShell or cmd pass it yourself). `HF_PROXY` (as
 `http://host.docker.internal:<port>`) is for a first download behind a host proxy; `HF_TOKEN` only for a gated repo.
 
-**Hardware.** An NVIDIA GPU, Blackwell recommended, with the NVIDIA container toolkit. The GGUF fits a 24 GB card
-(checked on an RTX 5090 Laptop) with about 5 GB for the KV cache; `UD-Q4_K_S` (20.9 GB) is tight and `UD-Q4_K_M`
-(22.1 GB) too tight. NVFP4 weights (about 20 GB) leave no KV room on 24 GB, so the laptop path is llama.cpp and GGUF.
+**Hardware.** An NVIDIA GPU, Blackwell recommended, with the NVIDIA container toolkit. The GGUF fits a 24 GB card with
+about 5 GB for the KV cache; larger 4-bit quants and NVFP4 weights leave too little.
 
 **Defaults.** Each chat sends `chat_template_kwargs.preserve_thinking=True`, which keeps thinking across turns, and the
 `thinking_general` preset (temperature 1.0, top_p 0.95, top_k 20, presence penalty 1.5). `llm/presets.py` holds the
 model card's presets (`thinking_general`, `thinking_coding`, `instruct_general`, `instruct_reason`) and the claim
 check's `instruct_verify`; the rewrite uses `thinking_coding`. The timeout is 600 s, the output budget 32,768 tokens.
 
-**Cloud API.** Web UI, Settings -> LLM backend: Claude (the native Anthropic SDK; `uv sync --extra claude`), ChatGPT
-or Gemini (the OpenAI-compatible client). The key goes to the provider with each request (`X-LLM-Backend`,
-`X-LLM-Key`, optional `X-LLM-Model`) and is never stored or logged on the server; `GET /api/llm/models` lists the
-provider's models. If the local backend is chosen and no local model answers, the UI says so.
+**Cloud API.** Web UI, Agent settings -> Model backend: Claude (the native Anthropic SDK; `uv sync --extra claude`),
+ChatGPT or Gemini (the OpenAI-compatible client). The key goes to the provider with each request (`X-LLM-Backend`,
+`X-LLM-Key`, optional `X-LLM-Model`); `GET /api/llm/models` lists the provider's models. If the local backend is
+chosen and no local model answers, the UI says so.
 
-**A GPU cluster with vLLM.** `nvidia/Qwen3.8-27B-NVFP4` under vLLM ran the agent end to end through the web UI on one
-RTX PRO 6000, and on a B200: about 3.5 minutes to start, about 63 tokens/s on one stream with reasoning. A
-pip-installed vLLM failed on nodes without a CUDA toolkit (FlashInfer needs `nvcc`); the vLLM OpenAI container under
-Apptainer (`apptainer exec --nv <image>.sif vllm serve ...`) worked. In the job:
+**A GPU cluster with vLLM.** Any OpenAI-compatible server works through `LLM_ENDPOINT`, `LLM_MODEL` and `LLM_API_KEY`,
+the only model settings the agent reads. `nvidia/Qwen3.8-27B-NVFP4` under vLLM has run the agent end to end:
 
 ```bash
-export VLLM_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 vllm serve nvidia/Qwen3.8-27B-NVFP4 --port 8000 --max-model-len 65536 --kv-cache-dtype fp8_e4m3 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3
 ```
 
-`qwen3_coder` turns the model's `<function=...>` blocks into OpenAI `tool_calls`; `qwen3` keeps the thinking out of the
-answer; the FP8 KV cache fits the long context. vLLM listens on all interfaces, so `VLLM_API_KEY` makes it answer only
-with that bearer token; keep it out of the repository, logs and chat. Forward the port through the login host
-(`ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes -L 8000:<compute-node>:8000 <user>@<login-host>`, in a
-loop that reconnects: `while true; do ssh ...; sleep 5; done`), set `LLM_ENDPOINT=http://localhost:8000/v1`,
-`LLM_MODEL=nvidia/Qwen3.8-27B-NVFP4` and `LLM_API_KEY` to the token, and run `make bridge`. The agent reads `LLM_*`
-only; `VLLM_API_KEY` is the server's own. The web UI's "local model is not up" note probes without the key, so it can
-show while the model answers. When the job ends the model goes mid-conversation.
+Where the nodes lack `nvcc`, use the vLLM OpenAI container under Apptainer. vLLM listens on all interfaces: set
+`VLLM_API_KEY` to a random token, pass the same token as `LLM_API_KEY`, and keep it out of the repository, logs and
+chat. Forward port 8000 through the login host and run `make bridge`.
 
 ## Claude Code as the model
 
@@ -476,12 +470,10 @@ tools' specs when they change. Use only argument names the specs declare: an und
 
 From the Mac, [`scripts/oe-bridge.sh`](../scripts/oe-bridge.sh) runs each command as one `ssh <host> srun` step:
 `begin RUN BRIEF.txt [MAX_TURNS] [--text]`, `step RUN [RESPONSE.json] [--call N] [--text]`, `show RUN [--text]`,
-`prompt`, `tools [RUN]`. Briefs and responses go over ssh's stdin, through no shell. The host is `OE_BRIDGE_HOST`
-(`aicr`); `AGENT_DIR`, `RUNS` and `OUTPUTS` are set at the top. The Studio key is read on the cluster from
-`~/.config/olmoearth-agent/studio.env`; without it the command stops. The wrapper is read-only by default; only the
-owner sets `OE_BRIDGE_ALLOW_WRITES=1`, for a key that can write, and a step with another setting than `begin`'s is
-refused. Each srun step is the cpu partition, 2 CPUs, 8G, 20 minutes, QOS `interactive` (`OE_BRIDGE_QOS` to change);
-a step took 5 to 9 s from the Mac and costs more as the run grows, since it replays from the start. The skills
+`prompt`, `tools [RUN]`. Briefs and responses go over ssh's stdin, through no shell. The Studio key is read on the
+cluster from `~/.config/olmoearth-agent/studio.env`. It is read-only unless `OE_BRIDGE_ALLOW_WRITES=1`, and a step with
+another setting than `begin`'s is refused. The script's header sets the host (`OE_BRIDGE_HOST`), the paths, the srun
+resources and `OE_BRIDGE_QOS`. Each step replays from the start, so it slows as the run grows. The skills
 [`olmoearth-agent-model`](../.claude/skills/olmoearth-agent-model) and
 [`olmoearth-agent-bridge`](../.claude/skills/olmoearth-agent-bridge) say how to play the model and run the bridge.
 
@@ -504,12 +496,14 @@ the bridge, the page stays a demo. `make bridge` (`olmoearth-agent-serve`; `--ho
 default) serves it as the live agent: a multi-turn chat with saved history, your Studio projects as a tree (project,
 model, predictions, results), and briefs streamed through `LeadAgent.run_stream` as Server-Sent Events.
 
-- **Keys.** The Studio key ("Add API key") stays in the browser's localStorage and goes with each request in
-  `X-Olmoearth-Key` (or `Authorization: Bearer`); the bridge forwards it and never stores it. It reads no key from the
-  environment.
-- **Agent settings.** Max steps per run, 1 to 12 (8 by default). LLM backend: Local, Claude, Gemini or ChatGPT, each
-  with its key and a detected model. Auto-route: a short read-only lookup runs on the local model instead of the hosted
-  one (`X-LLM-Route: auto`, `llm/router.py`); it only ever moves a run to the local model.
+- **Keys.** The Studio key ("Add API key"), each LLM provider's key and the chat history stay in the browser's
+  localStorage. The Studio key goes with each request in `X-Olmoearth-Key` (or `Authorization: Bearer`) and a
+  provider's key in `X-LLM-Key`; the bridge forwards them. It reads no Studio or provider key from the environment,
+  only the local model's `LLM_*` settings.
+- **Agent settings** (the status chip's menu, foot of the sidebar). Max steps per run: 4, 6, 8, 10 or 12 (8 by default;
+  the server accepts 1 to 12). Model backend: Local, Claude, Gemini or ChatGPT, each with its key and a detected model.
+  Auto-route: a short read-only lookup runs on the local model instead of the hosted one (`X-LLM-Route: auto`,
+  `llm/router.py`); it only ever moves a run to the local model.
 - **In the chat.** `/` opens a menu of the 5 skills and pins the run to one. Text files and PDFs can be attached (the
   local model cannot read images). The area tool shows a map to draw on. Saved results (comparisons, the report as
   Markdown) stay in the sidebar. The workflow rail shows once a run calls a pipeline tool, with the stages reached
@@ -526,8 +520,7 @@ model, predictions, results), and briefs streamed through `LeadAgent.run_stream`
 | `POST /api/run` | a brief as SSE; body `{"brief", "max_turns"?, "history"?, "forced_skill"?}` |
 
 The page has no build step: `index.html`, `styles.css` (tokens at `:root`) and ES modules under `js/` (`main.js` the
-entry, `api.js` every bridge call). Below 880 px the sidebar collapses. Its look follows Ai2's Asta (dark teal,
-cream, Manrope) with OlmoEarth pink as the accent.
+entry, `api.js` every bridge call).
 
 ## Security
 
@@ -535,9 +528,9 @@ Rule 4 states the guards. The egress allowlist: `studio` is `olmoearth.allenai.o
 `api.anthropic.com`, `api.openai.com` and `generativelanguage.googleapis.com`; `llm-local` is loopback only. `audit`
 logs an unknown host and `enforce` refuses it; the guard resolves no DNS, so the allowlist is the main control, and it
 covers the agent's own calls, not the child process. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`. The web
-UI's Studio and LLM keys are sent per request and never stored or logged; a hosted backend's endpoint is checked
-before its key is used. A result's `download_token` is a credential, masked in every error. The workspace root is not
-the working directory, so a written file cannot overwrite served code.
+UI's Studio and LLM keys stay in the browser and go with each request; the bridge never stores or logs them; a hosted
+backend's endpoint is checked before its key is used. A result's `download_token` is a credential, masked in every
+error. The workspace root is not the working directory, so a written file cannot overwrite served code.
 
 ## Studio API notes
 
@@ -593,12 +586,10 @@ if an AI tool helped substantially, and be able to explain and have tested what 
 
 **Pitfalls.**
 
-- Geometry goes to a file, never into chat (rule 1); Studio jobs are polled, never awaited (rule 9); the agent runs
-  no code the model writes (rule 4); never rotate Studio keys from code (rule 8).
 - Every tool a catalog row lists is in the default registry; only `OLMOEARTH_READ_ONLY` leaves tools out
-  (`tools/registry.opted_in`). `/users/me` does not show a key's access. A `download_token` is a credential: never in
-  a result, manifest, log or fixture.
-- A change that breaks a rule updates the rule and its test, beside the tool it guards. A behaviour of the loop is a
+  (`tools/registry.opted_in`). A `download_token` is a credential: never in a result, manifest, log or fixture.
+- A change to the tools or the rules updates this page in the same PR. A change that breaks a rule updates the rule
+  and its test, beside the tool it guards; a new rule comes with its test in the same PR. A behaviour of the loop is a
   middleware (`harness/middleware.py`, LangChain 1.x's hooks), not code in the loop, which is a single agent shaped
   after [DeerFlow v2](https://github.com/bytedance/deer-flow)'s lead agent without subagents or LangGraph.
 - The model name, server, quant and `LLM_*` defaults repeat in `.env.example`, `docker/llama.compose.yml`,
@@ -616,5 +607,3 @@ claim carries a real URL; an unverified one says so.
 [`src/olmoearth_agent/skills/packages/`](../src/olmoearth_agent/skills/packages/), moved from the frozen
 [`2imi9/OlmoEarth-Skills`](https://github.com/2imi9/OlmoEarth-Skills), so edits land here. It keeps its MIT licence;
 the folder's `README.md` records the changes since the move.
-
-When in doubt, open a draft PR with the question in the body.
