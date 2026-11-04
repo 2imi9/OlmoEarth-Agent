@@ -572,6 +572,19 @@ See [Development](docs/Usage.md#development) for the convention.
   the code.
 
 ### Changed
+- **A which-map grade says it grades these two maps, not their models.**
+  Its `must_state` adds "This grades these two maps on these windows; it
+  does not rank the models that made them on other areas, dates or training
+  runs." (`statistical_rules.MAPS_NOT_MODELS`), after the verdict and the
+  not-either-accuracy sentence. A map is one training run and one
+  prediction (Corley et al. 2026, arXiv 2605.12678, R4); in
+  olmoearth-inferencex's record a head redraw moved 2 to 4% of windows
+  (exp57) and a library upgrade 14 of 259 points (exp111).
+  - Within the contract's three sentences, a grade of maps with unstated
+    dates keeps the dates sentence instead, and a Studio grade leaves out
+    its grid points, which its plan states. Usage says the same in one
+    clause.
+  - Test: `tests/tools/test_which_map_tool.py`.
 - **The Studio client follows the live API of 31 October 2026, as probed
   with a read-only key** (`studio/client.py`).
   - Searches filter on the server: predictions by `project_id` and

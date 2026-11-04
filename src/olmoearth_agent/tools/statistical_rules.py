@@ -1064,6 +1064,16 @@ NOT_EITHER_ACCURACY = (
     "needs a random sample of each map."
 )
 
+#: Stated with a two-map grade: a map is one training run and one
+#: prediction, so its verdict ranks no model (Corley et al. 2026, arXiv
+#: 2605.12678, R4: no gain claimed inside run-to-run variation; in
+#: olmoearth-inferencex's record a head redraw moved 2 to 4% of windows,
+#: exp57, and a library upgrade 14 of 259 points, exp111).
+MAPS_NOT_MODELS = (
+    "This grades these two maps on these windows; it does not rank the models "
+    "that made them on other areas, dates or training runs."
+)
+
 
 def more_accurate_without_labels(n_disagree: int, n_population: int) -> dict[str, str]:
     """A two-map plan holds no labels, so it names no more accurate map.

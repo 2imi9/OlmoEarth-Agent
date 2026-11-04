@@ -4402,11 +4402,21 @@ async def _plan_two_maps(
     )
 
 
-def _two_map_scope(studio: bool, dates: dict[str, Any], n_compared: Any) -> list[str]:
-    """What a two-map plan or grade covers: unstated dates, and a Studio grid's points."""
+def _two_map_scope(
+    studio: bool, dates: dict[str, Any], n_compared: Any, *, graded: bool = False
+) -> list[str]:
+    """What a two-map plan or grade covers: unstated dates, and a Studio grid's points.
+
+    A grade also says it grades these two maps, not the models that made
+    them (``rules.MAPS_NOT_MODELS``), after the dates and before the grid's
+    points: beside the verdict and ``rules.NOT_EITHER_ACCURACY``, the
+    contract's three sentences keep it whenever the dates were given.
+    """
     said: list[str] = []
     if dates.get("status") == "unstated":
         said.append(UNSTATED_DATES_MUST_STATE)
+    if graded:
+        said.append(rules.MAPS_NOT_MODELS)
     if studio:
         said.append(
             f"The comparison covers the {n_compared} sampled grid points where both "
@@ -4551,7 +4561,8 @@ def _grade_two_maps(
     ``references_outside_the_maps_classes`` fact; references that all lie
     outside the maps' classes are refused). The answer's contract: the
     ``which_map`` fact, the verdict sentence with its test or interval and
-    its labels (``rules.which_map_must_state``), and no map named more
+    its labels (``rules.which_map_must_state``), that it grades these two
+    maps and ranks no model (``rules.MAPS_NOT_MODELS``), and no map named more
     accurate beyond what the package names (``more_accurate_without_its_test``).
     """
     sample = design["sample"]
@@ -4639,6 +4650,9 @@ def _grade_two_maps(
             "maps differ name neither map, so neither may be called more "
             "accurate, better or right from them"
         )
+    # Within the contract's cap of three, the last are left out: a Studio
+    # grade's grid points (its plan states them) and, with unstated dates,
+    # rules.MAPS_NOT_MODELS.
     must_state = [
         rules.which_map_must_state(res),
         rules.NOT_EITHER_ACCURACY,
@@ -4646,8 +4660,9 @@ def _grade_two_maps(
             bool(population.get("studio")),
             population.get("dates") or {},
             res.get("n_population"),
+            graded=True,
         ),
-    ]
+    ][:MUST_STATE_MAX]
     facts = [_which_map_fact(res)]
     if outside:
         facts.append(

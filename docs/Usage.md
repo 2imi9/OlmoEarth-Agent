@@ -265,7 +265,8 @@ draws windows at random where the maps differ, with `plan.plan_which_map`'s budg
 (0.05). The reviewer writes the class seen, or `?`. The estimate names the more accurate map or neither, by the exact
 sign test while the labels are at most a fifth of the differing windows and by the interval past that, with the 95%
 interval on a minus b. The answer must state the test or interval and the labels; naming a map without its grading is
-forbidden, and the check reads a map named by its letter. It says which map is better, not either map's accuracy.
+forbidden, and the check reads a map named by its letter. It says which map is better on these windows, not either
+map's accuracy, nor which model is better on other areas, dates or training runs.
 
 #### A certificate anyone with the map can check
 

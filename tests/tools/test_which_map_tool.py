@@ -591,6 +591,36 @@ async def test_the_answer_states_the_test_and_the_number_of_labels() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_grade_says_it_grades_these_maps_not_their_models() -> None:
+    """A map is one training run and one prediction (Corley et al. 2026, R4):
+    the grade states it grades these two maps on these windows, and an answer
+    that says so in its own words passes the must_state check."""
+    plan = await _plan(20)
+    assert rules.MAPS_NOT_MODELS not in plan["must_state"]
+    idx = _design(plan)["sample"]["indices"]
+    args = {
+        "design_path": plan["design_path"],
+        "reference": [_truth(*_window(i)) for i in idx],
+    }
+    graded = (await _call(GRADE, args))["result"]
+    # After the verdict and NOT_EITHER_ACCURACY, before the Studio grid's
+    # points, which the contract's three sentences leave to the plan.
+    assert graded["must_state"] == [
+        rules.which_map_must_state(graded),
+        rules.NOT_EITHER_ACCURACY,
+        rules.MAPS_NOT_MODELS,
+    ]
+    run = RunEvidence(tools=[_record(GRADE, args, graded)])
+    lacking = check_must_state(f"{GRADE} says map a is more accurate.", run)
+    assert rules.MAPS_NOT_MODELS in [v["text"] for v in lacking]
+    said = (
+        f"{GRADE} grades these two maps on these windows only; it does not rank "
+        "the models behind them on other areas, dates or training runs."
+    )
+    assert rules.MAPS_NOT_MODELS not in [v["text"] for v in check_must_state(said, run)]
+
+
+@pytest.mark.asyncio
 async def test_a_two_map_grade_takes_classes_not_wrong() -> None:
     plan = await _plan(4)
     path = plan["design_path"]
