@@ -4562,8 +4562,9 @@ def _grade_two_maps(
     outside the maps' classes are refused). The answer's contract: the
     ``which_map`` fact, the verdict sentence with its test or interval and
     its labels (``rules.which_map_must_state``), that it grades these two
-    maps and ranks no model (``rules.MAPS_NOT_MODELS``), and no map named more
-    accurate beyond what the package names (``more_accurate_without_its_test``).
+    maps and ranks no model (``rules.MAPS_NOT_MODELS``, when the maps' dates
+    were given), and no map named more accurate beyond what the package
+    names (``more_accurate_without_its_test``).
     """
     sample = design["sample"]
     indices = [int(i) for i in sample["indices"]]

@@ -594,7 +594,7 @@ async def test_the_answer_states_the_test_and_the_number_of_labels() -> None:
 async def test_the_grade_says_it_grades_these_maps_not_their_models() -> None:
     """A map is one training run and one prediction (Corley et al. 2026, R4):
     the grade states it grades these two maps on these windows, and an answer
-    that says so in its own words passes the must_state check."""
+    that keeps its key terms passes the must_state check."""
     plan = await _plan(20)
     assert rules.MAPS_NOT_MODELS not in plan["must_state"]
     idx = _design(plan)["sample"]["indices"]
@@ -696,6 +696,19 @@ async def test_two_scores_files_of_one_grid_and_their_dates(tmp_path: Path) -> N
     # No date given: read as unstated, and said.
     assert plan["dates"]["status"] == "unstated"
     assert UNSTATED_DATES_MUST_STATE in plan["must_state"]
+    # Graded, the dates sentence keeps its place in the contract's three, so
+    # rules.MAPS_NOT_MODELS is the one left out.
+    idx = _design(plan)["sample"]["indices"]
+    graded = await _call(
+        GRADE,
+        {"design_path": plan["design_path"], "reference": [str(a[i]) for i in idx]},
+    )
+    assert graded["ok"] is True, graded
+    assert graded["result"]["must_state"] == [
+        rules.which_map_must_state(graded["result"]),
+        rules.NOT_EITHER_ACCURACY,
+        UNSTATED_DATES_MUST_STATE,
+    ]
     june = {"date_a": "2024-06-01", "date_b": "2024-06-01"}
     same = await _call(PLAN, {**files, **june})
     assert same["result"]["dates"]["status"] == "same_time"
