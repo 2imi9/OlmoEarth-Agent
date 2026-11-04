@@ -591,20 +591,44 @@ async def test_the_answer_states_the_test_and_the_number_of_labels() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_grade_says_it_grades_these_maps_not_their_models() -> None:
+async def test_the_grade_says_it_grades_these_maps_not_their_models(
+    tmp_path: Path,
+) -> None:
     """A map is one training run and one prediction (Corley et al. 2026, R4):
-    the grade states it grades these two maps on these windows, and an answer
-    that keeps its key terms passes the must_state check."""
-    plan = await _plan(20)
+    a grade of two dated scores files states it grades these two maps on these
+    windows, and an answer that keeps its key terms passes the must_state
+    check. What the figures cover comes first in the contract's three, so a
+    Studio grade keeps its grid points instead."""
+    studio = await _plan(20)
+    idx = _design(studio)["sample"]["indices"]
+    studio_args = {
+        "design_path": studio["design_path"],
+        "reference": [_truth(*_window(i)) for i in idx],
+    }
+    out = await _call(GRADE, studio_args)
+    assert rules.MAPS_NOT_MODELS not in out["result"]["must_state"]
+    assert out["result"]["must_state"][2].startswith("The comparison covers the ")
+    a = [0, 0, 1, 1, 2, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 1]
+    b = [0, 1, 1, 2, 2, 0, 0, 1, 1, 0, 1, 0, 0, 2, 1, 1]
+    files = {
+        "scores_path": _scores_file(tmp_path / "a.json", a, [4, 4]),
+        "scores_path_b": _scores_file(tmp_path / "b.json", b, [4, 4]),
+        "budget": 4,
+        "seed": 3,
+        "design": "disagreement",
+        "date_a": "2024-06-01",
+        "date_b": "2024-06-01",
+    }
+    planned = await _call(PLAN, files)
+    assert planned["ok"] is True, planned
+    plan = planned["result"]
     assert rules.MAPS_NOT_MODELS not in plan["must_state"]
     idx = _design(plan)["sample"]["indices"]
     args = {
         "design_path": plan["design_path"],
-        "reference": [_truth(*_window(i)) for i in idx],
+        "reference": [str(a[i]) for i in idx],
     }
     graded = (await _call(GRADE, args))["result"]
-    # After the verdict and NOT_EITHER_ACCURACY, before the Studio grid's
-    # points, which the contract's three sentences leave to the plan.
     assert graded["must_state"] == [
         rules.which_map_must_state(graded),
         rules.NOT_EITHER_ACCURACY,

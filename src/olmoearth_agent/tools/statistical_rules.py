@@ -1064,9 +1064,9 @@ NOT_EITHER_ACCURACY = (
     "needs a random sample of each map."
 )
 
-#: Stated with a two-map grade when the maps' dates were given (with
-#: unstated dates the dates sentence takes its place in the contract's
-#: three): a map is one training run and one prediction, so its verdict
+#: Stated with a two-map grade of dated scores files (with unstated dates or
+#: Studio results, the dates or grid-points sentence takes its place in the
+#: contract's three): a map is one training run and one prediction, so its verdict
 #: ranks no model (Corley et al. 2026, arXiv 2605.12678, R4: no gain claimed
 #: inside run-to-run variation; in olmoearth-inferencex's record reseeding a
 #: probe moved 0.2 to 1.3% of windows, exp83 and exp66, another crop offset

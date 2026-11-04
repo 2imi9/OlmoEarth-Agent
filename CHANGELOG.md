@@ -581,17 +581,17 @@ See [Development](docs/Usage.md#development) for the convention.
   olmoearth-inferencex's record reseeding a probe moved 0.2 to 1.3% of
   windows (exp83, exp66), another crop offset or backbone version 2 to 4%
   (exp57) and a library upgrade 14 of 259 points (exp111).
-  - Within the contract's three sentences, a grade of maps with unstated
-    dates keeps the dates sentence instead, and a Studio grade leaves out
-    its grid points, which its plan states. Usage says the same in one
-    clause.
+  - Within the contract's three sentences, what the figures cover comes
+    first: a grade of maps with unstated dates keeps the dates sentence, and
+    a Studio grade its grid points, instead of this one. Usage says the same
+    in one clause.
   - Once olmoearth-inferencex's `note` carries its own version of this
     limit (its which-map-scope change, not yet released), the case
     narrative's which-map section prints both (the enforced sentence and the
     package's note as written), as it already does for the
     not-either-accuracy sentence.
-  - Test: `tests/tools/test_which_map_tool.py`, on a Studio grade and on a
-    grade of two scores files with unstated dates.
+  - Test: `tests/tools/test_which_map_tool.py`, on a Studio grade, on a
+    grade of two dated scores files and on one with unstated dates.
 - **The Studio client follows the live API of 31 October 2026, as probed
   with a read-only key** (`studio/client.py`).
   - Searches filter on the server: predictions by `project_id` and
