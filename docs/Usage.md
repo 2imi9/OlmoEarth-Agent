@@ -99,6 +99,16 @@ A Studio result is sampled on at most 16 x 16 points; its own files (`scores_fro
 Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
 styling, STAC or Earth Engine fetches, embedding fetches and label-free change maps.
 
+Each check writes a figure of its determination beside its files (`figure_path`, an SVG with no plotting dependency)
+and returns its legend (`figure_caption`), written from the result's own numbers. Panel (a) is the window grid by row
+and column, with no coordinates, and what the determination used marked on it: the review set, the drawn windows, each
+label right or wrong, the certified zone, or where two maps differ and which side each label took. Panel (b), where the
+answer rests on one, is the error rate with its intervals, each level's upper bound as the rule decided it, or the
+labels' counts. Tied confidences share a shade, and a grid over 420 windows a side is drawn in blocks. The web UI shows
+the figure and caption under the answer (the SVG goes to the browser, not to the model); the command line prints the
+path and the caption. With a figure, the answer gives the result with its interval or verdict and what it assumes, and
+does not restate the figure. A review set ordered boundary-first has no figure.
+
 ## Skills
 
 The agent ships 5 skills, by workflow stage. The first is an instruction package that `olmoearth_load_skill` loads on

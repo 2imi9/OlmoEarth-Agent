@@ -10,6 +10,31 @@ See [Development](docs/Usage.md#development) for the convention.
 ## [Unreleased]
 
 ### Added
+- **Every check comes with a figure of its determination.**
+  `reporting/figures.py` draws, from the run's own data and with no
+  plotting dependency, one SVG per determination, and a caption written
+  from the result's numbers as a figure legend: (a) the window grid by
+  row and column (no coordinates) with what the determination used
+  marked on it, (b) where the answer rests on one, the interval, the
+  levels tested or the counts. `olmoearth_review_set` and
+  `_from_result` (the review set in amber on the confidence-rank grid;
+  none for a boundary-first order), the one-map plan, the estimate (each
+  label right or wrong, the error rate with its intervals),
+  `olmoearth_certify_zone` (the zone, and each level's upper bound
+  coloured by the rule's own decision, since a multi-level rule can
+  refuse a bound below alpha) and the two-map plan and grade (where the
+  maps differ, kept in the design file as `differ` and `not_compared`,
+  and the side each label took) return `figure_path` and
+  `figure_caption`. The bridge attaches the SVG to the browser's event
+  only, never the model's context; the web UI shows it with its caption
+  and a download; the command line prints the path and caption; the save
+  checks know `.svg`; the soul asks for a result-first answer that does
+  not restate the figure. Tied confidences share a shade, a flat map is
+  drawn flat, and a grid over 420 windows a side is drawn in blocks. The
+  README's Example shows this run's three figures
+  (`webui/demo/figures/`), and `docs/verification_demo.json` is the run
+  recorded with them (the work folder written `<work>`; the page is
+  unchanged). Tests: `tests/reporting/test_figures.py` and one per route.
 - **A Studio class map with top-k scores gets a review set, every label
   design and a certified zone (#18).** A segmentation prediction submitted
   with `probability_output` carries, beside its class band `P`, each rank's

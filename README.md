@@ -140,6 +140,15 @@ ships (southern Peru, 9 June 2019), with no Studio key and no LLM. It writes
   random 5% would be wrong 19% of the time.
 - **No certificate.** No zone was certified at alpha 0.1 with 300 labels, so none was written.
 
+Each check writes a figure of its determination, drawn from the run's own data, with a caption written from its numbers.
+The three below are this run's.
+
+<p align="center">
+  <img src="webui/demo/figures/review_set.svg" width="32%" alt="The 791 windows to check first, outlined on the map's confidence">
+  <img src="webui/demo/figures/error_rate.svg" width="32%" alt="The 300 random labels, right or wrong, and the error rate with its interval">
+  <img src="webui/demo/figures/trust_zone.svg" width="32%" alt="The random labels and each confidence level's upper bound; no level certified">
+</p>
+
 
 Limits
 ------
