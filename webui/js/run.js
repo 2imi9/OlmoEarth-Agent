@@ -36,6 +36,9 @@ const SCENARIOS = {
     tool: 'olmoearth_review_set',
     args: '{\n  "scores_path": "scores_run_dynamic-world_cbd2b294_p1.json",\n  "budget": 0.05\n}',
     result: [['windows', '15,813'], ['review_set', '791'], ['budget', '0.05']],
+    // The tool's figure and caption from the same recording (docs/verification_demo.json).
+    figure_src: 'demo/figures/review_set.svg',
+    figure_caption: "Which windows to check first. (a) The map's 15,813 windows on its 128 x 128 window grid, shaded by confidence rank from the map's own scores (dark: least confident; tied scores share a shade); the 791 least confident, a 5.0% review budget, are outlined. No labels were used: the review set says where to look first, not how wrong the map is. Windows are drawn by row and column, row 0 at the top; no coordinates are drawn.",
     answer: "Open these **791** windows first (5% of **15,813**), least confident first. On this tile an expert labelled every window, so we can see how it went: **532** of the 791 are wrong (67%), where a random 5% would be wrong 19% of the time.\n\nA review set is where to look, not a sample: to say how wrong the map is, label the random sample I plan.\n\n*Demo: the figures `make verify-demo` recorded on the Dynamic World tile that olmoearth-inferencex ships (southern Peru, 9 June 2019).*",
   },
   error: {
@@ -43,6 +46,8 @@ const SCENARIOS = {
     tool: 'olmoearth_estimate_map_error',
     args: '{\n  "design_path": "design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json",\n  "labels_path": "<the plan\'s filled sheet>",\n  "n_classes": 9\n}',
     result: [['error_rate', '19.0%'], ['labels', '300'], ['valid_interval', '14.8% to 23.9%']],
+    figure_src: 'demo/figures/error_rate.svg',
+    figure_caption: "How wrong the map is. (a) The 300 labelled windows of a random sample from the map's 15,813 windows on its 128 x 128 window grid, shown on the map's confidence rank (faded); green where the label agrees with the map (243), magenta where it does not (57). (b) The map's error rate over all its windows, 19.0%; valid at every sample size: 14.8% to 23.9%; the interval this design earns: 14.8% to 23.9%. The intervals assume the labels are right. Windows are drawn by row and column, row 0 at the top; no coordinates are drawn.",
     answer: "| Labels | Error rate | 95% interval, valid at every sample size |\n|---|---|---|\n| 300, random design | **19.0%** | 14.8% to 23.9% |\n\nThe map is wrong on about a fifth of its 15,813 windows. By class: what it calls *built* is right only 39.6% of the time (25.9% to 54.6%, 48 labelled windows).\n\n*Demo: the figures `make verify-demo` recorded on the Dynamic World tile that olmoearth-inferencex ships (southern Peru, 9 June 2019).*",
   },
   // Honest demo: no fabricated stats - it explains the real flow and asks for a key.
@@ -69,10 +74,15 @@ function demoEvents(brief) {
   let args; try { args = JSON.parse(sc.args || '{}'); } catch (e) { args = {}; }
   const resultObj = {};
   sc.result.forEach(([k, v]) => { resultObj[k] = v; });
+  // A scenario with a figure: the shipped file on the event (where the bridge
+  // puts figure_svg live), the caption in the result (where the tool puts it).
+  if (sc.figure_caption) resultObj.figure_caption = sc.figure_caption;
+  const toolResult = { type: 'tool_result', name: sc.tool, ok: true, result: { ok: true, result: resultObj } };
+  if (sc.figure_src) toolResult.figure_src = sc.figure_src;
   return [
     { type: 'thinking', text: sc.reasoning },
     { type: 'tool_call', name: sc.tool, arguments: args },
-    { type: 'tool_result', name: sc.tool, ok: true, result: { ok: true, result: resultObj } },
+    toolResult,
     { type: 'final', content: sc.answer },
   ];
 }

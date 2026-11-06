@@ -364,9 +364,13 @@ class GridFigure:
     def interval_chart(
         self, title: str, rows: Sequence[tuple[str, float, float, float | None]]
     ) -> GridFigure:
-        """Each ``(label, low, high, estimate)`` as a bar on one percent axis from 0."""
+        """Each ``(label, low, high, estimate)`` as a bar on one percent axis from 0.
+
+        The axis ends at a round value above the highest bound, and never
+        past 100%: a rate cannot exceed it.
+        """
         top = max([float(high) for _, _, high, _ in rows] + [0.01])
-        upper = _nice_ceiling(top * 1.15)
+        upper = min(1.0, _nice_ceiling(top * 1.15))
         width = SIDE - 20
         head = f"({self._next_panel()}) {title}"
         parts = [_text(0, 14, head, size=12, weight=600)]
@@ -416,12 +420,16 @@ class GridFigure:
         limit_label: str | None = None,
         as_percent: bool = False,
     ) -> GridFigure:
-        """Each ``(label, value, colour)`` as a bar; ``limit`` draws a line."""
+        """Each ``(label, value, colour)`` as a bar; ``limit`` draws a line.
+
+        With ``as_percent`` the bars are fractions on an axis that never
+        passes 100%; otherwise counts, the longest bar the full width.
+        """
         values = [float(v) for _, v, _ in rows]
         if limit is not None:
             values.append(float(limit))
         top = max(values + [1e-9])
-        upper = _nice_ceiling(top * 1.1) if as_percent else top
+        upper = min(1.0, _nice_ceiling(top * 1.1)) if as_percent else top
         width = SIDE - 150
         head = f"({self._next_panel()}) {title}"
         parts = [_text(0, 14, head, size=12, weight=600)]
@@ -559,8 +567,15 @@ class GridFigure:
                     )
                 parts.append(_text(56, y + 12, label, size=11))
             elif kind == "fill":
+                # A white swatch (no-data, not compared) gets a thin edge.
+                edge = (
+                    f' stroke="{MUTED}" stroke-width="0.6"'
+                    if colour.lower() == css(NO_DATA)
+                    else ""
+                )
                 parts.append(
-                    f'<rect x="0" y="{y + 2}" width="14" height="12" fill="{colour}"/>'
+                    f'<rect x="0" y="{y + 2}" width="14" height="12" '
+                    f'fill="{colour}"{edge}/>'
                 )
                 parts.append(_text(22, y + 12, label, size=11))
             else:
@@ -602,8 +617,20 @@ def _grid_words(rows: int, cols: int, given: bool) -> str:
     return f" on its {rows} x {cols} window grid" if given else ""
 
 
-def _shade(margin: Sequence[float | None]) -> tuple[str, str]:
-    """The legend's label and the caption's words for a faded confidence grid."""
+def _shade(
+    margin: Sequence[float | None], *, no_confidence: bool = False
+) -> tuple[str, str]:
+    """The legend's label and the caption's words for a faded confidence grid.
+
+    ``no_confidence`` marks a class map without top-k scores: its margin is
+    the same wherever a window holds a class, so its grid is drawn flat and
+    the words say why (``statistical_rules.CLASS_MAP_NO_CONFIDENCE``).
+    """
+    if no_confidence:
+        return (
+            "no confidence (class map)",
+            "on a grid drawn flat: a class map has no confidence to rank by",
+        )
     if flat_confidence(margin):
         return (
             "one confidence everywhere (flat)",
@@ -668,10 +695,15 @@ def plan_figure(
     design: str,
     seed: int | str,
     n_valid: int,
+    no_confidence: bool = False,
 ) -> Rendered:
-    """A label plan: the windows drawn for labelling, on the map's confidence."""
+    """A label plan: the windows drawn for labelling, on the map's confidence.
+
+    ``no_confidence`` marks a class map without top-k scores (:func:`_shade`).
+    """
     rows, cols, given = _layout(margin, grid)
     n = len(sample)
+    legend, shading = _shade(margin, no_confidence=no_confidence)
     fig = GridFigure(
         "Which windows to label",
         f"{n:,} of {n_valid:,} windows drawn by the {design} design (seed {seed}).",
@@ -682,13 +714,13 @@ def plan_figure(
         caption=[
             f"Which windows to label. (a) The {n:,} windows drawn by the {design} "
             f"design (seed {seed}) from the map's {n_valid:,} windows"
-            f"{_grid_words(rows, cols, given)}, outlined {_shade(margin)[1]}. "
+            f"{_grid_words(rows, cols, given)}, outlined {shading}. "
             "Label every drawn window: the error rate and its interval come from "
             "these labels alone, and the number to label is fixed before any "
             "label is read."
         ],
     )
-    fig.legend("ramp", "", _shade(margin)[0])
+    fig.legend("ramp", "", legend)
     fig.mark(sample, SAMPLE, label="drawn for labelling")
     return _done(fig)
 
@@ -702,12 +734,15 @@ def estimate_figure(
     intervals: Sequence[tuple[str, float, float, float | None]],
     design: str,
     n_valid: int,
+    no_confidence: bool = False,
 ) -> Rendered:
     """How wrong the map is: each labelled window right or wrong, and the error rate.
 
     ``wrong`` holds, per drawn window in ``sample``'s order, 1 (the map is
     wrong there), 0 (right) or ``None`` (not judged); ``intervals`` are
     ``(label, low, high, estimate)`` as fractions, the first the headline.
+    The caption gives the headline's estimate once, then each interval once.
+    ``no_confidence`` marks a class map without top-k scores (:func:`_shade`).
     """
     rows, cols, given = _layout(margin, grid)
     pairs = list(zip(sample, wrong))
@@ -721,9 +756,14 @@ def estimate_figure(
         if head is not None and head[3] is not None
         else "not available"
     )
-    bands = "; ".join(
-        f"{label}: {pct(lo)} to {pct(hi)}" for label, lo, hi, _ in intervals
-    )
+    if head is not None and len(intervals) > 1:
+        bands = "; ".join(
+            f"{label}: {pct(lo)} to {pct(hi)}" for label, lo, hi, _ in intervals
+        )
+        told = f", {pct(head[3])}; {bands}" if head[3] is not None else f": {bands}"
+    else:
+        told = f", {result}"
+    legend, shading = _shade(margin, no_confidence=no_confidence)
     fig = GridFigure(
         "How wrong the map is",
         f"{len(bad):,} of {n_labelled:,} labelled windows are wrong; the error "
@@ -735,16 +775,15 @@ def estimate_figure(
         caption=[
             f"How wrong the map is. (a) The {n_labelled:,} labelled windows of a "
             f"{design} sample from the map's {n_valid:,} windows"
-            f"{_grid_words(rows, cols, given)}, shown {_shade(margin)[1]}: green where "
-            "the label agrees with "
-            f"the map ({len(right):,}), magenta where it does not ({len(bad):,})"
+            f"{_grid_words(rows, cols, given)}, shown {shading}; green where the "
+            f"label agrees with the map ({len(right):,}), magenta where it does "
+            f"not ({len(bad):,})"
             + (f", grey not judged ({len(unjudged):,})" if unjudged else "")
-            + f". (b) The map's error rate over all its windows, {result}"
-            + (f"; {bands}" if len(intervals) > 1 else "")
-            + ". The intervals assume the labels are right."
+            + f". (b) The map's error rate over all its windows{told}. The "
+            "intervals assume the labels are right."
         ],
     )
-    fig.legend("ramp", "", _shade(margin)[0])
+    fig.legend("ramp", "", legend)
     fig.mark(right, RIGHT, filled=True, label=f"label agrees: right ({len(right):,})")
     fig.mark(bad, WRONG, filled=True, label=f"label differs: wrong ({len(bad):,})")
     if unjudged:
@@ -763,15 +802,22 @@ def zone_figure(
     wrong: Sequence[int | None],
     *,
     alpha: float,
+    delta: float,
+    rule: str,
     levels: Sequence[tuple[str, float, bool]],
     n_valid: int,
+    no_confidence: bool = False,
 ) -> Rendered:
     """Which part to trust: the certified zone, the labels, and the levels tested.
 
     ``zone`` holds the certified windows (empty when none was certified);
-    ``levels`` are ``(label, upper bound, certified)`` per level tested, as the
-    tool's rule decided them (under a multi-level rule a bound below ``alpha``
-    can still fail); ``wrong`` is as for :func:`estimate_figure`.
+    ``alpha``, ``delta`` and ``rule`` are the test's, stated as the tool's
+    result states them (the zone's error rate is at most alpha, a statement
+    that fails on at most delta of random draws); ``levels`` are ``(label,
+    upper bound, certified)`` per level tested, as the rule decided them
+    (under a multi-level rule a bound below ``alpha`` can still fail);
+    ``wrong`` is as for :func:`estimate_figure`. ``no_confidence`` marks a
+    class map without top-k scores (:func:`_shade`).
     """
     rows, cols, given = _layout(margin, grid)
     base = tint(confidence_base(margin, rows * cols, faded=0.6), zone, ZONE, 0.55)
@@ -779,22 +825,30 @@ def zone_figure(
     right = [i for i, w in pairs if w == 0]
     bad = [i for i, w in pairs if w == 1]
     share = pct(len(zone) / max(n_valid, 1))
+    holds = (
+        f"with a statement that fails on at most {level(delta)} of random draws "
+        f"({rule} rule)"
+    )
     if zone:
         subtitle = (
             f"{len(zone):,} of {n_valid:,} windows ({share}) certified at an "
-            f"error rate of at most {level(alpha)}."
+            f"error rate of at most {level(alpha)}, {holds}."
         )
         verdict = (
             f"The certified zone (blue) holds the map's {len(zone):,} most "
             f"confident windows ({share} of {n_valid:,}), where the error rate "
-            f"is at most {level(alpha)} with the stated confidence."
+            f"is at most {level(alpha)} {holds}."
         )
     else:
         subtitle = (
             f"No zone certified at an error rate of at most {level(alpha)} "
-            "with these labels."
+            f"with these labels ({rule} rule, delta {level(delta)})."
         )
-        verdict = "The rule certified no level with these labels, so no zone is given."
+        verdict = (
+            f"The {rule} rule certified no level with these labels, so no zone "
+            "is given."
+        )
+    legend, shading = _shade(margin, no_confidence=no_confidence)
     fig = GridFigure(
         "Which part of the map to trust",
         subtitle,
@@ -804,21 +858,21 @@ def zone_figure(
         base,
         caption=[
             f"Which part of the map to trust. (a) The map's {n_valid:,} windows"
-            f"{_grid_words(rows, cols, given)}, shown {_shade(margin)[1]}, with the "
-            f"random sample's labels: green right ({len(right):,}), magenta "
+            f"{_grid_words(rows, cols, given)}, shown {shading}; the random "
+            f"sample's labels: green right ({len(right):,}), magenta "
             f"wrong ({len(bad):,}). {verdict}"
             + (
                 " (b) The upper bound on the error rate at each confidence level "
                 f"tested, with alpha at {level(alpha)}; blue marks the levels the "
-                "rule certified, grey those it did not (a rule that tests several "
-                "levels can refuse a bound below alpha)."
+                f"{rule} rule certified, grey those it did not (a rule that tests "
+                "several levels can refuse a bound below alpha)."
                 if levels
                 else ""
             )
             + " The guarantee rests on the random sample's labels being right."
         ],
     )
-    fig.legend("ramp", "", _shade(margin)[0])
+    fig.legend("ramp", "", legend)
     if zone:
         fig.legend("fill", css(ZONE), "certified zone")
     fig.mark(right, RIGHT, label="labelled right")
@@ -870,6 +924,8 @@ def two_map_plan_figure(
     )
     fig.legend("fill", css(DIFFER), "the maps differ")
     fig.legend("fill", css(AGREE), "the maps agree")
+    if any(d is None for d in differ):
+        fig.legend("fill", css(NO_DATA), "not compared")
     fig.mark(sample, OUTLINE, label="drawn to label")
     return _done(fig)
 
@@ -881,12 +937,17 @@ def two_map_grade_figure(
     sides: Sequence[str],
     *,
     verdict: str,
+    differ_known: bool = True,
 ) -> Rendered:
     """Which of two maps: the side each label took, and the verdict it supports.
 
     ``sides`` holds, per drawn window in ``sample``'s order, ``a`` (the label
     is map a's class), ``b``, ``neither`` or ``?`` (not judged); ``verdict``
-    is the package's verdict sentence, quoted as it is.
+    is the package's verdict sentence, quoted as it is. The labelled windows
+    count the ``?`` ones, as the verdict's ``n_labelled`` does; the judged
+    ones do not. ``differ_known`` is false for a design file written before
+    the plan recorded where the maps differ: only its drawn windows are
+    known to differ, and the caption says so.
     """
     rows, cols, given = _layout(differ, grid)
     pairs = list(zip(sample, sides))
@@ -894,6 +955,20 @@ def two_map_grade_figure(
         s: [i for i, side in pairs if side == s] for s in ("a", "b", "neither", "?")
     }
     n_a, n_b, n_none = len(groups["a"]), len(groups["b"]), len(groups["neither"])
+    n_unjudged = len(groups["?"])
+    n_judged = n_a + n_b + n_none
+    n_labelled = n_judged + n_unjudged
+    counted = (
+        f"The {n_judged:,} judged windows of the {n_labelled:,} labelled"
+        if n_unjudged
+        else f"The {n_labelled:,} labelled windows"
+    )
+    unrecorded = (
+        ""
+        if differ_known
+        else " This design file does not record where the maps differ elsewhere, "
+        "so only the labelled windows are shown."
+    )
     differ_shade = fade(DIFFER, 0.45)
     fig = GridFigure(
         "Which of the two maps is more accurate",
@@ -903,18 +978,21 @@ def two_map_grade_figure(
         given,
         mask_base(differ, rows * cols, on=differ_shade, off=AGREE),
         caption=[
-            f"Which of the two maps is more accurate. (a) The {n_a + n_b + n_none:,} "
-            f"labelled windows where the maps differ{_grid_words(rows, cols, given)}: "
-            f"blue where the label is map a's class ({n_a:,}), orange map b's "
-            f"({n_b:,}), grey neither ({n_none:,})"
-            + (f", outlined not judged ({len(groups['?']):,})" if groups["?"] else "")
-            + f". (b) The same counts. {verdict} The comparison covers only the "
-            "windows where the maps differ and says nothing of either map's own "
-            "accuracy."
+            f"Which of the two maps is more accurate. (a) {counted} where the maps "
+            f"differ{_grid_words(rows, cols, given)}: blue where the label is map "
+            f"a's class ({n_a:,}), orange map b's ({n_b:,}), grey neither "
+            f"({n_none:,})"
+            + (f", outlined not judged ({n_unjudged:,})" if n_unjudged else "")
+            + f".{unrecorded} (b) The same counts. {verdict} The comparison covers "
+            "only the windows where the maps differ and says nothing of either "
+            "map's own accuracy."
         ],
     )
     fig.legend("fill", css(differ_shade), "the maps differ")
-    fig.legend("fill", css(AGREE), "the maps agree")
+    if differ_known:
+        fig.legend("fill", css(AGREE), "the maps agree")
+    if any(d is None for d in differ):
+        fig.legend("fill", css(NO_DATA), "not compared")
     fig.mark(groups["a"], MAP_A, filled=True, label=f"label is map a's ({n_a:,})")
     fig.mark(groups["b"], MAP_B, filled=True, label=f"label is map b's ({n_b:,})")
     fig.mark(groups["neither"], NEITHER, filled=True, label=f"neither's ({n_none:,})")

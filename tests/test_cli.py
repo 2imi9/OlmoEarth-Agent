@@ -147,11 +147,19 @@ def test_main_prints_each_figure_after_the_answer(
 
     monkeypatch.setattr(cli, "run_brief", fake_run)
     assert cli.main(["how should I spend 300 labels?"]) == 0
+    # A blank line keeps a Markdown answer's last table or list apart.
     assert capsys.readouterr().out.splitlines() == [
         "Label these 300 windows.",
+        "",
         f"figure: {_FIGURE}",
         _CAPTION,
     ]
+
+
+def test_figure_lines_are_none_without_a_figure() -> None:
+    """No figure, no blank line; a figure without a caption is its path alone."""
+    assert cli.figure_lines([]) == []
+    assert cli.figure_lines([(_FIGURE, "")]) == ["", f"figure: {_FIGURE}"]
 
 
 def test_main_returns_0_and_prints_answer(
@@ -163,7 +171,7 @@ def test_main_returns_0_and_prints_answer(
     monkeypatch.setattr(cli, "run_brief", fake_run)
     code = cli.main(["how many projects?"])
     assert code == 0
-    assert "the answer" in capsys.readouterr().out
+    assert capsys.readouterr().out == "the answer\n"  # no figure, no blank line
 
 
 def test_main_prints_an_answer_forced_by_the_turn_cap(

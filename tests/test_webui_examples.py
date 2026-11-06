@@ -10,6 +10,7 @@ links is in ``webui/``.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -23,6 +24,9 @@ from olmoearth_agent.skills.registry import (
 
 _WEBUI = Path(__file__).resolve().parents[1] / "webui"
 
+#: The run ``make verify-demo`` recorded, every call's arguments and envelope.
+_VERIFICATION_DEMO_JSON = _WEBUI.parent / "docs" / "verification_demo.json"
+
 #: Link targets that name no file: an anchor, inline data, a mail address.
 _NOT_A_FILE = ("#", "data:", "mailto:")
 
@@ -30,6 +34,28 @@ _NOT_A_FILE = ("#", "data:", "mailto:")
 def _read(*parts: str) -> str:
     """One web UI file's text."""
     return _WEBUI.joinpath(*parts).read_text(encoding="utf-8")
+
+
+def _scenario(run_js: str, name: str) -> str:
+    """The body of one demo scenario of ``run.js``'s ``SCENARIOS``."""
+    block = re.search(rf"\n  {name}: \{{\n(.*?)\n  \}},", run_js, re.S)
+    assert block, name
+    return block.group(1)
+
+
+def _recorded_caption(tool: str, design: str | None = None) -> str:
+    """The figure caption the one recorded call of ``tool`` (and design) returned."""
+    record = json.loads(_VERIFICATION_DEMO_JSON.read_text(encoding="utf-8"))
+    captions = [
+        call["envelope"]["result"]["figure_caption"]
+        for call in record["calls"]
+        if call["tool"] == tool
+        and (design is None or call["envelope"]["result"].get("design") == design)
+    ]
+    assert len(captions) == 1, (tool, design, len(captions))
+    caption = captions[0]
+    assert isinstance(caption, str), (tool, design)
+    return caption
 
 
 def _example_calls() -> list[str]:
@@ -66,11 +92,10 @@ def test_the_demo_verification_replays_quote_make_verify_demo() -> None:
         "error": ["19.0%", "14.8% to 23.9%", "39.6%", "25.9% to 54.6%", "15,813"],
     }
     for name, figures in quoted.items():
-        block = re.search(rf"\n  {name}: \{{\n(.*?)\n  \}},", run_js, re.S)
-        assert block, name
-        assert "make verify-demo" in block.group(1), name
+        block = _scenario(run_js, name)
+        assert "make verify-demo" in block, name
         for figure in figures:
-            assert figure in block.group(1), (name, figure)
+            assert figure in block, (name, figure)
             assert figure in page, (name, figure)
     # The review run's two shares: 532 of the 791 windows, and the tile's error rate.
     assert "532 of the 3,048 errors" in page
@@ -78,6 +103,38 @@ def test_the_demo_verification_replays_quote_make_verify_demo() -> None:
     assert round(100 * 532 / 791) == 67 and "(67%)" in run_js
     assert "wrong 19% of the time" in run_js
     assert "48 the map calls this class" in page and "48 labelled windows" in run_js
+
+
+def test_the_demo_verification_replays_show_the_recorded_figures() -> None:
+    """The review-set and error-rate demo runs show the tool's figure and caption.
+
+    Each scenario's ``figure_src`` is an SVG shipped in webui/ (opened in a
+    new tab as a document, so it holds no script), and its ``figure_caption``
+    is, character for character, the caption ``make verify-demo`` recorded in
+    docs/verification_demo.json: the review set's, and the random design's
+    error estimate's. ``demoEvents`` puts both where the renderer reads them.
+    """
+    run_js = _read("js", "run.js")
+    expected = {
+        "review": (
+            "demo/figures/review_set.svg",
+            _recorded_caption("olmoearth_review_set"),
+        ),
+        "error": (
+            "demo/figures/error_rate.svg",
+            _recorded_caption("olmoearth_estimate_map_error", design="random"),
+        ),
+    }
+    for name, (source, caption) in expected.items():
+        block = _scenario(run_js, name)
+        assert re.findall(r"figure_src: '([^']+)'", block) == [source], name
+        figure = _WEBUI / source
+        assert figure.is_file(), figure
+        assert "<script" not in figure.read_text(encoding="utf-8"), figure
+        shown = re.findall(r'figure_caption: "([^"\\]*)"', block)
+        assert shown == [caption], name
+    assert "toolResult.figure_src = sc.figure_src;" in run_js
+    assert "resultObj.figure_caption = sc.figure_caption;" in run_js
 
 
 def test_the_landing_page_and_the_slash_menu_count_the_catalog() -> None:

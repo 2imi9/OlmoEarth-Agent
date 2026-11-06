@@ -224,6 +224,7 @@ def test_run_sends_no_figure_from_outside_the_write_root_or_not_an_svg(
     svg = '<svg xmlns="http://www.w3.org/2000/svg"/>\n'
     (elsewhere / "x_figure.svg").write_text(svg, encoding="utf-8")
     (root / "notes.txt").write_text(svg, encoding="utf-8")
+    (root / "plain.svg").write_text(svg, encoding="utf-8")
     (root / "link_figure.svg").symlink_to(elsewhere / "x_figure.svg")
     (root / "big_figure.svg").write_bytes(b" " * (serve._FIGURE_MAX_BYTES + 1))
     events = [
@@ -231,6 +232,7 @@ def test_run_sends_no_figure_from_outside_the_write_root_or_not_an_svg(
         _figure_result(str(root / ".." / "elsewhere" / "x_figure.svg")),
         _figure_result(str(root / "link_figure.svg")),  # resolves outside the root
         _figure_result(str(root / "notes.txt")),
+        _figure_result(str(root / "plain.svg")),  # no figure tool writes this name
         _figure_result(str(root / "missing_figure.svg")),
         _figure_result(str(root / "big_figure.svg")),
         {
@@ -245,6 +247,17 @@ def test_run_sends_no_figure_from_outside_the_write_root_or_not_an_svg(
     sent = [e for e in _streamed(monkeypatch, events) if e["type"] == "tool_result"]
     # Each goes out as the harness yielded it: no figure_svg, and no error.
     assert sent == events
+
+
+def test_run_sends_no_figure_for_a_path_with_a_nul_and_goes_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A figure_path holding a NUL byte, which no file path can, is no figure."""
+    root = _roots(tmp_path, monkeypatch)
+    final = {"type": "final", "turn": 1, "content": "19% of the map is wrong."}
+    events = [_figure_result(f"{root}/a\x00_figure.svg"), final]
+    # No figure and no error frame: the run goes on to its answer and ends.
+    assert _streamed(monkeypatch, events) == [*events, {"type": "done"}]
 
 
 def test_run_local_flag_tracks_backend(monkeypatch: pytest.MonkeyPatch) -> None:

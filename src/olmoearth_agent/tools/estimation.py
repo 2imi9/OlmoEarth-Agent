@@ -103,10 +103,11 @@ These package calls run in a worker thread (``asyncio.to_thread``), as
 the command line does (:func:`inferencex.run_cli_async`): the estimate of a
 design file of one map (its valid per-class table takes seconds per class
 under a stratified design), the zone (``certify_zone`` orders every window
-of the map) and the map-seeded draw. Run inline, each would hold the event
-loop that serves the web bridge's other sessions; an exception raised in the
-thread reaches the handler as it would inline. A plain plan's draw, the
-which-map grading and windows labelled without a design still run on the
+of the map), the map-seeded draw and the which-map grade (it draws its
+figure over the plan's grid), and so does every figure. Run inline, each
+would hold the event loop that serves the web bridge's other sessions; an
+exception raised in the thread reaches the handler as it would inline. A
+plain plan's draw and windows labelled without a design still run on the
 event loop. The estimate fixes a ``seed_from_map`` plan's labels from its
 worker thread, so the package's sheet is read, checked and written under one
 lock (:func:`fill_sheet`): two sessions grading one plan cannot both write
@@ -117,7 +118,10 @@ beside the files it already writes, drawn last from the data it holds: the
 plan's drawn windows, the estimate's labels and intervals, the certified zone
 and its levels, where two maps differ and the side each label took. The
 result gives it as ``figure_path`` (``<stem>_figure.svg``) and its legend as
-``figure_caption``; a figure of other labels on one design is another file.
+``figure_caption``; a figure of other labels on one design (or, for a zone,
+another alpha, delta or rule) is another file. A figure that cannot be drawn
+or written is logged and left out (:func:`_figure`): it never fails a
+completed determination.
 
 Every output also carries ``next_steps``, written by code from the design and
 the outcome, and the output contract's ``facts``, ``must_state`` and
@@ -132,6 +136,7 @@ import asyncio
 import csv
 import hashlib
 import json
+import logging
 import math
 import os
 import threading
@@ -199,6 +204,8 @@ from olmoearth_agent.tools.sampling import (
     topk_part_reason,
     topk_scores,
 )
+
+logger = logging.getLogger(__name__)
 
 #: The design of two maps: a random sample of the windows where their classes
 #: differ (``oe_inferencex.estimate.sample_disagreement``), for which of the
@@ -1854,11 +1861,20 @@ def _figure(
 
     ``draw`` is one of the routes of :mod:`olmoearth_agent.reporting.figures`,
     called with ``args`` and ``kwargs``; the result's figure keys
-    (``figure_path``, ``figure_caption``) are returned. The async handlers
-    run it in a worker thread, as they run the package's calls, so a large
-    grid's figure does not hold the event loop.
+    (``figure_path``, ``figure_caption``) are returned. A figure never fails
+    a completed determination: one that cannot be drawn or written (an
+    ``OSError``, or a ``ValueError`` such as an unwritable write root's) is
+    logged at warning level with its stem and the result goes without it
+    (``{}``), as :func:`~olmoearth_agent.tools.review_set.review_set_figure_fields`
+    does. Every caller runs it off the event loop, in a worker thread of its
+    own or in the one its determination already runs in, so a large grid's
+    figure does not hold the loop.
     """
-    return figures.figure_fields(stem, draw(*args, **kwargs))
+    try:
+        return figures.figure_fields(stem, draw(*args, **kwargs))
+    except (OSError, ValueError):
+        logger.warning("could not draw or save the figure %s", stem, exc_info=True)
+        return {}
 
 
 def plan_work_dir(block: dict[str, Any]) -> Path:
@@ -2624,6 +2640,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             design=design,
             seed=seed,
             n_valid=int(sample["n_population"]),
+            no_confidence=class_map,
         )
     )
     return rules.add_contract(
@@ -3245,6 +3262,7 @@ def _estimate_valid_first(
                 intervals=intervals,
                 design=plan_design,
                 n_valid=int(res["n_population"]),
+                no_confidence=class_map,
             )
         )
     return rules.add_contract(
@@ -3266,7 +3284,10 @@ async def _estimate_map_error(
     if args.get("design_path"):
         design = _load_design(str(args["design_path"]))
         if design.get("design") == TWO_MAP_DESIGN:
-            return _grade_two_maps(args, design, estimate)
+            # In a worker thread: the grade draws its figure over the plan's
+            # grid (up to 200,000 windows), and the event loop serves the web
+            # bridge's other sessions.
+            return await asyncio.to_thread(_grade_two_maps, args, design, estimate)
         # Every one-map design file (a scores map's confidence, proportional or
         # random design, a class map's, the class design's): the interval valid
         # at every sample size first, then the design's own. In a worker
@@ -3655,10 +3676,13 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     )
     # The figure, drawn last from the zone, the levels tested and the labels
     # in hand: the package gives the zone's windows only for a certified level.
+    # Its name holds the test (alpha, delta, rule) and the labels, so another
+    # test of the same design and labels writes another figure.
     out.update(
         await asyncio.to_thread(
             _figure,
-            f"{_design_stem(args)}_zone_a{alpha:g}_{out['labels_sha256'][:8]}",
+            f"{_design_stem(args)}_zone_a{alpha:g}_d{delta:g}_{rule}_"
+            f"{out['labels_sha256'][:8]}",
             figures.zone_figure,
             design["population"]["margin"],
             design["population"].get("grid"),
@@ -3666,6 +3690,9 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             indices,
             wrong,
             alpha=alpha,
+            delta=delta,
+            rule=rule,
+            no_confidence=_has_no_confidence(design),
             levels=[
                 (
                     f"top {round(100 * float(lv['coverage']))}%",
@@ -4711,7 +4738,9 @@ def _grade_two_maps(
     its labels (``rules.which_map_must_state``), that it grades these two
     maps and ranks no model (``rules.MAPS_NOT_MODELS``, for dated scores
     files), and no map named more accurate beyond what the package
-    names (``more_accurate_without_its_test``).
+    names (``more_accurate_without_its_test``). It runs in a worker thread
+    (``_estimate_map_error``), so its figure over the plan's grid does not
+    hold the event loop.
     """
     sample = design["sample"]
     indices = [int(i) for i in sample["indices"]]
@@ -4846,6 +4875,9 @@ def _grade_two_maps(
                 indices,
                 sides,
                 verdict=stated,
+                # A design file written before the plan kept where the maps
+                # differ draws only its drawn windows, and says so.
+                differ_known=population.get("differ") is not None,
             )
         )
     return rules.add_contract(

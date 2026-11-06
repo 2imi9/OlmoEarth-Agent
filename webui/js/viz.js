@@ -655,33 +655,73 @@ function svgDataUrl(svg) {
   return 'data:image/svg+xml;base64,' + btoa(bin);
 }
 
+/* A blob: URL of a page that shows the SVG full size, for a new tab. The page
+   holds the SVG in an <img> (as a data: URL), so it stays inert there too: the
+   SVG opened as a document from a blob: URL would run any script in it with
+   this page's origin. The page's text is fixed; no result data is in it. */
+function figurePageUrl(svg) {
+  const html = '<!doctype html><meta charset="utf-8"><title>Figure</title>' +
+    '<body style="margin:0;background:#fff">' +
+    '<img alt="Figure" style="display:block" src="' + svgDataUrl(svg) + '">';
+  return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+}
+
+/* The figure's short title for its <img> alt: "Figure: " and the caption's
+   first sentence, up to its first period (one that ends a sentence, so the
+   "." of "5.0%" does not cut it); the whole caption is the figcaption. */
+function figureAlt(caption) {
+  const title = caption.split(/\.(?:\s|$)/)[0].trim();
+  return title ? 'Figure: ' + title : "Figure of the determination, drawn from the run's data.";
+}
+
 /* The determination's figure, drawn from the run's own data by the tool: the
    SVG the bridge inlined (ev.figure_svg), or in demo mode a shipped file
-   (ev.figure_src), with the tool's caption and a download. Shown through
-   <img>, so any script in the SVG stays inert. Works from the event alone, so
-   a saved chat replays it. Returns true if it rendered. */
+   (ev.figure_src), with the tool's caption and a download; the image links to
+   the figure full size in a new tab. Shown through <img>, so any script in the
+   SVG stays inert. A saved chat stores no SVG: it replays the caption and
+   where the tool saved the figure. Returns true if it rendered. */
 function renderFigure(container, ev, inner) {
   const svg = typeof ev.figure_svg === 'string' && ev.figure_svg ? ev.figure_svg : null;
   const demo = !svg && typeof ev.figure_src === 'string' && _DEMO_FIGURE_RE.test(ev.figure_src)
     ? ev.figure_src : null;
-  if (!svg && !demo) return false;
   const caption = typeof inner.figure_caption === 'string' ? inner.figure_caption : '';
-  const source = svg ? inner.figure_path : demo;
-  const named = typeof source === 'string' ? source.split(/[\\/]/).pop() : '';
-  const filename = /^[\w.-]+\.svg$/.test(named) ? named : 'figure.svg';
+  if (!svg && !demo && !caption) return false;
 
   const fig = document.createElement('figure');
   fig.className = 'det-figure';
-  const img = document.createElement('img');
-  img.alt = caption || "Figure of the determination, drawn from the run's data.";
-  img.src = svg ? svgDataUrl(svg) : demo;
-  fig.appendChild(img);
+  if (svg || demo) {
+    const frame = document.createElement('div');
+    frame.className = 'det-figure-frame';
+    const link = document.createElement('a');
+    link.className = 'det-figure-link';
+    link.href = svg ? figurePageUrl(svg) : demo;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.title = 'Open the figure full size in a new tab';
+    const img = document.createElement('img');
+    img.alt = figureAlt(caption);
+    img.src = svg ? svgDataUrl(svg) : demo;
+    link.appendChild(img);
+    frame.appendChild(link);
+    fig.appendChild(frame);
+  }
   if (caption) {
     const cap = document.createElement('figcaption');
     cap.textContent = caption;
+    if (!svg && !demo && typeof inner.figure_path === 'string' && inner.figure_path) {
+      const where = document.createElement('span');
+      where.className = 'det-figure-path';
+      where.textContent = 'Figure saved at ' + inner.figure_path;
+      cap.appendChild(where);
+    }
     fig.appendChild(cap);
   }
   container.appendChild(fig);
+  if (!svg && !demo) return true;  // no SVG here (a saved chat stores none): nothing to download
+
+  const source = svg ? inner.figure_path : demo;
+  const named = typeof source === 'string' ? source.split(/[\\/]/).pop() : '';
+  const filename = /^[\w.-]+\.svg$/.test(named) ? named : 'figure.svg';
   const save = (text) => downloadText(filename, text, 'image/svg+xml');
   container.appendChild(downloadBar([{
     label: 'Download figure (.svg)',

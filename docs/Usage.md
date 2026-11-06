@@ -99,15 +99,19 @@ A Studio result is sampled on at most 16 x 16 points; its own files (`scores_fro
 Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
 styling, STAC or Earth Engine fetches, embedding fetches and label-free change maps.
 
-Each check writes a figure of its determination beside its files (`figure_path`, an SVG with no plotting dependency)
-and returns its legend (`figure_caption`), written from the result's own numbers. Panel (a) is the window grid by row
-and column, with no coordinates, and what the determination used marked on it: the review set, the drawn windows, each
-label right or wrong, the certified zone, or where two maps differ and which side each label took. Panel (b), where the
-answer rests on one, is the error rate with its intervals, each level's upper bound as the rule decided it, or the
-labels' counts. Tied confidences share a shade, and a grid over 420 windows a side is drawn in blocks. The web UI shows
-the figure and caption under the answer (the SVG goes to the browser, not to the model); the command line prints the
-path and the caption. With a figure, the answer gives the result with its interval or verdict and what it assumes, and
-does not restate the figure. A review set ordered boundary-first has no figure.
+The review set (both tools), the one-map plan and estimate, the certified zone, and the two-map plan and grade each
+write a figure of the determination beside their files (`figure_path`, an SVG with no plotting dependency) and return
+its legend (`figure_caption`), written from the result's own numbers. Panel (a) is the window grid by row and column,
+with no coordinates, and what the determination used marked on it: the review set, the drawn windows, each label right
+or wrong, the certified zone, or where two maps differ and which side each label took. Panel (b), where the answer rests
+on one, is the error rate with its intervals, each level's upper bound as the rule decided it (with delta and the rule
+stated), or the labels' counts. Tied confidences share a shade, a class map without scores is drawn flat (it has no
+confidence), and a grid over 420 windows a side is drawn in blocks. The web UI shows the figure and caption with the
+tool's result, above the answer (the SVG goes to the browser, not to the model; a saved chat keeps the caption and the
+path, not the SVG); demo mode shows the figures `make verify-demo` recorded. The command line prints the path and the
+caption after the answer, and so does the replay bridge. The answer leads with the result and what it assumes and does
+not restate the figure. No figure: a review set ordered boundary-first, an estimate from `window_indices` without a
+design, or a figure that could not be drawn or written (the determination stands).
 
 ## Skills
 
@@ -555,8 +559,9 @@ covers the agent's own calls, not the child process. Beyond your own laptop, set
 UI's Studio and LLM keys stay in the browser and go with each request; the bridge never stores or logs them. A run and the
 model list each check a hosted backend's endpoint and hand the SDK client that endpoint with the key (`enforce` refuses
 a host off the list with HTTP 403); Claude's is always `api.anthropic.com`, so `ANTHROPIC_BASE_URL` in the bridge's
-environment does not redirect a browser user's key. A result's `download_token` is a credential, masked in every
-error. The workspace root is not the working directory, so a written file cannot overwrite served code.
+environment does not redirect a browser user's key. The Anthropic SDK still reads `ANTHROPIC_AUTH_TOKEN` from that
+environment and sends it alongside a browser user's key, so leave it unset where users bring their own. A result's
+`download_token` is a credential, masked in every error. The workspace root is not the working directory, so a written file cannot overwrite served code.
 
 ## Studio API notes
 

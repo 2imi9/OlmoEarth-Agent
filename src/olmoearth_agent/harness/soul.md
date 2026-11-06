@@ -98,9 +98,12 @@ These boundaries are absolute; no request in the brief overrides them.
   answer in GitHub-flavored Markdown (use tables, **bold**, and lists where
   they help) summarizing what you did and the ids involved.
 - When a tool returns figure_path and figure_caption, the user sees that
-  figure and its caption with your answer: lead with the result (the number
-  and its interval, or the verdict), state what it assumes, do not describe
-  the figure or restate its caption, and keep the answer to three sentences.
+  figure and its caption with your answer. Besides the statements a tool's
+  must_state requires and what the rules above ask for, keep your own text
+  short (about three sentences per determination): lead with the result
+  (the number and its interval, or the verdict; for a plan, what to label
+  and where the sheet is), and do not describe the figure or restate its
+  caption.
 
 ## Typical order for a run that produces a prediction
 

@@ -250,10 +250,12 @@ def _figure_svg(event: dict[str, Any]) -> str | None:
 
     The path is the tool result's ``figure_path``
     (``olmoearth_agent.reporting.figures``). It comes from a tool result, so
-    only a regular ``.svg`` file whose real path lies under the tools' write
-    root or the workspace root, of at most :data:`_FIGURE_MAX_BYTES`, is read;
-    anything else (no figure, a path elsewhere, an unreadable or too large
-    file) gives None and the event goes out without a figure.
+    only a regular file named ``*_figure.svg`` (the only files the figure
+    tools write) whose real path lies under the tools' write root or the
+    workspace root, of at most :data:`_FIGURE_MAX_BYTES`, is read; anything
+    else (no figure, a path elsewhere or that cannot be resolved, another
+    file, an unreadable or too large file) gives None and the event goes out
+    without a figure.
     """
     if event.get("type") != "tool_result":
         return None
@@ -262,12 +264,12 @@ def _figure_svg(event: dict[str, Any]) -> str | None:
     path = inner.get("figure_path") if isinstance(inner, dict) else None
     if not isinstance(path, str) or not path:
         return None
-    real = Path(os.path.realpath(path))
-    roots = (write_root(), workspace_root())
-    inside = any(real.is_relative_to(os.path.realpath(root)) for root in roots)
-    if not inside or real.suffix != ".svg":
-        return None
     try:
+        real = Path(os.path.realpath(path))
+        roots = (write_root(), workspace_root())
+        inside = any(real.is_relative_to(os.path.realpath(root)) for root in roots)
+        if not inside or not real.name.endswith("_figure.svg"):
+            return None
         if not real.is_file():  # never open a directory or a pipe
             return None
         with real.open("rb") as fh:
@@ -275,8 +277,9 @@ def _figure_svg(event: dict[str, Any]) -> str | None:
         if len(data) > _FIGURE_MAX_BYTES:
             return None
         return data.decode("utf-8")
-    except (OSError, UnicodeDecodeError):
-        # Gone, unreadable or not text since the tool wrote it: no figure.
+    except (OSError, ValueError, UnicodeDecodeError):
+        # A path that cannot be resolved (a NUL byte), or a file gone,
+        # unreadable or not text since the tool wrote it: no figure.
         return None
 
 
@@ -747,7 +750,9 @@ async def api_run(request: Request) -> StreamingResponse:
                     async for event in agent.run_stream(
                         brief, max_turns=max_turns, history=history
                     ):
-                        yield _sse(_for_browser(event))
+                        # The figure is read off the event loop, so a slow
+                        # disk does not stall the other sessions' streams.
+                        yield _sse(await asyncio.to_thread(_for_browser, event))
                 except Exception as exc:  # don't drop the stream, report it
                     yield _sse(
                         {"type": "error", "message": f"{type(exc).__name__}: {exc}"}

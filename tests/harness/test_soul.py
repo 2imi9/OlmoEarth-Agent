@@ -96,15 +96,23 @@ def test_soul_proposes_only_what_the_capability_card_lists() -> None:
     assert "say plainly that no tool of this agent can do it" in text
 
 
-def test_soul_answers_a_determination_with_a_figure_in_three_sentences() -> None:
+def test_soul_keeps_its_own_text_short_beside_a_figure() -> None:
     """A check route's tool writes a figure with its caption, which the user
     sees with the answer (web UI and CLI): the answer leads with the result
-    and does not retell the figure."""
+    and does not retell the figure. The brevity is the model's own text only,
+    so it never cuts what must_state and the rules above require (both
+    intervals, the ids, next steps), and a plan leads with what to label."""
     text = " ".join(load_soul().split())
     assert "When a tool returns figure_path and figure_caption" in text
-    assert "lead with the result (the number and its interval, or the verdict)" in text
+    assert (
+        "Besides the statements a tool's must_state requires and what the rules"
+        " above ask for, keep your own text short (about three sentences per"
+        " determination)" in text
+    )
+    assert "lead with the result (the number and its interval, or the verdict;" in text
+    assert "for a plan, what to label and where the sheet is)" in text
     assert "do not describe the figure or restate its caption" in text
-    assert "keep the answer to three sentences" in text
+    assert "keep the answer to three sentences" not in text
 
 
 def test_default_system_prompt_is_the_soul() -> None:

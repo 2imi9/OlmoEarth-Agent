@@ -15,13 +15,63 @@ let activeChatId = null;
 let sending = false;       // a run is in flight; gates concurrent sends
 
 function loadChats() { try { return JSON.parse(localStorage.getItem(CHATS_LS) || '[]'); } catch (e) { return []; } }
-function saveChats(chats) { try { localStorage.setItem(CHATS_LS, JSON.stringify(chats)); } catch (e) {} }
 function genId() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+/* A chat as stored: its events without figure_svg (60 to 160 KB of SVG each,
+   which would fill localStorage after about a dozen check chats). The event
+   keeps the result's figure_path and figure_caption, so a replay shows the
+   legend; only the live session's in-memory copy keeps the SVG. */
+function storedChat(chat) {
+  const strip = (ev) => {
+    if (!ev || typeof ev !== 'object' || !('figure_svg' in ev)) return ev;
+    const copy = { ...ev };
+    delete copy.figure_svg;
+    return copy;
+  };
+  const turns = (chat.turns || []).map((t) => (Array.isArray(t.events) ? { ...t, events: t.events.map(strip) } : t));
+  return { ...chat, turns };
+}
+
+/* A short notice above the composer while the browser will not store the
+   chats (its storage for the page is full or blocked), so a lost chat is not
+   silent; hidden again once a save succeeds. */
+function setSaveNotice(on) {
+  let el = document.getElementById('chatSaveNotice');
+  if (!on) { if (el) el.hidden = true; return; }
+  if (!el) {
+    const composer = document.getElementById('composer');
+    if (!composer) return;
+    el = document.createElement('div');
+    el.id = 'chatSaveNotice';
+    el.className = 'save-notice';
+    el.setAttribute('role', 'status');
+    el.textContent = "Chats are not being saved: this browser's storage for the page is full or blocked. Delete older chats to free space.";
+    composer.insertBefore(el, composer.firstChild);
+  }
+  el.hidden = false;
+}
+
+/* Store the chats; on an error (the quota, mostly) drop figure_svg from every
+   stored event, which a chat saved by an earlier version may still carry, and
+   retry once; if that fails too, say so. */
+function saveChats(chats) {
+  try {
+    localStorage.setItem(CHATS_LS, JSON.stringify(chats));
+    setSaveNotice(false);
+    return;
+  } catch (e) { /* retried below without the figures */ }
+  try {
+    localStorage.setItem(CHATS_LS, JSON.stringify(chats.map(storedChat)));
+    setSaveNotice(false);
+  } catch (e) {
+    setSaveNotice(true);
+  }
+}
 
 function persistChat(chat) {
   if (!chat) return;
   const chats = loadChats().filter((c) => c.id !== chat.id);
-  chats.push(chat);
+  chats.push(storedChat(chat));
   saveChats(chats);
 }
 
@@ -118,7 +168,11 @@ function openChat(id) {
 function deleteChat(id) {
   saveChats(loadChats().filter((c) => c.id !== id));
   if (activeChatId === id) { activeChat = null; activeChatId = null; newChat(); }
-  else renderChatList();
+  else {
+    // The space freed may let the open chat be stored, if saving it failed.
+    if (activeChat && activeChat.turns.length) persistChat(activeChat);
+    renderChatList();
+  }
 }
 
 export function renderChatList() {

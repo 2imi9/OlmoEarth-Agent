@@ -20,6 +20,7 @@ import csv
 import hashlib
 import json
 import struct
+import threading
 import xml.etree.ElementTree as ET
 import zlib
 from collections.abc import Callable
@@ -957,6 +958,13 @@ async def test_the_grade_draws_the_side_each_label_took(tmp_path: Path) -> None:
         assert _marked(svg, colour, cols=GRID) == sorted(sides[side]), side
     assert _marked(svg, fg.UNJUDGED, cols=GRID) == [idx[0]]
     caption = graded["figure_caption"]
+    # The labelled windows count the ?, as the verdict's n_labelled does.
+    n = graded["n_labelled"]
+    assert graded["n_unjudged"] == 1
+    assert (
+        f"(a) The {n - 1} judged windows of the {n} labelled where the maps differ "
+        f"on its {GRID} x {GRID} window grid" in caption
+    )
     assert (
         f"blue where the label is map a's class ({graded['n_a_right']}), orange map "
         f"b's ({graded['n_b_right']}), grey neither ({graded['n_neither']}), "
@@ -964,6 +972,9 @@ async def test_the_grade_draws_the_side_each_label_took(tmp_path: Path) -> None:
     )
     assert graded["must_state"][0] == rules.which_map_must_state(graded)
     assert graded["must_state"][0] in caption
+    # Map b's no-data window (0, 5) is not compared: white, and in the legend.
+    legend = " ".join(t.text or "" for t in svg.iter(f"{_SVG}text"))
+    assert "not compared" in legend and "the maps agree" in legend
 
     # A design file written before the plan kept where the maps differ.
     old = _design(plan)
@@ -972,9 +983,47 @@ async def test_the_grade_draws_the_side_each_label_took(tmp_path: Path) -> None:
     args_old = {**args, "design_path": str(tmp_path / "design_before.json")}
     before = (await _call(GRADE, args_old))["result"]
     old_svg = _figure_svg(before, f"design_before_grade_{digest}", tmp_path)
-    assert before["figure_caption"] == caption  # the same labels, counts and verdict
+    # The same labels, counts and verdict, and a sentence on what it lacks.
+    note = (
+        " This design file does not record where the maps differ elsewhere, so "
+        "only the labelled windows are shown."
+    )
+    assert note in before["figure_caption"] and note not in caption
+    assert before["figure_caption"].replace(note, "") == caption
+    old_legend = " ".join(t.text or "" for t in old_svg.iter(f"{_SVG}text"))
+    assert "the maps agree" not in old_legend
     differing = fg.fade(fg.DIFFER, 0.45)
     assert _base(svg, idx[1], GRID) == _base(old_svg, idx[1], GRID) == differing
     assert _base(svg, 1, GRID) == fg.AGREE  # both maps say water there
     assert _base(old_svg, 1, GRID) == fg.NO_DATA  # not drawn, so unknown
     assert _base(svg, 5, GRID) == _base(old_svg, 5, GRID) == fg.NO_DATA
+
+
+@pytest.mark.asyncio
+async def test_the_grade_runs_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The grade (compare_from_disagreement, then a figure over the plan's
+    grid of up to 200,000 windows) runs in a worker thread, never on the
+    handler's own thread (the event loop's)."""
+    plan = await _plan(6)
+    idx = _design(plan)["sample"]["indices"]
+    refs = [_truth(*_window(i)) for i in idx]
+    loop_thread = threading.current_thread()
+    threads: list[tuple[str, threading.Thread]] = []
+
+    def recording(name: str, real: Any) -> Any:
+        def call(*args: Any, **kwargs: Any) -> Any:
+            threads.append((name, threading.current_thread()))
+            return real(*args, **kwargs)
+
+        return call
+
+    grade = recording("grade", estimate.compare_from_disagreement)
+    monkeypatch.setattr(estimate, "compare_from_disagreement", grade)
+    figure = recording("figure", fg.two_map_grade_figure)
+    monkeypatch.setattr(fg, "two_map_grade_figure", figure)
+    out = await _call(GRADE, {"design_path": plan["design_path"], "reference": refs})
+    assert out["ok"] is True, out
+    assert {name for name, _t in threads} == {"grade", "figure"}
+    assert all(t is not loop_thread for _name, t in threads), threads

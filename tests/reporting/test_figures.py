@@ -136,13 +136,64 @@ def test_the_estimate_marks_each_label_and_draws_the_interval() -> None:
     assert "(b) Error rate over all windows" in texts
     assert "19.0% (14.8% to 23.9%)" in texts
     assert "1 of 3 labelled windows are wrong" in texts
+    # The estimate once, then each interval once: the headline is not repeated.
     assert (
-        "(b) The map's error rate over all its windows, 19.0% (14.8% to 23.9%, "
-        "valid at every sample size); valid at every sample size: 14.8% to 23.9%; "
-        "design's 95% interval: 15.0% to 23.5%." in fig.caption
+        "(b) The map's error rate over all its windows, 19.0%; valid at every "
+        "sample size: 14.8% to 23.9%; design's 95% interval: 15.0% to 23.5%."
+        in fig.caption
     )
+    assert fig.caption.count("14.8% to 23.9%") == 1
     assert "grey not judged (1)" in fig.caption
     assert "The intervals assume the labels are right." in fig.caption
+    # One interval: the estimate with its interval and what it is.
+    one = fg.estimate_figure(
+        margin,
+        (3, 3),
+        [0, 4],
+        [0, 1],
+        intervals=[("valid at every sample size", 0.148, 0.239, 0.19)],
+        design="random",
+        n_valid=9,
+    )
+    assert (
+        "(b) The map's error rate over all its windows, 19.0% (14.8% to 23.9%, "
+        "valid at every sample size)." in one.caption
+    )
+
+
+def _ticks(svg: str) -> list[str]:
+    """The interval chart's axis labels (the only 10 px text of its figure)."""
+    root = ET.fromstring(svg)  # noqa: S314 - an SVG this module wrote
+    return [t.text or "" for t in root.iter(f"{_NS}text") if t.get("font-size") == "10"]
+
+
+def test_a_rate_axis_never_passes_100_percent() -> None:
+    """An interval near 100% ends its axis at 100%, not at a round 200%; a
+    level's bound of 100% fills its bar."""
+    fig = fg.estimate_figure(
+        [0.1 * i for i in range(9)],
+        (3, 3),
+        [0, 4],
+        [1, 1],
+        intervals=[("valid at every sample size", 0.6, 0.97, 0.9)],
+        design="random",
+        n_valid=9,
+    )
+    assert _ticks(fig.svg) == ["0%", "50%", "100%"]
+    zone = fg.zone_figure(
+        [i / 16 for i in range(16)],
+        (4, 4),
+        [],
+        [1],
+        [1],
+        alpha=0.1,
+        delta=0.1,
+        rule="prefix",
+        levels=[("top 100%", 1.0, False)],
+        n_valid=16,
+    )
+    (bar,) = _rects(zone.svg, fill=fg.NEITHER)
+    assert float(bar.get("width", "0")) == fg.SIDE - 150  # the bar's full width
 
 
 def test_many_marks_are_painted_into_the_grid() -> None:
@@ -167,20 +218,37 @@ def test_the_zone_is_tinted_and_the_levels_drawn_against_alpha() -> None:
         [1, 9, 12],
         [1, 0, 0],
         alpha=0.1,
+        delta=0.05,
+        rule="prefix",
         levels=[("top 50%", 0.08, True), ("top 75%", 0.14, False)],
         n_valid=16,
     )
-    assert "8 of 16 windows (50.0%) certified" in _texts(fig.svg)
+    holds = "with a statement that fails on at most 5% of random draws (prefix rule)"
+    certified = "8 of 16 windows (50.0%) certified at an error rate of at most 10%"
+    assert f"{certified}, {holds}." in _texts(fig.svg)
+    assert f"where the error rate is at most 10% {holds}." in fig.caption
+    assert "stated confidence" not in fig.caption
     assert len(_rects(fig.svg, fill=fg.css(fg.ZONE))) == 1 + 1  # bar + legend
     assert len(_rects(fig.svg, fill=fg.NEITHER)) == 1  # the level above alpha
     assert "(b) The upper bound on the error rate at each confidence level" in (
         fig.caption
     )
+    assert "blue marks the levels the prefix rule certified" in fig.caption
     none = fg.zone_figure(
-        margin, (4, 4), [], [1], [1], alpha=0.1, levels=[], n_valid=16
+        margin,
+        (4, 4),
+        [],
+        [1],
+        [1],
+        alpha=0.1,
+        delta=0.1,
+        rule="bonferroni",
+        levels=[],
+        n_valid=16,
     )
     assert "No zone certified" in _texts(none.svg)
-    assert "The rule certified no level with these labels" in none.caption
+    assert "(bonferroni rule, delta 10%)" in _texts(none.svg)
+    assert "The bonferroni rule certified no level with these labels" in none.caption
     assert "(b)" not in none.caption
 
 
@@ -196,8 +264,36 @@ def test_the_two_map_figures_show_where_they_differ_and_each_labels_side() -> No
     assert len(_rects(grade.svg, fill=fg.MAP_A)) == 2 + 1 + 1  # cells, legend, bar
     assert verdict in _texts(grade.svg)  # escaped in the SVG, parsed back
     assert "&lt;p = 0.25&gt;" in grade.svg
+    # Labelled counts the ?, as the verdict's n_labelled does; judged does not.
+    assert "(a) The 2 judged windows of the 3 labelled where the maps differ" in (
+        grade.caption
+    )
     assert "blue where the label is map a's class (2)" in grade.caption
     assert "outlined not judged (1)" in grade.caption
+    # A window either map leaves without a class is white, and the legend says so.
+    for fig in (plan, grade):
+        assert "not compared" in _texts(fig.svg)
+        assert len(_rects(fig.svg, fill="#ffffff", stroke=fg.MUTED)) == 1  # swatch
+    full = fg.two_map_plan_figure([True, False, True, False], (2, 2), [0])
+    assert "not compared" not in _texts(full.svg)
+    # A design file that does not record where the maps differ: only the drawn
+    # windows are known to differ, so no window is drawn as agreeing.
+    old = fg.two_map_grade_figure(
+        [True, None, True, None, True, None],
+        (2, 3),
+        [0, 2, 4],
+        ["a", "b", "neither"],
+        verdict=verdict,
+        differ_known=False,
+    )
+    note = (
+        "This design file does not record where the maps differ elsewhere, so "
+        "only the labelled windows are shown."
+    )
+    assert note in old.caption and note not in grade.caption
+    assert "(a) The 3 labelled windows where the maps differ" in old.caption
+    assert "the maps agree" not in _texts(old.svg)
+    assert "the maps agree" in _texts(grade.svg)
 
 
 def test_without_a_grid_the_caption_says_windows_are_in_index_order() -> None:
@@ -231,6 +327,48 @@ def test_tied_margins_share_a_shade_and_a_flat_map_is_drawn_flat() -> None:
     fig = fg.plan_figure([0.0] * 9, (3, 3), [1, 5], design="random", seed=0, n_valid=9)
     assert "outlined on a flat grid, as the map gives one confidence" in fig.caption
     assert "one confidence everywhere (flat)" in _texts(fig.svg)
+    assert "class map" not in fig.caption
+
+
+def test_a_class_map_is_drawn_flat_as_having_no_confidence() -> None:
+    """A class map without top-k scores has no confidence (its margin is 0
+    wherever a window holds a class): each route's legend and caption say so,
+    not merely that the grid is flat."""
+    margin: list[float | None] = [0.0] * 8 + [None]
+    flat = "on a grid drawn flat: a class map has no confidence to rank by"
+    plan = fg.plan_figure(
+        margin, (3, 3), [1, 5], design="random", seed=0, n_valid=8, no_confidence=True
+    )
+    assert f"outlined {flat}." in plan.caption
+    estimate = fg.estimate_figure(
+        margin,
+        (3, 3),
+        [1, 5],
+        [0, 1],
+        intervals=[("valid at every sample size", 0.1, 0.9, 0.5)],
+        design="random",
+        n_valid=8,
+        no_confidence=True,
+    )
+    assert f"shown {flat}; green where" in estimate.caption
+    zone = fg.zone_figure(
+        margin,
+        (3, 3),
+        [],
+        [1],
+        [0],
+        alpha=0.1,
+        delta=0.1,
+        rule="prefix",
+        levels=[],
+        n_valid=8,
+        no_confidence=True,
+    )
+    assert f"shown {flat}; the random sample's labels" in zone.caption
+    for fig in (plan, estimate, zone):
+        texts = _texts(fig.svg)
+        assert "no confidence (class map)" in texts
+        assert "one confidence everywhere (flat)" not in texts
 
 
 def test_a_zone_level_is_coloured_by_the_rules_decision_not_by_alpha() -> None:
@@ -241,6 +379,8 @@ def test_a_zone_level_is_coloured_by_the_rules_decision_not_by_alpha() -> None:
         [1],
         [0],
         alpha=0.025,
+        delta=0.1,
+        rule="prefix",
         levels=[("top 40%", 0.02, False)],  # below alpha, refused by the rule
         n_valid=16,
     )

@@ -10,9 +10,9 @@ and runs a natural-language brief.
     olmoearth-agent "How many OlmoEarth projects do I have?"
     python -m olmoearth_agent --show-trace "Map alfalfa in the Klamath basin"
 
-After the answer it prints each figure a tool of the run wrote (a check
-route's determination, ``olmoearth_agent.reporting.figures``): its path, then
-its caption.
+After the answer and a blank line it prints each figure a tool of the run
+wrote (a check route's determination, ``olmoearth_agent.reporting.figures``):
+its path, then its caption.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Iterable, Mapping
 from typing import Any
 
 from olmoearth_agent.harness import AgentResult, LeadAgent
@@ -67,6 +67,21 @@ def figure_of(event: Mapping[str, Any]) -> tuple[str, str] | None:
     if not isinstance(path, str) or not path:
         return None
     return path, (caption if isinstance(caption, str) else "")
+
+
+def figure_lines(figures: Iterable[tuple[str, str]]) -> list[str]:
+    """The lines printed after the answer for ``(figure_path, caption)`` pairs.
+
+    A blank line first, so a Markdown answer that ends in a table or a list
+    stays apart from them, then each figure's ``figure: <path>`` and its
+    caption (none when it has no caption); no line at all without a figure.
+    """
+    lines: list[str] = []
+    for path, caption in figures:
+        lines.append(f"figure: {path}")
+        if caption:
+            lines.append(caption)
+    return ["", *lines] if lines else []
 
 
 class _FigureAgent(LeadAgent):
@@ -139,7 +154,12 @@ async def run_brief(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint. Returns a process exit code (0 = answered)."""
+    """CLI entrypoint. Returns a process exit code (0 = answered).
+
+    stdout is the answer followed by any figure lines (:func:`figure_lines`:
+    a blank line, then each figure's path and caption); the trace and the
+    notes go to stderr.
+    """
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     figures: dict[str, str] = {}
     result = asyncio.run(
@@ -201,10 +221,8 @@ def main(argv: list[str] | None = None) -> int:
             )
     print(result.final_content)
     # The web UI shows each figure under its tool's result (webui/js/viz.js).
-    for path, caption in figures.items():
-        print(f"figure: {path}")
-        if caption:
-            print(caption)
+    for line in figure_lines(figures.items()):
+        print(line)
     return 0
 
 

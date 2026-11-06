@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="748" height="614" viewBox="0 0 748 614" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
-<rect width="748" height="614" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="748" height="598" viewBox="0 0 748 598" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+<rect width="748" height="598" fill="#ffffff"/>
 <text x="16.0" y="28.0" font-size="17" font-weight="600" fill="#1A1A1A" text-anchor="start">How wrong the map is</text>
 <text x="16.0" y="50.0" font-size="12" font-weight="400" fill="#5F6368" text-anchor="start">57 of 300 labelled windows are wrong; the error rate over all 15,813 windows is 19.0% (14.8% to 23.9%, valid at</text>
 <text x="16.0" y="66.0" font-size="12" font-weight="400" fill="#5F6368" text-anchor="start">every sample size).</text>
@@ -339,9 +339,8 @@
 </g>
 </g>
 <text x="16.0" y="518.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">How wrong the map is. (a) The 300 labelled windows of a random sample from the map&#x27;s 15,813 windows on its 128 x</text>
-<text x="16.0" y="534.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">128 window grid, shown on the map&#x27;s confidence rank (faded): green where the label agrees with the map (243),</text>
-<text x="16.0" y="550.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">magenta where it does not (57). (b) The map&#x27;s error rate over all its windows, 19.0% (14.8% to 23.9%, valid at</text>
-<text x="16.0" y="566.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">every sample size); valid at every sample size: 14.8% to 23.9%; the interval this design earns: 14.8% to 23.9%.</text>
-<text x="16.0" y="582.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">The intervals assume the labels are right. Windows are drawn by row and column, row 0 at the top; no coordinates</text>
-<text x="16.0" y="598.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">are drawn.</text>
+<text x="16.0" y="534.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">128 window grid, shown on the map&#x27;s confidence rank (faded); green where the label agrees with the map (243),</text>
+<text x="16.0" y="550.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">magenta where it does not (57). (b) The map&#x27;s error rate over all its windows, 19.0%; valid at every sample</text>
+<text x="16.0" y="566.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">size: 14.8% to 23.9%; the interval this design earns: 14.8% to 23.9%. The intervals assume the labels are right.</text>
+<text x="16.0" y="582.0" font-size="11" font-weight="400" fill="#5F6368" text-anchor="start">Windows are drawn by row and column, row 0 at the top; no coordinates are drawn.</text>
 </svg>

@@ -1302,18 +1302,56 @@ async def test_a_plan_and_its_estimate_come_with_their_figures(tmp_path: Path) -
         "its 20 x 20 window grid" in caption
     )
     assert f"magenta where it does not ({len(bad)})" in caption
-    assert (
-        f"(b) The map's error rate over all its windows, {fg.pct(valid['estimate'])} "
-        f"({fg.pct(valid['low'])} to {fg.pct(valid['high'])}, valid at every "
-        "sample size)" in caption
-    )
+    # The estimate once, then each interval once.
+    valid_interval = f"{fg.pct(valid['low'])} to {fg.pct(valid['high'])}"
     design_interval = f"{fg.pct(out['low'])} to {fg.pct(out['high'])}"
-    assert f"the interval this design earns: {design_interval}" in caption
+    assert (
+        f"(b) The map's error rate over all its windows, {fg.pct(valid['estimate'])}; "
+        f"valid at every sample size: {valid_interval}; the interval this design "
+        f"earns: {design_interval}." in caption
+    )
     # Other labels on the same design: another figure, the first kept.
     flipped = {**labels, "wrong": [1 - wrong[0], *wrong[1:]]}
     other = (await _call("olmoearth_estimate_map_error", flipped))["result"]
     assert other["figure_path"] != out["figure_path"]
     assert Path(out["figure_path"]).is_file() and Path(other["figure_path"]).is_file()
+    assert "class map" not in caption
+
+
+@pytest.mark.asyncio
+async def test_a_class_maps_estimate_figure_says_it_has_no_confidence(
+    tmp_path: Path,
+) -> None:
+    """A design file of a class map without top-k scores (``score_kind``
+    ``class_map``, its margin 0 wherever a window holds a class) is graded
+    as one: its figure is drawn flat and its legend and caption say a class
+    map has no confidence to rank by, as the result's class_map_note does."""
+    scores, truth = _map(400)
+    args = {"scores": scores, "grid": 20, "budget": 60, "design": "random", "seed": 2}
+    plan = (await _call("olmoearth_plan_label_sample", args))["result"]
+    design = json.loads(Path(plan["design_path"]).read_text())
+    population = design["population"]
+    population["score_kind"] = "class_map"
+    population["margin"] = [0.0] * len(population["margin"])
+    population["classes"] = ["water", "forest", "crop"]
+    path = tmp_path / "design_class_map.json"
+    path.write_text(json.dumps(design))
+    idx = design["sample"]["indices"]
+    wrong = [truth[i] for i in idx]
+    out = (
+        await _call(
+            "olmoearth_estimate_map_error", {"design_path": str(path), "wrong": wrong}
+        )
+    )["result"]
+    assert out["class_map_note"] == rules.CLASS_MAP_NO_CONFIDENCE
+    stem = f"design_class_map_estimate_{labels_sha256(wrong)[:8]}"
+    svg = _figure_svg(out, stem, tmp_path)
+    texts = " ".join(t.text or "" for t in svg.iter(f"{_SVG}text"))
+    assert "no confidence (class map)" in texts
+    assert (
+        "shown on a grid drawn flat: a class map has no confidence to rank by"
+        in out["figure_caption"]
+    )
 
 
 @pytest.mark.asyncio
@@ -1323,7 +1361,8 @@ async def test_a_zone_comes_with_its_figure(
     """The zone's figure is drawn from what certify_zone returned: the zone's
     windows (none when nothing is certified), the labels in the design's
     order and each level tested with its upper bound; its caption gives the
-    zone's size and share. Each alpha and set of labels has its own figure."""
+    zone's size and share. Each alpha, delta, rule and set of labels has its
+    own figure."""
     design_path, wrong = await _random_zone_inputs()
     idx = json.loads(Path(design_path).read_text())["sample"]["indices"]
     drawn: dict[str, Any] = {}
@@ -1346,12 +1385,19 @@ async def test_a_zone_comes_with_its_figure(
     )["result"]
     assert out["certified"] is True
     stem = Path(design_path).stem
-    _figure_svg(out, f"{stem}_zone_a0.1_{out['labels_sha256'][:8]}", tmp_path)
+    sha8 = out["labels_sha256"][:8]
+    _figure_svg(out, f"{stem}_zone_a0.1_d0.1_bonferroni_{sha8}", tmp_path)
     zone = json.loads(Path(out["zone_path"]).read_text())["window_indices"]
     assert drawn["zone"] == zone and len(zone) == out["n_zone"]
     assert drawn["sample"] == idx and drawn["labels"] == wrong
     assert drawn["grid"] is None  # inline scores with no grid
     assert drawn["alpha"] == 0.1 and drawn["n_valid"] == out["n_population"] == 2000
+    assert (drawn["delta"], drawn["rule"]) == (0.1, "bonferroni")
+    assert drawn["no_confidence"] is False
+    assert (
+        "with a statement that fails on at most 10% of random draws (bonferroni "
+        "rule)" in out["figure_caption"]
+    )
     assert drawn["levels"] == [
         (
             f"top {round(100 * float(lv['coverage']))}%",
@@ -1370,4 +1416,18 @@ async def test_a_zone_comes_with_its_figure(
     none = (await _call("olmoearth_certify_zone", {**args, "alpha": 0.05}))["result"]
     assert none["certified"] is False and drawn["zone"] == []
     assert len(drawn["levels"]) == len(none["levels"])
-    _figure_svg(none, f"{stem}_zone_a0.05_{none['labels_sha256'][:8]}", tmp_path)
+    _figure_svg(none, f"{stem}_zone_a0.05_d0.1_prefix_{sha8}", tmp_path)
+    # The same alpha and labels under another rule, then another delta: each a
+    # figure of its own, the first kept.
+    prefix = (
+        await _call("olmoearth_certify_zone", {**args, "alpha": 0.1, "rule": "prefix"})
+    )["result"]
+    _figure_svg(prefix, f"{stem}_zone_a0.1_d0.1_prefix_{sha8}", tmp_path)
+    wider = (
+        await _call("olmoearth_certify_zone", {**args, "alpha": 0.1, "delta": 0.2})
+    )["result"]
+    _figure_svg(wider, f"{stem}_zone_a0.1_d0.2_prefix_{sha8}", tmp_path)
+    paths = {out["figure_path"], prefix["figure_path"], wider["figure_path"]}
+    assert len(paths) == 3 and all(Path(p).is_file() for p in paths)
+    assert "prefix rule" in prefix["figure_caption"]
+    assert "bonferroni" not in prefix["figure_caption"]
