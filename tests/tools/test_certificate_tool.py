@@ -654,6 +654,58 @@ async def test_a_certificate_rests_on_the_labels_first_given(
 
 
 @pytest.mark.asyncio
+async def test_the_same_map_under_another_scores_file_keeps_its_labels(
+    _scores_root: Path,
+) -> None:
+    """A seed_from_map plan's design file is named by what the later tools
+    read, its scores file among it; its working folder by the map's margins.
+    The same map's scores file under another name gets a design file of its
+    own, the same draw and the same folder, so once that folder's sheet holds
+    labels the sample is not drawn again under either name. The refusal
+    names the design file there is: this plan's, one an earlier version
+    named after the folder, or none."""
+    run = await _direct_run(_scores_root)
+    copy = Path(run["scores_path"]).with_name("same_map.json")
+    shutil.copyfile(run["scores_path"], copy)
+    plan = await _map_plan(run["scores_path"])
+    other = await _map_plan(str(copy))
+    assert other["design_path"] != plan["design_path"]
+    sheet = Path(plan["seed_from_map"]["package_sheet"])
+    assert Path(other["seed_from_map"]["package_sheet"]) == sheet
+    assert other["seed"] == plan["seed"]
+    first = [1] + [0] * (BUDGET - 1)
+    await _ok(
+        "olmoearth_estimate_map_error",
+        {"design_path": plan["design_path"], "wrong": first},
+    )
+    assert _sheet_wrong(sheet) == [str(w) for w in first]
+
+    async def refused(scores_path: str) -> str:
+        out = await _call(
+            "olmoearth_plan_label_sample",
+            {
+                "scores_path": scores_path,
+                "budget": BUDGET,
+                "design": "random",
+                "seed_from_map": True,
+                "alpha": ALPHA,
+            },
+        )
+        assert out["ok"] is False and "was drawn before" in out["error"], out
+        return str(out["error"])
+
+    assert other["design_path"] in await refused(str(copy))
+    # A design file named after the folder, as versions before this one wrote.
+    earlier = Path(plan["design_path"]).with_name(f"{sheet.parent.name}.json")
+    Path(plan["design_path"]).rename(earlier)
+    assert str(earlier) in await refused(run["scores_path"])
+    earlier.unlink()
+    unnamed = await refused(run["scores_path"])
+    assert "the design file of the plan that drew it" in unnamed
+    assert _sheet_wrong(sheet) == [str(w) for w in first]
+
+
+@pytest.mark.asyncio
 async def test_a_design_file_naming_another_folder_is_refused(
     _scores_root: Path,
 ) -> None:

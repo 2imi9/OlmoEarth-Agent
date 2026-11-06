@@ -555,6 +555,75 @@ async def test_inline_scores_take_a_grid_as_n_or_rows_cols() -> None:
 
 
 @pytest.mark.asyncio
+async def test_plans_the_later_tools_read_apart_keep_their_own_designs(
+    tmp_path: Path,
+) -> None:
+    """A one-map plan's design file is named by what the later tools read.
+
+    Two plans at one design, budget and seed whose scores share every margin
+    but not the window grid (certify_zone places its zone on it), the scores
+    file, the map's classes, p1 (the confidence design allocates by it) or
+    min_per_class (the class design's floor) get two design files: each zone
+    lies on its own plan's grid, the later plan leaves the earlier one's file
+    as it was, and the same arguments give the same file again.
+    """
+    scores, truth = _map(2000, seed=11)
+    # The same margins and p1 with other classes; the same margins and
+    # classes with another p1 (each row's lowest logit lowered).
+    rolled = [row[1:] + row[:1] for row in scores]
+    lowered = [[v - 1.0 if v == min(row) else v for v in row] for row in scores]
+    base: dict[str, Any] = {"budget": 300, "design": "random"}
+
+    async def plan(args: dict[str, Any]) -> dict[str, Any]:
+        out = await _call("olmoearth_plan_label_sample", {**base, **args})
+        assert out["ok"] is True, out
+        return dict(out["result"])
+
+    plans = [await plan({"scores": scores, "grid": g}) for g in ([40, 50], [20, 100])]
+    for planned, cols in zip(plans, (50, 100)):
+        design = json.loads(Path(planned["design_path"]).read_text())
+        wrong = [truth[i] for i in design["sample"]["indices"]]
+        args = {"design_path": planned["design_path"], "wrong": wrong, "alpha": 0.1}
+        out = await _call("olmoearth_certify_zone", {**args, "rule": "bonferroni"})
+        zone = out["result"]
+        assert zone["certified"] is True
+        saved = json.loads(Path(zone["zone_path"]).read_text())
+        windows = saved["window_indices"]
+        assert saved["rows_cols"] == [list(divmod(w, cols)) for w in windows]
+
+    paths = []
+    for name in ("a.json", "b.json"):
+        (tmp_path / name).write_text(json.dumps({"scores": scores}))
+        paths.append(str(tmp_path / name))
+    floor: dict[str, Any] = {"scores": scores, "design": "class", "budget": 60}
+    pairs: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {
+        "grid": ({"scores": scores, "grid": [40, 50]}, {"scores": scores}),
+        "scores file": ({"scores_path": paths[0]}, {"scores_path": paths[1]}),
+        "classes": ({"scores": scores}, {"scores": rolled}),
+        "p1": (
+            {"scores": scores, "design": "confidence"},
+            {"scores": lowered, "design": "confidence"},
+        ),
+        "min_per_class": (
+            {**floor, "min_per_class": 5},
+            {**floor, "min_per_class": 20},
+        ),
+    }
+    for name, (first, second) in pairs.items():
+        earlier = await plan(first)
+        held = Path(earlier["design_path"]).read_bytes()
+        later = await plan(second)
+        assert later["design_path"] != earlier["design_path"], name
+        assert Path(earlier["design_path"]).read_bytes() == held, name
+        again = await plan(first)
+        assert again["design_path"] == earlier["design_path"], name
+        if name == "scores file":
+            for planned, path in zip((earlier, later), paths):
+                design = json.loads(Path(planned["design_path"]).read_text())
+                assert design["population"]["source"] == {"scores_path": path}
+
+
+@pytest.mark.asyncio
 async def test_missing_extra_is_a_clear_answer_not_a_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
