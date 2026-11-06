@@ -63,6 +63,19 @@ def _ask(page, brief: str, answers: int) -> None:  # noqa: ANN001 - playwright P
     )
 
 
+def _show_figure(page, n: int) -> None:  # noqa: ANN001 - playwright Page
+    """Wait for the ``n``-th figure of the thread and scroll it into view."""
+    page.wait_for_function(
+        f"document.querySelectorAll('#chatThread .det-figure img').length > {n}",
+        timeout=20000,
+    )
+    page.evaluate(
+        f"() => document.querySelectorAll('#chatThread .det-figure')[{n}]"
+        ".scrollIntoView({ behavior: 'smooth', block: 'start' })"
+    )
+    time.sleep(1.2)
+
+
 def _record() -> Path:
     """Drive the walkthrough in Chromium and return the recorded .webm path."""
     from playwright.sync_api import sync_playwright
@@ -102,16 +115,18 @@ def _record() -> Path:
             row.click()
             time.sleep(0.9)
 
-        # 3) Without labels: which windows to check first.
+        # 3) Without labels: which windows to check first, and its figure.
         _ask(page, REVIEW_BRIEF, 1)
-        time.sleep(4.0)  # hold on the answer
+        _show_figure(page, 0)
+        time.sleep(4.0)  # hold on the figure and its caption
 
-        # 4) With labels: how wrong the map is; its answer is a table.
+        # 4) With labels: how wrong the map is; its figure, then its table.
         _ask(page, ERROR_BRIEF, 2)
         page.wait_for_selector("#chatThread .answer .md-table", timeout=20000)
+        _show_figure(page, 1)
         time.sleep(1.5)
         page.screenshot(path=str(DEMO / "olmoearth-agent-demo.png"))
-        time.sleep(2.5)
+        time.sleep(3.0)
 
         # 5) Open the last answer's reasoning and tool call, then close it again,
         #    so the video ends on the answer's table.

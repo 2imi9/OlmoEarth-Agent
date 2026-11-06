@@ -1,14 +1,13 @@
-OlmoEarth Agent (beta)
-======================
+<div align="center">
+
+<img src="webui/assets/OlmoEarth-logo.png" alt="OlmoEarth" width="360">&nbsp;&nbsp;<img src="webui/assets/agent-tag.png" alt="Agent" height="42">
 
 A beta version developed by a collaborator. It is not the final OlmoEarth Agent.
 
-<div align="center">
-
 [![The web UI answering which windows to check first, then how wrong the map is; click for the MP4](webui/demo/olmoearth-agent-demo.webp)](webui/demo/olmoearth-agent-demo.mp4)
 
-<sub>Demo mode (32 s), replaying what `make verify-demo` recorded on a Dynamic World tile; no real Studio key and no
-LLM. Click for the MP4.</sub>
+<sub>Demo mode (35 s), replaying what `make verify-demo` recorded on a Dynamic World tile, with each check's figure; no
+real Studio key and no LLM. Click for the MP4.</sub>
 
 </div>
 
