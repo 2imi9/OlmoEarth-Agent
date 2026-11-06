@@ -572,14 +572,21 @@ See [Development](docs/Usage.md#development) for the convention.
   the code.
 
 ### Changed
-- **The README shows the web UI walkthrough again, and Usage's "What it
-  checks" table is shorter.** `webui/demo/olmoearth-agent-demo.mp4` (the
-  8 June 2026 recording, removed on 31 October) is back, with its frame at
-  16 s as a cover that links to it; the caption says it was recorded on the
-  demo UI with sample data and that some tools and menus changed since. The
-  pre-commit size check exempts that one file. The table's cells are a few
+- **The README shows a web UI walkthrough again, and Usage's "What it
+  checks" table is shorter.** The walkthrough is new: two demo-mode runs
+  replay what `make verify-demo` recorded on the Dynamic World tile (in
+  `js/run.js`: which windows to check first, `olmoearth_review_set`, 791 of
+  15,813, of which 532 are wrong; and how wrong the map is,
+  `olmoearth_estimate_map_error`, 19.0% from 300 random labels, 14.8% to
+  23.9%), each answer saying so. `webui/demo/record_demo.py` (the
+  recorder removed on 31 October, rewritten) drives them in headless
+  Chromium and writes `webui/demo/olmoearth-agent-demo.mp4` (26 s) and its
+  cover, which the README links. The pre-commit size check exempts the MP4;
+  `.gitignore` takes the recorder's `_rec/`. The table's cells are a few
   words each and its tool names drop the `olmoearth_` prefix; the details
-  stay in the review-set skill's section.
+  stay in the review-set skill's section. Tests:
+  `test_the_demo_verification_replays_quote_make_verify_demo` (every figure
+  the two runs show is on docs/VERIFICATION_DEMO.md).
 - **A which-map grade says it grades these two maps, not their models.**
   Its `must_state` adds "This grades these two maps on these windows; it
   does not rank the models that made them on other areas, dates or training

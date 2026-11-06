@@ -15,10 +15,10 @@ back.
 
 <div align="center">
 
-[![The web UI answering a brief; click to play the walkthrough video](webui/demo/olmoearth-agent-demo.png)](webui/demo/olmoearth-agent-demo.mp4)
+[![The web UI giving a map's error rate; click to play the walkthrough video](webui/demo/olmoearth-agent-demo.png)](webui/demo/olmoearth-agent-demo.mp4)
 
-<sub>The walkthrough (MP4, 25 s), recorded on 8 June 2026 on the demo UI with sample data. Some tools and menus in it have
-changed since.</sub>
+<sub>The walkthrough (MP4, 26 s): which windows to check first, then how wrong the map is. Recorded in demo mode, which
+replays what `make verify-demo` recorded on a Dynamic World tile; no Studio key or LLM.</sub>
 
 </div>
 

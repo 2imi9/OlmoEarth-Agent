@@ -147,3 +147,6 @@ nul
 
 # Local session working notes (audit/review scratch; durable findings go to issues)
 reviews/
+
+# The web UI recorder's intermediate video (webui/demo/record_demo.py)
+webui/demo/_rec/

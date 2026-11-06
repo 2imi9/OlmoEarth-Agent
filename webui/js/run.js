@@ -29,6 +29,22 @@ const SCENARIOS = {
     result: [['name', 'demo-user'], ['project_count', '5'], ['ok', 'true']],
     answer: "You have **5** OlmoEarth Studio projects. Here's how they relate to **water quality**:\n\n| Project | Relevance |\n|---|---|\n| **Chesapeake - water quality** | ✓ Strong: nutrient loading |\n| **Potomac - change detection** | ✓ Strong: sewage spill event |\n| **PA Karst** | ~ Moderate: karst aquifer vulnerability |\n| **Mangrove - Indonesia** | ✗ Low: coastal extent |\n| **Solar arrays - California** | ✗ None: energy infrastructure |\n\nWant the per-project predictions, or a stakeholder brief?",
   },
+  // The verification routes replay what `make verify-demo` recorded (docs/VERIFICATION_DEMO.md): the agent's own
+  // tools on the Dynamic World tile olmoearth-inferencex ships. Every figure is that page's, and each answer says so.
+  review: {
+    reasoning: "No labels yet, so I rank the map's windows by the model's confidence, least confident first, and take the 5% budget. A review set says where to look, not how wrong the map is.",
+    tool: 'olmoearth_review_set',
+    args: '{\n  "scores_path": "scores_run_dynamic-world_cbd2b294_p1.json",\n  "budget": 0.05\n}',
+    result: [['windows', '15,813'], ['review_set', '791'], ['budget', '0.05']],
+    answer: "Open these **791** windows first (5% of **15,813**), least confident first. On this tile an expert labelled every window, so we can see how it went: **532** of the 791 are wrong (67%), where a random 5% would be wrong 19% of the time.\n\nA review set is where to look, not a sample: to say how wrong the map is, label the random sample I plan.\n\n*Demo: the figures `make verify-demo` recorded on the Dynamic World tile that olmoearth-inferencex ships (southern Peru, 9 June 2019).*",
+  },
+  error: {
+    reasoning: "300 labels on a random sample of the windows: I estimate the error rate with the interval valid at every sample size, then the one the design earns. The labels are taken as right.",
+    tool: 'olmoearth_estimate_map_error',
+    args: '{\n  "design_path": "design_scores_971becd8_random_300_smap_a0-1_d0-1_prefix.json",\n  "labels_path": "<the plan\'s filled sheet>",\n  "n_classes": 9\n}',
+    result: [['error_rate', '19.0%'], ['labels', '300'], ['valid_interval', '14.8% to 23.9%']],
+    answer: "| Labels | Error rate | 95% interval, valid at every sample size |\n|---|---|---|\n| 300, random design | **19.0%** | 14.8% to 23.9% |\n\nThe map is wrong on about a fifth of its 15,813 windows. By class: what it calls *built* is right only 39.6% of the time (25.9% to 54.6%, 48 labelled windows).\n\n*Demo: the figures `make verify-demo` recorded on the Dynamic World tile that olmoearth-inferencex ships (southern Peru, 9 June 2019).*",
+  },
   // Honest demo: no fabricated stats - it explains the real flow and asks for a key.
   compare: {
     reasoning: "Two runs over the same area with no ground-truth labels, so I compare them to each other (agreement), not accuracy. That needs to sample both rasters - which requires your Studio key.",
@@ -42,6 +58,8 @@ const SCENARIOS = {
 function pickScenario(brief) {
   const b = brief || '';
   if (/difference map|compare .*\bruns?\b|do they agree|two (prediction )?results/i.test(b)) return SCENARIOS.compare;
+  if (/check first|which windows|review set/i.test(b)) return SCENARIOS.review;
+  if (/how wrong|error rate/i.test(b)) return SCENARIOS.error;
   if (/project|how many|account|water quality/i.test(b)) return SCENARIOS.projects;
   return SCENARIOS.change;
 }

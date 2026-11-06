@@ -79,8 +79,9 @@ def test_readme_links_name_files_that_exist(page: str) -> None:
     """Every relative link and image names a file the repository holds.
 
     The web UI's demo GIFs and MP4s, their recorders and its screenshot went
-    on 31 October 2026, and the walkthrough MP4 came back on 5 November 2026
-    with a cover frame; a link to a file that is gone is caught here. A link
+    on 31 October 2026, and a new walkthrough MP4 and its cover came on 5
+    November 2026 (webui/demo/record_demo.py); a link to a file that is gone
+    is caught here. A link
     to a heading of a Markdown page names a heading the page has.
     """
     path = _README.parent / page

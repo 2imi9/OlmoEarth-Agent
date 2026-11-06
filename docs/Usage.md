@@ -526,6 +526,12 @@ model, predictions, results), and briefs streamed through `LeadAgent.run_stream`
 The page has no build step: `index.html`, `styles.css` (tokens at `:root`) and ES modules under `js/` (`main.js` the
 entry, `api.js` every bridge call).
 
+In demo mode, a brief asking which windows to check first or how wrong a map is replays what `make verify-demo`
+recorded on the Dynamic World tile (its review set, and its error rate from 300 random labels), and says so; other
+briefs show the account's sample projects or explain what a Studio key would add. `webui/demo/record_demo.py` records
+the README's walkthrough from these replays in headless Chromium (Playwright and imageio-ffmpeg, not package
+dependencies; its docstring gives the commands) and writes `olmoearth-agent-demo.mp4` and its cover, `olmoearth-agent-demo.png`.
+
 ## Security
 
 Rule 4 states the guards. The egress allowlist: `studio` is `olmoearth.allenai.org`; `llm-cloud` is
