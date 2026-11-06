@@ -1894,6 +1894,39 @@ See [Development](docs/Usage.md#development) for the convention.
   every sampling result reports `n_nodata_dropped`. The trial's 36 value pairs
   are a regression test that keeps both numbers reproducible.
 
+### Security
+- **A hosted backend's key is sent to the endpoint the egress guard
+  checked** (redirects aside, as rule 4 says).
+  - The web UI's model list (`GET /api/llm/models`) handed the
+    bring-your-own key to the Anthropic or OpenAI SDK client with no egress
+    check, while rule 4 says every outbound endpoint is checked. It now
+    calls `_guard_cloud_endpoint`, the `llm-cloud` check a run already
+    made, now one function for both; in `enforce` mode a host off the
+    allowlist is refused with HTTP 403 before any client gets the key.
+  - For Claude, a run's check read a constant the client did not use: the
+    Anthropic SDK, given no `base_url`, reads `ANTHROPIC_BASE_URL` from the
+    environment, so a run (and the model list, which had no check) could
+    send a browser user's key to a host no check had seen, `enforce` or
+    not. The bridge now hands the client the checked `api.anthropic.com`
+    explicitly, as ChatGPT's and Gemini's fixed hosts already were, and
+    `AnthropicLLM` checks the URL it calls (`base_url`, else
+    `ANTHROPIC_BASE_URL`, else the public API) and passes that URL to the
+    client.
+  - What changes for users: the web UI's Claude backend no longer follows
+    `ANTHROPIC_BASE_URL` (a gateway set there is not used for a browser
+    user's key); `AnthropicLLM` built directly follows it as before but now
+    checks it, so in `enforce` mode a gateway needs `OLMOEARTH_EGRESS_ALLOW`,
+    and its `config.endpoint` reports that URL.
+  - Usage's Security section and rule 4 say so; rule 4 calls its
+    "model-list probe" what it is, the local model server's health probe,
+    and says the Anthropic SDK sends the key along a redirect.
+  - Tests: `test_llm_models_checks_the_endpoint_before_the_key` (with
+    `ANTHROPIC_BASE_URL` set off the list),
+    `test_llm_models_refuses_an_endpoint_off_the_allowlist`,
+    `test_the_client_calls_the_url_the_egress_check_saw` and the run's
+    Claude test's `base_url`; `test_run_refuses_a_backend_endpoint_off_the_allowlist`
+    keeps the run's 403 now that it shares the model list's guard.
+
 ## [1.4.0] - 2026-08-14
 
 ### Added

@@ -377,8 +377,9 @@ pipeline code. The studio-job-config package's `scripts/recommend.py` is the use
 - **Egress guard.** Every outbound endpoint is checked against a per-capability host allowlist and an SSRF block
   (private, loopback and metadata ranges) before a request leaves the process (`security/egress.py`;
   `OLMOEARTH_EGRESS=audit` by default, `enforce` or `off`; `OLMOEARTH_EGRESS_ALLOW` to extend). Only the starting
-  endpoint is checked: the Studio client and the model-list probe do not follow redirects, while the OpenAI and
-  Anthropic SDK clients follow them unchecked.
+  endpoint is checked: the Studio client and the local model server's health probe do not follow redirects, while
+  the OpenAI and Anthropic SDK clients follow them unchecked (the Anthropic SDK sends its key header along). Each
+  SDK client is handed the endpoint that was checked.
 - **Workspace path guard.** The files the tools write stay under their root (`security/paths.py`, `safe_path`, under
   `tools/review_set.write_root`: `OLMOEARTH_SCORES_ROOT` when set, else the workspace root), so a `../../` or absolute
   name cannot write outside it. The model-chosen read paths (`scores_path`, `design_path`, `labels_path`,
@@ -539,8 +540,10 @@ Rule 4 states the guards. The egress allowlist: `studio` is `olmoearth.allenai.o
 `api.anthropic.com`, `api.openai.com` and `generativelanguage.googleapis.com`; `llm-local` is loopback only. `audit`
 logs an unknown host and `enforce` refuses it; the guard resolves no DNS, so the allowlist is the main control, and it
 covers the agent's own calls, not the child process. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`. The web
-UI's Studio and LLM keys stay in the browser and go with each request; the bridge never stores or logs them; a run checks a
-hosted backend's endpoint before it uses the key (the model list asks only the provider's fixed host). A result's `download_token` is a credential, masked in every
+UI's Studio and LLM keys stay in the browser and go with each request; the bridge never stores or logs them. A run and the
+model list each check a hosted backend's endpoint and hand the SDK client that endpoint with the key (`enforce` refuses
+a host off the list with HTTP 403); Claude's is always `api.anthropic.com`, so `ANTHROPIC_BASE_URL` in the bridge's
+environment does not redirect a browser user's key. A result's `download_token` is a credential, masked in every
 error. The workspace root is not the working directory, so a written file cannot overwrite served code.
 
 ## Studio API notes

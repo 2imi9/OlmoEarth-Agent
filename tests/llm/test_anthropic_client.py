@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from olmoearth_agent.llm.anthropic_client import (
+    DEFAULT_ANTHROPIC_BASE_URL,
     AnthropicLLM,
     _messages_to_anthropic,
     _parse_anthropic_payload,
@@ -22,6 +23,13 @@ from olmoearth_agent.llm.anthropic_client import (
 )
 from olmoearth_agent.llm.presets import DEFAULT_AGENT_MODE
 from olmoearth_agent.llm.types import Message, ToolCall, ToolSpec
+from olmoearth_agent.security import egress
+
+
+@pytest.fixture(autouse=True)
+def _no_anthropic_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AnthropicLLM follows ANTHROPIC_BASE_URL; the runner's shell must not set it."""
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
 
 
 def test_split_system_concatenates_and_filters() -> None:
@@ -181,6 +189,31 @@ def test_constructor_sets_config() -> None:
     llm = AnthropicLLM(model="claude-x", api_key="sk-test")
     assert llm.config.model == "claude-x"
     assert llm.config.endpoint  # base url recorded for health/introspection
+
+
+def test_the_client_calls_the_url_the_egress_check_saw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ANTHROPIC_BASE_URL, which the SDK would read by itself, is checked and
+    handed to the client explicitly; a base_url argument wins over it."""
+    proxy = "https://models.example.invalid"
+    monkeypatch.delenv("OLMOEARTH_EGRESS_ALLOW", raising=False)
+    monkeypatch.setenv("OLMOEARTH_EGRESS", "audit")
+    plain = AnthropicLLM(model="claude-x", api_key="sk-test")
+    assert plain.config.endpoint == DEFAULT_ANTHROPIC_BASE_URL
+    # The SDK may add a trailing slash to the base URL it is given.
+    assert str(plain._client.base_url).rstrip("/") == DEFAULT_ANTHROPIC_BASE_URL
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", proxy)
+    via_env = AnthropicLLM(model="claude-x", api_key="sk-test")
+    assert via_env.config.endpoint == proxy
+    assert str(via_env._client.base_url).rstrip("/") == proxy
+    pinned = AnthropicLLM(
+        model="claude-x", api_key="sk-test", base_url=DEFAULT_ANTHROPIC_BASE_URL
+    )
+    assert str(pinned._client.base_url).rstrip("/") == DEFAULT_ANTHROPIC_BASE_URL
+    monkeypatch.setenv("OLMOEARTH_EGRESS", "enforce")
+    with pytest.raises(egress.EgressError, match="llm-cloud"):
+        AnthropicLLM(model="claude-x", api_key="sk-test")
 
 
 class _FakeMessages:

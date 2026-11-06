@@ -17,6 +17,7 @@ without it installed (and stay unit-testable offline).
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterable
 from typing import Any
 
@@ -233,8 +234,17 @@ class AnthropicLLM:
             raise RuntimeError("AnthropicLLM needs an api_key or an auth_token.")
         # A ServingConfig keeps health/introspection uniform with OlmoEarthLLM
         # (serve.py reads ``llm.config.model`` / ``llm.config.endpoint``).
+        # The URL the client calls: base_url, else ANTHROPIC_BASE_URL (which the
+        # SDK would otherwise read by itself), else the public API. It is handed
+        # to the client explicitly below, so the egress check covers the URL
+        # the key goes to.
+        endpoint = (
+            base_url
+            or os.environ.get("ANTHROPIC_BASE_URL", "").strip()
+            or DEFAULT_ANTHROPIC_BASE_URL
+        )
         self.config = ServingConfig(
-            endpoint=base_url or DEFAULT_ANTHROPIC_BASE_URL,
+            endpoint=endpoint,
             model=model,
             api_key=api_key or "OAUTH",
             timeout_seconds=timeout_seconds,
@@ -250,9 +260,10 @@ class AnthropicLLM:
             else "llm-cloud"
         )
         egress.validate_endpoint(self.config.endpoint, capability)
-        client_kwargs: dict[str, Any] = {"timeout": timeout_seconds}
-        if base_url:
-            client_kwargs["base_url"] = base_url
+        client_kwargs: dict[str, Any] = {
+            "timeout": timeout_seconds,
+            "base_url": self.config.endpoint,
+        }
         if api_key:
             client_kwargs["api_key"] = api_key
         if auth_token:

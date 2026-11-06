@@ -369,6 +369,21 @@ def _llm_detail(exc: Exception) -> str:
     return f"LLM provider call failed: {type(exc).__name__}"
 
 
+def _guard_cloud_endpoint(url: str) -> str:
+    """Check a hosted backend's endpoint before its bring-your-own key is used.
+
+    A run and the model list both call this before the key reaches an SDK
+    client and hand the client the URL it returns, so the URL checked is the
+    URL the key goes to and a mis-pointed endpoint cannot become a
+    credential-exfiltration channel; in ``enforce`` mode a host off the
+    ``llm-cloud`` allowlist is refused with HTTP 403.
+    """
+    try:
+        return egress.validate_endpoint(url, "llm-cloud")
+    except egress.EgressError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 def _llm_for_request(request: Request) -> Any:
     """Choose the LLM backend for this request (default: the local model).
 
@@ -388,13 +403,13 @@ def _llm_for_request(request: Request) -> Any:
         raise HTTPException(status_code=400, detail="missing API key for backend")
     model = request.headers.get("x-llm-model", "").strip()
     if backend in ("claude", "anthropic"):
-        # Guard the destination before the BYO key is handed to the client, so a
-        # mis-pointed endpoint cannot become a credential-exfiltration channel.
-        try:
-            egress.validate_endpoint(DEFAULT_ANTHROPIC_BASE_URL, "llm-cloud")
-        except egress.EgressError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        kwargs: dict[str, Any] = {"api_key": api_key}
+        # The key goes to the public API, as ChatGPT's and Gemini's go to their
+        # fixed hosts: passed explicitly, so ANTHROPIC_BASE_URL in the bridge's
+        # environment cannot send a browser user's key past the check.
+        kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "base_url": _guard_cloud_endpoint(DEFAULT_ANTHROPIC_BASE_URL),
+        }
         if model:
             kwargs["model"] = model
         try:
@@ -404,13 +419,9 @@ def _llm_for_request(request: Request) -> Any:
     provider = _OPENAI_PROVIDERS.get(backend)
     if provider is None:
         raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
-    try:
-        egress.validate_endpoint(provider["base_url"], "llm-cloud")
-    except egress.EgressError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return OlmoEarthLLM(
         ServingConfig(
-            endpoint=provider["base_url"],
+            endpoint=_guard_cloud_endpoint(provider["base_url"]),
             api_key=api_key,
             model=model or provider["model"],
         ),
@@ -433,8 +444,10 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     """List a provider's current model ids for the web UI autodetect.
 
     Claude uses the Anthropic SDK; ChatGPT/Gemini use the OpenAI SDK against
-    the provider's model-listing endpoint. Network errors propagate to the
-    caller (surfaced as a 502).
+    the provider's model-listing endpoint. The endpoint is checked as a run's
+    is (:func:`_guard_cloud_endpoint`) before the key reaches the client, and
+    the client is given that endpoint. Network errors propagate to the caller
+    (surfaced as a 502).
     """
     if backend in ("claude", "anthropic"):
         try:
@@ -445,7 +458,9 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
                 "Install it with: uv sync --extra claude"
             ) from exc
 
-        client = AsyncAnthropic(api_key=api_key)
+        client = AsyncAnthropic(
+            api_key=api_key, base_url=_guard_cloud_endpoint(DEFAULT_ANTHROPIC_BASE_URL)
+        )
         try:
             page = await client.models.list(limit=100)
             ids = [m.id for m in page.data]
@@ -455,9 +470,10 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     provider = _OPENAI_PROVIDERS.get(backend)
     if provider is None:
         raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
+    base_url = _guard_cloud_endpoint(provider["base_url"])
     from openai import AsyncOpenAI
 
-    openai_client = AsyncOpenAI(base_url=provider["base_url"], api_key=api_key)
+    openai_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
     try:
         resp = await openai_client.models.list()
         ids = [m.id for m in resp.data]
