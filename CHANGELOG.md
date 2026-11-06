@@ -1428,6 +1428,29 @@ See [Development](docs/Usage.md#development) for the convention.
   Studio the same arguments give the same file; design files written before
   are read as they were, and one already overwritten stays as it is. Test:
   `test_dated_and_undated_plans_keep_their_own_designs`.
+- **Two one-map plans that agree on the margins no longer share a design
+  file.** A one-map plan's file name carried a digest of the windows'
+  margins only (and, for a class map without top-k scores, its windows'
+  classes), so two plans at one design, budget and seed whose scores share
+  every margin wrote the same file, and the later plan overwrote the earlier
+  one's design: the same scores on two window grids (`certify_zone` then
+  placed the earlier plan's zone on the later grid's rows and columns),
+  under two scores files (the source the estimate and the certificate read),
+  or with other map classes (which the per-class estimate reads); and, since
+  the draw reads them too, another `p1` under the confidence design or
+  another `min_per_class` under the class design, where the earlier design
+  path then held the later plan's windows. The digest now covers the
+  population as the design file holds it (grid, score kind, margins, map
+  classes, classes or class names, source) and what the draw reads beside
+  the margins (`p1` for the confidence design, `min_per_class` for the class
+  design); the same arguments give the same file, design files written
+  before are read as they were, and one already overwritten stays as it is.
+  A `seed_from_map` plan's working folder keeps its name from the margins'
+  digest, so the same map under another scores file, or a plan drawn before
+  this change, finds its labelled sheet there and is not drawn again; the
+  refusal names this plan's design file, or the one named after the folder
+  before. Tests: `test_plans_the_later_tools_read_apart_keep_their_own_designs`,
+  `test_the_same_map_under_another_scores_file_keeps_its_labels`.
 - **Studio fields the agent read as always empty.**
   - Results list their formats as `file_formats` (e.g. `["png"]`). The
     singular `file_format` the code read does not exist in Studio's records:

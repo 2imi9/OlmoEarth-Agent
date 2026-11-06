@@ -2049,7 +2049,12 @@ def hold_plan_labels(design: dict[str, Any], wrong: list[int]) -> Path | None:
 
 
 async def _map_seeded_draw(
-    estimate: Any, pop: Population, args: dict[str, Any], budget: int, stem: str
+    estimate: Any,
+    pop: Population,
+    args: dict[str, Any],
+    budget: int,
+    stem: str,
+    folder: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """The random draw a certificate rests on, and what fixes it.
 
@@ -2068,7 +2073,11 @@ async def _map_seeded_draw(
     of the map and the settings, so the same plan lands in the same folder:
     once its sheet holds labels, or a certificate was written there, it is
     not drawn again (that would clear the labels), and the plan is refused
-    with the design file to grade instead.
+    with the design file to grade instead. ``stem`` names the plan's design
+    file and ``folder`` its working folder, which the plan names by the
+    margins' digest alone: the same map under another scores file, whose
+    design file has a name of its own, is drawn in the same folder, and its
+    labels are fixed there once.
 
     Returns
     -------
@@ -2089,17 +2098,24 @@ async def _map_seeded_draw(
     rule = str(args.get("rule", "prefix"))
     if rule not in ZONE_RULES:
         raise ValueError(f"rule must be one of {list(ZONE_RULES)}, got {rule!r}")
-    work = safe_path(f"{CERTIFICATE_DIR}/{stem}", root=write_root())
+    work = safe_path(f"{CERTIFICATE_DIR}/{folder}", root=write_root())
     sheet = work / CERT_SAMPLE
     bundle = work / CERT_BUNDLE
     if bundle.exists() or _sheet_holds_labels(sheet):
         held = "a certificate" if bundle.exists() else "labels"
-        design_file = safe_path(f"{stem}.json", root=write_root())
+        # This plan's design file, or the one an earlier version named after
+        # the folder; another scores file of the same map has one of its own.
+        named = [safe_path(f"{s}.json", root=write_root()) for s in (stem, folder)]
+        design_file = next((p for p in named if p.is_file()), None)
+        grade = (
+            f"Grade it from that plan's design file, {design_file}"
+            if design_file is not None
+            else "Grade it from the design file of the plan that drew it"
+        )
         msg = (
             "this sample (the same map, budget, alpha, delta and rule) was drawn "
             f"before, and its working folder {work} holds {held}: drawing it "
-            "again would clear its labels. Grade it from that plan's design file, "
-            f"{design_file}; {LABELS_FIXED}"
+            f"again would clear its labels. {grade}; {LABELS_FIXED}"
         )
         raise ValueError(msg)
     work.mkdir(parents=True, exist_ok=True)
@@ -2394,10 +2410,39 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     advice: tuple[dict[str, Any], dict[str, Any] | None] | None = None
     if class_map or design == CLASS_DESIGN:
         advice = _label_budget_advice(args, pop)
-    # A digest of the population keeps two plans of different maps apart (a
-    # class map's margin is the same wherever a window holds a class).
-    digested: Any = [pop.margin, pop.map_class] if class_map else pop.margin
-    digest = hashlib.sha256(json.dumps(_jsonable(digested)).encode()).hexdigest()
+    # The population as the design file holds it, which the later tools read:
+    # certify_zone its grid, the estimate its score kind, classes, class names
+    # and source, the certificate the source's Studio block.
+    population: dict[str, Any] = {
+        "n_windows": len(pop.margin),
+        "n_valid": n_valid,
+        "grid": list(pop.grid) if pop.grid else None,
+        "score_kind": pop.score_kind,
+        "margin": _jsonable(pop.margin),
+        "map_class": pop.map_class,
+        "source": _jsonable(pop.source),
+    }
+    if labels_classes:
+        population["classes"] = _jsonable(pop.classes)
+    elif pop.class_names:
+        # A scores file's class names, which the estimate's per-class facts
+        # name each class by.
+        population["class_names"] = {str(k): v for k, v in pop.class_names.items()}
+    # A digest of that population and of what the draw reads beside the
+    # margins (p1 for the confidence design, min_per_class for the class
+    # design) keeps two plans apart that the later tools would read
+    # differently: the same margins on two window grids, under two scores
+    # files, with other map classes, another p1 or another floor, at one
+    # design, budget and seed, would share a file name, and the later plan
+    # would overwrite the earlier one's design.
+    drawn_from: dict[str, Any] = {}
+    if design == "confidence":
+        drawn_from["p1"] = pop.p1
+    elif design == CLASS_DESIGN:
+        drawn_from["min_per_class"] = floor
+    digest = hashlib.sha256(
+        json.dumps(_jsonable([population, drawn_from]), sort_keys=True).encode()
+    ).hexdigest()
     origin = slug(str(pop.source.get("result_id") or "scores"), 12)
     certificate: dict[str, Any] | None = None
     if from_map:
@@ -2405,7 +2450,16 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         fixed = (args.get("alpha"), args.get("delta", DEFAULT_DELTA))
         tag = slug(f"a{fixed[0]}_d{fixed[1]}_{args.get('rule', 'prefix')}", 40)
         stem = f"design_{origin}_{digest[:8]}_{design}_{budget}_smap_{tag}"
-        sample, certificate = await _map_seeded_draw(estimate, pop, args, budget, stem)
+        # The working folder keeps the name it had, from the margins' digest:
+        # the draw is the map's and the settings', and its sheet's labels are
+        # fixed once (LABELS_FIXED), so the same map under another scores
+        # file, or a plan an earlier version drew, finds that folder again.
+        keyed: Any = [pop.margin, pop.map_class] if class_map else pop.margin
+        margin_key = hashlib.sha256(json.dumps(_jsonable(keyed)).encode()).hexdigest()
+        folder = f"design_{origin}_{margin_key[:8]}_{design}_{budget}_smap_{tag}"
+        sample, certificate = await _map_seeded_draw(
+            estimate, pop, args, budget, stem, folder
+        )
         seed = int(certificate["seed"])
     else:
         stem = f"design_{origin}_{digest[:8]}_{design}_{budget}_s{seed}"
@@ -2426,21 +2480,6 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             entry["stratum"] = stratum_of.get(idx)
         to_label.append(entry)
 
-    population: dict[str, Any] = {
-        "n_windows": len(pop.margin),
-        "n_valid": n_valid,
-        "grid": list(pop.grid) if pop.grid else None,
-        "score_kind": pop.score_kind,
-        "margin": _jsonable(pop.margin),
-        "map_class": pop.map_class,
-        "source": _jsonable(pop.source),
-    }
-    if labels_classes:
-        population["classes"] = _jsonable(pop.classes)
-    elif pop.class_names:
-        # A scores file's class names, which the estimate's per-class facts
-        # name each class by.
-        population["class_names"] = {str(k): v for k, v in pop.class_names.items()}
     payload = {
         "format": DESIGN_FORMAT,
         "package": {"name": inferencex.DISTRIBUTION, "version": inferencex.version()},
