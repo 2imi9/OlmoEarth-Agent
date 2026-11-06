@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""Record the web UI walkthrough (MP4 and its cover) in demo mode.
+"""Record the web UI walkthrough (MP4, animated WebP and cover) in demo mode.
 
 Drives the static web UI in headless Chromium: connect a demo Studio key, open
 the project tree, ask which windows to check first, ask how wrong the map is,
 open and close the last answer's reasoning and tool call. Demo mode
 replays what ``make verify-demo`` recorded (docs/VERIFICATION_DEMO.md), so no
-key, LLM or network call to Studio is made. Writes olmoearth-agent-demo.mp4 and
-olmoearth-agent-demo.png (the README's cover) next to this file.
+key, LLM or network call to Studio is made. Writes olmoearth-agent-demo.mp4, its
+animated WebP olmoearth-agent-demo.webp (which the README shows, as GitHub plays
+no video stored in the repository) and the cover olmoearth-agent-demo.png next
+to this file.
 
 These dependencies are not part of the package:
 
@@ -161,15 +163,45 @@ def _convert(webm: Path) -> Path:
     return mp4
 
 
+def _animate(mp4: Path) -> Path:
+    """The README's animated WebP of the MP4 (GitHub plays no repository video)."""
+    import imageio_ffmpeg
+
+    webp = DEMO / "olmoearth-agent-demo.webp"
+    subprocess.run(  # noqa: S603 - the bundled ffmpeg binary and literal arguments
+        [
+            imageio_ffmpeg.get_ffmpeg_exe(),
+            "-y",
+            "-i",
+            str(mp4),
+            "-vf",
+            "fps=10,scale=960:-1:flags=lanczos",
+            "-c:v",
+            "libwebp_anim",
+            "-lossless",
+            "0",
+            "-q:v",
+            "60",
+            "-loop",
+            "0",
+            str(webp),
+        ],
+        check=True,
+    )
+    return webp
+
+
 def main() -> None:
     """Serve, record, transcode and remove the intermediate files."""
     httpd = _serve()
     try:
         webm = _record()
         mp4 = _convert(webm)
+        webp = _animate(mp4)
         cover = DEMO / "olmoearth-agent-demo.png"
         print(
-            f"wrote {mp4.name} ({mp4.stat().st_size // 1024} KB) "
+            f"wrote {mp4.name} ({mp4.stat().st_size // 1024} KB), "
+            f"{webp.name} ({webp.stat().st_size // 1024} KB) "
             f"and {cover.name} ({cover.stat().st_size // 1024} KB)"
         )
     finally:

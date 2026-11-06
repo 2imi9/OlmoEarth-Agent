@@ -56,6 +56,7 @@ from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
 from olmoearth_agent.llm.router import classify_brief
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
+from olmoearth_agent.security.paths import workspace_root
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import (
@@ -63,6 +64,7 @@ from olmoearth_agent.studio.client import (
     StudioAccessError,
     StudioConfig,
 )
+from olmoearth_agent.tools.review_set import write_root
 from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
@@ -82,6 +84,9 @@ _VALID_FORCED_SKILLS = frozenset(
 
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
+
+#: The largest determination figure (bytes) the bridge inlines into an event.
+_FIGURE_MAX_BYTES = 2 * 1024 * 1024
 
 #: Bounded in-memory caches so a repeated map pan / difference scan does not
 #: re-fetch the same auth-gated Studio raster tiles or pixel values (which are
@@ -240,6 +245,54 @@ def _sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
+def _figure_svg(event: dict[str, Any]) -> str | None:
+    """The SVG text of the figure a ``tool_result`` event's tool wrote, or None.
+
+    The path is the tool result's ``figure_path``
+    (``olmoearth_agent.reporting.figures``). It comes from a tool result, so
+    only a regular file named ``*_figure.svg`` (the only files the figure
+    tools write) whose real path lies under the tools' write root or the
+    workspace root, of at most :data:`_FIGURE_MAX_BYTES`, is read; anything
+    else (no figure, a path elsewhere or that cannot be resolved, another
+    file, an unreadable or too large file) gives None and the event goes out
+    without a figure.
+    """
+    if event.get("type") != "tool_result":
+        return None
+    envelope = event.get("result")
+    inner = envelope.get("result") if isinstance(envelope, dict) else None
+    path = inner.get("figure_path") if isinstance(inner, dict) else None
+    if not isinstance(path, str) or not path:
+        return None
+    try:
+        real = Path(os.path.realpath(path))
+        roots = (write_root(), workspace_root())
+        inside = any(real.is_relative_to(os.path.realpath(root)) for root in roots)
+        if not inside or not real.name.endswith("_figure.svg"):
+            return None
+        if not real.is_file():  # never open a directory or a pipe
+            return None
+        with real.open("rb") as fh:
+            data = fh.read(_FIGURE_MAX_BYTES + 1)
+        if len(data) > _FIGURE_MAX_BYTES:
+            return None
+        return data.decode("utf-8")
+    except (OSError, ValueError, UnicodeDecodeError):
+        # A path that cannot be resolved (a NUL byte), or a file gone,
+        # unreadable or not text since the tool wrote it: no figure.
+        return None
+
+
+def _for_browser(event: dict[str, Any]) -> dict[str, Any]:
+    """The event as the browser gets it: with its tool's figure, when it wrote one.
+
+    A copy carries the figure (``figure_svg``); the event itself, which the
+    harness's records and the model's tool message share, is left unchanged.
+    """
+    svg = _figure_svg(event)
+    return event if svg is None else {**event, "figure_svg": svg}
+
+
 def _history_from_body(body: dict[str, Any]) -> list[Message]:
     """Parse ``body['history']`` into seed ``Message``s for multi-turn runs.
 
@@ -369,6 +422,21 @@ def _llm_detail(exc: Exception) -> str:
     return f"LLM provider call failed: {type(exc).__name__}"
 
 
+def _guard_cloud_endpoint(url: str) -> str:
+    """Check a hosted backend's endpoint before its bring-your-own key is used.
+
+    A run and the model list both call this before the key reaches an SDK
+    client and hand the client the URL it returns, so the URL checked is the
+    URL the key goes to and a mis-pointed endpoint cannot become a
+    credential-exfiltration channel; in ``enforce`` mode a host off the
+    ``llm-cloud`` allowlist is refused with HTTP 403.
+    """
+    try:
+        return egress.validate_endpoint(url, "llm-cloud")
+    except egress.EgressError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 def _llm_for_request(request: Request) -> Any:
     """Choose the LLM backend for this request (default: the local model).
 
@@ -388,13 +456,13 @@ def _llm_for_request(request: Request) -> Any:
         raise HTTPException(status_code=400, detail="missing API key for backend")
     model = request.headers.get("x-llm-model", "").strip()
     if backend in ("claude", "anthropic"):
-        # Guard the destination before the BYO key is handed to the client, so a
-        # mis-pointed endpoint cannot become a credential-exfiltration channel.
-        try:
-            egress.validate_endpoint(DEFAULT_ANTHROPIC_BASE_URL, "llm-cloud")
-        except egress.EgressError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        kwargs: dict[str, Any] = {"api_key": api_key}
+        # The key goes to the public API, as ChatGPT's and Gemini's go to their
+        # fixed hosts: passed explicitly, so ANTHROPIC_BASE_URL in the bridge's
+        # environment cannot send a browser user's key past the check.
+        kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "base_url": _guard_cloud_endpoint(DEFAULT_ANTHROPIC_BASE_URL),
+        }
         if model:
             kwargs["model"] = model
         try:
@@ -404,13 +472,9 @@ def _llm_for_request(request: Request) -> Any:
     provider = _OPENAI_PROVIDERS.get(backend)
     if provider is None:
         raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
-    try:
-        egress.validate_endpoint(provider["base_url"], "llm-cloud")
-    except egress.EgressError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return OlmoEarthLLM(
         ServingConfig(
-            endpoint=provider["base_url"],
+            endpoint=_guard_cloud_endpoint(provider["base_url"]),
             api_key=api_key,
             model=model or provider["model"],
         ),
@@ -433,8 +497,10 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     """List a provider's current model ids for the web UI autodetect.
 
     Claude uses the Anthropic SDK; ChatGPT/Gemini use the OpenAI SDK against
-    the provider's model-listing endpoint. Network errors propagate to the
-    caller (surfaced as a 502).
+    the provider's model-listing endpoint. The endpoint is checked as a run's
+    is (:func:`_guard_cloud_endpoint`) before the key reaches the client, and
+    the client is given that endpoint. Network errors propagate to the caller
+    (surfaced as a 502).
     """
     if backend in ("claude", "anthropic"):
         try:
@@ -445,7 +511,9 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
                 "Install it with: uv sync --extra claude"
             ) from exc
 
-        client = AsyncAnthropic(api_key=api_key)
+        client = AsyncAnthropic(
+            api_key=api_key, base_url=_guard_cloud_endpoint(DEFAULT_ANTHROPIC_BASE_URL)
+        )
         try:
             page = await client.models.list(limit=100)
             ids = [m.id for m in page.data]
@@ -455,9 +523,10 @@ async def _list_models(backend: str, api_key: str) -> list[str]:
     provider = _OPENAI_PROVIDERS.get(backend)
     if provider is None:
         raise HTTPException(status_code=400, detail=f"unknown LLM backend: {backend}")
+    base_url = _guard_cloud_endpoint(provider["base_url"])
     from openai import AsyncOpenAI
 
-    openai_client = AsyncOpenAI(base_url=provider["base_url"], api_key=api_key)
+    openai_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
     try:
         resp = await openai_client.models.list()
         ids = [m.id for m in resp.data]
@@ -607,9 +676,10 @@ async def api_run(request: Request) -> StreamingResponse:
     Body: ``{"brief": str, "max_turns"?: int, "history"?: list,
     "forced_skill"?: str}``. ``forced_skill`` (a webui "/" menu slug) pins the
     run to one skill server-side. Each ``run_stream`` event becomes one SSE
-    frame; failures (e.g. the LLM server being down) are delivered as a final
-    ``{"type": "error"}`` frame rather than a dropped connection, so the UI can
-    show them.
+    frame; a ``tool_result`` whose tool wrote a figure carries its SVG text as
+    ``figure_svg`` (:func:`_figure_svg`). Failures (e.g. the LLM server being
+    down) are delivered as a final ``{"type": "error"}`` frame rather than a
+    dropped connection, so the UI can show them.
     """
     key = _studio_key(request)
     if not key:
@@ -680,7 +750,9 @@ async def api_run(request: Request) -> StreamingResponse:
                     async for event in agent.run_stream(
                         brief, max_turns=max_turns, history=history
                     ):
-                        yield _sse(event)
+                        # The figure is read off the event loop, so a slow
+                        # disk does not stall the other sessions' streams.
+                        yield _sse(await asyncio.to_thread(_for_browser, event))
                 except Exception as exc:  # don't drop the stream, report it
                     yield _sse(
                         {"type": "error", "message": f"{type(exc).__name__}: {exc}"}

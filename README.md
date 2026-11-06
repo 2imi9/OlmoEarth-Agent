@@ -3,6 +3,15 @@ OlmoEarth Agent (beta)
 
 A beta version developed by a collaborator. It is not the final OlmoEarth Agent.
 
+<div align="center">
+
+[![The web UI answering which windows to check first, then how wrong the map is; click for the MP4](webui/demo/olmoearth-agent-demo.webp)](webui/demo/olmoearth-agent-demo.mp4)
+
+<sub>Demo mode (32 s), replaying what `make verify-demo` recorded on a Dynamic World tile; no real Studio key and no
+LLM. Click for the MP4.</sub>
+
+</div>
+
 Drives [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from a plain-language brief, and checks the maps it gets
 back.
 
@@ -12,15 +21,6 @@ back.
   [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX).
 - It checks each answer against the tool results before showing it.
 - It runs on a local LLM (llama.cpp) or on your own cloud API key (Claude, ChatGPT or Gemini).
-
-<div align="center">
-
-[![The web UI giving a map's error rate; click to play the walkthrough video](webui/demo/olmoearth-agent-demo.png)](webui/demo/olmoearth-agent-demo.mp4)
-
-<sub>The walkthrough (MP4, 32 s): which windows to check first, then how wrong the map is. Recorded in demo mode, which
-replays what `make verify-demo` recorded on a Dynamic World tile; no real Studio key and no LLM.</sub>
-
-</div>
 
 
 Install
@@ -139,6 +139,15 @@ ships (southern Peru, 9 June 2019), with no Studio key and no LLM. It writes
 - **The review set.** The 791 windows (5%) it flags first, with no labels, are wrong 67% of the time (532 of 791); a
   random 5% would be wrong 19% of the time.
 - **No certificate.** No zone was certified at alpha 0.1 with 300 labels, so none was written.
+
+Each check route writes a figure of its determination, drawn from the run's own data, with a caption written from its
+numbers. This run's error rate:
+
+<p align="center">
+  <img src="webui/demo/figures/error_rate.svg" width="100%" alt="Figure: how wrong the map is, from 300 random labels">
+</p>
+
+The same run's [review set](webui/demo/figures/review_set.svg) and [trust zone](webui/demo/figures/trust_zone.svg).
 
 
 Limits

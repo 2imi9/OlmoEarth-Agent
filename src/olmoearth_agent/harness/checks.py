@@ -431,7 +431,7 @@ def _is_path(value: str) -> bool:
 #: A rooted path that may hold spaces, ending in a file's extension.
 _ROOTED_PATH_RE = re.compile(
     r"(?:[A-Za-z]:)?[/\\~][^\n;:,()\[\]]*?\.(?:json|csv|tsv|tif|tiff|geojson|gpkg|txt|"
-    r"md|png|jpe?g|qlr|xml|parquet|npz|npy|zip|shp|html|ya?ml|log|nc)",
+    r"md|png|jpe?g|svg|qlr|xml|parquet|npz|npy|zip|shp|html|ya?ml|log|nc)",
     re.I,
 )
 
@@ -1651,7 +1651,7 @@ def check_direction(answer: str, run: RunEvidence) -> list[Violation]:
 # actions: what the answer says was saved or listed
 
 _FILE_RE = re.compile(
-    r"[\w.\-~…]+\.(?:json|csv|tsv|tif|tiff|geojson|gpkg|txt|md|png|jpe?g|"
+    r"[\w.\-~…]+\.(?:json|csv|tsv|tif|tiff|geojson|gpkg|txt|md|png|jpe?g|svg|"
     r"qlr|xml|parquet|npz|npy|zip|shp|html|ya?ml|log|nc)\b",
     re.I,
 )

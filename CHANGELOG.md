@@ -10,6 +10,40 @@ See [Development](docs/Usage.md#development) for the convention.
 ## [Unreleased]
 
 ### Added
+- **The check routes come with a figure of their determination.**
+  `reporting/figures.py` draws, from the run's own data and with no
+  plotting dependency, one SVG per determination, and a caption written
+  from the result's numbers as a figure legend: (a) the window grid by
+  row and column (no coordinates) with what the determination used
+  marked on it, (b) where the answer rests on one, the interval, the
+  levels tested or the counts. `olmoearth_review_set` and
+  `_from_result` (the review set in amber on the confidence-rank grid;
+  none for a boundary-first order), the one-map plan, the estimate (each
+  label right or wrong, the error rate with its intervals; none from
+  `window_indices` without a design), `olmoearth_certify_zone` (the
+  zone, and each level's upper bound coloured by the rule's own
+  decision, since a multi-level rule can refuse a bound below alpha,
+  with delta and the rule stated and in the file name) and the two-map
+  plan and grade (where the maps differ, kept in the design file as
+  `differ` and `not_compared`, and the side each label took) return
+  `figure_path` and `figure_caption`. A figure that cannot be drawn or
+  written leaves the determination as it is, with no figure.
+- **Where the figures show.** The bridge attaches the SVG to the
+  browser's event only, never the model's context, off the event loop and
+  only for a `*_figure.svg` under the write root; the web UI shows it
+  with its caption and a download above the answer, and a saved chat
+  keeps the caption and path but not the SVG (browser storage would
+  fill); demo mode shows the figures `make verify-demo` recorded; the
+  command line and the replay bridge print the path and caption after
+  the answer; the save checks know `.svg`; the soul asks for a short,
+  result-first answer besides the statements a tool requires, without
+  restating the figure. Tied confidences share a shade, a class map
+  without scores is drawn flat, and a grid over 420 windows a side is
+  drawn in blocks. The README's Example shows this run's error-rate
+  figure and links the other two (`webui/demo/figures/`), and
+  `docs/verification_demo.json` is the run recorded with them (the work
+  folder written `<work>`; the page is unchanged). Tests:
+  `tests/reporting/test_figures.py` and one per route.
 - **A Studio class map with top-k scores gets a review set, every label
   design and a certified zone (#18).** A segmentation prediction submitted
   with `probability_output` carries, beside its class band `P`, each rank's
@@ -572,6 +606,12 @@ See [Development](docs/Usage.md#development) for the convention.
   the code.
 
 ### Changed
+- **The walkthrough plays at the top of the README.** GitHub drops a
+  `<video>` that points at a file in the repository, so the README shows
+  `webui/demo/olmoearth-agent-demo.webp`, an animated WebP of the MP4
+  (960 px, 10 frames a second, 1.3 MB, made with ffmpeg's `libwebp_anim`),
+  under the title, linking to the MP4. The pre-commit size check exempts
+  it as it does the MP4.
 - **The README shows a web UI walkthrough again, and Usage's "What it
   checks" table is shorter.** The walkthrough is new: two demo-mode runs
   replay what `make verify-demo` recorded on the Dynamic World tile (in
@@ -1545,8 +1585,9 @@ See [Development](docs/Usage.md#development) for the convention.
     estimate.
   - Before, on a large map the web server answered other sessions only
     after the call ended.
-  - A plain plan's draw, the which-map grading and windows labelled without
-    a design still run on the event loop.
+  - A plain plan's draw and windows labelled without a design still run on
+    the event loop; the which-map grading moved to a worker thread with its
+    figure.
   - Every refusal and result is the same as before.
   - A `seed_from_map` plan's labels stay fixed once across sessions. The
     package's sheet is read, checked and written under one lock, and
@@ -1916,6 +1957,39 @@ See [Development](docs/Usage.md#development) for the convention.
   difference scan (`/api/pixel-value` returns `value: null, nodata: true`);
   every sampling result reports `n_nodata_dropped`. The trial's 36 value pairs
   are a regression test that keeps both numbers reproducible.
+
+### Security
+- **A hosted backend's key is sent to the endpoint the egress guard
+  checked** (redirects aside, as rule 4 says).
+  - The web UI's model list (`GET /api/llm/models`) handed the
+    bring-your-own key to the Anthropic or OpenAI SDK client with no egress
+    check, while rule 4 says every outbound endpoint is checked. It now
+    calls `_guard_cloud_endpoint`, the `llm-cloud` check a run already
+    made, now one function for both; in `enforce` mode a host off the
+    allowlist is refused with HTTP 403 before any client gets the key.
+  - For Claude, a run's check read a constant the client did not use: the
+    Anthropic SDK, given no `base_url`, reads `ANTHROPIC_BASE_URL` from the
+    environment, so a run (and the model list, which had no check) could
+    send a browser user's key to a host no check had seen, `enforce` or
+    not. The bridge now hands the client the checked `api.anthropic.com`
+    explicitly, as ChatGPT's and Gemini's fixed hosts already were, and
+    `AnthropicLLM` checks the URL it calls (`base_url`, else
+    `ANTHROPIC_BASE_URL`, else the public API) and passes that URL to the
+    client.
+  - What changes for users: the web UI's Claude backend no longer follows
+    `ANTHROPIC_BASE_URL` (a gateway set there is not used for a browser
+    user's key); `AnthropicLLM` built directly follows it as before but now
+    checks it, so in `enforce` mode a gateway needs `OLMOEARTH_EGRESS_ALLOW`,
+    and its `config.endpoint` reports that URL.
+  - Usage's Security section and rule 4 say so; rule 4 calls its
+    "model-list probe" what it is, the local model server's health probe,
+    and says the Anthropic SDK sends the key along a redirect.
+  - Tests: `test_llm_models_checks_the_endpoint_before_the_key` (with
+    `ANTHROPIC_BASE_URL` set off the list),
+    `test_llm_models_refuses_an_endpoint_off_the_allowlist`,
+    `test_the_client_calls_the_url_the_egress_check_saw` and the run's
+    Claude test's `base_url`; `test_run_refuses_a_backend_endpoint_off_the_allowlist`
+    keeps the run's 403 now that it shares the model list's guard.
 
 ## [1.4.0] - 2026-08-14
 
