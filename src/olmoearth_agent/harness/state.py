@@ -25,7 +25,7 @@ class ThreadState:
     todos: list[str] = field(default_factory=list)
     prediction_ids: list[str] = field(default_factory=list)
     turn_count: int = 0
-    #: Append-only provenance log (rule §3.13); one entry per tool call.
+    #: Append-only provenance log (rule 13); one entry per tool call.
     provenance: ProvenanceLog = field(default_factory=ProvenanceLog)
     #: Deferred tool groups loaded in this run (``ToolRegistry.active_specs``).
     loaded_groups: set[str] = field(default_factory=set)

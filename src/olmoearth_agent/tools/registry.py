@@ -6,7 +6,7 @@ A skill contributes a *bundle* of :class:`RegisteredTool` objects to the
 registry. The lead agent exposes ``registry.active_specs(loaded)`` to the LLM
 on every turn and routes each emitted ``ToolCall`` back through
 :meth:`ToolRegistry.dispatch`. This is the seam every skill plugs into
-(``SKILLS.md``).
+(``docs/Usage.md``, Skills).
 
 Deferred loading. A bundle registered with a ``group`` (a catalog skill's
 name) is *deferred*: its specs are not sent on every turn, only once the run

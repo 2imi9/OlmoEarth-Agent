@@ -96,7 +96,7 @@ async def test_ensemble_regression_disagreement(httpx_mock: HTTPXMock) -> None:
     assert out["n_points"] == 4  # 2x2 grid, all valid
     # every point had exactly the two ensemble members
     assert all(p["n"] == 2 for p in out["per_point"])
-    # each point is addressed as a grid window (rule 3.1), never a coordinate
+    # each point is addressed as a grid window (rule 1), never a coordinate
     assert [p["window_index"] for p in out["per_point"]] == [0, 1, 2, 3]
     assert {(p["row"], p["col"]) for p in out["per_point"]} == {
         (0, 0),

@@ -31,7 +31,7 @@ Results of different properties are refused before any sampling (a pair or
 a group may pass ``allow_different_properties``; then only correlations are
 meaningful, and only they are returned: a difference, an RMSE, an agreement
 fraction or an ensemble spread between two quantities is left out). Windows are addressed by grid ``(row, col)`` and row-major
-``window_index``, row 0 the northernmost (rule §3.1): no coordinate and no
+``window_index``, row 0 the northernmost (rule 1): no coordinate and no
 extent is returned. Every sample is a live pixel-value call, so the grid is
 small by default and capped per mode.
 
@@ -138,7 +138,7 @@ class _Sampled:
     """One comparison's inputs and samples, in the order the mode reads them.
 
     ``cells`` are the grid's ``(row, col, lon, lat)``, row-major: the
-    locations stay here and in files, never in a result (rule §3.1).
+    locations stay here and in files, never in a result (rule 1).
     """
 
     ids: list[str]

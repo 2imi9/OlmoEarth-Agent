@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format is based on
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 PR titles for each merged change appear under the appropriate section below.
-See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
+See [Development](docs/Usage.md#development) for the convention.
 
 ## [Unreleased]
 
@@ -572,6 +572,43 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   the code.
 
 ### Changed
+- **The README shows a web UI walkthrough again, and Usage's "What it
+  checks" table is shorter.** The walkthrough is new: two demo-mode runs
+  replay what `make verify-demo` recorded on the Dynamic World tile (in
+  `js/run.js`: which windows to check first, `olmoearth_review_set`, 791 of
+  15,813, of which 532 are wrong; and how wrong the map is,
+  `olmoearth_estimate_map_error`, 19.0% from 300 random labels, 14.8% to
+  23.9%), each answer saying so. `webui/demo/record_demo.py` (the
+  recorder removed on 31 October, rewritten) drives them in headless
+  Chromium and writes `webui/demo/olmoearth-agent-demo.mp4` (32 s) and its
+  cover, which the README links. The pre-commit size check exempts the MP4;
+  `.gitignore` takes the recorder's `_rec/`. The table's cells are a few
+  words each and its tool names drop the `olmoearth_` prefix; the details
+  stay in Usage's Skills and Tools. Tests:
+  `test_the_demo_verification_replays_quote_make_verify_demo` (each figure
+  the two runs show is on docs/VERIFICATION_DEMO.md, or for the two shares
+  worked out from it).
+- **A which-map grade of two dated scores files says it grades these two
+  maps, not their models.**
+  Its `must_state` adds "This grades these two maps on these windows; it
+  does not rank the models that made them on other areas, dates or training
+  runs." (`statistical_rules.MAPS_NOT_MODELS`), after the verdict and the
+  not-either-accuracy sentence. A map is one training run and one
+  prediction (Corley et al. 2026, arXiv 2605.12678, R4); in
+  olmoearth-inferencex's record reseeding a probe moved 0.2 to 1.3% of
+  windows (exp83, exp66), another crop offset or backbone version 2 to 4%
+  (exp57) and a library upgrade 14 of 259 points (exp111).
+  - Within the contract's three sentences, what the figures cover comes
+    first: a grade of maps with unstated dates keeps the dates sentence, and
+    a Studio grade its grid points, instead of this one. Usage says the same
+    in one clause.
+  - Once olmoearth-inferencex's `note` carries its own version of this
+    limit (its which-map-scope change, not yet released), the case
+    narrative's which-map section prints both (the enforced sentence and the
+    package's note as written), as it already does for the
+    not-either-accuracy sentence.
+  - Test: `tests/tools/test_which_map_tool.py`, on a Studio grade, on a
+    grade of two dated scores files and on one with unstated dates.
 - **The Studio client follows the live API of 31 October 2026, as probed
   with a read-only key** (`studio/client.py`).
   - Searches filter on the server: predictions by `project_id` and
@@ -1101,6 +1138,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   list"). The percent rule adds 13 flags over the 207 answers of rounds 1
   to 7, all derived (11 of them "~23%"), and removes none. The `inferencex`
   extra requires olmoearth-inferencex 1.3.1.
+- **The docs are one page, as in olmoearth-inferencex.** `docs/Usage.md` is
+  the reference: installation, quick start, the routes, the 5 skills, the 25
+  tools, the answer checks, the operational rules (the live ones, under their
+  old numbers), LLM backends and serving, Claude Code as the model, the web
+  UI, security, the Studio API notes and development. The README is
+  rewritten in olmoearth-inferencex's shape: what the agent does, install,
+  the main questions with their tools (every route collapsed), the replay
+  bridge, the answer checks, the verification demo's numbers and the limits.
+  Its badges and logos go, the Qwen3.6 one with them; the model's name and
+  size are in Usage. The README, the web UI's tagline and the package
+  description say this is a beta version developed by a collaborator, not
+  the final OlmoEarth Agent. Code comments, tests, scripts, the Makefile, the
+  compose file, `.env.example` and the web UI's catalog links point at
+  Usage's sections. `tests/test_readme.py` checks the skill and tool counts
+  on both pages, Usage's tool table and numbered skill headings, and that
+  every local link and heading anchor exists;
+  `tests/skills/test_skill_registry.py` reads Usage where it read
+  `SKILLS.md` and `PLAN.md`.
 
 ### Removed
 - **The trim to a verification layer, step 0: what blocked the deletions.**
@@ -1310,6 +1365,11 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md#7-documentation) for the convention.
   and rule 4 no longer says redirects are re-validated: only the starting
   endpoint is checked, the Studio client does not follow redirects and the
   LLM SDK clients follow them unchecked.
+- **The pages merged into `docs/Usage.md`.** `SKILLS.md`, `PLAN.md`,
+  `AGENTS.md`, `CONTRIBUTING.md`, `docs/CANON.md`, `docs/serving.md`,
+  `docs/CLAUDE_AS_MODEL.md` and `webui/README.md` go. Usage keeps what still
+  holds; their history, dated status notes, retired rules and roadmap are
+  left to git history and this changelog.
 
 ### Fixed
 - **Studio fields the agent read as always empty.**

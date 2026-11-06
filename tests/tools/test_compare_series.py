@@ -175,7 +175,7 @@ async def test_trace_orders_by_date_and_traces_shifts(
     assert out["calibration"]["source"] == "supplied"
     assert trajectory["mean_total_change_fraction_of_range"] == 0.2
     top = trajectory["top_shift_points"][0]
-    # Rule 3.1: a hotspot is a grid window (row, col), never a lon/lat.
+    # Rule 1: a hotspot is a grid window (row, col), never a lon/lat.
     assert "lon" not in top and "lat" not in top
     assert top["window_index"] == top["row"] * 3 + top["col"]
     assert "shared_extent_bbox" not in out

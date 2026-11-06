@@ -28,7 +28,7 @@
 # run's lock: another step is refused, and show says so.
 #
 # RUN is a short name (letters, digits, . _ -); its directory is $RUNS/RUN.
-# Works with macOS's bash 3.2. See docs/CLAUDE_AS_MODEL.md.
+# Works with macOS's bash 3.2. See docs/Usage.md, Claude Code as the model.
 
 set -euo pipefail
 

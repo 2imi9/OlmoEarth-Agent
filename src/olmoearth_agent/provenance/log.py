@@ -5,7 +5,7 @@
 One :class:`~olmoearth_agent.types.ProvenanceManifest` entry per tool
 call. Records the tool name, a hash of the arguments, and an
 id-only summary of the result (no raw geometry, per operational rule
-§3.1). Emits a JSON manifest and a replay skeleton (the calls in order, as
+1). Emits a JSON manifest and a replay skeleton (the calls in order, as
 comments; it does not re-run them).
 
 The verification tools' calls (:data:`VERIFICATION_TOOLS`: the label plan,

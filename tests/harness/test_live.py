@@ -3,7 +3,7 @@
 """Live end-to-end test: real LLM + real Studio API through the harness.
 
 Skipped unless both ``LLM_ENDPOINT`` (a running OpenAI-compatible LLM
-server, e.g. the llama.cpp 4-bit GGUF per docs/serving.md) and
+server, e.g. the llama.cpp 4-bit GGUF per docs/Usage.md) and
 ``OLMOEARTH_API_KEY`` are set. This is the slice that proves the whole
 spine: natural-language brief -> LLM tool call -> live Studio API ->
 answer.

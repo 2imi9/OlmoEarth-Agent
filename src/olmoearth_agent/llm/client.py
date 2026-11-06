@@ -3,12 +3,13 @@
 """Async OpenAI-compatible client for the agent's LLM backbone.
 
 The local default is llama.cpp serving Qwen3.6 (4-bit GGUF); vLLM on a GPU
-cluster also works (``docs/serving.md``).
+cluster also works (``docs/Usage.md``, LLM backends and serving).
 
 The client is intentionally small: build a payload, dispatch via the
 ``openai`` SDK, parse the completion. Everything agent-specific
 (provenance manifest writes, retry policy, multi-turn loop management)
-lives in higher layers: see ``PLAN.md`` §6 P3 for the roadmap.
+lives in higher layers (:mod:`olmoearth_agent.harness`,
+:mod:`olmoearth_agent.provenance`).
 """
 
 from __future__ import annotations
@@ -55,9 +56,9 @@ _THINK_RE = re.compile(r"<think>(.*?)</think>\s*", re.DOTALL)
 
 # Fallback parsers for when the server emits a tool call as *text* in the
 # message content instead of via the structured ``tool_calls`` field. The
-# llama.cpp server does this whenever it is launched without a matching
-# ``--tool-call-parser`` (see docs/serving.md), and even with one it can
-# fall back intermittently. We recover the call so the agent loop does not
+# llama.cpp server does this when it is launched without ``--jinja`` (vLLM
+# without a matching ``--tool-call-parser``; see docs/Usage.md), and even
+# with it it can fall back intermittently. We recover the call so the agent loop does not
 # silently treat an intended tool call as a final answer.
 #
 #   Hermes-XML form:  <function=NAME><parameter=KEY>VALUE</parameter>...</function>

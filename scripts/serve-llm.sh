@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bring up the OlmoEarth Agent's LLM backend (4-bit GGUF via llama.cpp) and
 # block until it answers on /health. Idempotent: re-running just re-attaches
-# and re-checks. Canonical values: docs/CANON.md (C1 model, C3 server).
+# and re-checks. The same values: docs/Usage.md, LLM backends and serving.
 set -euo pipefail
 
 COMPOSE_FILE="docker/llama.compose.yml"

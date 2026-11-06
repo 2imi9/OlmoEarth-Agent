@@ -5,8 +5,8 @@
 ``ApiEnvelope`` wraps Studio responses, discovered from the live API on
 2026-05-28 (``{"records": [...], "meta": {...}, "errors": ...}``, not bare
 objects); ``ProjectRef`` and ``StudioContext`` carry ``load_context``;
-``ProvenanceManifest`` is one provenance entry per tool call. ``PLAN.md``
-§2 names these four.
+``ProvenanceManifest`` is one provenance entry per tool call
+(``docs/Usage.md``, rule 13).
 """
 
 from __future__ import annotations
@@ -73,10 +73,10 @@ class StudioContext:
 
 @dataclass
 class ProvenanceManifest:
-    """One provenance entry per tool call (operational rule §3.13).
+    """One provenance entry per tool call (``docs/Usage.md``, rule 13).
 
     ``response_summary`` holds only ids / status / counts: never raw
-    geometry (rule §3.1). See
+    geometry (rule 1). See
     :class:`olmoearth_agent.provenance.log.ProvenanceLog`.
     """
 

@@ -144,7 +144,7 @@ async def test_missing_required_argument_is_rejected_before_the_handler() -> Non
 
 @pytest.mark.asyncio
 async def test_rule_3_1_no_coordinates_are_emitted() -> None:
-    """Rule §3.1: the chat result carries window indices and ids, never coordinates."""
+    """Rule 1: the chat result carries window indices and ids, never coordinates."""
     result = await _registry().dispatch(
         ToolCall(
             id="3",

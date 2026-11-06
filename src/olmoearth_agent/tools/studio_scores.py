@@ -71,7 +71,7 @@ id, since Studio exposes no model revision, and the scores file states it as
 the result, never as a revision; reading a ``[0, 1]`` score as a probability.
 The download token is a credential: it goes to the client alone, never into a
 result, a manifest, an error or a log, and neither does a person's id. No
-coordinates in the result (rule §3.1): zones by file name, windows by grid row
+coordinates in the result (rule 1): zones by file name, windows by grid row
 and column.
 """
 

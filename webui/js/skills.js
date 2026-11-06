@@ -25,7 +25,7 @@ const SKILLS = [
 export const SKILL_LIST = SKILLS.map((s) => ({ slug: s.slug, desc: s.desc, n: s.n }));
 
 // Fuller "what it does + why" per skill, shown in the pop-out. The card shows
-// the one-line desc above; this is the spec summary. Full academic spec: SKILLS.md.
+// the one-line desc above; this is the spec summary. Full spec: docs/Usage.md, Skills.
 const SKILL_SPECS = {
   1: `Maps a task description to Studio wizard answers - output type, model size, time-frame mode, S2-vs-+S1 sources, patch size - from 14 verified presets, with a cross-field validator that catches traps (detection + 320m patch, embeddings + single-moment) before you submit.`,
   2: `The core run primitive: discover a reusable model_id, submit a prediction, poll its status, then fetch results - XYZ raster tiles, MVT vectors, or pixel values - and compare results with no ground truth. Async-by-reference. AOIs can be drawn on a map in the chat (olmoearth_request_aoi) and stored as a Studio area. Change over time: olmoearth_compare_results in series mode traces one model's estimates across 3-8 dated results - chronological ordering discovered from each prediction, per-step pixel correlation, per-point trajectories, and shift sizes calibrated to the field's value range (estimate movement, not verified ground change). It refuses fewer than 3 dates, because a 2-date diff cannot tell a steady trend from a flood that peaked then receded. Ensemble disagreement across two or more distinct Studio results (mode ensemble): per-window spread as a confidence, the signal that works when Studio gives hard classes only (a class map without top-k scores).`,
@@ -34,7 +34,7 @@ const SKILL_SPECS = {
   5: `The question a practitioner asks the moment a prediction map lands: which windows do I open first, and how much of the error do I catch if I only open 5% of them? olmoearth_review_set ranks windows by the model's own top-1-minus-top-2 margin (low margin = suspect), optionally boundary-first using the nine-level indicator (how many of the 8 neighbours were predicted as a different class). olmoearth_review_budget_ceiling is the arithmetic guard - no rule can catch more than min(1, budget/error_rate), so a capture of 0.45 at a 10% budget with a 20% error rate is 90% of what was reachable, not '45%'. Measured, not asserted: on the tasks of Ai2's own published embedding suite the margin ranks errors better than a random order - its AUROC for errors is above 0.5 in all 3,560 cells of 16 encoders (OlmoEarth's four sizes among them) at ten probe seeds, and with OlmoEarth Base its 10% review set holds a median 21.4% of the errors against 10% for a random 10%. Its lead over the suite's two no-model controls (24 of 24 tasks) says little, since those controls are near chance there. Ensemble disagreement, cross-model disagreement and feature-space typicality were each measured against the margin and none ranked errors better. Bring-your-own scores - Studio returns hard classes only, which is exactly why skill #2's comparison tool reaches for ensemble disagreement instead, unless the prediction was submitted with probability_output: a class map with top-k scores carries its rank-1 and rank-2 softmax scores (uncalibrated), and olmoearth_review_set_from_result ranks its windows by their difference.`,
 };
 
-// Tools each skill composes, shown on the full-spec detail page. From PLAN.md section 1 + SKILLS.md.
+// Tools each skill composes, shown on the full-spec detail page. From docs/Usage.md (Skills, Tools).
 const SKILL_TOOLS = {
   1: `olmoearth_load_skill · Studio job-wizard presets (14) + a cross-field validator`,
   2: `olmoearth_search_predictions · olmoearth_submit_prediction (probability_top_k asks for a class map's top-k scores; left out with OLMOEARTH_READ_ONLY=1) · olmoearth_get_prediction · olmoearth_fetch_results · olmoearth_get_prediction_result · olmoearth_pixel_value · olmoearth_compare_results (a pair or a group of results; mode series: a date-ordered, legend-calibrated shift trace; mode ensemble: disagreement across results) · olmoearth_request_aoi · olmoearth_studio_label_inventory (the Studio annotations a model's training selector selects now, by split and class; no error rate)`,
@@ -44,7 +44,7 @@ const SKILL_TOOLS = {
 };
 
 // What each skill takes in and gives back, for the full-spec detail page.
-// Concise In -> Out, mirroring the "In:/Out:" lines in SKILLS.md.
+// Concise In -> Out per skill, from docs/Usage.md, Skills.
 const SKILL_IO = {
   1:  { in: 'A free-text task description.', out: 'Studio job-wizard answers (output type, model size, time frame, sources, patch size) + a cross-field validation.' },
   2:  { in: 'A model_id, an AOI (draw it on the map), and a time range; to compare, 2-8 result ids (3-8 of one model over one area for a series, two or more of one quantity for ensemble disagreement).', out: 'A submitted prediction, then result tiles / pixel values (async by reference), and comparisons of results: agreement, a series\' per-step correlation, per-point trajectories and legend-calibrated shifts, or per-window ensemble spread as a confidence.' },
@@ -166,7 +166,7 @@ function openSkillDetail(s) {
           <svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
       </section>
-      <a class="detail-link" href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/SKILLS.md#${s.n}-olmoearth-${s.slug}" target="_blank" rel="noopener">Full academic spec on GitHub →</a>
+      <a class="detail-link" href="https://github.com/2imi9/OlmoEarth-Agent/blob/main/docs/Usage.md#${s.n}-olmoearth-${s.slug}" target="_blank" rel="noopener">Full spec on GitHub →</a>
     </div>`;
   d.hidden = false;
   const back = d.querySelector('.detail-back');

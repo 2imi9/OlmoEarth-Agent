@@ -163,7 +163,7 @@ async def test_binary_score_ranks_the_least_decided_windows_first(
     assert "never first" in out["signal"]
     assert any("not a sample" in c for c in out["caveats"])
 
-    # Rule §3.1: windows by (row, col) and index only; locations stay in the file.
+    # Rule 1: windows by (row, col) and index only; locations stay in the file.
     assert not _BANNED_KEYS & _keys(out)
     saved = json.loads(Path(out["scores_path"]).read_text())
     assert saved["grid"] == [4, 4] and len(saved["windows"]) == 13

@@ -96,7 +96,7 @@ refused afterwards (:func:`hold_plan_labels`); and
 ``olmoearth_write_certificate`` (:mod:`olmoearth_agent.tools.certificate`)
 packs the zone into a certificate.
 
-Windows are addressed by index and grid ``(row, col)`` (rule §3.1); the
+Windows are addressed by index and grid ``(row, col)`` (rule 1); the
 locations a reviewer needs stay in the files.
 
 These package calls run in a worker thread (``asyncio.to_thread``), as
@@ -4402,8 +4402,16 @@ async def _plan_two_maps(
     )
 
 
-def _two_map_scope(studio: bool, dates: dict[str, Any], n_compared: Any) -> list[str]:
-    """What a two-map plan or grade covers: unstated dates, and a Studio grid's points."""
+def _two_map_scope(
+    studio: bool, dates: dict[str, Any], n_compared: Any, *, graded: bool = False
+) -> list[str]:
+    """What a two-map plan or grade covers: unstated dates, and a Studio grid's points.
+
+    A grade also says it grades these two maps, not the models that made
+    them (``rules.MAPS_NOT_MODELS``), last: what the figures cover comes
+    first, so beside the verdict and ``rules.NOT_EITHER_ACCURACY`` the
+    contract's three sentences keep it only for dated scores files.
+    """
     said: list[str] = []
     if dates.get("status") == "unstated":
         said.append(UNSTATED_DATES_MUST_STATE)
@@ -4412,6 +4420,8 @@ def _two_map_scope(studio: bool, dates: dict[str, Any], n_compared: Any) -> list
             f"The comparison covers the {n_compared} sampled grid points where both "
             "Studio results hold a class (one pixel each), not every pixel."
         )
+    if graded:
+        said.append(rules.MAPS_NOT_MODELS)
     return said
 
 
@@ -4551,8 +4561,10 @@ def _grade_two_maps(
     ``references_outside_the_maps_classes`` fact; references that all lie
     outside the maps' classes are refused). The answer's contract: the
     ``which_map`` fact, the verdict sentence with its test or interval and
-    its labels (``rules.which_map_must_state``), and no map named more
-    accurate beyond what the package names (``more_accurate_without_its_test``).
+    its labels (``rules.which_map_must_state``), that it grades these two
+    maps and ranks no model (``rules.MAPS_NOT_MODELS``, for dated scores
+    files), and no map named more accurate beyond what the package
+    names (``more_accurate_without_its_test``).
     """
     sample = design["sample"]
     indices = [int(i) for i in sample["indices"]]
@@ -4639,6 +4651,8 @@ def _grade_two_maps(
             "maps differ name neither map, so neither may be called more "
             "accurate, better or right from them"
         )
+    # Within the contract's cap of three, rules.MAPS_NOT_MODELS is the one
+    # left out when the dates are unstated or the maps are Studio results.
     must_state = [
         rules.which_map_must_state(res),
         rules.NOT_EITHER_ACCURACY,
@@ -4646,8 +4660,9 @@ def _grade_two_maps(
             bool(population.get("studio")),
             population.get("dates") or {},
             res.get("n_population"),
+            graded=True,
         ),
-    ]
+    ][:MUST_STATE_MAX]
     facts = [_which_map_fact(res)]
     if outside:
         facts.append(

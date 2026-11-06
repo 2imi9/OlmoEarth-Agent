@@ -1,6 +1,7 @@
 # OlmoEarth Agent: preset quickstart targets.
 # Run on Git Bash / WSL / Linux / macOS. GNU make; recipes use real TABs.
-# Canonical values live in docs/CANON.md. Keep these consistent with it.
+# The model, server and LLM_* values repeat in docs/Usage.md (LLM backends and
+# serving); keep them in step.
 
 # Default sample brief for `make agent`, override with: make agent Q="..."
 Q ?= How many OlmoEarth Studio projects do I have?
@@ -55,7 +56,7 @@ web: ## Serve the static DEMO web UI (no backend; port 8080, the LLM owns 8000).
 bridge: ## Serve the LIVE web UI (port 8088). Local LLM optional: pick a cloud provider in the UI to skip 'make serve'.
 	@echo "Serving the LIVE web UI at http://localhost:$(BRIDGE_PORT) - open it, paste your Studio key, send a brief"
 	@echo "  - Local model? Bring it up first: 'make serve' (or 'make up' to do both in one command)."
-	@echo "  - No local model / no 17.7 GB download? Open the UI, go to Settings -> LLM backend,"
+	@echo "  - No local model / no 17.7 GB download? Open the UI; in the status chip's menu, Agent settings -> Model backend,"
 	@echo "    pick a cloud provider (Claude / ChatGPT / Gemini) and paste a key. The UI nudges you if the local model is down."
 	uv run olmoearth-agent-serve --port $(BRIDGE_PORT)
 

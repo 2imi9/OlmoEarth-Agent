@@ -159,7 +159,7 @@ def grid_windows(bbox: list[float], n: int) -> list[tuple[int, int, float, float
     Returns ``(row, col, lon, lat)`` with row 0 the northernmost row and col 0
     the westernmost column, so window ``row * n + col`` reads like an image.
     Coordinates are for the Studio calls and for files only; a tool result
-    addresses windows by ``(row, col)`` and index (rule §3.1).
+    addresses windows by ``(row, col)`` and index (rule 1).
     """
     minx, miny, maxx, maxy = bbox
     out: list[tuple[int, int, float, float]] = []

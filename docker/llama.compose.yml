@@ -1,6 +1,6 @@
 # Local development compose for the OlmoEarth Agent's LLM backend.
 # Serves the 4-bit GGUF via llama.cpp (OpenAI-compatible API).
-# Canonical values: docs/CANON.md (C1 model, C3 server, C5 env vars).
+# The same values: docs/Usage.md, LLM backends and serving (model, server, env vars).
 # Requires an NVIDIA GPU + nvidia-container-toolkit (Blackwell, e.g.
 # RTX 50-series / B-series). The 4-bit GGUF (~17.7 GB) fits a 24 GB card.
 #

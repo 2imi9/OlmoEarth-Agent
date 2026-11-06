@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """A thin HTTP bridge that puts the live agent behind the ``webui/`` shell.
 
-This is the seam the ``webui`` README calls for: a small FastAPI app that
+This is the bridge ``docs/Usage.md`` (Web UI) describes: a small FastAPI app that
 serves the static front-end *and* exposes two JSON/SSE endpoints so a
 browser brief runs the real :class:`~olmoearth_agent.harness.LeadAgent`
 instead of the canned demo.
@@ -16,7 +16,7 @@ Endpoints
 The caller's Studio API key rides in the ``X-Olmoearth-Key`` header (or
 ``Authorization: Bearer``); it is forwarded to Studio per request and
 never stored or logged. The LLM backbone is the env-configured
-(``LLM_*``) endpoint from ``docs/serving.md``; bring it up with
+(``LLM_*``) endpoint from ``docs/Usage.md``; bring it up with
 ``scripts/serve-llm.sh`` first.
 
 Run it::
