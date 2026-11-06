@@ -190,8 +190,9 @@ async def test_text_tool_call_hermes_xml_recovered(
 ) -> None:
     """A tool call emitted as ``<function=..><parameter=..>`` text is recovered.
 
-    The llama.cpp server falls back to this when launched without a
-    matching ``--tool-call-parser`` (docs/Usage.md). The client must
+    The llama.cpp server falls back to this when launched without
+    ``--jinja`` (vLLM without a matching ``--tool-call-parser``;
+    docs/Usage.md). The client must
     recover the call so the agent loop does not mistake it for an answer.
     """
     content = (

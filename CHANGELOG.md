@@ -580,14 +580,16 @@ See [Development](docs/Usage.md#development) for the convention.
   `olmoearth_estimate_map_error`, 19.0% from 300 random labels, 14.8% to
   23.9%), each answer saying so. `webui/demo/record_demo.py` (the
   recorder removed on 31 October, rewritten) drives them in headless
-  Chromium and writes `webui/demo/olmoearth-agent-demo.mp4` (26 s) and its
+  Chromium and writes `webui/demo/olmoearth-agent-demo.mp4` (32 s) and its
   cover, which the README links. The pre-commit size check exempts the MP4;
   `.gitignore` takes the recorder's `_rec/`. The table's cells are a few
   words each and its tool names drop the `olmoearth_` prefix; the details
-  stay in the review-set skill's section. Tests:
-  `test_the_demo_verification_replays_quote_make_verify_demo` (every figure
-  the two runs show is on docs/VERIFICATION_DEMO.md).
-- **A which-map grade says it grades these two maps, not their models.**
+  stay in Usage's Skills and Tools. Tests:
+  `test_the_demo_verification_replays_quote_make_verify_demo` (each figure
+  the two runs show is on docs/VERIFICATION_DEMO.md, or for the two shares
+  worked out from it).
+- **A which-map grade of two dated scores files says it grades these two
+  maps, not their models.**
   Its `must_state` adds "This grades these two maps on these windows; it
   does not rank the models that made them on other areas, dates or training
   runs." (`statistical_rules.MAPS_NOT_MODELS`), after the verdict and the

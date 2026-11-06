@@ -56,9 +56,9 @@ _THINK_RE = re.compile(r"<think>(.*?)</think>\s*", re.DOTALL)
 
 # Fallback parsers for when the server emits a tool call as *text* in the
 # message content instead of via the structured ``tool_calls`` field. The
-# llama.cpp server does this whenever it is launched without a matching
-# ``--tool-call-parser`` (see docs/Usage.md), and even with one it can
-# fall back intermittently. We recover the call so the agent loop does not
+# llama.cpp server does this when it is launched without ``--jinja`` (vLLM
+# without a matching ``--tool-call-parser``; see docs/Usage.md), and even
+# with it it can fall back intermittently. We recover the call so the agent loop does not
 # silently treat an intended tool call as a final answer.
 #
 #   Hermes-XML form:  <function=NAME><parameter=KEY>VALUE</parameter>...</function>

@@ -81,7 +81,7 @@ The settings ([.env.example](../.env.example) lists the main ones):
 
 ## What it checks
 
-Tool names below drop the `olmoearth_` prefix; [the review-set skill](#5-olmoearth-review-set) gives the details.
+Tool names below drop the `olmoearth_` prefix; [Skills](#skills) and [Tools](#tools) give the details.
 
 | Question | Tools | Needs | Gives |
 |---|---|---|---|
@@ -92,10 +92,11 @@ Tool names below drop the `olmoearth_` prefix; [the review-set skill](#5-olmoear
 | A Studio result's own files | `scores_from_studio` | top-k scores or a `[0, 1]` band | a scores file per UTM zone |
 | A direct run, and its certificate | `scores_from_file`, `write_certificate`, `verify_certificate` | the run's scores | every window; a certificate |
 | Which of two maps is more accurate | `plan_label_sample`, `estimate_map_error` | labels where they differ | which map, or neither |
-| What labels Studio holds | `studio_label_inventory` | a prediction, model or project | counts by status, split and class |
+| What labels Studio holds | `studio_label_inventory` | a prediction, model or project | counts by status, split and class; no error rate (no random design) |
 | How Studio results differ | `compare_results` | 2 to 8 result ids | differences, no ground truth |
 
-A Studio result is read on at most 16 x 16 points. Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
+A Studio result is sampled on at most 16 x 16 points; its own files (`scores_from_studio`) cover every valid window.
+Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
 styling, STAC or Earth Engine fetches, embedding fetches and label-free change maps.
 
 ## Skills
@@ -538,8 +539,8 @@ Rule 4 states the guards. The egress allowlist: `studio` is `olmoearth.allenai.o
 `api.anthropic.com`, `api.openai.com` and `generativelanguage.googleapis.com`; `llm-local` is loopback only. `audit`
 logs an unknown host and `enforce` refuses it; the guard resolves no DNS, so the allowlist is the main control, and it
 covers the agent's own calls, not the child process. Beyond your own laptop, set `OLMOEARTH_EGRESS=enforce`. The web
-UI's Studio and LLM keys stay in the browser and go with each request; the bridge never stores or logs them; a hosted
-backend's endpoint is checked before its key is used. A result's `download_token` is a credential, masked in every
+UI's Studio and LLM keys stay in the browser and go with each request; the bridge never stores or logs them; a run checks a
+hosted backend's endpoint before it uses the key (the model list asks only the provider's fixed host). A result's `download_token` is a credential, masked in every
 error. The workspace root is not the working directory, so a written file cannot overwrite served code.
 
 ## Studio API notes

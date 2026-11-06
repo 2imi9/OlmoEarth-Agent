@@ -17,8 +17,8 @@ back.
 
 [![The web UI giving a map's error rate; click to play the walkthrough video](webui/demo/olmoearth-agent-demo.png)](webui/demo/olmoearth-agent-demo.mp4)
 
-<sub>The walkthrough (MP4, 26 s): which windows to check first, then how wrong the map is. Recorded in demo mode, which
-replays what `make verify-demo` recorded on a Dynamic World tile; no Studio key or LLM.</sub>
+<sub>The walkthrough (MP4, 32 s): which windows to check first, then how wrong the map is. Recorded in demo mode, which
+replays what `make verify-demo` recorded on a Dynamic World tile; no real Studio key and no LLM.</sub>
 
 </div>
 

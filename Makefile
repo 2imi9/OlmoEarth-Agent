@@ -56,7 +56,7 @@ web: ## Serve the static DEMO web UI (no backend; port 8080, the LLM owns 8000).
 bridge: ## Serve the LIVE web UI (port 8088). Local LLM optional: pick a cloud provider in the UI to skip 'make serve'.
 	@echo "Serving the LIVE web UI at http://localhost:$(BRIDGE_PORT) - open it, paste your Studio key, send a brief"
 	@echo "  - Local model? Bring it up first: 'make serve' (or 'make up' to do both in one command)."
-	@echo "  - No local model / no 17.7 GB download? Open the UI, go to Settings -> LLM backend,"
+	@echo "  - No local model / no 17.7 GB download? Open the UI; in the status chip's menu, Agent settings -> Model backend,"
 	@echo "    pick a cloud provider (Claude / ChatGPT / Gemini) and paste a key. The UI nudges you if the local model is down."
 	uv run olmoearth-agent-serve --port $(BRIDGE_PORT)
 
