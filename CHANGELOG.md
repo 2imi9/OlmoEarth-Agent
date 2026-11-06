@@ -1372,6 +1372,22 @@ See [Development](docs/Usage.md#development) for the convention.
   left to git history and this changelog.
 
 ### Fixed
+- **A dated and an undated two-map plan no longer share a design file.** A
+  `design='disagreement'` plan's file name carried a digest of the two maps'
+  classes only, so planning the same two maps at one budget and seed with
+  `date_a`/`date_b` and without them (or with one map under another file
+  name) wrote the same file, and the later plan overwrote the earlier one's
+  dates and sources, which the grade reads. The earlier plan's design path
+  then graded as the later plan: an undated plan as dated (stating
+  `rules.MAPS_NOT_MODELS` for two scores files, or a Studio pair's
+  grid-points sentence, instead of the unstated-dates sentence), a dated
+  plan as undated, or with the other file named as the more accurate map.
+  The same held for two Studio results without prediction times, which take
+  `date_a`/`date_b`. The digest now covers the maps' classes, sources and
+  dates, so within one olmoearth-inferencex version and one reading of
+  Studio the same arguments give the same file; design files written before
+  are read as they were, and one already overwritten stays as it is. Test:
+  `test_dated_and_undated_plans_keep_their_own_designs`.
 - **Studio fields the agent read as always empty.**
   - Results list their formats as `file_formats` (e.g. `["png"]`). The
     singular `file_format` the code read does not exist in Studio's records:

@@ -751,6 +751,55 @@ async def test_two_scores_files_of_one_grid_and_their_dates(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_dated_and_undated_plans_keep_their_own_designs(tmp_path: Path) -> None:
+    """The design file's name follows what the grade reads from it.
+
+    The same two maps planned at one budget and seed without dates, with
+    dates, and with one map under another file name get three design files;
+    each grade states its own plan's dates and names its own files, and the
+    same arguments give the same file again.
+    """
+    a = [0, 0, 1, 1, 2, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 1]
+    b = [0, 1, 1, 2, 2, 0, 0, 1, 1, 0, 1, 0, 0, 2, 1, 1]
+    files = {
+        "scores_path": _scores_file(tmp_path / "a.json", a, [4, 4]),
+        "scores_path_b": _scores_file(tmp_path / "b.json", b, [4, 4]),
+        "budget": 4,
+        "seed": 3,
+        "design": "disagreement",
+    }
+    copy = _scores_file(tmp_path / "a_copy.json", a, [4, 4])
+
+    async def plan(args: dict[str, Any]) -> dict[str, Any]:
+        out = await _call(PLAN, args)
+        assert out["ok"] is True, out
+        return dict(out["result"])
+
+    undated = await plan(files)
+    dated = await plan({**files, "date_a": "2024-06-01", "date_b": "2024-06-01"})
+    renamed = await plan({**files, "scores_path": copy})
+    designs = [p["design_path"] for p in (undated, dated, renamed)]
+    assert len(set(designs)) == 3, designs
+    idx = _design(undated)["sample"]["indices"]
+    assert _design(dated)["sample"]["indices"] == idx
+    reference = [str(a[i]) for i in idx]
+
+    async def grade(planned: dict[str, Any]) -> dict[str, Any]:
+        args = {"design_path": planned["design_path"], "reference": reference}
+        out = await _call(GRADE, args)
+        assert out["ok"] is True, out
+        return dict(out["result"])
+
+    first, second, third = [await grade(p) for p in (undated, dated, renamed)]
+    assert first["must_state"][2] == UNSTATED_DATES_MUST_STATE
+    assert second["must_state"][2] == rules.MAPS_NOT_MODELS
+    assert first["map_a"]["scores_path"] == files["scores_path"]
+    assert third["map_a"]["scores_path"] == copy
+    again = await plan(files)
+    assert again["design_path"] == undated["design_path"]
+
+
+@pytest.mark.asyncio
 async def test_two_scores_files_of_one_shape_on_other_ground(tmp_path: Path) -> None:
     """One window grid is one shape and, where both files locate a window, one
     centre: two files of other areas are not compared window by window."""
