@@ -56,6 +56,7 @@ from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
 from olmoearth_agent.llm.router import classify_brief
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.security import egress
+from olmoearth_agent.security.paths import workspace_root
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import (
@@ -63,6 +64,7 @@ from olmoearth_agent.studio.client import (
     StudioAccessError,
     StudioConfig,
 )
+from olmoearth_agent.tools.review_set import write_root
 from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
@@ -82,6 +84,9 @@ _VALID_FORCED_SKILLS = frozenset(
 
 #: How many prior conversation turns to forward to the agent (bounds prompt size).
 _MAX_HISTORY_TURNS = 12
+
+#: The largest determination figure (bytes) the bridge inlines into an event.
+_FIGURE_MAX_BYTES = 2 * 1024 * 1024
 
 #: Bounded in-memory caches so a repeated map pan / difference scan does not
 #: re-fetch the same auth-gated Studio raster tiles or pixel values (which are
@@ -238,6 +243,51 @@ def _studio_detail(exc: Exception) -> str:
 def _sse(event: dict[str, Any]) -> str:
     """Format one event dict as a Server-Sent Events ``data:`` frame."""
     return f"data: {json.dumps(event)}\n\n"
+
+
+def _figure_svg(event: dict[str, Any]) -> str | None:
+    """The SVG text of the figure a ``tool_result`` event's tool wrote, or None.
+
+    The path is the tool result's ``figure_path``
+    (``olmoearth_agent.reporting.figures``). It comes from a tool result, so
+    only a regular ``.svg`` file whose real path lies under the tools' write
+    root or the workspace root, of at most :data:`_FIGURE_MAX_BYTES`, is read;
+    anything else (no figure, a path elsewhere, an unreadable or too large
+    file) gives None and the event goes out without a figure.
+    """
+    if event.get("type") != "tool_result":
+        return None
+    envelope = event.get("result")
+    inner = envelope.get("result") if isinstance(envelope, dict) else None
+    path = inner.get("figure_path") if isinstance(inner, dict) else None
+    if not isinstance(path, str) or not path:
+        return None
+    real = Path(os.path.realpath(path))
+    roots = (write_root(), workspace_root())
+    inside = any(real.is_relative_to(os.path.realpath(root)) for root in roots)
+    if not inside or real.suffix != ".svg":
+        return None
+    try:
+        if not real.is_file():  # never open a directory or a pipe
+            return None
+        with real.open("rb") as fh:
+            data = fh.read(_FIGURE_MAX_BYTES + 1)
+        if len(data) > _FIGURE_MAX_BYTES:
+            return None
+        return data.decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        # Gone, unreadable or not text since the tool wrote it: no figure.
+        return None
+
+
+def _for_browser(event: dict[str, Any]) -> dict[str, Any]:
+    """The event as the browser gets it: with its tool's figure, when it wrote one.
+
+    A copy carries the figure (``figure_svg``); the event itself, which the
+    harness's records and the model's tool message share, is left unchanged.
+    """
+    svg = _figure_svg(event)
+    return event if svg is None else {**event, "figure_svg": svg}
 
 
 def _history_from_body(body: dict[str, Any]) -> list[Message]:
@@ -623,9 +673,10 @@ async def api_run(request: Request) -> StreamingResponse:
     Body: ``{"brief": str, "max_turns"?: int, "history"?: list,
     "forced_skill"?: str}``. ``forced_skill`` (a webui "/" menu slug) pins the
     run to one skill server-side. Each ``run_stream`` event becomes one SSE
-    frame; failures (e.g. the LLM server being down) are delivered as a final
-    ``{"type": "error"}`` frame rather than a dropped connection, so the UI can
-    show them.
+    frame; a ``tool_result`` whose tool wrote a figure carries its SVG text as
+    ``figure_svg`` (:func:`_figure_svg`). Failures (e.g. the LLM server being
+    down) are delivered as a final ``{"type": "error"}`` frame rather than a
+    dropped connection, so the UI can show them.
     """
     key = _studio_key(request)
     if not key:
@@ -696,7 +747,7 @@ async def api_run(request: Request) -> StreamingResponse:
                     async for event in agent.run_stream(
                         brief, max_turns=max_turns, history=history
                     ):
-                        yield _sse(event)
+                        yield _sse(_for_browser(event))
                 except Exception as exc:  # don't drop the stream, report it
                     yield _sse(
                         {"type": "error", "message": f"{type(exc).__name__}: {exc}"}

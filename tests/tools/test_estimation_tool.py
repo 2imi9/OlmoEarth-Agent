@@ -17,6 +17,7 @@ import random
 import re
 import sys
 import threading
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -29,12 +30,14 @@ from olmoearth_agent.analysis.raster_compare import grid_windows
 from olmoearth_agent.analysis.review_set import margins
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.reporting import figures as fg
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import (
     NOMINAL_DESIGN_HOW,
     _jsonable,
     build_estimation_tools,
+    labels_sha256,
 )
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import build_review_set_tools
@@ -1227,3 +1230,144 @@ async def test_compare_review_dates_follow_the_package() -> None:
     )["result"]
     assert whole["dates"]["a"] == "2023-01-01/2023-12-31"
     assert whole["dates"]["status"] == "different_time"
+
+
+# --------------------------------------------------------------------------- the figures
+
+_SVG = "{http://www.w3.org/2000/svg}"
+
+
+def _figure_svg(result: dict[str, Any], stem: str, folder: Path) -> ET.Element:
+    """The figure a result names, written as ``<stem>_figure.svg`` in ``folder``.
+
+    Parsing it also checks it is a well-formed SVG document.
+    """
+    path = Path(result["figure_path"])
+    assert path == folder.resolve() / f"{stem}_figure.svg"
+    text = path.read_text(encoding="utf-8")
+    svg = ET.fromstring(text)  # noqa: S314 -- the figure the tool just wrote
+    assert svg.tag == f"{_SVG}svg"
+    return svg
+
+
+def _marked(svg: ET.Element, colour: str, cols: int) -> list[int]:
+    """The windows a figure outlines or fills in ``colour``, by row-major index.
+
+    A window's mark is drawn with a non-scaling stroke or is one window in
+    size; the legend's swatches and the charts' bars are neither.
+    """
+    image = next(svg.iter(f"{_SVG}image"))
+    scale = float(image.get("width", "0")) / cols
+    marked = []
+    for rect in svg.iter(f"{_SVG}rect"):
+        if colour not in (rect.get("fill"), rect.get("stroke")):
+            continue
+        outlined = rect.get("vector-effect") == "non-scaling-stroke"
+        filled = rect.get("width") == rect.get("height") == f"{scale:g}"
+        if outlined or filled:
+            row = int(float(rect.get("y", "0")) // scale)
+            marked.append(row * cols + int(float(rect.get("x", "0")) // scale))
+    return sorted(marked)
+
+
+@pytest.mark.asyncio
+async def test_a_plan_and_its_estimate_come_with_their_figures(tmp_path: Path) -> None:
+    """Each determination comes with a figure drawn from the run's own data,
+    beside its design file: the plan's drawn windows outlined on the window
+    grid, then each label filled in, right or wrong, with the error rate and
+    both intervals; the captions' numbers are the result's. Other labels on
+    one design write another figure."""
+    scores, truth = _map(400)
+    args = {"scores": scores, "grid": 20, "budget": 60, "design": "random", "seed": 2}
+    plan = (await _call("olmoearth_plan_label_sample", args))["result"]
+    stem = Path(plan["design_path"]).stem
+    idx = json.loads(Path(plan["design_path"]).read_text())["sample"]["indices"]
+    svg = _figure_svg(plan, stem, tmp_path)
+    assert _marked(svg, fg.SAMPLE, cols=20) == sorted(idx)
+    assert (
+        "(a) The 60 windows drawn by the random design (seed 2) from the map's 400 "
+        "windows on its 20 x 20 window grid" in plan["figure_caption"]
+    )
+
+    wrong = [truth[i] for i in idx]
+    labels = {"design_path": plan["design_path"], "wrong": wrong}
+    out = (await _call("olmoearth_estimate_map_error", labels))["result"]
+    svg = _figure_svg(out, f"{stem}_estimate_{labels_sha256(wrong)[:8]}", tmp_path)
+    bad = sorted(i for i, w in zip(idx, wrong) if w)
+    assert _marked(svg, fg.WRONG, cols=20) == bad
+    assert _marked(svg, fg.RIGHT, cols=20) == sorted(set(idx) - set(bad))
+    valid, caption = out["valid_interval"], out["figure_caption"]
+    assert (
+        "The 60 labelled windows of a random sample from the map's 400 windows on "
+        "its 20 x 20 window grid" in caption
+    )
+    assert f"magenta where it does not ({len(bad)})" in caption
+    assert (
+        f"(b) The map's error rate over all its windows, {fg.pct(valid['estimate'])} "
+        f"({fg.pct(valid['low'])} to {fg.pct(valid['high'])}, valid at every "
+        "sample size)" in caption
+    )
+    design_interval = f"{fg.pct(out['low'])} to {fg.pct(out['high'])}"
+    assert f"the interval this design earns: {design_interval}" in caption
+    # Other labels on the same design: another figure, the first kept.
+    flipped = {**labels, "wrong": [1 - wrong[0], *wrong[1:]]}
+    other = (await _call("olmoearth_estimate_map_error", flipped))["result"]
+    assert other["figure_path"] != out["figure_path"]
+    assert Path(out["figure_path"]).is_file() and Path(other["figure_path"]).is_file()
+
+
+@pytest.mark.asyncio
+async def test_a_zone_comes_with_its_figure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The zone's figure is drawn from what certify_zone returned: the zone's
+    windows (none when nothing is certified), the labels in the design's
+    order and each level tested with its upper bound; its caption gives the
+    zone's size and share. Each alpha and set of labels has its own figure."""
+    design_path, wrong = await _random_zone_inputs()
+    idx = json.loads(Path(design_path).read_text())["sample"]["indices"]
+    drawn: dict[str, Any] = {}
+    real = fg.zone_figure
+
+    def spy(
+        margin: Any, grid: Any, zone: Any, sample: Any, labels: Any, **kw: Any
+    ) -> fg.Rendered:
+        drawn.update(
+            grid=grid, zone=list(zone), sample=list(sample), labels=list(labels), **kw
+        )
+        return real(margin, grid, zone, sample, labels, **kw)
+
+    monkeypatch.setattr(fg, "zone_figure", spy)
+    args = {"design_path": design_path, "wrong": wrong}
+    out = (
+        await _call(
+            "olmoearth_certify_zone", {**args, "alpha": 0.1, "rule": "bonferroni"}
+        )
+    )["result"]
+    assert out["certified"] is True
+    stem = Path(design_path).stem
+    _figure_svg(out, f"{stem}_zone_a0.1_{out['labels_sha256'][:8]}", tmp_path)
+    zone = json.loads(Path(out["zone_path"]).read_text())["window_indices"]
+    assert drawn["zone"] == zone and len(zone) == out["n_zone"]
+    assert drawn["sample"] == idx and drawn["labels"] == wrong
+    assert drawn["grid"] is None  # inline scores with no grid
+    assert drawn["alpha"] == 0.1 and drawn["n_valid"] == out["n_population"] == 2000
+    assert drawn["levels"] == [
+        (
+            f"top {round(100 * float(lv['coverage']))}%",
+            lv["upper_bound"],
+            bool(lv.get("accepted")),
+        )
+        for lv in out["levels"]
+    ]
+    share = f"{fg.pct(out['n_zone'] / 2000)} of 2,000"
+    assert (
+        f"holds the map's {out['n_zone']:,} most confident windows ({share})"
+        in out["figure_caption"]
+    )
+    assert "laid out in index order" in out["figure_caption"]
+    # Nothing certified at another alpha: no zone drawn, and a figure of its own.
+    none = (await _call("olmoearth_certify_zone", {**args, "alpha": 0.05}))["result"]
+    assert none["certified"] is False and drawn["zone"] == []
+    assert len(drawn["levels"]) == len(none["levels"])
+    _figure_svg(none, f"{stem}_zone_a0.05_{none['labels_sha256'][:8]}", tmp_path)

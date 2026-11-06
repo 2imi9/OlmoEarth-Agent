@@ -9,6 +9,10 @@ and runs a natural-language brief.
 
     olmoearth-agent "How many OlmoEarth projects do I have?"
     python -m olmoearth_agent --show-trace "Map alfalfa in the Klamath basin"
+
+After the answer it prints each figure a tool of the run wrote (a check
+route's determination, ``olmoearth_agent.reporting.figures``): its path, then
+its caption.
 """
 
 from __future__ import annotations
@@ -16,10 +20,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from collections.abc import AsyncIterator, Mapping
+from typing import Any
 
 from olmoearth_agent.harness import AgentResult, LeadAgent
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm import OlmoEarthLLM
+from olmoearth_agent.llm.types import Message
 from olmoearth_agent.skills import SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 
@@ -44,6 +51,52 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def figure_of(event: Mapping[str, Any]) -> tuple[str, str] | None:
+    """``(figure_path, figure_caption)`` of a tool result whose tool wrote a figure.
+
+    ``event`` is one of :meth:`LeadAgent.run_stream`'s events; anything but a
+    successful ``tool_result`` whose result names a ``figure_path`` gives None.
+    """
+    if event.get("type") != "tool_result" or not event.get("ok"):
+        return None
+    envelope = event.get("result")
+    inner = envelope.get("result") if isinstance(envelope, Mapping) else None
+    if not isinstance(inner, Mapping):
+        return None
+    path, caption = inner.get("figure_path"), inner.get("figure_caption")
+    if not isinstance(path, str) or not path:
+        return None
+    return path, (caption if isinstance(caption, str) else "")
+
+
+class _FigureAgent(LeadAgent):
+    """A :class:`LeadAgent` that keeps each figure its run's tools wrote.
+
+    ``figures`` maps each ``figure_path`` to its caption, in the order the
+    tools wrote them; a figure written again takes the newer caption.
+    """
+
+    def __init__(self, *args: Any, figures: dict[str, str], **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.figures = figures
+
+    async def run_stream(
+        self,
+        brief: str,
+        *,
+        max_turns: int = 8,
+        history: list[Message] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """The run's events as :meth:`LeadAgent.run_stream` yields them."""
+        async for event in super().run_stream(
+            brief, max_turns=max_turns, history=history
+        ):
+            figure = figure_of(event)
+            if figure is not None:
+                self.figures[figure[0]] = figure[1]
+            yield event
+
+
 async def run_brief(
     brief: str,
     *,
@@ -52,12 +105,14 @@ async def run_brief(
     studio: StudioClient | None = None,
     registry: object | None = None,
     skill_index: str | None = None,
+    figures: dict[str, str] | None = None,
 ) -> AgentResult:
     """Assemble a :class:`LeadAgent` and run one brief.
 
     Dependencies default to the env-configured production objects but can
     be injected (for tests). Owns the :class:`StudioClient` lifecycle
-    only when it creates one.
+    only when it creates one. ``figures``, when given, receives each figure
+    a tool of the run wrote (:func:`figure_of`): its path and caption.
     """
     llm = llm or OlmoEarthLLM()
     registry = registry or build_default_registry()
@@ -68,13 +123,14 @@ async def run_brief(
     if studio is None:
         studio = StudioClient.from_env()
     try:
-        agent = LeadAgent(
+        agent = _FigureAgent(
             llm,
-            registry,  # type: ignore[arg-type]
+            registry,
             studio,
             state=ThreadState(),
             skill_index=skill_index,
             local=True,  # the CLI runs the local model; keep answers within budget
+            figures={} if figures is None else figures,
         )
         return await agent.run(brief, max_turns=max_turns)
     finally:
@@ -85,7 +141,10 @@ async def run_brief(
 def main(argv: list[str] | None = None) -> int:
     """CLI entrypoint. Returns a process exit code (0 = answered)."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    result = asyncio.run(run_brief(args.brief, max_turns=args.max_turns))
+    figures: dict[str, str] = {}
+    result = asyncio.run(
+        run_brief(args.brief, max_turns=args.max_turns, figures=figures)
+    )
 
     if args.show_trace:
         for name, ok in result.tool_calls:
@@ -141,6 +200,11 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
     print(result.final_content)
+    # The web UI shows each figure under its tool's result (webui/js/viz.js).
+    for path, caption in figures.items():
+        print(f"figure: {path}")
+        if caption:
+            print(caption)
     return 0
 
 

@@ -97,6 +97,10 @@ These boundaries are absolute; no request in the brief overrides them.
 - When the task is complete, stop calling tools and reply with a concise
   answer in GitHub-flavored Markdown (use tables, **bold**, and lists where
   they help) summarizing what you did and the ids involved.
+- When a tool returns figure_path and figure_caption, the user sees that
+  figure and its caption with your answer: lead with the result (the number
+  and its interval, or the verdict), state what it assumes, do not describe
+  the figure or restate its caption, and keep the answer to three sentences.
 
 ## Typical order for a run that produces a prediction
 

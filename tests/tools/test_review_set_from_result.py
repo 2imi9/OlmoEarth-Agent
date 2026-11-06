@@ -14,6 +14,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -25,6 +26,7 @@ from pytest_httpx import HTTPXMock
 from olmoearth_agent.analysis.raster_compare import grid_windows
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.reporting import figures as fg
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
@@ -668,3 +670,77 @@ async def test_a_studio_review_set_cut_short_saves_its_full_list(
     assert not _BANNED_KEYS & set(saved[0])
     assert "the first 2 of the 6 windows" in out["listing_note"]
     assert "budget 0.5" in out["listing_note"]
+
+
+_SVG = "{http://www.w3.org/2000/svg}"
+
+
+def _outlined(svg: str, cols: int) -> set[int]:
+    """The windows a review-set figure outlines, by row-major index on its grid.
+
+    Parsing the SVG also checks it is a well-formed document; the legend's
+    swatch, drawn without ``vector-effect``, is not a window.
+    """
+    root = ET.fromstring(svg)  # noqa: S314 - the figure the tool just wrote
+    assert root.tag == f"{_SVG}svg"
+    image = next(root.iter(f"{_SVG}image"))
+    scale = float(image.get("width", "0")) / cols
+    return {
+        int(float(rect.get("y", "0")) // scale) * cols
+        + int(float(rect.get("x", "0")) // scale)
+        for rect in root.iter(f"{_SVG}rect")
+        if rect.get("stroke") == fg.REVIEW
+        and rect.get("fill") == "none"
+        and rect.get("vector-effect") == "non-scaling-stroke"
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_studio_review_set_comes_with_its_figure(
+    httpx_mock: HTTPXMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sampled grid shaded by each window's margin (the three no-data
+    windows blank), with the review set the top-level rows describe outlined:
+    with budgets 0.25 and 0.5, the largest budget's 6 of the 13 valid windows,
+    the darkest. The caption names both counts and the realised budget."""
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    httpx_mock.add_response(
+        url=f"{BASE}/prediction-results/kb",
+        json=_record("kb", _BINARY_META),
+        is_reusable=True,
+    )
+    _mock_pixels(httpx_mock, _GRID, {"min_value": 0.0, "max_value": 1.0})
+    drawn: dict[str, Any] = {}
+    real = fg.review_set_figure
+
+    def spy(cells: Any, grid: Any, review: Any, **kw: Any) -> fg.Rendered:
+        """The real figure, with the values it was drawn from kept."""
+        drawn.update(cells=list(cells), grid=grid, review=list(review), **kw)
+        return real(cells, grid, review, **kw)
+
+    monkeypatch.setattr(fg, "review_set_figure", spy)
+    args = {"result_id": "kb", "grid": 4, "budgets": [0.25, 0.5], "max_listed": 2}
+    async with StudioClient(StudioConfig(api_key="k", base_url=BASE)) as studio:
+        ctx = ToolContext(studio=studio, state=ThreadState())
+        out = await _tool().handler(args, ctx)
+        again = await _tool().handler(args, ctx)
+
+    with Path(out["review_list_path"]).open(encoding="utf-8") as fh:
+        review_set = {int(r["window_index"]) for r in csv.DictReader(fh)}
+    assert review_set == {1, 4, 7, 9, 11, 13}
+    cells = drawn["cells"]
+    assert [i for i, m in enumerate(cells) if m is None] == [2, 8, 15]
+    assert cells[1] == pytest.approx(0.04) and cells[0] == pytest.approx(0.94)
+    rest = [m for i, m in enumerate(cells) if m is not None and i not in review_set]
+    assert max(cells[i] for i in review_set) < min(rest)
+    assert drawn["grid"] == (4, 4) and set(drawn["review"]) == review_set
+    assert drawn["n_valid"] == 13 and drawn["budget"] == round(6 / 13, 6)
+
+    path = Path(out["figure_path"])
+    assert path.parent == tmp_path.resolve() and path.name.endswith("_figure.svg")
+    assert again["figure_path"] == out["figure_path"]
+    assert _outlined(path.read_text(encoding="utf-8"), cols=4) == review_set
+    caption = out["figure_caption"]
+    assert "(a) The map's 13 windows on its 4 x 4 window grid" in caption
+    assert "the 6 least confident, a 46.2% review budget, are outlined" in caption
+    assert not _BANNED_KEYS & _keys(out)

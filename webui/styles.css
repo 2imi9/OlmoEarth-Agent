@@ -1108,6 +1108,15 @@ button.is-busy > .ic { display: none; }
 .viz-map .leaflet-top, .viz-map .leaflet-bottom { z-index: 400; }
 .viz-map .leaflet-control-layers { font-size: 12px; }
 
+/* DETERMINATION FIGURE (js/viz.js renderFigure): the tool's SVG on white, as
+   drawn, with its caption below, muted and small. */
+.det-figure { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.det-figure img {
+  display: block; align-self: flex-start; max-width: 100%; height: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.det-figure figcaption { font-size: 12px; line-height: 1.45; color: var(--text-dim); text-wrap: pretty; }
+
 /* Reduced motion: drop the card/button hover transitions + lift. */
 @media (prefers-reduced-motion: reduce) {
   .result-viz, .viz-diff-btn, .dl-btn { transition: none; }

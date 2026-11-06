@@ -48,6 +48,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -70,11 +71,13 @@ from olmoearth_agent.analysis.review_set import (
     attainable_ceiling,
     compare_scores,
     evidence_detail,
+    margins,
     regression_scores,
     review_set,
     topk_assumption,
 )
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.reporting import figures
 from olmoearth_agent.security.paths import safe_path, workspace_root
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
@@ -606,6 +609,71 @@ def review_list_fact(out: dict[str, Any], budget: float) -> dict[str, Any] | Non
     )
 
 
+def review_set_figure_fields(
+    margin: Sequence[float],
+    in_review: Sequence[int],
+    *,
+    grid: Sequence[int] | None,
+    windows: Sequence[int] | None,
+    budget: float,
+) -> dict[str, str]:
+    """The review set's figure, as ``figure_path`` and ``figure_caption``.
+
+    The window grid shaded by each window's margin, the confidence the
+    ranking orders by (the lowest is opened first, so the review set is the
+    darkest), with the review set outlined
+    (:func:`~olmoearth_agent.reporting.figures.review_set_figure`). The SVG
+    is named by a digest of its content, so the same ranking writes the same
+    file.
+
+    Parameters
+    ----------
+    margin
+        Each scored window's margin, in the order of the scores' rows.
+    in_review
+        The review set, as indices into those rows.
+    grid
+        ``(rows, cols)``, or ``None``: the windows are then laid out in row
+        order, and the caption says so.
+    windows
+        Each row's row-major grid index when the scores leave no-data
+        windows out (``None``: the rows are the grid's cells in order).
+    budget
+        The realised budget, the review set's share of the windows.
+
+    Returns
+    -------
+    dict
+        Empty when the rows do not fit the grid or the file cannot be
+        written: a figure never fails the ranking.
+    """
+    shape: tuple[int, int] | None = None
+    cells: list[float | None] = list(margin)
+    review = list(in_review)
+    if grid is not None:
+        shape = (int(grid[0]), int(grid[1]))
+        n_cells = shape[0] * shape[1]
+        place = list(windows) if windows is not None else list(range(len(margin)))
+        if len(place) != len(margin) or not all(0 <= w < n_cells for w in place):
+            # A hand-written scores file whose windows do not fit its grid:
+            # the ranking stands without a figure.
+            return {}
+        cells = [None] * n_cells
+        for w, m in zip(place, margin):
+            cells[w] = m
+        review = [place[j] for j in in_review]
+    rendered = figures.review_set_figure(
+        cells, shape, review, budget=budget, n_valid=len(margin)
+    )
+    digest = hashlib.sha256(rendered.svg.encode("utf-8")).hexdigest()[:10]
+    try:
+        return figures.figure_fields(f"review_set_{digest}", rendered)
+    except (OSError, ValueError):
+        # An unwritable write root (safe_path's refusal is a ValueError).
+        logger.warning("could not save the review set's figure", exc_info=True)
+        return {}
+
+
 def review_set_classes_fact(
     full: list[dict[str, Any]],
     n_listed: int,
@@ -770,6 +838,7 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         # fine-tunes OlmoEarth models, so the scope never says "not an
         # OlmoEarth model" of its model id (live3), and no experiment covers it.
         score_kind = STUDIO_WINDOW_CONFIDENCE
+    file_margin = _file_margin(meta, len(scores)) if topk_file else None
     out = review_set(
         scores,
         budget=budget,
@@ -787,9 +856,12 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
         model=file_model(meta),
         keep_full=True,
         map_class=_file_classes(meta, len(scores)) if topk_file else None,
-        margin=_file_margin(meta, len(scores)) if topk_file else None,
+        margin=file_margin,
     )
     full = out.pop("review_full")
+    # The review set's rows, by their index into the scores, before
+    # _place_rows maps them to grid windows: the figure places them itself.
+    in_review = [int(row["window_index"]) for row in full]
     if meta:
         _annotate_from_file(out, meta, len(scores), full)
         # A warning the scores file carries travels with every ranking of it
@@ -841,6 +913,25 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
             if f
         ],
     )
+    # A boundary-first review set is not the least confident windows, which
+    # is what the figure outlines and its caption says: it gets no figure.
+    if order == "confidence":
+        window_margin = (
+            file_margin
+            if file_margin is not None
+            else margins([[float(v) for v in row] for row in scores])
+        )
+        # Drawn off the event loop: a large grid's figure takes a moment.
+        out.update(
+            await asyncio.to_thread(
+                review_set_figure_fields,
+                window_margin,
+                in_review,
+                grid=grid or None,
+                windows=windows,
+                budget=float(out["realised_budget"]),
+            )
+        )
     return out
 
 
@@ -1842,12 +1933,16 @@ async def _review_set_from_result(
         margin=sampled.margin,
     )
     full = ranked.pop("review_full")
+    # The largest budget's review set, by row, before _place_rows maps it to
+    # the grid: the figure draws it, as the result's review rows list it.
+    in_review = [int(row["window_index"]) for row in full]
     n_valid = len(sampled.windows)
-    margins_sorted = sorted(
+    window_margin = (
         sampled.margin
         if sampled.margin is not None
         else [abs(r[1] - r[0]) for r in sampled.scores]
     )
+    margins_sorted = sorted(window_margin)
     per_budget = []
     for budget in budgets:
         k = max(1, int(round(budget * n_valid)))
@@ -1971,6 +2066,16 @@ async def _review_set_from_result(
         )
         if topk:
             out["next_step"] += f" {TOPK_ZONE_STEP}"
+    out.update(
+        await asyncio.to_thread(
+            review_set_figure_fields,
+            window_margin,
+            in_review,
+            grid=(sampled.grid, sampled.grid),
+            windows=sampled.windows,
+            budget=float(ranked["realised_budget"]),
+        )
+    )
     return out
 
 

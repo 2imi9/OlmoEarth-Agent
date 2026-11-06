@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import csv
 import json
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -23,6 +26,7 @@ from olmoearth_agent.analysis.review_set import (
 )
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.reporting import figures as fg
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.compare import build_compare_tools
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
@@ -1088,3 +1092,91 @@ async def test_a_grid_is_called_north_only_when_its_scores_are_georeferenced(
     # No coordinate reaches the result.
     blob = json.dumps(await compare({"centres_lon_lat": north_up}))
     assert "50.0" not in blob and "centres_lon_lat" not in blob
+
+
+# --------------------------------------------------------------------------- the figure
+
+_SVG = "{http://www.w3.org/2000/svg}"
+
+
+def _outlined(svg: str, cols: int) -> set[int]:
+    """The windows a review-set figure outlines, by row-major index on its grid.
+
+    Parsing the SVG also checks it is a well-formed document; the legend's
+    swatch, drawn without ``vector-effect``, is not a window.
+    """
+    root = ET.fromstring(svg)  # noqa: S314 - the figure the tool just wrote
+    assert root.tag == f"{_SVG}svg"
+    image = next(root.iter(f"{_SVG}image"))
+    scale = float(image.get("width", "0")) / cols
+    return {
+        int(float(rect.get("y", "0")) // scale) * cols
+        + int(float(rect.get("x", "0")) // scale)
+        for rect in root.iter(f"{_SVG}rect")
+        if rect.get("stroke") == fg.REVIEW
+        and rect.get("fill") == "none"
+        and rect.get("vector-effect") == "non-scaling-stroke"
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_review_set_comes_with_its_figure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every determination comes with a figure drawn from the run's own data:
+    the window grid shaded by the margin the ranking orders by, so the review
+    set (outlined) is the darkest, and a caption naming the set's size and the
+    window count. A file that leaves windows out is drawn on its own grid."""
+    margin = [0.9, 0.2, 0.7, 0.05, 0.6, 0.3, 0.8, 0.4]
+    windows = [0, 2, 3, 5, 6, 9, 10, 11]  # cells 1, 4, 7 and 8 hold no window
+    (tmp_path / "s.json").write_text(
+        json.dumps(
+            {"grid": [3, 4], "windows": windows, "scores": [[m, 0.0] for m in margin]}
+        )
+    )
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(tmp_path))
+    drawn: dict[str, Any] = {}
+    real = fg.review_set_figure
+
+    def spy(cells: Any, grid: Any, review: Any, **kw: Any) -> fg.Rendered:
+        """The real figure, with the values it was drawn from kept."""
+        drawn.update(cells=list(cells), grid=grid, review=list(review), **kw)
+        return real(cells, grid, review, **kw)
+
+    monkeypatch.setattr(fg, "review_set_figure", spy)
+    tool = _tools()["olmoearth_review_set"]
+    args = {"scores_path": str(tmp_path / "s.json"), "budget": 0.25}
+    out = await tool.handler(args, _ctx())  # type: ignore[attr-defined]
+    # The two least confident rows, 3 (0.05) and 1 (0.2), are cells 5 and 2.
+    assert [r["window_index"] for r in out["review"]] == [5, 2]
+    cells = drawn["cells"]
+    assert cells == [0.9, None, 0.2, 0.7, None, 0.05, 0.6, None, None, 0.3, 0.8, 0.4]
+    assert drawn["grid"] == (3, 4) and drawn["review"] == [5, 2]
+    assert drawn["budget"] == 0.25 and drawn["n_valid"] == 8
+    rest = [m for i, m in enumerate(cells) if m is not None and i not in (2, 5)]
+    assert max(cells[2], cells[5]) < min(rest)  # the review set is the darkest
+
+    path = Path(out["figure_path"])
+    assert path.parent == tmp_path.resolve()
+    assert re.fullmatch(r"review_set_[0-9a-f]{10}_figure\.svg", path.name)
+    assert _outlined(path.read_text(encoding="utf-8"), cols=4) == {2, 5}
+    caption = out["figure_caption"]
+    assert "(a) The map's 8 windows on its 3 x 4 window grid" in caption
+    assert "the 2 least confident, a 25.0% review budget, are outlined" in caption
+    assert "no coordinates are drawn" in caption
+    # The same call writes the same file.
+    again = await tool.handler(args, _ctx())  # type: ignore[attr-defined]
+    assert again["figure_path"] == out["figure_path"]
+
+    # Inline rows with no grid are laid out in index order, and the caption
+    # says so.
+    inline = await tool.handler({"scores": _SCORES, "budget": 0.25}, _ctx())  # type: ignore[attr-defined]
+    assert _outlined(Path(inline["figure_path"]).read_text(), cols=4) == {0, 4, 8, 12}
+    assert "laid out in index order" in inline["figure_caption"]
+    # A boundary-first review set is not the least confident windows, which
+    # the figure would say it outlines: it gets none.
+    boundary = await tool.handler(  # type: ignore[attr-defined]
+        {"scores": _SCORES, "budget": 0.25, "grid": [4, 4], "order": "boundary_first"},
+        _ctx(),
+    )
+    assert "figure_path" not in boundary and "figure_caption" not in boundary

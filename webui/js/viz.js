@@ -641,6 +641,59 @@ export async function renderStoredComparison(container, record) {
   ]));
 }
 
+/* A demo figure shipped with the web UI (demo mode has no bridge to inline one). */
+const _DEMO_FIGURE_RE = /^demo\/figures\/[a-z0-9_-]+\.svg$/;
+
+/* An SVG's text as a data: URL, base64 of its UTF-8 bytes (btoa alone takes
+   Latin-1 only, and a caption's "±" or "…" is not). */
+function svgDataUrl(svg) {
+  const bytes = new TextEncoder().encode(svg);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return 'data:image/svg+xml;base64,' + btoa(bin);
+}
+
+/* The determination's figure, drawn from the run's own data by the tool: the
+   SVG the bridge inlined (ev.figure_svg), or in demo mode a shipped file
+   (ev.figure_src), with the tool's caption and a download. Shown through
+   <img>, so any script in the SVG stays inert. Works from the event alone, so
+   a saved chat replays it. Returns true if it rendered. */
+function renderFigure(container, ev, inner) {
+  const svg = typeof ev.figure_svg === 'string' && ev.figure_svg ? ev.figure_svg : null;
+  const demo = !svg && typeof ev.figure_src === 'string' && _DEMO_FIGURE_RE.test(ev.figure_src)
+    ? ev.figure_src : null;
+  if (!svg && !demo) return false;
+  const caption = typeof inner.figure_caption === 'string' ? inner.figure_caption : '';
+  const source = svg ? inner.figure_path : demo;
+  const named = typeof source === 'string' ? source.split(/[\\/]/).pop() : '';
+  const filename = /^[\w.-]+\.svg$/.test(named) ? named : 'figure.svg';
+
+  const fig = document.createElement('figure');
+  fig.className = 'det-figure';
+  const img = document.createElement('img');
+  img.alt = caption || "Figure of the determination, drawn from the run's data.";
+  img.src = svg ? svgDataUrl(svg) : demo;
+  fig.appendChild(img);
+  if (caption) {
+    const cap = document.createElement('figcaption');
+    cap.textContent = caption;
+    fig.appendChild(cap);
+  }
+  container.appendChild(fig);
+  const save = (text) => downloadText(filename, text, 'image/svg+xml');
+  container.appendChild(downloadBar([{
+    label: 'Download figure (.svg)',
+    onClick: () => {
+      if (svg) { save(svg); return; }
+      fetch(demo).then((r) => (r.ok ? r.text() : Promise.reject(r.status))).then(save)
+        .catch(() => { /* the demo file is missing: nothing to save */ });
+    },
+  }]));
+  return true;
+}
+
 /* Render the best inline visual for a tool-result event into `container`.
    Returns true if it rendered something. */
 export function renderResultViz(container, ev) {
@@ -648,7 +701,8 @@ export function renderResultViz(container, ev) {
     if (!ev || !ev.ok) return false;
     const inner = ev.result && ev.result.result;
     if (!inner || typeof inner !== 'object') return false;
-    let any = false;
+    // The determination's figure first, before any other visual.
+    let any = renderFigure(container, ev, inner);
 
     // A downloadable report (don't early-return: the result may also map).
     if (typeof inner.markdown === 'string' && inner.markdown) {

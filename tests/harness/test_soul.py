@@ -96,6 +96,17 @@ def test_soul_proposes_only_what_the_capability_card_lists() -> None:
     assert "say plainly that no tool of this agent can do it" in text
 
 
+def test_soul_answers_a_determination_with_a_figure_in_three_sentences() -> None:
+    """A check route's tool writes a figure with its caption, which the user
+    sees with the answer (web UI and CLI): the answer leads with the result
+    and does not retell the figure."""
+    text = " ".join(load_soul().split())
+    assert "When a tool returns figure_path and figure_caption" in text
+    assert "lead with the result (the number and its interval, or the verdict)" in text
+    assert "do not describe the figure or restate its caption" in text
+    assert "keep the answer to three sentences" in text
+
+
 def test_default_system_prompt_is_the_soul() -> None:
     from olmoearth_agent.harness.agent import DEFAULT_SYSTEM_PROMPT
 

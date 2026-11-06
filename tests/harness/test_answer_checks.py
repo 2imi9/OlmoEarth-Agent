@@ -687,6 +687,30 @@ def test_the_harness_spill_file_is_a_written_file() -> None:
     assert _flagged(check_actions, f"The full list is saved in `{_SCORES}`.", run)
 
 
+def test_a_figure_the_tool_wrote_is_a_written_file() -> None:
+    """A determination's figure (``figure_path``, reporting/figures.py) is an
+    SVG the tool wrote: the answer may say it was saved, and naming another
+    figure is flagged as for any other file."""
+    figure = "/runs/F1/workspace/design_scores_ab12_random_300_s0_figure.svg"
+    caption = "Which windows to label. (a) The 300 windows drawn, outlined."
+    run = _run(
+        _record(
+            "olmoearth_plan_label_sample",
+            {"n_drawn": 300, "figure_path": figure, "figure_caption": caption},
+        )
+    )
+    assert run.written_files == [("figure_path", figure)]
+    for fine in (
+        "The figure was saved to `design_scores_ab12_random_300_s0_figure.svg`.",
+        f"The figure is saved at `{figure}`.",
+    ):
+        assert check_actions(fine, run) == [], fine
+    flagged = "The figure was saved to `review_set_figure.svg`."
+    violations = check_actions(flagged, run)
+    assert [v["text"] for v in violations] == [flagged]
+    assert "says review_set_figure.svg holds what was saved" in violations[0]["detail"]
+
+
 _WS = "/runs/B8/cluster/2/workspace"
 
 
