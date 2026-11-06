@@ -572,6 +572,14 @@ See [Development](docs/Usage.md#development) for the convention.
   the code.
 
 ### Changed
+- **The README shows the web UI walkthrough again, and Usage's "What it
+  checks" table is shorter.** `webui/demo/olmoearth-agent-demo.mp4` (the
+  8 June 2026 recording, removed on 31 October) is back, with its frame at
+  16 s as a cover that links to it; the caption says it was recorded on the
+  demo UI with sample data and that some tools and menus changed since. The
+  pre-commit size check exempts that one file. The table's cells are a few
+  words each and its tool names drop the `olmoearth_` prefix; the details
+  stay in the review-set skill's section.
 - **A which-map grade says it grades these two maps, not their models.**
   Its `must_state` adds "This grades these two maps on these windows; it
   does not rank the models that made them on other areas, dates or training

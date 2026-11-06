@@ -18,6 +18,7 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=500]
+        exclude: ^webui/demo/olmoearth-agent-demo\.mp4$
       - id: detect-private-key
       - id: mixed-line-ending
         args: [--fix=lf]

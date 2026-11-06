@@ -13,6 +13,15 @@ back.
 - It checks each answer against the tool results before showing it.
 - It runs on a local LLM (llama.cpp) or on your own cloud API key (Claude, ChatGPT or Gemini).
 
+<div align="center">
+
+[![The web UI answering a brief; click to play the walkthrough video](webui/demo/olmoearth-agent-demo.png)](webui/demo/olmoearth-agent-demo.mp4)
+
+<sub>The walkthrough (MP4, 25 s), recorded on 8 June 2026 on the demo UI with sample data. Some tools and menus in it have
+changed since.</sub>
+
+</div>
+
 
 Install
 -------

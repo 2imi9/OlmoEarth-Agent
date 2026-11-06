@@ -81,18 +81,21 @@ The settings ([.env.example](../.env.example) lists the main ones):
 
 ## What it checks
 
+Tool names below drop the `olmoearth_` prefix; [the review-set skill](#5-olmoearth-review-set) gives the details.
+
 | Question | Tools | Needs | Gives |
 |---|---|---|---|
-| Which windows to check first | `olmoearth_review_set`, `olmoearth_review_set_from_result` | A map with scores: a Studio `[0, 1]` score band (another regression band needs a `threshold`), a Studio class map with top-k scores, a direct run's scores, or your own. No labels. | The windows to open first at a review budget, least confident first; boundary-first is optional |
-| How wrong one map is | `olmoearth_plan_label_sample`, then `olmoearth_estimate_map_error` or `olmoearth_certify_zone` | A map with scores and labels on a planned sample. A Studio result is sampled on at most 16 x 16 points; its own files cover every valid window. | The error rate, the interval valid at every sample size first, then the design's; per-class accuracy where labels name the class; with a random design, a certified zone |
-| A Studio class map without top-k scores | `olmoearth_plan_label_sample` (`design='random'` or `'class'`), then `olmoearth_estimate_map_error` | Labels on a random or class-stratified sample | The error rate and per-class accuracy over the sampled grid points (one pixel each). No review set, no certified zone. |
-| A Studio result's own files | `olmoearth_scores_from_studio` | A class map with top-k scores or a `[0, 1]` score band | One scores file per UTM zone, pooled to windows, for every route above |
-| A direct OlmoEarth run, and its certificate | `olmoearth_scores_from_file`, `olmoearth_write_certificate`, `olmoearth_verify_certificate` | `from-olmoearth`'s or `score_area.py`'s files, with probabilities or logits | Every window of the run for the routes above; a certified zone in a certificate anyone with the map can check |
-| Which of two maps is more accurate | `olmoearth_plan_label_sample` (`design='disagreement'`), then `olmoearth_estimate_map_error` | Two maps of one area and time (two Studio results, or two scores files of one grid); labels where they differ | Which map, or neither (exact sign test; the interval past a fifth of the differing windows), and the difference with a 95% interval |
-| What labels Studio holds | `olmoearth_studio_label_inventory` | A prediction, model or project id | The annotations a model's training selector selects now, by status, split and class; no error rate, as Studio records no random design for them |
-| How Studio results differ | `olmoearth_compare_results` | 2 to 8 result ids | A pair, a group, a series over dates or an ensemble's disagreement, with no ground truth |
+| Which windows to check first | `review_set`, `review_set_from_result` | scores, no labels | the windows to open first |
+| How wrong one map is | `plan_label_sample`, `estimate_map_error` | labels on a planned sample | error rate, valid interval, per-class accuracy |
+| Which part to trust | `certify_zone` | a random sample | a certified zone |
+| A Studio class map without top-k scores | `plan_label_sample`, `estimate_map_error` | a random or class sample | error rate over its grid points |
+| A Studio result's own files | `scores_from_studio` | top-k scores or a `[0, 1]` band | a scores file per UTM zone |
+| A direct run, and its certificate | `scores_from_file`, `write_certificate`, `verify_certificate` | the run's scores | every window; a certificate |
+| Which of two maps is more accurate | `plan_label_sample`, `estimate_map_error` | labels where they differ | which map, or neither |
+| What labels Studio holds | `studio_label_inventory` | a prediction, model or project | counts by status, split and class |
+| How Studio results differ | `compare_results` | 2 to 8 result ids | differences, no ground truth |
 
-Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
+A Studio result is read on at most 16 x 16 points. Maps of different times are measured each on its own sample. Not built, by decision: data catalogs, basemaps and layer
 styling, STAC or Earth Engine fetches, embedding fetches and label-free change maps.
 
 ## Skills
