@@ -107,8 +107,11 @@ or wrong, the certified zone, or where two maps differ and which side each label
 on one, is the error rate with its intervals, each level's upper bound as the rule decided it (with delta and the rule
 stated), or the labels' counts. Tied confidences share a shade, a class map without scores is drawn flat (it has no
 confidence), and a grid over 420 windows a side is drawn in blocks. The web UI shows the figure and caption with the
-tool's result, above the answer (the SVG goes to the browser, not to the model; a saved chat keeps the caption and the
-path, not the SVG); demo mode shows the figures `make verify-demo` recorded. The command line prints the path and the
+tool's result, above the answer (the SVG goes to the browser, not to the model). A chat reopened from the history shows
+its figures again from the browser's IndexedDB, which keeps the most recently viewed figures (about 50 MB of figure
+text, or 300) and is cleared with the chat history; deleting a chat deletes the figures no other chat shows; where a figure is no longer there (or the browser keeps no IndexedDB, as in some
+private windows) it shows the caption and where the figure was saved. Demo mode shows the figures `make verify-demo`
+recorded. The command line prints the path and the
 caption after the answer, and so does the replay bridge. The answer leads with the result and what it assumes and does
 not restate the figure. No figure: a review set ordered boundary-first, an estimate from `window_indices` without a
 design, or a figure that could not be drawn or written (the determination stands).

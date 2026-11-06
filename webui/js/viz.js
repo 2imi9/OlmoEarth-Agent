@@ -8,6 +8,7 @@ import { escapeHtml, shortId } from './util.js';
 import { studioKey, apiResultExtent, apiPixelValue } from './api.js';
 import { loadLeaflet, osmLayer } from './leaflet.js';
 import { downloadBar, downloadJson, downloadText, comparisonCsv } from './download.js';
+import { getFigure } from './figstore.js';
 
 /* Pearson correlation of paired samples (null if undefined). */
 function pearson(xs, ys) {
@@ -658,7 +659,8 @@ function svgDataUrl(svg) {
 /* A blob: URL of a page that shows the SVG full size, for a new tab. The page
    holds the SVG in an <img> (as a data: URL), so it stays inert there too: the
    SVG opened as a document from a blob: URL would run any script in it with
-   this page's origin. The page's text is fixed; no result data is in it. */
+   this page's origin. The page's text is fixed; no result data is in it.
+   Made on the figure's first click (figureFrame), not when it is drawn. */
 function figurePageUrl(svg) {
   const html = '<!doctype html><meta charset="utf-8"><title>Figure</title>' +
     '<body style="margin:0;background:#fff">' +
@@ -674,63 +676,119 @@ function figureAlt(caption) {
   return title ? 'Figure: ' + title : "Figure of the determination, drawn from the run's data.";
 }
 
+/* The figure's frame: its image (an <img>, so any script in the SVG stays
+   inert), linked to the figure full size in a new tab. `page` is that page's
+   URL (a demo file), or a function that makes it (a blob: URL from
+   figurePageUrl): made on the figure's first click and kept for this figure,
+   so figures drawn but never opened hold no blob: URL, and reopening chats
+   does not pile them up until the page closes. */
+function figureFrame(page, src, caption) {
+  const frame = document.createElement('div');
+  frame.className = 'det-figure-frame';
+  const link = document.createElement('a');
+  link.className = 'det-figure-link';
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.title = 'Open the figure full size in a new tab';
+  if (typeof page === 'function') {
+    let url = '';  // this figure's page, once made
+    link.href = '#';
+    // Before the browser follows the link: on a press of any pointer button
+    // (a middle click or the menu's "Open link in new tab" gets the page too)
+    // and on the click itself (the keyboard's Enter).
+    const open = (e) => {
+      try {
+        if (!url) { url = page(); link.href = url; }
+      } catch (err) {
+        e.preventDefault();  // no page to open: stay here
+      }
+    };
+    link.addEventListener('pointerdown', open);
+    link.addEventListener('click', open);
+  } else {
+    link.href = page;
+  }
+  const img = document.createElement('img');
+  img.alt = figureAlt(caption);
+  img.src = src;
+  link.appendChild(img);
+  frame.appendChild(link);
+  return frame;
+}
+
+/* The figure's download button; `load` gives the SVG's text (or a promise of
+   it). The file keeps the name the tool gave it, else figure.svg. */
+function figureDownload(source, load) {
+  const named = typeof source === 'string' ? source.split(/[\\/]/).pop() : '';
+  const filename = /^[\w.-]+\.svg$/.test(named) ? named : 'figure.svg';
+  return downloadBar([{
+    label: 'Download figure (.svg)',
+    onClick: () => {
+      Promise.resolve().then(load).then((text) => downloadText(filename, text, 'image/svg+xml'))
+        .catch(() => { /* the file is missing: nothing to save */ });
+    },
+  }]);
+}
+
+/* A replayed figure (a saved chat stores no SVG): this browser's copy, kept
+   in figstore.js when the figure was shown live. Found, it goes above the
+   caption with the link and download a live figure gets, and the "Figure
+   saved at" line goes; not found (another browser, cleared or evicted), the
+   caption and that line stay. They stay too when the copy was stored under
+   another caption: a later determination wrote its own figure to the same
+   path, and that figure must not show under this chat's caption. */
+async function restoreFigure(fig, where, path, caption) {
+  try {
+    const stored = await getFigure(path);
+    if (!stored || !fig.isConnected) return;  // none kept, or the chat was closed meanwhile
+    if (caption && stored.caption && stored.caption !== caption) return;  // another determination's figure
+    const svg = stored.svg;
+    fig.insertBefore(figureFrame(() => figurePageUrl(svg), svgDataUrl(svg), caption || stored.caption), fig.firstChild);
+    where.remove();
+    fig.after(figureDownload(path, () => svg));
+  } catch (e) {
+    /* keep the caption and the saved path */
+  }
+}
+
 /* The determination's figure, drawn from the run's own data by the tool: the
    SVG the bridge inlined (ev.figure_svg), or in demo mode a shipped file
    (ev.figure_src), with the tool's caption and a download; the image links to
    the figure full size in a new tab. Shown through <img>, so any script in the
    SVG stays inert. A saved chat stores no SVG: it replays the caption and
-   where the tool saved the figure. Returns true if it rendered. */
+   where the tool saved the figure, then shows the figure if this browser kept
+   it (restoreFigure). Returns true if it rendered. */
 function renderFigure(container, ev, inner) {
   const svg = typeof ev.figure_svg === 'string' && ev.figure_svg ? ev.figure_svg : null;
   const demo = !svg && typeof ev.figure_src === 'string' && _DEMO_FIGURE_RE.test(ev.figure_src)
     ? ev.figure_src : null;
   const caption = typeof inner.figure_caption === 'string' ? inner.figure_caption : '';
+  const path = typeof inner.figure_path === 'string' ? inner.figure_path : '';
   if (!svg && !demo && !caption) return false;
 
   const fig = document.createElement('figure');
   fig.className = 'det-figure';
-  if (svg || demo) {
-    const frame = document.createElement('div');
-    frame.className = 'det-figure-frame';
-    const link = document.createElement('a');
-    link.className = 'det-figure-link';
-    link.href = svg ? figurePageUrl(svg) : demo;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.title = 'Open the figure full size in a new tab';
-    const img = document.createElement('img');
-    img.alt = figureAlt(caption);
-    img.src = svg ? svgDataUrl(svg) : demo;
-    link.appendChild(img);
-    frame.appendChild(link);
-    fig.appendChild(frame);
-  }
+  if (svg) fig.appendChild(figureFrame(() => figurePageUrl(svg), svgDataUrl(svg), caption));
+  else if (demo) fig.appendChild(figureFrame(demo, demo, caption));
+  let where = null;
   if (caption) {
     const cap = document.createElement('figcaption');
     cap.textContent = caption;
-    if (!svg && !demo && typeof inner.figure_path === 'string' && inner.figure_path) {
-      const where = document.createElement('span');
+    if (!svg && !demo && path) {
+      where = document.createElement('span');
       where.className = 'det-figure-path';
-      where.textContent = 'Figure saved at ' + inner.figure_path;
+      where.textContent = 'Figure saved at ' + path;
       cap.appendChild(where);
     }
     fig.appendChild(cap);
   }
   container.appendChild(fig);
-  if (!svg && !demo) return true;  // no SVG here (a saved chat stores none): nothing to download
 
-  const source = svg ? inner.figure_path : demo;
-  const named = typeof source === 'string' ? source.split(/[\\/]/).pop() : '';
-  const filename = /^[\w.-]+\.svg$/.test(named) ? named : 'figure.svg';
-  const save = (text) => downloadText(filename, text, 'image/svg+xml');
-  container.appendChild(downloadBar([{
-    label: 'Download figure (.svg)',
-    onClick: () => {
-      if (svg) { save(svg); return; }
-      fetch(demo).then((r) => (r.ok ? r.text() : Promise.reject(r.status))).then(save)
-        .catch(() => { /* the demo file is missing: nothing to save */ });
-    },
-  }]));
+  if (svg) container.appendChild(figureDownload(path, () => svg));
+  else if (demo) {
+    container.appendChild(figureDownload(demo,
+      () => fetch(demo).then((r) => (r.ok ? r.text() : Promise.reject(r.status)))));
+  } else if (where) void restoreFigure(fig, where, path, caption);  // not awaited: the caption shows now
   return true;
 }
 

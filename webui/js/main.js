@@ -6,7 +6,7 @@
 import { BRIDGE } from './store.js';
 import { apiHealth, agentMaxTurns, clearApiCache } from './api.js';
 import { renderCards, wireCards } from './skills.js';
-import { newChat, renderChatList, wirePrompt } from './chat.js';
+import { newChat, renderChatList, wirePrompt, clearChatHistory } from './chat.js';
 import { wireSlash } from './slash.js';
 import { wireTabs, wireExamples } from './landing.js';
 import { wireAttach } from './attach.js';
@@ -29,10 +29,7 @@ function wireNewChat() {
   const btn = document.getElementById('newChatBtn');
   if (btn) btn.addEventListener('click', () => newChat());
   const clear = document.getElementById('clearChats');  // now lives under New chat
-  if (clear) clear.addEventListener('click', () => {
-    try { localStorage.removeItem('oe_chats'); } catch (e) {}
-    newChat();
-  });
+  if (clear) clear.addEventListener('click', () => clearChatHistory());  // the chats and their kept figures
 }
 
 /* General agent settings + legal links (popover above the user chip). */
