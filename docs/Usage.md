@@ -532,7 +532,9 @@ In demo mode, a brief asking which windows to check first or how wrong a map is 
 recorded on the Dynamic World tile (its review set, and its error rate from 300 random labels), and says so; other
 briefs show the account's sample projects or explain what a Studio key would add. `webui/demo/record_demo.py` records
 the README's walkthrough from these replays in headless Chromium (Playwright and imageio-ffmpeg, not package
-dependencies; its docstring gives the commands) and writes `olmoearth-agent-demo.mp4` and its cover, `olmoearth-agent-demo.png`.
+dependencies; its docstring gives the commands) and writes `olmoearth-agent-demo.mp4`, the animated
+`olmoearth-agent-demo.webp` the README shows (GitHub plays no video stored in a repository) and the cover
+`olmoearth-agent-demo.png`.
 
 ## Security
 

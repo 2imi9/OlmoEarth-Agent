@@ -572,6 +572,12 @@ See [Development](docs/Usage.md#development) for the convention.
   the code.
 
 ### Changed
+- **The walkthrough plays at the top of the README.** GitHub drops a
+  `<video>` that points at a file in the repository, so the README shows
+  `webui/demo/olmoearth-agent-demo.webp`, an animated WebP of the MP4
+  (960 px, 10 frames a second, 1.3 MB, made with ffmpeg's `libwebp_anim`),
+  under the title, linking to the MP4. The pre-commit size check exempts
+  it as it does the MP4.
 - **The README shows a web UI walkthrough again, and Usage's "What it
   checks" table is shorter.** The walkthrough is new: two demo-mode runs
   replay what `make verify-demo` recorded on the Dynamic World tile (in
