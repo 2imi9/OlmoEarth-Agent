@@ -323,6 +323,64 @@ def _write(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 @pytest.mark.asyncio
+async def test_planning_again_keeps_a_labelled_sheet() -> None:
+    """A sheet the reviewer has begun survives the same plan called again.
+
+    The plan's files are named by the map, design, budget and seed, so the
+    same arguments name them again, and so does another max_listed (review
+    wf_c3f808ec-904: the sheet came back blank, and the grade then refused
+    it). Once the sheet holds a label, wrong or reference_class, the sheet
+    and the design file stay as they are, the result says so, and the grade
+    reads the labels written before. A sheet with no label yet is written
+    again.
+    """
+    scores, truth = _map(400)
+    args = {"scores": scores, "budget": 60}
+    plan = (await _call("olmoearth_plan_label_sample", args))["result"]
+    sheet, design_file = Path(plan["labels_csv_path"]), Path(plan["design_path"])
+    rows = list(csv.DictReader(sheet.open()))
+    # A blank sheet cut short is written again.
+    _write(sheet, rows[:1])
+    blank = (await _call("olmoearth_plan_label_sample", args))["result"]
+    assert "sheet_kept_note" not in blank
+    assert len(list(csv.DictReader(sheet.open()))) == 60
+    wrong = [str(truth[int(r["window_index"])]) for r in rows]
+    for begun in (
+        [dict(rows[0], reference_class="1"), *rows[1:]],
+        [dict(r, wrong=w) for r, w in zip(rows[:10], wrong)] + rows[10:],
+    ):
+        _write(sheet, begun)
+        labelled = sheet.read_text(encoding="utf-8")
+        designed = design_file.read_text(encoding="utf-8")
+        for extra in ({}, {"max_listed": 5}):
+            out = await _call("olmoearth_plan_label_sample", {**args, **extra})
+            assert out["ok"] is True, out
+            again = out["result"]
+            assert again["labels_csv_path"] == str(sheet)
+            assert again["design_path"] == str(design_file)
+            assert sheet.read_text(encoding="utf-8") == labelled
+            assert design_file.read_text(encoding="utf-8") == designed
+            assert again["sheet_kept_note"].startswith(f"{sheet} already holds labels")
+            assert again["next_steps"][0].startswith(f"Go on labelling {sheet},")
+            listed = [w["window_index"] for w in again["windows"]]
+            assert listed == [int(r["window_index"]) for r in rows][: len(listed)]
+    # The rest labelled, the kept sheet grades as the same labels passed.
+    _write(sheet, [dict(r, wrong=w) for r, w in zip(rows, wrong)])
+    by_sheet = await _call(
+        "olmoearth_estimate_map_error",
+        {"design_path": str(design_file), "labels_path": str(sheet)},
+    )
+    assert by_sheet["ok"] is True, by_sheet
+    by_list = await _call(
+        "olmoearth_estimate_map_error",
+        {"design_path": str(design_file), "wrong": [int(w) for w in wrong]},
+    )
+    assert by_sheet["result"]["n_labelled"] == 60
+    for key in ("estimate", "low", "high", "method"):
+        assert by_sheet["result"][key] == by_list["result"][key]
+
+
+@pytest.mark.asyncio
 async def test_a_review_set_is_refused_as_a_sample() -> None:
     """The trial's error: pooling targeted windows inflates the error rate."""
     scores, truth = _map()

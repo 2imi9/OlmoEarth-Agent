@@ -1468,6 +1468,27 @@ See [Development](docs/Usage.md#development) for the convention.
   refusal names this plan's design file, or the one named after the folder
   before. Tests: `test_plans_the_later_tools_read_apart_keep_their_own_designs`,
   `test_the_same_map_under_another_scores_file_keeps_its_labels`.
+- **Planning again no longer clears a labelled sheet.**
+  `olmoearth_plan_label_sample` wrote its sheet (`{stem}_to_label.csv`,
+  with `reference_class`, and for one map `wrong`, blank) and its design
+  file afresh on every call. Their names follow the map or maps, the
+  design, the windows planned and the seed, so the same arguments, or
+  another `difference`, `max_listed` or budget above the windows there
+  are, named the same files: calling the plan again cleared the labels a
+  reviewer had written. The grade then refused the blank sheet rather than
+  misgrading it, but the labelling was lost (found in review
+  wf_c3f808ec-904). Now a sheet with any `wrong` or `reference_class`
+  filled (or one that cannot be read as UTF-8 CSV) is left as it is, with
+  its design file, when the design file lists the same windows; the result
+  says so (`sheet_kept_note`) and its first next step points at that
+  sheet. A labelled sheet whose design file is missing or lists other
+  windows (one deleted, or one an earlier version wrote under this name
+  for a class design with another `min_per_class`, before the name carried
+  it) is refused, and neither file is written; a sheet with no label yet
+  is written again as before. Tests:
+  `test_planning_again_keeps_a_labelled_sheet` in
+  `tests/tools/test_which_map_tool.py` and
+  `tests/tools/test_estimation_tool.py`.
 - **Studio fields the agent read as always empty.**
   - Results list their formats as `file_formats` (e.g. `["png"]`). The
     singular `file_format` the code read does not exist in Studio's records:

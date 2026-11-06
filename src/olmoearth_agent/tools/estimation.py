@@ -862,6 +862,80 @@ def _write_csv(name: str, pop: Population, to_label: list[dict[str, Any]]) -> st
     return str(target)
 
 
+def _sheet_has_labels(sheet: Path) -> bool:
+    """Whether a plan's sheet has a ``wrong`` or ``reference_class`` cell filled.
+
+    A sheet that cannot be read as UTF-8 CSV (saved again by a spreadsheet in
+    another encoding, say) counts as labelled: it is not written over unread.
+    The certificate's own sheet, which has only ``wrong`` and is read under
+    its lock, is checked by :func:`_sheet_holds_labels`.
+    """
+    if not sheet.is_file():
+        return False
+    try:
+        with open(sheet, encoding="utf-8", newline="") as fh:
+            return any(
+                (row.get("wrong") or "").strip()
+                or (row.get("reference_class") or "").strip()
+                for row in csv.DictReader(fh)
+            )
+    except (UnicodeDecodeError, csv.Error):
+        return True
+
+
+def _labelled_plan(stem: str, to_label: list[dict[str, Any]]) -> tuple[str, str] | None:
+    """An earlier plan's design file and sheet, kept because the sheet holds labels.
+
+    A plan's files are named by its stem, which the same arguments give
+    again, and so do arguments that change no window drawn (``difference``,
+    ``max_listed``, a budget above the windows there are). Written again,
+    the reviewer's sheet would come back blank and every label in it would be
+    lost. So once the sheet holds a label and the design file beside it lists
+    these same windows (``to_label``: order, windows, classes, strata), both
+    are left as they are and their paths returned; a labelled sheet of other
+    windows under this name is refused, and neither file is written. With no sheet,
+    or a sheet with no label yet, this returns ``None`` and the plan writes
+    both files.
+    """
+    root = write_root()
+    sheet = root / f"{stem}_to_label.csv"
+    if not _sheet_has_labels(sheet):
+        return None
+    design_file = safe_path(f"{stem}.json", root=root)
+    try:
+        held = json.loads(design_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        held = None
+    listed = json.loads(json.dumps(to_label))  # as the design file holds it
+    if not isinstance(held, dict) or held.get("to_label") != listed:
+        msg = (
+            f"{sheet} already holds labels, and its design file {design_file} "
+            "is missing or lists other windows than this plan draws: writing "
+            "this plan would clear those labels, so neither file was written. Grade "
+            "the sheet with the design file it was labelled for, or plan with "
+            "another seed"
+        )
+        raise ValueError(msg)
+    return str(design_file), str(sheet)
+
+
+def _kept_sheet_note(csv_path: str) -> str:
+    """The plan's note when :func:`_labelled_plan` kept an earlier plan's files."""
+    return (
+        f"{csv_path} already holds labels: an earlier plan drew these same "
+        "windows under this name, so its sheet and design file were kept as "
+        "they were, not written again (that would clear the labels)."
+    )
+
+
+def _kept_sheet_step(csv_path: str) -> str:
+    """The first next step when :func:`_labelled_plan` kept an earlier plan's files."""
+    return (
+        f"Go on labelling {csv_path}, the earlier plan's sheet of these windows, "
+        "kept with its labels: fill in every window still blank there."
+    )
+
+
 def _budget_refusal(budget: int, pop: Population) -> str:
     """Why ``budget`` cannot be planned from ``pop``, with only the options that work.
 
@@ -2493,8 +2567,12 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     }
     if certificate is not None:
         payload["certificate"] = certificate
-    design_path = write_json_file(f"{stem}.json", payload)
-    csv_path = _write_csv(f"{stem}_to_label.csv", pop, to_label)
+    kept = _labelled_plan(stem, to_label)
+    if kept is not None:
+        design_path, csv_path = kept
+    else:
+        design_path = write_json_file(f"{stem}.json", payload)
+        csv_path = _write_csv(f"{stem}_to_label.csv", pop, to_label)
     out: dict[str, Any] = {
         "available": True,
         "design": design,
@@ -2588,6 +2666,9 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
         out["note"] = sample["note"]
     unused = requested - budget
     out["next_steps"] = _plan_next_steps(design, csv_path, budget, pop, unused)
+    if kept is not None:
+        out["sheet_kept_note"] = _kept_sheet_note(csv_path)
+        out["next_steps"].insert(0, _kept_sheet_step(csv_path))
     if certificate is not None:
         # A zone read from Studio's own files: the map the seed is drawn from
         # is the raster the agent decoded, not Studio's file.
@@ -4505,8 +4586,12 @@ async def _plan_two_maps(
         "budget_advice": advice,
         "to_label": to_label,
     }
-    design_path = write_json_file(f"{stem}.json", payload)
-    csv_path = _write_pairs_csv(f"{stem}_to_label.csv", to_label, maps.centres)
+    kept = _labelled_plan(stem, to_label)
+    if kept is not None:
+        design_path, csv_path = kept
+    else:
+        design_path = write_json_file(f"{stem}.json", payload)
+        csv_path = _write_pairs_csv(f"{stem}_to_label.csv", to_label, maps.centres)
     out: dict[str, Any] = {
         "available": True,
         "design": TWO_MAP_DESIGN,
@@ -4548,6 +4633,9 @@ async def _plan_two_maps(
         "The number of windows to label is fixed now, before any label is read: "
         "labelling more after reading these is a second test.",
     ]
+    if kept is not None:
+        out["sheet_kept_note"] = _kept_sheet_note(csv_path)
+        out["next_steps"].insert(0, _kept_sheet_step(csv_path))
     facts = [_budget_advice_fact(advice, planned)]
     must_state = [
         rules.NOT_EITHER_ACCURACY,

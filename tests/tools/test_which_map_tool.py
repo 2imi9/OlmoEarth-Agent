@@ -556,6 +556,90 @@ async def test_the_grade_is_the_packages_with_one_unjudged_window() -> None:
     assert {k: by_sheet["result"][k] for k in expected} == expected
 
 
+def _write_sheet(sheet: Path, rows: list[dict[str, str]]) -> None:
+    """Rows back into a plan's sheet, as a reviewer saves it."""
+    with open(sheet, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+@pytest.mark.asyncio
+async def test_planning_again_keeps_a_labelled_sheet() -> None:
+    """A sheet the reviewer has begun survives the same plan called again.
+
+    The plan's files are named by the two maps, the windows planned and the
+    seed, so the same arguments name them again, and so do another
+    difference, max_listed or budget above the differing windows (review
+    wf_c3f808ec-904: the sheet came back blank, and the grade then refused
+    it). Once the sheet holds a label, the sheet and the design file stay as
+    they are, the result says so, and the grade reads the labels written
+    before. A sheet with no label yet is written again; a labelled sheet
+    whose design file lists other windows is refused, and neither file is written.
+    """
+    plan = await _plan(20)  # every differing window: 15
+    sheet, design_file = Path(plan["labels_csv_path"]), Path(plan["design_path"])
+    with open(sheet, encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    # A blank sheet cut short is written again.
+    _write_sheet(sheet, rows[:1])
+    blank = await _plan(20)
+    assert "sheet_kept_note" not in blank
+    with open(sheet, encoding="utf-8", newline="") as fh:
+        assert len(list(csv.DictReader(fh))) == N_DIFFER
+    refs = [_truth(*_window(int(row["window_index"]))) for row in rows]
+    refs[0] = "?"
+    begun = [dict(row, reference_class=ref) for row, ref in zip(rows[:5], refs)]
+    _write_sheet(sheet, begun + rows[5:])
+    labelled = sheet.read_text(encoding="utf-8")
+    designed = design_file.read_text(encoding="utf-8")
+    for extra in ({}, {"difference": 0.1, "max_listed": 3}, {"budget": 30}):
+        args = {**_plan_args(20), **extra}
+        out = await _call(PLAN, args, _studio())
+        assert out["ok"] is True, out
+        again = out["result"]
+        assert again["labels_csv_path"] == str(sheet)
+        assert again["design_path"] == str(design_file)
+        assert sheet.read_text(encoding="utf-8") == labelled
+        assert design_file.read_text(encoding="utf-8") == designed
+        assert again["sheet_kept_note"].startswith(f"{sheet} already holds labels")
+        assert again["next_steps"][0].startswith(f"Go on labelling {sheet},")
+        listed = [w["window_index"] for w in again["windows"]]
+        assert listed == [int(row["window_index"]) for row in rows][: len(listed)]
+        # The kept sheet's sentences pass the answer checks.
+        said = [f["sentence"] for f in again["facts"]] + list(again["must_state"])
+        said += [again["sheet_kept_note"], *again["next_steps"]]
+        run = RunEvidence(
+            tools=[_record(PLAN, args, again)],
+            user_messages=["Which of the two maps is more accurate?"],
+        )
+        found = run_checks("\n\n".join(said), run)
+        assert found == {}, json.dumps(found, indent=1)
+    # A labelled sheet whose design file lists other windows is not written over.
+    other = json.loads(designed)
+    other["to_label"] = other["to_label"][::-1]
+    design_file.write_text(json.dumps(other), encoding="utf-8")
+    refused = await _call(PLAN, _plan_args(20), _studio())
+    assert refused["ok"] is False
+    assert f"{sheet} already holds labels" in refused["error"]
+    assert "so neither file was written" in refused["error"]
+    assert sheet.read_text(encoding="utf-8") == labelled
+    assert json.loads(design_file.read_text(encoding="utf-8")) == other
+    design_file.write_text(designed, encoding="utf-8")
+    # The rest labelled, the kept sheet grades as the same classes passed.
+    filled = [dict(row, reference_class=ref) for row, ref in zip(rows, refs)]
+    _write_sheet(sheet, filled)
+    by_sheet = await _call(
+        GRADE, {"design_path": str(design_file), "labels_path": str(sheet)}
+    )
+    assert by_sheet["ok"] is True, by_sheet
+    by_list = await _call(GRADE, {"design_path": str(design_file), "reference": refs})
+    assert by_sheet["result"]["n_labelled"] == N_DIFFER
+    assert by_sheet["result"]["n_unjudged"] == 1
+    for key in ("verdict", "verdict_rule", "difference"):
+        assert by_sheet["result"][key] == by_list["result"][key]
+
+
 @pytest.mark.asyncio
 async def test_the_answer_states_the_test_and_the_number_of_labels() -> None:
     """The rule for an answer naming a more accurate map: the test or interval
