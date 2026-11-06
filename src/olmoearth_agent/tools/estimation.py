@@ -4293,9 +4293,14 @@ async def _plan_two_maps(
         to_label.append(entry)
     advice = _jsonable(plan_pkg.plan_which_map(n_pop, n_dis, difference))
 
-    # A digest of both maps' classes keeps two plans of different maps apart.
+    # A digest of what the grade reads from the design file (both maps'
+    # classes, their sources and their dates) keeps two plans apart that it
+    # would grade differently: a dated and an undated plan of the same two
+    # maps, or one map under two names, at one budget and seed would share a
+    # file name, and the later plan would overwrite the earlier one's design.
+    digested = [maps.class_a, maps.class_b, maps.classes, maps.source, maps.dates]
     digest = hashlib.sha256(
-        json.dumps([maps.class_a, maps.class_b, _jsonable(maps.classes)]).encode()
+        json.dumps(_jsonable(digested), sort_keys=True).encode()
     ).hexdigest()
     origin = slug(
         "_".join(str(s.get("result_id") or "scores") for s in maps.source.values()),
