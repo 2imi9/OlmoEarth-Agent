@@ -8,11 +8,13 @@ import { runLive, runDemo, replayEvents } from './run.js';
 import { buildAgentBrief, getPendingAttachments, clearPendingAttachments } from './attach.js';
 import { parseSkillSlash } from './slash.js';
 import { projConnected } from './api.js';
+import { putFigure, clearFigures, deleteFigures } from './figstore.js';
 
 const CHATS_LS = 'oe_chats';
 let activeChat = null;     // { id, title, createdAt, updatedAt, turns: [...] }
 let activeChatId = null;
 let sending = false;       // a run is in flight; gates concurrent sends
+let historyEpoch = 0;      // bumped by clearChatHistory: a run begun before a clear keeps no figure and saves no chat after it
 
 function loadChats() { try { return JSON.parse(localStorage.getItem(CHATS_LS) || '[]'); } catch (e) { return []; } }
 function genId() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -20,7 +22,9 @@ function genId() { return 'c' + Date.now().toString(36) + Math.random().toString
 /* A chat as stored: its events without figure_svg (60 to 160 KB of SVG each,
    which would fill localStorage after about a dozen check chats). The event
    keeps the result's figure_path and figure_caption, so a replay shows the
-   legend; only the live session's in-memory copy keeps the SVG. */
+   legend; only the live session's in-memory copy keeps the SVG, and the
+   browser's figure store (figstore.js) a copy by figure_path, which a replay
+   looks up. */
 function storedChat(chat) {
   const strip = (ev) => {
     if (!ev || typeof ev !== 'object' || !('figure_svg' in ev)) return ev;
@@ -53,19 +57,48 @@ function setSaveNotice(on) {
 
 /* Store the chats; on an error (the quota, mostly) drop figure_svg from every
    stored event, which a chat saved by an earlier version may still carry, and
-   retry once; if that fails too, say so. */
+   retry once; if that fails too, say so. True once stored. */
 function saveChats(chats) {
   try {
     localStorage.setItem(CHATS_LS, JSON.stringify(chats));
     setSaveNotice(false);
-    return;
+    return true;
   } catch (e) { /* retried below without the figures */ }
   try {
     localStorage.setItem(CHATS_LS, JSON.stringify(chats.map(storedChat)));
     setSaveNotice(false);
+    return true;
   } catch (e) {
     setSaveNotice(true);
+    return false;
   }
+}
+
+/* The figure paths (figure_path) a chat's tool results name: the keys of its
+   figures in the figure store. */
+function figurePaths(chat) {
+  const paths = new Set();
+  const turns = chat && Array.isArray(chat.turns) ? chat.turns : [];
+  for (const turn of turns) {
+    if (!turn || !Array.isArray(turn.events)) continue;
+    for (const ev of turn.events) {
+      const inner = ev && ev.result && ev.result.result;
+      if (inner && typeof inner.figure_path === 'string' && inner.figure_path) paths.add(inner.figure_path);
+    }
+  }
+  return paths;
+}
+
+/* A live event's figure into the browser's figure store (figstore.js), under
+   the result's figure_path, so the chat shows it again when reopened from the
+   history. Not awaited: a store that fails or is missing changes nothing here. */
+function keepFigure(ev) {
+  if (!ev || typeof ev.figure_svg !== 'string' || !ev.figure_svg) return;
+  const inner = ev.result && ev.result.result;
+  const path = inner && typeof inner.figure_path === 'string' ? inner.figure_path : '';
+  if (!path) return;
+  const caption = typeof inner.figure_caption === 'string' ? inner.figure_caption : '';
+  void putFigure(path, ev.figure_svg, caption);
 }
 
 function persistChat(chat) {
@@ -155,6 +188,15 @@ export function newChat() {
   const sc = document.getElementById('scroll'); if (sc) sc.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+/* "Clear chat history": the stored chats and the figures kept for them. A run
+   still streaming keeps no figure and saves no chat after this (historyEpoch). */
+export function clearChatHistory() {
+  historyEpoch += 1;
+  try { localStorage.removeItem(CHATS_LS); } catch (e) { /* storage blocked: nothing stored */ }
+  void clearFigures();
+  newChat();
+}
+
 function openChat(id) {
   const c = loadChats().find((x) => x.id === id);
   if (!c) return;
@@ -165,8 +207,20 @@ function openChat(id) {
   const sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('open');
 }
 
+/* Delete one saved chat, and the figures it showed that no other chat shows:
+   not the remaining saved chats, nor the open one (it may hold a figure not
+   saved yet). Its figures stay if the chats could not be saved without it. */
 function deleteChat(id) {
-  saveChats(loadChats().filter((c) => c.id !== id));
+  const chats = loadChats();
+  const gone = chats.find((c) => c.id === id);
+  const left = chats.filter((c) => c.id !== id);
+  if (saveChats(left) && gone) {
+    const shown = new Set();
+    for (const c of left) figurePaths(c).forEach((p) => shown.add(p));
+    if (activeChat && activeChat.id !== id) figurePaths(activeChat).forEach((p) => shown.add(p));
+    const orphans = [...figurePaths(gone)].filter((p) => !shown.has(p));
+    if (orphans.length) void deleteFigures(orphans);
+  }
   if (activeChatId === id) { activeChat = null; activeChatId = null; newChat(); }
   else {
     // The space freed may let the open chat be stored, if saving it failed.
@@ -213,6 +267,7 @@ function setSendingUI(on) {
 
 function handleSend(brief, attachments) {
   const atts = attachments || [];
+  const epoch = historyEpoch;  // the history this run belongs to; a clear during the run ends it
   ensureActiveChat();
   const chat = activeChat;
   const history = historyForAgent(chat.turns);  // prior turns only
@@ -233,8 +288,12 @@ function handleSend(brief, attachments) {
   const { skill: forcedSkill, brief: rest } = parseSkillSlash(brief);
   const cleanBrief = rest || (forcedSkill ? `Use the ${forcedSkill} skill for this request.` : brief);
   const agentBrief = buildAgentBrief(cleanBrief, atts);
-  const onEvent = (ev) => aTurn.events.push(ev);
-  const done = () => { sending = false; setSendingUI(false); chat.updatedAt = Date.now(); persistChat(chat); renderChatList(); };
+  const onEvent = (ev) => { aTurn.events.push(ev); if (epoch === historyEpoch) keepFigure(ev); };
+  const done = () => {
+    sending = false; setSendingUI(false);
+    if (epoch !== historyEpoch) return;  // the history was cleared during the run: nothing saved back
+    chat.updatedAt = Date.now(); persistChat(chat); renderChatList();
+  };
   sending = true; setSendingUI(true);
   if (BRIDGE.live && projConnected()) runLive(body, agentBrief, history, onEvent, forcedSkill).then(done, done);
   else { runDemo(body, agentBrief, onEvent); setTimeout(done, 5200); }
