@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -140,6 +143,121 @@ def test_run_forwards_history() -> None:
     assert ("user", "first q") in roles
     assert ("assistant", "first a") in roles
     assert roles[-1] == ("user", "follow up")  # new brief is last
+
+
+def _streamed(
+    monkeypatch: pytest.MonkeyPatch, events: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The events ``/api/run`` sends for an agent that yields ``events``."""
+
+    class _Agent:
+        def __init__(self, *_a: Any, **_kw: Any) -> None: ...
+
+        async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
+            for event in events:
+                yield event
+
+    monkeypatch.setattr(serve, "LeadAgent", _Agent)
+    with TestClient(serve.app) as client:
+        resp = client.post(
+            "/api/run", json={"brief": "how wrong?"}, headers={"X-Olmoearth-Key": "k"}
+        )
+    assert resp.status_code == 200
+    return [
+        json.loads(line[len("data: ") :])
+        for line in resp.text.splitlines()
+        if line.startswith("data: ")
+    ]
+
+
+def _figure_result(path: str) -> dict[str, Any]:
+    """A ``tool_result`` event whose tool reports writing a figure at ``path``."""
+    return {
+        "type": "tool_result",
+        "turn": 1,
+        "id": "c1",
+        "name": "olmoearth_estimate_map_error",
+        "ok": True,
+        "result": {
+            "ok": True,
+            "result": {
+                "error_rate": 0.19,
+                "figure_path": path,
+                "figure_caption": "How wrong the map is. (a) The labelled windows.",
+            },
+        },
+    }
+
+
+def _roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The tools' write root (and a separate workspace root) under ``tmp_path``."""
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setenv("OLMOEARTH_SCORES_ROOT", str(root))
+    monkeypatch.setenv("OLMOEARTH_OUTPUT_ROOT", str(tmp_path / "workspace"))
+    return root
+
+
+def test_run_sends_the_figure_a_tool_wrote_beside_its_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _roots(tmp_path, monkeypatch)
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>19.0% ± 4.6</text></svg>\n'
+    figure = root / "design_scores_ab12_random_300_s0_figure.svg"
+    figure.write_text(svg, encoding="utf-8")
+    event = _figure_result(str(figure))
+    sent = [e for e in _streamed(monkeypatch, [event]) if e["type"] == "tool_result"]
+    assert len(sent) == 1
+    assert sent[0]["figure_svg"] == svg
+    # Otherwise the event goes out as the harness yielded it, and the harness's
+    # own event (shared with its records) gains no figure.
+    assert {k: v for k, v in sent[0].items() if k != "figure_svg"} == event
+    assert "figure_svg" not in event
+
+
+def test_run_sends_no_figure_from_outside_the_write_root_or_not_an_svg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _roots(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"/>\n'
+    (elsewhere / "x_figure.svg").write_text(svg, encoding="utf-8")
+    (root / "notes.txt").write_text(svg, encoding="utf-8")
+    (root / "plain.svg").write_text(svg, encoding="utf-8")
+    (root / "link_figure.svg").symlink_to(elsewhere / "x_figure.svg")
+    (root / "big_figure.svg").write_bytes(b" " * (serve._FIGURE_MAX_BYTES + 1))
+    events = [
+        _figure_result(str(elsewhere / "x_figure.svg")),
+        _figure_result(str(root / ".." / "elsewhere" / "x_figure.svg")),
+        _figure_result(str(root / "link_figure.svg")),  # resolves outside the root
+        _figure_result(str(root / "notes.txt")),
+        _figure_result(str(root / "plain.svg")),  # no figure tool writes this name
+        _figure_result(str(root / "missing_figure.svg")),
+        _figure_result(str(root / "big_figure.svg")),
+        {
+            "type": "tool_result",
+            "turn": 1,
+            "id": "c2",
+            "name": "olmoearth_plan_label_sample",
+            "ok": False,
+            "result": {"ok": False, "error": "ValueError: no scores"},
+        },
+    ]
+    sent = [e for e in _streamed(monkeypatch, events) if e["type"] == "tool_result"]
+    # Each goes out as the harness yielded it: no figure_svg, and no error.
+    assert sent == events
+
+
+def test_run_sends_no_figure_for_a_path_with_a_nul_and_goes_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A figure_path holding a NUL byte, which no file path can, is no figure."""
+    root = _roots(tmp_path, monkeypatch)
+    final = {"type": "final", "turn": 1, "content": "19% of the map is wrong."}
+    events = [_figure_result(f"{root}/a\x00_figure.svg"), final]
+    # No figure and no error frame: the run goes on to its answer and ends.
+    assert _streamed(monkeypatch, events) == [*events, {"type": "done"}]
 
 
 def test_run_local_flag_tracks_backend(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -463,6 +581,8 @@ def test_run_uses_claude_backend_when_selected(monkeypatch: pytest.MonkeyPatch) 
         )
 
     monkeypatch.setattr(serve, "AnthropicLLM", _fake_anthropic)
+    # The bridge's environment does not redirect a browser user's key.
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://models.example.invalid")
     with TestClient(serve.app) as client:
         resp = client.post(
             "/api/run",
@@ -479,6 +599,7 @@ def test_run_uses_claude_backend_when_selected(monkeypatch: pytest.MonkeyPatch) 
     # the bring-your-own Anthropic key + model reached the backend constructor
     assert captured["api_key"] == "sk-ant-test"
     assert captured["model"] == "claude-sonnet-4-6"
+    assert captured["base_url"] == "https://api.anthropic.com"
 
 
 def test_run_uses_openai_backend_when_selected(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -601,6 +722,120 @@ def test_llm_models_lists_for_provider(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     assert resp.status_code == 200
     assert resp.json()["models"] == ["gemini-2.0-flash", "gemini-2.5-pro"]
+
+
+def _fake_sdk(events: list[tuple[str, str]]) -> type:
+    """An SDK client stand-in that records the key and the URL it is given."""
+
+    class _Models:
+        async def list(self, **_kwargs: Any) -> Any:
+            return SimpleNamespace(data=[SimpleNamespace(id="gpt-4o")])
+
+    class _Client:
+        def __init__(self, **kwargs: Any) -> None:
+            given = f"{kwargs.get('api_key')} {kwargs.get('base_url')}"
+            events.append(("client", given))
+            self.models = _Models()
+
+        async def close(self) -> None:
+            return None
+
+    return _Client
+
+
+#: Each hosted backend, the SDK client the model list builds, and its endpoint.
+_HOSTED = [
+    ("claude", "anthropic.AsyncAnthropic", serve.DEFAULT_ANTHROPIC_BASE_URL),
+    ("openai", "openai.AsyncOpenAI", serve._OPENAI_PROVIDERS["openai"]["base_url"]),
+    ("gemini", "openai.AsyncOpenAI", serve._OPENAI_PROVIDERS["gemini"]["base_url"]),
+]
+
+#: An endpoint off the ``llm-cloud`` allowlist.
+_OFF_LIST = "https://models.example.invalid/v1"
+
+
+def _point_backend_at(monkeypatch: pytest.MonkeyPatch, backend: str, url: str) -> None:
+    """Point a hosted backend's fixed endpoint at ``url`` for one test."""
+    if backend == "claude":
+        monkeypatch.setattr(serve, "DEFAULT_ANTHROPIC_BASE_URL", url)
+    else:
+        monkeypatch.setitem(serve._OPENAI_PROVIDERS[backend], "base_url", url)
+
+
+@pytest.mark.parametrize(("backend", "sdk", "url"), _HOSTED)
+def test_llm_models_checks_the_endpoint_before_the_key(
+    monkeypatch: pytest.MonkeyPatch, backend: str, sdk: str, url: str
+) -> None:
+    """The model list checks the provider's endpoint for ``llm-cloud``, as a
+    run does, then hands the SDK client the key and that endpoint: an
+    ``ANTHROPIC_BASE_URL`` in the bridge's environment does not redirect it."""
+    pytest.importorskip(sdk.split(".")[0])
+    events: list[tuple[str, str]] = []
+    real = serve.egress.validate_endpoint
+
+    def _check(endpoint: str, capability: str, **kwargs: Any) -> str:
+        events.append(("check", f"{capability} {endpoint}"))
+        return real(endpoint, capability, **kwargs)
+
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", _OFF_LIST)
+    with TestClient(serve.app) as client:
+        # Patched after startup, so only the request's own calls are recorded.
+        monkeypatch.setattr(serve.egress, "validate_endpoint", _check)
+        monkeypatch.setattr(sdk, _fake_sdk(events))
+        resp = client.get(
+            "/api/llm/models", headers={"X-LLM-Backend": backend, "X-LLM-Key": "k"}
+        )
+    assert resp.status_code == 200, resp.text
+    assert events == [("check", f"llm-cloud {url}"), ("client", f"k {url}")]
+
+
+@pytest.mark.parametrize(("backend", "sdk"), [h[:2] for h in _HOSTED])
+def test_llm_models_refuses_an_endpoint_off_the_allowlist(
+    monkeypatch: pytest.MonkeyPatch, backend: str, sdk: str
+) -> None:
+    """In ``enforce`` mode a provider endpoint off the ``llm-cloud`` allowlist
+    is refused with HTTP 403, and no SDK client is built with the key."""
+    pytest.importorskip(sdk.split(".")[0])
+    events: list[tuple[str, str]] = []
+    _point_backend_at(monkeypatch, backend, _OFF_LIST)
+    monkeypatch.delenv("OLMOEARTH_EGRESS_ALLOW", raising=False)
+    with TestClient(serve.app) as client:
+        monkeypatch.setenv("OLMOEARTH_EGRESS", "enforce")
+        monkeypatch.setattr(sdk, _fake_sdk(events))
+        resp = client.get(
+            "/api/llm/models", headers={"X-LLM-Backend": backend, "X-LLM-Key": "k"}
+        )
+    assert resp.status_code == 403, resp.text
+    assert "host not on 'llm-cloud' allowlist" in resp.json()["detail"]
+    assert events == []
+
+
+@pytest.mark.parametrize("backend", ["claude", "openai", "gemini"])
+def test_run_refuses_a_backend_endpoint_off_the_allowlist(
+    monkeypatch: pytest.MonkeyPatch, backend: str
+) -> None:
+    """A run checks the hosted backend's endpoint as the model list does: in
+    ``enforce`` mode a host off the allowlist is refused with HTTP 403 before
+    a client is built with the key."""
+    built: list[Any] = []
+    _point_backend_at(monkeypatch, backend, _OFF_LIST)
+    monkeypatch.delenv("OLMOEARTH_EGRESS_ALLOW", raising=False)
+    with TestClient(serve.app) as client:
+        monkeypatch.setenv("OLMOEARTH_EGRESS", "enforce")
+        monkeypatch.setattr(serve, "AnthropicLLM", lambda *a, **k: built.append(k))
+        monkeypatch.setattr(serve, "OlmoEarthLLM", lambda *a, **k: built.append(a))
+        resp = client.post(
+            "/api/run",
+            json={"brief": "hi"},
+            headers={
+                "X-Olmoearth-Key": "k",
+                "X-LLM-Backend": backend,
+                "X-LLM-Key": "sk",
+            },
+        )
+    assert resp.status_code == 403, resp.text
+    assert "host not on 'llm-cloud' allowlist" in resp.json()["detail"]
+    assert built == []
 
 
 class _FakeEnv:

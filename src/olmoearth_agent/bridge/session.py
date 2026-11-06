@@ -19,8 +19,8 @@ harness's notes), the system prompt when it changed, the tools offered, with
 their specs on the first call and whenever the tools offered change (an
 argument a spec does not declare is passed through and ignored by its
 handler, so the model needs the names), and the sampling mode; for the end,
-the answer with its flags and the notes ``olmoearth-agent`` prints beside
-it.
+the answer with its flags, the figures its tools wrote and the notes
+``olmoearth-agent`` prints beside it.
 
 A step holds the run's lock (:meth:`RunDir.locked`) from its first read to
 its last write, so a step sent again after a dropped connection, while the
@@ -56,6 +56,7 @@ from olmoearth_agent.bridge.errors import BridgeError, BridgeHalt
 from olmoearth_agent.bridge.replay import ToolCache, replay_registry
 from olmoearth_agent.bridge.scripted import RecordedResponse, ScriptedLLM
 from olmoearth_agent.bridge.store import RunDir
+from olmoearth_agent.cli import figure_lines, figure_of
 from olmoearth_agent.harness import spill
 from olmoearth_agent.harness.agent import AgentResult, LeadAgent
 from olmoearth_agent.harness.state import ThreadState
@@ -749,16 +750,36 @@ def cli_trace(result: AgentResult) -> list[str]:
     return lines
 
 
+def _figures(events: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
+    """Each figure a tool of the run wrote (``cli.figure_of``), as the CLI keeps them.
+
+    In the order the tools wrote them; a figure written again takes the newer
+    caption.
+    """
+    figures: dict[str, str] = {}
+    for event in events:
+        figure = figure_of(event)
+        if figure is not None:
+            figures[figure[0]] = figure[1]
+    return [{"path": path, "caption": caption} for path, caption in figures.items()]
+
+
 def final_view(
     brief: dict[str, Any], events: list[dict[str, Any]], state: ThreadState
 ) -> dict[str, Any]:
-    """The run's answer, its flags, and ``olmoearth-agent``'s notes and trace."""
+    """The run's answer, its flags, its figures, and ``olmoearth-agent``'s notes.
+
+    ``figures`` holds each figure a tool of the run wrote, ``{path,
+    caption}``, which ``olmoearth-agent`` prints after the answer and the
+    user sees with it.
+    """
     final = events[-1]
     result = _collect(events, state)
     return {
         "status": FINAL,
         "run_id": brief["run_id"],
         "content": result.final_content,
+        "figures": _figures(events),
         "turns": result.turns,
         "forced_by_turn_cap": bool(final.get("forced_by_turn_cap")),
         "hit_max_turns": result.hit_max_turns,
@@ -836,10 +857,17 @@ def render_text(view: dict[str, Any]) -> str:
         flags = [f for f in ("revised", "forced_by_turn_cap") if view.get(f)]
         if view.get("marked"):
             flags.append("marked: " + ", ".join(view["marked"]))
+        # The figures after the answer, as olmoearth-agent prints them.
+        figures = [
+            (str(f.get("path")), str(f.get("caption") or ""))
+            for f in view.get("figures") or []
+            if isinstance(f, dict)
+        ]
         lines = [
             *_running_text(view),
             f"== final answer (run {view.get('run_id')}) ==",
             "(no answer)" if content is None else str(content),
+            *figure_lines(figures),
             "== " + ("; ".join(flags) if flags else "not revised, not marked") + " ==",
             *view.get("notes", []),
             *_dropped_text(view),

@@ -510,6 +510,58 @@ def test_the_final_notes_are_the_command_line_s(
     assert final["notes"] == ["(numbers in the answer that no tool returned: 1,111)"]
 
 
+_FIGURE = "outputs/design_scores_ab12_random_300_s0_figure.svg"
+_CAPTION = "Which windows to label. (a) The windows drawn by the random design."
+
+
+def _plans(_calls: dict[str, int]) -> ToolRegistry:
+    """plan counts the windows and reports its figure, as a check route's tool."""
+
+    async def plan(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+        return {**_MEASURED, "figure_path": _FIGURE, "figure_caption": _CAPTION}
+
+    registry = ToolRegistry()
+    spec = ToolSpec("plan", "plan a label sample", _EMPTY_SCHEMA)
+    registry.register(RegisteredTool(spec, plan))
+    return registry
+
+
+def test_the_final_view_shows_the_figures_the_command_line_prints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The soul tells the model the user sees each figure with the answer."""
+    from olmoearth_agent import cli
+
+    responses = [_calls(("plan", {})), {"content": _FIXED}]
+    stub = _Stub([_as_chat(k, r) for k, r in enumerate(responses, 1)])
+
+    class _Skills:
+        def index(self) -> str:
+            """No skill index."""
+            return ""
+
+    factory = partial(_plans, {})
+    monkeypatch.setattr(cli, "OlmoEarthLLM", lambda: stub)
+    monkeypatch.setattr(cli, "StudioClient", _Studio)
+    monkeypatch.setattr(cli, "build_default_registry", factory)
+    monkeypatch.setattr(cli, "SkillLoader", _Skills)
+    assert cli.main([_BRIEF]) == 0
+    printed = capsys.readouterr().out.splitlines()
+    assert printed == [_FIXED, "", f"figure: {_FIGURE}", _CAPTION]
+
+    views = asyncio.run(_bridge(tmp_path / "run", responses, factory))
+    final = views[-1]
+    assert final["content"] == _FIXED
+    assert final["figures"] == [{"path": _FIGURE, "caption": _CAPTION}]
+    # The text output prints them after the answer, as olmoearth-agent does.
+    text = render_text(final).splitlines()
+    assert text[0].startswith("== final answer")
+    assert text[1 : 1 + len(printed)] == printed
+    assert text[1 + len(printed)] == "== not revised, not marked =="
+
+
 def _big(_calls: dict[str, int]) -> ToolRegistry:
     async def big(_args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
         return {**_MEASURED, "windows": [{"id": f"w{i}"} for i in range(40)]}

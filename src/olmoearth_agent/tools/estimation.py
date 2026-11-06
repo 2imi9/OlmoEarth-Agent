@@ -103,14 +103,25 @@ These package calls run in a worker thread (``asyncio.to_thread``), as
 the command line does (:func:`inferencex.run_cli_async`): the estimate of a
 design file of one map (its valid per-class table takes seconds per class
 under a stratified design), the zone (``certify_zone`` orders every window
-of the map) and the map-seeded draw. Run inline, each would hold the event
-loop that serves the web bridge's other sessions; an exception raised in the
-thread reaches the handler as it would inline. A plain plan's draw, the
-which-map grading and windows labelled without a design still run on the
+of the map), the map-seeded draw and the which-map grade (it draws its
+figure over the plan's grid), and so does every figure. Run inline, each
+would hold the event loop that serves the web bridge's other sessions; an
+exception raised in the thread reaches the handler as it would inline. A
+plain plan's draw and windows labelled without a design still run on the
 event loop. The estimate fixes a ``seed_from_map`` plan's labels from its
 worker thread, so the package's sheet is read, checked and written under one
 lock (:func:`fill_sheet`): two sessions grading one plan cannot both write
 it, and no reader sees it half written.
+
+Each determination also writes its figure (:mod:`olmoearth_agent.reporting.figures`)
+beside the files it already writes, drawn last from the data it holds: the
+plan's drawn windows, the estimate's labels and intervals, the certified zone
+and its levels, where two maps differ and the side each label took. The
+result gives it as ``figure_path`` (``<stem>_figure.svg``) and its legend as
+``figure_caption``; a figure of other labels on one design (or, for a zone,
+another alpha, delta or rule) is another file. A figure that cannot be drawn
+or written is logged and left out (:func:`_figure`): it never fails a
+completed determination.
 
 Every output also carries ``next_steps``, written by code from the design and
 the outcome, and the output contract's ``facts``, ``must_state`` and
@@ -125,9 +136,11 @@ import asyncio
 import csv
 import hashlib
 import json
+import logging
 import math
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeGuard
@@ -146,6 +159,7 @@ from olmoearth_agent.analysis.review_set import (
     predicted_classes,
 )
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.reporting import figures
 from olmoearth_agent.security.paths import safe_path
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
@@ -190,6 +204,8 @@ from olmoearth_agent.tools.sampling import (
     topk_part_reason,
     topk_scores,
 )
+
+logger = logging.getLogger(__name__)
 
 #: The design of two maps: a random sample of the windows where their classes
 #: differ (``oe_inferencex.estimate.sample_disagreement``), for which of the
@@ -1833,6 +1849,34 @@ def labels_sha256(wrong: list[int]) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
 
+def _design_stem(args: dict[str, Any]) -> str:
+    """The design file's name without ``.json``, which its figures' names extend."""
+    return os.path.splitext(os.path.basename(str(args["design_path"])))[0]
+
+
+def _figure(
+    stem: str, draw: Callable[..., figures.Rendered], *args: Any, **kwargs: Any
+) -> dict[str, str]:
+    """Draw a determination's figure and write it as ``<stem>_figure.svg``.
+
+    ``draw`` is one of the routes of :mod:`olmoearth_agent.reporting.figures`,
+    called with ``args`` and ``kwargs``; the result's figure keys
+    (``figure_path``, ``figure_caption``) are returned. A figure never fails
+    a completed determination: one that cannot be drawn or written (an
+    ``OSError``, or a ``ValueError`` such as an unwritable write root's) is
+    logged at warning level with its stem and the result goes without it
+    (``{}``), as :func:`~olmoearth_agent.tools.review_set.review_set_figure_fields`
+    does. Every caller runs it off the event loop, in a worker thread of its
+    own or in the one its determination already runs in, so a large grid's
+    figure does not hold the loop.
+    """
+    try:
+        return figures.figure_fields(stem, draw(*args, **kwargs))
+    except (OSError, ValueError):
+        logger.warning("could not draw or save the figure %s", stem, exc_info=True)
+        return {}
+
+
 def plan_work_dir(block: dict[str, Any]) -> Path:
     """The working folder of a plan drawn with ``seed_from_map``, checked.
 
@@ -2583,6 +2627,22 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
                 "random plan may certify nothing"
             )
         )
+    # The figure, drawn last from the population and the draw in hand: the
+    # windows to label on the map's confidence.
+    out.update(
+        await asyncio.to_thread(
+            _figure,
+            stem,
+            figures.plan_figure,
+            pop.margin,
+            pop.grid,
+            indices,
+            design=design,
+            seed=seed,
+            n_valid=int(sample["n_population"]),
+            no_confidence=class_map,
+        )
+    )
     return rules.add_contract(
         out,
         facts=facts,
@@ -3170,6 +3230,41 @@ def _estimate_valid_first(
     )
     stated_missed = missed[:room]
     free = room - len(stated_missed)
+    # The figure, drawn last from the design file and these labels (already in
+    # this worker thread): each label on the map's confidence, and the error
+    # rate with both intervals, as fractions. A design file that keeps no
+    # margin has no grid to draw on, so it gets no figure (every plan this
+    # tool writes keeps one).
+    margin = population.get("margin")
+    if isinstance(margin, list) and margin:
+        intervals = [
+            (
+                "valid at every sample size",
+                valid["low"],
+                valid["high"],
+                valid.get("estimate"),
+            ),
+            (
+                "the interval this design earns",
+                res["low"],
+                res["high"],
+                res.get("estimate"),
+            ),
+        ]
+        out.update(
+            _figure(
+                f"{_design_stem(args)}_estimate_{labels_sha256(wrong)[:8]}",
+                figures.estimate_figure,
+                margin,
+                population.get("grid"),
+                indices,
+                wrong,
+                intervals=intervals,
+                design=plan_design,
+                n_valid=int(res["n_population"]),
+                no_confidence=class_map,
+            )
+        )
     return rules.add_contract(
         out,
         facts=facts,
@@ -3189,7 +3284,10 @@ async def _estimate_map_error(
     if args.get("design_path"):
         design = _load_design(str(args["design_path"]))
         if design.get("design") == TWO_MAP_DESIGN:
-            return _grade_two_maps(args, design, estimate)
+            # In a worker thread: the grade draws its figure over the plan's
+            # grid (up to 200,000 windows), and the event loop serves the web
+            # bridge's other sessions.
+            return await asyncio.to_thread(_grade_two_maps, args, design, estimate)
         # Every one-map design file (a scores map's confidence, proportional or
         # random design, a class map's, the class design's): the interval valid
         # at every sample size first, then the design's own. In a worker
@@ -3575,6 +3673,36 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
         []
         if out["certified"]
         else [rules.whole_map_rate_for_a_zone(alpha, levels[0] if levels else None)]
+    )
+    # The figure, drawn last from the zone, the levels tested and the labels
+    # in hand: the package gives the zone's windows only for a certified level.
+    # Its name holds the test (alpha, delta, rule) and the labels, so another
+    # test of the same design and labels writes another figure.
+    out.update(
+        await asyncio.to_thread(
+            _figure,
+            f"{_design_stem(args)}_zone_a{alpha:g}_d{delta:g}_{rule}_"
+            f"{out['labels_sha256'][:8]}",
+            figures.zone_figure,
+            design["population"]["margin"],
+            design["population"].get("grid"),
+            [int(i) for i in zone_indices.tolist()] if zone_indices is not None else [],
+            indices,
+            wrong,
+            alpha=alpha,
+            delta=delta,
+            rule=rule,
+            no_confidence=_has_no_confidence(design),
+            levels=[
+                (
+                    f"top {round(100 * float(lv['coverage']))}%",
+                    float(lv["upper_bound"]),
+                    bool(lv.get("accepted")),
+                )
+                for lv in levels
+            ],
+            n_valid=int(out["n_population"]),
+        )
     )
     return rules.add_contract(
         out,
@@ -4283,6 +4411,11 @@ async def _plan_two_maps(
     n_pop, n_dis = int(sample["n_population"]), int(sample["n_disagree"])
     indices = [int(i) for i in sample["indices"].tolist()]
     planned = len(indices)
+    # Per window, whether the maps' classes differ there; None where either
+    # map holds no class (not compared). The figures draw it.
+    differ: list[bool | None] = [
+        a != b if ok else None for a, b, ok in zip(maps.class_a, maps.class_b, valid)
+    ]
     to_label: list[dict[str, Any]] = []
     for order, idx in enumerate(indices):
         entry: dict[str, Any] = {"order": order, "window_index": idx}
@@ -4293,9 +4426,14 @@ async def _plan_two_maps(
         to_label.append(entry)
     advice = _jsonable(plan_pkg.plan_which_map(n_pop, n_dis, difference))
 
-    # A digest of both maps' classes keeps two plans of different maps apart.
+    # A digest of what the grade reads from the design file (both maps'
+    # classes, their sources and their dates) keeps two plans apart that it
+    # would grade differently: a dated and an undated plan of the same two
+    # maps, or one map under two names, at one budget and seed would share a
+    # file name, and the later plan would overwrite the earlier one's design.
+    digested = [maps.class_a, maps.class_b, maps.classes, maps.source, maps.dates]
     digest = hashlib.sha256(
-        json.dumps([maps.class_a, maps.class_b, _jsonable(maps.classes)]).encode()
+        json.dumps(_jsonable(digested), sort_keys=True).encode()
     ).hexdigest()
     origin = slug(
         "_".join(str(s.get("result_id") or "scores") for s in maps.source.values()),
@@ -4320,6 +4458,10 @@ async def _plan_two_maps(
             "source": maps.source,
             "studio": maps.studio,
             "dates": maps.dates,
+            # Where the maps differ and where either holds no class, so the
+            # grade draws the plan's grid (_differ_cells).
+            "differ": [i for i, d in enumerate(differ) if d],
+            "not_compared": [i for i, d in enumerate(differ) if d is None],
         },
         "budget_advice": advice,
         "to_label": to_label,
@@ -4389,6 +4531,12 @@ async def _plan_two_maps(
         must_state.append(
             f"The plan holds {planned} windows, not the {budget} requested."
         )
+    # The figure, drawn last from the two maps' classes and the draw in hand.
+    out.update(
+        await asyncio.to_thread(
+            _figure, stem, figures.two_map_plan_figure, differ, maps.grid, indices
+        )
+    )
     return rules.add_contract(
         out,
         facts=facts,
@@ -4549,6 +4697,32 @@ def _no_reference_in_the_maps_classes(
     return ValueError(msg)
 
 
+def _differ_cells(
+    population: dict[str, Any], indices: list[int]
+) -> list[bool | None] | None:
+    """Per window of a two-map design file, whether the two maps differ there.
+
+    The plan keeps the windows where they differ (``differ``) and those
+    where either map holds no class (``not_compared``); every other window
+    they agree on. A design file written before the plan kept them marks
+    only its drawn windows as differing and every other window unknown
+    (``None``). A file that does not say how many windows it holds has no
+    grid to draw on: ``None``.
+    """
+    n = population.get("n_windows")
+    if not isinstance(n, int) or n < 1:
+        return None
+    listed = population.get("differ")
+    cells: list[bool | None] = [None if listed is None else False] * n
+    for i in population.get("not_compared") or []:
+        if 0 <= int(i) < n:
+            cells[int(i)] = None
+    for i in indices if listed is None else listed:
+        if 0 <= int(i) < n:
+            cells[int(i)] = True
+    return cells
+
+
 def _grade_two_maps(
     args: dict[str, Any], design: dict[str, Any], estimate: Any
 ) -> dict[str, Any]:
@@ -4564,7 +4738,9 @@ def _grade_two_maps(
     its labels (``rules.which_map_must_state``), that it grades these two
     maps and ranks no model (``rules.MAPS_NOT_MODELS``, for dated scores
     files), and no map named more accurate beyond what the package
-    names (``more_accurate_without_its_test``).
+    names (``more_accurate_without_its_test``). It runs in a worker thread
+    (``_estimate_map_error``), so its figure over the plan's grid does not
+    hold the event loop.
     """
     sample = design["sample"]
     indices = [int(i) for i in sample["indices"]]
@@ -4653,8 +4829,9 @@ def _grade_two_maps(
         )
     # Within the contract's cap of three, rules.MAPS_NOT_MODELS is the one
     # left out when the dates are unstated or the maps are Studio results.
+    stated = rules.which_map_must_state(res)
     must_state = [
-        rules.which_map_must_state(res),
+        stated,
         rules.NOT_EITHER_ACCURACY,
         *_two_map_scope(
             bool(population.get("studio")),
@@ -4674,6 +4851,33 @@ def _grade_two_maps(
                 n=n_outside,
                 n_judged=len(judged),
                 classes=outside,
+            )
+        )
+    # The figure, drawn last from the plan's grid and these labels: the side
+    # each label took (a window's class in map a, in map b, neither, or ? not
+    # judged) and the package's verdict sentence. A design file that does not
+    # say how many windows it holds has no grid to draw on: no figure.
+    differ = _differ_cells(population, indices)
+    if differ is not None:
+        sides = [
+            "?" if skip else "a" if code == ca else "b" if code == cb else "neither"
+            for code, skip, ca, cb in zip(
+                codes, unjudged, design["class_a"], design["class_b"]
+            )
+        ]
+        digest = hashlib.sha256(json.dumps(references).encode("utf-8")).hexdigest()
+        out.update(
+            _figure(
+                f"{_design_stem(args)}_grade_{digest[:8]}",
+                figures.two_map_grade_figure,
+                differ,
+                population.get("grid"),
+                indices,
+                sides,
+                verdict=stated,
+                # A design file written before the plan kept where the maps
+                # differ draws only its drawn windows, and says so.
+                differ_known=population.get("differ") is not None,
             )
         )
     return rules.add_contract(

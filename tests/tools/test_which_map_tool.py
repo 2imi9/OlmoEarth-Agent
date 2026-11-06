@@ -15,8 +15,14 @@ agent computes no verdict and no interval.
 
 from __future__ import annotations
 
+import base64
 import csv
+import hashlib
 import json
+import struct
+import threading
+import xml.etree.ElementTree as ET
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -33,6 +39,7 @@ from olmoearth_agent.harness.checks import (
 )
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
+from olmoearth_agent.reporting import figures as fg
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import (
     UNSTATED_DATES_MUST_STATE,
@@ -751,6 +758,55 @@ async def test_two_scores_files_of_one_grid_and_their_dates(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_dated_and_undated_plans_keep_their_own_designs(tmp_path: Path) -> None:
+    """The design file's name follows what the grade reads from it.
+
+    The same two maps planned at one budget and seed without dates, with
+    dates, and with one map under another file name get three design files;
+    each grade states its own plan's dates and names its own files, and the
+    same arguments give the same file again.
+    """
+    a = [0, 0, 1, 1, 2, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 1]
+    b = [0, 1, 1, 2, 2, 0, 0, 1, 1, 0, 1, 0, 0, 2, 1, 1]
+    files = {
+        "scores_path": _scores_file(tmp_path / "a.json", a, [4, 4]),
+        "scores_path_b": _scores_file(tmp_path / "b.json", b, [4, 4]),
+        "budget": 4,
+        "seed": 3,
+        "design": "disagreement",
+    }
+    copy = _scores_file(tmp_path / "a_copy.json", a, [4, 4])
+
+    async def plan(args: dict[str, Any]) -> dict[str, Any]:
+        out = await _call(PLAN, args)
+        assert out["ok"] is True, out
+        return dict(out["result"])
+
+    undated = await plan(files)
+    dated = await plan({**files, "date_a": "2024-06-01", "date_b": "2024-06-01"})
+    renamed = await plan({**files, "scores_path": copy})
+    designs = [p["design_path"] for p in (undated, dated, renamed)]
+    assert len(set(designs)) == 3, designs
+    idx = _design(undated)["sample"]["indices"]
+    assert _design(dated)["sample"]["indices"] == idx
+    reference = [str(a[i]) for i in idx]
+
+    async def grade(planned: dict[str, Any]) -> dict[str, Any]:
+        args = {"design_path": planned["design_path"], "reference": reference}
+        out = await _call(GRADE, args)
+        assert out["ok"] is True, out
+        return dict(out["result"])
+
+    first, second, third = [await grade(p) for p in (undated, dated, renamed)]
+    assert first["must_state"][2] == UNSTATED_DATES_MUST_STATE
+    assert second["must_state"][2] == rules.MAPS_NOT_MODELS
+    assert first["map_a"]["scores_path"] == files["scores_path"]
+    assert third["map_a"]["scores_path"] == copy
+    again = await plan(files)
+    assert again["design_path"] == undated["design_path"]
+
+
+@pytest.mark.asyncio
 async def test_two_scores_files_of_one_shape_on_other_ground(tmp_path: Path) -> None:
     """One window grid is one shape and, where both files locate a window, one
     centre: two files of other areas are not compared window by window."""
@@ -786,3 +842,188 @@ async def test_map_b_needs_the_two_map_design(tmp_path: Path) -> None:
     alone = {"scores_path": path, "budget": 4, "design": "disagreement"}
     one = await _call(PLAN, alone)
     assert one["ok"] is False and "compares two maps of one time" in one["error"]
+
+
+# --------------------------------------------------------------------------- the figures
+
+_SVG = "{http://www.w3.org/2000/svg}"
+
+
+def _figure_svg(result: dict[str, Any], stem: str, folder: Path) -> ET.Element:
+    """The figure a result names, written as ``<stem>_figure.svg`` in ``folder``.
+
+    Parsing it also checks it is a well-formed SVG document.
+    """
+    path = Path(result["figure_path"])
+    assert path == folder.resolve() / f"{stem}_figure.svg"
+    text = path.read_text(encoding="utf-8")
+    svg = ET.fromstring(text)  # noqa: S314 -- the figure the tool just wrote
+    assert svg.tag == f"{_SVG}svg"
+    return svg
+
+
+def _marked(svg: ET.Element, colour: str, cols: int) -> list[int]:
+    """The windows a figure outlines or fills in ``colour``, by row-major index.
+
+    A window's mark is drawn with a non-scaling stroke or is one window in
+    size; the legend's swatches and the charts' bars are neither.
+    """
+    image = next(svg.iter(f"{_SVG}image"))
+    scale = float(image.get("width", "0")) / cols
+    marked = []
+    for rect in svg.iter(f"{_SVG}rect"):
+        if colour not in (rect.get("fill"), rect.get("stroke")):
+            continue
+        outlined = rect.get("vector-effect") == "non-scaling-stroke"
+        filled = rect.get("width") == rect.get("height") == f"{scale:g}"
+        if outlined or filled:
+            row = int(float(rect.get("y", "0")) // scale)
+            marked.append(row * cols + int(float(rect.get("x", "0")) // scale))
+    return sorted(marked)
+
+
+def _base(svg: ET.Element, window: int, cols: int) -> tuple[int, int, int]:
+    """The grid's colour at ``window`` under the marks: that window's centre
+    pixel in the PNG the figure embeds (8-bit RGB, filter 0 on every row, as
+    the figures write it)."""
+    image = next(svg.iter(f"{_SVG}image"))
+    data = base64.b64decode(image.get("href", "").split(",", 1)[1])
+    (width,) = struct.unpack(">I", data[16:20])
+    idat, at = b"", 8
+    while at < len(data):
+        (n,) = struct.unpack(">I", data[at : at + 4])
+        if data[at + 4 : at + 8] == b"IDAT":
+            idat += data[at + 8 : at + 8 + n]
+        at += 12 + n
+    pixels = zlib.decompress(idat)
+    scale = width // cols
+    row, col = divmod(window, cols)
+    y, x = row * scale + scale // 2, col * scale + scale // 2
+    at = y * (1 + 3 * width) + 1 + 3 * x
+    return pixels[at], pixels[at + 1], pixels[at + 2]
+
+
+@pytest.mark.asyncio
+async def test_the_plan_draws_where_the_maps_differ(tmp_path: Path) -> None:
+    """The plan's figure: amber where the two maps' classes differ, the drawn
+    windows outlined, on the grid both were sampled on. The design file keeps
+    where they differ and where either map holds no class, so its grade
+    draws the same grid."""
+    plan = await _plan(6)
+    design = _design(plan)
+    pairs = [(_map_a(r, c), _map_b(r, c)) for r in range(GRID) for c in range(GRID)]
+    differ = [i for i, (x, y) in enumerate(pairs) if x and y and x != y]
+    assert design["population"]["differ"] == differ and len(differ) == N_DIFFER
+    assert design["population"]["not_compared"] == [5]  # map b's no-data, (0, 5)
+    svg = _figure_svg(plan, Path(plan["design_path"]).stem, tmp_path)
+    assert _marked(svg, fg.OUTLINE, cols=GRID) == sorted(design["sample"]["indices"])
+    assert _base(svg, differ[0], GRID) == fg.DIFFER
+    assert _base(svg, 1, GRID) == fg.AGREE  # both maps say water there
+    assert _base(svg, 5, GRID) == fg.NO_DATA
+    caption = plan["figure_caption"]
+    assert (
+        f"(a) The {N_COMPARED} windows compared on its {GRID} x {GRID} window grid: "
+        f"amber where the two maps' classes differ ({N_DIFFER})" in caption
+    )
+    assert "the 6 outlined windows are drawn at random" in caption
+
+
+@pytest.mark.asyncio
+async def test_the_grade_draws_the_side_each_label_took(tmp_path: Path) -> None:
+    """The grade's figure: each drawn window filled with the side its label
+    took (map a's class, map b's, neither) or outlined when not judged; the
+    caption's counts are the package's and its verdict is the required
+    sentence. A design file written before the plan kept where the maps
+    differ is drawn with only its drawn windows as differing, every other
+    window unknown."""
+    plan = await _plan(20)  # every differing window: a census of them
+    idx = _design(plan)["sample"]["indices"]
+    refs = [_truth(*_window(i)) for i in idx]
+    refs[0] = "?"
+    args = {"design_path": plan["design_path"], "reference": refs}
+    graded = (await _call(GRADE, args))["result"]
+    digest = hashlib.sha256(json.dumps(refs).encode("utf-8")).hexdigest()[:8]
+    stem = Path(plan["design_path"]).stem
+    svg = _figure_svg(graded, f"{stem}_grade_{digest}", tmp_path)
+    sides: dict[str, list[int]] = {"a": [], "b": [], "neither": []}
+    for i, ref in zip(idx[1:], refs[1:]):
+        a, b = _map_a(*_window(i)), _map_b(*_window(i))
+        sides["a" if ref == a else "b" if ref == b else "neither"].append(i)
+    assert [len(sides[s]) for s in ("a", "b", "neither")] == [
+        graded["n_a_right"],
+        graded["n_b_right"],
+        graded["n_neither"],
+    ]
+    for side, colour in (("a", fg.MAP_A), ("b", fg.MAP_B), ("neither", fg.NEITHER)):
+        assert _marked(svg, colour, cols=GRID) == sorted(sides[side]), side
+    assert _marked(svg, fg.UNJUDGED, cols=GRID) == [idx[0]]
+    caption = graded["figure_caption"]
+    # The labelled windows count the ?, as the verdict's n_labelled does.
+    n = graded["n_labelled"]
+    assert graded["n_unjudged"] == 1
+    assert (
+        f"(a) The {n - 1} judged windows of the {n} labelled where the maps differ "
+        f"on its {GRID} x {GRID} window grid" in caption
+    )
+    assert (
+        f"blue where the label is map a's class ({graded['n_a_right']}), orange map "
+        f"b's ({graded['n_b_right']}), grey neither ({graded['n_neither']}), "
+        "outlined not judged (1)" in caption
+    )
+    assert graded["must_state"][0] == rules.which_map_must_state(graded)
+    assert graded["must_state"][0] in caption
+    # Map b's no-data window (0, 5) is not compared: white, and in the legend.
+    legend = " ".join(t.text or "" for t in svg.iter(f"{_SVG}text"))
+    assert "not compared" in legend and "the maps agree" in legend
+
+    # A design file written before the plan kept where the maps differ.
+    old = _design(plan)
+    del old["population"]["differ"], old["population"]["not_compared"]
+    (tmp_path / "design_before.json").write_text(json.dumps(old))
+    args_old = {**args, "design_path": str(tmp_path / "design_before.json")}
+    before = (await _call(GRADE, args_old))["result"]
+    old_svg = _figure_svg(before, f"design_before_grade_{digest}", tmp_path)
+    # The same labels, counts and verdict, and a sentence on what it lacks.
+    note = (
+        " This design file does not record where the maps differ elsewhere, so "
+        "only the labelled windows are shown."
+    )
+    assert note in before["figure_caption"] and note not in caption
+    assert before["figure_caption"].replace(note, "") == caption
+    old_legend = " ".join(t.text or "" for t in old_svg.iter(f"{_SVG}text"))
+    assert "the maps agree" not in old_legend
+    differing = fg.fade(fg.DIFFER, 0.45)
+    assert _base(svg, idx[1], GRID) == _base(old_svg, idx[1], GRID) == differing
+    assert _base(svg, 1, GRID) == fg.AGREE  # both maps say water there
+    assert _base(old_svg, 1, GRID) == fg.NO_DATA  # not drawn, so unknown
+    assert _base(svg, 5, GRID) == _base(old_svg, 5, GRID) == fg.NO_DATA
+
+
+@pytest.mark.asyncio
+async def test_the_grade_runs_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The grade (compare_from_disagreement, then a figure over the plan's
+    grid of up to 200,000 windows) runs in a worker thread, never on the
+    handler's own thread (the event loop's)."""
+    plan = await _plan(6)
+    idx = _design(plan)["sample"]["indices"]
+    refs = [_truth(*_window(i)) for i in idx]
+    loop_thread = threading.current_thread()
+    threads: list[tuple[str, threading.Thread]] = []
+
+    def recording(name: str, real: Any) -> Any:
+        def call(*args: Any, **kwargs: Any) -> Any:
+            threads.append((name, threading.current_thread()))
+            return real(*args, **kwargs)
+
+        return call
+
+    grade = recording("grade", estimate.compare_from_disagreement)
+    monkeypatch.setattr(estimate, "compare_from_disagreement", grade)
+    figure = recording("figure", fg.two_map_grade_figure)
+    monkeypatch.setattr(fg, "two_map_grade_figure", figure)
+    out = await _call(GRADE, {"design_path": plan["design_path"], "reference": refs})
+    assert out["ok"] is True, out
+    assert {name for name, _t in threads} == {"grade", "figure"}
+    assert all(t is not loop_thread for _name, t in threads), threads
