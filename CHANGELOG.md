@@ -650,9 +650,11 @@ See [Development](docs/Usage.md#development) for the convention.
   runs." (`statistical_rules.MAPS_NOT_MODELS`), after the verdict and the
   not-either-accuracy sentence. A map is one training run and one
   prediction (Corley et al. 2026, arXiv 2605.12678, R4); in
-  olmoearth-inferencex's record reseeding a probe moved 0.2 to 1.3% of
-  windows (exp83, exp66), another crop offset or backbone version 2 to 4%
-  (exp57) and a library upgrade 14 of 259 points (exp111).
+  olmoearth-inferencex's record reseeding a probe moved 0.2 to 0.6% of
+  windows (exp63, exp83), another crop offset or backbone version 2 to 4%
+  (exp57) and a library upgrade 14 of 259 points (exp111). The record's
+  reseed range leaves out exp66 (DFC2020), whose numbers need the IEEE GRSS
+  IADF committee's and TU Munich's approval to publish.
   - Within the contract's three sentences, what the figures cover comes
     first: a grade of maps with unstated dates keeps the dates sentence, and
     a Studio grade its grid points, instead of this one. Usage says the same
