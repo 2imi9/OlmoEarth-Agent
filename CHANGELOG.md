@@ -10,6 +10,15 @@ See [Development](docs/Usage.md#development) for the convention.
 ## [Unreleased]
 
 ### Added
+- **A chat reopened from the history shows its figures again.** The web
+  UI stores each figure it receives in the browser's IndexedDB
+  (`webui/js/figstore.js`, keyed by the figure's path), keeping the most
+  recently viewed ones (about 50 MB of figure text, or 300 figures), and
+  a reopened chat
+  draws the figure from there above its caption; the chat itself, in
+  localStorage, still holds no SVG. Clearing the chat history clears the
+  figures; deleting a chat deletes the figures no other chat shows. Without IndexedDB, or once a figure was evicted, the chat
+  shows the caption and where the figure was saved, as before.
 - **The check routes come with a figure of their determination.**
   `reporting/figures.py` draws, from the run's own data and with no
   plotting dependency, one SVG per determination, and a caption written
@@ -606,6 +615,12 @@ See [Development](docs/Usage.md#development) for the convention.
   the code.
 
 ### Changed
+- **The README opens with the OlmoEarth logo and the Agent tag again**
+  (`webui/assets/`, as the web UI shows them) instead of the plain title,
+  above the beta line, which stays. The walkthrough is recorded again (35
+  s) so it stops on each check's figure: `record_demo.py` scrolls to the
+  review set's and the error rate's figures before the error rate's
+  table; the MP4, the animated WebP and the cover are this recording's.
 - **The walkthrough plays at the top of the README.** GitHub drops a
   `<video>` that points at a file in the repository, so the README shows
   `webui/demo/olmoearth-agent-demo.webp`, an animated WebP of the MP4
