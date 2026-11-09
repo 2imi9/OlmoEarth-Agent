@@ -323,6 +323,126 @@ def _write(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 @pytest.mark.asyncio
+async def test_planning_again_keeps_a_labelled_sheet() -> None:
+    """A sheet the reviewer has begun survives the same plan called again.
+
+    The plan's files are named by the map, design, budget and seed, so the
+    same arguments name them again, and so does another max_listed (review
+    wf_c3f808ec-904: the sheet came back blank, and the grade then refused
+    it). Once the sheet holds a label, wrong or reference_class, the sheet
+    and the design file stay as they are, the result says so, and the grade
+    reads the labels written before. A sheet with no label yet is written
+    again.
+    """
+    scores, truth = _map(400)
+    args = {"scores": scores, "budget": 60}
+    plan = (await _call("olmoearth_plan_label_sample", args))["result"]
+    sheet, design_file = Path(plan["labels_csv_path"]), Path(plan["design_path"])
+    rows = list(csv.DictReader(sheet.open()))
+    # A blank sheet cut short is written again.
+    _write(sheet, rows[:1])
+    blank = (await _call("olmoearth_plan_label_sample", args))["result"]
+    assert "sheet_kept_note" not in blank
+    assert len(list(csv.DictReader(sheet.open()))) == 60
+    wrong = [str(truth[int(r["window_index"])]) for r in rows]
+    for begun in (
+        [dict(rows[0], reference_class="1"), *rows[1:]],
+        [dict(r, wrong=w) for r, w in zip(rows[:10], wrong)] + rows[10:],
+    ):
+        _write(sheet, begun)
+        labelled = sheet.read_text(encoding="utf-8")
+        designed = design_file.read_text(encoding="utf-8")
+        for extra in ({}, {"max_listed": 5}):
+            out = await _call("olmoearth_plan_label_sample", {**args, **extra})
+            assert out["ok"] is True, out
+            again = out["result"]
+            assert again["labels_csv_path"] == str(sheet)
+            assert again["design_path"] == str(design_file)
+            assert sheet.read_text(encoding="utf-8") == labelled
+            assert design_file.read_text(encoding="utf-8") == designed
+            assert again["sheet_kept_note"].startswith(f"{sheet} already holds labels")
+            assert again["next_steps"][0].startswith(f"Go on labelling {sheet},")
+            listed = [w["window_index"] for w in again["windows"]]
+            assert listed == [int(r["window_index"]) for r in rows][: len(listed)]
+    # The rest labelled, the kept sheet grades as the same labels passed.
+    _write(sheet, [dict(r, wrong=w) for r, w in zip(rows, wrong)])
+    by_sheet = await _call(
+        "olmoearth_estimate_map_error",
+        {"design_path": str(design_file), "labels_path": str(sheet)},
+    )
+    assert by_sheet["ok"] is True, by_sheet
+    by_list = await _call(
+        "olmoearth_estimate_map_error",
+        {"design_path": str(design_file), "wrong": [int(w) for w in wrong]},
+    )
+    assert by_sheet["result"]["n_labelled"] == 60
+    for key in ("estimate", "low", "high", "method"):
+        assert by_sheet["result"][key] == by_list["result"][key]
+
+
+@pytest.mark.asyncio
+async def test_planning_again_keeps_a_sheet_however_it_was_saved() -> None:
+    """A sheet the plan cannot read is not written over (review wf_53ac1742-d9d).
+
+    A spreadsheet in a German or French locale saves CSV with ';', and one
+    may save it in another encoding: read with ',', its label columns are
+    gone and its labels look blank. Such a sheet is kept, and the first next
+    step says to save it again as comma-separated UTF-8. A labelled sheet
+    whose design file was deleted gets the design file back when it lists
+    the windows this plan draws, and is refused, with both files as they
+    were, when it does not; an empty sheet is written again.
+    """
+    scores, truth = _map(400)
+    args = {"scores": scores, "budget": 60}
+    plan = (await _call("olmoearth_plan_label_sample", args))["result"]
+    sheet, design_file = Path(plan["labels_csv_path"]), Path(plan["design_path"])
+    rows = list(csv.DictReader(sheet.open()))
+    designed = json.loads(design_file.read_text(encoding="utf-8"))
+    header = list(rows[0])
+    filled = [dict(r, wrong="1" if i == 0 else r["wrong"]) for i, r in enumerate(rows)]
+    semicolons = [";".join(header)] + [";".join(r[k] for k in header) for r in filled]
+    sheet.write_text("\n".join(semicolons) + "\n", encoding="utf-8")
+    for saved in (sheet.read_bytes(), sheet.read_bytes().decode().encode("utf-16")):
+        sheet.write_bytes(saved)
+        out = await _call("olmoearth_plan_label_sample", args)
+        assert out["ok"] is True, out
+        again = out["result"]
+        assert sheet.read_bytes() == saved
+        assert json.loads(design_file.read_text(encoding="utf-8")) == designed
+        assert "another separator or encoding" in again["sheet_kept_note"]
+        assert again["next_steps"][0].startswith(f"Save {sheet} again as comma")
+    # A labelled sheet whose design file was deleted: the design file comes back.
+    wrong = [str(truth[int(r["window_index"])]) for r in rows]
+    labelled = [dict(r, wrong=w) for r, w in zip(rows[:10], wrong)] + rows[10:]
+    _write(sheet, labelled[::-1])  # a reviewer may sort the rows
+    kept = sheet.read_bytes()
+    design_file.unlink()
+    again = (await _call("olmoearth_plan_label_sample", args))["result"]
+    assert sheet.read_bytes() == kept
+    assert json.loads(design_file.read_text(encoding="utf-8")) == designed
+    assert "its design file was missing" in again["sheet_kept_note"]
+    assert again["next_steps"][0].startswith(f"Go on labelling {sheet},")
+    # ... and refused, with both files as they were, when it lists other windows.
+    design_file.unlink()
+    moved = str(int(labelled[0]["window_index"]) + 1)
+    _write(sheet, [dict(labelled[0], window_index=moved), *labelled[1:]])
+    other = sheet.read_bytes()
+    refused = await _call("olmoearth_plan_label_sample", args)
+    assert refused["ok"] is False
+    assert f"{sheet} already holds labels" in refused["error"]
+    assert "so neither file was written" in refused["error"]
+    assert f"Move {sheet} aside" in refused["error"]
+    assert "another seed" not in refused["error"]
+    assert sheet.read_bytes() == other and not design_file.exists()
+    # An empty sheet holds nothing: both files are written again.
+    sheet.write_text("", encoding="utf-8")
+    again = (await _call("olmoearth_plan_label_sample", args))["result"]
+    assert "sheet_kept_note" not in again
+    assert len(list(csv.DictReader(sheet.open()))) == 60
+    assert json.loads(design_file.read_text(encoding="utf-8")) == designed
+
+
+@pytest.mark.asyncio
 async def test_a_review_set_is_refused_as_a_sample() -> None:
     """The trial's error: pooling targeted windows inflates the error rate."""
     scores, truth = _map()
