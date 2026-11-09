@@ -1472,23 +1472,30 @@ See [Development](docs/Usage.md#development) for the convention.
   `olmoearth_plan_label_sample` wrote its sheet (`{stem}_to_label.csv`,
   with `reference_class`, and for one map `wrong`, blank) and its design
   file afresh on every call. Their names follow the map or maps, the
-  design, the windows planned and the seed, so the same arguments, or
-  another `difference`, `max_listed` or budget above the windows there
-  are, named the same files: calling the plan again cleared the labels a
-  reviewer had written. The grade then refused the blank sheet rather than
-  misgrading it, but the labelling was lost (found in review
-  wf_c3f808ec-904). Now a sheet with any `wrong` or `reference_class`
-  filled (or one that cannot be read as UTF-8 CSV) is left as it is, with
-  its design file, when the design file lists the same windows; the result
-  says so (`sheet_kept_note`) and its first next step points at that
-  sheet. A labelled sheet whose design file is missing or lists other
-  windows (one deleted, or one an earlier version wrote under this name
-  for a class design with another `min_per_class`, before the name carried
-  it) is refused, and neither file is written; a sheet with no label yet
-  is written again as before. Tests:
-  `test_planning_again_keeps_a_labelled_sheet` in
+  design, the windows planned and the seed, so the same arguments (as
+  written, and within one reading of Studio), or another `difference`,
+  `max_listed` or budget above the windows there are, named the same
+  files: calling the plan again cleared the labels a reviewer had written.
+  The grade then refused the blank sheet rather than misgrading it, but
+  the labelling was lost (found in review wf_c3f808ec-904). Now the sheet
+  is not written over when a `wrong` or `reference_class` cell is filled,
+  or when it is not comma-separated UTF-8 CSV with those columns (a
+  spreadsheet in a German or French locale saves CSV with `;`, which read
+  with `,` hides every label; review wf_53ac1742-d9d):
+  - with its design file listing the same windows, both are kept, the
+    result says so (`sheet_kept_note`), and its first next step points at
+    the sheet, or says to save it again as comma-separated UTF-8 CSV;
+  - with its design file deleted, and the sheet listing exactly the
+    windows this plan draws, the design file is written again and the
+    sheet kept;
+  - otherwise the plan is refused, neither file is written, and the
+    refusal says to move the sheet aside and plan again.
+
+  A sheet with no label yet, or an empty one, is written again as before.
+  Tests: `test_planning_again_keeps_a_labelled_sheet` in
   `tests/tools/test_which_map_tool.py` and
-  `tests/tools/test_estimation_tool.py`.
+  `tests/tools/test_estimation_tool.py`, and
+  `test_planning_again_keeps_a_sheet_however_it_was_saved`.
 - **Studio fields the agent read as always empty.**
   - Results list their formats as `file_formats` (e.g. `["png"]`). The
     singular `file_format` the code read does not exist in Studio's records:

@@ -625,6 +625,15 @@ async def test_planning_again_keeps_a_labelled_sheet() -> None:
     assert "so neither file was written" in refused["error"]
     assert sheet.read_text(encoding="utf-8") == labelled
     assert json.loads(design_file.read_text(encoding="utf-8")) == other
+    # A labelled sheet whose design file was deleted: the design file comes back
+    # for the windows the sheet lists (review wf_53ac1742-d9d).
+    design_file.unlink()
+    back = await _call(PLAN, _plan_args(20), _studio())
+    assert back["ok"] is True, back
+    assert sheet.read_text(encoding="utf-8") == labelled
+    rewritten = json.loads(design_file.read_text(encoding="utf-8"))
+    assert rewritten["to_label"] == json.loads(designed)["to_label"]
+    assert "its design file was missing" in back["result"]["sheet_kept_note"]
     design_file.write_text(designed, encoding="utf-8")
     # The rest labelled, the kept sheet grades as the same classes passed.
     filled = [dict(row, reference_class=ref) for row, ref in zip(rows, refs)]
