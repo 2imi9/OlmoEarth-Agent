@@ -580,9 +580,13 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   from the file when it opens, each time it is shown again and after each save of the sheet opened in it, through
   `olmoearth_app_sheet_progress`, a panel-only tool that answers counts and the sheet's job, never a row, a place or a
   class; an older read that answers after a newer one is dropped, and when a read fails, the button keeps its first
-  words and no count shows. The panel never takes the keyboard focus when it opens. After the button and the count,
-  "or fill the CSV:" gives the sheet's path, which wraps anywhere, so a long path never makes a narrow panel scroll
-  sideways.
+  words and no count shows. The panel never takes the keyboard focus when it opens. The face shows no file path (r4-m
+  M3): the closed "More about this result" fold ends with "The sheet is also a file on this computer: <path>. It
+  shows the map's class at each square, so answering there is not blind; use the sheet here instead." ("each point"
+  for a sheet of points: the plan's view data carries `unit`, from `_points_plan`). A sheet labelled right or wrong
+  shows the map's class itself, so there the line ends "It shows each square's place, order and stratum, which the
+  sheet here hides; use the sheet here instead." (the view data's `right_or_wrong`, from the counts' `label_rule`).
+  The path wraps anywhere, so a long path never makes a narrow panel scroll sideways.
 
   The plan's figure shades each window by the map's confidence, which on a confidence design is its stratum. So while
   its sheet is labelled blind (the class seen: a named scores map, a class map, two maps; the counts' `blind`) and is
@@ -749,7 +753,9 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     (r4-l L3). A sheet that cannot be opened after a good draw keeps that button, with the
     reason, and so does a sheet that cannot be read as CSV ("NAME cannot be read as CSV (...); save it again as CSV UTF-8, comma-separated");
   - a zone not read as a map, or with no count planned, says so; a class map without top-k scores is sent to
-    `olmoearth_plan_label_sample`, since its grid spans every zone, and Claude is told to ask the user for the budget
+    `olmoearth_plan_label_sample`, since its grid spans every zone, and Claude is told to say first that each point
+    needs the user's own imagery or records from the map's dates and that the app shows no pictures of points (the
+    card's own line, r4-m M4, for a client with no card), then to ask the user for the budget
     and for design `random` or `class`, and to pick neither for them (`CHECK_CLASS_MAP_NOTE`). That case is known by
     the package's contract (the forbidden claim `zone_for_a_class_map` and the refusal's fixed end), never by words in
     the error. When the output folder cannot be written, the card says so and offers no press.
@@ -881,9 +887,17 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   covers", with the period when the sheet knows it); one Cannot tell line ("Cannot judge a square? Press Cannot tell.
   Do not guess: a Cannot tell makes the range wider, a guess can make the result wrong.", or a certificate's own
   need); "You can change an answer until you press ..." until the sheet is graded. Under the app owner's kelp rule and
-  its scope ("This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."), the rule block (and the pictures
-  pane, when the page copy has no rule) adds "Any other map needs its own rule." (`rule_limit`,
-  `imagery.RULE_KELP_ONLY`); a typed rule has no such line. Beside the owner's rule only, when the app ships two
+  its scope ("This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."), the rule block adds "Any other
+  map needs its own rule." (`rule_limit`, `imagery.RULE_KELP_ONLY`); a typed rule has no such line. On a face that
+  takes Cannot tell (not a certificate plan's) and can show pictures, the rule block's line after the scope is
+  instead "No clear date of this square (cloud over it on every date): press Cannot tell." (r4-m M8), under any rule,
+  so a square clouded on every date is not pressed Absent; the block keeps three lines. The pictures pane, when the
+  page copy has no rule and the pictures answer has one (both come from `imagery.rule_for`, so only when the page
+  copy's rule could not be read), shows instead the rule's Present half on its "Rule:" line, its Absent half word for
+  word under it (from "Absent:" on, where the rule has it), and, on a face that takes Cannot tell, that same line (the
+  Check card and the result already show the scope). Every face but right or wrong (which shows the map's class) has a
+  first line ending "The map's answer is hidden: answer without looking at the map." (r4-m M6). Beside the owner's
+  rule only, when the app ships two
   example pictures (`views/examples/present.png`, `absent.png` and `examples.json` with the year; none ship yet, the
   owner picks them), the rule block ends with them, captioned "Present under this rule" and "Absent under this
   rule" (`examples` in `olmoearth_app_sheet`'s answer; r4-k K9).
@@ -957,12 +971,17 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   every window, blind to its map class, stratum and order. Per date: near-infrared false colour (B08, B04, B03,
   reflectance 0 to 0.30) and true colour (B04, B03, B02, 0 to 0.20), one fixed stretch, nearest neighbour onto the
   map's own grid; a context view (7 squares a side) with the square outlined over the picture ("Context, square
-  outlined"), and a detail view (3 squares a side). Magenta is no data. A rule the user typed on the Check card before
+  outlined"), and a detail view (3 squares a side). Magenta is no data. On the label sheet's pane each date's block
+  is headed by its day alone ("10 Apr 2024"); its scene cloud, which is the whole satellite image's and not the
+  square's, is in the pane's own closed fold "Scene cloud of each date", with each date's label whole (r4-m M8; a
+  review set's pane keeps the label as its heading). The rule: one the user typed on the Check card before
   the squares were picked comes first, on any map, with "Typed by you before the squares were picked, <day>". Else,
-  for a map of presence and absence (the kelp trial) the pane prints the owner's labelling rule ("Present: on at
-  least one clear date shown, canopy fills more than half of the outlined square. Absent: on every clear date shown
-  it fills half or less.") and that it was agreed for the kelp canopy trial; another map gets no rule, and the pane
-  says one must be agreed before the first label. It also says what a label then is: a visual reading of the map's
+  for a map of presence and absence (the kelp trial), the owner's labelling rule ("Present: on at least one clear
+  date shown, canopy fills more than half of the outlined square. Absent: on every clear date shown it fills half or
+  less."), with the scope that it was agreed for the kelp canopy trial; another map gets no rule, and the pane says
+  one must be agreed before the first label. The sheet's rule block shows the rule and its scope; the pane shows the
+  rule's two halves (and, on a face that takes Cannot tell, the cloud line) only when the page copy has no rule, as
+  both come from `imagery.rule_for` (r4-m M8). The pane also says what a label then is: a visual reading of the map's
   own sensor, so agreement with that reading "at this square size", not ground truth; an estimate, certified zone or
   certificate graded from a sheet whose pictures were shown says so in its `must_state`.
 
@@ -1027,7 +1046,9 @@ swapped with one search.
   the server reads at best for the refusal (`_refusal_map`: the result's record once, its download token dropped at
   once, only its prediction id and period read; the prediction's name as on the ok path; the view's `map`
   `{name, period_text}`, never the model's text; no line when Studio does not answer in time). Its face says it can be checked on single points
-  picked at random, with a range, for a grid of at most 256 points; one button, "Check this map on points", sends
+  picked at random, then, before any count is fixed (r4-m M4): "You get how often the map is wrong over a grid of
+  points spread across the map, with a range, not for every pixel. Each point needs your own imagery or records from
+  the map's dates; the app shows no pictures of points."; one button, "Check this map on points", sends
   Claude that request with the result's id (`OE.JOB_TEXT.points`, the view's `points_request`); the tool's sentence
   is in a closed "Details". Claude is told to ask two plain questions (how many points; the whole map only, or each
   class too) and never to say "design" or "budget".
@@ -1039,8 +1060,9 @@ swapped with one search.
   reused by the map's other parts. Without panels nothing is stored, and Claude asks for the rule in the chat.
 - *The kelp rule and its box (the owner's option A, 13 Nov 2026).* A map of presence and absence shows the owner's
   kelp rule on the card's face with "This rule came with the app (set 11 Nov 2026 for kelp canopy maps).", and while
-  the rule is not settled, a box beside it, labelled in body type "Not a kelp map? Write its own rule here. Left
-  empty, the kelp rule above is used." The app does not guess what the map shows. An empty box keeps the kelp rule; 1
+  the rule is not settled, a box beside it, labelled in body type "Not a kelp map? Write here what counts as Present
+  and as Absent, in the map maker's meaning if you know it; each square is judged by it. Left empty, the kelp rule
+  above is used." (r4-m M5; the box has no grey hint). The app does not guess what the map shows. An empty box keeps the kelp rule; 1
   to 9 characters hold the press; 10 to 300 replace the kelp rule for this map: pinned with the draw like the gate's
   rule, and shown on the sheet, the pictures, the result and to Claude with "Typed by you before the squares were
   picked, <day>" (a later part keeps the day it was first typed), never the kelp rule's scope. The rule is settled once
@@ -1068,8 +1090,11 @@ swapped with one search.
   to say how well the map finds "present".'); two or more, or any with Cannot tell answers, by name only in one line
   ('Too few squares to say how well the map finds: "A", "B".'), with each one's counted line first under Details (none
   with Cannot tell: a Cannot tell square may hold the class); then the classes no square had ('You saw "A", "B" in no
-  square, so this check says nothing about how well the map finds them. The rate above is for all squares
-  together.'; more than five: how many, with their names under Details). Under those lines, when the server names
+  square, so this check says nothing about how well the map finds them. The rate above is for every square of the
+  map, all classes together.'; "every square of this part" on a map in parts, "every point of the map's grid" for a
+  sheet of points, "every square of the map they were picked from" beside the hedge when the part is not known; more
+  than five: how many, with their names under Details; r4-m M1: the line shows for a random design only, a simple
+  random sample of the whole map or part, so its rate is that whole's). Under those lines, when the server names
   the Studio result (and, on a map in several parts, the part's file), one outlined button, "Check each class the map
   draws", sends Claude a request for a new check of that result and part picked class by class
   (`olmoearth_plan_label_sample` on the `scores_path` that `olmoearth_check_map` gives for that part, since the
@@ -1078,9 +1103,11 @@ swapped with one search.
   picked)" or "(the app owner's rule, 11 Nov 2026)", no day (Claude gets the owner rule's scope, and no day for a
   typed rule); the squares checked, one cell each, coloured by the class seen and outlined in red where the map said
   otherwise, with a count line per class seen in 5 squares or more, its name in straight quotes as the sheet gives it
-  ('You saw "Present" in 74 squares.'; an all-digit name 'class "3"'; with its agreement range); "One result per
-  part, never averaged" with the parts figure, and while a part is unchecked: "Check the other part too. Then report
-  the parts' results side by side; do not average or add them into one rate."; and one last line: "Checked against
+  ('Where you saw "Present" (74 squares), the map also said "Present" on 70; agreement range: ...', from what the
+  reader saw, r4-m M7; an all-digit name 'class "3"'); "One result per
+  part, never averaged" with the parts figure, and while a part is unchecked: "Check the other part too. Report the
+  parts' results side by side; do not average or add them: this check gives no range for a combined rate." (r4-m M2;
+  Claude's lines and the Check card's say the same reason); and one last line: "Checked against
   satellite pictures (or your answers), not a site visit; no verdict on whether the map is good enough.", with "It
   says nothing about the area of any one class." on a map of more than two classes. The rest (the range's method, the
   figure, the notes) is in "Details". With any Cannot tell the rate is itself a range: "Error rate of the West part:

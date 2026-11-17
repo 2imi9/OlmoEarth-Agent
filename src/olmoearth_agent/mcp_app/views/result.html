@@ -13,8 +13,8 @@
     border: 1px solid rgb(204,204,204); border-radius: 4px; }
   figcaption { margin-top: 8px; font-size: 12px; line-height: 18px; color: var(--text); }
   .notes p { margin: 0 0 4px; }
-  /* The sheet's path after "or fill the CSV:" wraps anywhere: a long path
-     never makes a narrow panel scroll sideways. */
+  /* The sheet's path in the plan card's fold (planFile, r4-m M3) wraps
+     anywhere: a long path never makes a narrow panel scroll sideways. */
   .csv-path { overflow-wrap: anywhere; }
   /* A review set's windows: one card each, in rank order, in a grid that
      fills the panel (two columns on a phone); a card opens its pictures in
@@ -293,10 +293,10 @@ function sheetButton(app, data, figureSlot) {
     if (slot.isConnected && Date.now() - lastRead >= 3000) refresh();
   });
   refresh();
+  // No file path on the face (r4-m M3): the sheet as a file is in the fold
+  // (planFile), with why answering there is not blind.
   return OE.el('div', { class: 'stack' },
-    OE.el('div', { class: 'row' }, button, count,
-      OE.el('span', { class: 'small muted csv-path' }, 'or fill the CSV: ',
-        OE.el('span', { class: 'mono' }, data.labels_csv_path))),
+    OE.el('div', { class: 'row' }, button, count),
     slot);
 }
 
@@ -304,6 +304,30 @@ function sheetButton(app, data, figureSlot) {
    result's sampled points, a plan drawn by result_id), anything else
    'square' (the server's unit, sheet.window_unit; the lead's ruling W). */
 const unitOf = (unit) => (unit === 'point' ? 'point' : 'square');
+
+/* The plan's sheet as a file, in the plan card's closed fold only, never on
+   its face (r4-m M3, reader test 3's E/F2: readers did not know where or
+   what the file is, and opening it ends blind labelling for good). The file
+   holds the map's class at each square (or point) beside the answer
+   columns, which the sheet here hides. In the sheet's own unit (data.unit,
+   the server's: 'point' for a plan drawn on a grid over a Studio result);
+   the path wraps anywhere (.csv-path). A sheet labelled right or wrong
+   (data.right_or_wrong, the server's) shows the map's class itself, so its
+   line names what the file adds there: each square's place, order and
+   stratum, which that face does not send (W.wrongLine in sheet.js). */
+// WORDING: r4m M3
+const PLAN_FILE_HEAD = 'The sheet is also a file on this computer: ';
+// WORDING: r4m M3
+const PLAN_FILE_TAIL = (unit) => '. It shows the map\'s class at each ' + unitOf(unit) + ', so answering there is'
+  + ' not blind; use the sheet here instead.';
+// WORDING: r4m M3
+const PLAN_FILE_TAIL_WRONG = (unit) => '. It shows each ' + unitOf(unit) + '\'s place, order and stratum, which the'
+  + ' sheet here hides; use the sheet here instead.';
+function planFile(data) {
+  const tail = data.right_or_wrong === true ? PLAN_FILE_TAIL_WRONG(data.unit) : PLAN_FILE_TAIL(data.unit);
+  return OE.el('p', { class: 'small csv-path oe-plan-file' }, PLAN_FILE_HEAD,
+    OE.el('span', { class: 'mono' }, data.labels_csv_path), tail);
+}
 
 /* The words of a review set's window cards and their pane, each window a
    square (or point) of the review set's whole count (round 4's low findings
@@ -774,12 +798,14 @@ const RESULT_WORDS = {
     : 'The ' + n + ' ' + unitOf(unit) + 's you checked'),
   partsHead: 'One result per part, never averaged',
   // k: the parts not checked yet (round 4 pass 2, finding 17); the server's
-  // SAY_OTHER and SAY_OTHERS, word for word.
+  // SAY_OTHER and SAY_OTHERS, word for word, with their reason (r4-m M2:
+  // this check gives no range for a combined rate, so readers do not average).
+  // WORDING: r4m M2
   otherPart: (k) => (k === 1
-    ? 'Check the other part too. Then report the parts\' results side by side; do not average or add them into one'
-      + ' rate.'
-    : 'Check the other ' + k + ' parts too. Then report the parts\' results side by side; do not average or add them'
-      + ' into one rate.'),
+    ? 'Check the other part too. Report the parts\' results side by side; do not average or add them: this check'
+      + ' gives no range for a combined rate.'
+    : 'Check the other ' + k + ' parts too. Report the parts\' results side by side; do not average or add them:'
+      + ' this check gives no range for a combined rate.'),
   details: 'Details',
   // The second check, picked class by class: the outlined button under the
   // uncovered lines, and what it is, in Details beside it only (r4-i O3).
@@ -951,7 +977,8 @@ function resultCard(app, data) {
 
 /* Said on the fold that holds a card's rest once its lead has words (a
    plan's and a review set's, the server's LEAD), and a plan's or a review
-   set's card table and notes always (r4-h V7). */
+   set's card table and notes always (r4-h V7), and a plan's sheet as a file
+   (planFile, r4-m M3). */
 // WORDING: r4p2
 const FOLD_LABEL = 'More about this result';
 
@@ -1055,6 +1082,8 @@ function show(app, params) {
   if (plan && data.figure && (data.figure.svg || data.figure.held)) put(figureSlot = OE.el('div', { class: 'stack' }), false);
   else if (data.figure && data.figure.svg && !reviewFigure) put(figureBlock(app, data), false);
   if (Array.isArray(data.must_state) && data.must_state.length) put(notesBlock(data.must_state), true);
+  // A plan's sheet as a file: the fold's last line, never on the face (r4-m M3).
+  if (plan) inFold.push(planFile(data));
   root.append(...onFace);
   if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));
   // A review set of a Studio result: the check of how wrong the map is, under the notes.

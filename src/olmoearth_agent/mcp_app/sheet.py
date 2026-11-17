@@ -2637,8 +2637,10 @@ def _rule_fields(
 
     ``rule_limit`` is ``imagery.RULE_KELP_ONLY`` for the owner's rule (source
     ``"owner"``), else ``None``: the sheet's rule block says it after the
-    scope, where no box says the rest (the last round's F9). ``rule_note`` is
-    another field's name (a scores map's right-or-wrong note).
+    scope, where no box says the rest (the last round's F9), but on a face
+    that takes Cannot tell and can show pictures, where the cloud line takes
+    its place (r4-m M8). ``rule_note`` is another field's name (a scores
+    map's right-or-wrong note).
     """
     # imagery imports this module, so it is imported here, when first asked.
     from olmoearth_agent.mcp_app import imagery

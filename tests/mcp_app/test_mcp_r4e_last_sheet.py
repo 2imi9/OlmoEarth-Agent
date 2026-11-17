@@ -799,15 +799,18 @@ def test_the_sheets_face_lines_are_the_string_tables() -> None:
     assert _said("everyDone", "square") == (
         "All answered and saved. Answers must not change after you press."
     )
+    # r4-m M6: "The map's answer is hidden: answer without looking at the map."
     assert _said("whatPlaced", "point") == (
         "This sheet has no pictures. See where each point is, then say what was "
-        "there from your own imagery or records. The map's answer is hidden."
+        "there from your own imagery or records. The map's answer is hidden: answer "
+        "without looking at the map."
     )
     assert _said("streetMap", "square") == "Street map"
     assert _said("openMapOf", "point", k="4") == "Street map: point 4 on OpenStreetMap"
     # The bare form a sheet with no pictures and no places keeps.
     assert _said("whatBare", "point") == (
-        "For each point, say what is there. The map's answer is hidden."
+        "For each point, say what is there. The map's answer is hidden: answer "
+        "without looking at the map."
     )
 
 

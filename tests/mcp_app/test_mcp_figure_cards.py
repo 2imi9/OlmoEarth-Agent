@@ -345,7 +345,7 @@ async def test_the_check_card_names_the_map_its_parts_and_its_squares(
             "There is no result until every square of a sheet is done; each part gets "
             "its own result, never one rate for all parts. To cover the whole map, "
             "report each part's rate with its range, side by side; do not average or "
-            "add them up.",
+            "add them up: this check gives no range for a combined rate.",
         ],
         "note": server.SAY_FIRST_NOTE,
     }
@@ -378,7 +378,7 @@ async def test_the_check_card_names_the_map_its_parts_and_its_squares(
             "There is no result until every square of a sheet is done; each part gets "
             "its own result, never one rate for all parts. To cover the whole map, "
             "report each part's rate with its range, side by side; do not average or "
-            "add them up.",
+            "add them up: this check gives no range for a combined rate.",
         ],
         "note": server.SAY_FIRST_NOTE,
     }
@@ -1207,7 +1207,8 @@ async def test_the_estimate_card_is_figure_first(
     assert card["hedge"] is None
     assert card["uncovered"] == [
         'You saw "Cloud" in no square, so this check says nothing about how well '
-        "the map finds it. The rate above is for all squares of this part."
+        "the map finds it. The rate above is for every square of this part, all "
+        "classes together."
     ]
     # One rare class at most (Present is seen in 6): no counted lines for
     # Details (F2); the button under the lines names the result and part (O3).
@@ -1244,10 +1245,10 @@ async def test_the_estimate_card_is_figure_first(
     # names in straight double quotes, as they are; the class nobody saw has
     # no line here: it is said under the headline (uncovered).
     assert [c["line"] for c in squares["classes"]] == [
-        'You saw "Present" in 6 squares. The map agreed on 4 of them; agreement '
-        "range: 50.0% to 90.0%.",
-        'You saw "Absent" in 74 squares. The map agreed on 69 of them; agreement '
-        "range: 80.0% to 95.0%.",
+        'Where you saw "Present" (6 squares), the map also said "Present" on 4; '
+        "agreement range: 50.0% to 90.0%.",
+        'Where you saw "Absent" (74 squares), the map also said "Absent" on 69; '
+        "agreement range: 80.0% to 95.0%.",
         None,
     ]
     assert squares["unseen_line"] is None
@@ -1300,8 +1301,8 @@ async def test_the_estimate_card_is_figure_first(
             "The West part is wrong on about 1 square in 8 (12.5%, 95% range 6.1% to "
             "21.7%), from 80 squares checked.",
             "Quote the rate with its range and what it was checked against. Check the "
-            "other part too. Then report the parts' results side by side; do not "
-            "average or add them into one rate.",
+            "other part too. Report the parts' results side by side; do not average "
+            "or add them: this check gives no range for a combined rate.",
             "This compares the map with what was seen in satellite pictures, not a "
             "visit on site; it is not the whole map's rate and does not say whether "
             "the map is good enough. It says nothing about the area of any one "
@@ -1355,7 +1356,8 @@ async def test_the_other_part_graded_and_a_map_of_one_part(
     lines = json.loads(_texts(both)[0])["say_first"]
     assert lines[1] == (
         "Quote the rate with its range and what it was checked against. Report the "
-        "parts' results side by side; do not average or add them into one rate."
+        "parts' results side by side; do not average or add them: this check gives "
+        "no range for a combined rate."
     )
     assert lines[1] == server.SAY_QUOTE.format(other=server.SAY_SIDE_BY_SIDE)
     _stand_in(
@@ -1372,8 +1374,8 @@ async def test_the_other_part_graded_and_a_map_of_one_part(
     assert (card["title_text"], card["parts"]) == ("Result: Kelp Q2", [])
     assert card["last_line"] == server.LAST_LINE_ANSWERS + server.LAST_LINE_AREA
     assert card["say"] == "The map is wrong on about 1 square in 8."
-    # One part: the rate is for all squares together.
-    together = "The rate above is for all squares together."
+    # One part: the rate is for every square of the map, all classes (r4-m M1).
+    together = "The rate above is for every square of the map, all classes together."
     assert card["uncovered"][-1].endswith(together)
     lines = json.loads(_texts(one)[0])["say_first"]
     assert lines[0].endswith("from 80 squares checked.")
@@ -1494,7 +1496,8 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     assert card["uncovered"] == [
         'Too few squares to say how well the map finds: "Kelp".',
         'You saw "Cloud" in no square, so this check says nothing about how well '
-        "the map finds it. The rate above is for all squares of this part.",
+        "the map finds it. The rate above is for every square of this part, all "
+        "classes together.",
     ]
     assert card["uncovered"][0] == server.SAY_TOO_FEW.format(
         units="squares", names='"Kelp"'
@@ -1613,7 +1616,7 @@ def test_one_cannot_tell_point_and_no_cannot_tell() -> None:
     assert plain is not None
     assert (plain["no_split"], plain["n_unjudged"]) == (None, 0)
     assert plain["classes"][0]["line"] == (
-        'You saw "Water" in 8 squares. The map agreed on 6 of them.'
+        'Where you saw "Water" (8 squares), the map also said "Water" on 6.'
     )
     assert plain["legend"] == [
         {"code": "a", "text": 'You saw "Water"'},
@@ -1873,13 +1876,14 @@ async def test_a_grid_over_the_whole_result_is_the_whole_map_in_points(
     )
     assert card["hedge"] is None
     assert card["squares"]["classes"][0]["line"] == (
-        'You saw "Present" in 6 points. The map agreed on 4 of them; agreement '
-        "range: 50.0% to 90.0%."
+        'Where you saw "Present" (6 points), the map also said "Present" on 4; '
+        "agreement range: 50.0% to 90.0%."
     )
     assert card["squares"]["unseen_line"] is None
     assert card["uncovered"] == [
         'You saw "Cloud" in no point, so this check says nothing about how well the '
-        "map finds it. The rate above is for all points together."
+        "map finds it. The rate above is for every point of the map's grid, all "
+        "classes together."
     ]
     # A map of three classes: the area sentence (E/est-5).
     assert card["last_line"] == (
@@ -2172,10 +2176,12 @@ def test_many_unseen_classes_with_no_squares_drawn_are_named_in_the_fold(
     assert got is not None
     view = got["view"]
     assert view["squares"] is None
+    # No Check card's record (sheet_context None): the part is not known, so
+    # the rate is for the map the squares were picked from (r4-m M1).
     assert view["uncovered"] == [
         "You saw 6 of the map's 10 classes in no square, so this check says nothing "
-        "about how well the map finds them. The rate above is for all squares "
-        "together. Names under Details."
+        "about how well the map finds them. The rate above is for every square of "
+        "the map they were picked from, all classes together. Names under Details."
     ]
     assert view["fold_rows"][-1] == [
         "Classes you saw in no square",
@@ -2277,8 +2283,11 @@ async def test_a_part_not_known_gets_the_neutral_title_and_the_hedge(
     assert card["squares"] is not None  # a random design's sheet, graded
     # The parts not known: no button (O3).
     assert card["class_check"] is None
-    # Its part count not known: the rate is for all squares together.
-    assert card["uncovered"][-1].endswith("is for all squares together.")
+    # Its part count not known: the rate is for the map the squares were
+    # picked from, beside the hedge (r4-m M1).
+    assert card["uncovered"][-1].endswith(
+        "is for every square of the map they were picked from, all classes together."
+    )
     older = {**_context(root, 1), "parts_known": False}
     _stand_in(app, monkeypatch, root, _estimate(), ctx=older, grading=grading)
     unlisted = await app.call_agent_tool(ESTIMATE, args, views=True)
@@ -2316,8 +2325,8 @@ async def test_two_other_parts_not_checked_are_counted(
     lines = json.loads(_texts(result)[0])["say_first"]
     assert lines[1] == (
         "Quote the rate with its range and what it was checked against. Check the "
-        "other 2 parts too. Then report the parts' results side by side; do not "
-        "average or add them into one rate."
+        "other 2 parts too. Report the parts' results side by side; do not average "
+        "or add them: this check gives no range for a combined rate."
     )
     assert lines[0] == (
         "Part 1 is wrong on about 1 square in 8 (12.5%, 95% range 6.1% to 21.7%), "
@@ -2600,7 +2609,7 @@ def test_the_squares_figure_needs_three_classes_or_fewer_seen() -> None:
     shown = server._squares({"face": "class", "cells": [], "classes": five}, {})
     assert shown is not None
     assert shown["classes"][0]["line"] == (
-        'You saw "reef" in 5 squares. The map agreed on 3 of them.'
+        'Where you saw "reef" (5 squares), the map also said "reef" on 3.'
     )
     assert (shown["unseen_line"], shown["unseen_detail"]) == (None, None)
 
@@ -2634,7 +2643,7 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
         'to say how well the map finds "trees".',
         'You saw "Class 0", "Class 1", "Class 2", "Class 3", "Class 4" in no square, '
         "so this check says nothing about how well the map finds them. The rate "
-        "above is for all squares together.",
+        "above is for every square of the map, all classes together.",
     ]
     assert (five["detail"], five["names"]) == (None, None)
     assert five["few_detail"] == []  # one rare class: its counts on the face
@@ -2642,8 +2651,8 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
     six = uncovered(6)
     assert six["lines"][-1] == (
         "You saw 6 of the map's 8 classes in no square, so this check says nothing "
-        "about how well the map finds them. The rate above is for all squares "
-        "together. Names under Details."
+        "about how well the map finds them. The rate above is for every square of "
+        "the map, all classes together. Names under Details."
     )
     assert six["detail"] == (
         'Classes you saw in no square: "Class 0", "Class 1", "Class 2", '
@@ -2659,14 +2668,15 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
         'Only 1 of the 7 points had "trees"; the map agreed on 1 of them. Too few '
         'to say how well the map finds "trees".',
         "You saw 6 of the map's 8 classes in no point, so this check says nothing "
-        "about how well the map finds them. The rate above is for all points of "
-        "this part. Names under Details.",
+        "about how well the map finds them. The rate above is for every point of "
+        "this part, all classes together. Names under Details.",
     ]
     assert str(points["detail"]).startswith("Classes you saw in no point: ")
     one = uncovered(1, "point")
     assert one["lines"][-1] == (
         'You saw "Class 0" in no point, so this check says nothing about how well '
-        "the map finds it. The rate above is for all points together."
+        "the map finds it. The rate above is for every point of the map's grid, all "
+        "classes together."
     )
     # A class typed outside the map's classes is not one of the map's own:
     # not counted among them, and no too-few line (the map never finds it).
@@ -2683,7 +2693,8 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
     assert told["lines"] == [
         'Too few squares to say how well the map finds: "trees".',
         'You saw "Class 0" in no square, so this check says nothing about how well '
-        "the map finds it. The rate above is for all squares together.",
+        "the map finds it. The rate above is for every square of the map, all "
+        "classes together.",
     ]
     assert told["few_detail"] == []
     assert server._uncovered(None, "square", 7, several=False) == {
@@ -2699,7 +2710,7 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
     )
     assert figure is not None
     assert [c["line"] for c in figure["classes"][:2]] == [
-        'You saw "Water" in 6 points. The map agreed on 5 of them.',
+        'Where you saw "Water" (6 points), the map also said "Water" on 5.',
         None,
     ]
     assert figure["unseen_line"] is None
@@ -2841,8 +2852,8 @@ def test_a_class_named_by_a_code_reads_class_n() -> None:
         None,
         None,
         None,
-        'You saw class "3" in 12 squares. The map agreed on 10 of them; agreement '
-        "range: 70.0% to 95.0%.",
+        'Where you saw class "3" (12 squares), the map also said class "3" on 10; '
+        "agreement range: 70.0% to 95.0%.",
     ]
     assert shown["unseen_line"] is None
     under = server._uncovered(
@@ -2855,8 +2866,8 @@ def test_a_class_named_by_a_code_reads_class_n() -> None:
         'Only 2 of the 14 squares had class "1"; the map agreed on 1 of them. Too '
         'few to say how well the map finds class "1".',
         'You saw class "0", class "2" in no square, so this check says nothing '
-        "about how well the map finds them. The rate above is for all squares "
-        "together.",
+        "about how well the map finds them. The rate above is for every square of "
+        "the map, all classes together.",
     ]
     assert [c["name"] for c in shown["classes"]] == [
         'class "0"',
@@ -2897,10 +2908,10 @@ def test_a_class_maps_range_is_matched_by_its_name_never_by_a_code_key() -> None
     shown = server._squares(got, per_class)
     assert shown is not None
     assert [c["line"] for c in shown["classes"][1:]] == [
-        'You saw class "20" in 8 squares. The map agreed on 6 of them; agreement '
-        "range: 40.0% to 90.0%.",
-        'You saw class "30" in 5 squares. The map agreed on 5 of them; agreement '
-        "range: 50.0% to 100.0%.",
+        'Where you saw class "20" (8 squares), the map also said class "20" on 6; '
+        "agreement range: 40.0% to 90.0%.",
+        'Where you saw class "30" (5 squares), the map also said class "30" on 5; '
+        "agreement range: 50.0% to 100.0%.",
     ]
     accuracy = {"low": 0.3, "high": 0.6}
     by_code = {"per_class": {"1": {"valid": {"producer_accuracy": accuracy}}}}

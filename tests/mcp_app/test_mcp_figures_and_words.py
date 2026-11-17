@@ -43,10 +43,15 @@ BLIND_SEEN = (
     "Blind: this panel is not sent what the map says for a {one}, or where the "
     "{one} is, so you answer without seeing the map's answer."
 )
-WHAT_BARE = "For each {one}, say what is there. The map's answer is hidden."
+# r4-m M6: whoever answers must not look at the map either.
+WHAT_BARE = (
+    "For each {one}, say what is there. The map's answer is hidden: answer without "
+    "looking at the map."
+)
 WHAT_PLACE = (
     "This sheet has no pictures. See where each {one} is, then say what was there "
-    "from your own imagery or records. The map's answer is hidden."
+    "from your own imagery or records. The map's answer is hidden: answer without "
+    "looking at the map."
 )
 NEXT_BARE = "Answer every {one}, then press {finish}."
 CANNOT_BARE = "No result while you check."
@@ -496,6 +501,9 @@ def test_the_seen_instruction_does_not_repeat_the_hidden_answer() -> None:
     assert "class is not sent to this panel" not in code
     assert "Right or wrong is worked out when each label is saved." not in code
     assert _holds(script, CHANGE_LINE)
-    assert _holds(script, "The map's answer is hidden.")
+    # r4-m M6: with who must not look at the map.
+    assert _holds(
+        script, "The map's answer is hidden: answer without looking at the map."
+    )
     assert _holds(script, BLIND_SEEN)
     assert "so you label without seeing" not in code

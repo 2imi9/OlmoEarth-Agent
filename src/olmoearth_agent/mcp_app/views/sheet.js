@@ -209,8 +209,12 @@
    judge from). The labelling rule of the page copy (data.reading_rule and
    rule_scope: the owner's, or the one the user typed on the Check card
    before the draw; after the owner's, data.rule_limit, that it is for kelp
-   canopy maps only: the last round's F9) shows from the first open; the
-   pane then shows only that no rule is set, when none is. Then the face's
+   canopy maps only: the last round's F9; in its place, on a face that takes
+   Cannot tell and can show pictures, the cloud line, r4-m M8) shows from
+   the first open; the pane then shows only that no rule is set, when none
+   is (a page copy with
+   no rule and pictures with one: the pane shows the rule's two halves and,
+   on a face with Cannot tell, the cloud line, r4-m M8). Then the face's
    instruction where it has one (right or wrong, the class seen with the
    map's period, a two-map sheet's), one line on Cannot tell (or a
    certificate's own need), and, until graded, that an answer can change
@@ -268,18 +272,39 @@ OE.sheetWords = (unit) => {
   return {
     one,
     many,
-    what: 'For each ' + one + ', say what you see in the satellite pictures. The map\'s answer is hidden.',
+    // "The map's answer is hidden" says too whoever answers must not look at
+    // the map itself (r4-m M6: a map's maker answering would grade their own
+    // work); the same words on every sheet, squares or points.
+    // WORDING: r4m M6
+    what: 'For each ' + one + ', say what you see in the satellite pictures. The map\'s answer is hidden: answer'
+      + ' without looking at the map.',
     next: (finish) => 'Press Pictures, turn them on, answer every ' + one + ', then press ' + finish + '.',
     cannot: 'No result while you check. Your answers are a reading of satellite pictures, not a visit on site.',
-    whatBare: 'For each ' + one + ', say what is there. The map\'s answer is hidden.',
+    // WORDING: r4m M6
+    whatBare: 'For each ' + one + ', say what is there. The map\'s answer is hidden: answer without looking at the'
+      + ' map.',
     // A sheet of points with places to open (data.has_place): no pictures, what to judge from.
-    // WORDING: r4h S3 E/sheet-1
+    // WORDING: r4h S3 E/sheet-1; r4m M6
     whatPlaced: 'This sheet has no pictures. See where each ' + one + ' is, then say what was there from your own'
-      + ' imagery or records. The map\'s answer is hidden.',
+      + ' imagery or records. The map\'s answer is hidden: answer without looking at the map.',
     nextBare: (finish) => 'Answer every ' + one + ', then press ' + finish + '.',
     cannotBare: 'No result while you check.',
     clear: 'The panel marks no date as clear: you decide, from the outlined square itself.'
       + ' Scene cloud is for the whole satellite image, not this square.',
+    // Under the rule, on a face that takes Cannot tell and can show pictures
+    // (r4-m M8): the sheet's rule block, or the pictures pane where the page
+    // copy has no rule. Only the case the rule leaves open: one clear date
+    // is enough for Present, and Absent counts the clear dates alone, so a
+    // square clouded on every date is Cannot tell, not Absent by default.
+    // WORDING: r4m M8
+    cloudLine: 'No clear date of this ' + one + ' (cloud over it on every date): press Cannot tell.',
+    // The pane's closed fold that holds each date's scene cloud, off the
+    // dates' headings (r4-m M8), and its first line, clear's own second
+    // sentence.
+    // WORDING: r4m M8
+    cloudFold: 'Scene cloud of each date',
+    // WORDING: r4m M8
+    cloudWhole: 'Scene cloud is for the whole satellite image, not this ' + one + '.',
     picturesOff: 'Nothing to look at yet. Press Pictures to see satellite pictures of this ' + one + '.'
       + ' You are asked first what is sent.',
     // The face's one Cannot tell line, where the sheet takes Cannot tell.
@@ -462,8 +487,11 @@ OE.picture = (p, date, what, caption = null, unit = 'square') => {
    The switch is the joined toggle the sheet's views use, the chosen one
    filled (reader test 2's A/F23), each button keeping its data-focus key;
    each date is its own outlined block, its label on top inside the outline
-   and its pictures under it (A/F24). */
-OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, unit = 'square' } = {}) => {
+   and its pictures under it (A/F24). heading: what a date's block is headed
+   by, from its label (the label sheet's pane leaves its scene cloud out,
+   r4-m M8); by default the label as it is. The pictures' names keep the
+   whole label. */
+OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, heading = null, unit = 'square' } = {}) => {
   const kinds = [['nir', 'Near-infrared false colour'], ['true', 'True colour']];
   const colours = OE.toggle(kinds, colour, (kind) => { if (choose) choose(kind); },
     { label: 'Colours of the pictures', small: true });
@@ -474,8 +502,9 @@ OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, un
       ? { class: 'face-dates', tabindex: '0', role: 'region', 'aria-label': 'Dates, ' + what }
       : { class: 'stack' }, dates.map((d) => {
       const shown = (Array.isArray(d.pictures) ? d.pictures : []).filter((p) => OE.goodPicture(p) && p.kind === colour);
+      const label = String(d.label || d.month || '');
       return OE.el('div', { class: 'stack', style: 'gap:4px;border:1px solid var(--rule);border-radius:4px;padding:8px' },
-        OE.el('div', { class: 'small', style: 'font-weight:600' }, String(d.label || d.month || '')),
+        OE.el('div', { class: 'small', style: 'font-weight:600' }, heading ? heading(label) : label),
         shown.length ? OE.el('div', { class: 'row', style: 'align-items:flex-start;gap:12px;flex-wrap:wrap' },
           shown.map((p) => OE.picture(p, String(d.label || ''), what, null, unit))) : null);
     })));
@@ -1505,25 +1534,34 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     const pictures = (answer.pictures || []).filter(goodPicture);
     // The rule shows under the instruction from the first open (ruleBlock,
     // A/sheet-2); here only when the page copy had none and this answer
-    // has one, with its scope and, for the owner's rule, that it is for kelp
-    // canopy maps only (answer.rule_limit, the last round's F9). The line
-    // that no rule is set stays here.
+    // has one: its Present half, then its Absent half word for word, then,
+    // on a face that takes Cannot tell (not a certificate plan's), that a
+    // square with no clear date is Cannot tell (r4-m M8: so a square hidden
+    // by cloud is not pressed Absent by the rule's own words). Both rules
+    // come from imagery.rule_for, so this is the fallback for a page copy
+    // whose rule could not be read; the rule block says the cloud line
+    // otherwise. Its scope and the kelp-only line are not repeated here: the
+    // Check card and the result show them. The line that no rule is set
+    // stays here.
     let ruleLines = null;
     if (!pageRule && answer.reading_rule) {
-      ruleLines = OE.el('div', {}, OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + answer.reading_rule),
-        answer.rule_scope ? OE.el('div', { class: 'small faint' }, answer.rule_scope) : null,
-        typeof answer.rule_limit === 'string' && answer.rule_limit
-          ? OE.el('div', { class: 'small faint' }, answer.rule_limit) : null);
+      const [present, absent] = ruleHalves(answer.reading_rule);
+      ruleLines = OE.el('div', {}, OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + present),
+        absent ? OE.el('div', { class: 'small', style: 'font-weight:600' }, absent) : null,
+        takesQ ? OE.el('div', { class: 'small' }, W.cloudLine) : null);
     } else if (!pageRule) {
       ruleLines = OE.el('div', { class: 'small error' }, W.noRule);
     }
+    const dated = Array.isArray(answer.dates) && answer.dates.length > 0;
+    const clouds = dated ? cloudFold(answer.dates) : null;
     preview.replaceChildren(...[head, ruleLines].filter(Boolean),
-      Array.isArray(answer.dates) && answer.dates.length
+      dated
         ? datesBlock(answer.dates, W.label(k))
         : OE.el('div', { class: 'row', style: 'align-items:flex-start;gap:12px' },
           pictures.map((p) => OE.el('figure', { style: 'margin:0' },
             OE.el('img', { src: p.src, width: p.width, height: p.height, alt: p.label + ', ' + W.label(k), style: 'image-rendering:pixelated;display:block;border:1px solid var(--rule);border-radius:4px' }),
             OE.el('figcaption', { class: 'small' }, p.label)))),
+      ...[clouds].filter(Boolean),
       OE.el('div', { class: 'footnote' }, answer.caption),
       OE.el('div', { class: 'footnote' }, answer.label_is),
       OE.el('div', { class: 'row', style: 'justify-content:flex-end;gap:16px' },
@@ -1540,11 +1578,14 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      (OE.datesBlock). On the face the dates are a strip inline and a grid in
      full screen (.face-dates in common.js), and the strip takes the focus
      itself, so the keyboard reaches it and its arrow keys scroll it
-     (scrollsSideways); in the list, one under another. */
+     (scrollsSideways); in the list, one under another. Each date is headed
+     by its day alone (dateHead): its scene cloud is in the pane's fold
+     (cloudFold, r4-m M8). */
   function datesBlock(dates, what) {
     return OE.datesBlock(dates, what, {
       colour: state.colour,
       strip: state.view === 'face',
+      heading: dateHead,
       unit: W.one,
       choose: (kind) => {
         state.colour = kind;
@@ -1552,6 +1593,39 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         OE.focusIfHere(preview.querySelector('[data-focus="colour:' + kind + '"]'));
       },
     });
+  }
+
+  /* A date's label as the server writes it ("10 Apr 2024, scene cloud 2%",
+     imagery._date_label): its day, and its scene cloud. "2% scene cloud" on
+     a date's heading was read as a clear square, but it is the whole
+     satellite image's (reader test 3, r4-m M8): the heading keeps the day
+     (dateHead), and the label whole goes to the pane's closed fold
+     (cloudFold), after the fold's first line, which says whose cloud it is.
+     A label with no scene cloud (a month with no scene) is its own heading
+     and is not in the fold; no such date, no fold. Declared as functions, so
+     a pane drawn before this point of the editor finds them. */
+  function sceneCloud(label) {
+    return /^(.+?), (scene cloud .+)$/.exec(label);
+  }
+  function dateHead(label) {
+    const m = sceneCloud(label);
+    return m ? m[1] : label;
+  }
+  function cloudFold(dates) {
+    const said = dates.map((d) => String((d && d.label) || '')).filter((label) => sceneCloud(label) !== null);
+    if (!said.length) return null;
+    // WORDING: r4m M8 (W.cloudFold, W.cloudWhole)
+    return OE.el('details', { class: 'oe-clouds small' }, OE.el('summary', {}, W.cloudFold),
+      OE.el('div', {}, W.cloudWhole), ...said.map((label) => OE.el('div', {}, label)));
+  }
+
+  /* A rule's two halves (r4-m M8), each in the rule's own words: up to its
+     "Absent:" and from it on; a rule with no "Absent:" after its start is
+     one half, the second null. */
+  function ruleHalves(rule) {
+    const text = String(rule);
+    const at = text.search(/\bAbsent\s*:/i);
+    return at > 0 ? [text.slice(0, at).trim(), text.slice(at).trim()] : [text, null];
   }
 
   /* The public test scene: the user's press, after the card says what it
@@ -1598,9 +1672,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       preview.replaceChildren(head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'));
       return;
     }
+    // Its dates headed by their day too, their scene cloud in the fold (r4-m M8).
+    const dates = Array.isArray(answer.dates) ? answer.dates : [];
     preview.replaceChildren(head,
       OE.el('div', { class: 'small faint' }, W.notOfSheet),
-      datesBlock(Array.isArray(answer.dates) ? answer.dates : [], 'the public test scene'),
+      datesBlock(dates, 'the public test scene'),
+      ...[cloudFold(dates)].filter(Boolean),
       OE.el('div', { class: 'footnote' }, answer.caption));
   }
 
@@ -2191,11 +2268,18 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // rule, that it is for kelp canopy maps only (data.rule_limit, the
   // server's; the last round's F9), then the example pictures; that no date
   // is marked clear (A/sheet-3) goes in the Details fold, only on a sheet
-  // that can show pictures: one that cannot shows no date to mark.
+  // that can show pictures: one that cannot shows no date to mark. On a face
+  // that takes Cannot tell and can show pictures, the cloud line takes the
+  // kelp-only line's place (r4-m M8, after review), so the block keeps three
+  // lines: the page copy has the same rule as the pictures (both
+  // imagery.rule_for), so the pane draws its own rule lines only where the
+  // page copy has none, and this is where a labeller reads the line.
+  const cloudOnFace = takesQ && picturesPossible;
   const ruleBlock = pageRule ? OE.el('div', { class: 'stack', style: 'gap:2px' },
     OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + pageRule),
     typeof data.rule_scope === 'string' && data.rule_scope ? OE.el('div', { class: 'small faint' }, data.rule_scope) : null,
-    typeof data.rule_limit === 'string' && data.rule_limit ? OE.el('div', { class: 'small faint' }, data.rule_limit) : null,
+    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)
+      : typeof data.rule_limit === 'string' && data.rule_limit ? OE.el('div', { class: 'small faint' }, data.rule_limit) : null,
     ruleExamples) : null;
   const clearNote = pageRule ? (picturesPossible ? OE.el('div', { class: 'small faint' }, W.clear) : null) : null;
   // The face's one Cannot tell line (S1), and, until the sheet is graded,

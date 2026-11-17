@@ -199,9 +199,16 @@ const RULE_FIRST = 'Write the labelling rule first, in one sentence of at least 
 const RULE_LOST = 'Ask Claude to open the Check card again to see the rule.';
 // The box beside the owner's kelp rule (a map of presence and absence, no part
 // drawn yet: the owner's ruling of 13 Nov 2026, option A), its label in body
-// type, saying what an empty box does (r4-h C5, B/check-own-rule-box FINAL).
+// type, saying what an empty box does (r4-h C5, B/check-own-rule-box FINAL),
+// what to write (what counts as Present and as Absent, in the map maker's
+// meaning if known) and that each square is judged by it: a rule unlike the
+// map's own counts the difference in definitions as map errors (r4-m M5,
+// reader test 3's B/F1). The box shows no grey hint here (fillGate clears the
+// placeholder outside the gate's ask), so no hint changes.
+// WORDING: r4m M5
 // WORDING: r4h C5
-const RULE_OWN = 'Not a kelp map? Write its own rule here. Left empty, the kelp rule above is used.';
+const RULE_OWN = 'Not a kelp map? Write here what counts as Present and as Absent, in the map maker\'s meaning if you'
+  + ' know it; each square is judged by it. Left empty, the kelp rule above is used.';
 // The two example pictures beside the owner's rule (r4-k K9), the label
 // sheet's captions word for word, and their place line, in Details.
 // WORDING: r4k K9
@@ -264,12 +271,16 @@ const FINAL = 'This part\'s squares are not picked again here; ask Claude about 
 /* A class map without top-k scores (r4-h C6, E/check-2 and E/check-1
    FINALs): it can be checked, on points; the button sends Claude the check
    on points (OE.JOB_TEXT.points); the tool's sentence is in Details. "points"
-   are a Studio grid's points here. */
+   are a Studio grid's points here. The second line says, before any count is
+   fixed, that each point needs the reviewer's own imagery or records, since
+   the app shows no pictures of points (r4-m M4, reader test 3's E/F3: the
+   sheet said it only after the count and the way of picking were fixed). */
+// WORDING: r4m M4 (the second line)
 // WORDING: r4h C6
 const CLASS_MAP = [
   'This map can be checked, on single points picked at random instead of squares.',
-  'It holds classes only, without how sure the model was. You still get how often it is wrong, with a range, for a'
-    + ' grid of at most 256 points over the map, not for every pixel.',
+  'You get how often the map is wrong over a grid of points spread across the map, with a range, not for every'
+    + ' pixel. Each point needs your own imagery or records from the map\'s dates; the app shows no pictures of points.',
 ];
 // WORDING: r4h C6
 const ON_POINTS = 'Check this map on points';

@@ -1164,6 +1164,15 @@ See [Development](docs/Usage.md#development) for the convention.
     - L2: past 16 failed parts, a press retries those that have waited longest (`failed_at`), so each gets its turn.
     - L3: a sheet swapped away after it changed under the panel, with nothing unsaved, takes its last toast about that change along.
     - L4: tests, browser scenarios, this entry, and Usage's line on which failed parts a press retries.
+  - Reader test 3's blocking findings and cheap fixes (round 4, m, 17 Nov 2026):
+    - M1: the line for classes nobody saw says the rate is for every square of the map (of this part; every point of the map's grid; of the map they were picked from when the part is not known), all classes together.
+    - M2: "do not average or add them" now says why: this check gives no range for a combined rate (the card, Claude's lines and the Check card's line).
+    - M3: the plan card's face shows no file path; its fold says the sheet is also a file on this computer that shows the map's class at each square or point, so answering there is not blind; for a sheet labelled right or wrong, which shows the map's class itself, that the file shows each square's place, order and stratum, which the sheet hides.
+    - M4: the Check card of a class map without scores says, before the count is picked, that each point needs your own imagery or records and the app shows no pictures of points; Claude says it too, before asking for the count, where no card shows.
+    - M5: the box beside the kelp rule asks what counts as Present and as Absent, in the map maker's meaning, and says each square is judged by it.
+    - M6: every sheet that hides the map's answer (all but right or wrong) says "The map's answer is hidden: answer without looking at the map."
+    - M7: a class line reads "Where you saw "X" (N squares), the map also said "X" on M", so it starts from what you saw.
+    - M8: on a sheet that takes Cannot tell and shows pictures, the rule block says "No clear date of this square (cloud over it on every date): press Cannot tell." in place of "Any other map needs its own rule."; the pictures pane, when the sheet's copy has no rule, shows the rule's Absent half and that line in place of the scope lines; each date is headed by its day, its scene cloud in the pane's own fold.
 - **MCP App: "Check how wrong a map is" is the main job.** The start card
   shows it first, its button the one contained button once signed in, with a
   plain line ("You check squares of the map yourself, picked at random. You

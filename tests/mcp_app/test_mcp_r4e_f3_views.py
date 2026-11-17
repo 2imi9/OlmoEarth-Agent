@@ -94,14 +94,20 @@ RULE_ASK = (
     "is saved and shown with the result."
 )
 RULE_HINT = "For example: the class that fills most of the outlined square"
+#: The box's label, as r4-m M5 rewords it (what counts as Present and as
+#: Absent, in the map maker's meaning; each square is judged by it).
 RULE_OWN = (
-    "Not a kelp map? Write its own rule here. Left empty, the kelp rule above is used."
+    "Not a kelp map? Write here what counts as Present and as Absent, in the map "
+    "maker's meaning if you know it; each square is judged by it. Left empty, the "
+    "kelp rule above is used."
 )
+#: The second line as r4-m M4 rewords it (no pictures of points, said before
+#: the count is fixed).
 CLASS_MAP_LINES = (
     "This map can be checked, on single points picked at random instead of squares.",
-    "It holds classes only, without how sure the model was. You still get how often "
-    "it is wrong, with a range, for a grid of at most 256 points over the map, not "
-    "for every pixel.",
+    "You get how often the map is wrong over a grid of points spread across the "
+    "map, with a range, not for every pixel. Each point needs your own imagery or "
+    "records from the map's dates; the app shows no pictures of points.",
 )
 
 #: The request the Check card's points button sends (r4-h C6, E/check-1).
@@ -110,14 +116,15 @@ POINTS_REQUEST = (
     "First ask me how many points to check and which way to pick them."
 )
 
-#: The result card's parts lines (r4-h R3, A/F03 FINAL).
+#: The result card's parts lines (r4-h R3, A/F03 FINAL), with the reason
+#: r4-m M2 gives.
 OTHER_PART = (
-    "Check the other part too. Then report the parts' results side by side; do not "
-    "average or add them into one rate."
+    "Check the other part too. Report the parts' results side by side; do not "
+    "average or add them: this check gives no range for a combined rate."
 )
 OTHER_PARTS = (
-    "Check the other 3 parts too. Then report the parts' results side by side; do "
-    "not average or add them into one rate."
+    "Check the other 3 parts too. Report the parts' results side by side; do not "
+    "average or add them: this check gives no range for a combined rate."
 )
 
 #: The legend line under a review set's picture (r4-h V1, D/D-card-1 FINAL).
@@ -483,7 +490,9 @@ def test_r4h_the_check_cards_rule_gate_and_box() -> None:
         "if (!ruleLost && rule.source !== 'owner') nodes.push(OE.el('p', {},"
         " RULE_PICTURES));" in fold
     )
-    assert f"// WORDING: r4h C5\nconst RULE_OWN = '{RULE_OWN}';" in page
+    # r4-m M5 rewords the label; C5's tag stays under M5's.
+    assert "// WORDING: r4m M5\n// WORDING: r4h C5\nconst RULE_OWN = " in page
+    assert _concat(_after(page, "const RULE_OWN = ", ";\n"), {}) == RULE_OWN
     assert ".gate label.own-rule { display: block; margin-bottom: 4px; }" in page
     assert "If this map is not of kelp" not in page
 

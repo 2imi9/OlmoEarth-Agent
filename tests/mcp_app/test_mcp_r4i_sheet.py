@@ -479,9 +479,10 @@ def test_the_page_copy_and_the_counts_say_the_owners_rule_is_for_kelp(
 
 def test_the_panel_shows_the_kelp_only_line_after_the_scope() -> None:
     """F9 in sheet.js: the rule block shows data.rule_limit right after
-    data.rule_scope, and the pictures pane (a page copy with no rule, an
-    answer with one) answer.rule_limit after answer.rule_scope, each as a
-    small faint line."""
+    data.rule_scope, each as a small faint line. The pictures pane (a page
+    copy with no rule, an answer with one) no longer repeats the scope and
+    the kelp-only line: r4-m M8 puts the rule's Absent half and the cloud
+    line there instead (tests/mcp_app/test_mcp_r4m_round.py)."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     scope = block.index("data.rule_scope) : null,")
@@ -491,9 +492,7 @@ def test_the_panel_shows_the_kelp_only_line_after_the_scope() -> None:
     )
     assert scope < limit
     pane = _between(editor, "    let ruleLines = null;", "    } else if (!pageRule) {")
-    assert pane.index("answer.rule_scope ? OE.el(") < pane.index(
-        "OE.el('div', { class: 'small faint' }, answer.rule_limit)"
-    )
+    assert "answer.rule_scope" not in pane and "answer.rule_limit" not in pane
 
 
 # ------------------------------------------------------------------------ O2

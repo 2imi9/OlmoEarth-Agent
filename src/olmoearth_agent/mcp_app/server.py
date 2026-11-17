@@ -441,7 +441,8 @@ def _lead(
 
     A plan's lines only beside its sheet (``data``'s ``labels_csv_path``),
     in points for a plan drawn on a grid over a Studio result
-    (:func:`_points_plan`, :data:`PLAN_LEAD_POINTS`). A review set's lines
+    (:func:`_points_plan`, :data:`PLAN_LEAD_POINTS`; ``data``'s ``unit``
+    when the view data holds it, so the design is read once). A review set's lines
     only when it ranked (none for a refusal: ``ranked`` false or a
     ``reason``, which the view then shows on its face); its first line from
     its counts (``inner``: how many it lists, :func:`review.n_review`, of
@@ -460,7 +461,13 @@ def _lead(
     if tool == "olmoearth_plan_label_sample":
         if not data.get("labels_csv_path"):
             return dict.fromkeys(LEAD_LINES)
-        return dict(PLAN_LEAD_POINTS) if _points_plan(inner) else out
+        # The unit the view data already holds (r4-m M3), else read here.
+        unit = data.get("unit")
+        if unit in (sheet.UNIT_POINT, sheet.UNIT_SQUARE):
+            points = unit == sheet.UNIT_POINT
+        else:
+            points = _points_plan(inner)
+        return dict(PLAN_LEAD_POINTS) if points else out
     if tool in REVIEW_TOOLS:
         reason = inner.get("reason")
         if (
@@ -824,12 +831,13 @@ SAY_CHECK_PICK_PARTS = " in each of its {n} parts"
 SAY_CHECK_NONE = "There is no result until every square of a sheet is done{parts}."
 #: For a map in parts: each part's result stands alone, and the whole map is
 #: covered by the parts' results side by side, never averaged or added (the
-#: reader test's A/F03).
-# WORDING: r4h M1, R3, A/F03
+#: reader test's A/F03), with the reason: this check gives no range for a
+#: combined rate (reader test 3's A/F01, r4-m M2).
+# WORDING: r4h M1, R3, A/F03; r4m M2
 SAY_CHECK_NONE_PARTS = (
     "; each part gets its own result, never one rate for all parts. To cover the "
     "whole map, report each part's rate with its range, side by side; do not "
-    "average or add them up"
+    "average or add them up: this check gives no range for a combined rate"
 )
 
 #: The Check card's scope of a rule the user typed (the card shows it read
@@ -883,14 +891,18 @@ CHECK_FINAL_NOTE = (
 #: the plan tool's grid over the whole result measures it instead, with the
 #: count and the design the user gives, asked in two plain questions (the
 #: reader test's E/said-refused-2): the model maps the answers to the design
-#: itself and never says "design", "budget", "window" or a tool name.
-# WORDING: r4h C6, E/said-refused-2
+#: itself and never says "design", "budget", "window" or a tool name. Before
+#: the count, the Check card's M4 sentence (r4-m, after review): a client
+#: with no panel shows no card, so this note is where the user hears it.
+# WORDING: r4h C6, E/said-refused-2; r4m M4
 CHECK_CLASS_MAP_NOTE = (
     "This class map holds classes only, so the Check card cannot draw it; it is "
-    "checked on single points of a grid over the whole result instead. Ask the "
-    "user two questions, in these words or plainer: (1) 'How many points can you "
-    "check? More points give a narrower range; the count is fixed before you "
-    "start.' (2) 'Do you want only the figure for the whole map, or also a "
+    "checked on single points of a grid over the whole result instead. Tell the "
+    "user first, in these words or plainer: 'Each point needs your own imagery "
+    "or records from the map's dates; the app shows no pictures of points.' Then "
+    "ask the user two questions, in these words or plainer: (1) 'How many points "
+    "can you check? More points give a narrower range; the count is fixed before "
+    "you start.' (2) 'Do you want only the figure for the whole map, or also a "
     "figure for each class the map shows? For the whole map alone the points "
     "are picked anywhere, so they mostly land on the common classes; for each "
     "class too, some are picked from every class the map shows.' Pick neither "
@@ -1477,11 +1489,14 @@ RESULT_POINTS = "Result: the points checked"
 #: A class line's range is the estimate's range of agreement on that class
 #: (its producer's accuracy), named so, never the bare "range" of the rate.
 #: ``{name}`` is the class's name in straight double quotes, as the sheet
-#: gave it (:func:`_class_name`); ``{units}`` "squares" or "points".
-# WORDING: squares
+#: gave it (:func:`_class_name`); ``{units}`` "squares" or "points". The
+#: line starts from what the reader saw, so it cannot be read as how often
+#: the map is right where it says the class (reader test 3's C/F1 gap, r4-m
+#: M7).
+# WORDING: squares; r4m M7
 CLASS_LINE = (
-    "You saw {name} in {k} {units}. The map agreed on {j} of them; agreement "
-    "range: {low} to {high}."
+    "Where you saw {name} ({k} {units}), the map also said {name} on {j}; "
+    "agreement range: {low} to {high}."
 )
 #: A class's name as the lines and the legend write it: in straight double
 #: quotes, as it is (the peer's item 4, 13 Nov 2026).
@@ -1490,8 +1505,10 @@ CLASS_QUOTED = '"{name}"'
 #: A class named by a bare code (``3``), or by none, in a line or the legend.
 # WORDING: r4p2
 CLASS_CODE_NAME = 'class "{code}"'
-# WORDING: squares
-CLASS_LINE_NO_RANGE = "You saw {name} in {k} {units}. The map agreed on {j} of them."
+# WORDING: squares; r4m M7
+CLASS_LINE_NO_RANGE = (
+    "Where you saw {name} ({k} {units}), the map also said {name} on {j}."
+)
 #: What the check did not cover, directly under the headline (the card's
 #: ``uncovered``, :func:`_uncovered`): a class seen in 1 to
 #: :data:`CLASS_FEW_MAX` squares, with its count of the squares checked and
@@ -1508,9 +1525,17 @@ CLASS_FEW = (
 #: The one line for the classes no square had (the peer's item 5, the reader
 #: test's C/result-1): their names, one class or several; with more than
 #: :data:`CLASS_UNSEEN_LISTED` of them, how many of the map's classes, and
-#: the names in Details (:data:`CLASS_UNSEEN_DETAIL`). ``{all}`` is
-#: :data:`CLASS_UNSEEN_ALL`, or :data:`CLASS_UNSEEN_ALL_PART` on a map of
-#: two parts or more.
+#: the names in Details (:data:`CLASS_UNSEEN_DETAIL`). ``{all}`` says what
+#: the rate covers, all classes together, since "all squares together" was
+#: read as the squares checked or the classes seen (reader test 3's C/F1,
+#: r4-m M1): :data:`CLASS_UNSEEN_ALL` for a map in one part,
+#: :data:`CLASS_UNSEEN_ALL_POINTS` for a sheet of points (a grid over a whole
+#: Studio result), :data:`CLASS_UNSEEN_ALL_PART` on a map of two parts or
+#: more, and :data:`CLASS_UNSEEN_ALL_UNKNOWN` when which part of its map the
+#: sheet is is not known (the card's hedge says it may be one part). The line
+#: is drawn for a random design only (:func:`_estimate_result`): a simple
+#: random sample of every valid square of the map or part (of every point of
+#: the grid), so its rate is that whole's; no other design reaches it.
 # WORDING: r4h R2, C/result-1
 CLASS_UNSEEN_ONE = (
     "You saw {names} in no {unit}, so this check says nothing about how well the "
@@ -1527,10 +1552,16 @@ CLASS_UNSEEN_MANY = (
     "nothing about how well the map finds them. The rate above is for {all}. "
     "Names under Details."
 )
-# WORDING: r4h R2, C/result-1
-CLASS_UNSEEN_ALL = "all {units} together"
-# WORDING: r4h R2, C/result-1
-CLASS_UNSEEN_ALL_PART = "all {units} of this part"
+# WORDING: r4h R2, C/result-1; r4m M1
+CLASS_UNSEEN_ALL = "every {unit} of the map, all classes together"
+# WORDING: r4m M1
+CLASS_UNSEEN_ALL_POINTS = "every point of the map's grid, all classes together"
+# WORDING: r4h R2, C/result-1; r4m M1
+CLASS_UNSEEN_ALL_PART = "every {unit} of this part, all classes together"
+# WORDING: r4m M1
+CLASS_UNSEEN_ALL_UNKNOWN = (
+    "every {unit} of the map they were picked from, all classes together"
+)
 #: The Details fold's name for the classes no square had (a fold row's
 #: label when the card draws no squares; :data:`CLASS_UNSEEN_DETAIL` beside
 #: the squares): the Details line's own words, so "Names under Details"
@@ -1646,23 +1677,27 @@ SAY_RANGE_ONLY = (
 SAY_QUOTE = "Quote the rate with its range and what it was checked against.{other}"
 #: Added to the second line while other parts have no result: one, or
 #: ``{k}`` of them; the parts' results are reported side by side, never
-#: averaged or added (the reader test's A/F03).
-# WORDING: r4h R3, A/F03
+#: averaged or added (the reader test's A/F03), with the reason: this check
+#: gives no range for a combined rate (reader test 3's A/F01, r4-m M2:
+#: without it, readers would average anyway; a whole-map range across parts
+#: exists elsewhere, in the package, so the reason names this check).
+# WORDING: r4h R3, A/F03; r4m M2
 SAY_OTHER = (
-    " Check the other part too. Then report the parts' results side by side; do "
-    "not average or add them into one rate."
+    " Check the other part too. Report the parts' results side by side; do not "
+    "average or add them: this check gives no range for a combined rate."
 )
-# WORDING: r4h R3, A/F03
+# WORDING: r4h R3, A/F03; r4m M2
 SAY_OTHERS = (
-    " Check the other {k} parts too. Then report the parts' results side by "
-    "side; do not average or add them into one rate."
+    " Check the other {k} parts too. Report the parts' results side by side; do "
+    "not average or add them: this check gives no range for a combined rate."
 )
 #: Added to the second line when the map has two parts or more and none is
-#: still open: the parts' results are still reported side by side.
-# WORDING: r4i F3
+#: still open: the parts' results are still reported side by side, for the
+#: same reason (r4-m M2).
+# WORDING: r4i F3; r4m M2
 SAY_SIDE_BY_SIDE = (
-    " Report the parts' results side by side; do not average or add them into "
-    "one rate."
+    " Report the parts' results side by side; do not average or add them: this "
+    "check gives no range for a combined rate."
 )
 #: The fourth line (the reader test's E/said-est-1), from the graded sheet's
 #: class counts for every design, names only: the classes no square had, and
@@ -1781,7 +1816,12 @@ def _class_name(row: dict[str, Any]) -> str:
 
 
 def _unseen_lines(
-    names: list[str], unit: str, *, m: int | None = None, several: bool = False
+    names: list[str],
+    unit: str,
+    *,
+    m: int | None = None,
+    several: bool = False,
+    known: bool = True,
 ) -> tuple[str | None, str | None]:
     """The one line for the classes no square had (``names``, each as
     :func:`_class_name` writes it), and the Details line: ``(None, None)``
@@ -1790,15 +1830,24 @@ def _unseen_lines(
     more, how many of the map's ``m`` classes on the face
     (:data:`CLASS_UNSEEN_MANY`; ``m`` never fewer than the names) and their
     names in Details (:data:`CLASS_UNSEEN_DETAIL`). The rate is said to be
-    for all squares together, or on a map of two parts or more
-    (``several``) for all squares of this part. In ``unit``'s words."""
+    for every square of the map, all classes together (r4-m M1): of the
+    map they were picked from when which part of its map the sheet is is
+    not known (``known`` false, :data:`CLASS_UNSEEN_ALL_UNKNOWN`), of this
+    part on a map of two parts or more (``several``), of the map's grid for
+    a sheet of points, else of the map. In ``unit``'s words."""
     if not names:
         return None, None
     one = _unit_word(unit)
     listed = ", ".join(names)
-    every = (CLASS_UNSEEN_ALL_PART if several else CLASS_UNSEEN_ALL).format(
-        units=_units(unit)
-    )
+    if not known:
+        whole = CLASS_UNSEEN_ALL_UNKNOWN
+    elif several:
+        whole = CLASS_UNSEEN_ALL_PART
+    elif one == sheet.UNIT_POINT:
+        whole = CLASS_UNSEEN_ALL_POINTS
+    else:
+        whole = CLASS_UNSEEN_ALL
+    every = whole.format(unit=one)
     if len(names) == 1:
         return CLASS_UNSEEN_ONE.format(names=listed, unit=one, all=every), None
     if len(names) <= CLASS_UNSEEN_LISTED:
@@ -1818,7 +1867,9 @@ def _rare(own: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [c for c in own if 0 < (_count(c.get("seen")) or 0) <= CLASS_FEW_MAX]
 
 
-def _uncovered(counts: Any, unit: str, n: int, *, several: bool) -> dict[str, Any]:
+def _uncovered(
+    counts: Any, unit: str, n: int, *, several: bool, known: bool = True
+) -> dict[str, Any]:
     """What the check did not cover, for the card's ``uncovered`` (the lines
     directly under the headline, in order) from the graded sheet's class
     counts (``sheet.class_counts``): ``{"lines", "few_detail", "detail",
@@ -1835,7 +1886,8 @@ def _uncovered(counts: Any, unit: str, n: int, *, several: bool) -> dict[str, An
     order; with Cannot tell no count line anywhere (a Cannot tell square
     may hold the class), ``few_detail`` empty. Then the one line for those
     no square had (:func:`_unseen_lines`, ``m`` how many of the map's own
-    classes the counts list), with or without Cannot tell. ``detail`` is
+    classes the counts list; ``several`` and ``known`` say what its rate
+    covers), with or without Cannot tell. ``detail`` is
     the Details line with the unseen names when the face gives only how
     many (:data:`CLASS_UNSEEN_DETAIL`), ``names`` those names alone (for
     the fold's row when no squares are drawn); both ``None`` otherwise. No
@@ -1871,7 +1923,7 @@ def _uncovered(counts: Any, unit: str, n: int, *, several: bool) -> dict[str, An
         if not cannot:
             out["few_detail"] = counted
     unseen = [_class_name(c) for c in own if not _count(c.get("seen"))]
-    line, detail = _unseen_lines(unseen, unit, m=len(own), several=several)
+    line, detail = _unseen_lines(unseen, unit, m=len(own), several=several, known=known)
     if line is not None:
         lines.append(line)
     out["lines"] = lines
@@ -2500,12 +2552,15 @@ def _estimate_result(
     # What the check did not cover, under the headline: from the same counts,
     # for a random design only (another design's counts are not the rate's);
     # the classes seen too rarely by name only with Cannot tell (F1) or with
-    # two or more of them, each one's counts then in Details (F2).
+    # two or more of them, each one's counts then in Details (F2). The
+    # unseen line says what the rate covers: this part, the map, the map's
+    # grid, or, the part not known, the map they were picked from (M1).
     uncovered = _uncovered(
         counts if picked_at_random and agreed else None,
         unit,
         n,
         several=n_parts > 1,
+        known=known,
     )
     if squares is not None:
         # The unseen names in Details are the counts' own, as on the face.
@@ -3537,8 +3592,13 @@ class AppServer:
         an estimate refused for windows left unlabelled carries
         ``unfinished`` (:func:`_unfinished`, in ``unit``'s words: squares, or
         points for a sheet of points) and no ``hint`` (the registry's hint is
-        for the model). The projects view carries
-        ``first_in_studio`` (:data:`FIRST_IN_STUDIO`).
+        for the model). A plan with a sheet carries ``unit``, what its
+        sheet is of (:func:`_points_plan`: "point" or "square"), for the
+        fold's line on the sheet as a file (r4-m M3), and ``right_or_wrong``,
+        whether that sheet is labelled right or wrong (``progress``'s
+        ``label_rule``; false when it cannot be read): that face shows the
+        map's class too, so the line names what the file adds there. The
+        projects view carries ``first_in_studio`` (:data:`FIRST_IN_STUDIO`).
         """
         inner = envelope.get("result")
         inner = inner if isinstance(inner, dict) else {}
@@ -3571,6 +3631,17 @@ class AppServer:
         for key in ("labels_csv_path", "design_path", "how_to_label"):
             if isinstance(inner.get(key), str):
                 data[key] = inner[key]
+        if name == "olmoearth_plan_label_sample" and data.get("labels_csv_path"):
+            # What the plan's sheet is of (:func:`_points_plan`, read once
+            # here; the lead reads it from data): the fold's line on the sheet
+            # as a file says squares or points as the sheet does (r4-m M3).
+            points = _points_plan(inner)
+            data["unit"] = sheet.UNIT_POINT if points else sheet.UNIT_SQUARE
+            # A sheet labelled right or wrong (sheet._rule, in its counts)
+            # shows the map's class itself: the fold's line says what the
+            # file adds there instead (r4-m M3, after review).
+            rule = progress.get("label_rule") if isinstance(progress, dict) else None
+            data["right_or_wrong"] = rule == "wrong"
         if (
             views
             and name in REVIEW_TOOLS
