@@ -19,24 +19,40 @@ import { App } from "@EXT_APPS_URL@";
 
 const root = document.getElementById('root');
 
+/* A sheet that cannot be opened (the tool's result is an error, or names no
+   sheet) or read (the read of its rows failed): a card with the title, one
+   plain line that says what to do next, and the reason, as it came, in a
+   closed Details fold (r5-b J25: before, one red line that began with the
+   raw reason and named no next step). There is no older copy to show. */
+// WORDING: r5b J25
+const NOT_OPENED = 'This label sheet could not be opened. Ask Claude to open it again.';
+function notOpened(reason) {
+  const why = String(reason || '').trim();
+  root.replaceChildren(OE.el('section', { class: 'card stack oe-not-opened' },
+    OE.el('h1', {}, 'Label sheet'),
+    OE.el('div', {}, NOT_OPENED),
+    why ? OE.fold('Details', OE.el('div', { class: 'small', style: 'overflow-wrap:anywhere' }, why)) : null));
+}
+
 /* The tool's result holds the sheet's counts only (sheet.sheet_progress), never
    a row: the page copy (each window by a handle, sheet.read_sheet) is read from
    the file each time the view shows, so a host that shows this view again later
-   (a reopened chat) shows the sheet as it is now. A read that fails says so; there is no older copy to show. */
+   (a reopened chat) shows the sheet as it is now. A read that fails says so
+   (notOpened); there is no older copy to show. */
 async function show(app, params) {
   const data = OE.viewData(params);
   if (params.isError || !data.path) {
     const text = (params.content || []).map((c) => c.text || '').join(' ');
     let message = text;
     try { message = JSON.parse(text).error || text; } catch (_) { /* plain text */ }
-    root.replaceChildren(OE.el('div', { class: 'card error' }, message || 'The sheet could not be opened.'));
+    notOpened(message);
     return;
   }
   let fresh;
   try {
     fresh = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path });
   } catch (err) {
-    root.replaceChildren(OE.el('div', { class: 'card error' }, 'The sheet could not be read: ' + err.message));
+    notOpened(err && err.message);
     return;
   }
   // The example pictures beside the owner's rule (r4-k K9), when the server

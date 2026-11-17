@@ -23,38 +23,46 @@ KEY_NOTE = (
     "made the map how to get one of your own. Do not use their key."
 )
 
-#: The start card's second lead line (r4-h P1, D/D-start-1).
+#: The start card's second lead line (r4-h P1, D/D-start-1), signed out
+#: (r5-c S03: signed in, START_NEXT_IN in start.html takes its place).
 START_NEXT = (
-    "Sign in if asked, then press a job below, or type what you want in the chat."
+    "Sign in below first; then press a job, or type what you want in the chat."
 )
 
-#: The projects card's second lead line (r4-h A/F30).
+#: The projects card's second lead line (r5-a V3: it names the button that
+#: opens a project; before, r4-h A/F30, the project's name; r5-c S04: the
+#: button names in quotes, one sentence).
 PROJECTS_NEXT = (
-    "Press the name of the project that holds your map, find its prediction "
-    "there, and press Check how wrong it is."
+    'Next: press "Show its maps" on the project that holds your map, then '
+    '"Check how wrong it is" beside the map.'
 )
 
 #: The sheet's words of the r4-h string table that this file pins (S1, S2,
 #: S3; {one} is the sheet's unit word, {finish} its finish button's words).
 CODE_LINE = "While you label, this panel is not sent a {one}'s number, place or order."
-EVERY_DONE = "All answered and saved. Answers must not change after you press."
-CHANGE_LINE = "You can change an answer until you press {finish}."
+# r5-b J29: the finish line's second sentence has its object.
+EVERY_DONE = "All answered and saved. After you press, do not change an answer."
+# r5-b J13: the lead's third line, which took in the line on changing an answer.
+NO_RESULT = (
+    "No result until every {one} is answered. You can change an answer until you "
+    "press {finish}."
+)
 BLIND_SEEN = (
     "Blind: this panel is not sent what the map says for a {one}, or where the "
     "{one} is, so you answer without seeing the map's answer."
 )
-# r4-m M6: whoever answers must not look at the map either.
+# r5-b J11: a sheet with no pictures and no places cannot show where a point is.
 WHAT_BARE = (
-    "For each {one}, say what is there. The map's answer is hidden: answer without "
-    "looking at the map."
+    "This sheet has no pictures and no places, so it cannot show where a {one} is. "
+    "Answer only from your own records of each {one}, without looking at the map; "
+    "with none, stop and tell Claude."
 )
+# r4-m M6: whoever answers must not look at the map either.
 WHAT_PLACE = (
     "This sheet has no pictures. See where each {one} is, then say what was there "
     "from your own imagery or records. The map's answer is hidden: answer without "
     "looking at the map."
 )
-NEXT_BARE = "Answer every {one}, then press {finish}."
-CANNOT_BARE = "No result while you check."
 
 #: The slim line on top of every view (B/S6).
 SUB = (
@@ -132,12 +140,19 @@ def test_the_start_card_says_where_a_key_is_made() -> None:
     said = KEY_NOTE.index("never through Claude.")
     assert said < KEY_NOTE.index("No Studio account?")
     assert "note: KEY_NOTE," in page
-    sign_in = _between(_read("common.js"), "OE.signInPanel = ", "\n};")
+    # r5-b J19: the panel's default note is two plain lines, the first saying
+    # where Studio makes a key; its button says what its press does.
+    common = _read("common.js")
     assert (
-        "Your Studio API key (in Studio, open your profile, then API Keys) goes from "
-        "that page to the OlmoEarth Agent here, not through Claude" in sign_in
+        "OE.SIGN_IN_OPENS = 'The button opens a sign-in page in your browser, on "
+        "this computer. Enter your Studio API key there (in Studio: your profile, "
+        "then API Keys).';" in common
     )
-    assert "'Sign in in your browser'" in sign_in
+    assert "OE.SIGN_IN_BUTTON = 'Open the sign-in page';" in common
+    sign_in = _between(common, "OE.signInPanel = ", "\n};")
+    assert "OE.SIGN_IN_BUTTON);" in sign_in
+    assert "const lines = given.length ? given : OE.SIGN_IN_NOTE;" in sign_in
+    assert "Sign in in your browser" not in common
 
 
 def test_the_start_card_has_its_three_lines_and_no_fold() -> None:
@@ -149,23 +164,28 @@ def test_the_start_card_has_its_three_lines_and_no_fold() -> None:
         "what: 'Jobs this app can do with your Studio maps. The first checks how "
         "wrong a map is.'",
         f"next: '{START_NEXT}'",
-        "cannot: 'Nothing about your map yet. No job here finds the error without "
-        "your own answers.'",
+        # r5-c S03: the third line has a subject.
+        "cannot: 'This card knows nothing about your map yet; only your own answers "
+        "can show how wrong it is.'",
     ):
         assert line in lead, line
     assert "// WORDING: r4h P1\nconst START_LEAD = {" in page
     assert "press Check how wrong a map is" not in page
-    assert "OE.lead(START_LEAD)" in page and "OE.fold(" not in page
+    # r5-c S03: signed in, the next line no longer asks to sign in.
+    assert "OE.lead(on ? { ...START_LEAD, next: START_NEXT_IN } : START_LEAD)" in page
+    assert "OE.fold(" not in page
 
 
 def test_sign_out_says_who_can_remove_an_installed_key() -> None:
+    """r5-c S01: the app's own key stays in effect after Sign out: the status
+    line says the user is still signed in, and who can remove that key."""
     common = _read("common.js")
     assert (
-        "'Signed out here. A key put in this app\\'s settings when it was installed "
-        "(OLMOEARTH_API_KEY) is still in use; whoever installed the app can remove "
-        "it.'" in common
+        "'Still signed in: this app was installed with its own key. Only whoever "
+        "installed it can remove it.'" in common
     )
     assert "still set in the server" not in common
+    assert "Signed out here. A key put in" not in common
 
 
 def test_the_lead_draws_its_lines_with_their_keys() -> None:
@@ -179,25 +199,31 @@ def test_the_lead_draws_its_lines_with_their_keys() -> None:
 def test_the_projects_card_words() -> None:
     page = _read("studio.html")
     for text in (
-        "Your Studio projects. Inside each are its predictions: model runs over an "
-        "area and a period. Their outputs are the maps.",
+        # r5-c S04: one name for the thing (maps), Studio's word after it, and
+        # the third line's subject.
+        "Your Studio projects. Each holds the maps its models made over an area "
+        "and a period; Studio calls each run a prediction.",
         f"next: '{PROJECTS_NEXT}',",
-        "It cannot tell which of several similar projects holds the map you use. "
+        "This app cannot tell which of several similar projects holds your map. "
         "Ask whoever made them.",
         "OE.lead(PROJECTS_LEAD)",
         "OE.el('h1', {}, 'Projects in this Studio account')",
         "label: (kind) => 'Tell Claude: this ' + kind,",
         "title: 'Tells Claude which one you mean. Starts no job.',",
         "label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),",
-        "What this run produced. With one, the buttons on the row above already "
-        "use it. With several, pick the one to use here.",
-        "Each prediction is a model run over an area and a period. Its output is "
-        "the map; a prediction can have more than one output.",
+        # r5-c S05: the outputs list's first line, only where there are several.
+        "first: 'This run made more than one map. Use the buttons on the one you "
+        "mean.',",
+        # r5-c S06: the note under the heading; the boxes' sentence moved out of
+        # COMPARE.how into COMPARE.tick.
+        "Each prediction is a model run over an area and a period; its output is "
+        "the map.",
         "Embeddings are not a map these jobs can check or rank.",
-        "Tick two finished maps of the same area and dates. You then label a "
-        "sample of the places where they differ. The answer says which map is "
-        "right more often there, or that these labels cannot tell; it does not "
-        "say how accurate either map is.",
+        "tick: 'Tick two finished maps of the same area and dates to say which is "
+        "more accurate.',",
+        "how: 'You label a sample of the places where the two maps differ. The "
+        "answer says which map is right more often there, or that these labels "
+        "cannot tell; it does not say how accurate either map is.',",
         "Two ticked. Press the button to start.",
         "Starts nothing yet: you first draw or pick the area and give the dates. "
         "Needs a Studio key that can write.",
@@ -208,6 +234,10 @@ def test_the_projects_card_words() -> None:
         "Hide results",
         "Select two completed",
         "Open the project that holds your map",
+        "Press the name of the project",
+        # r5-c S04, S05: the words before this round.
+        "Inside each are its predictions",
+        "What this run produced",
     ):
         assert gone not in page, gone
     # Tell Claude starts no job: its press says the ids and the quoted name only.
@@ -217,7 +247,7 @@ def test_the_projects_card_words() -> None:
     row = _between(page, "function resultRow(", "\n}\n")
     assert "names.join(', ')" in row
     assert "OE.tellClaude" not in row and "OE.say" not in row
-    lead_tag = "// WORDING: r4p2 (what, cannot); r4h A/F30 (next)\n"
+    lead_tag = "// WORDING: r5c S04\n"
     assert lead_tag + "const PROJECTS_LEAD = {" in page
 
 
@@ -292,10 +322,14 @@ def test_figures_have_the_plans_shapes() -> None:
     assert ".slice(0, FILLS.length)" in squares
     assert squares.count("entries.push(") == 2
     assert "const FILLS = ['f0', 'f1', 'f2'];" in script
+    # Round r5-b, J04: the second class hollow, the third a mid teal with a
+    # dark ring (before: mint, and a pale grey that vanished on the card).
     for token in (
         ".oe-sq.f0, .oe-swatch.f0 { background: var(--text); }",
-        ".oe-sq.f1, .oe-swatch.f1 { background: var(--mint); }",
-        ".oe-sq.f2, .oe-swatch.f2 { background: var(--wash-2); }",
+        ".oe-sq.f1, .oe-swatch.f1 { background: var(--paper);"
+        " box-shadow: inset 0 0 0 2px var(--text); }",
+        ".oe-sq.f2, .oe-swatch.f2 { background: rgba(16,82,87,.45);"
+        " box-shadow: inset 0 0 0 1px var(--text); }",
         "width: 14px; height: 14px",
     ):
         assert token in script, token
@@ -329,7 +363,8 @@ def test_the_rate_line_says_no_range_words_and_draws_a_cannot_tell_bar() -> None
     # The bar is drawn after the band, so it sits over it.
     assert rate.index("class: 'band'") < rate.index("class: 'rate-bar'")
     assert ".oe-fig .rate-bar { fill: var(--text); }" in script
-    assert ".oe-fig .band { fill: var(--text-2); fill-opacity: .3; }" in script
+    # Round r5-b, J29 (d): the band at 45% (it was 30%, too pale).
+    assert ".oe-fig .band { fill: var(--text-2); fill-opacity: .45; }" in script
 
 
 def test_the_parts_figure_draws_the_check_cards_states() -> None:
@@ -410,10 +445,11 @@ def test_the_result_cards_fixes_of_pass_2() -> None:
     assert "root.append(reasonBlock(data.reason));" in show
     assert "rest.push(reasonBlock(" not in page
     assert show.index("root.append(reasonBlock(") < show.index("OE.fold(FOLD_LABEL")
-    # (K): where Studio makes a key, as in the default note.
+    # (K): where Studio makes a key, as in the default note; since r5-b J19
+    # three plain lines, the card's own, then the panel's two (common.js).
     assert (
-        "your Studio API key (in Studio, open your profile, then API Keys) goes "
-        "from there to the OlmoEarth Agent here, not through Claude." in show
+        "note: ['This step needs OlmoEarth Studio.', OE.SIGN_IN_OPENS,"
+        " OE.SIGN_IN_KEY_GOES]," in show
     )
 
 
@@ -468,13 +504,16 @@ def test_the_sheet_names_its_windows_by_its_unit_word() -> None:
 
 
 def test_a_sheet_that_can_show_no_pictures_promises_none() -> None:
-    """Finding 10: with the page copy's pictures_possible false, the three
-    lines take their plain form, no line says pictures are off and no
+    """Finding 10: with the page copy's pictures_possible false, the lead's
+    first line takes its plain form, no line says pictures are off and no
     Pictures button is drawn; a page copy without the field shows them.
     r4-h S3 (E/sheet-1): a sheet of points with a place says first that it
-    has no pictures and what to judge from; without a place, as before."""
+    has no pictures and what to judge from; without a place, since r5-b J11,
+    that it cannot show where a point is. r5-b J13: the lead's other two
+    lines (Cannot tell; no result until every answer) speak of no picture,
+    so they have one form."""
     script = _read("sheet.js")
-    for said in (WHAT_BARE, WHAT_PLACE, NEXT_BARE, CANNOT_BARE):
+    for said in (WHAT_BARE, WHAT_PLACE, NO_RESULT):
         assert _holds(script, said), said
     editor = _between(script, "OE.sheetEditor = (app, data,", "\n};")
     for text in (
@@ -482,8 +521,7 @@ def test_a_sheet_that_can_show_no_pictures_promises_none() -> None:
         "const picturesOff = picturesPossible ? OE.el(",
         "const facePicturesButton = picturesPossible ? OE.el('button', {",
         "W.whatBare",
-        "W.nextBare(",
-        "W.cannotBare",
+        "W.noResult(finishWords)",
     ):
         assert text in editor, text
     rows = _between(editor, "  function renderList(", "\n  }\n")
@@ -500,7 +538,7 @@ def test_the_seen_instruction_does_not_repeat_the_hidden_answer() -> None:
     code = _code(script)
     assert "class is not sent to this panel" not in code
     assert "Right or wrong is worked out when each label is saved." not in code
-    assert _holds(script, CHANGE_LINE)
+    assert _holds(script, NO_RESULT)
     # r4-m M6: with who must not look at the map.
     assert _holds(
         script, "The map's answer is hidden: answer without looking at the map."

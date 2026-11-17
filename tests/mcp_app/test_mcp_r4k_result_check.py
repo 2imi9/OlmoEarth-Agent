@@ -413,7 +413,10 @@ def test_k7_a_street_map_press_asks_by_key_and_rank_and_shows_no_place() -> None
         "else OE.toast(REVIEW_WORDS.noLink(rank), true);",
         "OE.toast(REVIEW_WORDS.notOpened(bareText(err.message)"
         " || REVIEW_WORDS.linkNotMade), true);",
-        "type: 'button', class: 'link', 'data-focus': 'map:' + rank,"
+        # Round r5-b, J27: the button's look is an argument, a text button
+        # ('link') unless the caller says otherwise.
+        "const mapButton = (rank, words, cls = 'link') => OE.el('button', {",
+        "type: 'button', class: cls, 'data-focus': 'map:' + rank,"
         " 'aria-label': REVIEW_WORDS.mapOf(rank),",
         "'aria-disabled': String(linking.has(rank)), onclick: () => openMap(rank),",
     ):
@@ -435,8 +438,10 @@ def test_k7_each_card_has_its_street_map_and_points_get_a_row() -> None:
     """r4-k K7: each picture card sits in a cell with its Street map button
     under it (never inside the card's own button); points without picture
     cards whose record names their places get a row of Street map buttons,
-    each its rank, in rank order, in place of the numbers' table; with no
-    key at all, the numbers' table as before."""
+    each its rank, in rank order, in place of the numbers' table (round
+    r5-b, J27: each an outlined small button, not a bare digit; a card's
+    stays a text button); with no key at all, the numbers' table as
+    before."""
     page = _read("result.html")
     assert (
         ".review-strip .window-cell { display: flex; flex-direction: column;"
@@ -460,7 +465,8 @@ def test_k7_each_card_has_its_street_map_and_points_get_a_row() -> None:
         " 'aria-label': REVIEW_WORDS.streetMap },",
         "OE.el('span', { class: 'small', 'aria-hidden': 'true' },"
         " REVIEW_WORDS.mapsLabel),",
-        "windows.map((w) => mapButton(w.rank, String(w.rank)))), csvBlock());",
+        "windows.map((w) => mapButton(w.rank, String(w.rank), 'small'))),"
+        " csvBlock());",
         "    } else if (n) section.append(numbersFold(windows, unit));\n",
     ):
         assert text in row, text
@@ -480,7 +486,10 @@ def test_k8_the_csv_button_and_its_two_paths() -> None:
     server (a name only, else a fixed one), a refusal toasts, and the host's
     own error is never shown; without it the server writes the file (save
     true) and the line under the button names it. The text is in three code
-    lines only, never in the page, a toast or what Claude is told."""
+    lines only, never in the page, a toast or what Claude is told. Round
+    r5-b, J27: the line under the button tells the latest press only (a
+    press empties it; ``say``), and a failure is written there in red, no
+    longer a toast."""
     page = _read("result.html")
     assert (
         r"const csvName = (v) => (typeof v === 'string'"
@@ -505,9 +514,14 @@ def test_k8_the_csv_button_and_its_two_paths() -> None:
         "OE.call(app, 'olmoearth_app_review_csv',"
         " { review_key: linkKey, save: true });",
         "const file = csvName(got && got.file);",
-        "said.textContent = REVIEW_WORDS.csvSaved(file);",
-        "OE.toast(REVIEW_WORDS.csvNotSaved(bareText(err.message)"
+        "say(REVIEW_WORDS.csvSaved(file));",
+        "say(REVIEW_WORDS.csvNotSaved(bareText(err.message)"
         " || REVIEW_WORDS.listNotMade), true);",
+    )
+    assert "OE.toast(REVIEW_WORDS.csvNotSaved(" not in page
+    # A press empties the line before it asks the server.
+    assert _in_order(
+        csv, "button.setAttribute('aria-disabled', 'true');", "say('');", "try {"
     )
     assert "    // WORDING: r4k K8 (the server's file name, else this one)\n" in csv
     # The host's error in a download is replaced, never shown.
@@ -522,7 +536,12 @@ def test_k8_the_csv_button_and_its_two_paths() -> None:
         " { uri: 'file:///' + name, mimeType: 'text/csv', text } }] });",
     ]
     said = [line for line in _code_lines(csv) if "said." in line]
-    assert said == ["said.textContent = REVIEW_WORDS.csvSaved(file);"]
+    assert said == [
+        "said.setAttribute('role', failed ? 'alert' : 'status');",
+        "said.setAttribute('aria-live', failed ? 'assertive' : 'polite');",
+        "said.className = failed ? 'small csv-file error' : 'small csv-file';",
+        "said.textContent = words;",
+    ]
     assert "primary" not in csv and "tellClaude" not in csv
     assert (
         "return OE.el('div', { class: 'stack review-csv' },"
@@ -590,7 +609,8 @@ def test_k9_the_check_card_shows_the_example_pictures_beside_the_owners_rule() -
         gate,
         "} else if (mode === 'replace') {",
         "gate.replaceChildren(...ruleLines(),",
-        "RULE_OWN), ruleInput));",
+        # r5-b J18: the box with its label and the small line under it.
+        "boxed(RULE_OWN, RULE_EMPTY));",
         "} else if (mode === 'shown' || mode === 'owner') {",
         "gate.replaceChildren(...ruleLines());",
         "} else if (mode === 'lost') {",

@@ -516,17 +516,19 @@ def test_l3_a_stale_editor_swapped_away_clears_its_toast_to_reopen() -> None:
     for line in (
         "      const text = 'The map was not opened: ' + said + '.';\n",
         "          const text = 'Not cleared: ' + said + '.';\n",
-        "          reopenToast('The ' + column + ' column was cleared, but the sheet"
-        " could not be read again: '\n",
+        "          reopenToast('The ' + answersOf(column) + ' were removed, but the"
+        " sheet could not be read again: '\n",
         "      if (state.stale && err.message === OE.CHANGED_UNDER_PAGE)"
         " reopenToast(text); else OE.toast(text, true);\n",
     ):
         assert line in code, line
     assert len(re.findall(r"\breopenToast\(", code)) == 8  # the helper, seven calls
-    # After each markStale, the next toast is a reopenToast.
-    for after in code.split("markStale();")[1:]:
+    # After each markStale, the next toast is a reopenToast (r5-b J15: the
+    # removal whose sheet could not be read again passes 'read').
+    for after in re.split(r"markStale\((?:'read')?\);", code)[1:]:
         assert after.index("reopenToast(") < after.index("OE.toast("), after[:80]
-    assert code.count("markStale();") == 6
+    assert code.count("markStale();") == 5
+    assert code.count("markStale('read');") == 1
     # Save's toast that the changes not saved are not kept stays a plain one.
     assert (
         "        if (!quiet) {\n          OE.toast('Not saved: this sheet changed"
@@ -547,7 +549,8 @@ def test_l3_a_stale_editor_swapped_away_clears_its_toast_to_reopen() -> None:
 def test_l3_the_check_card_calls_it_once_the_swap_is_done() -> None:
     """r4-l L3: openZone, the one place an editor is swapped for another,
     calls the old editor's oeLeave after the new one is in place, and only
-    when no change was dropped (else its own toast counts them, as before)."""
+    when no change was dropped (else its own toast counts them, as before;
+    since r5-b J10 that toast is the part's own line, by the part's name)."""
     page = _read("check.html")
     swap = _between(
         page, "  async function openZone(m, { hadFocus = null } = {}) {", "\n  }\n"
@@ -559,7 +562,7 @@ def test_l3_the_check_card_calls_it_once_the_swap_is_done() -> None:
         " ? current.oeUnsaved() : 0;",
         "action.replaceChildren(editor);",
         "    if (dropped > 0 && before && before.draw) {\n",
-        " were not saved: that sheet changed since the panel opened it.', true);\n"
+        "      OE.toast(before.line, true);\n"
         "    } else if (current && typeof current.oeLeave === 'function') {\n",
         "      current.oeLeave();\n    }\n",
     )

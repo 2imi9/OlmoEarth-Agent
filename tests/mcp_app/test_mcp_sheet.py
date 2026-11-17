@@ -366,9 +366,10 @@ def test_the_finish_button_names_the_sheets_job(root: Path) -> None:
         "Estimate the error rate",
     )
     assert plain["finish_call"] == call
-    # No unit and no "window" (the owner's ruling 6 of 13 Nov 2026).
+    # It starts in plain words (r5-a L3), then the line Claude needs, as it
+    # was; no "window" (the owner's ruling 6 of 13 Nov 2026).
     assert plain["finish_message"] == (
-        "I have finished labelling the sheet plan_to_label.csv. "
+        "I have answered every square of this sheet. Estimate the error rate. "
         f"Estimate the map's error rate from it: {call}."
     )
 
@@ -395,7 +396,7 @@ def test_the_finish_button_names_the_sheets_job(root: Path) -> None:
     assert (cert["job"], cert["finish_label"]) == ("certify", "Certify the zone")
     assert cert["finish_call"] == cert_call
     assert cert["finish_message"].startswith(
-        "I have finished labelling the sheet cert_to_label.csv. "
+        "I have answered every square of this sheet. Certify the zone. "
         f"Certify the zone from it: {cert_call}. If a zone is certified, offer"
     )
     assert "olmoearth_write_certificate with the same design_path" in (
@@ -418,7 +419,8 @@ def test_the_finish_button_names_the_sheets_job(root: Path) -> None:
         "Say which map is more accurate",
     )
     assert pair["finish_message"] == (
-        "I have finished labelling the sheet pair_to_label.csv. Say which "
+        "I have answered every square of this sheet. Say which map is more "
+        "accurate. Say which "
         "map is more accurate from it: olmoearth_estimate_map_error with "
         f"design_path {(root / 'pair.json').resolve()} and labels_path "
         f"{pair_path.resolve()}."
@@ -432,7 +434,7 @@ def test_the_finish_button_names_the_sheets_job(root: Path) -> None:
         f"olmoearth_estimate_map_error with labels_path {labels}"
     )
     assert bare["finish_message"] == (
-        "I have finished labelling the sheet plan_to_label.csv. Estimate "
+        "I have answered every square of this sheet. Estimate "
         f"the map error from it: labels_path {labels}."
     )
     for message in (plain, cert, pair, bare):

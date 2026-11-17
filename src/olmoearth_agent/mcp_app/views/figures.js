@@ -40,13 +40,22 @@
      filled. mode 'result': state 'this' filled, 'graded' lightly filled,
      'not' dashed.
    - squares({cells, classes, legend}): the squares checked, 14 px each,
-     wrapping, in the order given, filled by the class the reviewer saw
-     (the first class seen --text, the second --mint, the third --wash-2;
-     classes no cell has take no fill), a thick red outline set off from the
-     square where the map said otherwise (r4-h V2), a Cannot tell square
-     (unjudged) empty and dashed, never filled or outlined (r4-i O2), and a
-     legend of at most five entries, one per class seen, one for Cannot tell
-     and one for the outline. */
+     wrapping, in the order given, marked by the class the reviewer saw
+     (the first class seen filled --text; the second hollow, a 2 px --text
+     ring on --paper; the third a mid teal, --text-2 at 45%, with a 1 px
+     --text ring: r5-b J04, so each is told from the card and from the
+     others by more than a pale fill, and mint stays the ring of a completed
+     status; classes no cell has take no mark), a thick red outline set off
+     from the square where the map said otherwise (r4-h V2), a Cannot tell
+     square (unjudged) empty and dashed, never filled or outlined (r4-i O2),
+     and a legend of at most five entries, one per class seen, one for Cannot
+     tell and one for the outline, whose sample is the red ring alone with
+     nothing inside (r5-b J04: it was a white square, which read as a class).
+
+   Round r5-b, J29: the steps keep 12 px above them (b: this style sheet is
+   put in the page after common.js's, so its margin beat .stack's gap and
+   the map's name touched the pictures); the 0% and 100% labels are --text-2
+   and the range's band is 45% (d: both were too pale to read). */
 
 OE.fig = (() => {
   const NS = 'http://www.w3.org/2000/svg';
@@ -75,13 +84,13 @@ OE.fig = (() => {
   const STYLE = `
 .oe-fig text { font-family: var(--font); fill: var(--text); }
 .oe-fig .axis { stroke: var(--grey); stroke-width: 1; }
-.oe-fig .band { fill: var(--text-2); fill-opacity: .3; }
+.oe-fig .band { fill: var(--text-2); fill-opacity: .45; }
 .oe-fig .dot { fill: var(--text); stroke: var(--paper); stroke-width: 1.5; }
-.oe-fig .tick-label { font-size: 11px; fill: var(--grey); }
+.oe-fig .tick-label { font-size: 11px; fill: var(--text-2); }
 .oe-fig .rate-label { font-size: 12px; font-weight: 600; }
 .oe-fig .end-label { font-size: 11px; font-weight: 600; }
 .oe-fig .rate-bar { fill: var(--text); }
-.oe-steps { list-style: none; margin: 0; padding: 0; display: grid;
+.oe-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .oe-steps > li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
 .oe-steps .oe-step-pic { display: block; flex: none; }
@@ -107,9 +116,9 @@ OE.fig = (() => {
 .oe-sq, .oe-swatch { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 2px;
   box-shadow: inset 0 0 0 1px var(--divider); }
 .oe-sq.f0, .oe-swatch.f0 { background: var(--text); }
-.oe-sq.f1, .oe-swatch.f1 { background: var(--mint); }
-.oe-sq.f2, .oe-swatch.f2 { background: var(--wash-2); }
-.oe-swatch.blank { background: var(--paper); }
+.oe-sq.f1, .oe-swatch.f1 { background: var(--paper); box-shadow: inset 0 0 0 2px var(--text); }
+.oe-sq.f2, .oe-swatch.f2 { background: rgba(16,82,87,.45); box-shadow: inset 0 0 0 1px var(--text); }
+.oe-swatch.blank { background: transparent; box-shadow: none; }
 .oe-sq.cannot, .oe-swatch.cannot { background: transparent; box-shadow: none; border: 1px dashed var(--text); box-sizing: border-box; }
 .oe-sq.wrong, .oe-swatch.wrong { outline: 3px solid var(--error); outline-offset: 2px; }
 .oe-sq-legend { list-style: none; margin: 8px 0 0; padding: 0 0 0 5px; display: flex; flex-wrap: wrap; gap: 8px 16px; }

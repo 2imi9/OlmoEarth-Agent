@@ -382,13 +382,14 @@ def test_the_panel_draws_no_switch_on_a_class_sheet() -> None:
 
 
 def test_no_face_string_of_the_panel_names_a_stratum() -> None:
-    """F11: the two-map switch's label, with its WORDING line; past the
-    comments and the right-or-wrong fold line (in Details, not reworded), no
-    code of sheet.js says "stratum"."""
+    """F11: the two-map switch's label, with its WORDING line (in r5-b J28's
+    plain words, which name no stratum either); past the comments and the
+    right-or-wrong fold line (in Details, not reworded), no code of sheet.js
+    says "stratum"."""
     script = _script()
     assert (
-        "// WORDING: r4i F11\n  const blindText = 'Blind: hide which classes the "
-        "maps wrote';" in script
+        "// WORDING: r4i F11; r5b J28\n  const blindText = 'Hide what the two maps "
+        "say (keep it on while you answer)';" in script
     )
     wrong_line = _entry(_words(), "    wrongLine: ")
     assert "stratum" in wrong_line
@@ -491,7 +492,7 @@ def test_the_panel_shows_the_kelp_only_line_after_the_scope() -> None:
         "{ class: 'small faint' }, data.rule_limit) : null"
     )
     assert scope < limit
-    pane = _between(editor, "    let ruleLines = null;", "    } else if (!pageRule) {")
+    pane = _between(editor, "    let ruleLines = null;", "\n    const dated = ")
     assert "answer.rule_scope" not in pane and "answer.rule_limit" not in pane
 
 

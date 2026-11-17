@@ -257,11 +257,17 @@ def test_the_test_scene_beside_a_review_set_says_so(
 
     imagery._test_cache.clear()
     monkeypatch.setattr(imagery, "_scenes", fail)
+    # Another try can get past either (again, r5-a L1).
     assert imagery.public_test_scene(review=True) == {
         "ok": False,
         "error": imagery.REVIEW_FETCH_FAILED,
+        "again": True,
     }
-    assert imagery.public_test_scene() == {"ok": False, "error": imagery.FETCH_FAILED}
+    assert imagery.public_test_scene() == {
+        "ok": False,
+        "error": imagery.FETCH_FAILED,
+        "again": True,
+    }
     assert list(root.iterdir()) == []  # no record, no consent file
 
 

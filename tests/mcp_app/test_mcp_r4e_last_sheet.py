@@ -793,11 +793,14 @@ def test_the_sheets_face_lines_are_the_string_tables() -> None:
         "Cannot judge a square? Press Cannot tell. Do not guess: a Cannot tell "
         "makes the range wider, a guess can make the result wrong."
     )
-    assert _said("changeLine", "square", finish="Estimate the error rate") == (
-        "You can change an answer until you press Estimate the error rate."
+    # r5-b J13: the lead's third line took in the line on changing an answer.
+    assert _said("noResult", "square", finish="Estimate the error rate") == (
+        "No result until every square is answered. You can change an answer until you "
+        "press Estimate the error rate."
     )
+    # r5-b J29: the finish line's second sentence has its object.
     assert _said("everyDone", "square") == (
-        "All answered and saved. Answers must not change after you press."
+        "All answered and saved. After you press, do not change an answer."
     )
     # r4-m M6: "The map's answer is hidden: answer without looking at the map."
     assert _said("whatPlaced", "point") == (
@@ -807,10 +810,12 @@ def test_the_sheets_face_lines_are_the_string_tables() -> None:
     )
     assert _said("streetMap", "square") == "Street map"
     assert _said("openMapOf", "point", k="4") == "Street map: point 4 on OpenStreetMap"
-    # The bare form a sheet with no pictures and no places keeps.
+    # A sheet with no pictures and no places (r5-b J11): it cannot show where
+    # a point is, so it says what to answer from.
     assert _said("whatBare", "point") == (
-        "For each point, say what is there. The map's answer is hidden: answer "
-        "without looking at the map."
+        "This sheet has no pictures and no places, so it cannot show where a point "
+        "is. Answer only from your own records of each point, without looking at the "
+        "map; with none, stop and tell Claude."
     )
 
 
@@ -845,7 +850,11 @@ def test_the_sheets_fold_lines_are_the_string_tables() -> None:
 
 def test_the_class_faces_instruction_names_the_period() -> None:
     """E/sheet-3, both forms: with the map's period, and without it."""
-    block = _after(_words(), "classWhat: (period) => (period", "),\n    noRule")
+    block = _after(
+        _words(),
+        "classWhat: (period) => (period",
+        "),\n    // WORDING: r5b J26\n    noRule",
+    )
     known, unknown = block.split("\n      : ")
     names = {"one": "point", "period": PERIOD}
     assert _concat(known.strip().removeprefix("? "), names) == (
@@ -879,7 +888,6 @@ def test_every_new_sheet_word_carries_its_wording_comment() -> None:
         "blindSeen": "r4h",
         "openMap": "r4h",
         "streetMap": "r4h",
-        "changeLine": "r4h",
         "classWhat": "r4h",
         "openMapOf": "r4h",
         "everyDone": "r4h",
@@ -896,7 +904,9 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
     tell does and the clear-date note sit in ONE closed fold under the
     answers; the face keeps the lead, the rule with its scope, one Cannot
     tell line and the S2 line; no "sampling group (stratum)" anywhere, no
-    "Open map"."""
+    "Open map". r5-b J13, J14: the Cannot tell line and the S2 line are the
+    lead's second and third lines, and the rule stands right above the
+    answers (with no rule, the line that none was set: J26)."""
     script = _script()
     editor = _between(script, "OE.sheetEditor = (app, data,", "\n};")
     assert "sampling group" not in script and "Open map" not in script
@@ -906,14 +916,13 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
         "OE.el('h1', {}, 'Label sheet'), partLine)",
         "gradedNote,",
         "leadLines,",
-        "ruleBlock,",
         "faceInstruction,",
-        "cannotLine,",
-        "changeLine,",
         "ruleNote,",
         "switchRow,",
         "viewToggle, filterBox)",
         "notice,",
+        "ruleBlock,",
+        "noRuleLine,",
         "area,",
         "details),",
         "progress, OE.el('div', { class: 'row' }, done, saveButton), finishType)",
@@ -939,10 +948,10 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
         "const clearNote = pageRule ? (picturesPossible ? OE.el('div', { class: "
         "'small faint' }, W.clear) : null) : null;" in editor
     )
-    assert (
-        "const changeLine = gradedNote ? null : OE.el('div', {}, "
-        "W.changeLine(finishWords));" in editor
-    )
+    # r5-b J13: the Cannot tell line and the S2 line are the lead's second and
+    # third lines; a graded sheet has neither (r5-b J06).
+    assert "next: gradedNote ? null : cannotLineText || null," in editor
+    assert "cannot: gradedNote ? null : W.noResult(finishWords)," in editor
     # The rule block carries the rule and its scope only.
     rule = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     assert "W.clear" not in rule and "data.rule_scope" in rule
@@ -956,10 +965,11 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
     assert "(picturesPossible ? W.cannotTell : W.cannotTellBare)" in told
     face = _between(editor, "  function faceInstructionText() {", "\n  }\n")
     assert "cannotTell" not in face and "worked out when each label" not in script
-    # A sheet of points with places says what to judge from (E/sheet-1).
+    # A sheet with places says what to judge from (E/sheet-1), squares or
+    # points (r5-b J11).
     assert (
-        "const whatBare = W.one === 'point' && data.has_place ? W.whatPlaced : "
-        "W.whatBare;" in editor
+        "const whatBare = data.has_place ? W.whatPlaced : (twoMap ? "
+        "W.whatBarePair : W.whatBare);" in editor
     )
     assert "what: wrongFace ? null : picturesPossible ? W.what : whatBare," in editor
 

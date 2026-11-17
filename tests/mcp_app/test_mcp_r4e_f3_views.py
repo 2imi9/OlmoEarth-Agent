@@ -84,23 +84,23 @@ CANNOT_TELL_BARE = CANNOT_TELL.replace(" from the dates shown", "")
 
 #: The Check card's words of r4-h (the plan's string table).
 STEP_3 = "3. Someone who can recognise it in a satellite picture looks at each one."
+#: The line over the press: two sentences since r5-b J18 (the third, on rare
+#: classes, is in Details only).
 CANNOT = (
     "Your rule and number are fixed once you press. You can stop and come back "
-    "later; there is no result until every square is done. A random pick lands "
-    "mostly on common classes; a rare class may get no square."
+    "later; there is no result until every square is done."
 )
 RULE_ASK = (
     "First write, in one sentence, how you will decide what class a square is. It "
     "is saved and shown with the result."
 )
 RULE_HINT = "For example: the class that fills most of the outlined square"
-#: The box's label, as r4-m M5 rewords it (what counts as Present and as
-#: Absent, in the map maker's meaning; each square is judged by it).
+#: The box's label, as r5-b J18 shortens it (r4-m M5's meaning kept: the map
+#: maker's meaning of Present and Absent), and the small line under the box.
 RULE_OWN = (
-    "Not a kelp map? Write here what counts as Present and as Absent, in the map "
-    "maker's meaning if you know it; each square is judged by it. Left empty, the "
-    "kelp rule above is used."
+    "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
 )
+RULE_EMPTY = "Left empty, the kelp rule above is used."
 #: The second line as r4-m M4 rewords it (no pictures of points, said before
 #: the count is fixed).
 CLASS_MAP_LINES = (
@@ -269,9 +269,11 @@ def test_the_classes_nobody_saw_are_said_under_the_headline() -> None:
     """The peer's item 5, moved by r4-h R2: a class seen too rarely or in no
     square has no class line of its own (its line is null and is not drawn);
     the server's uncovered lines say them directly under the headline, before
-    the rule line and the grid; with more than five unseen classes their names
+    the grid; with more than five unseen classes their names
     (squares.unseen_detail) are in the Details fold, before its rows, grid or
-    not (r4-i F2: after the rare classes' counted lines). Text only."""
+    not (r4-i F2: after the rare classes' counted lines; round r5-b J23:
+    after the rule used and the class lines, now the fold's first lines).
+    Text only."""
     card = _between(_read("result.html"), "function resultCard(", "\n}\n")
     for text in (
         ".filter((c) => c && typeof c === 'object' && text(c.line))",
@@ -418,8 +420,9 @@ def test_a_sheet_that_can_show_no_pictures_says_nothing_of_dates() -> None:
 def test_r4h_the_check_cards_steps_counts_and_press_line() -> None:
     """r4-h, the Check card before the press: step 1 names the square's size
     when every part's rounds the same (A/F13), step 3 who should look (critic
-    gap 2); the counts are words only, no band and no "points" (C1); the line
-    over the press says what it fixes and what a random pick misses (C2)."""
+    gap 2); the counts are words only, no band and no "points" (C1; the words
+    by the count's place since r5-b J03); the line over the press says what
+    it fixes (C2; what a random pick misses is in Details since r5-b J18)."""
     page = _read("check.html")
     steps = _between(page, "const STEPS = [", "];")
     assert f"  '{STEP_3}'," in steps
@@ -438,41 +441,42 @@ def test_r4h_the_check_cards_steps_counts_and_press_line() -> None:
     ):
         assert text in first, text
     assert "fig('steps', [firstStep(models), ...STEPS.slice(1)])" in page
-    assert (
-        "// WORDING: r4h C1\nconst WIDTH_WORDS = [[0.20, 'Quick. A wide range.'],"
-        " [0.10, 'Longer. A narrower range.'],\n  [0.05, 'A lot of work. A narrow"
-        " range.']];" in page
-    )
+    # r5-b J03: the words by the count's place among its part's counts
+    # (tests/mcp_app/test_mcp_r5b_check.py holds them); those by width went.
+    assert "// WORDING: r5b J03\nconst COUNT_WORDS = (i, n) => " in page
+    assert "WIDTH_WORDS" not in page and "widthWords" not in page
     counts = _between(page, "  function countsBlock(m) {", "\n  }\n")
     assert "points" not in counts and "fig(" not in counts
-    assert "points" not in _after(page, "const WIDTH_WORDS = ", ";\n")
+    assert "points" not in _after(page, "const COUNT_WORDS = ", ";\n")
     for gone in ("BAND_LABEL", "'band'", "A rough answer", "A fair", "A sharp answer"):
         assert gone not in page, gone
-    assert "// WORDING: r4h C2\nconst CANNOT = " in page
+    assert "// WORDING: r5b J18\n// WORDING: r4h C2\nconst CANNOT = " in page
     assert _concat(_after(page, "const CANNOT = ", ";\n"), {}) == CANNOT
     assert "You check the squares yourself" not in page
 
 
 def test_r4h_the_check_cards_rule_gate_and_box() -> None:
     """r4-h C4 (C/check-1 FINAL): no red line; the ask, the box's label "Your
-    rule" and an example as the box's placeholder only (never sent: the rule
-    sent is the box's value); the pictures' limit moves to Details. C5
-    (B/check-own-rule-box FINAL): the box beside the owner's rule says what
-    an empty box does, under a label in body type."""
+    rule" and an example that is never sent (the rule sent is the box's
+    value); the pictures' limit moves to Details. C5 (B/check-own-rule-box
+    FINAL): the box beside the owner's rule says what an empty box does,
+    under a label in body type. r5-b J18: both boxes have their label in body
+    type and a small line under the box (the gate's example, which was the
+    box's placeholder; what an empty box does), and no placeholder is set."""
     page = _read("check.html")
     assert "NO_RULE" not in page and "No labelling rule is set" not in page
     assert "// WORDING: r4h C4\nconst RULE_ASK = " in page
     assert _concat(_after(page, "const RULE_ASK = ", ";\n"), {}) == RULE_ASK
     assert "// WORDING: r4h C4\nconst RULE_LABEL = 'Your rule';" in page
     assert f"// WORDING: r4h C4\nconst RULE_HINT = '{RULE_HINT}';" in page
-    # The example is the placeholder only: defined once, used once.
+    # The example is the line under the gate's box only: defined once, used once.
     assert page.count("RULE_HINT") == 2
     gate = _between(page, "  function fillGate() {", "\n  }\n")
     for text in (
-        "ruleInput.setAttribute('placeholder', RULE_HINT)",
-        "ruleInput.removeAttribute('placeholder')",
-        "OE.el('label', { class: 'field-label', for: 'oe-rule' }, RULE_LABEL)",
-        "OE.el('label', { class: 'own-rule', for: 'oe-rule' }, RULE_OWN)",
+        "OE.el('label', { class: 'own-rule', for: 'oe-rule' }, words), ruleInput,",
+        "OE.el('div', { class: 'small muted under-box', id: 'oe-rule-note' }, under));",
+        "boxed(RULE_LABEL, RULE_HINT));",
+        "boxed(RULE_OWN, RULE_EMPTY));",
         # r4-i F6: a press with no reply shows the gate's one line.
         "const mode = ruleLost ? 'lost'",
     ):
@@ -480,7 +484,8 @@ def test_r4h_the_check_cards_rule_gate_and_box() -> None:
     for gone in (
         "class: 'error'",
         "RULE_PICTURES",
-        "field-label', for: 'oe-rule' }, RULE_OWN",
+        "field-label",
+        "placeholder",
     ):
         assert gone not in gate, gone
     sent = _after(page, "  const ruleText = () => ", ";\n")
@@ -490,9 +495,10 @@ def test_r4h_the_check_cards_rule_gate_and_box() -> None:
         "if (!ruleLost && rule.source !== 'owner') nodes.push(OE.el('p', {},"
         " RULE_PICTURES));" in fold
     )
-    # r4-m M5 rewords the label; C5's tag stays under M5's.
+    # r4-m M5 rewords the label, r5-b J18 shortens it; C5's tag stays under M5's.
     assert "// WORDING: r4m M5\n// WORDING: r4h C5\nconst RULE_OWN = " in page
     assert _concat(_after(page, "const RULE_OWN = ", ";\n"), {}) == RULE_OWN
+    assert f"// WORDING: r5b J18\nconst RULE_EMPTY = '{RULE_EMPTY}';" in page
     assert ".gate label.own-rule { display: block; margin-bottom: 4px; }" in page
     assert "If this map is not of kelp" not in page
 
@@ -502,11 +508,14 @@ def test_r4h_the_check_cards_parts() -> None:
     to pick it; A/F11: each part's heading carries its count of squares; V6:
     a part with no name of the server's is "Part i", never its zone; A/F08:
     the parts figure is drawn again as parts are picked and checked, each
-    labelled so (the figure's states are figures.js's)."""
+    labelled so (the figure's states are figures.js's). r5-b J08: the line
+    starts "Not picked yet."; J17: a picked part says how far it is answered,
+    and a part the card cannot pick says so; J18: the parts line stands
+    right under the heading, the figure where it was."""
     page = _read("check.html")
     assert (
-        "// WORDING: r4h C3\nconst LATER = 'To pick this part\\'s squares, ask Claude"
-        " to open the Check card again.';" in page
+        "// WORDING: r4h C3\nconst LATER = 'Not picked yet. To pick this part\\'s"
+        " squares, ask Claude to open the Check card again.';" in page
     )
     assert (
         "const PART_HEAD = (name, n) => name + (Number.isInteger(n) && n >= 0\n"
@@ -525,17 +534,22 @@ def test_r4h_the_check_cards_parts() -> None:
     parts = _between(page, "  function fillParts() {", "\n  }\n")
     for text in (
         "if (nParts < 2) return;",
-        "state: 'picked', label: complete(m.draw) ? name : PART_PICKED(name) };",
-        "state: 'open', label: m.kind === 'unknown' ? name : PART_OPEN(name) };",
+        ": countsRead(d) ? PART_ANSWERED(name, d.n_labelled, d.n_rows) "
+        ": PART_PICKED(name);",
+        "return { name, share: m.shareValue, state: 'picked', label: said };",
+        "const said = m.kind === 'unknown' ? name\n",
+        "? PART_CANNOT(name) : PART_OPEN(name);",
+        "return { name, share: m.shareValue, state: 'open', label: said };",
         "}), { mode: 'plan' });",
     ):
         assert text in parts, text
     for where in ("  function renderAll() {", "  async function refreshZone(m) {"):
         assert "    fillParts();\n" in _between(page, where, "\n  }\n"), where
     assert (
-        "if (nParts > 1) root.append(OE.el('div', {}, PARTS_LINE(nParts)), partsSlot);"
-        in page
+        "if (nParts > 1) root.append(OE.el('div', { id: 'oe-check-parts-line' },"
+        " PARTS_LINE(nParts)));" in page
     )
+    assert "  if (nParts > 1) root.append(partsSlot);\n" in page
 
 
 def test_r4h_the_check_cards_rule_follows_the_servers_reply() -> None:
@@ -611,8 +625,10 @@ def test_r4h_a_class_map_without_scores_offers_the_check_on_points() -> None:
 
 def test_r4h_a_chosen_answer_alone_looks_chosen() -> None:
     """r4-h A/F22: no hover fill or border change on an answer not chosen (an
-    enabled one rests as it is); a chosen answer is filled dark, its words
-    the canvas colour, in 600."""
+    enabled one rests as it is). r5-b J16 replaced the chosen answer's dark
+    fill (its words the canvas colour, in 600) with the pale selected fill, a
+    dark line and 700, so the dark fill is the view's one action's alone
+    (test_mcp_r5b_common.py pins the new look whole, its tick too)."""
     common = _read("common.js")
     assert (
         '.face .answers button:not([aria-pressed="true"]):not([aria-disabled="true"])'
@@ -620,12 +636,12 @@ def test_r4h_a_chosen_answer_alone_looks_chosen() -> None:
         " var(--outline); }" in common
     )
     assert (
-        '.face .answers button[aria-pressed="true"] { background: var(--text);'
-        " color: var(--canvas); border-color: var(--text);\n  font-weight: 600; }"
-        in common
+        '.face .answers button[aria-pressed="true"] { background: var(--selected);'
+        " color: var(--text); border-color: var(--text);\n"
+        "  box-shadow: inset 0 0 0 1px var(--text); font-weight: 700; }" in common
     )
-    old = "background: var(--selected); border-color: var(--text); font-weight"
-    assert old not in common
+    dark = '.face .answers button[aria-pressed="true"] { background: var(--text);'
+    assert dark not in common
 
 
 def test_r4h_the_result_cards_headline_and_line() -> None:
@@ -633,8 +649,11 @@ def test_r4h_the_result_cards_headline_and_line() -> None:
     sentence) over the line figure (a dot, or with Cannot tell a dark bar
     from the rate's low to high end over the band), then the hedge; no
     "range:" line, no "Error rate:" line, no good-enough line (R5: the
-    server's last line says it); no text but the headline without the
-    figure helpers."""
+    server's last line says it); no text but the headline, the hedge and
+    the last line without the figure helpers. Round r5-b: the server's last
+    line is the rate block's last child, at body size (J12; in the card only
+    when no rate block was drawn); the rule used and the class lines are in
+    Details, after the face (J23)."""
     page = _read("result.html")
     rate = _between(page, "function rateBlock(r) {", "\n}\n")
     for text in (
@@ -644,10 +663,14 @@ def test_r4h_the_result_cards_headline_and_line() -> None:
         " rateHigh: finite(r.rate_high) ? r.rate_high : null,",
         "rateText: rate !== null ? text(r.rate_text) : text(r.rate_range_text),"
         " rangeText: text(r.range_text),",
-        "text(r.hedge) ? OE.el('p', { class: 'oe-hedge' }, r.hedge) : null);",
+        "text(r.hedge) ? OE.el('p', { class: 'oe-hedge' }, r.hedge) : null,",
+        "text(r.last_line) ? OE.el('p', { class: 'oe-last' }, r.last_line) : null);",
     ):
         assert text in rate, text
-    at = [rate.index(t) for t in ("r.headline),", "    line,\n", "text(r.hedge)")]
+    at = [
+        rate.index(t)
+        for t in ("r.headline),", "    line,\n", "text(r.hedge)", "text(r.last_line)")
+    ]
     assert at == sorted(at)
     for gone in ("RESULT_WORDS.range", "errorRate", "goodEnough", "'range: '"):
         assert gone not in page, gone
@@ -657,17 +680,19 @@ def test_r4h_the_result_cards_headline_and_line() -> None:
         ".filter((s) => text(s));",
         "card.append(OE.el('div', { class: 'stack oe-uncovered' },"
         " uncovered.map((s) => OE.el('p', {}, s))));",
-        "if (text(r.last_line)) card.append(OE.el('p', { class: 'small' },"
+        "if (!rate && text(r.last_line)) card.append(OE.el('p', { class: 'oe-last' },"
         " r.last_line));",
     ):
         assert text in card, text
+    assert "{ class: 'small' }, r.last_line" not in page
     order = (
         "const rate = rateBlock(r);",
         "oe-uncovered",
-        "RESULT_WORDS.ruleUsed(",
         "RESULT_WORDS.squaresHead(",
         "RESULT_WORDS.partsHead",
         "r.last_line",
+        "const folded = [];",
+        "RESULT_WORDS.ruleUsed(",
         "OE.fold(RESULT_WORDS.details",
     )
     at = [card.index(t) for t in order]

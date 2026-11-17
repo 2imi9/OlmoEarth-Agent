@@ -7,7 +7,9 @@ Each view is a ``ui://olmoearth-agent/<name>.html`` resource of MIME type
 The pages live in ``views/``; :func:`view_html` inlines the shared script
 (``common.js``, ``figures.js`` for the Check card's and the result card's
 small figures, ``OE.fig``, ``sheet.js`` for the views that edit a label
-sheet, and ``glyph.js`` for the Studio panel's property glyph) and
+sheet, ``glyph.js`` for the Studio panel's property glyph, and
+``overview.js`` for the start card's overview figure, ``OE.overview``, drawn
+in code: round r5-a) and
 the pinned URL and integrity hash of the MCP Apps client, so each resource is
 one self-contained page.
 
@@ -75,14 +77,20 @@ GOOGLE_FONTS = ["https://fonts.googleapis.com", "https://fonts.gstatic.com"]
 #: The origins every view loads from: the MCP Apps client and the font.
 BASE_DOMAINS = ["https://unpkg.com", *GOOGLE_FONTS]
 
-#: The OlmoEarth wordmark and the AGENT tag (``webui/assets``), inlined as data
-#: URLs so no page loads an image from elsewhere: placeholder -> file. The
-#: views inline only the AGENT tag; the browser sign-in page keeps the
-#: wordmark and tag (:func:`brand_html`).
+#: The OlmoEarth wordmark and the AGENT tag (``webui/assets``), and the overview
+#: figure of the OlmoEarth docs (used with Ai2's permission; the start card
+#: shows it, ``views/overview.js``), inlined as data URLs so no page loads an
+#: image from elsewhere: placeholder -> file. The views inline the AGENT tag
+#: and the start view the figure; the browser sign-in page keeps the wordmark
+#: and tag (:func:`brand_html`).
 BRAND = {
     "LOGO_DATA_URL": "brand/olmoearth-logo.png",
     "AGENT_TAG_DATA_URL": "brand/agent-tag.png",
+    "OVERVIEW_DATA_URL": "brand/olmoearth-overview.jpg",
 }
+
+#: The media type of a brand image, by its file's suffix.
+_BRAND_TYPES = {".png": "image/png", ".jpg": "image/jpeg"}
 
 #: The example pictures beside the owner's kelp rule (r4-k K9): the folder,
 #: its two pictures (key in the view's ``examples`` -> file) and the note
@@ -151,7 +159,7 @@ VIEWS: dict[str, dict[str, Any]] = {
     },
     "start": {
         "file": "start.html",
-        "scripts": ("common.js",),
+        "scripts": ("common.js", "overview.js"),
         "title": "OlmoEarth Agent start",
         "resource_domains": BASE_DOMAINS,
     },
@@ -166,9 +174,10 @@ VIEWS: dict[str, dict[str, Any]] = {
 
 @cache
 def brand_data_url(key: str) -> str:
-    """A brand image (:data:`BRAND`) as a ``data:image/png;base64,...`` URL."""
-    data = base64.b64encode((VIEW_DIR / BRAND[key]).read_bytes()).decode("ascii")
-    return "data:image/png;base64," + data
+    """A brand image (:data:`BRAND`) as a ``data:<type>;base64,...`` URL."""
+    path = VIEW_DIR / BRAND[key]
+    data = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{_BRAND_TYPES[path.suffix]};base64," + data
 
 
 def brand_html() -> str:

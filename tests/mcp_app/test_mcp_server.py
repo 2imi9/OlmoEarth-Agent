@@ -439,7 +439,11 @@ async def test_signing_in_on_the_page_then_using_studio(
     context = await _call(srv, "olmoearth_load_context", {})
     assert context.isError is False
     assert _view(context)["projects"][0]["name"] == "Wetlands"
+    # r5-c S01: the panel's data names the key's source: a key of the page's.
+    assert _view(context)["source"] == "signed-in"
     told = await _call(srv, "olmoearth_sign_in", {})
+    # Without panels the note offers no panel and no Sign out (r5-c S01).
+    assert json.loads(_text(told))["note"] == "Signed in to OlmoEarth Studio."
     for result in (began, status, context, told):
         assert KEY not in result.model_dump_json(by_alias=True)
     assert all(
@@ -499,6 +503,55 @@ async def test_with_panels_the_sign_in_is_the_panel(
     began = await _call(srv, "olmoearth_app_begin_sign_in", {})
     assert began.structuredContent["url"] == told["sign_in_url"]
     assert began.structuredContent["sign_ins"] == 0
+    await app.aclose()
+
+
+@pytest.mark.asyncio
+async def test_with_panels_the_sign_in_note_offers_no_sign_out_for_the_apps_own_key(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """r5-c S01: with the key the app was installed with (OLMOEARTH_API_KEY)
+    the panel's account card draws no Sign out, so the sign-in tool's note
+    offers none and says who can remove that key; a key entered on the
+    sign-in page keeps "can sign out". The key appears nowhere."""
+    monkeypatch.setenv(auth.KEY_ENV, KEY)
+    monkeypatch.setattr(server, "client_renders_views", lambda _srv: True)
+    _studio_ok(httpx_mock)
+    app = _app()
+    srv = server.build_server(app)
+    result = await _call(srv, "olmoearth_sign_in", {})
+    told = json.loads(_text(result))
+    assert told["signed_in"] is True and told["source"] == "environment"
+    assert "can sign out" not in told["note"]
+    assert "installed" in told["note"] and "no Sign out" in told["note"]
+    assert KEY not in result.model_dump_json(by_alias=True)
+    # A key entered on the sign-in page (it comes before the environment's).
+    app.keys.sign_in(KEY, auth.Account("Ana", "Lab", 1), remember=False)
+    page_key = json.loads(_text(await _call(srv, "olmoearth_sign_in", {})))
+    assert page_key["source"] == "signed-in"
+    assert page_key["note"] == (
+        "Signed in to OlmoEarth Studio. The panel shows the account and can sign out."
+    )
+    await app.aclose()
+
+
+@pytest.mark.asyncio
+async def test_the_projects_panel_data_names_the_keys_source(
+    httpx_mock: HTTPXMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """r5-c S01: the projects tool's panel data carries the account and the
+    key's source, so the panel's first drawing draws no Sign out for the
+    app's own key (OLMOEARTH_API_KEY); the key appears nowhere."""
+    monkeypatch.setenv(auth.KEY_ENV, KEY)
+    _studio_ok(httpx_mock, times=2)  # the tool's read, then the account's check
+    app = _app()
+    srv = server.build_server(app)
+    context = await _call(srv, "olmoearth_load_context", {})
+    assert context.isError is False
+    view = _view(context)
+    assert view["source"] == "environment"
+    assert view["account"]["user_name"] == "Ana"
+    assert KEY not in context.model_dump_json(by_alias=True)
     await app.aclose()
 
 
@@ -1952,7 +2005,8 @@ async def test_the_check_card_offers_each_zone_and_the_model_gets_no_key(
     calls = _fake_tools(app, monkeypatch, studio)
     result = await app.check_map_tool({"result_id": f"  {R} "}, views=True)
     assert result.isError is False
-    assert calls == [(server.SCORES_TOOL, {"result_id": R})]
+    # r5-a K2: the card asks for a 0-to-1 score's stray values to be clipped.
+    assert calls == [(server.SCORES_TOOL, {"result_id": R, "clip_out_of_range": True})]
     view = _view(result)
     assert (view["tool"], view["ok"], view["needs_sign_in"]) == (
         server.CHECK_TOOL,
@@ -2176,7 +2230,8 @@ async def test_a_plan_with_no_sheet_or_a_final_error_is_not_drawn_again(
 ) -> None:
     """A plan answering available: false, and one refused with an error the
     same settings give again, are failed draws with no retry: a second press
-    runs no plan and shows the error whole."""
+    runs no plan and shows the error whole, without its exception's name
+    (r5-a K4: the card's copy; the draw record keeps the name)."""
     for plan_answer, error in (
         (
             {"ok": True, "result": {"available": False, "reason": "Needs the extra."}},
@@ -2184,7 +2239,7 @@ async def test_a_plan_with_no_sheet_or_a_final_error_is_not_drawn_again(
         ),
         (
             {"ok": False, "error": "ValueError: this sheet holds labels"},
-            "ValueError: this sheet holds labels",
+            "this sheet holds labels",
         ),
     ):
         app = _app()
@@ -2421,7 +2476,13 @@ async def test_a_class_map_is_pointed_to_the_plan_tool(
         _fake_tools(app, monkeypatch, other)
         out = await app.check_map_tool({"result_id": R}, views=True)
         assert out.isError is True and "note" not in _model(out)
+        # r5-a K4: the card's error has no exception name and no model hint;
+        # the model reads both as the tool gave them.
         assert (_view(out)["error"], _view(out)["hint"]) == (
+            str(other["error"]).removeprefix("ValueError: "),
+            None,
+        )
+        assert (_model(out)["error"], _model(out)["hint"]) == (
             other["error"],
             other["hint"],
         )
@@ -2665,7 +2726,7 @@ async def test_a_prediction_with_one_result_names_the_result_used(
     app = _app()
     calls = _fake_tools(app, monkeypatch, studio)
     result = await app.check_map_tool({"result_id": P}, views=True)
-    assert calls == [(server.SCORES_TOOL, {"result_id": P})]
+    assert calls == [(server.SCORES_TOOL, {"result_id": P, "clip_out_of_range": True})]
     assert _model(result)["resolved_ids"] == studio["result"]["resolved_ids"]
     assert _view(result)["resolved"] == (
         f"Result used: {R}, the one result of prediction {P}"

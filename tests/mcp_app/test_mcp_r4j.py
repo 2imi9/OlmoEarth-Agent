@@ -26,13 +26,17 @@ from olmoearth_agent.mcp_app import server, views
 #: One token of a JS concatenation: a single-quoted string, a plus, or a name.
 _TOKEN = re.compile(r"\s*(?:'((?:[^'\\]|\\.)*)'|(\+)|([A-Za-z_][A-Za-z0-9_.]*))")
 
-#: A part's line after a press that got no reply (r4-j J2).
+#: A part's line after a press that got no reply (r4-j J2), in the words of
+#: r5-b J09: it says where the answer will be, and still asks nothing.
 NO_ANSWER = (
-    "The press got no answer back for this part, so its squares may or may not "
-    "be picked."
+    "No answer came back, so this part's squares may or may not be picked. The "
+    "Check card opened again will say."
 )
-#: The gate's one line then (r4-i F6), the one instruction.
-RULE_LOST = "Ask Claude to open the Check card again to see the rule."
+#: The gate's one line then (r4-i F6), the instruction, in r5-b J09's words.
+RULE_LOST = (
+    "This card can pick no more squares. Ask Claude to open the Check card "
+    "again: it shows the rule and what was picked."
+)
 #: The press's toast then, unchanged.
 PRESS_NO_ANSWER = (
     "The press got no answer back, so this card cannot say what was picked: a "
@@ -96,13 +100,17 @@ def _in_order(text: str, *pieces: str) -> bool:
 def test_j2_a_parts_line_after_a_press_with_no_reply_asks_nothing() -> None:
     """r4-j J2: a part whose press got no answer says only that its squares
     may or may not be picked (marked), never to open the card again: the
-    gate's RULE_LOST, set on the same press, is the one instruction; the
-    press's toast PRESS_NO_ANSWER is word for word as before."""
+    gate's RULE_LOST, set on the same press, is the instruction; the
+    press's toast PRESS_NO_ANSWER is word for word as before. r5-b J09
+    rewords both lines: the part's says the card opened again will say (it
+    still asks nothing of Claude), the gate's what that card shows."""
     page = _read("check.html")
-    assert f"// WORDING: r4j J2\nconst NO_ANSWER = '{NO_ANSWER}';" in page
-    for ask in ("Ask Claude", "open the Check card", "again"):
+    assert "// WORDING: r5b J09\n// WORDING: r4j J2\nconst NO_ANSWER = " in page
+    assert _concat(_after(page, "const NO_ANSWER = ", ";\n")) == NO_ANSWER
+    for ask in ("Ask Claude", "open the Check card"):
         assert ask not in NO_ANSWER, ask
-    assert f"// WORDING: r4i F6\nconst RULE_LOST = '{RULE_LOST}';" in page
+    assert "// WORDING: r5b J09\n// WORDING: r4i F6\nconst RULE_LOST = " in page
+    assert _concat(_after(page, "const RULE_LOST = ", ";\n")) == RULE_LOST
     toast = _after(page, "const PRESS_NO_ANSWER = ", ";\n")
     assert _concat(toast) == PRESS_NO_ANSWER
     # Defined once, and drawn only on a part whose press got no answer.

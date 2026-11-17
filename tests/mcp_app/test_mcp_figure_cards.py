@@ -108,9 +108,10 @@ def _words(text: str) -> str:
     [
         (0, "The map was right on every square you checked."),
         (0.125, "The map is wrong on about 1 square in 8."),
-        (0.4, "The map is wrong on about 1 square in 3."),
+        # Round r5-b, J01: 0.4 and 0.3 are nearer "N in 10" than "1 in 3".
+        (0.4, "The map is wrong on about 4 squares in 10."),
         (0.5, "The map is wrong on about 1 square in 2."),
-        (0.3, "The map is wrong on about 1 square in 3."),
+        (0.3, "The map is wrong on about 3 squares in 10."),
         (0.0004, "The map is wrong on about 1 square in 2,500."),
         (0.6, "The map is wrong on about 6 squares in 10."),
         (0.96, "The map is wrong on more than 9 squares in 10."),
@@ -125,7 +126,8 @@ def _words(text: str) -> str:
     ],
 )
 def test_say_rate(rate: Any, said: str | None) -> None:
-    """One everyday sentence per rate; never one for no rate."""
+    """One everyday sentence per rate; never one for no rate. Up to 0.5 the
+    nearer of "1 in N" and "N in 10" (round r5-b, J01)."""
     assert server.say_rate(rate) == said
 
 
@@ -1459,9 +1461,12 @@ CT_SQUARES = {
 async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With Cannot tell the rate is a range: one headline with the rate's own
-    range and the 95% range, its two ends and how many were Cannot tell for
-    the card's bar and subtitle (R4); no words. Under the headline the rare
+    """With Cannot tell the rate is a range: one headline that says the part
+    is wrong on between its two ends, with how many were Cannot tell, then
+    the 95% range (round r5-b, J02: before, "Error rate of the West part:
+    10.0% to 15.0%, 95% range ...", two "x to y" pairs side by side); the
+    two ends and the count for the card's bar and subtitle (R4); no rate in
+    words (``say``). Under the headline the rare
     class by name only, never its counts (a Cannot tell square may hold it,
     F1), then the unseen line; nothing counted for Details. The grid of the
     squares checked stays (O2): the 2 Cannot tell squares marked, no class
@@ -1488,7 +1493,8 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     assert (card["say"], card["rate"], card["rate_text"]) == (None, None, None)
     assert card["rate_range_text"] == "10.0% to 15.0%"
     assert card["headline"] == (
-        "Error rate of the West part: 10.0% to 15.0%, 95% range 5.0% to 25.0%."
+        "The West part is wrong on between 10.0% and 15.0% of squares (2 Cannot "
+        "tell); 95% range 5.0% to 25.0%."
     )
     assert (card["rate_low"], card["rate_high"]) == (0.1, 0.15)
     assert card["n_unjudged"] == 2
@@ -1628,8 +1634,9 @@ def test_one_cannot_tell_point_and_no_cannot_tell() -> None:
 async def test_answers_changed_after_a_first_grading_are_said(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The graded mark says the answers changed: the card's line and the
-    model's note, with the first grading's time."""
+    """The graded mark says the answers changed: the card's line (round
+    r5-b, J07: "after its first result", "graded" being on no other face)
+    and the model's note, with the first grading's time."""
     sheet_path = _sheet_file(root)
     app = _app()
     grading = {"first_at": "2026-11-13T10:04:00Z", "changed": True, "gradings": 2}
@@ -1639,8 +1646,8 @@ async def test_answers_changed_after_a_first_grading_are_said(
     before = _view(result)["result"]["graded_before"]
     assert before["changed"] is True and before["gradings"] == 2
     assert before["line"] == (
-        "The answers on this sheet changed after it was first graded (13 Nov 2026, "
-        "10:04 UTC). Answers changed after seeing where the map disagrees make this "
+        "Answers on this sheet changed after its first result (13 Nov 2026, 10:04 "
+        "UTC). Answers changed after seeing where the map disagrees make this "
         "result invalid."
     )
     assert server.GRADED_AGAIN_NOTE.format(first_at="2026-11-13T10:04:00Z") in _texts(
@@ -2564,7 +2571,10 @@ async def test_an_unfinished_sheet_says_how_many_are_left_and_no_hint(
     other = {"ok": False, "error": "ValueError: something else", "hint": "Hint."}
     _stand_in(app, monkeypatch, root, other, ctx=_context(root))
     plain = _view(await app.call_agent_tool(ESTIMATE, args, views=True))
-    assert "unfinished" not in plain and plain["hint"] == "Hint."
+    # r5-a K4: any other failure reaches the card without its exception's
+    # name, and without the hint written for the model.
+    assert "unfinished" not in plain and plain["hint"] is None
+    assert plain["error"] == "something else"
     await app.aclose()
 
 
@@ -2767,15 +2777,16 @@ def test_the_fourth_line_names_the_classes_seen_too_rarely_or_not_at_all() -> No
 @pytest.mark.parametrize(
     ("rate", "headline"),
     [
-        (0.0, "The map was right on every square you checked: 0.0%, 95% range"),
+        (0.0, "The map was right on every square you checked: 0.0% wrong, 95% range"),
         (1.0, "The map was wrong on every square you checked: 100.0%, 95% range"),
         (0.95, "The map is wrong on more than 9 squares in 10: 95.0%, 95% range"),
     ],
 )
 def test_the_headline_at_zero_one_and_near_the_top(rate: float, headline: str) -> None:
     """R1: the headline carries the rate in words with the exact rate and the
-    95% range at 0, 1 and 0.95 too; inline labels (no sheet): the part is
-    not known, so the hedge goes with it."""
+    95% range at 0, 1 and 0.95 too (at 0 the rate is written "0.0% wrong",
+    round r5-b, J22: it follows "right on every square"); inline labels (no
+    sheet): the part is not known, so the hedge goes with it."""
     inner = _estimate()["result"]
     inner["valid_interval"] = {**inner["valid_interval"], "estimate": rate}
     got = server._estimate_result(inner, None, None)

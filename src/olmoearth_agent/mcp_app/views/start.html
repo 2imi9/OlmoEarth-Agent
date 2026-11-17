@@ -32,6 +32,12 @@
     .items.jobs { grid-template-columns: minmax(0, 1fr); }
     .jobs li > button, .jobs li > .line, .jobs li > .oe-type, .jobs li.jobs-head > h2 { grid-column: 1; }
   }
+  /* Under the overview figure (overview.js), its one small caption, the docs
+     link in the caption's line and sized as it (r5-a V1), underlined, so more
+     than its weight tells it from the caption's words (r5-c S13). */
+  .oe-overview-cap { margin-top: 4px; }
+  .oe-overview-cap button.link { font-size: 12px; line-height: 18px; padding: 0 4px;
+    text-decoration: underline; text-underline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -54,13 +60,20 @@ const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio ma
 
 /* The card's three plain lines under its title (OE.lead): what it is, what
    to do next (r4-h P1, D/D-start-1: a job below, or a question typed in the
-   chat), what it cannot tell. Nothing folds on this card. */
+   chat), what it cannot tell. Nothing folds on this card. Under them, the
+   overview figure (overviewBlock, r5-a V1); who is signed in is in the top
+   line (OE.setAccount, r5-a V2), not on the card. Signed in, the next line
+   no longer asks to sign in (START_NEXT_IN, r5-c S03). */
 // WORDING: r4h P1
 const START_LEAD = {
   what: 'Jobs this app can do with your Studio maps. The first checks how wrong a map is.',
-  next: 'Sign in if asked, then press a job below, or type what you want in the chat.',
-  cannot: 'Nothing about your map yet. No job here finds the error without your own answers.',
+  // WORDING: r5c S03
+  next: 'Sign in below first; then press a job, or type what you want in the chat.',
+  // WORDING: r5c S03
+  cannot: 'This card knows nothing about your map yet; only your own answers can show how wrong it is.',
 };
+// WORDING: r5c S03
+const START_NEXT_IN = 'Press a job below, or type what you want in the chat.';
 
 /* Each drawing of the card takes the next number; the status read on mount,
    when it answers after a later drawing, is dropped. */
@@ -108,17 +121,42 @@ function jobRows(app, jobs, on) {
   ];
 }
 
+/* The overview figure (OE.overview.figure, a role=img element) and, under
+   it and outside it, its one small caption with the docs link after the
+   words (OE.docsLink: a text button, and the slot that shows the address
+   when the host does not open it). The same signed in and signed out. */
+function overviewBlock(app) {
+  const [docs, address] = OE.docsLink(app);
+  return OE.el('div', { class: 'oe-overview-wrap' },
+    OE.overview.figure(),
+    OE.el('div', { class: 'small muted oe-overview-cap' }, OE.overview.CAPTION, ' ', docs, address));
+}
+
+/* After Sign out (the top line's button, the user's own press): the card is
+   drawn again from the sign-out's result. The button pressed is gone, so
+   the focus goes to the card's one contained button: the sign-in's; or,
+   when the key the app was installed with is still in effect (the result
+   says signed in, and the top line then draws no Sign out, r5-c S01), the
+   main job's. Only while this panel's frame has the focus (OE.focusIfHere). */
+function signedOut(app, data, result) {
+  render(app, { ...data, status: result });
+  OE.focusIfHere(root.querySelector('button.primary'));
+}
+
 function render(app, data) {
   generation += 1;
   const status = data.status || {};
   const on = signedIn(status);
   const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  // The account in the top line, set at every drawing, signed in or out, so
+  // a name never outlasts its sign-in; with the key the app was installed
+  // with (its source), no Sign out (r5-c S01).
+  OE.setAccount(app, { signedIn: on, account: status.account, source: status.source, onSignOut: (s) => signedOut(app, data, s) });
   root.replaceChildren(OE.el('h1', {}, 'What this app can do'));
-  const lead = OE.lead(START_LEAD);
+  const lead = OE.lead(on ? { ...START_LEAD, next: START_NEXT_IN } : START_LEAD);
   if (lead) root.append(lead);
-  if (on) {
-    root.append(OE.accountBar(app, status.account, { onSignOut: (s) => render(app, { ...data, status: s }) }));
-  } else {
+  root.append(overviewBlock(app));
+  if (!on) {
     if (status.key_problem) root.append(OE.el('div', { class: 'card error small' }, status.key_problem));
     root.append(OE.signInPanel(app, {
       acceptCurrent: true,  // a sign-in made in another panel counts here
@@ -139,15 +177,21 @@ function render(app, data) {
     on ? null : OE.el('div', { class: 'small faint' }, 'Sign in to start a job.')));
 }
 
-/* Once, when the card opens: whether the user signed in or out since the tool
-   ran (a card reopened from the history). It moves no focus; when it fails, the
-   card stays as drawn. */
+/* What the top line draws for a status (OE.setAccount): null signed out;
+   signed in, its words (whose account, or the app's own key, which has no
+   Sign out: r5-c S01) and the account its spoken name gives. */
+const drawnAs = (s) => (signedIn(s)
+  ? OE.accountShort(s.account, s.source) + '|' + OE.accountShort(s.account) : null);
+
+/* Once, when the card opens: whether the user signed in or out, or another key
+   or account is now in effect, since the tool ran (a card reopened from the
+   history). It moves no focus; when it fails, the card stays as drawn. */
 async function recheck(app, data) {
   const mine = generation;
   let now = null;
   try { now = await OE.call(app, 'olmoearth_app_status'); } catch (err) { return; }
   if (mine !== generation || !now) return;
-  if (signedIn(now) !== signedIn(data.status)) render(app, { ...data, status: now });
+  if (drawnAs(now) !== drawnAs(data.status)) render(app, { ...data, status: now });
 }
 
 await OE.start('olmoearth-start', {

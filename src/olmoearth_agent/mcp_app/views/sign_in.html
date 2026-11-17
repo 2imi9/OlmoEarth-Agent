@@ -19,10 +19,15 @@ import { App } from "@EXT_APPS_URL@";
 
 const root = document.getElementById('root');
 
+/* Where the key in effect comes from, the account card's "Key" row (r5-c
+   S01). A key entered on the sign-in page reads so whether or not it was
+   also remembered (the status does not say), so not "this session only". */
 const SOURCE = {
-  environment: 'OLMOEARTH_API_KEY in the server\'s configuration',
+  // WORDING: r5c S01
+  environment: 'The app\'s own key, set when it was installed (OLMOEARTH_API_KEY)',
   'key-file': 'The saved key file',
-  'signed-in': 'Signed in for this session',
+  // WORDING: r5c S01
+  'signed-in': 'Entered on the sign-in page',
 };
 
 /* The account card: who the key signs in as, as Studio's key and value rows.
@@ -39,8 +44,9 @@ function accountCard(app, status, { signedInNow = false } = {}) {
     slot.replaceChildren(OE.signInPanel(app, { primary: !signedInNow, onDone: (s) => render(app, s, { signedInNow: true }) }));
     another.setAttribute('aria-expanded', 'true');
   });
-  const actions = OE.el('div', { class: 'row' },
-    OE.signOutButton(app, { cls: 'small', onSignOut: (s) => render(app, s) }));
+  // No Sign out for the key the app was installed with: its press cannot remove it (r5-c S01).
+  const actions = OE.el('div', { class: 'row' }, status.source === 'environment' ? null
+    : OE.signOutButton(app, { cls: 'small', onSignOut: (s) => render(app, s) }));
   if (signedInNow) {
     actions.append(OE.el('button', {
       class: 'primary', onclick: () => OE.say(app, 'I have signed in to OlmoEarth Studio. Continue.'),
@@ -53,7 +59,8 @@ function accountCard(app, status, { signedInNow = false } = {}) {
         ['User', account.user_name || null],
         ['Organization', account.organization || null],
         ['Projects', projects],
-        ['Key source', SOURCE[status.source] || null],
+        // WORDING: r5c S01
+        ['Key', SOURCE[status.source] || null],
       ]),
       OE.el('div', { class: 'spread' }, another, actions)),
     slot,

@@ -10,8 +10,10 @@
   .notes p { margin: 0 0 4px; }
   .ask { margin: 0; font-weight: 600; }
   /* A part's counts: one button each, the count in bold and its words (no
-     drawing: r4-h C1); they wrap on a narrow panel (two a row under 480 px),
-     so the card never scrolls sideways. */
+     drawing: r4-h C1); they wrap on a narrow panel, so the card never scrolls
+     sideways. Under 480 px each count is a row of its own, the count at the
+     left and its words at the right (r5-b J29 c: three counts broke two and
+     one there, the third stretched). */
   .pick-group { display: flex; flex-wrap: wrap; gap: 8px; max-width: 100%; }
   .pick-group button.pick { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
     min-width: 132px; padding: 8px 12px; text-align: left; font-weight: 400; }
@@ -21,11 +23,16 @@
   .pick-count strong { font-size: 16px; font-weight: 700; }
   .pick-words { color: var(--text-2); }
   @media (max-width: 480px) {
-    .pick-group button.pick { flex: 1 1 calc(50% - 8px); min-width: 0; }
+    .pick-group button.pick { flex: 1 1 100%; min-width: 0; flex-direction: row; align-items: baseline;
+      justify-content: space-between; }
   }
   .gate input[type=text] { width: 100%; }
-  /* The box's label beside the owner's rule, in body type (r4-h C5). */
+  /* The box's label, in body type: beside the owner's rule (r4-h C5), and on
+     the gate that asks for a rule (r5-b J18). */
   .gate label.own-rule { display: block; margin-bottom: 4px; }
+  /* The small line under the box (r5-b J18): the gate's example, or what an
+     empty box does. */
+  .gate .under-box { margin-top: 4px; }
   .oe-more > * + * { margin-top: 8px; }
   .oe-more p { margin: 0; }
   .fold-part + .fold-part { border-top: 1px solid var(--divider); padding-top: 8px; }
@@ -52,24 +59,34 @@ import { App } from "@EXT_APPS_URL@";
    the title and the map's name and period, four small step pictures
    (OE.fig.steps: a schematic, never this map's data; step 1 names the
    square's size when every part has the same), the labelling rule (the
-   gate for a map with no rule of the owner's, its box with an example as
-   its placeholder only; for a map of presence and absence the owner's kelp
+   gate for a map with no rule of the owner's, its box with an example in
+   a small line under it; for a map of presence and absence the owner's kelp
    rule and its scope, with a box for the map's own rule while no part of
    it is drawn: the owner's ruling of 13 Nov 2026, option A; a rule typed
    for this map, read only; beside the owner's rule, when the server sends
    them, two example pictures, captioned "Present under this rule" and
    "Absent under this rule", whose place line is in Details: r4-k K9),
-   "How many squares do you want to check?" with
+   "How many squares do you want to check?" (once no part offers a number:
+   "Your squares", or that every square is answered: r5-b J17) and, for a
+   map in several parts, the line that says so, with
    one group of counts per part under its name and size (each count with
-   its words, no drawing), the parts figure for a map in several parts
+   its words by its place among the part's counts, no drawing), the parts
+   figure for a map in several parts
    (OE.fig.parts: dashed while not picked, a solid outline once picked,
-   each labelled so), the line on what the press fixes and the press.
+   each labelled so, a picked part with how far it is answered), the line on
+   what the press fixes, the press, and under it one line that says why it
+   is off or which parts it leaves out (r5-b J08).
    Everything else (the planner's sentences and rate notes, each part's
    size and file and zone, the square's size, design and seed, the
-   pictures' limit, must_state) is in one closed Details fold. A class map
+   pictures' limit, must_state) is in one closed Details fold. A map that is
+   one score from 0 to 1 (r5-a K3) has one read-only line of the server's
+   right over the gate, its cut (the view's cut; the same line is among the
+   notes in Details), and its Details say per part how many pixels outside
+   0 to 1 were set to the nearest end, when any were (K2). A class map
    without scores gets the refusal's face: two lines, a button that sends
    Claude the check on points (OE.JOB_TEXT.points) and the tool's sentence
-   in Details.
+   in Details. A map of numbers that is not a score from 0 to 1 gets the
+   server's two plain lines and nothing else (r5-b X1).
 
    Nothing is picked for the user (a second press on a count unpicks it). One
    press (olmoearth_app_check_draw) picks the parts' squares, each once, with
@@ -78,7 +95,8 @@ import { App } from "@EXT_APPS_URL@";
    one (an empty box keeps the owner's rule); the rule the card shows after
    a press is the one the server's reply gives (r4-h Q4, Q11), and after a
    press with no reply none, only the line that sends the user to Claude to
-   see it (RULE_LOST), and the press is held until then (r4-i F6); then the
+   see it (RULE_LOST), and the card picks nothing more: no part offers a
+   number after it (r4-i F6, r5-b J09); then the
    first part
    picked opens in the label editor in place of the press, and the press is
    not shown while an editor is open (the editor has its own contained
@@ -88,7 +106,7 @@ import { App } from "@EXT_APPS_URL@";
 
    The card computes nothing and shows no rate, interval, estimate, suggested
    label, sort or figure of the map: only counts, the server's sentences,
-   the planned widths in words and each drawn sheet's progress
+   each count's place among its part's counts in words and each drawn sheet's progress
    (olmoearth_app_sheet_progress, counts only). Nothing takes the focus on load; after a press the focus
    goes on only from the button pressed (OE.focusIfHere). The card tells
    Claude silently (OE.tellClaude) the result's id and, by zone name, which
@@ -110,12 +128,14 @@ import { App } from "@EXT_APPS_URL@";
    part's plan runs on the server), so it waits up to PRESS_WAIT_MS; a call
    that gets no answer back (the host's timeout, a dropped bridge) never
    says nothing was picked, since the server may have drawn: the card sends
-   the user to Claude to open it again, and holds the press meanwhile.
+   the user to Claude to open it again, and leaves every other part for
+   that card too (r5-b J09).
    While a press is answered no sheet opens; opening another part's sheet
    first saves the one open here, and keeps it open when that save fails. An
    editor that stopped saving (its sheet changed under the panel) gives way
-   at once, and one toast says how many squares of which sheet were not
-   saved; when none were, its last toast about that change is cleared
+   at once, and its part's own red line, and one toast, say how many answers
+   for which part were not saved and what to do (r5-b J10); when none were,
+   its last toast about that change is cleared
    (r4-l L3), so no old line stays under the other sheet. */
 
 const root = document.getElementById('root');
@@ -138,28 +158,60 @@ const STEPS = [
 const STEP_SIZED = (metres) => '1. The map is cut into squares about ' + metres + ' m a side.';
 // WORDING: squares
 const ASK = 'How many squares do you want to check?';
-/* A count's words by its planned width (check.CHECK_WIDTHS), with no
-   drawing (r4-h C1: the bar read as a slider). */
-// WORDING: r4h C1
-const WIDTH_WORDS = [[0.20, 'Quick. A wide range.'], [0.10, 'Longer. A narrower range.'],
-  [0.05, 'A lot of work. A narrow range.']];
+/* The same heading once no part offers a number (r5-b J17: it still asked
+   with nothing to choose): every picked part answered whole and no sheet
+   open here, or, any other way, the squares picked. */
+// WORDING: r5b J17
+const ALL_ANSWERED = 'Every square is answered. Open a sheet, then press Estimate the error rate.';
+// WORDING: r5b J17
+const YOUR_SQUARES = 'Your squares';
+/* A count's words by its place among the part's offers, which the server
+   sends in ascending order (check.offers), with no drawing (r4-h C1: the bar
+   read as a slider). r5-b J03: the words followed the planned width, so a
+   part's one number could read "Longer" and 1,100 squares "Quick"; i is the
+   count's place (0-based) among the part's n offers. */
+// WORDING: r5b J03
+const COUNT_WORDS = (i, n) => (n === 1 ? 'The one number planned for this part.'
+  : i === 0 ? 'Least work. The widest range.'
+    : i === n - 1 ? 'Most work. The narrowest range.' : 'More work. A narrower range.');
 /* The line over the press (r4-h C2: B/check-press-fixes and C/check-7
-   FINALs): what the press fixes, what stopping means, what a random pick
-   misses. */
+   FINALs): what the press fixes and what stopping means. What a random pick
+   misses is said in Details only (RARE): r5-b J18 took that third sentence
+   off the face. */
+// WORDING: r5b J18
 // WORDING: r4h C2
 const CANNOT = 'Your rule and number are fixed once you press. You can stop and come back later; there is no result'
-  + ' until every square is done. A random pick lands mostly on common classes; a rare class may get no square.';
+  + ' until every square is done.';
 // WORDING: squares
 const PRESS = 'Pick the squares';
+/* Under the press, for a user who comes back (r5-a L4): a card drawn before
+   a part was picked still shows that part's counts, and a second press picks
+   nothing new (the server opens the squares picked before). */
+// WORDING: r5a L4
+const PICKED_BEFORE = 'Picked before? Press again: the same squares open.';
 // WORDING: squares
 const PARTS_LINE = (n) => 'This map is saved in ' + n + ' parts. Each part gets its own check.';
+/* Under an open editor: the parts not checked yet, one by its name (r5-b
+   J17: "The other part" named none), several by their number. */
+// WORDING: r5b J17
 // WORDING: squares
-const OTHER_OPEN = (k) => (k === 1 ? 'The other part is not checked yet.' : k + ' other parts are not checked yet.');
+const OTHER_OPEN = (names) => (names.length === 1 ? names[0] + ' is not checked yet.'
+  : names.length + ' other parts are not checked yet.');
 // WORDING: squares
 const PICKED = (n, day) => OE.counted(n, 'square') + ' picked on ' + day + '.';
+/* A press on a part picked before (in another window): what stays, and that
+   the number chosen on this card is not used (r5-b J17). */
+// WORDING: r5b J17
 // WORDING: squares
-const REPEATED = (n, day) => 'This part\'s squares were already picked on ' + day + ': ' + OE.counted(n, 'square')
-  + '. They are not picked again.';
+const REPEATED = (n, day) => 'Already picked on ' + day + ': ' + OE.counted(n, 'square')
+  + '. That pick stays; the number chosen now is not used.';
+/* A part's own red line, and the toast, once its editor gave way with
+   answers it could not save (r5-b J10): the part by its name, how many
+   answers, and the next step. The sheet's file name stays in Details. */
+// WORDING: r5b J10
+const NOT_SAVED_PART = (k, name) => OE.counted(k, 'answer') + ' for ' + name + (k === 1 ? ' was' : ' were')
+  + ' not saved: its sheet was changed somewhere else. Open its sheet again and answer '
+  + (k === 1 ? 'that square' : 'those squares') + ' again.';
 // WORDING: squares
 const SQUARES_GROUP = (name) => 'Squares to check' + (name ? ' in ' + name : '');
 /* A part's heading with its size (r4-h A/F11): "West part (1,234 squares)",
@@ -170,14 +222,25 @@ const PART_HEAD = (name, n) => name + (Number.isInteger(n) && n >= 0
 /* A part with no name of the server's (V6: never the zone's name on a face). */
 // WORDING: r4h V6
 const PART_N = (i) => 'Part ' + i;
-/* The parts figure's labels on this card (r4-h A/F08). */
+/* The parts figure's labels on this card (r4-h A/F08). r5-b J17: a picked
+   part says how far it is answered (k of n, then "all answered"; "picked,
+   not checked yet" only while its sheet's counts are not read), and a part
+   this card cannot pick says so, never "not picked yet". */
 // WORDING: r4h A/F08
 const PART_OPEN = (name) => name + ': not picked yet';
 // WORDING: r4h A/F08
 const PART_PICKED = (name) => name + ': picked, not checked yet';
+// WORDING: r5b J17
+const PART_ANSWERED = (name, k, n) => name + ': ' + k.toLocaleString('en-US') + ' of ' + n.toLocaleString('en-US')
+  + ' answered';
+// WORDING: r5b J17
+const PART_DONE = (name) => name + ': all answered';
+// WORDING: r5b J17
+const PART_CANNOT = (name) => name + ': cannot be picked here';
 // The labelling-rule gate (a map with no rule of the owner's): no red line
-// (r4-h C4, C/check-1 FINAL), the ask, the box's label and, as its
-// placeholder only (never sent), an example.
+// (r4-h C4, C/check-1 FINAL), the ask, the box's label in body type and,
+// in a small line under the box (never sent), an example. r5-b J18: the
+// example was the box's grey placeholder, which went at the first key.
 // WORDING: r4h C4
 const RULE_ASK = 'First write, in one sentence, how you will decide what class a square is. It is saved and shown'
   + ' with the result.';
@@ -192,23 +255,46 @@ const RULE_PICTURES = 'The pictures are 10 m satellite images. They may not show
 const RULE_SHOWN = (text) => 'Labelling rule: “' + text + '”';
 // WORDING: r4p2
 const RULE_FIRST = 'Write the labelling rule first, in one sentence of at least 10 characters.';
-// The gate's one line after a press that got no reply (ruleLost), and the
-// toast of a press then: the card cannot say the rule, so it holds the press
-// (r4-i F6).
+// Under the press, within the most parts one press picks (r5-b J08: nothing
+// beside a grey press said why, and nothing said that a part left without a
+// number is skipped): the rule and a number are missing, or a number is; and,
+// on a map in parts, which parts that still offer numbers this press leaves
+// out, by name (up to three; more by their number).
+// WORDING: r5b J08
+const RULE_AND_NUMBER = 'Write your rule and choose a number of squares first.';
+// WORDING: r5b J08
+const CHOOSE = 'Choose a number of squares above.';
+// WORDING: r5b J08
+const LEFT_OUT = (names) => (names.length > 3 ? names.length + ' parts have'
+  : names.length === 1 ? names[0] + ' has'
+    : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + ' have')
+  + ' no number chosen: this press leaves ' + (names.length === 1 ? 'it' : 'them') + ' out.';
+// 1 to 9 characters in the optional box beside the kelp rule (the line under
+// the press, and the toast of a press then): RULE_FIRST would ask for a rule
+// the card already has.
+// WORDING: r5b J08
+const BOX_SHORT = 'Write at least 10 characters in the box, or empty it to use the kelp rule.';
+// The gate's one line after a press that got no reply (ruleLost): the card
+// cannot say the rule, so it picks nothing more (r4-i F6; r5-b J09: the line
+// says so, and what the card opened again shows; no part offers a number
+// then, so no press is left to hold).
+// WORDING: r5b J09
 // WORDING: r4i F6
-const RULE_LOST = 'Ask Claude to open the Check card again to see the rule.';
+const RULE_LOST = 'This card can pick no more squares. Ask Claude to open the Check card again: it shows the rule and'
+  + ' what was picked.';
 // The box beside the owner's kelp rule (a map of presence and absence, no part
 // drawn yet: the owner's ruling of 13 Nov 2026, option A), its label in body
-// type, saying what an empty box does (r4-h C5, B/check-own-rule-box FINAL),
-// what to write (what counts as Present and as Absent, in the map maker's
-// meaning if known) and that each square is judged by it: a rule unlike the
-// map's own counts the difference in definitions as map errors (r4-m M5,
-// reader test 3's B/F1). The box shows no grey hint here (fillGate clears the
-// placeholder outside the gate's ask), so no hint changes.
+// type, saying what to write (the map maker's meaning of Present and Absent:
+// a rule unlike the map's own counts the difference in definitions as map
+// errors, r4-m M5, reader test 3's B/F1) and that it is optional; what an
+// empty box does (r4-h C5, B/check-own-rule-box FINAL) is a small line under
+// the box. r5-b J18: the label held 37 words. The box shows no grey hint.
+// WORDING: r5b J18
 // WORDING: r4m M5
 // WORDING: r4h C5
-const RULE_OWN = 'Not a kelp map? Write here what counts as Present and as Absent, in the map maker\'s meaning if you'
-  + ' know it; each square is judged by it. Left empty, the kelp rule above is used.';
+const RULE_OWN = 'Not a kelp map? Write the map maker\'s meaning of Present and Absent (optional).';
+// WORDING: r5b J18
+const RULE_EMPTY = 'Left empty, the kelp rule above is used.';
 // The two example pictures beside the owner's rule (r4-k K9), the label
 // sheet's captions word for word, and their place line, in Details.
 // WORDING: r4k K9
@@ -255,19 +341,26 @@ const SQUARE_SIZE = (square) => {
     ? ', about ' + Math.round(square.metres).toLocaleString('en-US') + ' m a side' : '';
   return 'A square is ' + square.pixels + ' x ' + square.pixels + ' map pixels' + metres + '.';
 };
-// The parts' states and the press's answers.
+// The parts' states and the press's answers. r5-b J08: a part left without a
+// number says first that it is not picked (LATER, in body colour). r5-b J25:
+// each line that sent the user to Claude with nothing to say now says what
+// to tell Claude, and "count" on a face is "number".
+// WORDING: r5b J08
 // WORDING: r4h C3
-const LATER = 'To pick this part\'s squares, ask Claude to open the Check card again.';
+const LATER = 'Not picked yet. To pick this part\'s squares, ask Claude to open the Check card again.';
+// WORDING: r5b J25
 // WORDING: squares
-const NO_COUNT = 'No count is planned for this part; ask Claude to plan it with a count of your own.';
+const NO_COUNT = 'No number is planned for this part. Ask Claude to plan it with a number of your own.';
+// WORDING: r5b J25
 // WORDING: squares
 const CHANGED = 'Studio\'s files for this part changed after its squares were picked, so they are not picked again'
-  + ' here; ask Claude about it.';
+  + ' here. Tell Claude that this part\'s files changed.';
 // No "window" on a face (the owner's ruling 6): the pick runs from another press.
 // WORDING: squares
 const BUSY = 'This part\'s squares are being picked right now.';
+// WORDING: r5b J25
 // WORDING: squares
-const FINAL = 'This part\'s squares are not picked again here; ask Claude about it.';
+const FINAL = 'This part cannot be picked again here. Tell Claude that the pick failed for this part.';
 /* A class map without top-k scores (r4-h C6, E/check-2 and E/check-1
    FINALs): it can be checked, on points; the button sends Claude the check
    on points (OE.JOB_TEXT.points); the tool's sentence is in Details. "points"
@@ -285,10 +378,13 @@ const CLASS_MAP = [
 // WORDING: r4h C6
 const ON_POINTS = 'Check this map on points';
 const OPEN_HERE = 'Its sheet is open below.';
-// A part's line after a press with no reply; the one instruction to reopen
-// the card is the gate's RULE_LOST (r4-j J2).
+// A part's line after a press with no reply; the instruction to reopen the
+// card is the gate's line (r4-j J2). r5-b J09: it says where the answer will
+// be, the card opened again.
+// WORDING: r5b J09
 // WORDING: r4j J2
-const NO_ANSWER = 'The press got no answer back for this part, so its squares may or may not be picked.';
+const NO_ANSWER = 'No answer came back, so this part\'s squares may or may not be picked. The Check card opened again'
+  + ' will say.';
 // WORDING: squares
 const PRESS_NO_ANSWER = 'The press got no answer back, so this card cannot say what was picked: a part\'s squares'
   + ' may be picked, or still being picked. Ask Claude to open the Check card again; it shows each part.';
@@ -301,10 +397,12 @@ const NOT_PICKED = 'Not picked: ';
 const NONE_PICKED = 'No square was picked: ';
 // WORDING: squares
 const PICK_FAILED = 'The pick failed: ';
+// WORDING: r5b J25
 // WORDING: squares
-const RETRY = (n) => 'Press ' + PRESS + ' to try again with the same count: ' + OE.counted(n, 'square') + '.';
+const RETRY = (n) => 'Press ' + PRESS + ' to try again with the same number: ' + OE.counted(n, 'square') + '.';
+// WORDING: r5b J25
 // WORDING: squares
-const NOT_READ = 'This part is not read as a map: ';
+const NOT_READ = 'This part cannot be checked: ';
 // WORDING: squares
 const NO_PART = 'No part of this map can be checked here.';
 
@@ -355,16 +453,11 @@ const firstStep = (models) => {
     ? STEP_SIZED(metres[0].toLocaleString('en-US')) : STEPS[0];
 };
 
-/* The words for a count's planned width (check.CHECK_WIDTHS), or null. */
-const widthWords = (width) => {
-  const w = Number(width);
-  const hit = WIDTH_WORDS.find(([at]) => Math.abs(at - w) < 1e-6);
-  return hit ? hit[1] : null;
-};
+/* Whether a drawn sheet's counts are read: how many squares it has, and how many are answered. */
+const countsRead = (d) => Boolean(d) && Number.isInteger(d.n_rows) && Number.isInteger(d.n_labelled) && d.n_rows > 0;
 
 /* Whether a drawn sheet's counts say every window is labelled (unknown: no). */
-const complete = (d) => Boolean(d) && Number.isInteger(d.n_rows) && Number.isInteger(d.n_labelled)
-  && d.n_rows > 0 && d.n_labelled >= d.n_rows;
+const complete = (d) => countsRead(d) && d.n_labelled >= d.n_rows;
 
 /* One of the shared figures (figures.js, OE.fig), or null when this page has
    none of that name or it fails: the card's words stand without it. */
@@ -400,6 +493,8 @@ function zoneModel(z, index) {
     windows: z.n_valid, square: z.square && typeof z.square === 'object' ? z.square : null,
     offer, pick: null, kind: 'refused', draw: null, error: null, budget: null, failedAt: null,
     refused: z.refused, refusedAt: z.refused_at, changed: Boolean(z.raster_changed), changedText: null,
+    // The server's line on pixels set into 0 to 1 (a score map, r5-a K2), for Details; else null.
+    clipped: typeof z.clipped === 'string' && z.clipped ? z.clipped : null,
     line: null, fresh: false, repeat: false, sheetError: null, opening: false, reads: 0,
     body: null, heading: null, openButton: null, progressEl: null, group: null,
   };
@@ -482,10 +577,15 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   const label = (m) => m.part || PART_N(m.index + 1);
   const cardNotes = new Set(must.filter((s) => typeof s === 'string'));
   const resolved = typeof data.resolved === 'string' && data.resolved ? data.resolved : null;
+  /* A score map's cut (r5-a K3): the server's one line (server.CHECK_CUT_LINE),
+     read only, right over the gate whatever the gate shows; null for any other map. */
+  // WORDING: r5a K3 (the server's words, shown whole)
+  const cut = typeof data.cut === 'string' && data.cut ? data.cut : null;
   /* The map's rule as the server gives it: the view's, then each press
      reply's (r4-h Q4, Q11), never worked out here. ruleLost: a press got no
      reply, so the card cannot say the rule (no rule and no box shown, one
-     line, RULE_LOST, in their place, and the press held: r4-i F6). */
+     line, RULE_LOST, in their place: r4-i F6) and picks nothing more (r5-b
+     J09: no part offers a number then, so no press shows). */
   let rule = ruleModel(data.rule);
   let ruleLost = false;
   /* The example pictures (r4-k K9): shown, and their place line in Details,
@@ -506,24 +606,35 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     class: 'primary', 'aria-disabled': 'true', 'aria-describedby': 'oe-check-limit oe-check-cannot',
     onclick: () => drawPicked(),
   }, PRESS);
-  // Under the press, only past the most parts one press draws (limitWords).
+  /* Under the press: past the most parts one press draws, how many to unpick
+     or which failed picks wait (limitWords, small); within it, why the press
+     is off or which parts it leaves out (pressWhy, in body type: r5-b J08).
+     The press is described by it (aria-describedby). */
   const limitLine = OE.el('div', { class: 'small error', id: 'oe-check-limit', hidden: true });
+  /* Under the press, for a user who comes back (r5-a L4). Hidden while the
+     card shows a part as picked, or as pressed with no reply (updatePress):
+     the press then picks another part's squares, or is held. */
+  const againLine = OE.el('div', { class: 'small muted', id: 'oe-check-again' }, PICKED_BEFORE);
   const pressArea = OE.el('div', { class: 'stack' },
     OE.el('div', { id: 'oe-check-cannot' }, CANNOT),
     OE.el('div', { class: 'row' }, press),
+    againLine,
     limitLine);
   // Holds the press, or the editor of the zone opened here.
   const action = OE.el('div', { class: 'stack' });
   // Under an open editor: another part not checked yet.
   const otherLine = OE.el('div', { class: 'small', hidden: true });
+  // The heading over the parts: the question, or what the card holds once no part offers a number (fillAsk).
+  const ask = OE.el('p', { class: 'ask' }, ASK);
   // The parts figure, drawn again as parts are picked and checked (fillParts).
   const partsSlot = OE.el('div', {});
   // The gate: the rule's input, a typed rule read only, or the owner's rule
   // (with the box for the map's own while no part is drawn).
   const gate = OE.el('div', { class: 'gate stack', hidden: true });
+  // The box: described by the small line under it (r5-b J18), which is in the page whenever the box is.
   const ruleInput = OE.el('input', {
     type: 'text', id: 'oe-rule', maxlength: String(RULE_MAX), autocomplete: 'off', spellcheck: 'true',
-    oninput: () => updatePress(),
+    'aria-describedby': 'oe-rule-note', oninput: () => updatePress(),
   });
   const foldBody = OE.el('div', { class: 'stack' });
   const drawable = () => models.filter((m) => m.kind === 'pick' || m.kind === 'retry');
@@ -624,16 +735,18 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   }
 
   /* The gate: while no rule is set and a part can still be picked, the
-     rule's ask and input (the press stays off under RULE_MIN characters),
-     an example as the input's placeholder only (never sent: ruleText reads
-     the value); a rule a part of this map pinned, read only with its scope;
-     the owner's rule on the face with its scope, and beside it, while no
-     part of the map is drawn and a part can still be picked, the box for
-     the map's own rule under a label in body type (empty: the owner's rule
-     is used; 1 to RULE_MIN - 1 characters hold the press); once a part is
+     rule's ask and input (the press stays off under RULE_MIN characters)
+     under a label in body type, and under the input a small line with an
+     example (r5-b J18; never sent: ruleText reads the value, and the input
+     has no grey hint); a rule a part of this map pinned, read only with its
+     scope; the owner's rule on the face with its scope, and beside it, while
+     no part of the map is drawn and a part can still be picked, the box for
+     the map's own rule under a label in body type, and under it a small line
+     on what an empty box does (the owner's rule is used; 1 to RULE_MIN - 1
+     characters hold the press); once a part is
      drawn, the owner's rule read only; after a press with no reply (mode
-     'lost'), one line, RULE_LOST, and no rule and no box (ruleLost: the
-     press is held until a reply or a reopened card gives the rule; r4-i F6).
+     'lost'), one line, RULE_LOST, and no rule and no box (ruleLost: nothing
+     more is picked until a reopened card gives the rule; r4-i F6, r5-b J09).
      Under the owner's rule (read only, or with the box), the two example
      pictures when the server sent them (r4-k K9), before the box.
      Rules are text, never markup. Drawn again only when its mode changes
@@ -655,14 +768,15 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       rule.scope ? OE.el('div', { class: 'small muted' }, rule.scope) : null,
       examplesShown() ? examplesBlock(examples) : null,
     ].filter(Boolean);
-    if (mode === 'ask') ruleInput.setAttribute('placeholder', RULE_HINT); else ruleInput.removeAttribute('placeholder');
+    // The box under its label in body type, and under the box a small line
+    // that describes it (r5-b J18): the gate's example, or what an empty box does.
+    const boxed = (words, under) => OE.el('div', {},
+      OE.el('label', { class: 'own-rule', for: 'oe-rule' }, words), ruleInput,
+      OE.el('div', { class: 'small muted under-box', id: 'oe-rule-note' }, under));
     if (mode === 'ask') {
-      gate.replaceChildren(
-        OE.el('div', {}, RULE_ASK),
-        OE.el('div', {}, OE.el('label', { class: 'field-label', for: 'oe-rule' }, RULE_LABEL), ruleInput));
+      gate.replaceChildren(OE.el('div', {}, RULE_ASK), boxed(RULE_LABEL, RULE_HINT));
     } else if (mode === 'replace') {
-      gate.replaceChildren(...ruleLines(),
-        OE.el('div', {}, OE.el('label', { class: 'own-rule', for: 'oe-rule' }, RULE_OWN), ruleInput));
+      gate.replaceChildren(...ruleLines(), boxed(RULE_OWN, RULE_EMPTY));
     } else if (mode === 'shown' || mode === 'owner') {
       gate.replaceChildren(...ruleLines());
     } else if (mode === 'lost') {
@@ -673,35 +787,59 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     gate.hidden = mode === 'none';
   }
 
-  /* The press: whether a count is picked, whether it shows, and, past the
-     most parts one press draws, the line under it (limitWords): off while
-     picks are past the room or the gate's rule is too short, on when only
-     failed picks wait. */
+  /* Under the press, within the most parts one press draws (r5-b J08): why
+     the press is off (the gate asks for a rule and neither it nor a number
+     is there; the box beside the kelp rule holds too few characters, which
+     BOX_SHORT says, or the gate's rule does; no number is chosen),
+     or, on a map in parts, which parts that still offer numbers this press
+     leaves out (LEFT_OUT). Empty when the press takes every such part. */
+  function pressWhy(plan) {
+    if (ruleLost) return '';
+    const chosen = plan.send.length > 0;
+    if (gateMode === 'ask' && ruleLength() < RULE_MIN && !chosen) return RULE_AND_NUMBER;
+    if (gateMode === 'replace' && gateHeld()) return BOX_SHORT;
+    if (gateHeld()) return RULE_FIRST;
+    if (!chosen) return CHOOSE;
+    const left = nParts > 1 ? models.filter((m) => m.kind === 'pick' && m.pick === null).map(label) : [];
+    return left.length ? LEFT_OUT(left) : '';
+  }
+
+  /* The press: whether a count is picked, whether it shows, and the line
+     under it: past the most parts one press draws, limitWords (small; red
+     while picks are past the room); within it, pressWhy, in body type (r5-b
+     J08), which clears itself, since every choice and every key in the box
+     runs this. The press is off while picks are past the room, nothing is
+     chosen or the gate's rule is too short; on when only failed picks wait. */
   function updatePress() {
     const can = drawable();
     if (opened !== null || !can.length) {
       if (pressArea.isConnected) pressArea.remove();
       return;
     }
+    /* The come-back line (r5-a L4) shows only while no part shows as picked
+       and none as pressed with no reply: beside a picked part the press picks
+       another part, new squares; after a press with no reply it is held. */
+    againLine.hidden = models.some((m) => m.kind === 'drawn' || m.kind === 'unknown');
     const plan = sendPlan();
     const words = limitWords(plan);
-    limitLine.hidden = !words;
-    limitLine.className = 'small ' + (plan.over > 0 ? 'error' : 'muted');
-    limitLine.textContent = words;
+    const why = words ? '' : pressWhy(plan);
+    limitLine.hidden = !words && !why;
+    limitLine.className = words ? 'small ' + (plan.over > 0 ? 'error' : 'muted') : '';
+    limitLine.textContent = words || why;
     press.setAttribute('aria-disabled', String(busy || !plan.send.length || plan.over > 0 || gateHeld()));
     if (!pressArea.isConnected) action.replaceChildren(pressArea);
   }
 
   /* One part's counts: a group of buttons, each the count in bold and its
-     words (no drawing: r4-h C1). None pressed until the user presses one; a
-     second press unpicks it. */
+     words (no drawing: r4-h C1), the words by the count's place among the
+     part's offers (COUNT_WORDS, r5-b J03). None pressed until the user
+     presses one; a second press unpicks it. */
   function countsBlock(m) {
-    const buttons = m.offer.map((o) => {
-      const words = widthWords(o.width);
+    const buttons = m.offer.map((o, i) => {
       const b = OE.el('button', { type: 'button', class: 'pick', 'aria-pressed': String(m.pick === o.labels) },
         OE.el('span', { class: 'pick-count' }, OE.el('strong', {}, Number(o.labels).toLocaleString('en-US')),
           o.labels === 1 ? ' square' : ' squares'),
-        words ? OE.el('span', { class: 'pick-words small' }, words) : null);
+        OE.el('span', { class: 'pick-words small' }, COUNT_WORDS(i, m.offer.length)));
       b.addEventListener('click', () => {
         const clear = b.getAttribute('aria-pressed') === 'true';
         buttons.forEach((other) => other.setAttribute('aria-pressed', String(!clear && other === b)));
@@ -749,7 +887,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       if (m.error) parts.push(OE.el('div', { class: 'error' }, PICK_FAILED + bare(m.error) + '.'));
       parts.push(OE.el('div', {}, m.changed ? (m.changedText || CHANGED) : FINAL));
     } else if (m.kind === 'later') {
-      parts.push(OE.el('div', { class: 'faint' }, LATER));
+      parts.push(OE.el('div', {}, LATER));
     } else if (m.kind === 'unknown') {
       parts.push(OE.el('div', {}, NO_ANSWER));
     } else if (m.refusedAt === 'plan') {
@@ -763,27 +901,50 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     m.body.replaceChildren(...parts);
   }
 
-  /* Under an open editor: how many other parts are not picked yet or not
-     labelled whole (their sheets' counts), or nothing. */
+  /* Under an open editor: the other parts not picked yet or not labelled
+     whole (their sheets' counts), one by its name, several by their number
+     (OTHER_OPEN, r5-b J17), or nothing. */
   function fillOther() {
     const open = opened === null ? [] : models.filter((m) => m !== opened && !(m.kind === 'drawn' && complete(m.draw)));
-    otherLine.textContent = open.length ? OTHER_OPEN(open.length) : '';
+    otherLine.textContent = open.length ? OTHER_OPEN(open.map(label)) : '';
     otherLine.hidden = !open.length;
+  }
+
+  /* The heading over the parts (r5-b J17): the question while a part still
+     offers a number or a retry; once none does, that every square is
+     answered and how to get the result, when no sheet is open here, a part
+     is picked, every picked part's counts say it is answered whole and no
+     part may still be picked elsewhere (pressed with no reply, being picked,
+     or left for a later card); any other way, "Your squares". */
+  function fillAsk() {
+    const drawn = models.filter((m) => m.kind === 'drawn');
+    const pending = models.some((m) => m.kind === 'unknown' || m.kind === 'busy' || m.kind === 'later');
+    const done = opened === null && drawn.length > 0 && !pending && drawn.every((m) => complete(m.draw));
+    ask.textContent = drawable().length ? ASK : done ? ALL_ANSWERED : YOUR_SQUARES;
   }
 
   /* The parts figure of a map in several parts (r4-h A/F08): a part not
      picked dashed, "<part>: not picked yet"; a picked one a solid outline,
-     "<part>: picked, not checked yet" until its sheet's counts say every
-     square is answered, then its name alone; neither filled. A part whose
-     press got no reply (it may be picked) is dashed and named only. */
+     neither filled. r5-b J17: a picked part says how far it is answered,
+     "<part>: k of n answered" by its sheet's counts, "<part>: all answered"
+     once they say every square is, and "<part>: picked, not checked yet"
+     only while they are not read; a part this card cannot pick (no number
+     planned, not read, a pick that failed for good) says "<part>: cannot be
+     picked here". A part whose press got no reply (it may be picked) is
+     dashed and named only. */
   function fillParts() {
     if (nParts < 2) return;
     const pieces = fig('parts', models.map((m) => {
       const name = label(m);
       if (m.kind === 'drawn') {
-        return { name, share: m.shareValue, state: 'picked', label: complete(m.draw) ? name : PART_PICKED(name) };
+        const d = m.draw;
+        const said = complete(d) ? PART_DONE(name)
+          : countsRead(d) ? PART_ANSWERED(name, d.n_labelled, d.n_rows) : PART_PICKED(name);
+        return { name, share: m.shareValue, state: 'picked', label: said };
       }
-      return { name, share: m.shareValue, state: 'open', label: m.kind === 'unknown' ? name : PART_OPEN(name) };
+      const said = m.kind === 'unknown' ? name
+        : m.kind === 'refused' || m.kind === 'failed' ? PART_CANNOT(name) : PART_OPEN(name);
+      return { name, share: m.shareValue, state: 'open', label: said };
     }), { mode: 'plan' });
     partsSlot.replaceChildren(...(pieces ? [pieces] : []));
   }
@@ -804,6 +965,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       if (meta) lines.push(OE.el('div', {}, meta));
       const size = SQUARE_SIZE(m.square);
       if (size) lines.push(OE.el('div', {}, size));
+      // A score map's pixels outside 0 to 1, set to the nearest end (the server's line, r5-a K2).
+      if (m.clipped) lines.push(OE.el('div', {}, m.clipped));
       if (m.kind !== 'drawn') {
         m.offer.forEach((o) => lines.push(OE.el('div', {}, OE.counted(o.labels, 'square') + ': ' + o.sentence)));
         [...new Set(m.offer.map((o) => o.rate_note).filter(Boolean).map(String))]
@@ -836,6 +999,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     models.forEach(fillZone);
     fillGate();
     updatePress();
+    fillAsk();
     fillOther();
     fillParts();
     fillFold();
@@ -872,6 +1036,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     if (Number.isInteger(got.n_labelled)) m.draw.n_labelled = got.n_labelled;
     if (m.progressEl) m.progressEl.textContent = m.draw.progress ? ' ' + bare(m.draw.progress) + '.' : '';
     if (m.openButton) m.openButton.textContent = m.draw.open_label || 'Open the sheet';
+    fillAsk();
     fillOther();
     fillParts();
     tellCard();
@@ -918,8 +1083,12 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      refusal of the whole press by the server picked nothing; a call that got
      no answer back may have picked, so its parts are not pressed again here,
      the card shows no rule and no box, only RULE_LOST (ruleLost), and sends
-     the user to Claude; while ruleLost a press of the other parts is held, with the
-     gate's line as its toast (r4-i F6: no call, the focus stays). Every
+     the user to Claude; every other part that still offered numbers, or a
+     retry, is left for the card opened again (LATER), so no numbers and no
+     grey press stay (r5-b J09; before, the press was held with the gate's
+     line as its toast, r4-i F6: that guard stays first in the press). A
+     press with nothing chosen, or held by the rule, says why in the line
+     under the press (updatePress, r5-b J08). Every
      reply carries the map's rule as the server holds it after
      the press (r4-h Q4, Q11: a rule another card pinned, a claim that
      failed, a typed rule settled), which the card shows from then on; a
@@ -930,10 +1099,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     if (gateHeld() && ruleLost) { OE.toast(RULE_LOST); return; }
     const plan = sendPlan();
     const picked = plan.send;
-    // WORDING: squares
-    if (!picked.length) { OE.toast('Pick how many squares to check first.'); return; }
+    if (!picked.length) { updatePress(); return; }  // the line under the press says what to choose (r5-b J08)
     if (plan.over > 0) { updatePress(); return; }  // the line under the press says how many to unpick
-    if (gateHeld()) { OE.toast(RULE_FIRST); OE.focusIfHere(ruleInput); return; }
+    if (gateHeld()) { OE.toast(gateMode === 'replace' ? BOX_SHORT : RULE_FIRST); OE.focusIfHere(ruleInput); return; }
     const hadFocus = document.activeElement === press;
     const openedAtPress = opened;
     const typed = ruleSent();
@@ -955,6 +1123,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       } else {
         picked.forEach((m) => { m.kind = 'unknown'; m.pick = null; m.line = null; });
         ruleLost = true;
+        // This card picks nothing more (r5-b J09): a part that still offered numbers, or a retry, reads LATER.
+        models.forEach((o) => {
+          if (o.kind === 'pick' || o.kind === 'retry') { o.kind = 'later'; o.pick = null; o.line = null; }
+        });
         OE.toast(PRESS_NO_ANSWER, true);
       }
       renderAll();
@@ -995,9 +1167,11 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      focus if the press or the open button had it. Nothing opens while a
      press is answered. A sheet that cannot be read keeps the open button and
      says why. An editor that stopped saving (its sheet changed under the
-     panel) gives way without a save, and once the other sheet is open one
-     toast says how many of its windows' changes were not saved (oeUnsaved:
-     a count, never a window); with none to count, its own last toast about
+     panel) gives way without a save, and once the other sheet is open its
+     part says in its own red line, and one toast in the same words, how
+     many of its answers were not saved and what to do (NOT_SAVED_PART, r5-b
+     J10; oeUnsaved: a count, never a window); the line goes when that part's
+     sheet opens again. With none to count, its own last toast about
      that change goes (oeLeave, r4-l L3). */
   async function openZone(m, { hadFocus = null } = {}) {
     if (busy || m.opening || !m.draw) return;
@@ -1026,6 +1200,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     }
     m.opening = false;
     m.sheetError = null;
+    m.line = null;  // its sheet opens again: the line on answers not saved goes (r5-b J10)
     // Each save the server takes reads this zone's counts again; Full screen
     // (where the host offers it) lays the editor's face out for the mode.
     const editor = OE.sheetEditor(app, sheet, {
@@ -1039,9 +1214,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     action.replaceChildren(editor);
     renderAll();
     if (dropped > 0 && before && before.draw) {
-      // WORDING: squares
-      OE.toast('The changes to ' + OE.counted(dropped, 'square') + ' of ' + sheetName(before.draw)
-        + ' were not saved: that sheet changed since the panel opened it.', true);
+      // The part's own red line (fillZone draws it), and the toast in the same words (r5-b J10).
+      before.line = NOT_SAVED_PART(dropped, label(before));
+      fillZone(before);
+      OE.toast(before.line, true);
     } else if (current && typeof current.oeLeave === 'function') {
       // Nothing dropped: the editor swapped away clears its toast about its sheet having changed (r4-l L3).
       current.oeLeave();
@@ -1051,8 +1227,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     if (had) OE.focusIfHere(heading);
   }
 
-  // The face: title and map, the steps, the gate, the counts per part, the
-  // parts, the press (or the editor), then Details.
+  // The face: title and map, the steps, the gate, the heading (fillAsk) and,
+  // for a map in parts, the line that says so right under it, before the
+  // numbers it explains (r5-b J18), the counts per part, the parts figure,
+  // the press (or the editor), then Details.
   const title = OE.el('h2', {}, TITLE);
   root.append(title);
   const map = data.map && typeof data.map === 'object' ? data.map : {};
@@ -1060,14 +1238,17 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   if (mapLine) root.append(OE.el('div', { class: 'small muted' }, mapLine));
   const steps = fig('steps', [firstStep(models), ...STEPS.slice(1)]);
   if (steps) root.append(steps);
+  // A score map's cut (r5-a K3): the server's line, read only, right over the gate, whatever the gate shows.
+  if (cut) root.append(OE.el('div', { id: 'oe-check-cut' }, cut));
   root.append(gate);
-  root.append(OE.el('p', { class: 'ask' }, ASK));
+  root.append(ask);
+  if (nParts > 1) root.append(OE.el('div', { id: 'oe-check-parts-line' }, PARTS_LINE(nParts)));
   for (const m of models) {
     m.heading = nParts > 1 ? OE.el('h3', {}, PART_HEAD(label(m), m.windows)) : null;
     m.body = OE.el('div', { class: 'stack' });
     root.append(OE.el('section', { class: 'part stack' }, m.heading, m.body));
   }
-  if (nParts > 1) root.append(OE.el('div', {}, PARTS_LINE(nParts)), partsSlot);
+  if (nParts > 1) root.append(partsSlot);
   root.append(action, otherLine, OE.fold(DETAILS, foldBody));
   renderAll();
   // Shown again (the user comes back from labelling elsewhere): each drawn
@@ -1106,15 +1287,27 @@ function classMapCard(app, data, reason) {
   root.append(OE.fold(DETAILS, OE.el('div', { class: 'small' }, reason)));
 }
 
+/* A map of numbers that is not a score from 0 to 1 (r5-b X1; the refusal's
+   view: ok false with the server's two plain lines, error and next,
+   server.CHECK_NUMBER_MAP and CHECK_NUMBER_MAP_NEXT): the title and the two
+   lines in a plain card, each whole, as text. No press, no count and no
+   fold: the tool's own sentence, which names the tool Claude needs, is in
+   Claude's text only. */
+// WORDING: r5b X1 (the server's words, shown whole)
+function numberMapCard(data, next) {
+  root.append(OE.el('h2', {}, TITLE));
+  root.append(OE.el('div', { class: 'card stack', id: 'oe-check-numbers' },
+    OE.el('div', {}, data.error), OE.el('div', {}, next)));
+}
+
 /* The Studio sign-in, as the result card offers it; once signed in, one
    contained button asks Claude to run the check again. */
 function signIn(app, tool) {
   const panel = OE.signInPanel(app, {
     acceptCurrent: true,  // signed in since, in another panel: no page needed
-    // WORDING: r4p2
-    note: 'This check needs OlmoEarth Studio. Sign in on a page this app opens in your browser, served on this'
-      + ' computer; your Studio API key (in Studio, open your profile, then API Keys) goes from there to the'
-      + ' OlmoEarth Agent here, not through Claude.',
+    // The note's three plain lines (r5-b J19): this card's own, then the panel's (common.js).
+    // WORDING: r5b J19
+    note: ['This check needs OlmoEarth Studio.', OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES],
     onDone: (status) => {
       const typed = OE.typeSlot();
       const again = OE.el('button', {
@@ -1140,6 +1333,12 @@ function show(app, params) {
   const reason = typeof data.reason === 'string' && data.reason ? data.reason : null;
   if (!data.ok && reason) {
     classMapCard(app, data, reason);
+    return;
+  }
+  // A map of numbers that is not a 0-to-1 score (r5-b X1): the server's two plain lines.
+  const next = typeof data.next === 'string' && data.next ? data.next : null;
+  if (!data.ok && next && typeof data.error === 'string' && data.error) {
+    numberMapCard(data, next);
     return;
   }
   if (!data.ok) {
