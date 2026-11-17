@@ -100,6 +100,7 @@ from olmoearth_agent.studio.client import DEFAULT_MAX_FILES_BYTES
 from olmoearth_agent.tools import inferencex, scores_file
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.result_ids import resolving
 from olmoearth_agent.tools.review_set import slug, write_root
 from olmoearth_agent.tools.sampling import model_summary, prediction_meta
 
@@ -202,17 +203,21 @@ CLIPPED_SENTENCE = (
     "scores are not the model's own."
 )
 #: must_state of a result of several UTM zones: no tool combines them, so
-#: one zone's review set, estimate or certified zone is not the result's.
+#: one zone's review set, estimate or certified zone is not the result's
+#: (the reader test's A/check-10; a zone is a "part" to the user).
+# WORDING: squares
 ZONES_SENTENCE = (
-    "Each UTM zone is its own map: a review set, estimate or certified zone of "
-    "one zone does not describe the whole result."
+    "A result for one part (windows to check first, an error rate or a zone "
+    "test) describes that part only, not the whole map."
 )
 #: must_state of both kinds while there is room, else a fact. Studio's
 #: pixel-value read a pixel on the edge of two zones from the neighbouring
-#: zone's web-optimized file, 2 levels off the native raster (31 October 2026).
+#: zone's web-optimized file, 2 levels off the native raster (31 October
+#: 2026); the reader test's A/check-11.
+# WORDING: squares
 NATIVE_SENTENCE = (
-    "These are Studio's native-resolution files; olmoearth_pixel_value reads a "
-    "web-optimized copy, which can differ at a zone edge."
+    "This check reads Studio's full-resolution files. A single-pixel lookup in "
+    "the chat reads a web copy, which can differ at the edge between two parts."
 )
 
 #: The keys of ``olmoearth_scores_from_file``'s result a zone does not repeat:
@@ -522,12 +527,14 @@ def files_plan(record: dict[str, Any]) -> FilesPlan:
     names = ", ".join(repr(f["property_name"]) for f in classes)
     shown = ", ".join(f"{name!r} {_range(f)}" for name, f in regressions.items())
     if classes and regressions:
+        # WORDING: r4p2
         raise ValueError(
             f"the result declares the class map {names}, without top-k scores, "
             f"beside the regression field(s) {shown}; this tool reads a class map "
             "with top-k scores, or one regression field declared [0, 1] and no "
-            "class map. olmoearth_review_set_from_result samples one band of a "
-            "result, named by property_name"
+            "class map. To say how wrong this class map is, "
+            "olmoearth_plan_label_sample plans labels (design 'random' or "
+            "'class'); the regression band needs a threshold and its property_name."
         )
     if classes:
         raise rules.refusal(
@@ -548,9 +555,9 @@ def files_plan(record: dict[str, Any]) -> FilesPlan:
     raise ValueError(
         "this tool reads a class map with top-k scores or one regression field "
         f"declared [0, 1]; the result declares {shown or 'no output field'}. A "
-        "regression band in other units has no probability to pool: "
-        "olmoearth_review_set_from_result ranks it by its distance from a "
-        "threshold you give"
+        "regression band in other units has no probability to pool; to say how "
+        "wrong it is, olmoearth_plan_label_sample plans labels once a threshold "
+        "is given (the value at which the map's decision flips)"
     )
 
 
@@ -1590,7 +1597,7 @@ def build_studio_scores_tools() -> list[RegisteredTool]:
                     "required": ["result_id"],
                 },
             ),
-            handler=_scores_from_studio,
+            handler=resolving("result_id")(_scores_from_studio),
             capability=Capability(
                 does="read a Studio result's native files (top-k scores or a "
                 "[0, 1] score) into scores files, one per zone",

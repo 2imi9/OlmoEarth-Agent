@@ -82,6 +82,7 @@ from olmoearth_agent.analysis.uncertainty import prediction_confidence
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.result_ids import resolving
 from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA,
@@ -1393,7 +1394,7 @@ def build_compare_tools() -> list[RegisteredTool]:
                     "required": ["result_ids"],
                 },
             ),
-            handler=_compare_results,
+            handler=resolving("result_ids")(_compare_results),
             capability=Capability(
                 does="how 2-8 Studio results differ over their shared area, on a "
                 "sampled grid (agreement or estimate movement, never accuracy)",

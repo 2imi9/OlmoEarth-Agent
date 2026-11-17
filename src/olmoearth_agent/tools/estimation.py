@@ -170,6 +170,7 @@ from olmoearth_agent.tools.compare import (
     sample_pair,
 )
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.result_ids import resolving
 from olmoearth_agent.tools.review_set import (
     CLASS_READS,
     DATE_FORMS,
@@ -1434,16 +1435,24 @@ def _missed_must_state(k: Any, producer: dict[str, Any]) -> str | None:
     such an answer held half of the sentence's key terms without a word on
     what the map misses (the step 11 review, on trial 12's N3 answers).
 
-    The class is named once: a class map's class as it writes it can be a
+    In the reader test's words (A/estimate-5, 13 Nov 2026): the class is
+    named as the map writes it ("class 3" for a bare code, "Class 3" opening
+    the sentence), twice. A class map's class as it writes it can be a
     Studio label of several words ("Permanent water bodies"), and the
     contract holds at most :data:`MUST_STATE_MAX_WORDS` words a sentence.
-    ``None`` for a name so long the sentence would still hold more: that
+    ``None`` for a name so long the sentence would then hold more: that
     class is then left to the ``user_vs_producer`` fact, which names it.
     """
+    bare = (isinstance(k, int) and not isinstance(k, bool)) or (
+        isinstance(k, str) and k.strip().isdecimal()
+    )
+    name = f"class {k}" if bare else str(k)
+    lead = f"Class {k}" if bare else name
+    # WORDING: r4p2
     sentence = (
-        f"Class {k}: the map finds only {rules.percent(producer['low'])} to "
-        f"{rules.percent(producer['high'])} of the class's ground "
-        "(producer's accuracy); it misses the rest."
+        f"{lead}: of the windows you would label {name}, the map finds only "
+        f"{rules.percent(producer['low'])} to {rules.percent(producer['high'])}; "
+        "it misses the rest."
     )
     return sentence if word_count(sentence) <= MUST_STATE_MAX_WORDS else None
 
@@ -2412,9 +2421,10 @@ def _label_budget_fact(
     """The ``label_budget`` fact: ``plan.plan_error_rate``'s advice, in a sentence.
 
     The rate it plans at is the caller's, or the package's 50% when none is
-    stated (``error_rate_stated``), which the sentence then names as an
-    assumption (the advice's ``rate_note`` says more); under the class design
-    it adds :data:`CLASS_DESIGN_BUDGET_NOTE`.
+    stated (``error_rate_stated``), which the sentence then names as the
+    statistics package's planning figure, not a finding about the map (the
+    reader test's A/check-6; the advice's ``rate_note`` says more); under the
+    class design it adds :data:`CLASS_DESIGN_BUDGET_NOTE`.
     """
     n = advice.get("n_population")
     width = 100.0 * float(advice.get("width", DEFAULT_WIDTH))
@@ -2422,23 +2432,36 @@ def _label_budget_fact(
     prob = advice.get("probability_at_labels")
     if labels is None or not isinstance(prob, (int, float)):
         why = str(advice.get("refusal") or "it advises none").rstrip(".")
+        # WORDING: r4i F10 (the width without "points", which now names
+        # Studio grid points only)
         sentence = (
             "No label budget is advised for a 95% interval no wider than "
-            f"{width:g} points over the {n} valid windows: the package says {why}."
+            f"{width:g}% from its low end to its high end over the {n} valid "
+            f"windows: the package says {why}."
         )
-    else:
+    elif advice.get("error_rate_stated"):
         rate = rules.percent(advice.get("error_rate"))
-        wrong = (
-            f"wrong {rate} of the time"
-            if advice.get("error_rate_stated")
-            else f"assumed wrong {rate} of the time (the package's planning rate "
-            "when none is stated: see rate_note)"
-        )
+        # WORDING: r4i F10
         sentence = (
             f"Planned before any label by the package, for a random sample of "
-            f"the {n} valid windows of a map {wrong}: {labels} labels give a 95% "
-            f"interval no wider than {width:g} points with probability "
-            f"{float(prob):.3g}; this plan draws {planned}."
+            f"the {n} valid windows of a map wrong {rate} of the time: {labels} "
+            f"labels give a 95% interval no wider than {width:g}% from its low "
+            f"end to its high end with probability {float(prob):.3g}; this plan "
+            f"draws {planned}."
+        )
+    else:
+        # The reader test's A/check-6 (13 Nov 2026), for the branch where no
+        # rate is stated; the stated rate's branch above keeps its words.
+        rate = rules.percent(advice.get("error_rate"))
+        # WORDING: squares; r4i F10 (the width only)
+        sentence = (
+            f"Planned before any label, for a random sample of the {n} windows "
+            f"that hold data: with {labels} labels, the 95% range will be no "
+            f"wider than {width:g}% from its low end to its high end, with "
+            f"probability {float(prob):.3g}. To plan this, the statistics package "
+            f"(olmoearth-inferencex) assumes a map wrong {rate} of the time. That "
+            "is a planning figure, not a finding about your map; the note below "
+            f"says more. This plan picks {planned} windows."
         )
     if design == CLASS_DESIGN:
         sentence += CLASS_DESIGN_BUDGET_NOTE
@@ -2487,6 +2510,85 @@ def _class_budget_fact(advice: dict[str, Any], design: str) -> dict[str, Any]:
         labels=labels,
         probability=prob,
     )
+
+
+#: The plan card's first row, named for what the reviewer labels: the points of
+#: a Studio result's sampled grid when the plan carries its ``sampling``, else
+#: squares (the windows of a scores file).
+# WORDING: r4h V7
+POINTS_TO_LABEL = "Points to label"
+# WORDING: r4h V7
+SQUARES_TO_LABEL = "Squares to label"
+
+
+def _to_label_row_name(out: dict[str, Any]) -> str:
+    """The plan card's first row name: :data:`POINTS_TO_LABEL` for a plan of a
+    Studio result's sampled grid (its ``sampling`` a dict), else
+    :data:`SQUARES_TO_LABEL`."""
+    return (
+        POINTS_TO_LABEL if isinstance(out.get("sampling"), dict) else SQUARES_TO_LABEL
+    )
+
+
+def _windows_to_label(planned: Any, requested: Any) -> str:
+    """The value of the plan card's first row (:func:`_to_label_row_name`),
+    with the budget asked for when it differs."""
+    text = f"{planned}"
+    if requested is not None and requested != planned:
+        text += f" (of {requested} requested)"
+    return text
+
+
+def _plan_card(
+    out: dict[str, Any], certificate: dict[str, Any] | None
+) -> list[list[str] | None]:
+    """The card rows of a one-map plan, from its result's own fields.
+
+    The squares or points to label, the design (a certificate plan's test
+    settings as its detail: fixed with the draw), the population and what its
+    rate will be of, a Studio result's sampled grid, and the seed.
+    """
+    fixed = (
+        f"certificate plan: alpha={certificate['alpha']:g}, "
+        f"delta={certificate['delta']:g}, rule '{certificate['rule']}', fixed "
+        "before any label"
+        if certificate is not None
+        else None
+    )
+    population = out.get("population") or {}
+    return [
+        rules.card_row(
+            _to_label_row_name(out),
+            _windows_to_label(out.get("budget"), out.get("budget_requested")),
+        ),
+        rules.card_row("Design", out.get("design"), fixed),
+        rules.card_row(
+            "Population",
+            f"{out.get('n_population')} windows",
+            population.get("what_the_rate_will_be_of"),
+        ),
+        rules.card_row(
+            "Sampled grid", rules.sampled_grid_card_value(out.get("sampling"))
+        ),
+        rules.card_row("Seed", out.get("seed")),
+    ]
+
+
+def _two_map_plan_card(out: dict[str, Any]) -> list[list[str] | None]:
+    """The card rows of a which-map plan, from its result's own fields."""
+    return [
+        rules.card_row(
+            _to_label_row_name(out),
+            _windows_to_label(out.get("budget"), out.get("budget_requested")),
+        ),
+        rules.card_row("Design", TWO_MAP_DESIGN),
+        rules.card_row(
+            "Where the maps differ",
+            f"{out.get('n_disagree')} of the {out.get('n_population')} windows "
+            "compared",
+        ),
+        rules.card_row("Seed", out.get("seed")),
+    ]
 
 
 async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -2668,10 +2770,25 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             _how_to_label_a_class_map(design)
             if labels_classes
             else "For each window, in this order, set wrong = 1 when the map's "
-            "class (map_class) is not what is on the ground there, else 0 (and "
-            "reference_class to the true class id for per-class accuracy). Fill "
-            "the CSV (it holds each window's location) or pass the list; then "
-            "call olmoearth_estimate_map_error with design_path."
+            "class (map_class) is not what is on the ground there, 0 when it is"
+            + (
+                " (this certificate plan needs 1 or 0 on every window; where it "
+                "cannot be told, 1 is the cautious choice: it can only shrink the "
+                "certified zone and raise the error rate)"
+                if certificate is not None
+                else ", or ? when it cannot be told (counted both ways, with no "
+                "per-class table"
+                + (
+                    "; a certified zone, olmoearth_certify_zone, needs 1 or 0 on "
+                    "every window"
+                    if design == "random"
+                    else ""
+                )
+                + ")"
+            )
+            + "; set reference_class to the true class id for per-class "
+            "accuracy. Fill the CSV (it holds each window's location) or pass "
+            "the list; then call olmoearth_estimate_map_error with design_path."
         ),
         "interval_rules": list(INTERVAL_RULES),
         "population": {
@@ -2843,6 +2960,7 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
             no_confidence=class_map,
         )
     )
+    rules.add_card(out, _plan_card(out, certificate))
     return rules.add_contract(
         out,
         facts=facts,
@@ -2932,10 +3050,84 @@ def _read_labels_csv(path: str) -> dict[int, tuple[str, str]]:
     return out
 
 
-def _labels(
+#: A ``wrong`` cell the reviewer could not judge ("cannot tell"): the
+#: package's own token in that column (``oe_inferencex.common.labels``), the
+#: one the two-map design's ``reference_class`` takes too.
+UNJUDGED = "?"
+
+#: The ``wrong`` cells read as a label, exactly; ``'0.5'`` is refused, never
+#: read as 0, as the package's sheet reader refuses it.
+_WRONG_CELLS = {"0": 0, "1": 1, "0.0": 0, "1.0": 1}
+
+
+def _wrong_cells(cells: list[Any], indices: list[int]) -> tuple[list[int], list[bool]]:
+    """``wrong`` cells as 0/1 and whether each window is unjudged (``?``).
+
+    A ``?`` is read as 0 with its flag set, as the package passes it to its
+    estimators, which bound it both ways (``estimate_error_rate(unjudged=)``).
+    Anything but 0, 1 (as a number or as ``'0'``, ``'1'``, ``'0.0'``,
+    ``'1.0'``) or ``?`` is refused, naming the window.
+    """
+    if len(cells) != len(indices):
+        raise ValueError(
+            f"{len(cells)} labels for the {len(indices)} windows of the design"
+        )
+    values: list[int] = []
+    unjudged: list[bool] = []
+    for i, cell in zip(indices, cells):
+        if isinstance(cell, str) and cell.strip() == UNJUDGED:
+            values.append(0)
+            unjudged.append(True)
+            continue
+        if isinstance(cell, bool) or not isinstance(cell, (int, float, str)):
+            value = None
+        elif isinstance(cell, str):
+            value = _WRONG_CELLS.get(cell.strip())
+        else:
+            value = int(cell) if float(cell) in (0.0, 1.0) else None
+        if value is None:
+            raise ValueError(
+                f"window {i}: wrong is {cell!r}; write 1 where the map is wrong, 0 "
+                "where it is right (or ? where it cannot be told, which only "
+                "olmoearth_estimate_map_error with a plan's design_path takes)"
+            )
+        values.append(value)
+        unjudged.append(False)
+    return values, unjudged
+
+
+#: What to do with a refused ``?``, safe on every route that refuses it (the
+#: certified zone, a certificate, a certificate plan, no design file).
+_UNJUDGED_ELSEWHERE = (
+    "judge it first (where it cannot be told, 1 is the cautious choice: it can "
+    "only shrink a certified zone and raise the error rate). Only "
+    "olmoearth_estimate_map_error with the design_path of a plan that is not a "
+    "certificate plan (seed_from_map) takes ? and bounds it both ways"
+)
+
+
+def _refuse_unjudged(
+    indices: list[int],
+    unjudged: list[bool],
+    tool: str,
+    then: str = _UNJUDGED_ELSEWHERE,
+) -> None:
+    """Refuse a ``?`` where ``tool`` needs a 1 or a 0 on every window; ``then``
+    says what to do instead."""
+    first = next((i for i, u in zip(indices, unjudged) if u), None)
+    if first is not None:
+        raise ValueError(
+            f"window {first} is ? (cannot tell): {tool} needs 1 or 0 on every "
+            f"window; {then}"
+        )
+
+
+def _labels_unjudged(
     args: dict[str, Any], indices: list[int]
-) -> tuple[list[int], list[int] | None]:
-    """The reviewer's ``wrong`` (and optional reference classes), in design order."""
+) -> tuple[list[int], list[bool], list[int] | None]:
+    """The reviewer's ``wrong``, which windows are unjudged (``?``), and the
+    optional reference classes, in design order. With any ``?``, no reference
+    classes: the per-class table takes none (the package refuses it)."""
     wrong = args.get("wrong")
     reference = args.get("reference")
     if wrong is None and args.get("labels_path"):
@@ -2955,14 +3147,20 @@ def _labels(
         raise ValueError(
             "pass 'wrong' (0/1 per window, in the design's order) or 'labels_path'"
         )
-    values = [int(float(w)) for w in wrong]
-    if len(values) != len(indices):
-        raise ValueError(
-            f"{len(values)} labels for the {len(indices)} windows of the design"
-        )
-    if any(v not in (0, 1) for v in values):
-        raise ValueError("wrong must be 0 or 1 per window")
+    values, unjudged = _wrong_cells(list(wrong), indices)
+    if any(unjudged):
+        return values, unjudged, None
     ref = [int(float(r)) for r in reference] if reference is not None else None
+    return values, unjudged, ref
+
+
+def _labels(
+    args: dict[str, Any], indices: list[int]
+) -> tuple[list[int], list[int] | None]:
+    """The reviewer's ``wrong`` (and optional reference classes), in design
+    order, for a tool that needs 1 or 0 on every window: a ``?`` is refused."""
+    values, unjudged, ref = _labels_unjudged(args, indices)
+    _refuse_unjudged(indices, unjudged, "this tool")
     return values, ref
 
 
@@ -3001,7 +3199,8 @@ def _class_map_sheet(
     is read from ``reference_class``. Filled on some windows only,
     ``reference_class`` is refused, naming the first window without one,
     whatever ``wrong`` holds. Empty on every window, ``wrong`` is the label,
-    and the first window with neither is named.
+    and the first window with neither is named. A ``?`` (cannot tell) in
+    ``reference_class`` fills it as a class does; the caller bounds it.
     """
     sheet = _read_labels_csv(path)
     rows = [sheet.get(i, ("", "")) for i in indices]
@@ -3041,16 +3240,37 @@ def _class_map_sheet(
 def _class_map_labels(
     args: dict[str, Any], indices: list[int], population: dict[str, Any]
 ) -> tuple[list[int], list[int] | None, list[Any], list[str]]:
-    """A class map's labels: wrong, reference codes, the class table and the outsiders.
+    """:func:`_class_map_labels_unjudged` for a tool that needs 1 or 0 on
+    every window: a ``?``, in ``wrong`` or in the references, is refused."""
+    values, unjudged, codes, table, outside = _class_map_labels_unjudged(
+        args, indices, population
+    )
+    _refuse_unjudged(indices, unjudged, "this tool")
+    return values, codes, table, outside
+
+
+def _class_map_labels_unjudged(
+    args: dict[str, Any], indices: list[int], population: dict[str, Any]
+) -> tuple[list[int], list[bool], list[int] | None, list[Any], list[str]]:
+    """A class map's labels: wrong, which windows are unjudged (a ``?``, in
+    the references or in ``wrong``), reference codes, the class table and the
+    outsiders.
 
     The reviewer writes the class seen in each window (``reference``, or the
     sheet's ``reference_class``) as ``map_class`` writes classes, matched as
-    the two-map design matches them (:func:`_class_key`); ``wrong`` is 1
-    where it is not the window's map class. A class the map never writes
-    gets a code after the map's (the package calls it never predicted) and
-    is listed; references that all lie outside the map's classes are
-    refused. ``wrong`` alone gives the error rate with no per-class table;
-    given with the references, it must agree with them window by window.
+    the two-map design matches them (:func:`_class_key`), or ``?`` where it
+    cannot be told; ``wrong`` is 1 where the class seen is not the window's
+    map class. A ``?`` is read as a ``?`` in ``wrong`` is
+    (:func:`_wrong_cells`): 0 with its flag set, which
+    ``estimate_error_rate(unjudged=)`` bounds both ways; it is no class, so
+    it enters neither the class table nor the outsiders, and with any ``?``
+    no reference codes are returned (no per-class table, as
+    :func:`_labels_unjudged` gives a scores map's). A blank reference is
+    refused. A class the map never writes gets a code after the map's (the
+    package calls it never predicted) and is listed; judged references that
+    all lie outside the map's classes are refused. ``wrong`` alone gives the
+    error rate with no per-class table; given with the references, it must
+    hold ``?`` on the same windows and agree with them on every other.
     The sheet (``labels_path``) is read the same way: a ``reference_class``
     filled on some windows only is refused, naming the first without one; a
     full ``reference_class`` is the label, and a ``wrong`` column filled
@@ -3074,47 +3294,69 @@ def _class_map_labels(
     codes: list[int] | None = None
     outside: list[str] = []
     derived: list[int] | None = None
+    seen_unjudged: list[bool] = []
     if reference is not None:
         refs = ["" if r is None else str(r).strip() for r in reference]
         if len(refs) != len(indices):
             msg = f"{len(refs)} references for the {len(indices)} windows of the design"
             raise ValueError(msg)
-        blank = [i for i, r in zip(indices, refs) if r in ("", "?")]
+        blank = [i for i, r in zip(indices, refs) if r == ""]
         if blank:
+            # WORDING: r4h S4
             msg = (
                 f"{len(blank)} of {len(indices)} design windows have no class "
-                f"(first: window {blank[0]}); one map's estimate needs the class "
-                "seen in every drawn window ('?' is taken by the two-map design "
-                "only)"
+                f"(first: window {blank[0]}); write the class seen, or ? where it "
+                "cannot be told, in every drawn window"
             )
             raise ValueError(msg)
+        # A ? (cannot tell) is read as a ? in wrong is (_wrong_cells): 0 with
+        # its flag set, which the package bounds both ways, right at each
+        # interval's lower end and wrong at its upper. It is no class: it
+        # enters neither the class table nor the outsiders.
+        seen_unjudged = [r == UNJUDGED for r in refs]
         code_of = {_class_key(v): c for c, v in enumerate(table)}
-        codes = []
-        for r in refs:
+        seen: list[int | None] = []
+        for r, unsure in zip(refs, seen_unjudged):
+            if unsure:
+                seen.append(None)
+                continue
             key = _class_key(r)
             if key not in code_of:
                 code_of[key] = len(table)
                 table.append(_class_value(r))
                 outside.append(r)
-            codes.append(code_of[key])
-        if all(c >= len(classes) for c in codes):
+            seen.append(code_of[key])
+        judged = [c for c in seen if c is not None]
+        if judged and all(c >= len(classes) for c in judged):
+            # WORDING: r4h S4 (the count is of judged references; words unchanged)
             msg = (
-                f"none of the {len(refs)} references ({', '.join(outside)}) is a "
+                f"none of the {len(judged)} references ({', '.join(outside)}) is a "
                 f"class the map writes ({', '.join(str(c) for c in classes)}): "
                 "graded as given, every window would count as wrong. Write each "
                 "window's class as map_class writes classes"
             )
             raise ValueError(msg)
-        derived = [int(c != map_class[i]) for c, i in zip(codes, indices)]
+        derived = [
+            0 if c is None else int(c != map_class[i]) for c, i in zip(seen, indices)
+        ]
+        # With any ?, no reference codes: the per-class table takes none, as
+        # _labels_unjudged gives a scores map's.
+        codes = None if any(seen_unjudged) else judged
     if wrong_in is None:
-        return derived or [], codes, table, outside
-    values = [int(float(w)) for w in wrong_in]
-    if len(values) != len(indices):
-        msg = f"{len(values)} labels for the {len(indices)} windows of the design"
-        raise ValueError(msg)
-    if any(v not in (0, 1) for v in values):
-        raise ValueError("wrong must be 0 or 1 per window")
+        return derived or [], seen_unjudged, codes, table, outside
+    values, unjudged = _wrong_cells(list(wrong_in), indices)
     if derived is not None:
+        # A window that cannot be judged is ? in both columns, or in neither.
+        apart = next(
+            (i for i, u, s in zip(indices, unjudged, seen_unjudged) if u != s), None
+        )
+        if apart is not None:
+            # WORDING: r4h S4
+            msg = (
+                f"window {apart} is ? in one of wrong and the class seen but not "
+                "in the other: write ? in both, or a label in both"
+            )
+            raise ValueError(msg)
         differ = [i for i, a, b in zip(indices, values, derived) if a != b]
         if differ:
             msg = (
@@ -3124,7 +3366,7 @@ def _class_map_labels(
                 "or correct it"
             )
             raise ValueError(msg)
-    return values, codes, table, outside
+    return values, unjudged, codes, table, outside
 
 
 #: What each interval of a valid-first estimate is, as the result names it.
@@ -3180,6 +3422,39 @@ VALID_FIRST_HOW = {
     "confidence": NOMINAL_DESIGN_HOW,
     "proportional": NOMINAL_DESIGN_HOW,
 }
+
+#: How the confidence and proportional designs' estimates are reported when
+#: some windows could not be judged (``?``): the package then replaces the
+#: design's Wilson interval by the union bound over the strata, each
+#: stratum's exact interval at 1 - 0.05/L (``bounds_note``), so the
+#: package's ``VALID_NOTE`` words on that line (Wilson's, nominal) do not
+#: apply to it.
+UNJUDGED_STRATIFIED_HOW = (
+    "Report valid_interval first, the interval valid at every sample size, "
+    "then the interval this design earns: with windows not judged (?), the "
+    "package gives it as the union bound over the strata, exact and covering "
+    "at least 95% by construction (bounds_note), not Wilson's interval, so "
+    "valid_note's words on that line do not apply to it."
+)
+
+#: Added to a valid-first estimate's report when some windows are ``?``.
+UNJUDGED_HOW = (
+    " Windows the reviewer could not judge (?, n_unjudged) are counted right "
+    "at each interval's lower end and wrong at its upper (bounds_note); the "
+    "point is then a range (estimate_range), and there is no per-class table."
+)
+
+
+def unjudged_must_state(n_unjudged: int, n_labelled: int) -> str:
+    """The must_state sentence for windows not judged (``?``), under 25 words.
+
+    >>> unjudged_must_state(2, 30).split()[0:4]
+    ['2', 'of', '30', 'windows']
+    """
+    return (
+        f"{n_unjudged} of {n_labelled} windows could not be judged (?): each "
+        "interval counts them right at its lower end, wrong at its upper."
+    )
 
 
 def _interval_entry(which: str, what: str, block: dict[str, Any]) -> dict[str, Any]:
@@ -3246,6 +3521,11 @@ def _valid_first_estimate(res: dict[str, Any], valid: dict[str, Any]) -> dict[st
         f"interval this design earns is {rules.percent(res.get('low'))} to "
         f"{rules.percent(res.get('high'))} (method: {res.get('method')})."
     )
+    if res.get("n_unjudged"):
+        sentence += (
+            f" {res['n_unjudged']} of the labelled windows could not be judged (?) "
+            "and are counted both ways."
+        )
     if res.get("warning"):
         warning = str(res["warning"]).rstrip(".")
         sentence += f" {DESIGN_WARNING_LEAD}: {warning}."
@@ -3260,6 +3540,89 @@ def _valid_first_estimate(res: dict[str, Any], valid: dict[str, Any]) -> dict[st
         design_low=res.get("low"),
         design_high=res.get("high"),
     )
+
+
+def _card_level(res: dict[str, Any]) -> str:
+    """A result's interval level as its sentences write it (``"95% "``), or ``""``."""
+    cov = res.get("nominal_coverage")
+    return f"{100.0 * float(cov):g}% " if isinstance(cov, (int, float)) else ""
+
+
+def _card_name(text: str) -> str:
+    """A card row's name with its first letter in capitals."""
+    return text[:1].upper() + text[1:]
+
+
+def _span_text(low: Any, high: Any) -> str:
+    """An interval's ends as the sentences write them: ``"2.0% to 9.5%"``."""
+    return f"{rules.percent(low)} to {rules.percent(high)}"
+
+
+#: The card's name for the interval a design earns, as the
+#: ``whole_map_estimate`` fact names it: with no level, which the row's
+#: detail gives (:func:`_design_interval_detail`).
+DESIGN_INTERVAL_ROW = "Interval this design earns"
+
+
+def _design_interval_detail(
+    res: dict[str, Any], plan_design: str, level: str
+) -> str | None:
+    """The detail of the card's :data:`DESIGN_INTERVAL_ROW`: its level, then its method.
+
+    Under the confidence and proportional designs (:data:`NOMINAL_DESIGNS`)
+    with every window judged, the interval is Wilson's on the design's
+    effective sample size, which the package calls nominal: ``"nominal 95%,
+    approximate"``, never a plain 95%. With windows not judged (``?``) the
+    package gives the union bound over the strata instead, and under the
+    random and class designs the interval covers its level: ``"95%"``.
+    """
+    nominal = plan_design in NOMINAL_DESIGNS and not res.get("n_unjudged")
+    if nominal:
+        head = f"nominal {level.strip()}".strip() + ", approximate"
+    else:
+        head = level.strip()
+    method = res.get("method")
+    parts = [head, str(method) if method else ""]
+    return "; ".join(p for p in parts if p) or None
+
+
+def _valid_first_card(
+    res: dict[str, Any], valid: dict[str, Any], plan_design: str
+) -> list[list[str] | None]:
+    """The card rows of a valid-first estimate, from the result's own fields.
+
+    The error rate (or its range, with windows not judged), the interval valid
+    at every sample size and the design's, each with its method as the row's
+    detail, the labels and the design: the numbers as the ``must_state`` and
+    the ``whole_map_estimate`` fact write them. The design's interval is
+    named as that fact names it (:data:`DESIGN_INTERVAL_ROW`); its level is in
+    its detail, "nominal" under the confidence and proportional designs
+    (:func:`_design_interval_detail`).
+    """
+    level = _card_level(res)
+    point = valid.get("estimate")
+    span = valid.get("estimate_range") or [None, None]
+    rate = rules.percent(point) if point is not None else _span_text(*span[:2])
+    return [
+        rules.card_row("Error rate", rate),
+        rules.card_row(
+            _card_name(f"{level}interval valid at every sample size"),
+            _span_text(valid.get("low"), valid.get("high")),
+            valid.get("method"),
+        ),
+        rules.card_row(
+            DESIGN_INTERVAL_ROW,
+            _span_text(res.get("low"), res.get("high")),
+            _design_interval_detail(res, plan_design, level),
+        ),
+        rules.card_row(
+            "Labels",
+            rules.labels_card_value(
+                res.get("n_labelled"), res.get("n_population"), res.get("n_unjudged")
+            ),
+        ),
+        rules.card_row("Design", plan_design),
+    ]
 
 
 def _estimate_valid_first(
@@ -3309,17 +3672,40 @@ def _estimate_valid_first(
     outside: list[str] = []
     n_classes: int | None
     if labels_classes:
-        wrong, reference, names, outside = _class_map_labels(args, indices, population)
+        wrong, unjudged, reference, names, outside = _class_map_labels_unjudged(
+            args, indices, population
+        )
         n_classes = len(names)
     else:
-        wrong, reference = _labels(args, indices)
+        wrong, unjudged, reference = _labels_unjudged(args, indices)
         n_classes = int(args["n_classes"]) if args.get("n_classes") else None
+    # Windows the reviewer could not judge ("?"): bounded both ways by the
+    # package, no per-class table, no figure (its subtitle has no words for a
+    # ranged rate), and refused on a seed_from_map plan, whose sheet holds a
+    # 1 or a 0 per window once graded.
+    n_unjudged = sum(unjudged)
+    if n_unjudged:
+        block = design.get("certificate")
+        if isinstance(block, dict) and block.get("seed_rule") == "from_map":
+            _refuse_unjudged(
+                indices,
+                unjudged,
+                "a certificate plan (seed_from_map)",
+                "judge it: its certificate fixes a 1 or a 0 per window (where it "
+                "cannot be told, 1 is the cautious choice)",
+            )
     hold_plan_labels(design, wrong)  # a seed_from_map plan's, fixed once
     # The class design's strata are the map's classes, which the package's
     # condition-design texts call conditions: worded as the package words
     # them (the identity for a random design).
     words = wording.class_wording(sample)
-    res = words(_jsonable(estimate.estimate_error_rate(sample, wrong, valid=True)))
+    res = words(
+        _jsonable(
+            estimate.estimate_error_rate(
+                sample, wrong, unjudged=unjudged if n_unjudged else None, valid=True
+            )
+        )
+    )
     valid = res["valid_interval"]
     out: dict[str, Any] = {
         "available": True,
@@ -3360,8 +3746,12 @@ def _estimate_valid_first(
         per_class = table
     out["interval_rules"] = list(INTERVAL_RULES)
     studio = bool((population.get("source") or {}).get("result_id"))
+    how = VALID_FIRST_HOW.get(plan_design, VALID_FIRST_HOW[CLASS_DESIGN])
+    if n_unjudged and plan_design in ("confidence", "proportional"):
+        how = UNJUDGED_STRATIFIED_HOW
     out["report"] = (
-        VALID_FIRST_HOW.get(plan_design, VALID_FIRST_HOW[CLASS_DESIGN])
+        how
+        + (UNJUDGED_HOW if n_unjudged else "")
         + " Give each interval's estimate, low, high and method as returned, "
         "named for what it is; with reference classes, each class's valid "
         "intervals before the design's. valid_note and the per-class "
@@ -3383,6 +3773,7 @@ def _estimate_valid_first(
         per_class=bool(weakest and weakest.get("lowest")),
         valid_first=True,
         class_map=class_map,
+        unjudged=n_unjudged,
     )
     claims: list[dict[str, str]] = []
     if plan_design in STRATIFIED_DESIGNS:
@@ -3420,7 +3811,11 @@ def _estimate_valid_first(
             contrast, missed = _user_vs_producer(per_class, labels_of)
         if contrast is not None:
             facts.append(contrast)
-    room = max(0, MUST_STATE_MAX - 1 - len(scope))
+    # Windows not judged: stated right after the interval, before the scope.
+    unjudged_line = (
+        [unjudged_must_state(n_unjudged, int(res["n_labelled"]))] if n_unjudged else []
+    )
+    room = max(0, MUST_STATE_MAX - 1 - len(unjudged_line) - len(scope))
     # A class map's top-k scores, stated in the slot the classes it finds
     # less of leave free: those are this estimate's own finding, while the
     # scores only allocated a confidence design's labels (the interval does
@@ -3436,7 +3831,7 @@ def _estimate_valid_first(
     # margin has no grid to draw on, so it gets no figure (every plan this
     # tool writes keeps one).
     margin = population.get("margin")
-    if isinstance(margin, list) and margin:
+    if isinstance(margin, list) and margin and not n_unjudged:
         intervals = [
             (
                 "valid at every sample size",
@@ -3465,10 +3860,11 @@ def _estimate_valid_first(
                 no_confidence=class_map,
             )
         )
+    rules.add_card(out, _valid_first_card(res, valid, plan_design))
     return rules.add_contract(
         out,
         facts=facts,
-        must_state=[stated, *scope, *stated_missed, *topk[:free]],
+        must_state=[stated, *unjudged_line, *scope, *stated_missed, *topk[:free]],
         forbidden_claims=claims,
     )
 
@@ -3529,6 +3925,33 @@ async def _estimate_map_error(
         if file_studio_kind(pop.source) == STUDIO_TOPK
         else []
     )
+    rules.add_card(
+        out,
+        [
+            rules.card_row(
+                "Error rate",
+                (
+                    rules.percent(out["estimate"])
+                    if out.get("estimate") is not None
+                    else None
+                ),
+            ),
+            rules.card_row(
+                _card_name(f"{_card_level(out)}interval"),
+                (
+                    _span_text(out["low"], out["high"])
+                    if out.get("low") is not None
+                    else None
+                ),
+                out.get("method"),
+            ),
+            rules.card_row(
+                "Labels",
+                rules.labels_card_value(out.get("n_labelled"), out.get("n_population")),
+            ),
+            rules.card_row("Design", NO_DESIGN),
+        ],
+    )
     return rules.add_contract(
         out,
         facts=[_whole_map_estimate(out)],
@@ -3570,12 +3993,15 @@ def _estimate_next_steps(
     per_class: bool = False,
     valid_first: bool = False,
     class_map: bool = False,
+    unjudged: int = 0,
 ) -> list[str]:
     """What follows an estimate, from its design (and a per-class table).
 
     A valid-first estimate (any design file of one map) reports the interval
     valid at every sample size first; a class map's steps say it has no
-    certified zone, in place of the certification step.
+    certified zone, in place of the certification step; with windows not
+    judged (``?``), a random design's step says the zone needs them judged,
+    since olmoearth_certify_zone takes 1 or 0 on every window.
     """
     steps = [
         (
@@ -3610,6 +4036,12 @@ def _estimate_next_steps(
             "needs a new plan with design='random', every drawn window labelled, "
             "and alpha, delta and rule fixed before labelling. "
             + rules.POSSIBLE_NOT_CERTAIN
+        )
+    elif from_design and unjudged:
+        steps.append(
+            f"No zone can be certified from these labels as they stand: {unjudged} "
+            "window(s) are ? (cannot tell), and olmoearth_certify_zone needs 1 or 0 "
+            "on every window. " + rules.POSSIBLE_NOT_CERTAIN
         )
     elif from_design:
         steps.append(
@@ -3903,6 +4335,28 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
             ],
             n_valid=int(out["n_population"]),
         )
+    )
+    # No whole-map estimate on the card: read beside the zone, it would pass
+    # for the zone's rate (whole_map_rate_for_a_zone).
+    rules.add_card(
+        out,
+        [
+            rules.card_row(
+                "Certified zone",
+                (
+                    f"the {zone['n_zone']} most confident windows (coverage "
+                    f"{zone['coverage']:g})"
+                    if out["certified"]
+                    else "none"
+                ),
+            ),
+            rules.card_row("Test", f"alpha={alpha:g}, delta={delta:g}, rule '{rule}'"),
+            rules.card_row(
+                "Labels",
+                rules.labels_card_value(out.get("n_labelled"), out.get("n_population")),
+            ),
+            rules.card_row("Design", out.get("design")),
+        ],
     )
     return rules.add_contract(
         out,
@@ -4745,6 +5199,7 @@ async def _plan_two_maps(
             _figure, stem, figures.two_map_plan_figure, differ, maps.grid, indices
         )
     )
+    rules.add_card(out, _two_map_plan_card(out))
     return rules.add_contract(
         out,
         facts=facts,
@@ -4883,6 +5338,54 @@ def _which_map_fact(res: dict[str, Any]) -> dict[str, Any]:
         high=diff.get("high"),
         p_value=p_value,
     )
+
+
+def _which_map_card(res: dict[str, Any]) -> list[list[str] | None]:
+    """The card rows of a which-map grade, from ``compare_from_disagreement``'s result.
+
+    The map the verdict names (or neither), what decided it (the exact sign
+    test with its p-value where ``rules.which_map_must_state`` gives one, or
+    the interval), the difference in accuracy, the labels and the design,
+    each number written as that sentence writes it.
+    """
+    verdict = res.get("verdict")
+    level = f"{100.0 * float(res.get('conf', 0.95)):g}%"
+    n = res.get("n_labelled")
+    if res.get("verdict_rule") == "sign":
+        p = float((res.get("sign_test") or {}).get("p_value", 1.0))
+        decided = (
+            f"exact sign test on {n} labels, p = {p:.3g}"
+            if verdict in ("a", "b")
+            else "exact sign test"
+        )
+    else:
+        decided = f"the {level} interval"
+    diff = res.get("difference") or {}
+    span = None
+    if diff.get("low") is not None and diff.get("high") is not None:
+        lo, hi = 100.0 * float(diff["low"]), 100.0 * float(diff["high"])
+        span = f"{lo:+.1f} to {hi:+.1f} points"
+    labels = f"{n} of the {res.get('n_disagree')} windows where the maps differ"
+    if res.get("n_unjudged"):
+        labels += f", {res['n_unjudged']} not judged (?)"
+    return [
+        rules.card_row(
+            "More accurate",
+            (
+                f"Map {verdict}"
+                if verdict in ("a", "b")
+                else "Neither map, by these labels"
+            ),
+        ),
+        rules.card_row("Decided by", decided),
+        rules.card_row(
+            "Difference in accuracy, a minus b",
+            span,
+            f"{level} interval over the {res.get('n_population')} windows compared",
+        ),
+        rules.card_row("Labels", labels if n is not None else None),
+        rules.card_row("Design", TWO_MAP_DESIGN),
+    ]
 
 
 def _no_reference_in_the_maps_classes(
@@ -5088,6 +5591,7 @@ def _grade_two_maps(
                 differ_known=population.get("differ") is not None,
             )
         )
+    rules.add_card(out, _which_map_card(res))
     return rules.add_contract(
         out,
         facts=facts,
@@ -5105,6 +5609,15 @@ _WRONG = {
 _LABELS_PATH = {
     "type": "string",
     "description": "Or the design's _to_label.csv with 'wrong' filled in.",
+}
+#: The estimate's labels_path: it alone takes Cannot tell (``?``), with a
+#: design file (the certified zone and the certificate need 1 or 0).
+_LABELS_PATH_ESTIMATE = {
+    "type": "string",
+    "description": (
+        "Or the design's _to_label.csv with 'wrong' filled in (1, 0, or ? where "
+        "it cannot be told, with design_path; not on a seed_from_map plan)."
+    ),
 }
 
 
@@ -5240,7 +5753,7 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "required": ["budget"],
                 },
             ),
-            handler=_plan_label_sample,
+            handler=resolving("result_id", "result_id_b")(_plan_label_sample),
             capability=Capability(
                 does="choose windows to label for an error rate ('confidence', "
                 "'class'; 'random' for a certified zone) or where two maps "
@@ -5280,7 +5793,7 @@ def build_estimation_tools() -> list[RegisteredTool]:
                     "properties": {
                         "design_path": _DESIGN_PATH,
                         "wrong": _WRONG,
-                        "labels_path": _LABELS_PATH,
+                        "labels_path": _LABELS_PATH_ESTIMATE,
                         "reference": {
                             "type": "array",
                             "items": {"type": ["integer", "string"]},

@@ -247,7 +247,8 @@ async def test_two_properties_carry_no_combined_statistic_no_winner_and_no_error
     assert no_review.startswith("'sample_number' (declared range [0.2, 1.2])")
     assert "sample_karst_score" not in no_review
     assert "a margin-based review set" in no_review
-    assert "a review set of this band needs a threshold for it" in no_review
+    # Round 4: the reason sends no one to a review set with a threshold.
+    assert "no recorded experiment supports ranking such a band" in no_review
     combined = _why(allowed, rules.COMBINED_STATISTIC_ACROSS_PROPERTIES)
     assert "['sample_karst_score', 'sample_number']" in combined
     # One winner claim, the one that says what the correlation does say.

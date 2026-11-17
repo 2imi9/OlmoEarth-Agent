@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects</title>
+<script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
+<link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .project h2 { font-size: 20px; line-height: 28px; }
+  .project .desc { margin: 4px 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; min-height: 42px; }
+  .project.open { grid-column: 1 / -1; cursor: default; }
+  /* A project's title is its button (no button inside a button), with a chevron for its state. */
+  main button.title { all: unset; box-sizing: border-box; display: flex; align-items: center; width: 100%;
+    cursor: pointer; font: inherit; color: inherit; }
+  main button.title:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 2px; }
+  .title .name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chev { flex: none; width: 7px; height: 7px; margin: 0 4px 4px 10px; border-right: 2px solid var(--text-2);
+    border-bottom: 2px solid var(--text-2); transform: rotate(45deg); transition: transform .2s; }
+  button.title[aria-expanded="true"] .chev { transform: rotate(-135deg); margin-bottom: -2px; }
+  /* Compact rows for more than eight projects. */
+  .projects-table button.title { font-weight: 700; color: var(--text-2); }
+  .projects-table .row-desc { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .projects-table td.act { text-align: right; }
+  .projects-table tr.detail > td { background: var(--canvas); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* The project summary: Studio's dashboard cards. */
+  .proj-summary h2 { font-size: 20px; line-height: 28px; }
+  .items { list-style: none; margin: 4px 0 0; padding: 0; }
+  .items li { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    padding: 8px 0; border-top: 1px solid var(--rule); }
+  .items li:first-child { border-top: 0; }
+  .items .name { font-weight: 700; color: var(--text-2); }
+  .sub { padding-left: 16px; }
+  /* The box that picks a prediction to compare, and a gap of its width on a row that cannot be picked. */
+  .items input[type=checkbox] { margin: 0; flex: none; width: 16px; height: 16px; }
+  .items .box-gap { width: 16px; flex: none; }
+  /* A prediction or model row's leading part: the box, the ring and the year
+     (or the tile) in tracks of a fixed width that never wrap, then the name
+     in a column of its own that wraps inside itself, its chip or badges
+     after it or under it; so every row's name starts at one left edge, on a
+     wide panel or a narrow one, with a long name too. */
+  .items .lead { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; align-items: flex-start; }
+  .items .lead > * { flex: none; }
+  /* Top-aligned, so a name that wraps keeps the ring or tile (30 px) beside
+     its first line: the box sits at the ring's middle, and the name's first
+     line too (a column at least 30 px high, its items centred). */
+  .items .lead > input[type=checkbox], .items .lead > .box-gap { margin-top: 7px; }
+  .items .lead > .lead-text { flex: 1 1 0; min-width: 0; min-height: 30px; display: flex; flex-wrap: wrap;
+    align-items: center; gap: 4px 8px; }
+  .items .lead-text > .name { min-width: 0; overflow-wrap: anywhere; }
+  /* A model's caption under its name: indented by the tile's 30 px track and
+     the row's 8 px gap, so the caption starts at the name's left edge. */
+  .items .lead-caption { margin: 2px 0 0 38px; }
+  /* An area row: the name a column that wraps inside itself, the button at
+     the row's right edge, on every row. */
+  .items li.area { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 8px; }
+  .items li.area > .name { overflow-wrap: anywhere; }
+  /* In progress: two columns shared by every row, its words in the first
+     (a long name wraps inside it) and its Resume in the second, so each
+     row's words start at one left edge and each Resume at another. */
+  .in-progress .items { display: grid; grid-template-columns: minmax(0, 1fr) max-content; column-gap: 12px; }
+  .in-progress .items li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center;
+    justify-content: normal; column-gap: normal; row-gap: 4px; }
+  .in-progress .items li > .oe-type { grid-column: 1 / -1; margin-top: 0; }
+  .in-progress .items .mono { overflow-wrap: anywhere; }
+  /* An output's row: its id, then the names of what it holds, wrapping
+     inside the row's first part; a prediction's model and output words after
+     its name. */
+  .items .result-what { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .items .result-holds, .items .pred-model { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<main id="root" class="stack"><div class="muted">Loading your projects...</div></main>
+<script>
+// WORDING: r4k K2
+setTimeout(function(){if(!window.OE_STARTED){var r=document.getElementById('root');if(r)r.textContent='This card could not start here. Carry on in the chat.';}},10000);
+</script>
+<script type="module">
+import { App } from "@EXT_APPS_URL@";
+/*@SCRIPTS@*/
+
+const root = document.getElementById('root');
+const RECENT = 5;       // items a summary card lists before 'See all'
+const CARD_LIMIT = 8;   // more projects than this: compact rows instead of cards
+
+/* Each drawing of the page (the tool's projects, the sign-in, a sign-out)
+   takes the next number; an answer that arrives for an older one is dropped. */
+let generation = 0;
+
+/* What the projects panel shows now, for what it tells Claude (tellScreen):
+   how many projects are listed, each project open with its counts, the
+   predictions picked to compare, by project, and the label sheets listed in
+   progress (file name, counts and labels_csv_path). Made anew by each
+   drawing of the projects (renderProjects); null while the page lists none. */
+let onScreen = null;
+
+/* Tell Claude silently what the projects panel shows (OE.tellClaude): ids,
+   file names, counts and each sheet's labels_csv_path (so a sheet the user
+   names in the chat can be opened), never a Studio name or description.
+   Each sheet in progress is a clause of its own: its whole file name, its
+   counts, then its path; over the room the update leaves, whole sheets go
+   from the end and a last clause counts them (OE.fitClauses). s is the
+   record it was made for: a page drawn since makes an older one say nothing. */
+function tellScreen(app, s) {
+  if (!s || s !== onScreen) return;
+  const open = [...s.open].map(([id, o]) => 'project_id ' + OE.ctxId(id) + ' (' + OE.counted(o.areas, 'area') + ', '
+    + OE.counted(o.predictions, 'prediction') + ', ' + o.completed + ' completed, ' + OE.counted(o.models, 'model') + ')');
+  const picked = [...s.picked.values()].flat().map(OE.ctxId).filter(Boolean);
+  const parts = [OE.counted(s.listed, 'project') + ' listed', open.length ? 'open: ' + open.join(', ') : 'no project open'];
+  if (picked.length) parts.push('picked to compare: prediction_id ' + picked.join(' and '));
+  const sheets = s.sheets.map((r) => OE.ctxId(r.name) + ' (' + r.labelled + ' of ' + r.rows + ' labelled'
+    + (r.labels_csv_path ? ', labels_csv_path ' + r.labels_csv_path : '') + ')');
+  if (sheets.length) parts.push('label sheets in progress: ');
+  const head = 'Projects panel: ' + parts.join('; ');
+  const more = (k) => OE.counted(k, 'more sheet') + ' not listed here';
+  OE.tellClaude(app, (room) => OE.fitClauses(head, sheets, '.', room, more));
+}
+
+/* " Last saved 11/12/2026." from a sheet's saved time (UTC, ISO 8601), or ''
+   when it is not a date. */
+const savedOn = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? ' Last saved ' + (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() + '.' : '';
+};
+
+/* A sheet's counts from its progress line ("3 of 20 labelled, ..."), for
+   what the panel tells Claude: whole numbers only, else null. */
+const sheetCounts = (line) => {
+  const m = /^(\d+) of (\d+) labelled/.exec(String(line || ''));
+  return m ? { labelled: m[1], rows: m[2] } : null;
+};
+
+/* One label sheet in progress: what it is for, in bold, its name, its
+   counts and when it was last saved, and Resume, which sends Claude the
+   request to open it again (the server's resume_message), shown to type
+   when the host declines it. */
+function sheetRow(app, row) {
+  const slot = OE.typeSlot();
+  const resume = busyButton({ 'aria-label': 'Resume: ' + row.name }, 'Resume',
+    () => OE.sendJob(app, String(row.resume_message), slot));
+  // The words in the list's first column, Resume in its second (.in-progress in the style).
+  return OE.el('li', {},
+    OE.el('div', { class: 'words' },
+      OE.el('div', {}, OE.el('b', {}, row.job_label || 'Labelling')),
+      OE.el('div', { class: 'small faint' }, (row.progress || '') + '.' + savedOn(row.saved)),
+      OE.el('div', { class: 'mono' }, row.name)),
+    resume,
+    slot);
+}
+
+/* "In progress": the label sheets on this computer that are part labelled
+   (olmoearth_app_sheets_in_progress, counts only), above the search. Hidden
+   until the read answers with at least one, and when it fails; an answer
+   for an older drawing of the page is dropped. No focus on load, no
+   contained button. s is the record of what the panel tells Claude. */
+function inProgressCard(app, s) {
+  const card = OE.el('div', { class: 'card summary in-progress', hidden: true });
+  const mine = generation;
+  OE.call(app, 'olmoearth_app_sheets_in_progress')
+    .then((out) => {
+      if (mine !== generation) return;
+      const rows = (Array.isArray(out.sheets) ? out.sheets : []).filter((r) => r && r.name && r.resume_message);
+      if (!rows.length) return;
+      card.replaceChildren(
+        OE.el('h2', {}, 'In progress'),
+        OE.el('ul', { class: 'items' }, rows.map((row) => sheetRow(app, row))),
+        out.more ? OE.el('div', { class: 'small faint', style: 'margin-top:4px' }, 'Older sheets in progress are not listed.') : null);
+      card.hidden = false;
+      if (s) {
+        // Each sheet's labels_csv_path (the server's row; an older server's row names it path).
+        const where = (r) => (typeof r.labels_csv_path === 'string' && r.labels_csv_path ? r.labels_csv_path
+          : typeof r.path === 'string' ? r.path : '');
+        s.sheets = rows.map((r) => ({ name: r.name, labels_csv_path: where(r), ...sheetCounts(r.progress) }))
+          .filter((r) => r.rows !== undefined);
+        tellScreen(app, s);
+      }
+    })
+    .catch(() => { /* nothing in progress is shown: the card stays hidden */ });
+  return card;
+}
+
+/* Projects and areas have no job: their "Tell Claude" button sends the ids,
+   which Claude's tools resolve, and the Studio name quoted as data
+   (OE.named), and starts no job (B/P4). A completed prediction, its results
+   and a model have job buttons instead, each sending one complete request
+   (OE.JOB_TEXT). A button's accessible name starts with its visible label,
+   then says which item. kind is 'project' or 'area'. */
+// WORDING: r4p2
+const TELL = {
+  label: (kind) => 'Tell Claude: this ' + kind,
+  title: 'Tells Claude which one you mean. Starts no job.',
+};
+const useButton = (app, text, kind, name) => OE.el('button', {
+  class: 'small', 'aria-label': TELL.label(kind) + ' (' + name + ')', title: TELL.title,
+  onclick: (e) => { e.stopPropagation(); OE.say(app, text); },
+}, TELL.label(kind));
+
+/* The card's three plain lines under its heading (OE.lead): what it is,
+   what to do next (r4-h A/F30: the project's name is what opens it), what
+   it cannot tell. Nothing else folds on this card but an open project's
+   models (MODELS_FOLD). */
+// WORDING: r4p2 (what, cannot); r4h A/F30 (next)
+const PROJECTS_LEAD = {
+  what: 'Your Studio projects. Inside each are its predictions: model runs over an area and a period. Their outputs are the maps.',
+  next: 'Press the name of the project that holds your map, find its prediction there, and press Check how wrong it is.',
+  cannot: 'It cannot tell which of several similar projects holds the map you use. Ask whoever made them.',
+};
+
+/* An open project's Models box sits in a closed fold of this name (r4-h
+   A/F33): it serves making a new map, not the check. */
+// WORDING: r4h A/F33
+const MODELS_FOLD = 'Make a new map';
+
+/* The predictions card's caption under its heading (A/projects-4). */
+// WORDING: r4p2
+const PREDICTIONS_NOTE = 'Each prediction is a model run over an area and a period. Its output is the map; a prediction can have more than one output.';
+
+/* A prediction's outputs (its Studio results): the button that shows them,
+   and the list's first line where the row above has job buttons
+   (A/projects-3, B/P2). The words a toast or an empty list says about them. */
+// WORDING: r4p2
+const OUTPUTS = {
+  label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),
+  first: 'What this run produced. With one, the buttons on the row above already use it. With several, pick the one to use here.',
+  none: 'No outputs',
+  noneYet: 'This prediction has no outputs yet.',
+  several: (n) => 'This prediction has ' + n + ' outputs; pick a job on one of them below.',
+};
+
+/* Said under an embeddings prediction's row, which has no job buttons (B/P1). */
+// WORDING: r4p2
+const NOT_A_MAP = 'Embeddings are not a map these jobs can check or rank.';
+
+/* Under the predictions, how to compare two, and once two are ticked (B/P7). */
+// WORDING: r4p2
+const COMPARE = {
+  how: 'Tick two finished maps of the same area and dates. You then label a sample of the places where they differ. The answer says which map is right more often there, or that these labels cannot tell; it does not say how accurate either map is.',
+  ready: 'Two ticked. Press the button to start.',
+};
+
+/* Run on an area's tooltip (B/P10). */
+// WORDING: r4p2
+const RUN_TITLE = 'Starts nothing yet: you first draw or pick the area and give the dates. Needs a Studio key that can write.';
+
+/* The row's job buttons: Check first, the main job, named as on the start
+   card ("Check how wrong a map is", shortened for a row); "Where to look
+   first" only while the server offers it (firstInStudio). */
+// WORDING: held for the reader test
+const JOBS = { check: 'Check how wrong it is', first: 'Where to look first' };
+
+/* Whether the server offers "Where to look first" for Studio results at all
+   (the view data's first_in_studio, server.FIRST_IN_STUDIO; false when not
+   sent). Set by each result the panel draws. */
+let firstInStudio = false;
+
+/* A small button whose press runs fn, one press at a time: aria-disabled
+   while it runs, so it keeps the focus. */
+function busyButton(attrs, text, fn) {
+  let busy = false;
+  const button = OE.el('button', {
+    class: 'small', ...attrs,
+    onclick: async (e) => {
+      e.stopPropagation();
+      if (busy || button.disabled) return;
+      busy = true;
+      button.setAttribute('aria-disabled', 'true');
+      try { await fn(); } finally {
+        busy = false;
+        button.setAttribute('aria-disabled', 'false');
+      }
+    },
+  }, text);
+  return button;
+}
+
+/* A failed read behind a button: the sign-in when the key is missing or
+   refused, otherwise the server's message. */
+const readFailed = (app, err) => { if (err.needsSignIn) renderSignIn(app); else OE.toast(err.message, true); };
+const created = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? 'Created ' + (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() : '';
+};
+const titleButton = (name) => OE.el('button', { type: 'button', class: 'title', title: name, 'aria-expanded': 'false' },
+  OE.el('span', { class: 'name-text' }, name), OE.el('span', { class: 'chev', 'aria-hidden': 'true' }));
+
+/* A result's row: its id, then what it holds (its property names, as text
+   only: B/P2) and, under a completed prediction, its jobs, sent with this
+   result's id (no read): Check unless the model's kind is embeddings or
+   detection (OE.checkOffered), and "Where to look first" only while the
+   server offers it and this result is a class map with top-k scores
+   (OE.firstOffered). kind is the prediction's model's kind (null when not
+   recorded). */
+function resultRow(app, p, r, done, kind) {
+  const slot = OE.typeSlot();
+  const job = (key) => busyButton({ 'aria-label': JOBS[key] + ': result ' + r.id }, JOBS[key],
+    () => OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: r.id, prediction_id: p.id, name: p.name }), slot));
+  const jobs = !done ? [] : [
+    OE.checkOffered(kind) ? job('check') : null,
+    firstInStudio && OE.firstOffered(kind, r.property_names || []) ? job('first') : null,
+  ].filter(Boolean);
+  const names = (Array.isArray(r.property_names) ? r.property_names : []).filter((n) => typeof n === 'string' && n);
+  return OE.el('li', {},
+    OE.el('span', { class: 'result-what' }, OE.el('span', { class: 'mono' }, r.id),
+      names.length ? OE.el('span', { class: 'small faint result-holds' }, names.join(', ')) : null),
+    jobs.length ? OE.el('span', { class: 'row' }, jobs) : null, slot);
+}
+
+/* A prediction's row, with its results behind a text button. A completed
+   one also has its jobs (Check first; "Where to look first" only while the
+   server offers it, for a model of classes or one not recorded), which need
+   its result: one result is sent, none or several are said (several open
+   the list, each result with its jobs); "Where to look first" on a
+   prediction whose results hold no top-k class scores says so (OE.NO_FIRST)
+   and sends nothing. Given compare (two or more completed), a box to pick
+   it for "Which is more accurate?". The results are read once, on the first
+   press of any of these, and kept. kind is its model's kind (null when not
+   recorded); model its model's record, when read: its name and what it
+   outputs follow the prediction's name, in the Models list's words (B/P1).
+   An embeddings row, which has no job buttons, says why under it. Its
+   results show as its outputs, their list opening with OUTPUTS.first when
+   the row has job buttons. */
+function predictionRow(app, p, compare, kind, model = null) {
+  const done = p.status === 'completed';
+  const results = OE.el('ul', { class: 'items sub', hidden: true });
+  const slot = OE.typeSlot();
+  let cache = null;  // the one read, shared by the toggle, the jobs and the comparison
+  const getResults = () => cache || (cache = OE.call(app, 'olmoearth_app_results', { prediction_id: p.id })
+    .catch((err) => { cache = null; throw err; }));
+  let filled = false;
+  let hasJobs = false;  // set once the row's jobs are made, before any press can fill the list
+  const fill = (out) => {
+    if (filled) return;
+    filled = true;
+    const list = out.results || [];
+    const rows = list.map((r) => resultRow(app, p, r, done, kind));
+    results.replaceChildren(...(!list.length ? [OE.el('li', { class: 'faint' }, OUTPUTS.none)]
+      : hasJobs ? [OE.el('li', { class: 'small faint' }, OUTPUTS.first), ...rows] : rows));
+  };
+  const read = async () => {
+    try {
+      const out = await getResults();
+      fill(out);
+      return out;
+    } catch (err) { readFailed(app, err); return null; }
+  };
+  const label = OUTPUTS.label;
+  const toggle = OE.el('button', { class: 'link', 'aria-expanded': 'false', 'aria-label': label(false) + ' of ' + p.name },
+    label(false));
+  const show = (shown) => {
+    results.hidden = !shown;
+    toggle.textContent = label(shown);
+    toggle.setAttribute('aria-label', label(shown) + ' of ' + p.name);
+    toggle.setAttribute('aria-expanded', String(shown));
+  };
+  let loading = false;  // aria-disabled while loading, so the button keeps the focus
+  toggle.addEventListener('click', async () => {
+    if (loading) return;
+    if (!filled) {
+      loading = true;
+      toggle.setAttribute('aria-disabled', 'true');
+      const out = await read();
+      loading = false;
+      toggle.setAttribute('aria-disabled', 'false');
+      if (!out) return;
+    }
+    show(results.hidden);
+  });
+  const job = (key) => busyButton({ 'aria-label': JOBS[key] + ': prediction ' + p.name }, JOBS[key], async () => {
+    const out = await read();
+    if (!out) return;
+    const list = out.results || [];
+    if (!list.length) { OE.toast(OUTPUTS.noneYet); return; }
+    // Where to look first: only a result with top-k class scores has an order.
+    if (key === 'first' && !list.some((r) => OE.hasTopK(r.property_names || []))) {
+      OE.toast(OE.NO_FIRST);
+      return;
+    }
+    if (list.length > 1) {
+      show(true);
+      OE.toast(OUTPUTS.several(list.length));
+      return;
+    }
+    await OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: list[0].id, prediction_id: p.id, name: p.name }), slot);
+  });
+  const jobs = !done ? [] : [
+    OE.checkOffered(kind) ? job('check') : null,
+    firstInStudio && OE.firstOffered(kind) ? job('first') : null,
+  ].filter(Boolean);
+  hasJobs = jobs.length > 0;
+  // The box (a gap of its width on a row that cannot be picked), the glyph
+  // (a row: the ring only, the year beside it), each a fixed track, then the
+  // name, its model's name and output words, and the status chip, which
+  // stays the only status sign, in a column that wraps inside itself (.lead
+  // in the style).
+  const box = !compare ? null : done ? compare.box(p, getResults) : OE.el('span', { class: 'box-gap', 'aria-hidden': 'true' });
+  const made = model ? [model.name, OE.glyph.outputWords(model)].filter(Boolean).join(' · ') : '';
+  return OE.el('li', { style: 'display:block' },
+    OE.el('div', { class: 'spread' },
+      OE.el('span', { class: 'row lead' }, box, OE.glyph.predictionRow(p),
+        OE.el('span', { class: 'lead-text' },
+          OE.el('span', { class: 'name' }, p.name),
+          made ? OE.el('span', { class: 'small faint pred-model' }, made) : null,
+          p.status ? OE.chip(p.status, { ring: done }) : null)),
+      OE.el('span', { class: 'row' }, toggle, jobs)),
+    kind === 'embeddings' ? OE.el('div', { class: 'small faint' }, NOT_A_MAP) : null,
+    slot, results);
+}
+
+/* Which of two completed predictions is more accurate: a box on each, and a
+   button under the list that is live only while exactly two are picked (the
+   other boxes are off then). Its press reads each one's results (the rows'
+   kept reads) and sends the job when each has exactly one. */
+function comparer(app, project) {
+  const picked = new Map();  // prediction id -> { p, getResults }, in the order picked
+  const boxes = [];
+  const s = onScreen;  // what the panel tells Claude: the ids picked, by project
+  const slot = OE.typeSlot();
+  // How to compare, until two are ticked; then that the button is live (announced).
+  const hint = OE.el('span', { class: 'small faint', 'aria-live': 'polite' }, COMPARE.how);
+  const button = busyButton({ disabled: true }, 'Which is more accurate?', async () => {
+    const pair = [...picked.values()];
+    if (pair.length !== 2) return;
+    const chosen = [];
+    for (const { p, getResults } of pair) {
+      let out;
+      try { out = await getResults(); } catch (err) { readFailed(app, err); return; }
+      const list = out.results || [];
+      if (list.length !== 1) {
+        // WORDING: r4p2 (outputs, as the button over a prediction's results says)
+        OE.toast(list.length ? p.name + ' has ' + list.length + ' outputs; ask in the chat with the one you want.'
+          : p.name + ' has no outputs yet.');
+        return;
+      }
+      chosen.push({ result_id: list[0].id, prediction_id: p.id, name: p.name });
+    }
+    await OE.sendJob(app, OE.JOB_TEXT.which(chosen[0], chosen[1]), slot);
+  });
+  const sync = () => {
+    const two = picked.size === 2;
+    button.disabled = !two;
+    hint.textContent = two ? COMPARE.ready : COMPARE.how;
+    for (const box of boxes) box.disabled = two && !box.checked;
+    if (s) {
+      if (picked.size) s.picked.set(project.id, [...picked.keys()]); else s.picked.delete(project.id);
+      tellScreen(app, s);
+    }
+  };
+  return {
+    box(p, getResults) {
+      const box = OE.el('input', { type: 'checkbox', 'aria-label': 'Select to compare: ' + p.name });
+      box.addEventListener('change', () => {
+        if (box.checked) picked.set(p.id, { p, getResults }); else picked.delete(p.id);
+        sync();
+      });
+      boxes.push(box);
+      return box;
+    },
+    footer: () => OE.el('div', { style: 'margin-top:8px' },
+      OE.el('div', { class: 'row' }, button, hint),
+      slot),
+  };
+}
+
+/* One summary card (Studio's dashboard): a title, an optional note under
+   it, a 'Recent' caption, the newest few items, 'See all (n)' for the rest,
+   and an optional footer. */
+function summaryCard(title, list, row, footer = null, note = null) {
+  const sorted = list.slice().sort((a, b) => String(b.creation_time || '').localeCompare(String(a.creation_time || '')));
+  const n = sorted.length >= 200 ? '200+' : String(sorted.length);  // the server reads at most 200
+  const caption = OE.el('div', { class: 'small faint' });
+  const ul = OE.el('ul', { class: 'items' });
+  // Each row is made once, so an opened prediction keeps its results across 'See all'.
+  const nodes = sorted.map(row);
+  let all = false;
+  const more = sorted.length > RECENT ? OE.el('button', { class: 'link', 'aria-expanded': 'false' }) : null;
+  const draw = () => {
+    ul.replaceChildren(...(all ? nodes : nodes.slice(0, RECENT)));
+    caption.textContent = all ? 'All (' + n + ')' : 'Recent';
+    if (more) {
+      more.textContent = all ? 'Show recent only' : 'See all (' + n + ')';
+      more.setAttribute('aria-expanded', String(all));
+    }
+  };
+  if (more) more.addEventListener('click', () => { all = !all; draw(); });
+  if (sorted.length) draw();
+  return OE.el('div', { class: 'card summary proj-summary' },
+    OE.el('h2', {}, title),
+    note ? OE.el('div', { class: 'small muted' }, note) : null,
+    sorted.length ? [caption, ul, more, footer] : OE.el('div', { class: 'faint', style: 'margin-top:4px' }, 'No ' + title.toLowerCase()));
+}
+
+/* The project's models (those its predictions name): each a row with its
+   output tile (a row keeps the tile only), the sensor and size badges, and
+   the same in words with its months and what its record does not say, and
+   "Run on an area", which sends the job (no read; Studio checks the key). */
+function modelsCard(app, project, out) {
+  const named_ = new Set(out.predictions.map((p) => p.model_id).filter(Boolean));
+  if (!named_.size) return null;
+  const rows = (out.models || []).map((m) => {
+    const g = OE.glyph.modelRow(m);
+    const slot = OE.typeSlot();
+    const run = busyButton({ 'aria-label': 'Run on an area: model ' + m.name, title: RUN_TITLE },
+      'Run on an area', () => OE.sendJob(app, OE.JOB_TEXT.run({ ...m, project_id: project.id }), slot));
+    // The tile a fixed track, the name and its badges a column that wraps
+    // inside itself, the caption under the name (.lead, .lead-caption).
+    return OE.el('li', { style: 'display:block' },
+      OE.el('div', { class: 'spread' },
+        OE.el('span', { class: 'row lead' }, g.tile,
+          OE.el('span', { class: 'lead-text' }, OE.el('span', { class: 'name' }, m.name), ...g.badges)), run),
+      OE.el('div', { class: 'small faint lead-caption' }, g.caption), slot);
+  });
+  const missing = named_.size - (out.models || []).length;
+  const s = missing === 1 ? '' : 's';
+  // A full page of 200 models: one missing from it was not read, not absent.
+  const note = !out.models_read ? 'The model records could not be read.'
+    : missing > 0 && out.models_capped ? missing + ' model' + s + ' of these predictions not among the first 200 models read.'
+      : missing > 0 ? missing + ' model' + s + ' of these predictions not found among the account\'s models.' : null;
+  return OE.el('div', { class: 'card summary proj-summary' },
+    OE.el('h2', {}, 'Models'),
+    rows.length ? OE.el('ul', { class: 'items' }, rows) : null,
+    note ? OE.el('div', { class: 'faint small', style: 'margin-top:4px' }, note) : null);
+}
+
+/* A project's areas, predictions (with "Which is more accurate?" under them
+   when two or more are completed) and models, the models in a closed fold
+   (MODELS_FOLD). */
+function projectSummary(app, project, out) {
+  // Boxes and the button only where two can be picked.
+  const completed = out.predictions.filter((p) => p.status === 'completed').length;
+  const compare = completed >= 2 ? comparer(app, project) : null;
+  // Each model's kind (classes, values, detection, embeddings; null when not
+  // recorded or not read), for the jobs its predictions offer, and its
+  // record, for the words after a prediction's name.
+  const models = Array.isArray(out.models) ? out.models : [];
+  const kindOf = new Map(models.map((m) => [m.id, m.kind || null]));
+  const modelOf = new Map(models.map((m) => [m.id, m]));
+  const modelsBox = modelsCard(app, project, out);
+  return OE.el('div', { class: 'stack', style: 'margin-top:12px' },
+    summaryCard('Areas', out.areas, (a) => OE.el('li', { class: 'area' }, OE.el('span', { class: 'name' }, a.name),
+      useButton(app, 'Use the Studio area with area_id ' + a.id + ' (project_id ' + project.id + ').' + OE.named(a.name), 'area', a.name))),
+    summaryCard('Predictions', out.predictions,
+      (p) => predictionRow(app, p, compare, kindOf.get(p.model_id) || null, modelOf.get(p.model_id) || null),
+      compare ? compare.footer() : null, PREDICTIONS_NOTE),
+    modelsBox ? OE.fold(MODELS_FOLD, modelsBox) : null);
+}
+
+/* Open and close a project's summary. A close, or a newer open, drops the
+   answer of the load before it; a failed load closes it again. Claude is
+   told (tellScreen) when the summary shows and when it closes. */
+function opener(app, project, title, slot, onState) {
+  let open = false;
+  let loads = 0;
+  const s = onScreen;  // what the panel tells Claude: this project open, with its counts
+  const set = (value) => {
+    open = value;
+    title.setAttribute('aria-expanded', String(value));
+    onState(value);
+    if (!value && s) {
+      const wasOpen = s.open.delete(project.id);
+      const hadPicks = s.picked.delete(project.id);
+      if (wasOpen || hadPicks) tellScreen(app, s);
+    }
+  };
+  return async () => {
+    loads += 1;
+    if (open) { set(false); slot.replaceChildren(); return; }
+    const mine = loads;
+    set(true);
+    slot.replaceChildren(OE.el('div', { class: 'faint', style: 'margin-top:8px' }, 'Loading...'));
+    try {
+      const out = await OE.call(app, 'olmoearth_app_project_items', { project_id: project.id });
+      if (mine !== loads) return;
+      slot.replaceChildren(projectSummary(app, project, out));
+      if (s) {
+        const predictions = Array.isArray(out.predictions) ? out.predictions : [];
+        s.open.set(project.id, {
+          areas: Array.isArray(out.areas) ? out.areas.length : 0, predictions: predictions.length,
+          completed: predictions.filter((p) => p.status === 'completed').length,
+          models: Array.isArray(out.models) ? out.models.length : 0,
+        });
+        tellScreen(app, s);
+      }
+    } catch (err) {
+      if (mine !== loads) return;
+      set(false);
+      slot.replaceChildren();
+      if (err.needsSignIn) renderSignIn(app); else OE.toast(err.message, true);
+    }
+  };
+}
+
+/* The description: blank until known, 'No description' when Studio has none. */
+const descText = (p) => (p.description === undefined ? '' : p.description || 'No description');
+
+function projectCard(app, p) {
+  const slot = OE.el('div', {});
+  const title = titleButton(p.name);
+  const desc = OE.el('div', { class: 'desc' });
+  const when = OE.el('span', { class: 'small' });
+  // The project's ring, filled when olmoearth_app_project_glyphs answers.
+  const glyphSlot = OE.el('div', { class: 'glyph-slot' });
+  const card = OE.el('div', { class: 'card object project' },
+    OE.el('h2', {}, title), desc, glyphSlot,
+    OE.el('div', { class: 'spread' }, when,
+      useButton(app, 'Use the Studio project with project_id ' + p.id + '.' + OE.named(p.name), 'project', p.name)),
+    slot);
+  const toggle = opener(app, p, title, slot, (open) => card.classList.toggle('open', open));
+  title.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+  card.addEventListener('click', (e) => { if (!slot.contains(e.target) && !e.target.closest('button')) toggle(); });
+  const info = () => { desc.textContent = descText(p); when.textContent = created(p.creation_time); };
+  info();
+  const setGlyph = (g) => glyphSlot.replaceChildren(...(g ? [OE.glyph.projectCard(g)] : []));
+  return { project: p, nodes: [card], info, setGlyph };
+}
+
+function projectRow(app, p) {
+  const slot = OE.el('div', {});
+  const title = titleButton(p.name);
+  const desc = OE.el('div', { class: 'small faint row-desc' });
+  const when = OE.el('td', { class: 'small' });
+  const row = OE.el('tr', {},
+    OE.el('td', {}, title, desc), when,
+    OE.el('td', { class: 'act' }, useButton(app, 'Use the Studio project with project_id ' + p.id + '.' + OE.named(p.name), 'project', p.name)));
+  const detail = OE.el('tr', { class: 'detail', hidden: true }, OE.el('td', { colspan: '3' }, slot));
+  const toggle = opener(app, p, title, slot, (open) => { detail.hidden = !open; });
+  title.addEventListener('click', toggle);
+  const info = () => { desc.textContent = descText(p); when.textContent = created(p.creation_time).replace('Created ', '') || '-'; };
+  info();
+  return { project: p, nodes: [row, detail], info };
+}
+
+/* The projects the tool gave, as cards (or compact rows), with a search by
+   name or description. Returns merge(list): the descriptions and creation
+   times read since, added to these projects by id; the page Claude asked
+   for stays the page shown, and an open project stays open. */
+function renderProjects(app, projects, account) {
+  const list = (projects || []).map((p) => ({ ...p }));
+  // Made before the cards, whose openers and comparers keep it.
+  onScreen = { listed: list.length, open: new Map(), picked: new Map(), sheets: [] };
+  const compact = list.length > CARD_LIMIT;
+  const items = list.map((p) => (compact ? projectRow(app, p) : projectCard(app, p)));
+  const target = compact ? OE.el('tbody') : OE.el('div', { class: 'grid' });
+  const container = compact
+    ? OE.el('div', { class: 'table-frame' }, OE.el('table', { class: 'projects-table' },
+      OE.el('thead', {}, OE.el('tr', {}, OE.el('th', {}, 'Name'), OE.el('th', {}, 'Created'),
+        OE.el('th', {}, OE.el('span', { class: 'sr-only' }, 'Action')))), target))
+    : target;
+  const search = OE.el('input', { type: 'search', class: 'search', 'aria-label': 'Search projects',
+    placeholder: 'Search by project name or description...' });
+  const matches = (p, q) => !q || (p.name + ' ' + (p.description || '')).toLowerCase().includes(q);
+  const fill = () => {
+    const q = search.value.trim().toLowerCase();
+    const shown = items.filter((it) => matches(it.project, q));
+    const empty = compact ? OE.el('tr', {}, OE.el('td', { colspan: '3', class: 'faint' }, 'No projects'))
+      : OE.el('div', { class: 'faint' }, 'No projects');
+    target.replaceChildren(...(shown.length ? shown.flatMap((it) => it.nodes) : [empty]));
+  };
+  search.addEventListener('input', fill);
+  // WORDING: r4p2 (the heading: B/P8)
+  root.replaceChildren(...[
+    OE.el('div', { class: 'spread' }, OE.el('h1', {}, 'Projects in this Studio account'),
+      OE.accountBar(app, account, { onSignOut: (r) => signedOut(app, r) })),
+    OE.lead(PROJECTS_LEAD),
+    inProgressCard(app, onScreen), search, container,
+  ].filter(Boolean));
+  fill();
+  tellScreen(app, onScreen);
+  // Cards (eight projects or fewer) get their rings: one predictions read per
+  // project, in one call. Compact rows draw none (that would be a read per row).
+  if (!compact && items.length) {
+    const mine = generation;
+    OE.call(app, 'olmoearth_app_project_glyphs', { project_ids: items.map((it) => it.project.id) })
+      .then((out) => {
+        if (mine !== generation) return;
+        for (const it of items) it.setGlyph((out.glyphs || {})[it.project.id] || null);
+      })
+      .catch(() => { /* no rings: the cards stay as they are */ });
+  }
+  return {
+    merge(fresh) {
+      const byId = new Map((fresh || []).map((p) => [p.id, p]));
+      for (const it of items) {
+        const q = byId.get(it.project.id);
+        if (!q) continue;  // not in the read (past its first 200): left as the tool gave it
+        it.project.description = String(q.description || '');
+        if (q.creation_time) it.project.creation_time = q.creation_time;
+        it.info();
+      }
+      // Moving the nodes would drop the focus: refilter only when a search is typed.
+      if (search.value.trim()) fill();
+    },
+  };
+}
+
+/* After Sign out: a key in the server's configuration may still be in effect
+   (the result says signed_in); its projects are shown, as the toast says,
+   and the old account's are never left on the page. Otherwise the sign-in
+   (no key is in effect then, so a later sign-in in another panel counts). */
+async function signedOut(app, result) {
+  if (!(result && result.signed_in)) { renderSignIn(app); return; }
+  const mine = (generation += 1);
+  // The old account's page goes at once; its buttons must not stay live.
+  root.replaceChildren(OE.el('div', { class: 'muted' }, 'Reading the projects of the key still in effect...'));
+  listsNone(app, 'signed out; the projects of the key still in effect are being read');
+  try {
+    const out = await OE.call(app, 'olmoearth_app_projects');
+    if (mine === generation) renderProjects(app, out.projects, result.account);
+  } catch (err) {
+    if (mine !== generation) return;
+    if (err.needsSignIn) { renderSignIn(app); return; }
+    listsNone(app, 'signed out here, and the projects of the key still in effect could not be read');
+    root.replaceChildren(OE.el('div', { class: 'card error' },
+      OE.el('div', {}, 'Signed out here. The projects of the key still in effect could not be read: ' + err.message)));
+  }
+}
+
+/* The page lists no projects now (the sign-in, an error, a read under way):
+   Claude is told so, and why, in place of the projects it was told of. */
+function listsNone(app, why) {
+  onScreen = null;
+  OE.tellClaude(app, 'Projects panel: no projects listed; ' + why + '.');
+}
+
+function renderSignIn(app) {
+  generation += 1;
+  listsNone(app, 'it shows the Studio sign-in');
+  root.replaceChildren(OE.signInPanel(app, {
+    acceptCurrent: true,  // a sign-in made in another panel counts here
+    onDone: async (status) => {
+      const mine = (generation += 1);
+      try {
+        const out = await OE.call(app, 'olmoearth_app_projects');
+        if (mine !== generation) return;
+        renderProjects(app, out.projects, status.account);
+        // The user pressed the sign-in's button: the focus goes on to the search.
+        const search = root.querySelector('input.search');
+        OE.focusIfHere(search);
+      } catch (err) { OE.toast(err.message, true); }
+    },
+  }));
+}
+
+async function show(app, params) {
+  const data = OE.viewData(params);
+  const mine = (generation += 1);
+  firstInStudio = data.first_in_studio === true;
+  if (data.needs_sign_in) { renderSignIn(app); return; }
+  if (!data.ok) {
+    listsNone(app, 'Studio could not be read');
+    root.replaceChildren(OE.el('div', { class: 'card error' },
+      OE.el('div', {}, data.error || 'Studio could not be read.'),
+      data.hint ? OE.el('div', { class: 'small', style: 'margin-top:8px;color:var(--text)' }, data.hint) : null));
+    return;
+  }
+  const view = renderProjects(app, data.projects, data.account);
+  // The tool's projects carry no descriptions: read them and add them by id.
+  try {
+    const out = await OE.call(app, 'olmoearth_app_projects');
+    if (mine === generation) view.merge(out.projects);
+  } catch (err) { /* the cards stay as the tool gave them, their descriptions blank */ }
+}
+
+// The glyph's own rules (glyph.js), beside the shared ones OE.start adds.
+const glyphStyle = document.createElement('style');
+glyphStyle.textContent = OE.glyph.STYLE;
+document.head.append(glyphStyle);
+
+await OE.start('olmoearth-studio', { onResult: (params, app) => show(app, params) });
+</script>
+</body>
+</html>

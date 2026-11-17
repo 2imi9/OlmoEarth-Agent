@@ -1,0 +1,2336 @@
+/* The label-sheet editor, shared by the sheet view, the result view and the
+   Check card.
+
+   data is olmoearth_app_sheet's answer (mcp_app/sheet.py read_sheet), the
+   page copy: the sheet's kind and label rule, the face it is labelled on
+   (the column this page writes: seen, class, wrong or pair), the answers
+   that face takes, the counts, the job, and its windows. Each window comes
+   as a handle the server keys with a secret of its own, with its answer on
+   the face, in the order of the handles: the page never has a window's
+   index, place, row, column, order or stratum, nor the map's class except
+   on the face that labels right or wrong. Answers go back by handle through
+   olmoearth_app_save_labels, with the sheet's id, the face and the label
+   rule the page drew; only the windows the reviewer changed are sent.
+
+   What the estimate reads (tools/estimation.py), and so what "every window
+   is labelled" means here:
+   - face 'seen' (a scores map whose design names its classes): the class
+     seen, one of data.answers (Present, Absent, Cannot tell), on every
+     window. The server writes the code into reference_class and works out
+     wrong from the design's map class when each label is saved;
+   - face 'wrong' (a scores map's, a class map's labelled right or wrong):
+     wrong, 0, 1 or '?' (Cannot tell, bounded both ways by the estimate), on
+     every window; the map's class is shown, since right or wrong needs it;
+   - face 'class' (a class map): the class seen (reference_class) on every
+     window; the server says when the other column holds labels that would
+     make a mix the estimate refuses (data.mix_problem), and offers to clear
+     that column;
+   - face 'pair' (a two-map sheet): the class seen on every window, '?'
+     where the reviewer cannot tell.
+   The answers are the server's (data.answers, each with its keys): a
+   certificate plan's sheet has no Cannot tell, so the panel offers none;
+   a class map's class face offers it after its classes (the last round's
+   S4: '?' in reference_class, which the estimate bounds both ways).
+
+   Two ways to show the windows, one press apart ("How to show the squares",
+   remembered for the editors drawn after it on this page, OE.sheetView;
+   every window word the user sees is the sheet's unit word, "square" or
+   "point", from OE.sheetWords):
+   - One square, the default: the face (a section with tabindex -1). Its
+     heading "Square k of n" is a live region; under it, what the window
+     shows beside its answer (the map's class on the right-or-wrong face, and
+     a two-map sheet's pair once its blind switch is unticked), the face's
+     answers as buttons, each with its key ("Present (P)"; with more than nine, the
+     first nine, Cannot tell where it is taken, and a list of the rest; on a
+     face that takes any class, "Other class..." to type one), Previous and
+     Next, the window's Pictures and Street map, and its pictures. One key
+     listener on the face: an
+     answer's key sets the answer (never clears it) and the next window not
+     yet labelled shows, in the order of the handles, wrapping round; the
+     left and right arrow keys move between windows, except inside a control
+     that scrolls sideways (the dates strip inline, which takes the focus
+     itself), where they scroll it; modified, held and composing keys and
+     keys typed into a field are left alone (a class typed with an IME
+     commits its text on Enter, nothing more). A press on
+     an answer sets it, or clears it when it is the answer given, as in the
+     list. After an answer the focus stays on the face (a click inside it
+     also focuses it), with a ring when the keyboard brought it there; with
+     every window labelled, the finish button takes
+     the focus once it is ready. Nothing focuses the face on load. Inline, the
+     face is a pager with the dates in a horizontal strip; in the host's full
+     screen (.face.full, OE.sheetMode) the dates are a grid. Full screen is
+     the header action the page passes (OE.fullscreenButton, shown only
+     where the host offers full screen, and in full screen "Back to the
+     chat": r4-k K5); the panel never asks for a mode by itself. While the pictures are open or on they show the window the face
+     shows at once, from what the server gave for it or "Loading", and are
+     asked for 300 ms after a move (a quick run of answers asks once), so
+     the face never shows one window's pictures under another's heading.
+   - List: the windows as rows. "#" is the window's place in this list, a
+     button that shows that window on the face; then the map's class where
+     the face shows it, Pictures (and Street map), and the answer. The filter
+     (any, unlabelled, labelled) applies to the list only.
+
+   A class map's sheet has no switch of face (the owner's O1 of 14 Nov
+   2026): it is labelled with the class seen, and the panel never shows the
+   map's answer on it. A sheet already labelled right or wrong (by a
+   spreadsheet) opens on the face the server offers first. A mix of the two
+   label columns shows its sentence with a link that clears the column in
+   the way (clear_column), then reads the sheet again. While a column is
+   cleared no answer is taken (the face or the list is inert and
+   aria-busy), so none is lost when the editor is drawn again. A clear the
+   server took whose sheet then cannot be read says the column was cleared,
+   and the page offers to reopen the sheet.
+
+   Pictures (olmoearth_app_window_image, by handle): the server finds the
+   window from the files on disk and answers with pictures, the labelling
+   rule and what a label then is, or, until the user switches pictures on,
+   the question to ask (who receives what). The pictures never depend on the
+   window's map class, so a blind sheet stays blind. The question card also
+   offers a public test scene, unrelated to the sheet, so the user can see
+   the fetch work before the sheet's extent is sent. Street map (reader test
+   2's A/F21) asks the server for that one window's OpenStreetMap link at
+   the press (olmoearth_app_window_link) and opens it; it never shows the
+   map being checked.
+
+   Blind when labelling the class seen: the map's class is not sent, and no
+   page is ever sent a stratum. The one blind switch is a two-map sheet's
+   (the owner's O1 took the class map's away): unticked by the reviewer, it
+   asks the server for the two maps' classes at that press
+   (olmoearth_app_sheet with unblind; each row's list then leads with its
+   pair, and the face says it). Ticked again, they are hidden; the reviewer
+   has seen them. Right or wrong needs the map's class in view, so it cannot
+   be blind and has no switch; nor has a seen sheet or a class map's sheet,
+   which never show the map's answer.
+
+   Each save sends the sheet's id, the face and the label rule the page
+   drew; the server refuses a save once the sheet was drawn again or its
+   rule changed (sheet.CHANGED_UNDER_PAGE), which cannot succeed on a retry:
+   the page stops saving, says so, and offers "Reopen the sheet", which
+   reads the sheet again and draws a new editor in place of this one (the
+   changes not saved are not kept). Any other refusal invites a press of
+   Save (or, once another sheet was opened in this editor's place, names the
+   windows not saved). options.onSaved runs after each save the server took
+   (the plan card reads its sheet's counts again then). The answers waiting
+   for the 1.5 s save are sent at once when the panel is hidden or unloaded
+   (best effort). A page that swaps this editor for another first awaits its
+   oeSettle (save what is waiting; false when that failed, and the editor
+   stays; true at once, with no save, once the sheet changed under the page)
+   and may ask oeUnsaved how many windows' changes the swap drops; once the
+   swap is done it calls oeLeave, which clears this editor's last toast
+   about its sheet having changed under the page, while it is still shown
+   and no change is left unsaved (r4-l L3). An editor replaced drops its
+   pictures timer and page-wide listeners (oeDispose, OE.disposeEditors).
+   When Claude closes the card (r4-k K1), the page's teardown awaits each
+   editor's oeFlush: a quiet save of what is waiting (no toast, no onSaved,
+   no focus move), bounded in time.
+
+   One live copy of the sheet. The page copy carries the sheet's version
+   (data.version, a keyed digest of the file the server made), and each save
+   sends it; the server refuses a save once the sheet was saved elsewhere
+   since this page read it (another panel, a spreadsheet: err.stale). The
+   page then reads the sheet again on its face and takes it in (adopt): a
+   window this page did not change takes the label saved there; a window it
+   changed keeps its change where the label there is still the one this page
+   last read or saved (state.base), and takes the label saved there where
+   both changed it (the first save wins, and the toast names those windows
+   by their place in this list, never by an index); then it sends what is
+   left, with the new version. At most two such re-sends in a row: after
+   them the page says the sheet keeps changing elsewhere and waits for a
+   press of Save. A read that finds the sheet drawn again, its rule or this
+   face no longer offered, stops saving as above. The page also asks the
+   server for the version (olmoearth_app_sheet_progress, counts only) when
+   it is shown again or gets the focus, at most once every 3 s and never
+   while a save is under way or a class is being typed, and before the
+   finish button sends its message (after any save, read or check under
+   way): a sheet saved elsewhere is read and taken in, and a finish press
+   that found a change, or could not read the sheet again, sends nothing, so
+   the user sees it and presses again. A save whose answer says the server
+   worked out more windows than were sent (rederived) is followed by a read,
+   taken in with every change made here winning. Taking a sheet in keeps the
+   window shown, the list's order, the focus where it was (OE.focusIfHere)
+   and a class being typed.
+
+   What Claude hears. The editor tells Claude silently (OE.tellClaude, its
+   'sheet' part, where the host takes context updates) the sheet's name, its
+   labels_csv_path and design_path, how many windows are labelled (with how
+   many say Cannot tell), whether every change is saved, and once complete
+   the finish button's words: when it is drawn, after each save, after a save
+   made elsewhere is taken in and when it stops saving, never on each answer;
+   never a window, a place, a class or a label.
+
+   The footer (reader test 2's B/sheet-finish-button): the counter, then
+   "Saved automatically" as plain text while nothing waits to be saved, or
+   Save labels while a change waits, a save runs or one failed ("Not saved"
+   once the sheet changed under the page); and from the first open the
+   finish button, named for the sheet's job (read_sheet's finish_label:
+   estimate the error rate, certify the zone, or say which map is more
+   accurate), greyed until every window is labelled and saved, then with
+   "All answered and saved. Answers must not change after you press." beside
+   it (A/F17); its message (finish_message) names the tool Claude calls.
+   When the host does not take the message, the footer shows "Type this in
+   the chat:" and the whole text (OE.sendJob), as the job buttons do.
+
+   The labelling step in the list. After an answer (a press or a key that
+   sets one, a class picked from the list, a typed class accepted), the focus
+   goes to the next window not yet answered, in the order shown, wrapping
+   round: to its group of answers (tabindex -1; its list, for the class
+   seen), never to an answer button, so Enter or Space alone answers
+   nothing; with every window answered it goes to the finish button once
+   that is ready. A press that clears an answer stays, and so does browsing a
+   list with the arrow, Home, End or page keys or typed letters. Keys on the
+   focused row set its answer, never clear it: the keys the server gives each
+   answer of a seen or right-or-wrong face (P, A, ? and 1 to 9; R, W and ?,
+   no digits, owner ruling 6); the class seen 1 to 9 for the n-th class of
+   the row's list, and ? where the face takes Cannot tell (a two-map sheet, a
+   class map's). A held key does not repeat: a repeated keydown answers
+   nothing, and a repeated Enter or Space presses no button, the finish
+   button included. A line in the Details fold names the keys of the view
+   shown, and each answer button carries aria-keyshortcuts.
+   The pictures follow the focus 300 ms after the answer when the pane is
+   open or pictures are on (state.picturesOn); a closed pane with pictures
+   off stays closed, and the server still asks before it fetches any
+   picture. Where the panel is wide enough the open pane sits beside the
+   table (.sheet-work.pane in common.js), else under it. Nothing takes the
+   focus on load: every move goes through OE.focusIfHere. Rows, the face and
+   their labels name a window by its place in this list ("square 3"), never
+   by its index.
+
+   The list's render() rebuilds the rows; the control that had the keyboard
+   focus gets it back (by its data-focus key, else the same control in the row
+   now at its place), so labelling with the keyboard does not lose its place.
+
+   The reader tests' words (13 Nov 2026, OE.sheetWords), laid out by the last
+   round's S1 (reader test 2: the face was a wall of text). Under "Label
+   sheet", the part of the map it is for (data.part.heading, the server's);
+   a graded sheet (data.graded) says its answers should not change now; then
+   three lines (what this is, what to do next, what it cannot tell; their
+   plain form, with no Pictures button anywhere, on a sheet whose page copy
+   says pictures_possible false; on a sheet of points with places, what to
+   judge from). The labelling rule of the page copy (data.reading_rule and
+   rule_scope: the owner's, or the one the user typed on the Check card
+   before the draw; after the owner's, data.rule_limit, that it is for kelp
+   canopy maps only: the last round's F9) shows from the first open; the
+   pane then shows only that no rule is set, when none is. Then the face's
+   instruction where it has one (right or wrong, the class seen with the
+   map's period, a two-map sheet's), one line on Cannot tell (or a
+   certificate's own need), and, until graded, that an answer can change
+   until the finish press (S2); the row of switches only where one exists (a
+   two-map sheet's blind switch). ONE closed "Details" fold under
+   the answers holds the sheet's file name, a seen sheet's first sentence and
+   what Cannot tell does to the result, the keys, what never reaches this
+   panel (the blind, code or right-or-wrong line), the Street map line and
+   the note that no date is marked clear. While pictures are off and no pane
+   is open, one line in the pane's place says how to see them. */
+
+OE.UNJUDGED = '?';
+OE.OTHER = '__oe_other_class__';  // the select's 'Other class...' entry
+
+/* The sheet's words from the reader test of 13 Nov 2026 (round 4, pass 2),
+   each its FINAL text with window -> the sheet's unit word: the three lines
+   on top (what this is, what to do next, what it cannot tell), the note
+   after the labelling rule (A/sheet-3), the line while pictures are off
+   (A/sheet-1), Cannot tell where it is offered (A/sheet-4), the blind line
+   of a seen sheet (A/sheet-5), the graded notice (the owner's extra 2) and
+   the saved state (A/sheet-9). None shows a window's class, confidence or
+   stratum.
+
+   unit is the page copy's (read_sheet's unit): 'square' where a window is a
+   patch of a scores file, 'point' where it is a single pixel at a grid point
+   (a plan drawn by result_id); anything else is 'square'. Every word that
+   names a window on the face, the list and the pane comes from here (the
+   lead's ruling W); tool names, fields and what Claude is told keep
+   "window". The three lines have a plain form (whatBare, nextBare,
+   cannotBare) for a sheet that can show no pictures (read_sheet's
+   pictures_possible false, round 4 pass 2, finding 10), and so does Cannot
+   tell (cannotTellBare: no "dates shown" where no date is shown); a sheet
+   of points with places to open says what to judge from (whatPlaced, reader
+   test 2's E/sheet-1).
+
+   The last round (r4h, reader test 2): one Cannot tell line on the face
+   (cannotTellLine, S1), the rest of what Cannot tell does in the Details
+   fold (cannotTell, A/F04), the fold's blind and code lines (S1), the
+   finality lines (changeLine, everyDone: S2), the class face's period
+   (classWhat, E/sheet-3), and "Street map" for the map button (A/F21).
+
+   This round (r4i, 14 Nov 2026): the face's Cannot tell line says what a
+   guess costs as well (F5), and the fold's cost sentence says the grid of
+   squares stays with Cannot tell and only the per-class lines go (F5, the
+   owner's O2). */
+// WORDING: squares
+OE.sheetWords = (unit) => {
+  const one = unit === 'point' ? 'point' : 'square';
+  const One = one === 'point' ? 'Point' : 'Square';
+  const many = one + 's';
+  // What Cannot tell does to the result, after its first sentence (A/F04).
+  // WORDING: r4i F5 O2
+  const cannotTellRest = ' Do not guess: a guess can make the result wrong. A Cannot tell does not: you still'
+    + ' get a result, with a wider range, but without the per-class lines.';
+  return {
+    one,
+    many,
+    what: 'For each ' + one + ', say what you see in the satellite pictures. The map\'s answer is hidden.',
+    next: (finish) => 'Press Pictures, turn them on, answer every ' + one + ', then press ' + finish + '.',
+    cannot: 'No result while you check. Your answers are a reading of satellite pictures, not a visit on site.',
+    whatBare: 'For each ' + one + ', say what is there. The map\'s answer is hidden.',
+    // A sheet of points with places to open (data.has_place): no pictures, what to judge from.
+    // WORDING: r4h S3 E/sheet-1
+    whatPlaced: 'This sheet has no pictures. See where each ' + one + ' is, then say what was there from your own'
+      + ' imagery or records. The map\'s answer is hidden.',
+    nextBare: (finish) => 'Answer every ' + one + ', then press ' + finish + '.',
+    cannotBare: 'No result while you check.',
+    clear: 'The panel marks no date as clear: you decide, from the outlined square itself.'
+      + ' Scene cloud is for the whole satellite image, not this square.',
+    picturesOff: 'Nothing to look at yet. Press Pictures to see satellite pictures of this ' + one + '.'
+      + ' You are asked first what is sent.',
+    // The face's one Cannot tell line, where the sheet takes Cannot tell.
+    // WORDING: r4i F5
+    cannotTellLine: 'Cannot judge a ' + one + '? Press Cannot tell. Do not guess: a Cannot tell makes the range'
+      + ' wider, a guess can make the result wrong.',
+    // In the Details fold (A/F04).
+    // WORDING: r4i F5 O2
+    cannotTell: 'Cannot tell is for a ' + one + ' you cannot judge from the dates shown.' + cannotTellRest,
+    // A sheet that can show no pictures (pictures_possible false) shows no date.
+    // WORDING: r4i F5 O2
+    cannotTellBare: 'Cannot tell is for a ' + one + ' you cannot judge.' + cannotTellRest,
+    // In the Details fold (B/sheet-blind-line).
+    // WORDING: r4h S1
+    blindSeen: 'Blind: this panel is not sent what the map says for a ' + one + ', or where the ' + one
+      + ' is, so you answer without seeing the map\'s answer.',
+    // In the Details fold, where the sheet has places (A/F21).
+    // WORDING: r4h A/F21
+    openMap: 'Street map fetches one ' + one + '\'s place only when you press it; it never shows the map\'s answer.',
+    // The map button and the list's column (A/F21).
+    // WORDING: r4h A/F21
+    streetMap: 'Street map',
+    graded: 'This sheet has been graded. Changing an answer now, knowing where the map disagrees, makes the'
+      + ' result invalid. A second opinion needs another person checking a fresh blind sheet.',
+    // Plain text beside the counter while nothing waits to be saved (B/sheet-finish-button).
+    saved: 'Saved automatically',
+    // On the face until the sheet is graded (B/sheet-change-answer); finish is the sheet's own finish label.
+    // WORDING: r4h S2
+    changeLine: (finish) => 'You can change an answer until you press ' + finish + '.',
+    // The class face's instruction, with the map's period where the sheet knows it (E/sheet-3).
+    // WORDING: r4h S3 E/sheet-3
+    classWhat: (period) => (period
+      ? 'For each ' + one + ', pick what was there in the period the map covers (' + period
+        + '), using the map\'s class names.'
+      : 'For each ' + one + ', pick what was there in the period the map covers, using the map\'s class names;'
+        + ' ask whoever made the map for that period.'),
+    noRule: 'No labelling rule is set for this map: agree one before the first label.',
+    // The face, the list and the pane (the lead's ruling W).
+    title: (k, n) => One + ' ' + k + ' of ' + n,
+    oneView: 'One ' + one,
+    howToShow: 'How to show the ' + many,
+    prevLabel: 'Previous ' + one,
+    nextLabel: 'Next ' + one,
+    none: 'No ' + many,
+    pictures: (k) => 'Pictures: ' + one + ' ' + k,
+    openRow: (k) => 'Open ' + one + ' ' + k,
+    // WORDING: r4h A/F21
+    openMapOf: (k) => 'Street map: ' + one + ' ' + k + ' on OpenStreetMap',
+    noLink: (k) => 'No map link for ' + one + ' ' + k + '.',
+    seenIn: (k) => 'Class seen in ' + one + ' ' + k,
+    rightIn: (k) => 'Is the map right in ' + one + ' ' + k,
+    otherIn: (k) => 'Other class seen in ' + one + ' ' + k,
+    okIn: (k) => 'OK: class seen in ' + one + ' ' + k,
+    moreIn: (k) => 'More classes for ' + one + ' ' + k,
+    paneHead: (k) => One + ' ' + k,
+    // A window's name for a screen reader, in its pictures and dates.
+    label: (k) => one + ' ' + k,
+    back: (k) => 'Back to ' + one + ' ' + k,
+    notOfSheet: 'Not a ' + one + ' of this sheet: nothing here is labelled.',
+    // "Square 4", "Squares 4 and 9", "Squares 2, 4 and 9": windows by their place.
+    places: (sorted) => (sorted.length === 1 ? One + ' ' + sorted[0]
+      : One + 's ' + sorted.slice(0, -1).join(', ') + ' and ' + sorted[sorted.length - 1]),
+    rereadMine: (name) => 'Saved to ' + name + '; the sheet was read again for the ' + many
+      + ' the server worked out.',
+    // Beside the finish button once every answer is saved (A/F17).
+    // WORDING: r4h S2 A/F17
+    everyDone: 'All answered and saved. Answers must not change after you press.',
+    // In the Details fold, where the sheet has a blind switch (C/sheet-3).
+    // WORDING: r4h S1 C/sheet-3
+    codeLine: 'While you label, this panel is not sent a ' + one + '\'s number, place or order.',
+    wrongLine: 'Right or wrong shows the map\'s class; the ' + one + '\'s index, place, order and stratum are'
+      + ' not sent.',
+    listAfter: ' After an answer the next ' + one + ' gets the focus.',
+    faceKeys: ' left and right arrow keys move between ' + many + '. After an answer the next ' + one
+      + ' not yet labelled shows.',
+  };
+};
+
+/* The words of the server's refusal of a save from a page drawn before the
+   sheet changed (sheet.CHANGED_UNDER_PAGE, which a test holds this to): a
+   retry fails the same way, so the page offers to reopen the sheet. */
+OE.CHANGED_UNDER_PAGE = 'This sheet changed since the panel opened it';
+/* The server's refusals of a class map's other face (sheet.FACE_WRONG_REFUSED
+   and sheet.FACE_CLASS_REFUSED, up to their ';', which a test holds these to). */
+OE.FACE_WRONG_REFUSED = "Right or wrong shows the map's class, so it is offered only before any class seen is saved";
+OE.FACE_CLASS_REFUSED = 'This sheet holds right or wrong labels';
+
+/* How this page shows a sheet's windows, as the user last chose it: 'face'
+   (one window at a time, the default) or 'list'. An editor drawn in place
+   of another (a face switched, a sheet reopened) keeps it. */
+OE.sheetView = 'face';
+
+/* The host's display mode changed: every label editor on the page lays its
+   face out for it (the dates a grid in full screen, a strip inline). A
+   context change that names no display mode changes nothing. OE.displayMode
+   is common.js's now (r4-k K5: it follows the host's context and the Full
+   screen button's answers); this keeps it as it was given. */
+OE.sheetMode = (mode) => {
+  if (typeof mode !== 'string' || !mode) return;
+  OE.displayMode = mode;
+  for (const editor of document.querySelectorAll('section.sheet')) {
+    if (typeof editor.oeMode === 'function') editor.oeMode(mode);
+  }
+};
+
+/* Every label editor inside node is about to be replaced (a page drawn
+   again, another zone's sheet opened): each drops its pictures timer and its
+   page-wide listeners (its oeDispose). */
+OE.disposeEditors = (node) => {
+  for (const editor of node ? node.querySelectorAll('section.sheet') : []) {
+    if (typeof editor.oeDispose === 'function') editor.oeDispose();
+  }
+};
+
+/* Two example pictures beside the owner's rule (r4-k K9): the page copy's
+   examples, { present, absent, year }, which the server sends only with
+   the owner's rule and both pictures and their notes on disk; null when
+   the rule is not the owner's or anything is missing (each picture a
+   data URL, the year a whole number). A public place, never the map being
+   checked, so a blind sheet stays blind. */
+OE.ruleExamples = (data) => {
+  const ex = data && data.rule_source === 'owner' && data.examples && typeof data.examples === 'object'
+    ? data.examples : null;
+  const good = (src) => typeof src === 'string' && src.startsWith('data:image/');
+  if (!ex || !good(ex.present) || !good(ex.absent) || !Number.isInteger(ex.year)) return null;
+  return { present: ex.present, absent: ex.absent, year: ex.year };
+};
+/* The pictures' captions, and the line in the Details fold that says
+   where they come from (r4-k K9). */
+// WORDING: r4k K9
+OE.EXAMPLE_PRESENT = 'Present under this rule';
+// WORDING: r4k K9
+OE.EXAMPLE_ABSENT = 'Absent under this rule';
+// WORDING: r4k K9
+OE.EXAMPLES_NOTE = (year) => 'A public place, not your map. Contains modified Copernicus Sentinel data ' + year + '.';
+/* The two pictures side by side, small, each with its caption (also its
+   alt text; the caption itself is not read a second time). 120 px wide, as
+   the Check card's own pair (check.html .oe-examples), so on that card the
+   editor's pair fits the same figure box. */
+OE.examplePictures = (ex) => OE.el('div', { class: 'row oe-examples', style: 'gap:12px;align-items:flex-start' },
+  [[ex.present, OE.EXAMPLE_PRESENT], [ex.absent, OE.EXAMPLE_ABSENT]].map(([src, caption]) => OE.el('figure', { style: 'margin:0' },
+    OE.el('img', { src, alt: caption, style: 'display:block;width:120px;max-width:100%;height:auto;border:1px solid var(--rule);border-radius:4px' }),
+    OE.el('figcaption', { class: 'small', 'aria-hidden': 'true' }, caption))));
+
+/* The pictures' parts, shared by the label editor's pane and a review set's
+   window pane (result.html): pure functions of what they are given, so the
+   editor's pictures are drawn as before. */
+
+/* A picture the server sent: a data URL and whole-number sizes. */
+OE.goodPicture = (p) => Boolean(p && typeof p.src === 'string' && p.src.startsWith('data:image/')
+  && Number.isFinite(Number(p.width)) && Number.isFinite(Number(p.height)));
+
+/* One picture, the outlined square drawn over it (never into its pixels),
+   with its caption ("Context, square outlined", "Context, point outlined"
+   by unit, or "Detail", unless caption is given: the owner's ruling 6, no
+   "window" on a face). date and what name it for a screen reader. */
+OE.picture = (p, date, what, caption = null, unit = 'square') => {
+  const s = Number(p.scale) || 1;
+  const b = p.box && typeof p.box === 'object' ? p.box : null;
+  const w = Number(p.width), h = Number(p.height);
+  const outline = b && [b.x, b.y, b.w, b.h].every((v) => Number.isFinite(Number(v)))
+    ? OE.el('div', { 'aria-hidden': 'true', style: 'position:absolute;box-sizing:border-box;pointer-events:none;border:2px solid #ffd600;'
+        + 'left:' + (Number(b.x) * s - 2) + 'px;top:' + (Number(b.y) * s - 2) + 'px;width:' + (Number(b.w) * s + 4) + 'px;height:' + (Number(b.h) * s + 4) + 'px' })
+    : null;
+  return OE.el('figure', { style: 'margin:0' },
+    OE.el('div', { style: 'position:relative;outline:1px solid var(--rule);border-radius:4px;width:' + w + 'px;height:' + h + 'px' },
+      OE.el('img', { src: p.src, width: w, height: h, alt: String(p.label || '') + ', ' + date + ', ' + what, style: 'image-rendering:pixelated;display:block' }),
+      outline),
+    // WORDING: squares
+    OE.el('figcaption', { class: 'small' }, caption || (p.view === 'detail' ? 'Detail'
+      : 'Context, ' + (unit === 'point' ? 'point' : 'square') + ' outlined')));
+};
+
+/* One block per date (a month with no scene says so), the chosen rendering
+   only (colour: 'nir' or 'true'), with the switch between near-infrared and
+   true colour, whose press calls choose(kind). strip: the dates in a strip
+   that scrolls sideways and takes the focus itself (a named region, so the
+   keyboard reaches it), else one under another. unit: the unit word the
+   pictures' captions name the outlined window by ('square' or 'point').
+   The switch is the joined toggle the sheet's views use, the chosen one
+   filled (reader test 2's A/F23), each button keeping its data-focus key;
+   each date is its own outlined block, its label on top inside the outline
+   and its pictures under it (A/F24). */
+OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, unit = 'square' } = {}) => {
+  const kinds = [['nir', 'Near-infrared false colour'], ['true', 'True colour']];
+  const colours = OE.toggle(kinds, colour, (kind) => { if (choose) choose(kind); },
+    { label: 'Colours of the pictures', small: true });
+  colours.querySelectorAll('button').forEach((b, i) => b.setAttribute('data-focus', 'colour:' + kinds[i][0]));
+  return OE.el('div', { class: 'stack', style: 'gap:10px' },
+    OE.el('div', {}, colours),
+    OE.el('div', strip
+      ? { class: 'face-dates', tabindex: '0', role: 'region', 'aria-label': 'Dates, ' + what }
+      : { class: 'stack' }, dates.map((d) => {
+      const shown = (Array.isArray(d.pictures) ? d.pictures : []).filter((p) => OE.goodPicture(p) && p.kind === colour);
+      return OE.el('div', { class: 'stack', style: 'gap:4px;border:1px solid var(--rule);border-radius:4px;padding:8px' },
+        OE.el('div', { class: 'small', style: 'font-weight:600' }, String(d.label || d.month || '')),
+        shown.length ? OE.el('div', { class: 'row', style: 'align-items:flex-start;gap:12px;flex-wrap:wrap' },
+          shown.map((p) => OE.picture(p, String(d.label || ''), what, null, unit))) : null);
+    })));
+};
+
+OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
+  const face = typeof data.face === 'string' ? data.face : 'wrong';
+  const twoMap = face === 'pair';
+  const seen = face === 'seen';
+  const wrongFace = face === 'wrong';
+  // A face whose answers are listed buttons (seen, right or wrong); the others pick from a list.
+  const closed = seen || wrongFace;
+  // The sheet's words, with its unit word ("square", or "point" for a plan
+  // drawn by result_id: the page copy's unit, the lead's ruling W).
+  const W = OE.sheetWords(data.unit);
+  // Whether this sheet can show pictures at all (the page copy's
+  // pictures_possible: its plan has a scores file to place a window by).
+  // When it cannot, the three lines take their plain form, the line about
+  // pictures being off is left out and no Pictures button is drawn, so the
+  // consent question is never asked for nothing (round 4 pass 2, finding
+  // 10). A page copy without the field (an older server) shows them, as
+  // before.
+  const picturesPossible = data.pictures_possible !== false;
+  const rule = data.label_rule || null;  // 'seen', 'class', 'wrong' or null (no design file)
+  const windows = (Array.isArray(data.windows) ? data.windows : [])
+    .filter((w) => w && typeof w.handle === 'string' && w.handle);
+  const n = windows.length;
+  const byHandle = new Map(windows.map((w) => [w.handle, w]));
+  // A window's place in this list, 1 to n: how rows and labels name it.
+  const placeOf = new Map(windows.map((w, i) => [w.handle, i + 1]));
+  const place = (h) => placeOf.get(h) || 0;
+  // The face's answers, each with the keys the server gives it.
+  const answers = (Array.isArray(data.answers) ? data.answers : [])
+    .filter((a) => a && typeof a.value === 'string' && typeof a.label === 'string')
+    .map((a) => ({ value: a.value, label: a.label, keys: (Array.isArray(a.keys) ? a.keys : []).map(String) }));
+  const takesQ = answers.some((a) => a.value === OE.UNJUDGED);
+  // The classes of a face that picks from a list, in the server's order.
+  const listed = answers.filter((a) => a.value !== OE.UNJUDGED).map((a) => a.value);
+  // What a window shows beside its answer: the map's class on the right-or-wrong
+  // face; on a two-map sheet, at the reviewer's press (unblind), the two maps'
+  // classes. Never a stratum (the owner's O1, the last round's F11).
+  const extraOf = (w) => ({
+    mapClass: w.map_class === undefined ? null : String(w.map_class ?? ''),
+    pair: Array.isArray(w.pair) ? w.pair.map((v) => String(v ?? '').trim()) : null,
+  });
+  const state = {
+    view: OE.sheetView === 'list' ? 'list' : 'face',  // one window at a time, or the list
+    at: null,  // the window the face shows (its handle)
+    blind: true,
+    // The extras of an unblinded read are kept once given: ticking blind again hides them.
+    revealed: false,
+    // The last save the server did not take (not one refused as stale, which
+    // is sent again): Save labels stays in view until a save goes through.
+    saveFailed: false,
+    revealing: false,
+    extra: new Map(windows.map((w) => [w.handle, extraOf(w)])),
+    labels: new Map(windows.map((w) => [w.handle, String(w.answer ?? '').trim()])),
+    // Each window's answer as the server last held it (read or saved): a
+    // change kept when the sheet was saved elsewhere is one made on this.
+    base: new Map(windows.map((w) => [w.handle, String(w.answer ?? '').trim()])),
+    dirty: new Set(),  // handles whose answer changed and is not yet saved
+    saving: false,
+    // The sheet is being read again to take in a save made elsewhere: saves wait.
+    syncing: false,
+    other: null,  // the window whose class is being typed in
+    filter: 'any',  // which rows the list shows: any, unlabelled or labelled
+    images: new Map(),  // handle -> the server's answer (pictures or the question)
+    imagesRun: 0,  // bumped when pictures are switched on or off: older answers are dropped
+    shown: null,  // the window whose pictures the pane shows
+    test: null,  // the public test scene, when open: { from: handle, answer }
+    colour: 'nir',  // which rendering the dates show: nir (false colour) or true
+    // Pictures on, as far as the page knows: set by the switch and by the
+    // server's answers (pictures, or the question). The pane then follows the focus.
+    picturesOn: false,
+    // The control the last answer was given from, when no window was left:
+    // the finish button takes the focus from it once it shows.
+    finishFrom: null,
+    // The server refused a save because the sheet changed since this page
+    // drew it: nothing more is saved; the page offers to reopen it.
+    stale: false,
+    // The last toast about that (reopenToast), which oeLeave clears (r4-l L3).
+    reopenSaid: '',
+    // The server's word on the two label columns: { problem, column } or null.
+    mix: data.mix_problem ? { problem: String(data.mix_problem), column: String(data.clear_column || '') } : null,
+    clearing: false,
+  };
+  let lastSelectKey = null;  // the last key on a list: { focus, browse }; browsing does not move on
+  let faceListKey = false;  // the face's list of more classes was browsed with a key: no move on
+  let picturesTimer = null;  // the pictures following the focus, 300 ms after an answer
+  const linking = new Set();  // windows whose map link is being asked for
+  // Re-sends in a row after a save refused as stale (at most STALE_RESENDS).
+  let staleResends = 0;
+  const STALE_RESENDS = 2;
+  // A quiet save is under way (oeFlush, when Claude closes the card: r4-k
+  // K1): the footer moves no focus meanwhile.
+  let quietSave = false;
+  // When the version was last asked for or read (check(): at most once every 3 s).
+  let lastCheck = Date.now();
+  const CHECK_EVERY_MS = 3000;
+  // What the last take-in said about windows whose label saved elsewhere won,
+  // carried into the next save's toast so it is not lost under "Saved".
+  let keptNote = '';
+  const wrap = OE.el('section', { class: 'card sheet' });
+  // Studio's counter: "12/200" in 600 20px, then the word, then what is not saved yet.
+  const counterNum = OE.el('span', { style: 'font-size:20px;line-height:28px;font-weight:600' });
+  const counterNote = OE.el('span', { class: 'small muted' });
+  // "Saved automatically" as plain text beside the counter while nothing
+  // waits to be saved (reader test 2's B/sheet-finish-button): no button.
+  const savedNote = OE.el('span', { class: 'small muted' }, W.saved);
+  const progress = OE.el('span', { class: 'row', style: 'gap:6px;align-items:baseline' },
+    counterNum, OE.el('span', {}, 'labelled'), counterNote, savedNote);
+  // A press of Save starts the re-sends after a stale refusal afresh (save()).
+  // Shown only while a change waits, a save runs or one failed (updateProgress).
+  const saveButton = OE.el('button', { class: 'primary', onclick: () => { staleResends = 0; save(); } }, 'Save labels');
+  // Shown only once a save was refused because the sheet changed under the page.
+  const reopenButton = OE.el('button', { class: 'primary', onclick: () => reopen() }, 'Reopen the sheet');
+  // Where the finish message shows when the host does not take it (OE.sendJob).
+  const finishType = OE.typeSlot();
+  const notice = OE.el('div', { class: 'small' });
+  const body = OE.el('tbody');
+  const table = OE.el('table', {}, OE.el('thead'), body);
+  const done = OE.el('div', { class: 'row' });
+  // The instruction on the face (right or wrong, the class seen with the
+  // map's period, a two-map sheet's) and, in the Details fold, a seen
+  // sheet's first sentence and what Cannot tell does (S1).
+  const faceInstruction = OE.el('div', {});
+  const instruction = OE.el('div', { class: 'small' });
+  // The keys of the answers, small and faint, in the Details fold.
+  const hint = OE.el('div', { class: 'small faint' });
+  // The pictures of the window the reviewer asked for (Pictures in its row, or on the face).
+  const previewId = 'oe-pictures-' + Math.random().toString(36).slice(2);
+  const preview = OE.el('div', { class: 'stack', id: previewId, 'aria-live': 'polite' });
+  // The labelling rule of the page copy (the owner's, or one the user typed
+  // before the draw): shown under the instruction from the first open
+  // (ruleBlock, A/sheet-2), so the pane does not repeat it.
+  const pageRule = typeof data.reading_rule === 'string' && data.reading_rule ? data.reading_rule : '';
+  // In the pane's place while pictures are off and no pane is open (A/sheet-1);
+  // never on a sheet that can show no pictures.
+  const picturesOff = picturesPossible ? OE.el('div', { class: 'small faint' }, W.picturesOff) : null;
+  // The list: the table and the pane, beside each other while the pane is open, where there is room.
+  const work = OE.el('div', { class: 'sheet-work' },
+    OE.el('div', { class: 'table-frame', style: 'max-height:420px' }, table), preview);
+
+  // The face: one window at a time. tabindex -1: the focus waits here after an answer.
+  const faceEl = OE.el('section', { class: 'face stack', tabindex: '-1', 'data-focus': 'face', 'aria-label': W.oneView });
+  const faceTitle = OE.el('h2', {});
+  const faceLive = OE.el('div', { 'aria-live': 'polite' }, faceTitle);
+  const prevButton = OE.el('button', {
+    class: 'link', 'data-focus': 'prev', 'aria-label': W.prevLabel, onclick: () => pageBy(-1),
+  }, 'Previous');
+  const nextButton = OE.el('button', {
+    class: 'link', 'data-focus': 'next', 'aria-label': W.nextLabel, onclick: () => pageBy(1),
+  }, 'Next');
+  const faceExtra = OE.el('div', {});
+  const faceAnswerArea = OE.el('div', { class: 'stack' });
+  // No Pictures button on a sheet that can show no pictures (finding 10).
+  const facePicturesButton = picturesPossible ? OE.el('button', {
+    class: 'link', 'aria-controls': previewId, onclick: () => { if (state.at) togglePictures(state.at); },
+  }, 'Pictures') : null;
+  const faceMapButton = data.has_place ? OE.el('button', {
+    class: 'link', onclick: () => { if (state.at) openMap(state.at); },
+  }, W.streetMap) : null;
+  const facePictures = OE.el('div', {});
+  if (n) {
+    faceEl.append(
+      OE.el('div', { class: 'face-top' }, faceLive, OE.el('div', { class: 'row', style: 'gap:4px' }, prevButton, nextButton)),
+      faceExtra, faceAnswerArea,
+      OE.el('div', { class: 'row', style: 'gap:4px' }, facePicturesButton, faceMapButton),
+      facePictures);
+  } else {
+    faceEl.append(OE.el('div', { class: 'faint' }, W.none));
+  }
+  // Holds the face or the list, whichever the user chose.
+  const area = OE.el('div', {});
+
+  // A certificate plan (seed_from_map) takes no Cannot tell: its certificate needs 1 or 0.
+  const takesUnjudged = data.takes_unjudged !== false;
+  // An answer's keys for aria-keyshortcuts ("P 1"), or null when it has none.
+  const keysOf = (list, value) => ((list.find((a) => a.value === value) || { keys: [] }).keys.join(' ') || null);
+  // An answer counts where it is one the face takes: '?' only where the face lists it.
+  const answered = (value) => value !== '' && (value !== OE.UNJUDGED || takesQ);
+  const count = () => [...state.labels.values()].filter(answered).length;
+  const pending = () => state.dirty.size;
+  // An error's words without their last full stop.
+  const bare = (text) => String(text || '').replace(/\.+$/, '');
+  const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+  /* Whether the sheet, as the panel holds it, is one the estimate grades. */
+  function complete() {
+    return n > 0 && count() === n && !state.mix;
+  }
+
+  /* What the editor tells Claude (OE.tellClaude, its 'sheet' part): the
+     sheet's name and paths and how far it is labelled, k as the counter
+     counts it, with how many say Cannot tell; whether every change is saved;
+     once complete, the finish button's words. Never a window, a place, a
+     class, a label or a count of any other answer. */
+  function contextText() {
+    const unjudged = takesQ ? [...state.labels.values()].filter((v) => v === OE.UNJUDGED).length : 0;
+    const left = pending();
+    const design = data.design_path ? ', design_path ' + data.design_path : '';
+    let text = 'Label sheet ' + data.name + ' (labels_csv_path ' + data.path + design + '): '
+      + count() + ' of ' + n + ' windows labelled' + (unjudged ? ', ' + unjudged + ' cannot tell' : '') + ', '
+      + (left ? OE.counted(left, 'change') + ' not saved yet' : 'all saved') + '.';
+    if (state.stale) text += ' This panel stopped saving: the sheet changed since it opened it.';
+    else if (complete() && !left) {
+      text += ' Every window is labelled and saved; its finish button reads "'
+        + (data.finish_label || 'Ask Claude to grade it') + '".';
+    }
+    return text;
+  }
+
+  /* Tell Claude how far the sheet is labelled, while this editor is on the
+     page: once it is drawn, after each save, after a save made elsewhere is
+     taken in, and when it stops saving; never on each answer. */
+  function tellClaude() {
+    if (wrap.isConnected) OE.tellClaude(app, contextText(), 'sheet');
+  }
+
+  /* "a, b or c" */
+  const orList = (items) => (items.length > 1
+    ? items.slice(0, -1).join(', ') + ' or ' + items[items.length - 1] : items.join(''));
+
+  // The map's period as the server reads it (read_sheet's period_text), for the class face.
+  const period = typeof data.period_text === 'string' && data.period_text ? data.period_text : null;
+
+  /* The face's one line on Cannot tell (the last round's S1): where the
+     sheet takes it, W.cannotTellLine; a certificate plan's seen or
+     right-or-wrong sheet, which takes none, keeps its own line; a two-map
+     sheet says ? in its instruction. */
+  // WORDING: r4h S1
+  const cannotLineText = (() => {
+    if (twoMap) return '';
+    if (takesQ) return W.cannotTellLine;
+    if (takesUnjudged) return '';
+    if (seen) {
+      const named = answers.filter((a) => a.value !== OE.UNJUDGED).map((a) => a.label);
+      return 'A certificate needs ' + orList(named) + ' on every ' + W.one + '.';
+    }
+    return wrongFace ? 'A certificate needs right or wrong on every ' + W.one + '.' : '';
+  })();
+
+  /* The instruction in the Details fold (the last round's S1): a seen
+     sheet's first sentence (its lead says the rest), then, where one map's
+     sheet takes Cannot tell (a seen, right-or-wrong or class face), what
+     Cannot tell does to the result (W.cannotTell; W.cannotTellBare, with no
+     "dates shown", on a sheet that can show no pictures); a two-map sheet's
+     ? is not an error rate's, so its instruction stays on the face. The
+     face says Cannot tell in one line (cannotLineText). A seen sheet's
+     instruction does not say again that the map's answer is hidden: the
+     lead and the blind line say it (round 4 pass 2, finding 14). */
+  // WORDING: r4h S1
+  function instructionText() {
+    const unjudged = takesQ ? ' ' + (picturesPossible ? W.cannotTell : W.cannotTellBare) : '';
+    if (twoMap) return '';
+    if (seen) {
+      return 'For each ' + W.one + ', pick what you see there: ' + orList(answers.map((a) => a.label)) + '.'
+        + unjudged;
+    }
+    return unjudged.trim();
+  }
+
+  /* The instruction on the face: right or wrong (the map's class is shown;
+     Cannot tell or the certificate's need is the line under it), the class
+     seen in the period the map covers, as the map writes classes (reader
+     test 2's E/sheet-3: no "on the ground"), and a two-map sheet's as
+     before; a seen sheet has none here (its lead says what to do). */
+  // WORDING: r4h S1 S3
+  function faceInstructionText() {
+    const one = W.one;
+    if (twoMap) return 'For each ' + one + ', pick the class you see on the ground there; pick ? when you cannot tell.';
+    if (wrongFace) return 'For each ' + one + ', say whether the map is right there (the map\'s class is shown).';
+    if (face === 'class') return W.classWhat(period);
+    return '';
+  }
+
+  function updateProgress() {
+    const left = pending();
+    counterNum.textContent = count() + '/' + n;
+    counterNote.textContent = left ? left + ' change' + (left === 1 ? '' : 's') + ' not saved yet' : '';
+    if (state.stale) {
+      // Nothing saves any more: Save is off, and "Reopen the sheet" is the one contained button.
+      saveButton.hidden = false;
+      savedNote.hidden = true;
+      saveButton.className = '';
+      saveButton.textContent = 'Not saved';
+      saveButton.setAttribute('aria-disabled', 'true');
+      notice.replaceChildren();
+      if (!done.contains(reopenButton)) {
+        done.replaceChildren(OE.el('span', { class: 'small error' },
+          'This sheet changed since the panel opened it.'), reopenButton);
+      }
+      return;
+    }
+    // Save labels only while a change waits, a save runs or one failed; else
+    // "Saved automatically" as plain text beside the counter (A/sheet-9,
+    // reader test 2's B/sheet-finish-button). A Save button that had the
+    // focus as it goes hands it to the finish button.
+    const showSave = Boolean(left) || state.saving || state.saveFailed;
+    if (!quietSave && !showSave && !saveButton.hidden && saveButton.contains(document.activeElement)) {
+      OE.focusIfHere(finishControl());
+    }
+    saveButton.hidden = !showSave;
+    savedNote.hidden = showSave;
+    saveButton.className = left ? 'primary' : '';
+    saveButton.textContent = state.saving ? 'Saving...' : 'Save labels';
+    // Busy while saving: aria-disabled (save() ignores a press then), so the button keeps the focus.
+    saveButton.setAttribute('aria-disabled', String(state.saving));
+    // A mix the estimate would refuse: say so, with the link that clears the
+    // column in the way.
+    notice.replaceChildren();
+    if (state.mix) {
+      const mix = state.mix;
+      notice.append(OE.el('div', {}, OE.el('span', { class: 'error' },
+        'The estimate would refuse this sheet: ' + mix.problem + '. '),
+      mix.column ? OE.el('button', { class: 'link', onclick: () => clearAndOpen(mix.column, face) },
+        'Clear the ' + mix.column + ' column') : null));
+    }
+    updateFinish();
+  }
+
+  /* The classes a window's list offers, in order: the face's classes; on a
+     two-map sheet unblinded, the window's pair first; then ? where the face
+     takes it (a class map's class face too, the last round's S4). */
+  function classOptions(h) {
+    if (!twoMap) return takesQ ? [...listed, OE.UNJUDGED] : listed;
+    const extra = state.extra.get(h) || {};
+    const pair = !state.blind && state.revealed && Array.isArray(extra.pair) ? extra.pair.filter(Boolean) : [];
+    const options = pair.length ? [...new Set([...pair, ...listed])] : listed;
+    return takesQ ? [...options, OE.UNJUDGED] : options;
+  }
+
+  /* While a column is cleared, the editor is about to be drawn again from
+     the file: no answer is taken (the area is inert and aria-busy
+     meanwhile, busyArea), so none is dropped unsaved. */
+  const blocked = () => state.clearing;
+  function busyArea(on) {
+    area.inert = on;
+    if (on) area.setAttribute('aria-busy', 'true'); else area.removeAttribute('aria-busy');
+  }
+
+  function setLabel(h, value) {
+    if (blocked()) return;
+    if (state.labels.get(h) === value) return;
+    state.labels.set(h, value);
+    state.dirty.add(h);
+    updateProgress();
+    schedule();
+  }
+
+  // The data-focus key of an answer button.
+  const answerFocus = (value, h) => (value === OE.UNJUDGED ? 'au' : 'a' + value) + ':' + h;
+
+  function labelCell(w) {
+    const h = w.handle;
+    const k = place(h);
+    const current = state.labels.get(h) || '';
+    if (closed) {
+      // One joined toggle of the face's answers; a second press clears the
+      // answer. A press that sets an answer moves on to the next window not
+      // yet answered. On a seen sheet the server works out wrong.
+      const pick = (value) => {
+        if (blocked()) return;  // the editor is about to be drawn again: no answer now
+        const next = (state.labels.get(h) || '') === value ? '' : value;
+        setLabel(h, next);
+        if (next) advance(h, answerFocus(value, h)); else render(answerFocus(value, h));
+      };
+      return OE.el('div', {
+        class: 'toggle small', role: 'group', tabindex: '-1', 'data-focus': 'g:' + h,
+        'aria-label': seen ? W.seenIn(k) : W.rightIn(k),
+      }, answers.map((a) => OE.el('button', {
+        type: 'button', 'data-focus': answerFocus(a.value, h), 'aria-pressed': String(current === a.value),
+        'aria-keyshortcuts': keysOf(answers, a.value), onclick: () => pick(a.value),
+      }, a.label)));
+    }
+    if (state.other === h) {
+      const input = OE.el('input', {
+        type: 'text', 'aria-label': W.otherIn(k), maxlength: '200',
+        placeholder: 'class seen', value: current, 'data-focus': 'o:' + h,
+      });
+      const accept = () => {
+        state.other = null;
+        const typed = input.value.replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+        if (typed && typed !== OE.UNJUDGED) {
+          setLabel(h, typed);
+          advance(h, 's:' + h);  // a typed class accepted (Enter or OK) moves on
+        } else render('s:' + h);
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.keyCode === 229) return;  // an IME's Enter commits its text, nothing more
+        if (e.key === 'Enter') accept();
+        if (e.key === 'Escape') { state.other = null; render('s:' + h); }
+      });
+      return OE.el('div', { class: 'row' }, input,
+        OE.el('button', { class: 'small', 'data-focus': 'ok:' + h, 'aria-label': W.okIn(k), onclick: accept }, 'OK'));
+    }
+    const options = classOptions(h);
+    const select = OE.el('select', {
+      'aria-label': W.seenIn(k), 'data-focus': 's:' + h,
+      'aria-keyshortcuts': answerKeys(w).map((a) => a.keys[0]).join(' ') || null,
+      onchange: () => {
+        if (select.value === OE.OTHER) { state.other = h; render('o:' + h); return; }
+        // Browsing the list with the keyboard changes it too: only a pick moves on.
+        const browsing = Boolean(lastSelectKey && lastSelectKey.focus === 's:' + h && lastSelectKey.browse);
+        lastSelectKey = null;
+        setLabel(h, select.value);
+        if (select.value && !browsing) advance(h, 's:' + h);
+      },
+    }, OE.el('option', { value: '' }, '(class seen)'),
+    options.map((c) => OE.el('option', { value: c }, c === OE.UNJUDGED ? '? (cannot tell)' : c)));
+    if (current && !options.includes(current)) {
+      select.append(OE.el('option', { value: current }, current));
+    }
+    select.append(OE.el('option', { value: OE.OTHER }, 'Other class...'));
+    select.value = current;
+    return select;
+  }
+
+  /* The focused row control, before render() rebuilds the rows: its key and
+     its row's place in the table. */
+  function focusedControl() {
+    const active = document.activeElement;
+    if (!active || !body.contains(active) || !active.dataset.focus) return null;
+    const tr = active.closest('tr');
+    return { key: active.dataset.focus, place: tr ? [...body.children].indexOf(tr) : -1 };
+  }
+
+  function restoreFocus(was) {
+    if (!was) return;
+    let target = body.querySelector('[data-focus="' + CSS.escape(was.key) + '"]');
+    if (!target && was.place >= 0) {
+      // The row left the filtered list: the same kind of control in the row now at its place.
+      const rowsNow = [...body.children];
+      const tr = rowsNow[Math.min(was.place, rowsNow.length - 1)];
+      const kind = was.key.split(':')[0];
+      target = tr ? tr.querySelector('[data-focus^="' + kind + ':"]') || tr.querySelector('[data-focus]') : null;
+    }
+    // Only while the panel has the focus: never on load, never out of the chat.
+    OE.focusIfHere(target);
+  }
+
+  /* Whether a window holds an answer on the face. */
+  const isLabelledRow = (w) => answered(state.labels.get(w.handle) || '');
+  /* The windows that show: the order of their handles, under the filter. */
+  const visibleRows = () => windows.filter((w) => state.filter === 'any'
+    || (state.filter === 'labelled') === isLabelledRow(w));
+
+  /* The first window after h, in the order shown and wrapping round, that
+     holds no answer; the filter is ignored. null when every one has one. */
+  function nextUnanswered(h) {
+    const at = windows.findIndex((w) => w.handle === h);
+    for (let step = 1; step < windows.length; step += 1) {
+      const w = windows[(at + step) % windows.length];
+      if (!isLabelledRow(w)) return w;
+    }
+    return null;
+  }
+
+  /* The data-focus key of the control a window's answer is given at, once
+     the focus moves on to it: its group of answers (tabindex -1, so Tab
+     still reaches each answer), never an answer button, so Enter or Space
+     alone sets nothing and a held Enter cannot answer row after row; the
+     row's keys work there. The class seen: the row's list. */
+  const firstAnswerFocusKey = (w) => (closed ? 'g:' : 's:') + w.handle;
+
+  /* After an answer on window h in the list: the focus goes to the next
+     window not yet answered (its group of answers, or its list), and the
+     pictures follow it. When the filter hides that window, the focus stays
+     on the control the answer came from (stay); with every window answered
+     it stays, and goes to the finish button once that is ready. */
+  function advance(h, stay) {
+    state.finishFrom = null;
+    const next = nextUnanswered(h);
+    if (!next) {
+      render(stay);
+      state.finishFrom = stay;
+      updateFinish();
+      return;
+    }
+    if (!visibleRows().includes(next)) { render(stay); return; }
+    render(firstAnswerFocusKey(next));
+    followPictures(next.handle);
+  }
+
+  /* The pictures follow the focus in the list to window h 300 ms after the
+     answer (a quick run of answers asks once), when the pane is open or
+     pictures are on, and not over the public test scene. The server answers
+     with the question, not pictures, until the user has switched them on. */
+  function followPictures(h) {
+    clearTimeout(picturesTimer);
+    const follow = () => wrap.isConnected && state.view === 'list' && !state.test
+      && (state.shown !== null || state.picturesOn);
+    if (!follow()) return;
+    picturesTimer = setTimeout(() => { if (follow()) loadPictures(h); }, 300);
+  }
+
+  /* The answers a key sets on a row of the list, each with its keys (upper case). */
+  function answerKeys(w) {
+    if (closed) return answers;
+    // The class seen: 1 to 9 for the n-th class of the row's list; ? where the
+    // face takes Cannot tell (a two-map sheet, and a class map's: S4).
+    const classes = classOptions(w.handle).filter((c) => c !== OE.UNJUDGED).slice(0, 9)
+      .map((c, i) => ({ value: c, label: c, keys: [String(i + 1)] }));
+    return takesQ ? [...classes, { value: OE.UNJUDGED, label: 'Cannot tell', keys: [OE.UNJUDGED] }] : classes;
+  }
+
+  /* The line under the instruction in the list: the answers' keys, as the face has them. */
+  function listHintText() {
+    const after = W.listAfter;
+    if (closed) {
+      const list = answers.filter((a) => a.keys.length).map((a) => a.keys[0] + ' ' + a.label.toLowerCase());
+      return list.length ? 'Keys: ' + list.join(', ') + '.' + after : '';
+    }
+    const most = windows.reduce((m, w) => Math.max(m,
+      classOptions(w.handle).filter((c) => c !== OE.UNJUDGED).length), 0);
+    const parts = [];
+    if (most === 1) parts.push('1 picks the first class');
+    else if (most > 9) parts.push('1 to 9 pick one of the first nine classes');
+    else if (most > 1) parts.push('1 to ' + most + ' pick a class in the list\'s order');
+    if (takesQ) parts.push('? cannot tell');
+    return parts.length ? 'Keys: ' + parts.join(', ') + '.' + after : '';
+  }
+
+  /* The line under the instruction on the face: each answer's key, in the
+     server's order, and the arrow keys. */
+  function faceHintText() {
+    const named = answers.filter((a) => a.keys.length)
+      .map((a) => a.keys[0] + ' ' + (closed || a.value === OE.UNJUDGED ? a.label.toLowerCase() : a.label));
+    return 'Keys: ' + (named.length ? named.join(', ') + '; the' : 'the') + W.faceKeys;
+  }
+
+  const BROWSE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
+  /* A key on a row (the rows' one listener): sets the row's answer, never
+     clears it, and moves on as a press does. Modified, held and composing
+     keys and typing in a field are left alone. A held key answers nothing:
+     a repeated keydown sets no answer, and a repeated Enter or Space is kept
+     from pressing the focused button again (the browser presses a button
+     on each Enter, a repeated one too). Enter or Space on a row's group of
+     answers does nothing (no scroll either). A key on a list is noted, so
+     its change event knows whether the user was browsing it. */
+  function onKey(e) {
+    const t = e.target;
+    const k = typeof e.key === 'string' ? e.key : '';  // an autofill keydown has no key
+    if (t && t.tagName === 'SELECT') {
+      lastSelectKey = { focus: t.dataset.focus, browse: BROWSE.has(k) || (k.length === 1 && k !== ' ') };
+    }
+    const typing = !t || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
+    const onGroup = Boolean(t && t.dataset && String(t.dataset.focus || '').startsWith('g:'));
+    if (!typing && (k === 'Enter' || k === ' ') && (e.repeat || onGroup)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing) return;
+    if (!t || !t.closest || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) return;
+    const tr = t.closest('tr[data-handle]');
+    const w = tr ? byHandle.get(tr.dataset.handle) : null;
+    if (!w) return;
+    const pressed = k.length === 1 ? k.toUpperCase() : '';
+    const hit = pressed ? answerKeys(w).find((a) => a.keys.includes(pressed)) : null;
+    if (!hit) return;
+    e.preventDefault();
+    if (blocked()) return;  // the editor is about to be drawn again: no answer now
+    if (t.tagName === 'SELECT') lastSelectKey = null;  // a digit is an answer, not browsing
+    if (state.other === w.handle) state.other = null;  // the key's class replaces one being typed
+    setLabel(w.handle, hit.value);
+    advance(w.handle, t.dataset.focus || firstAnswerFocusKey(w));
+  }
+
+  /* The face's one key listener. An answer's key (the server's: P, A, ? and
+     1 to 9; R, W and ?; 1 to 9 for a class) sets the window's answer, never
+     clears it, and the next window not yet labelled shows; the left and
+     right arrow keys move to the window before or after. Modified, held and
+     composing keys, and keys typed into a field or a list, are left alone;
+     a held Enter or Space presses nothing again, and Enter or Space on the
+     face itself does nothing (no scroll either). */
+  function onFaceKey(e) {
+    const t = e.target;
+    const k = typeof e.key === 'string' ? e.key : '';
+    const typing = !t || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable;
+    if (typing) return;
+    if ((k === 'Enter' || k === ' ') && (e.repeat || t === faceEl)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing) return;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      // Inside a control that scrolls sideways (the dates strip inline), the
+      // arrow keys scroll it; elsewhere on the face they page.
+      if (scrollsSideways(t)) return;
+      e.preventDefault();
+      pageBy(k === 'ArrowLeft' ? -1 : 1);
+      return;
+    }
+    const pressed = k.length === 1 ? k.toUpperCase() : '';
+    const hit = pressed && state.at ? answers.find((a) => a.keys.includes(pressed)) : null;
+    if (!hit) return;
+    e.preventDefault();
+    if (blocked()) return;  // the editor is about to be drawn again: no answer now
+    state.other = null;
+    setLabel(state.at, hit.value);
+    faceAdvance();
+  }
+
+  /* Whether a key's target is in a control inside the face that scrolls
+     sideways now (the dates strip inline, wider than the panel): its arrow
+     keys are its own. */
+  function scrollsSideways(t) {
+    for (let el = t; el && el !== faceEl && el.nodeType === 1; el = el.parentElement) {
+      const x = getComputedStyle(el).overflowX;
+      if ((x === 'auto' || x === 'scroll') && el.scrollWidth > el.clientWidth) return true;
+    }
+    return false;
+  }
+
+  /* The instructions (on the face, and in the fold) and the keys, then the
+     view shown: the face (renderFace) or the list's rows (renderList). */
+  function render(focusKey) {
+    faceInstruction.textContent = faceInstructionText();
+    faceInstruction.hidden = !faceInstruction.textContent;
+    instruction.textContent = instructionText();
+    instruction.hidden = !instruction.textContent;
+    hint.textContent = state.view === 'face' ? faceHintText() : listHintText();
+    hint.hidden = !hint.textContent;
+    if (state.view === 'face') renderFace(focusKey);
+    else renderList(focusKey);
+  }
+
+  /* What the face shows beside a window's answer: the map's class on the
+     right-or-wrong face only; on a two-map sheet, once the reviewer unticked
+     blind, the two maps' classes. A face that labels the class seen never
+     shows the map's answer (the owner's O1), and no face a stratum (F11). */
+  function extraLines(h) {
+    const extra = state.extra.get(h) || {};
+    const unblinded = !state.blind && state.revealed;
+    const lines = [];
+    if (wrongFace && extra.mapClass !== null) {
+      lines.push(OE.el('div', {}, 'Map class: ', OE.el('strong', {}, extra.mapClass || '(none)')));
+    }
+    if (twoMap && unblinded && Array.isArray(extra.pair)) {
+      lines.push(OE.el('div', {}, 'Map A / Map B: ' + (extra.pair[0] || '') + ' / ' + (extra.pair[1] || '')));
+    }
+    return lines;
+  }
+
+  /* The face's answers for window w: a button for each of the first nine
+     answers, with its key ("Present (P)"), then Cannot tell where the face
+     takes it, always a button, never only in the list (the last round's S4,
+     for a class map of many classes), the rest in a list; the window's own
+     answer when it is none of them (a class typed in); and on a face that
+     takes any class, "Other class..." or the field to type it. */
+  function faceAnswers(w) {
+    const h = w.handle;
+    const k = place(h);
+    const current = state.labels.get(h) || '';
+    const own = current && !answers.some((a) => a.value === current);
+    const named = answers.filter((a) => a.value !== OE.UNJUDGED);
+    const cannotTell = answers.filter((a) => a.value === OE.UNJUDGED);
+    const group = OE.el('div', {
+      class: 'answers row', role: 'group',
+      'aria-label': wrongFace ? W.rightIn(k) : W.seenIn(k),
+    }, [...named.slice(0, 9), ...cannotTell].map((a) => OE.el('button', {
+      type: 'button', 'data-focus': answerFocus(a.value, h), 'aria-pressed': String(current === a.value),
+      'aria-keyshortcuts': a.keys.join(' ') || null, onclick: () => facePick(a.value),
+    }, a.label + (a.keys.length ? ' (' + a.keys[0] + ')' : ''))),
+    own ? OE.el('button', { type: 'button', 'data-focus': 'x:' + h, 'aria-pressed': 'true', onclick: () => facePick(current) }, current) : null);
+    const rest = named.slice(9);
+    if (rest.length) {
+      const list = OE.el('select', {
+        'aria-label': W.moreIn(k), 'data-focus': 'r:' + h,
+        onchange: () => {
+          const browsing = faceListKey;
+          faceListKey = false;
+          if (!list.value) { render('r:' + h); return; }
+          if (!browsing) { facePick(list.value); return; }
+          // Browsing the list with the keyboard sets the answer and stays.
+          setLabel(h, list.value);
+          for (const b of group.querySelectorAll('button[aria-pressed]')) b.setAttribute('aria-pressed', 'false');
+        },
+      }, OE.el('option', { value: '' }, '(more classes)'), rest.map((a) => OE.el('option', { value: a.value }, a.label)));
+      list.addEventListener('keydown', (e) => {
+        const key = typeof e.key === 'string' ? e.key : '';
+        faceListKey = BROWSE.has(key) || (key.length === 1 && key !== ' ');
+      });
+      list.addEventListener('pointerdown', () => { faceListKey = false; });
+      list.value = rest.some((a) => a.value === current) ? current : '';
+      group.append(list);
+    }
+    const parts = [group];
+    if (!closed && state.other === h) {
+      const input = OE.el('input', {
+        type: 'text', 'aria-label': W.otherIn(k), maxlength: '200',
+        placeholder: 'class seen', value: own ? current : '', 'data-focus': 'o:' + h,
+      });
+      const accept = () => {
+        state.other = null;
+        const typed = input.value.replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+        if (typed && typed !== OE.UNJUDGED) {
+          setLabel(h, typed);
+          faceAdvance();  // a typed class accepted (Enter or OK) moves on
+        } else render('other:' + h);
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.isComposing || e.keyCode === 229) return;  // an IME's Enter commits its text, nothing more
+        if (e.key === 'Enter') { e.preventDefault(); accept(); }
+        if (e.key === 'Escape') { e.preventDefault(); state.other = null; render('other:' + h); }
+      });
+      parts.push(OE.el('div', { class: 'row' }, input,
+        OE.el('button', { class: 'small', 'data-focus': 'ok:' + h, 'aria-label': W.okIn(k), onclick: accept }, 'OK')));
+    } else if (!closed) {
+      parts.push(OE.el('div', {}, OE.el('button', {
+        class: 'link', 'data-focus': 'other:' + h, onclick: () => { state.other = h; render('o:' + h); },
+      }, 'Other class...')));
+    }
+    return parts;
+  }
+
+  /* The face for the window it shows (state.at): its heading, what it shows
+     beside its answer, its answers, the pager and its pictures. focusKey,
+     after the user's action: the control (its data-focus key), else the face
+     itself ('face'). Without one, a focus lost with a rebuilt control goes to
+     the face. Never on load, and only while the panel has the focus
+     (OE.focusIfHere). */
+  function renderFace(focusKey) {
+    const hadFocus = faceEl.contains(document.activeElement);
+    const h = state.at;
+    const w = h ? byHandle.get(h) : null;
+    if (!w) { updateProgress(); return; }
+    const k = place(h);
+    faceTitle.textContent = W.title(k, n);
+    prevButton.setAttribute('aria-disabled', String(k <= 1));
+    nextButton.setAttribute('aria-disabled', String(k >= n));
+    const extras = extraLines(h);
+    faceExtra.replaceChildren(...extras);
+    faceExtra.hidden = !extras.length;
+    faceAnswerArea.replaceChildren(...faceAnswers(w));
+    if (facePicturesButton) {
+      facePicturesButton.setAttribute('data-focus', 'i:' + h);
+      facePicturesButton.setAttribute('aria-label', W.pictures(k));
+      facePicturesButton.setAttribute('aria-expanded', String(state.shown === h));
+    }
+    if (faceMapButton) {
+      faceMapButton.setAttribute('data-focus', 'm:' + h);
+      faceMapButton.setAttribute('aria-label', W.openMapOf(k));
+      faceMapButton.setAttribute('aria-disabled', String(linking.has(h)));
+    }
+    if (preview.parentNode !== facePictures) facePictures.append(preview);
+    renderPreview();
+    updateProgress();
+    let target = null;
+    if (focusKey === 'face') target = faceEl;
+    else if (focusKey) target = faceEl.querySelector('[data-focus="' + CSS.escape(focusKey) + '"]') || faceEl;
+    else if (hadFocus && !faceEl.contains(document.activeElement)) target = faceEl;
+    OE.focusIfHere(target);
+  }
+
+  /* Show window h on the face. While the pane is open or pictures are on,
+     its pictures show at once: what the server gave for it, else
+     "Loading", asked for 300 ms later (a quick run of moves asks once), so
+     the face never shows one window's pictures under another's heading. */
+  function goTo(h, focusKey) {
+    if (!h || !byHandle.has(h)) return;
+    state.at = h;
+    if (state.other !== h) state.other = null;
+    state.test = null;
+    clearTimeout(picturesTimer);
+    if (state.shown !== null || state.picturesOn) {
+      state.shown = h;
+      if (!state.images.has(h)) {
+        picturesTimer = setTimeout(() => {
+          if (wrap.isConnected && state.view === 'face' && state.at === h && state.shown === h
+              && !state.images.has(h)) loadPictures(h);
+        }, 300);
+      }
+    }
+    render(focusKey);
+  }
+
+  /* Previous or Next, and the left and right arrow keys: the window before
+     or after the one shown, in the order of the handles; nothing past
+     either end. */
+  function pageBy(step) {
+    const at = windows.findIndex((w) => w.handle === state.at);
+    const to = at + step;
+    if (at < 0 || to < 0 || to >= n) return;
+    goTo(windows[to].handle);
+  }
+
+  /* An answer pressed on the face: a press on the answer given clears it and
+     stays; any other sets it, and the next window not yet labelled shows. */
+  function facePick(value) {
+    const h = state.at;
+    if (!h || blocked()) return;  // blocked: the editor is about to be drawn again
+    const next = (state.labels.get(h) || '') === value ? '' : value;
+    state.other = null;
+    setLabel(h, next);
+    if (next) faceAdvance(); else render(answerFocus(value, h));
+  }
+
+  /* After an answer on the face: the next window not yet labelled, in the
+     order of the handles and wrapping round, shows, and the focus stays on
+     the face; with every window labelled the face stays where it is, and
+     the finish button takes the focus once it is ready. */
+  function faceAdvance() {
+    state.finishFrom = null;
+    const next = nextUnanswered(state.at);
+    if (!next) {
+      render('face');
+      state.finishFrom = 'face';
+      updateFinish();
+      return;
+    }
+    goTo(next.handle, 'face');
+  }
+
+  /* One window or List, at the user's press, or a list row's number (at),
+     which shows that window on the face; kept for the editors drawn after
+     it on this page (OE.sheetView). */
+  function setView(v, at) {
+    if (v !== 'face' && v !== 'list') return;
+    state.view = v;
+    OE.sheetView = v;
+    [...viewToggle.querySelectorAll('button')].forEach((b, i) => b.setAttribute('aria-pressed', String(['face', 'list'][i] === v)));
+    filterBox.hidden = v !== 'list';
+    if (v === 'face') {
+      area.replaceChildren(faceEl);
+      goTo(at || state.at, at ? 'face' : null);
+      return;
+    }
+    clearTimeout(picturesTimer);
+    state.test = null;
+    area.replaceChildren(work);
+    if (preview.parentNode !== work) work.append(preview);
+    render();
+    // The pane, headed by its window now; pictures the face had not asked for yet are asked for.
+    if (state.shown !== null && !state.images.has(state.shown)) loadPictures(state.shown);
+    else renderPreview();
+  }
+
+  /* The list's rows: "#" (the window's place, which shows it on the face),
+     the map's class on the right-or-wrong face, a two-map sheet's pair once
+     unblinded, Pictures and Street map, and the answer. */
+  function renderList(focusKey) {
+    const current = focusedControl();
+    const was = focusKey ? { key: focusKey, place: current ? current.place : -1 } : current;
+    const unblinded = !state.blind && state.revealed;
+    const showMapClass = wrongFace;
+    const showPair = twoMap && unblinded;
+    const rows = visibleRows();
+    // The pictures column: Pictures (where this sheet can show pictures) and
+    // Street map (where it has places); none when it has neither (finding 10).
+    const placeColumn = picturesPossible || Boolean(data.has_place);
+    const head = OE.el('tr', {},
+      OE.el('th', {}, '#'),
+      showMapClass ? OE.el('th', {}, 'Map class') : null,
+      showPair ? OE.el('th', {}, 'Map A / Map B') : null,
+      // WORDING: r4h A/F21 (the column of a sheet with no pictures holds only Street map)
+      placeColumn ? OE.el('th', {}, picturesPossible ? 'Pictures' : W.streetMap) : null,
+      OE.el('th', {}, wrongFace ? 'Is the map right?' : 'Class seen'));
+    const lines = rows.map((w) => {
+      const h = w.handle;
+      const k = place(h);
+      const extra = state.extra.get(h) || {};
+      const pair = Array.isArray(extra.pair) ? extra.pair : ['', ''];
+      return OE.el('tr', { 'data-handle': h },
+        OE.el('td', {}, OE.el('button', {
+          class: 'link', 'data-focus': 'n:' + h, 'aria-label': W.openRow(k), onclick: () => setView('face', h),
+        }, String(k))),
+        showMapClass ? OE.el('td', {}, extra.mapClass || '') : null,
+        showPair ? OE.el('td', {}, (pair[0] || '') + ' / ' + (pair[1] || '')) : null,
+        placeColumn ? OE.el('td', {}, OE.el('span', { class: 'row', style: 'gap:2px' },
+          picturesPossible ? OE.el('button', {
+            class: 'link', 'data-focus': 'i:' + h, 'aria-expanded': String(state.shown === h),
+            'aria-controls': previewId,
+            'aria-label': W.pictures(k), onclick: () => togglePictures(h),
+          }, 'Pictures') : null,
+          data.has_place ? OE.el('button', {
+            class: 'link', 'data-focus': 'm:' + h, 'aria-disabled': String(linking.has(h)),
+            'aria-label': W.openMapOf(k), onclick: () => openMap(h),
+          }, W.streetMap) : null)) : null,
+        OE.el('td', {}, labelCell(w)));
+    });
+    body.replaceChildren(...(lines.length ? lines
+      : [OE.el('tr', {}, OE.el('td', { colspan: '99', class: 'faint' }, 'No rows'))]));
+    table.querySelector('thead').replaceChildren(head);
+    updateProgress();
+    restoreFocus(was);
+  }
+
+  /* A window's map link, asked of the server at the press (the page copy
+     holds no place), then opened in the user's browser. Busy while asked
+     (aria-disabled), so a second press asks nothing. */
+  async function openMap(h) {
+    if (linking.has(h)) return;
+    const mark = (busy) => {
+      const b = wrap.querySelector('[data-focus="' + CSS.escape('m:' + h) + '"]');
+      if (b) b.setAttribute('aria-disabled', String(busy));
+    };
+    linking.add(h);
+    mark(true);
+    try {
+      const got = await OE.call(app, 'olmoearth_app_window_link', { labels_csv_path: data.path, sheet_id: data.sheet_id, handle: h });
+      const url = got && typeof got.url === 'string' ? got.url : '';
+      if (url.startsWith('https://www.openstreetmap.org/')) await OE.open(app, url);
+      else OE.toast(W.noLink(place(h)), true);
+    } catch (err) {
+      const said = bare(err.message || 'the link could not be made');
+      const text = 'The map was not opened: ' + said + '.';
+      if (said.startsWith(OE.CHANGED_UNDER_PAGE)) { markStale(); reopenToast(text); } else OE.toast(text, true);
+    } finally {
+      linking.delete(h);
+      mark(false);
+    }
+  }
+
+  /* The Pictures buttons say which window's pane is open, in place: the rows
+     are not rebuilt, so nothing moves the focus or drops a typed class. */
+  function markPictures() {
+    for (const b of wrap.querySelectorAll('[data-focus^="i:"]')) {
+      b.setAttribute('aria-expanded', String(b.dataset.focus === 'i:' + state.shown));
+    }
+  }
+
+  /* Close the pane; the focus goes back to the window's Pictures button (the
+     user pressed a button in the pane, so the focus was in the panel). */
+  function closePictures(h) {
+    state.shown = null;
+    state.test = null;
+    renderPreview();
+    markPictures();
+    OE.focusIfHere(wrap.querySelector('[data-focus="' + CSS.escape('i:' + h) + '"]'));
+  }
+
+  /* A window's Pictures button: opens its pane, or closes it when it is open. */
+  function togglePictures(h) {
+    if (state.shown === h) { closePictures(h); return; }
+    loadPictures(h);
+  }
+
+  /* The pictures of a window, asked of the server by its handle (it finds
+     the window from the files on disk). An answer is kept until pictures
+     are switched on or off (imagesRun); a failure is not kept, so the next
+     press asks again. */
+  async function loadPictures(h) {
+    state.shown = h;
+    state.test = null;
+    markPictures();
+    if (state.images.has(h)) { renderPreview(); return; }
+    const run = state.imagesRun;
+    state.images.set(h, { loading: true });
+    renderPreview();
+    let answer;
+    try {
+      answer = await OE.call(app, 'olmoearth_app_window_image', { labels_csv_path: data.path, sheet_id: data.sheet_id, handle: h });
+    } catch (err) {
+      answer = { ok: false, error: err.message };
+    }
+    if (run !== state.imagesRun) return;  // switched on or off meanwhile: asked again then
+    // The question means pictures are off; pictures mean they are on.
+    if (answer && answer.needs_consent) state.picturesOn = false;
+    else if (answer && answer.ok) state.picturesOn = true;
+    if (answer && (answer.ok || answer.needs_consent)) state.images.set(h, answer);
+    else state.images.delete(h);
+    if (state.shown === h) renderPreview(answer);
+  }
+
+  /* Pictures switched on or off by the user's own press, after the question. */
+  async function setPictures(on) {
+    try {
+      await OE.call(app, 'olmoearth_app_imagery', { on });
+    } catch (err) {
+      OE.toast(err.message, true);
+      return;
+    }
+    state.picturesOn = Boolean(on);
+    state.images.clear();
+    state.imagesRun += 1;
+    state.test = null;
+    const h = state.shown;
+    if (on && h !== null) {
+      await loadPictures(h);
+      // The pressed button went with the old pane: the focus goes to the pane's heading.
+      const lost = !document.activeElement || document.activeElement === document.body;
+      const heading = preview.querySelector('h2, h3');
+      if (lost && heading) { heading.setAttribute('tabindex', '-1'); OE.focusIfHere(heading); }
+    }
+    else if (h !== null) closePictures(h);
+  }
+
+  /* The pane: the question until pictures are on, then the rule, the
+     pictures with their caption, and what a label then is. In the list it
+     is headed by its window; on the face, whose heading names the window,
+     by "Pictures". ``shown`` overrides the cache (an answer not kept, such
+     as a failure). */
+  function renderPreview(shown) {
+    const h = state.shown;
+    work.classList.toggle('pane', h !== null);  // beside the table only while open
+    if (h === null) {
+      // No pane: while pictures are off, the one line that says how to see
+      // them (A/sheet-1), under the answers; added once, so a live region
+      // does not say it again on every answer. A sheet that can show no
+      // pictures has no such line (finding 10).
+      if (state.picturesOn || !picturesOff) preview.replaceChildren();
+      else if (preview.childNodes.length !== 1 || preview.firstChild !== picturesOff) preview.replaceChildren(picturesOff);
+      return;
+    }
+    if (state.test) { renderTest(); return; }
+    const k = place(h);
+    const answer = shown || state.images.get(h) || { loading: true };
+    const head = OE.el('div', { class: 'spread' },
+      state.view === 'face' ? OE.el('h3', {}, 'Pictures') : OE.el('h2', {}, W.paneHead(k)),
+      OE.el('button', { class: 'link', onclick: () => closePictures(h) }, 'Close pictures'));
+    if (answer.loading) { preview.replaceChildren(head, OE.el('div', { class: 'faint' }, 'Loading the pictures...')); return; }
+    if (answer.needs_consent) {
+      preview.replaceChildren(head, OE.el('div', { class: 'card summary stack' },
+        OE.el('div', {}, answer.ask),
+        OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
+          OE.el('button', { onclick: () => setPictures(true) }, 'Turn on pictures')),
+        answer.test_ask ? OE.el('div', { class: 'small faint' }, answer.test_ask) : null,
+        answer.test_ask ? OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
+          OE.el('button', { class: 'link', onclick: () => loadTest() }, 'Try the public test scene')) : null));
+      return;
+    }
+    if (!answer.ok) {
+      preview.replaceChildren(head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'));
+      return;
+    }
+    const pictures = (answer.pictures || []).filter(goodPicture);
+    // The rule shows under the instruction from the first open (ruleBlock,
+    // A/sheet-2); here only when the page copy had none and this answer
+    // has one, with its scope and, for the owner's rule, that it is for kelp
+    // canopy maps only (answer.rule_limit, the last round's F9). The line
+    // that no rule is set stays here.
+    let ruleLines = null;
+    if (!pageRule && answer.reading_rule) {
+      ruleLines = OE.el('div', {}, OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + answer.reading_rule),
+        answer.rule_scope ? OE.el('div', { class: 'small faint' }, answer.rule_scope) : null,
+        typeof answer.rule_limit === 'string' && answer.rule_limit
+          ? OE.el('div', { class: 'small faint' }, answer.rule_limit) : null);
+    } else if (!pageRule) {
+      ruleLines = OE.el('div', { class: 'small error' }, W.noRule);
+    }
+    preview.replaceChildren(...[head, ruleLines].filter(Boolean),
+      Array.isArray(answer.dates) && answer.dates.length
+        ? datesBlock(answer.dates, W.label(k))
+        : OE.el('div', { class: 'row', style: 'align-items:flex-start;gap:12px' },
+          pictures.map((p) => OE.el('figure', { style: 'margin:0' },
+            OE.el('img', { src: p.src, width: p.width, height: p.height, alt: p.label + ', ' + W.label(k), style: 'image-rendering:pixelated;display:block;border:1px solid var(--rule);border-radius:4px' }),
+            OE.el('figcaption', { class: 'small' }, p.label)))),
+      OE.el('div', { class: 'footnote' }, answer.caption),
+      OE.el('div', { class: 'footnote' }, answer.label_is),
+      OE.el('div', { class: 'row', style: 'justify-content:flex-end;gap:16px' },
+        OE.el('button', { class: 'link', onclick: () => loadTest() }, 'Public test scene'),
+        OE.el('button', { class: 'link', onclick: () => setPictures(false) }, 'Turn off pictures')));
+  }
+
+  /* A picture the server sent: a data URL and whole-number sizes. */
+  function goodPicture(p) {
+    return OE.goodPicture(p);
+  }
+
+  /* One block per date, the chosen rendering only, with the colour switch
+     (OE.datesBlock). On the face the dates are a strip inline and a grid in
+     full screen (.face-dates in common.js), and the strip takes the focus
+     itself, so the keyboard reaches it and its arrow keys scroll it
+     (scrollsSideways); in the list, one under another. */
+  function datesBlock(dates, what) {
+    return OE.datesBlock(dates, what, {
+      colour: state.colour,
+      strip: state.view === 'face',
+      unit: W.one,
+      choose: (kind) => {
+        state.colour = kind;
+        renderPreview();
+        OE.focusIfHere(preview.querySelector('[data-focus="colour:' + kind + '"]'));
+      },
+    });
+  }
+
+  /* The public test scene: the user's press, after the card says what it
+     sends. Shown in the pane in place of the window; nothing is labelled. */
+  async function loadTest() {
+    const from = state.shown;
+    state.test = { from, answer: { loading: true } };
+    renderPreview();
+    focusPaneHeading();  // the pressed button went with the old pane
+    let answer;
+    try {
+      answer = await OE.call(app, 'olmoearth_app_window_image', { test_scene: true });
+    } catch (err) {
+      answer = { ok: false, error: err.message };
+    }
+    if (!state.test || state.test.from !== from) return;  // closed meanwhile
+    state.test.answer = answer || { ok: false, error: 'No answer.' };
+    renderPreview();
+    focusPaneHeading();
+  }
+
+  /* After the pane is rebuilt: the focus goes to its heading only when it was
+     in the pane or lost, never away from a row the user went back to. */
+  function focusPaneHeading() {
+    const active = document.activeElement;
+    const lost = !active || active === document.body || preview.contains(active);
+    const heading = preview.querySelector('h2, h3');
+    if (lost && heading) { heading.setAttribute('tabindex', '-1'); OE.focusIfHere(heading); }
+  }
+
+  function closeTest() {
+    state.test = null;
+    renderPreview();
+    focusPaneHeading();
+  }
+
+  function renderTest() {
+    const answer = state.test.answer;
+    const head = OE.el('div', { class: 'spread' },
+      state.view === 'face' ? OE.el('h3', {}, 'Public test scene') : OE.el('h2', {}, 'Public test scene'),
+      OE.el('button', { class: 'link', onclick: closeTest }, W.back(place(state.test.from))));
+    if (answer.loading) { preview.replaceChildren(head, OE.el('div', { class: 'faint' }, 'Loading the test scene...')); return; }
+    if (!answer.ok) {
+      preview.replaceChildren(head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'));
+      return;
+    }
+    preview.replaceChildren(head,
+      OE.el('div', { class: 'small faint' }, W.notOfSheet),
+      datesBlock(Array.isArray(answer.dates) ? answer.dates : [], 'the public test scene'),
+      OE.el('div', { class: 'footnote' }, answer.caption));
+  }
+
+  /* A save 1.5 s after the last answer; a run of answers under 1.5 s apart
+     saves at the latest 5 s after its first unsaved answer, so a long run of
+     keys is not held only in the page (at least 200 ms between tries). */
+  const SAVE_QUIET_MS = 1500;
+  const SAVE_MAX_WAIT_MS = 5000;
+  let timer = null;
+  let firstUnsaved = 0;
+  function schedule() {
+    clearTimeout(timer);
+    if (state.stale) return;  // a save would be refused again: the sheet must be reopened
+    const now = Date.now();
+    if (!firstUnsaved) firstUnsaved = now;
+    const wait = Math.max(200, Math.min(SAVE_QUIET_MS, firstUnsaved + SAVE_MAX_WAIT_MS - now));
+    timer = setTimeout(() => save({ auto: true }), wait);
+  }
+
+  /* Nothing saves any more: the sheet changed under the page. */
+  function markStale() {
+    state.stale = true;
+    clearTimeout(timer);
+    updateProgress();
+    tellClaude();
+  }
+
+  /* A toast about the sheet that changed under the page (each toast after
+     markStale, and save's on a press of Save then): the last one is kept,
+     so that oeLeave clears it while it is still the one shown (r4-l L3).
+     Save's toast that the changes not saved here are not kept is not one:
+     it is about an unsaved change, and stays. */
+  function reopenToast(text) {
+    state.reopenSaid = text;
+    OE.toast(text, true);
+  }
+
+  /* "Square 4", "Squares 4 and 9", "Squares 2, 4 and 9" (the sheet's unit
+     word, W.places): windows by their place. */
+  function windowsWord(places) {
+    return W.places([...places].sort((a, b) => a - b).map(String));
+  }
+
+  /* What a save that failed asks of the user: a press of Save labels while
+     this editor is on the page; once another sheet was opened in its place
+     (its Save is gone), to open this sheet again, with the windows not saved
+     named by their place. */
+  function tryAgain() {
+    if (wrap.isConnected) return 'Press Save labels to try again.';
+    const places = [...state.dirty].map(place).filter(Boolean);
+    return (places.length ? windowsWord(places) + ' of ' + data.name + (places.length === 1 ? ' is' : ' are')
+      + ' not saved: open that sheet again to label ' + (places.length === 1 ? 'it' : 'them') + '.'
+      : 'Open ' + data.name + ' again to go on.');
+  }
+
+  /* The sheet as the server holds it now, on this page's face, to take in a
+     save made elsewhere; null when it cannot be read. A sheet drawn again,
+     or whose rule or face changed, cannot be taken in: the page stops
+     saving and offers to reopen it. */
+  async function readFresh() {
+    try {
+      return await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path, face });
+    } catch (err) {
+      const said = bare(err.message);
+      if (said.startsWith(OE.CHANGED_UNDER_PAGE) || said.startsWith(OE.FACE_WRONG_REFUSED)
+          || said.startsWith(OE.FACE_CLASS_REFUSED)) {
+        markStale();
+        reopenToast('This sheet changed since this panel opened it. Reopen it to go on.');
+      } else {
+        OE.toast('The sheet could not be read again: ' + said + '.', true);
+      }
+      return null;
+    }
+  }
+
+  /* Take in a fresh read of the sheet (a save made elsewhere): a window not
+     changed here takes the label saved there; a window changed here keeps
+     its change where the label there is still state.base, and takes the
+     label saved there where both changed it (the first save wins). The
+     windows shown, their order and the focus stay. True when the page now
+     shows something it did not show before (a label, or that the sheet must
+     be reopened); the toast then says so, naming by their place the windows
+     whose change here gave way. A class being typed keeps its text and its
+     caret across the redraw. mine: the read follows this page's own save,
+     whose answer says the server worked out more windows (rederived): every
+     change made here wins, and the toast says the sheet was read again.
+     changes counts each take-in that showed a change (finishPress). */
+  let changes = 0;
+  function adopt(fresh, { mine = false } = {}) {
+    lastCheck = Date.now();
+    const list = fresh && Array.isArray(fresh.windows) ? fresh.windows : [];
+    const got = new Map(list.filter((w) => w && typeof w.handle === 'string')
+      .map((w) => [w.handle, String(w.answer ?? '').trim()]));
+    const same = fresh && fresh.sheet_id === data.sheet_id && (fresh.label_rule || null) === rule
+      && fresh.face === face && got.size === n && windows.every((w) => got.has(w.handle));
+    if (!same) {
+      markStale();
+      reopenToast('This sheet changed since this panel opened it. Reopen it to go on.');
+      changes += 1;
+      return true;
+    }
+    const gaveWay = [];
+    let differed = false;
+    for (const w of windows) {
+      const h = w.handle;
+      const there = got.get(h);
+      const shown = state.labels.get(h) || '';
+      if (state.dirty.has(h) && (mine || there === state.base.get(h))) {
+        // Changed here only (or after this page's own save): the change stays, to be sent.
+      } else {
+        if (there !== shown) {
+          differed = true;
+          if (state.dirty.has(h)) gaveWay.push(place(h));
+        }
+        state.labels.set(h, there);
+        state.dirty.delete(h);
+      }
+      state.base.set(h, there);
+    }
+    if (typeof fresh.version === 'string') data.version = fresh.version;
+    state.mix = fresh.mix_problem
+      ? { problem: String(fresh.mix_problem), column: String(fresh.clear_column || '') } : null;
+    keptNote = gaveWay.length
+      ? windowsWord(gaveWay) + (gaveWay.length === 1 ? ' keeps the label' : ' keep the labels') + ' saved there.' : '';
+    // Drawn again where it was: the window shown, the list's order, the focused
+    // control, and a class being typed (its text and caret).
+    const active = document.activeElement;
+    const key = active && wrap.contains(active) && active.dataset ? active.dataset.focus || null : null;
+    const typedIn = () => (state.other !== null
+      ? wrap.querySelector('input[data-focus="' + CSS.escape('o:' + state.other) + '"]') : null);
+    const field = typedIn();
+    const draft = field ? { value: field.value, start: field.selectionStart, end: field.selectionEnd } : null;
+    render(key || undefined);
+    const again = draft ? typedIn() : null;
+    if (again) {
+      again.value = draft.value;
+      try { again.setSelectionRange(draft.start, draft.end); } catch (_) { /* a field with no caret */ }
+    }
+    if (differed) {
+      OE.toast(mine ? W.rereadMine(data.name)
+        : 'This sheet was saved elsewhere; it shows those labels now.' + (keptNote ? ' ' + keptNote : ''));
+      changes += 1;
+    }
+    tellClaude();
+    return differed;
+  }
+
+  /* A save refused as stale: read the sheet, take it in, and send what is
+     left with the new version; at most STALE_RESENDS times in a row. */
+  async function resync() {
+    state.syncing = true;
+    clearTimeout(timer);
+    let fresh = null;
+    try {
+      fresh = await readFresh();
+      if (fresh) adopt(fresh);
+    } finally {
+      state.syncing = false;
+    }
+    if (!fresh || state.stale) { updateProgress(); return; }
+    if (!pending()) { keptNote = ''; updateProgress(); return; }
+    if (staleResends >= STALE_RESENDS) {
+      OE.toast('Not saved: the sheet keeps changing elsewhere. ' + tryAgain(), true);
+      updateProgress();
+      return;
+    }
+    staleResends += 1;
+    await save();
+  }
+
+  /* Whether the sheet was saved elsewhere since this page read it: the
+     server's version (olmoearth_app_sheet_progress, counts only) against
+     data.version; if so the sheet is read and taken in (adopt). At most once
+     every CHECK_EVERY_MS unless forced (the finish press), and never while a
+     save or a read is under way, a class is being typed, the page is not
+     shown, or it stopped saving; a check already under way is waited for.
+     True when the page now shows a change, or when the version moved on and
+     the sheet could not be read again (the page has not seen how it
+     changed: a finish press then sends nothing). */
+  let checking = null;
+  function check({ force = false } = {}) {
+    if (checking) return checking;
+    if (!wrap.isConnected || state.saving || state.syncing || state.stale || reopening) return Promise.resolve(false);
+    if (typeof data.version !== 'string') return Promise.resolve(false);
+    if (!force && (Date.now() - lastCheck < CHECK_EVERY_MS || state.other !== null)) return Promise.resolve(false);
+    lastCheck = Date.now();
+    checking = (async () => {
+      let got = null;
+      try {
+        got = await OE.call(app, 'olmoearth_app_sheet_progress', { labels_csv_path: data.path });
+      } catch (_) {
+        return false;  // no word from the server: nothing to take in
+      }
+      if (!got || typeof got.version !== 'string' || got.version === data.version) return false;
+      if (state.saving || state.syncing || state.stale) return false;
+      state.syncing = true;
+      try {
+        const fresh = await readFresh();
+        const changed = fresh ? adopt(fresh) : true;
+        if (!pending()) keptNote = '';  // said by adopt's toast; no save to carry it
+        return changed;
+      } finally {
+        state.syncing = false;
+        updateProgress();
+      }
+    })().finally(() => { checking = null; });
+    return checking;
+  }
+
+  /* Draw a new editor in place of this one from a fresh read; its heading
+     takes the focus if this one had it. The changes not saved here are not
+     kept (every caller saves them first, or the sheet changed under it). */
+  function replaceEditor(fresh, said) {
+    clearTimeout(timer);
+    wrap.oeDispose();
+    const hadFocus = wrap.contains(document.activeElement);
+    const editor = OE.sheetEditor(app, fresh, { headerAction, onSaved });
+    wrap.replaceWith(editor);
+    if (said) OE.toast(said);
+    const heading = editor.querySelector('h1');
+    if (heading && hadFocus) { heading.setAttribute('tabindex', '-1'); OE.focusIfHere(heading); }
+  }
+
+  /* Read the sheet again and draw a new editor in place of this one (after a
+     save was refused because the sheet changed under the page), on the face
+     the server offers first. */
+  let reopening = false;
+  async function reopen() {
+    if (reopening) return;
+    reopening = true;
+    reopenButton.setAttribute('aria-disabled', 'true');
+    try {
+      const fresh = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path });
+      replaceEditor(fresh, 'The sheet was read again: ' + data.name + '.');
+    } catch (err) {
+      OE.toast('The sheet could not be read: ' + bare(err.message) + '.', true);
+      reopening = false;
+      reopenButton.setAttribute('aria-disabled', 'false');
+    }
+  }
+
+  /* Save what is waiting, after any save or read in flight; true when nothing is left. */
+  async function settle() {
+    while (state.saving || state.syncing) await wait(100);
+    if (pending()) await save();
+    return !pending() && !state.stale;
+  }
+
+  /* Clear a label column on every window (the user's press on the link
+     beside a mix), then read the sheet on face ``to``. The clear names the
+     version this page holds: a sheet saved elsewhere since is read and
+     taken in first, and the user presses the link again. No
+     answer is taken meanwhile (busyArea). A clear the server took whose
+     sheet then cannot be read says it was cleared, and the page offers to
+     reopen the sheet (markStale: this copy is no longer the file's). */
+  async function clearAndOpen(column, to) {
+    if (state.clearing || state.stale) return;
+    state.clearing = true;
+    busyArea(true);
+    let stale = false;
+    try {
+      if (!(await settle())) return;
+      const args = { labels_csv_path: data.path, sheet_id: data.sheet_id, face, rule, clear_column: column };
+      if (typeof data.version === 'string') args.version = data.version;
+      let cleared = false;
+      try {
+        await OE.call(app, 'olmoearth_app_save_labels', args);
+        cleared = true;
+      } catch (err) {
+        const said = bare(err.message || 'the column was not cleared');
+        if (err.stale) stale = true;
+        else {
+          const text = 'Not cleared: ' + said + '.';
+          if (said.startsWith(OE.CHANGED_UNDER_PAGE)) { markStale(); reopenToast(text); } else OE.toast(text, true);
+        }
+      }
+      if (cleared) {
+        if (onSaved) onSaved();
+        try {
+          const fresh = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path, face: to });
+          replaceEditor(fresh, 'The ' + column + ' column was cleared.');
+        } catch (err) {
+          markStale();
+          reopenToast('The ' + column + ' column was cleared, but the sheet could not be read again: '
+            + bare(err.message || 'it could not be read') + '. Reopen it to go on.');
+        }
+      }
+    } finally {
+      state.clearing = false;
+      busyArea(false);
+    }
+    if (!stale) return;
+    // Saved elsewhere since this page read it: take that in, then say so.
+    state.syncing = true;
+    let fresh = null;
+    try { fresh = await readFresh(); } finally { state.syncing = false; }
+    if (!fresh) return;
+    adopt(fresh);
+    if (!state.stale) {
+      OE.toast('Not cleared: the sheet was saved elsewhere since this panel read it, and it shows those labels now. '
+        + 'Press the link again to clear the ' + column + ' column.', true);
+    }
+  }
+
+  /* The two-map sheet's blind switch, at the reviewer's press: unticked, it
+     asks the server for the two maps' classes once, and shows them; ticked,
+     it hides them. */
+  async function setBlind(on) {
+    if (on || state.revealed) { state.blind = on; render(); return; }
+    if (state.revealing) return;
+    state.revealing = true;
+    blind.setAttribute('aria-busy', 'true');
+    try {
+      const fresh = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path, face, unblind: true });
+      if (!fresh || fresh.sheet_id !== data.sheet_id || fresh.face !== face) {
+        markStale();
+        throw new Error(OE.CHANGED_UNDER_PAGE);
+      }
+      for (const w of Array.isArray(fresh.windows) ? fresh.windows : []) {
+        if (w && byHandle.has(w.handle)) state.extra.set(w.handle, extraOf(w));
+      }
+      state.revealed = true;
+    } catch (err) {
+      const text = 'Not shown: ' + bare(err.message) + '.';
+      // The sheet changed under the page (markStale above): a toast oeLeave may clear.
+      if (state.stale && err.message === OE.CHANGED_UNDER_PAGE) reopenToast(text); else OE.toast(text, true);
+    } finally {
+      state.revealing = false;
+      blind.removeAttribute('aria-busy');
+      if (!state.revealed) blind.checked = true;
+      state.blind = blind.checked;
+      render();
+    }
+  }
+
+  /* After a save whose answer says the server worked out more windows than
+     were sent (rederived: on a seen sheet, a class typed into the CSV gets
+     its right or wrong when any label is saved): the sheet is read again
+     and taken in, every change made here winning, so the counts shown and
+     told and the version the page holds name the same file. */
+  async function rereadMine() {
+    if (state.stale || state.syncing || state.saving) return;
+    state.syncing = true;
+    clearTimeout(timer);
+    try {
+      const fresh = await readFresh();
+      if (fresh) adopt(fresh, { mine: true });
+    } finally {
+      state.syncing = false;
+    }
+    updateProgress();
+    tellClaude();
+    if (pending() && !state.stale) schedule();
+  }
+
+  /* Send the changed answers; an answer changed again during the save stays
+     pending and goes in the next one. auto: the 1.5 s save after a change,
+     which says nothing when nothing is left to send. While the sheet is read
+     again (syncing), the save waits for the next turn. A failure asks for a
+     press of Save labels, or, once this editor is off the page, names the
+     windows not saved (tryAgain). quiet: the save when Claude closes the
+     card (oeFlush, r4-k K1): no toast, no onSaved, no focus move, and no
+     read of the sheet after it (a stale or rederived answer is left as
+     it is; the server's version check keeps the file whole). */
+  async function save({ auto = false, quiet = false } = {}) {
+    clearTimeout(timer);
+    if (state.saving) return;
+    if (state.stale) {
+      if (!quiet) reopenToast('Not saved: this sheet changed since the panel opened it. Reopen the sheet to go on.');
+      return;
+    }
+    if (state.syncing) { schedule(); return; }
+    if (!pending()) {
+      if (!auto && !quiet) OE.toast('Every change is saved to ' + data.name + '.');
+      return;
+    }
+    let failed = false;
+    let stale = false;
+    let rederived = false;
+    const sent = new Map([...state.dirty].map((h) => [h, state.labels.get(h) || '']));
+    firstUnsaved = 0;
+    state.saving = true;
+    quietSave = quiet;
+    updateProgress();
+    try {
+      // The sheet's id, the face and the rule this page drew: the server
+      // refuses the save if the sheet changed since; and the version this
+      // page holds, refused as stale if the sheet was saved elsewhere since.
+      const args = {
+        labels_csv_path: data.path, sheet_id: data.sheet_id, face, rule,
+        answers: [...sent].map(([h, value]) => ({ handle: h, answer: value })),
+      };
+      if (typeof data.version === 'string') args.version = data.version;
+      const answer = await OE.call(app, 'olmoearth_app_save_labels', args);
+      if (answer && typeof answer.version === 'string') data.version = answer.version;
+      rederived = Boolean(answer && answer.rederived === true);
+      for (const [h, value] of sent) {
+        state.base.set(h, value);
+        if (state.labels.get(h) === value) state.dirty.delete(h);
+      }
+      if (answer && 'mix_problem' in answer) {
+        state.mix = answer.mix_problem
+          ? { problem: String(answer.mix_problem), column: String(answer.clear_column || '') } : null;
+      }
+      staleResends = 0;
+      state.saveFailed = false;
+      if (!quiet) {
+        OE.toast('Saved to ' + data.name + '.' + (keptNote ? ' ' + keptNote : ''));
+        keptNote = '';
+        if (onSaved) onSaved();
+      }
+    } catch (err) {
+      failed = true;
+      const said = bare(err.message || 'The save failed');
+      // Save labels stays in view until a save goes through (B/sheet-finish-button).
+      if (!err.stale) state.saveFailed = true;
+      if (err.stale) {
+        // Saved elsewhere since this page read it: read it, take it in, send again.
+        stale = true;
+      } else if (said.startsWith(OE.CHANGED_UNDER_PAGE)) {
+        // A retry is refused the same way: the sheet must be read again.
+        state.stale = true;
+        if (!quiet) {
+          OE.toast('Not saved: this sheet changed since the panel opened it. '
+            + (wrap.isConnected ? 'Reopen the sheet to go on' : 'Open ' + data.name + ' again to go on')
+            + '; the changes not saved here are not kept.', true);
+        }
+      } else if (!quiet) {
+        OE.toast('Not saved' + (wrap.isConnected ? '' : ' to ' + data.name) + ': ' + said + '. ' + tryAgain(), true);
+      }
+    } finally {
+      state.saving = false;
+      updateProgress();
+      quietSave = false;
+      // Answers changed during the save go in the next one; a failed save waits
+      // for the next change or a press of Save rather than retrying on its own.
+      if (pending() && !failed) schedule();
+      tellClaude();
+    }
+    if (quiet) return;
+    if (stale) await resync();
+    else if (rederived) await rereadMine();
+  }
+
+  /* The finish button, named for the sheet's job (estimate, certify, which
+     map), in the footer from the first open (reader test 2's
+     B/sheet-finish-button): greyed (aria-disabled, so it keeps the focus)
+     until every window is labelled and saved (ready), then it sends the
+     message that names the tool to call; when the host does not take it, the
+     footer shows it to type (OE.sendJob). Once ready, the line beside it
+     says answers must not change after the press (W.everyDone, A/F17). A
+     server without the finish fields gets the old words. The button is made
+     once and kept in place, so it keeps the focus when the progress is drawn
+     again; once ready after the last answer it takes the focus, if the user
+     has not moved it since. A held Enter sends the message once. A press
+     while greyed does nothing; a press when ready first waits for any save,
+     read or check under way, then asks the server whether the sheet was
+     saved elsewhere (check, busy with aria-disabled meanwhile): one that
+     was, or a take-in during the press that showed a change (changes), is
+     taken in and nothing is sent, so the user sees what changed and presses
+     again. */
+  let finishButton = null;
+  let finishing = false;
+  // The line beside the finish button once every answer is saved (A/F17).
+  const everyDoneLine = OE.el('span', { class: 'small' }, W.everyDone);
+  /* Whether the sheet can be sent for grading now: complete and saved. */
+  const ready = () => complete() && !pending() && !state.stale;
+  async function finishPress(message) {
+    if (finishing || !ready()) return;
+    finishing = true;
+    finishButton.setAttribute('aria-disabled', 'true');
+    let changed = false;
+    try {
+      const before = changes;
+      while (state.saving || state.syncing) await wait(100);
+      if (checking) await checking;
+      changed = (await check({ force: true })) || changes !== before;
+    } finally {
+      finishing = false;
+      finishButton.setAttribute('aria-disabled', String(!ready()));
+    }
+    if (changed || state.stale || pending() || !complete()) return;
+    OE.sendJob(app, message, finishType);
+  }
+  /* The finish button, made once (the server's message, sheet.finish_message;
+     an older page copy without one gets the panel's own words). */
+  function finishControl() {
+    if (!finishButton) {
+      const design = data.design_path ? ' with design_path ' + data.design_path : '';
+      // The server's message (sheet.finish_message); an older page copy
+      // without one gets this, in the sheet's unit word (the owner's ruling 6).
+      // WORDING: squares
+      const message = data.finish_message || ('I have labelled every ' + W.one + ' of the sheet ' + data.name
+        + '. Estimate the map error from it: labels_path ' + data.path + design + '.');
+      finishButton = OE.el('button', {
+        class: 'primary',
+        'aria-disabled': 'true',
+        onclick: () => finishPress(message),
+        onkeydown: (e) => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); },
+      }, data.finish_label || 'Ask Claude to grade it');
+    }
+    return finishButton;
+  }
+  /* The footer's finish button as the counts stand: greyed until ready,
+     with the A/F17 line beside it once ready (the button node stays in
+     place, so it keeps the focus); once ready after the last answer, it
+     takes the focus if the user has not moved it since. */
+  function updateFinish() {
+    const button = finishControl();
+    const ok = ready();
+    if (!finishing) button.setAttribute('aria-disabled', String(!ok));
+    if (!done.contains(button)) done.replaceChildren(button);
+    if (ok && !done.contains(everyDoneLine)) done.prepend(everyDoneLine);
+    else if (!ok && done.contains(everyDoneLine)) everyDoneLine.remove();
+    if (ok && state.finishFrom !== null && !quietSave) {
+      const active = document.activeElement;
+      const stayed = !active || active === document.body
+        || (active.dataset && active.dataset.focus === state.finishFrom);
+      state.finishFrom = null;
+      if (stayed) OE.focusIfHere(button);
+    }
+  }
+
+  // The blind switch: a two-map sheet only (the owner's O1 of 14 Nov 2026: a
+  // class map's sheet never shows the map's answer, so it has no switch). A
+  // seen sheet has nothing to show, and right or wrong shows the map's class.
+  const blind = twoMap ? OE.el('input', {
+    type: 'checkbox', id: 'oe-blind', checked: true,
+    onchange: () => setBlind(blind.checked),
+  }) : null;
+
+  // One window or the list, a joined toggle at Studio's full size.
+  const viewToggle = OE.toggle([['face', W.oneView], ['list', 'List']], state.view,
+    (v) => setView(v), { label: W.howToShow, small: false });
+  // Studio's three-way toggle at its full size (7px padding), over the list's rows.
+  const filter = OE.toggle(
+    [['any', 'Any'], ['unlabelled', 'Unlabelled'], ['labelled', 'Labelled']], state.filter,
+    (v) => { state.filter = v; render(); }, { label: 'Show rows', small: false });
+  const filterBox = OE.el('div', {}, filter);
+  filterBox.hidden = state.view !== 'list';
+
+  // What the two-map sheet's blind switch hides: which classes the two maps
+  // wrote; never a stratum, which no page is sent (the last round's F11).
+  // WORDING: r4i F11
+  const blindText = 'Blind: hide which classes the maps wrote';
+  // The row of switches, only where one exists: the two-map sheet's blind
+  // switch (the owner's O1 took the class sheet's switches away).
+  const switchRow = blind ? OE.el('div', { class: 'row', style: 'gap:16px' },
+    OE.el('label', { class: 'row', style: 'gap:8px', for: 'oe-blind' }, blind, blindText)) : null;
+  // In the Details fold (the last round's S1): what never reaches this panel.
+  // The blind line of a sheet labelled with the class seen (a seen sheet's,
+  // and a class map's, which has no switch: the owner's O1), the
+  // right-or-wrong face's line, or, beside the two-map sheet's blind switch,
+  // the code line; then the Street map line where the sheet has places to
+  // open (A/F21).
+  const sentLine = seen || face === 'class' ? W.blindSeen : wrongFace ? W.wrongLine : blind ? W.codeLine : '';
+  const foldLines = [sentLine, data.has_place ? W.openMap : '']
+    .filter(Boolean).map((text) => OE.el('div', { class: 'small' }, text));
+  // A named scores map's sheet already labelled right or wrong says why it stays so.
+  const ruleNote = data.rule_note ? OE.el('div', { class: 'small' }, String(data.rule_note)) : null;
+  // The part of the map this sheet is for, under its name (A/sheet-10:
+  // "West part of this map (1 of 2)"), when the server names one.
+  const partLine = data.part && typeof data.part === 'object' && typeof data.part.heading === 'string'
+    && data.part.heading ? OE.el('div', { class: 'small' }, data.part.heading) : null;
+  // A sheet already graded: its answers should not change now (the owner's extra 2).
+  const gradedNote = data.graded && typeof data.graded === 'object'
+    ? OE.el('div', { class: 'card summary small', role: 'note' }, W.graded) : null;
+  // The three lines on top: what this is (where the map's answer is hidden:
+  // not on the right-or-wrong face), what to do next, what it cannot tell;
+  // on a sheet that can show no pictures, their plain form, which promises
+  // no satellite picture (finding 10), and on a sheet of points with places
+  // to open, what to judge from (reader test 2's E/sheet-1).
+  const finishWords = data.finish_label || 'Ask Claude to grade it';
+  const whatBare = W.one === 'point' && data.has_place ? W.whatPlaced : W.whatBare;
+  const leadLines = typeof OE.lead === 'function' ? OE.lead({
+    what: wrongFace ? null : picturesPossible ? W.what : whatBare,
+    next: picturesPossible ? W.next(finishWords) : W.nextBare(finishWords),
+    cannot: picturesPossible ? W.cannot : W.cannotBare,
+  }) : null;
+  // Two example pictures under the owner's rule (r4-k K9), each captioned,
+  // and the line on where they come from in the Details fold; only with the
+  // server's examples (the owner's rule, both pictures on disk), else none.
+  const examples = OE.ruleExamples(data);
+  const ruleExamples = examples ? OE.examplePictures(examples) : null;
+  const examplesNote = examples ? OE.el('div', { class: 'small' }, OE.EXAMPLES_NOTE(examples.year)) : null;
+  // The labelling rule from the first open (A/sheet-2), its scope (who set
+  // it, or that the user typed it before the draw) and, after the owner's
+  // rule, that it is for kelp canopy maps only (data.rule_limit, the
+  // server's; the last round's F9), then the example pictures; that no date
+  // is marked clear (A/sheet-3) goes in the Details fold, only on a sheet
+  // that can show pictures: one that cannot shows no date to mark.
+  const ruleBlock = pageRule ? OE.el('div', { class: 'stack', style: 'gap:2px' },
+    OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + pageRule),
+    typeof data.rule_scope === 'string' && data.rule_scope ? OE.el('div', { class: 'small faint' }, data.rule_scope) : null,
+    typeof data.rule_limit === 'string' && data.rule_limit ? OE.el('div', { class: 'small faint' }, data.rule_limit) : null,
+    ruleExamples) : null;
+  const clearNote = pageRule ? (picturesPossible ? OE.el('div', { class: 'small faint' }, W.clear) : null) : null;
+  // The face's one Cannot tell line (S1), and, until the sheet is graded,
+  // that an answer can change until the finish press (S2).
+  const cannotLine = cannotLineText ? OE.el('div', {}, cannotLineText) : null;
+  const changeLine = gradedNote ? null : OE.el('div', {}, W.changeLine(finishWords));
+  // ONE closed fold under the answers (the last round's S1): the sheet's file
+  // name (it may be long: it wraps anywhere), the instruction's rest and what
+  // Cannot tell does, the keys, what never reaches this panel, the Street map
+  // line, the clear-date note and where the example pictures come from (r4-k
+  // K9; the sheet keeps its one fold).
+  // WORDING: r4h S1
+  const foldLabel = 'Details';
+  const foldParts = [
+    OE.el('div', { class: 'mono', style: 'overflow-wrap:anywhere' }, data.name),
+    instruction, hint, ...foldLines, clearNote, examplesNote,
+  ].filter(Boolean);
+  const details = typeof OE.fold === 'function' ? OE.fold(foldLabel, ...foldParts)
+    : OE.el('details', {}, OE.el('summary', {}, foldLabel), ...foldParts);
+
+  // Annotation Lab's frame: one white section card, a teal title, the controls,
+  // the face or the rows, the Details fold, and a footer with the counter and
+  // the finish button.
+  wrap.append(
+    OE.el('div', { class: 'stack' },
+      OE.el('div', { class: 'spread', style: 'align-items:flex-start' },
+        OE.el('div', {}, OE.el('h1', {}, 'Label sheet'), partLine),
+        headerAction),
+      gradedNote,
+      leadLines,
+      ruleBlock,
+      faceInstruction,
+      cannotLine,
+      changeLine,
+      ruleNote,
+      switchRow,
+      OE.el('div', { class: 'row', style: 'gap:16px' }, viewToggle, filterBox),
+      notice,
+      area,
+      details),
+    OE.el('div', { class: 'sheet-footer spread' }, progress, OE.el('div', { class: 'row' }, done, saveButton), finishType));
+  // One listener for the keys of every row; a pointer on a list is a pick, not browsing.
+  body.addEventListener('keydown', onKey);
+  body.addEventListener('pointerdown', () => { lastSelectKey = null; });
+  // The face's keys, and a click inside it, which gives it the focus.
+  faceEl.addEventListener('keydown', onFaceKey);
+  faceEl.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t && t.closest && !t.closest('button, select, input, textarea, a, label')) OE.focusIfHere(faceEl);
+  });
+  // The page-wide listeners, removed together when the editor is replaced (oeDispose).
+  const life = new AbortController();
+  // Shown again, or the panel gets the focus: was the sheet saved elsewhere?
+  // (check: at most once every 3 s; an editor no longer on the page asks nothing.)
+  const onShown = () => {
+    if (wrap.isConnected && document.visibilityState === 'visible') check();
+  };
+  document.addEventListener('visibilitychange', onShown, { signal: life.signal });
+  window.addEventListener('focus', onShown, { signal: life.signal });
+  // Hidden or unloaded (full screen left, the chat closed or switched): the
+  // answers waiting for the 1.5 s save are sent at once. Best effort: the save
+  // is a host call, and a frame torn down may not get to send it.
+  const flush = () => {
+    if (wrap.isConnected && pending() && !state.saving && !state.syncing && !state.stale) save({ auto: true });
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flush();
+  }, { signal: life.signal });
+  window.addEventListener('pagehide', flush, { signal: life.signal });
+  /* The host's display mode (OE.sheetMode): the face's dates are a grid in
+     full screen, a strip inline. */
+  wrap.oeMode = (mode) => { faceEl.classList.toggle('full', mode === 'fullscreen'); };
+  /* For the page that swaps this editor for another (the Check card's
+     zones): after any save or read in flight, save what is waiting; true
+     when nothing is left to save here (every change saved, or the sheet
+     changed under the page, so nothing can be: then at once, with no save
+     and so no "Reopen the sheet" toast for an editor about to go; also when
+     the save tried here is the one that finds the sheet changed), false
+     when a save failed and the editor must stay. */
+  wrap.oeSettle = async () => {
+    while (state.saving || state.syncing) await wait(100);
+    if (state.stale) return true;
+    const ok = await settle();
+    return ok || state.stale;
+  };
+  /* For the page's teardown (r4-k K1: OE.start's onteardown, which gives
+     the editors at most 3 s in all): after any save or read in flight,
+     waiting at most FLUSH_WAIT_MS, save what is waiting, quietly (no toast,
+     no onSaved, no focus move, nothing read again). True when nothing is
+     left to save here; false while a save or read is still in flight, when
+     the save failed, or once the sheet changed under the page. The
+     visibilitychange and pagehide flush above stays the fallback. */
+  const FLUSH_WAIT_MS = 2500;
+  wrap.oeFlush = async () => {
+    const until = Date.now() + FLUSH_WAIT_MS;
+    while ((state.saving || state.syncing) && Date.now() < until) await wait(100);
+    if (state.stale || state.saving || state.syncing) return false;
+    if (pending()) await save({ auto: true, quiet: true });
+    return !pending() && !state.stale;
+  };
+  /* For that page, before the swap: how many windows hold a change this
+     editor cannot save (the sheet changed under the page), which the swap
+     drops; 0 while it can still save. A count, never a window. */
+  wrap.oeUnsaved = () => (state.stale ? pending() : 0);
+  /* For that page, once this editor is swapped away (r4-l L3): an editor
+     that stopped saving (the sheet changed under the page) with no change
+     left unsaved clears its last toast about that (reopenToast: readFresh's,
+     adopt's, the map link's, the clear's, the blind switch's, and save's on
+     a press of Save then), while that toast is still the one shown: the
+     sheet it names is no longer on the page, and the old line would stay
+     under the new sheet. A toast about an unsaved change (the page's own
+     count from oeUnsaved, or save's "the changes not saved here are not
+     kept") and any other error stay. */
+  wrap.oeLeave = () => {
+    if (!state.stale || pending()) return;
+    const bar = document.getElementById('oe-toast');
+    if (bar && state.reopenSaid && bar.textContent === state.reopenSaid) OE.toast('');
+  };
+  /* The editor is replaced: its pictures timer and its page-wide listeners
+     go, and an answer for pictures still on its way is dropped (imagesRun).
+     The 1.5 s save is kept: it saves what a swap left unsaved. */
+  wrap.oeDispose = () => {
+    clearTimeout(picturesTimer);
+    life.abort();
+    state.imagesRun += 1;
+    state.images.clear();
+  };
+  const ctx = app && typeof app.getHostContext === 'function' ? app.getHostContext() : null;
+  wrap.oeMode(OE.displayMode || (ctx && ctx.displayMode) || 'inline');
+  // The face opens at the first window not yet labelled, else the first.
+  state.at = (windows.find((w) => !isLabelledRow(w)) || windows[0] || { handle: null }).handle;
+  if (state.view === 'face') area.append(faceEl);
+  else area.append(work);
+  render();
+  // Once the page has put the editor in place (right after this returns), Claude hears how far it is labelled.
+  setTimeout(tellClaude, 0);
+  return wrap;
+};

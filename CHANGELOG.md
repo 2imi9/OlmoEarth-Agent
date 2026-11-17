@@ -10,6 +10,324 @@ See [Development](docs/Usage.md#development) for the convention.
 ## [Unreleased]
 
 ### Added
+- **The agent inside Claude, with panels (MCP App).** `olmoearth-agent-mcp`
+  (`src/olmoearth_agent/mcp_app`, the new `mcp` extra) serves the default
+  registry's tools on stdio, each with its own schema and run through the
+  registry's dispatch. The server's instructions are the agent's prompt and
+  capability card, less the sentence about the harness's number check, which
+  does not run here, plus rules for Claude.
+  MCP Apps views show beside the chat, for an allow-list of tools only (an
+  intermediate step, such as a search, shows no panel):
+  - a figure or sheet result's card, figure and caption (both through the result's
+    `_meta`, not the model's text) and `must_state`. The card is at most six rows
+    the tool writes from its own result (`statistical_rules.add_card`, the numbers
+    as its `must_state` writes them; a zone's card leaves out the whole-map rate),
+    then a "Result used" row for each prediction id read as its result, in
+    place of the collapsed table of raw fields; a refusal the tool returns
+    shows its reason. An estimate's card names the interval its design earns
+    as the result's sentence does ("Interval this design earns"), its level in
+    the row's detail: "nominal 95%, approximate" on the confidence and
+    proportional designs, never a plain 95%. A `boundary_first` review set's
+    card says its windows touching a class boundary come first, not that it
+    is ranked by margin. A plan's card remembers its sheet: beside its button,
+    how far the sheet is labelled ("2 of 5 labelled"), and the button reads
+    "Continue labelling" part way and "Open the sheet" when done, read from
+    the file when the panel opens, when it is shown again and after each save
+    of the sheet opened in it, through the panel-only
+    `olmoearth_app_sheet_progress` (`sheet.sheet_progress`: counts and the
+    sheet's job, never a row; an older read answered late is dropped). While
+    the sheet is labelled blind (the class seen) and not complete, the plan's
+    figure, which shades the map's confidence, is held on the server (the
+    result's `_meta` carries its caption, not its SVG; so does a plan whose
+    sheet's counts cannot be read), and a sentence says it shows once every
+    window is labelled; then the panel asks for it through the panel-only
+    `olmoearth_app_plan_figure`, which reads the figure beside the sheet only
+    once the counts allow it (`sheet.figure_shown`, `sheet.plan_figure`);
+  - the account's projects as cards with their descriptions and creation
+    dates, a search, and each project's areas, predictions, models and
+    results (`olmoearth_load_context`). A small glyph says what a thing is,
+    never how good it is (`mcp_app/glyph.py`): a prediction row shows its
+    months as a ring with its year; a project card (eight projects or
+    fewer) its months by how many predictions cover them; a model row its
+    output tile, sources and size, with its months in words. What a record
+    does not say is "not recorded", never guessed. A completed prediction,
+    its results and a model have job buttons that send one complete
+    request with the ids ("Check accuracy", "Where to look first", "Which
+    is more accurate?" with two predictions ticked, "Run on an area";
+    `OE.JOB_TEXT`) in place of "Use in chat", which projects and areas
+    keep; a message the host does not take is shown to type in the chat;
+  - a map that draws and saves a Studio area, or picks a saved one from a
+    list; no coordinates are shown or sent to Claude, and the tool's
+    description, as this server lists it, says so (`olmoearth_request_aoi`);
+  - a plan's label sheet, labelled as the estimate reads it (right or wrong
+    on a scores map, the class seen on a class map or two maps), blind by
+    default, only the changed cells written into the sheet's own columns
+    (`olmoearth_label_sheet`); Right/Wrong sheets also take Cannot tell
+    (`?`), except a certificate plan's (`seed_from_map`), which
+    `olmoearth_estimate_map_error` with the plan's design_path bounds both
+    ways (see Changed). A scores map whose design names its classes and
+    holds the map's class (every `olmoearth_scores_from_file` plan, the
+    kelp trial's among them) is labelled with the class seen instead,
+    blind: Present, Absent or Cannot tell (no Cannot tell on a certificate
+    plan); the server writes the code into `reference_class` and works out
+    `wrong` from the design's `population.map_class` at each save, on every
+    row holding an answer. The panel never gets a row: every sheet reaches
+    it as a page copy (`sheet.read_sheet`), each window a handle (`w` and 16
+    base32 characters) keyed by a secret in a hidden file beside the sheet,
+    with its answer on the one face the panel writes, in the handles' order:
+    no window index, row, column, place, order or stratum, and the map's
+    class only on the right-or-wrong face. The pictures, the saves (with
+    the sheet's id, which a sheet drawn again with other windows refuses)
+    and Open map, whose link the server gives for one window at the press
+    (`olmoearth_app_window_link`), name a window by its handle; a panel of
+    an older server is told to open the sheet again. A class map's right
+    or wrong is offered only before any class seen is saved (it sends the
+    map's class, so going back to the class seen leaves it seen), and its blind
+    switch, like a two-map sheet's, asks the server for the map's class and
+    the stratum (the pair) at the user's press. A row counts as
+    labelled, and the panel shows its answer, once its `wrong` is worked out,
+    so a code typed in a spreadsheet with `wrong` blank never makes a sheet
+    look done that the estimate refuses. Names that are all a scores file's
+    placeholders (`class_0`, `class_1`) name no class: such a map stays
+    right or wrong. A sheet already
+    labelled right or wrong stays so, with a note; a save from a panel
+    opened before the sheet's rule changed is refused and the file left as
+    it was, and the panel then offers "Reopen the sheet" rather than a retry
+    that would fail; the file route without panels keeps `wrong`. One live
+    copy of a sheet: the page copy and the counts carry its version (a keyed
+    digest of the file's bytes under the sheet's secret, kept across a server
+    restart), each save names it, and a save made after the sheet was saved
+    elsewhere (another panel, a spreadsheet) is refused as stale
+    (`sheet.StaleSheet`, `stale` in the refusal) with the file left as it
+    was; the panel reads the sheet again, keeps its own changes where the
+    label there is unchanged, takes the label saved there where both changed
+    a window (the first save wins, and the toast names those windows by
+    their place in the panel's list) and sends what is left, at most twice
+    in a row. It also checks the version when shown again or focused (at
+    most every 3 s) and before its finish button sends, after any save or
+    read under way. A save that also worked out rows it did not send
+    answers `rederived: true` (no window named); the panel then reads the
+    sheet again, its own changes winning. Answers waiting for the 1.5 s
+    save (at most 5 s after the first of a run) go at once when the panel
+    is hidden or unloaded (best effort); no
+    answer is taken while a column is cleared or the face changes; a failed
+    save after another sheet opened in the editor's place names the windows
+    not saved. Each window offers
+    Pictures, off until the user switches them on after a question naming
+    the public hosts and what each receives: dated Sentinel-2 pictures from
+    Earth Search (the least-cloud scene of each month of the map's period,
+    near-infrared false colour and true colour, context and detail, the
+    window outlined), the window found from the plan's scores file and
+    checked against its row, the labelling rule, what a label then is (also
+    in the must_state of results graded from such a sheet), a record beside
+    the sheet of what was shown, and a public test scene to try first.
+    Once every window is labelled and saved, the sheet's one contained
+    button is named for its job ("Estimate the error rate", "Say which map
+    is more accurate", or "Certify the zone" on a certificate plan's sheet)
+    and sends a message naming the tool that grades it: a certificate
+    plan's is `olmoearth_certify_zone` at the alpha the plan fixed, then an
+    offer to write the certificate, no longer the estimate
+    (`sheet.sheet_job`, `finish_call`), shown to type in the chat when the
+    host does not take it; `olmoearth_label_sheet` names the
+    same call. Its result carries the sheet's counts only, no row; the panel
+    reads the rows from the file each time it opens, and says so when it
+    cannot. The panel shows one window at a time by default (the face,
+    `views/sheet.js`): "Window 3 of 20", the answers the server sends for
+    that sheet as buttons with their keys ("Present (P)"; past nine, a list;
+    Other class... where any class may be typed; no Cannot tell on a
+    certificate plan's sheet), Previous and Next, Pictures and Open map, and
+    the window's pictures. An answer's key sets it and the next window not
+    yet labelled shows; the left and right arrow keys move between windows;
+    the focus stays on the face, which never takes it on load. Inline the
+    face is a pager with the dates in a strip; in the host's full screen
+    (its Full screen button, shown only where the host offers it, never
+    asked for by the panel) the dates are a grid. The pictures shown are
+    always the window shown: on a move they show what the server gave for
+    it, or "Loading", and are asked for 300 ms later. The list is one press
+    away ("How to show the windows"): "#" (the window's place, which opens
+    it on the face), the map's class where the face shows it, Pictures and
+    the answer. The blind switches of a class map and of two maps stay, and
+    what they show the face shows too; right or wrong, which shows the
+    map's class, has a sentence in place of a switch. In the list, after an
+    answer the focus goes to the next window not yet
+    answered, to its group of answers rather than a button, so Enter or
+    Space alone answers nothing and a held key answers once (then to the
+    finish button), keys on the focused row set its
+    answer (P, A and `?` on a named scores map, R, W and `?` for right or
+    wrong, 1 to 9 for a class), a line names them, and the pictures follow
+    the focus when the pane is open or pictures are on, beside the table on
+    a panel at least 760 pixels wide;
+  - the Studio sign-in (`olmoearth_sign_in`);
+  - a start card (`olmoearth_start`, a tool of the app's own; the registry
+    keeps its 25): the four jobs the app does ("Check how wrong a map is",
+    "Find the windows to look at first", "Say which of two maps is more
+    accurate", "Draw an area and run a model"), each a button with one line
+    that sends one complete request ending at the projects card
+    (`server.START_JOBS`), in two columns every row shares (the buttons one
+    width, the lines from one left edge; one column below 560 px), off
+    until the user is signed in, with the
+    sign-in and one sentence on the key while signed out; a message the
+    host does not take is shown to type. Without panels its text names the
+    jobs and what each needs. The same four jobs are the server's MCP
+    prompts, entries in a client's menu (`check_map_accuracy`,
+    `windows_to_look_at_first`, `which_map_is_more_accurate`,
+    `run_model_on_area`);
+  - a Check card (`olmoearth_check_map`, a tool of the app's own; the
+    registry keeps its 25): a Studio result, or its prediction with one
+    result, read one map per UTM zone (`olmoearth_scores_from_studio`); for
+    each zone the label counts the package plans before any label
+    (`plan.plan_error_rate` at widths of 20%, 10% and 5%, its 50% planning rate),
+    none picked, each with the planner's own sentence and `rate_note`, and a
+    second press on a count clears it (`OE.toggle`'s `clearable`); the
+    counts wrap on a narrow panel. One
+    press (the panel-only `olmoearth_app_check_draw`) draws each zone picked
+    once through the plan tool, its count, design `random` and seed 0
+    pinned and logged on the server (`mcp_app/check.py`: `checks/` under the
+    output root, a file lock, one log line per zone of each press, stamped
+    with the press's time, taken once before the server's lock and every
+    claim, which a zone's first draw record holds too; a press refused
+    whole, not a list, empty or past 16 zones, draws nothing and logs
+    nothing). One press draws at most 16 zones (`CHECK_DRAWS_MAX`, the
+    page's `draws_max`): the failed draws it retries first (at most 16;
+    a retry has no count to unpick), then the counts picked up to the room
+    left. Picks past that room turn the press off, and a line says how many
+    to unpick; when failed draws alone pass 16, the press stays on, retries
+    the first 16, and the line says the rest wait. A first press must send a count the card offers; a press on a
+    drawn zone gets the stored draw whatever it sends; a failure that may
+    pass is retried with the pinned count, taken when the press sends it or
+    a count the newest offer holds and refused while that offer holds none;
+    one that will not pass is not drawn again, and a zone whose Studio files
+    changed is refused. A press cancelled mid-plan records its draw stopped
+    (`check.STOPPED`, retried later with the pinned settings) and logs it
+    `cancelled`, shielded from the cancel. A draw runs the plan tool as
+    Claude's call would, so a failed one also counts toward the
+    stop-retrying hint. The page waits 600 s for a press; a refusal by the
+    server says "Nothing was drawn", and a press with no answer back marks
+    its zones as maybe drawn, not pressed again there. A sheet that cannot
+    be read as CSV is said on its zone (`check.SHEET_NOT_CSV`).
+    An output root that cannot be written offers no press. The first zone
+    drawn opens in the label editor in place of the press (unless a sheet
+    was opened meanwhile), which is not shown while an editor is open; the
+    open buttons are off during a press, and opening another zone first
+    saves the open sheet, which stays when that save fails; an editor that
+    stopped saving (its sheet changed under the panel) is not saved again,
+    and one toast says how many windows of which sheet were not saved. A
+    zone drawn
+    earlier keeps a button to its sheet and its progress, also when its
+    sheet fails to open (with the reason). No rate combines zones; the card
+    shows no rate, interval, figure, window or class, and takes no focus on
+    load. Claude never gets a check's key; a drawn zone's entry carries its
+    `labels_csv_path` and its plan's `facts`, `must_state` and
+    `forbidden_claims` (the card's view data has no plan `facts` or
+    `forbidden_claims`; the model's text, which the host also hands to the
+    page, has them: generic contract wording, with no window, class or
+    place), a failed one `failed_for_good`,
+    and one whose files changed `raster_changed`, each with its note
+    (`CHECK_DRAWN_NOTE`, `CHECK_SAME_SHEET_NOTE`: the same settings open the
+    same sheet with its labels kept; `CHECK_CHANGED_NOTE`,
+    `CHECK_FINAL_NOTE`). `CHECK_CARD_NOTE` tells Claude to wait for a zone
+    the card draws and to plan one it does not draw only at the user's ask,
+    with the user's count; it ends with the blind rule (no window's map
+    class, no ranking while the sheets are labelled) and `CONTEXT_RULE`.
+    For a class map without top-k scores (known by the forbidden claim
+    `zone_for_a_class_map` and the refusal's fixed end) Claude asks the user
+    for the budget and design `random` or `class` (`CHECK_CLASS_MAP_NOTE`).
+    Without panels it gets each zone's counts and sentences, with
+    `NO_GRADE_RULE`. The projects card's "Check accuracy" now asks Claude to
+    open the card (`OE.JOB_TEXT.check`).
+  The panels tell Claude silently what they show, where the host takes
+  context updates (`ui/update-model-context`, `OE.tellClaude` in
+  `views/common.js`; one update per panel, each replacing the last, at most
+  800 characters, never sent twice the same and never a toast or a focus):
+  the label editor its sheet's name, `labels_csv_path`, `design_path`, how
+  many windows are labelled (and say Cannot tell), whether every change is
+  saved and, once complete, its finish button's words; the plan card its
+  sheet's counts and button; the Check card the result's id and, a clause
+  per zone, a drawn zone's counts first, then its settings, its sheet's
+  name and `labels_csv_path` (or that it is open in the card), or the
+  zone's state; the projects panel how many projects it lists, the project
+  open with its counts, the predictions picked to compare and the label
+  sheets in progress, each by its whole name, its counts and its
+  `labels_csv_path`; the map the project and area chosen.
+  The parts go in order (the editor's first), each in the room left, and
+  no part is cut inside a clause, a path or a number: one that does not
+  fit is cut back to its last clause and ends "; the rest is not listed.",
+  or is left out (`OE.fitContext`). The Check card first leaves out the
+  paths of zones not open, then whole zones from the end, and the projects
+  panel whole sheets, each with a clause that counts them
+  (`OE.fitClauses`).
+  Ids, file names, sheet paths and counts only (ids and the projects
+  panel's sheet names through `OE.ctxId`, now at most 255 characters):
+  never a Studio name, a coordinate, a window's place, a class, a label or
+  a count of wrong.
+  The start card and the sign-in say nothing, and a host without the
+  capability gets nothing. The plan's note, the sheet tool's note, the
+  Check card's note and a new note before the projects
+  (`PROJECTS_PANEL_NOTE`, which names each sheet in progress by its file
+  name and `labels_csv_path`) carry `CONTEXT_RULE` (`CONTEXT_FACTS` and
+  `NO_GRADE_RULE`): such updates are facts, not requests, and no sheet is
+  graded before every window is labelled and the user asks. The sheet
+  tool's description carries its own sentence instead: "Its panel tells
+  you silently how many windows are labelled; never grade before every
+  window is." The map's result carries no such rule. The Check
+  card's text note without panels carries `NO_GRADE_RULE`, and
+  `olmoearth_check_map`'s description says never to grade before every
+  window is labelled. Whether Claude Desktop takes these updates is not
+  yet tried.
+  Where panels show, a plan with a sheet comes to Claude without
+  `windows` and `n_windows_listed` (`PANEL_PLAN_HIDDEN`), since the host
+  hands that text to the plan's panel too, which labels blind; a client
+  without panels keeps them.
+  The projects panel's "In progress" lists, above the search, the label
+  sheets on this computer that are part labelled with their design beside
+  them (`olmoearth_app_sheets_in_progress`, `sheet.sheets_in_progress`: the
+  top of the write root and the workspace root, the newest 25 read, at most
+  five listed, no lock taken, counts as the plan card counts, each row with
+  its `labels_csv_path`): what each is for, its counts, its last save, its
+  name and a Resume that sends Claude the request to open it again with
+  `olmoearth_label_sheet`, the words in one column and Resume in a second
+  that every row shares. Counts only; hidden when there is none or the
+  read fails; no focus, no contained button. A prediction row puts its year
+  in a column of one width and its compare box at the width of the gap a
+  row that cannot be picked keeps, and its name in a column of its own
+  that wraps inside itself (its status chip after it or under it), so
+  every name starts at one left edge, on a 380 px panel and with a long
+  name too. A model row's name and caption start at one left edge (the
+  caption indented by the tile's track and the gap), and an area row's
+  name wraps in its own column, its button at the row's right edge. A
+  plan card's "or fill the CSV" path wraps anywhere, so no panel scrolls
+  sideways.
+  The panels look like OlmoEarth Studio's working pages, from values measured
+  on them: the cream canvas, white cards with 4px corners and no shadow, one
+  contained button per view, outlined and text buttons, joined toggles, chips,
+  Manrope. One slim line on top holds the AGENT tag and the sentence that the
+  panel is a Claude panel of the OlmoEarth Agent (the browser sign-in page
+  keeps the wordmark).
+  The key is typed on a one-time page this server serves on 127.0.0.1 in the
+  user's browser, never in an MCP message; it is checked with Studio before
+  it is used or saved (its own line of the key file, mode 600, only when
+  asked), and never appears in a result or log. Without one, a Studio tool
+  sends nothing and says `needs_sign_in`. In a client without panels the
+  sign-in is a link and the sheet a file to fill. The run's state starts
+  afresh on a new key and on `olmoearth_new_task`, since one server serves
+  every chat. The server works in its output folder, so a folder Claude
+  starts it in is never a read root. Setup in
+  [Usage](docs/Usage.md#in-claude-with-views-mcp-app).
+  `reporting/figure_file.py` now holds the figure-path checks the web bridge
+  used, shared by both surfaces. Tried in Claude Desktop on 11 November
+  2026: the sign-in on the real Studio and the project list; the other
+  panels, and the restyled ones, not yet.
+- **A prediction id works where a result id is asked.** The six tools that
+  take a result id wrap their handler (`tools/result_ids.py`; no spec
+  changed): a UUID is written lower case, an id with a character no Studio
+  id has is refused before Studio is asked, and when Studio answers the
+  result with 404 (or a 200 with errors) each UUID among the ids is asked
+  as a prediction. One with exactly one result is read as that result
+  (`resolved_ids` says so, and the result names that result id under the
+  argument's name, so the provenance summary repeats the call with it;
+  provenance hashes the call as made); one with
+  none or several is refused with their ids. Tests:
+  `tests/tools/test_result_ids.py`, with Studio mocked.
 - **A chat reopened from the history shows its figures again.** The web
   UI stores each figure it receives in the browser's IndexedDB
   (`webui/js/figstore.js`, keyed by the figure's path), keeping the most
@@ -613,8 +931,274 @@ See [Development](docs/Usage.md#development) for the convention.
   condition and gets the refusal or the absence it states
   (`tests/tools/test_tool_capabilities.py`), so the card cannot drift from
   the code.
+- **MCP App: a review set's windows open as pictures.** A review set ranked
+  from a scores file that records its map (raster path, window size, period,
+  each window's centre) shows each listed window as a card in rank order
+  ("Map says: <class>"); a card opens the window's dated Sentinel-2 pictures
+  in a pane, as the label sheet shows them, through the panel-only
+  `olmoearth_app_review_image` (an opaque key and the rank; never a path or
+  a place). The record (`review_sets/<key>.json`) keeps the scores file's
+  identity, and a press on a file changed since is refused
+  (`mcp_app/review.py`). Where the panel pictures the windows, Claude's text
+  holds no listed row and names a window by its place. Inline scores, a
+  file with no recorded map, or no panel keep the rows. The numbers sit in a
+  closed fold, to three places. The pictures question now names sheets and
+  review sets, so everyone is asked once more.
 
 ### Changed
+- **MCP App: figure-first cards in plain words (13 November 2026).** After a
+  reader test with non-experts, the panels say "square", "part" and "range"
+  (window, UTM zone, interval, sample, design, seed and stratum stay in the
+  folds; tools and their sentences keep "window"), each changed sentence
+  marked `WORDING:`. The start card, the projects card, a plan, a review set
+  and the label sheet open with three lines: what this is, what to do next,
+  what it cannot tell.
+  - The Check card shows the map's name and period, four step pictures, and
+    per part its counts, each with a band as wide as its planned range and a
+    few words; a map in several parts gets a figure of its parts and part
+    names ("West part", "Part 1", `check.part_names`); one line on what the
+    user commits to, then "Pick the squares"; the rest in a closed "Details".
+  - A map with no labelling rule of the owner's: the card asks for one
+    sentence before the draw, pins it with the draw (`reading_rule`), saves it
+    beside the sheet and prints it on the sheet and the result.
+  - The estimate of a sheet gets a result card: one sentence in words ("about
+    1 square in 8", `server.say_rate`) only with a line that draws the exact
+    rate and its range, the squares checked by class with the map's
+    disagreements outlined and count lines ("too few to say" under 5), the
+    rule used and which part this is; the rest in "Details". An estimate marks
+    its sheet graded; the sheet reopened says changing an answer now makes the
+    result invalid, and an estimate after a change says so. A sheet with
+    squares unanswered gets "Not finished yet", not an error.
+  - Claude's text for the Check card and an estimate starts with three lines
+    to say first; a part's share is `share_of_pixels_with_data`; the
+    instructions add a rule never to call one of the user's predictions
+    recommended.
+  - A review set names its whole count ("Square 1 of 140"), says when only the
+    first 50 are listed, brings a card's pane into view, asks its test scene
+    in its own words and says why it has no pictures by cause; a Studio
+    result's review set offers "Check how wrong this map is". The projects
+    card's "Use in chat" is "Tell Claude: this project", its results are
+    "Outputs", and each prediction names its model and output.
+  - Fixes after review (round 4, pass 2):
+    - The squares figure and the class lines show only for a random design,
+      where the share of red squares is the rate's own estimate; on a
+      stratified design they are left out. The figure gives each class seen
+      its own fill, also on a map of many classes. A class named by a bare
+      code reads "class 3", and a class line's range is called "agreement
+      range". A seen sheet's lines now get their range too.
+    - An estimate given inline labels (`wrong` or `reference`) beside a
+      sheet does not mark the sheet graded and draws no squares, rule or
+      parts. A sheet saved while it was graded is not marked. A graded mark is
+      tied to its design file, so a fresh sheet planned again under the same
+      name does not inherit it.
+    - When it is not known which part of its map a sheet is, the card is
+      titled "Result: the squares checked" and Claude adds that it may be one
+      part's rate. Several other parts unchecked: "Check the other 2 parts,
+      each for its own result."
+    - Windows of a plan or review set drawn from a Studio result are single
+      pixels and are called "points": the review set's first line says one
+      pixel of each grid square was read, and a sheet of points shows no
+      Pictures button and promises no pictures (`read_sheet`'s new `unit`
+      and `pictures_possible`). The sheet's own words use its unit word
+      throughout. A sheet's pictures say how big a square is.
+    - The plan card's button reads "Open the sheet here". A refused review
+      set shows its reason on the face. A seen sheet no longer repeats that
+      the map's answer is hidden. A review set's card always lists the
+      largest budget, the one its picture outlines.
+    - A typed labelling rule pasted with no-break or zero-width spaces is
+      cleaned, not refused; a rule the server refuses says why. A Check card
+      from an older version refuses its press and asks to open it again.
+      Without panels the Check step also starts with lines to say first,
+      and asks how many squares to check in each part. The sign-in notes of
+      the Check card and the result card say where Studio makes a key.
+  - The owner's rulings and the peer's items of 13 November (round 4, e):
+    - A map of presence and absence shows the owner's kelp rule on the Check
+      card's face, with a box "If this map is not of kelp, write its own
+      rule" while no part is drawn (option A). An empty box keeps the kelp
+      rule; 1 to 9 characters hold the press; 10 to 300 replace it for this
+      map, pinned like the gate's rule and shown with the typed scope on the
+      sheet, the pictures, the result and to Claude. Once a part is drawn the
+      rule is settled; a press that still sends one is refused whole
+      (`check.RULE_SETTLED`). Other maps keep the gate. The offer record
+      gains `rule_owner`, the view's rule `replaceable`.
+    - The rate in words: "more than 9 squares in 10" from 0.95 up to 1, and
+      "The map was wrong on every square you checked." at exactly 1.
+    - Class names in straight quotes as given ('You saw "Present" in 74
+      squares.', 'class "3"'). Classes no square had get one line after the
+      class lines (`squares.unseen_line`); more than five: how many, with
+      their names under Details (`squares.unseen_detail`).
+    - A sheet of points (a plan drawn by result_id, or from the file of
+      points `olmoearth_review_set_from_result` saves, told by its own top
+      level) is the whole map ("Result: this map", no part hedge), and its
+      result card, Claude's lines, the unfinished line and the plan card say
+      points (the view's `unit`). A Studio review set's numbers fold and next
+      line say points (the block's `unit`).
+    - Labels are read as the estimate reads them: `reference` alone is
+      inline only for a class map or two maps; a scores map's sheet is still
+      graded and marked. Inline labels get no picture note in `must_state`.
+      A save during the estimate still lets a changed mark warn. The graded
+      mark is tied to the design's content (`to_label` digest), not its file
+      stamp, and a sheet with no answer has no mark (its first save removes
+      an old one).
+    - "Window" is gone from the panel faces (the owner's ruling 6): the held
+      figure's line, the finish message, the pictures' caption ("Context,
+      square outlined") and refusals, the check and which-map requests, the
+      Check card's Details and a review set's refusals. A sheet that shows
+      no pictures has no clear-date line, and its Cannot tell names no dates.
+  - The last fix round (reader test 2, round 4, h):
+    - Result card: one headline carries the rate in words, the exact rate
+      and its 95% range, its subject the part when known ("The West part is
+      wrong on about 1 square in 8: 12.5%, 95% range 6.1% to 21.7%."); the
+      "range:" line is gone. Directly under it, what the check did not cover
+      (`uncovered`: a class too few squares had, with its counts; the classes
+      no square had). "One result per part, never averaged"; the other
+      parts' line says to report the parts side by side. One last line:
+      "Checked against ..., not a site visit; no verdict on whether the map is
+      good enough.", plus that the rate says nothing about the area of any
+      one class on a map of more than two classes. With Cannot tell: one
+      ranged headline, a dark bar over the pale band, and ", 2 Cannot tell"
+      in the subtitle. Claude's lines say "95% range" and add a line for the
+      classes seen too rarely or not at all.
+    - Check card: count buttons with words and no drawing; step 1 with the
+      square's size, step 3 says who should look; parts headed with their
+      size, the parts figure dashed until picked; three sentences over the
+      press; after a press, how to pick the other part. The gate has no red
+      line and an example as the box's placeholder. The kelp rule's scope
+      and box label are shorter. Every press's reply carries the map's rule
+      (`{draws, rule}`, or `{draws: [], refused, rule}` for a rule already
+      settled); the rule is settled too once any sheet of the result holds
+      an answer, a rule not written beside its sheet is taken off its draw,
+      and a later part keeps the day the rule was typed. A class map without
+      scores gets a face that says it can be checked on points, one button
+      that asks Claude for that (`OE.JOB_TEXT.points`), and plain questions
+      for Claude. Without panels Claude is told the kelp rule's scope and to
+      ask whether the map is of kelp.
+    - Label sheet: three lines, the rule, one Cannot tell line and "You can
+      change an answer until you press ..." on the face; the file name, keys
+      and the blind, code and Street map lines in one closed "Details" fold.
+      The finish button shows greyed from the first open; "Saved
+      automatically" is plain text. "Open map" is "Street map". A class
+      map's sheet takes Cannot tell. A sheet of points says it has no
+      pictures; the class face names the map's period (`period_text`). A
+      clear that empties a graded sheet keeps its mark, marked changed, and
+      the mark compares a digest of the answers, not the file's bytes.
+    - Start card: what to do without a Studio account; projects: press the
+      project's name, models in a closed "Make a new map" fold. Review set:
+      its picture and one legend line on the face, the number listed said to
+      be fixed in advance; plan and review-set card tables always folded,
+      their first rows "Squares to label", "Points to label", "Squares to look
+      at first". A Studio result's review set no longer says its error rate
+      overstates the map's.
+  - The last fix round, its review findings and the owner's three rulings (round 4, i, 14 Nov 2026):
+    - Result card: one rare class keeps its counted line on the face; two or
+      more, or any with Cannot tell answers, are named in one line ("Too few
+      squares to say how well the map finds: ..."), their counted lines
+      first under Details (none with Cannot tell). With Cannot tell the grid
+      stays: a Cannot tell square is an empty dashed square, named in the
+      legend, and one line ("No split by class: ...") replaces the class
+      lines. Under the uncovered lines an outlined button, "Check each class
+      the map draws", asks Claude for a new check of that result and part
+      picked class by class, never pooled with this one (`class_check`,
+      `OE.JOB_TEXT.byClass`). Claude's third line carries the area sentence
+      on a map of more than two classes, the second says to report the
+      parts side by side once every part is graded, and a part whose graded
+      sheet was cleared counts as not checked (`graded_state`'s `answered`).
+      The owner's rule's note says the sheet records the kelp rule and to
+      give the map's own rule when the user gave one.
+    - Check card: after a press with no reply the card holds the press and
+      says "Ask Claude to open the Check card again to see the rule.". A
+      class map's refusal card gets the map's name and period from the
+      server (`_refusal_map`). The planner's sentence gives a width in %
+      from its low end to its high end, never in "points".
+    - Label sheet: no blind switch and no "How to label" choice on a class
+      map's sheet (the owner's O1); no page is sent a stratum, and the
+      two-map sheet's switch reads "Blind: hide which classes the maps
+      wrote". The Cannot tell line says a guess can make the result wrong.
+      Under the owner's kelp rule: "This rule is for kelp canopy maps; any
+      other map needs its own rule." (`rule_limit`).
+    - Review set: its picture, whose own words say "windows" and "review
+      set", is the first thing in the closed fold with the tool's caption;
+      its one legend line is on the face above that fold.
+  - Repairs after the review of that round (round 4, j, 14 Nov 2026):
+    - J1: the "Check each class the map draws" request names a route that
+      keeps to the part: on squares, the planner on the scores_path the
+      Check card's tool gives for that part; on points, by result id.
+    - J2: after a press with no reply a part's line says only that its
+      squares may or may not be picked; the gate's line is the one ask.
+    - J3: the Details row for classes nobody saw reads "Classes you saw in
+      no square" (a Cannot tell square may hold such a class).
+    - J4: the look-first card's legend line follows its picture in the
+      fold; nothing of it is on the face.
+    - J5: the look-first card's overline says "Look first", not "Review
+      set".
+    - J6: after the kelp rule's scope the sheet, the pictures pane and
+      Claude's note say "Any other map needs its own rule.", so kelp is
+      named once.
+    - J7: two code comments corrected (the sheet tool's unblind; the Check
+      card's widths of 20%, 10% and 5%).
+    - J8: this entry, and Usage where it quotes a changed string.
+  - The official MCP Apps skills applied, and four improvements (round 4, k, 16 Nov 2026):
+    - K1: when Claude closes a panel, the label sheet saves its last answers
+      quietly (no toast, no focus move, at most 3 s), then stops its timers.
+    - K2: a stopped call says "This step was stopped before it finished. Ask
+      Claude to run it again."; a card that cannot start says so after 10 s.
+    - K3: each panel tells the server, for its log, what its host supports
+      (`olmoearth_app_host_report`, names only); context updates go unless
+      the host says no.
+    - K4: where panels show, the agent's and the app's tools are listed for
+      Claude only (`visibility: ["model"]`); the panels' tools stay app-only.
+    - K5: the Full screen button reads "Back to the chat" in full screen and
+      takes the card back; it follows the host's own controls too.
+    - K6: the rate line shows its range's two ends as numbers under the band
+      (`low_text`, `high_text`; this reverses r4-h R1).
+    - K7: each look-first square or point has a "Street map" button that
+      opens OpenStreetMap in the browser (`olmoearth_app_review_link`); a
+      Studio result's points get a record for it, never pictures.
+    - K8: "Save the list with places (CSV file)" saves the look-first list
+      with each place, marked as not a random sample, through the host's
+      download or into `review_sets/` (`olmoearth_app_review_csv`).
+    - K9: room for two example pictures beside the owner's kelp rule, on the
+      sheet and the Check card (`views/examples/`); none ship yet.
+  - What the live restart showed, and the open low faults (round 4, l, 17 Nov 2026):
+    - L1: "Save the picture" shows only where the host saves files; Claude offers none, so there it is left out.
+    - L2: past 16 failed parts, a press retries those that have waited longest (`failed_at`), so each gets its turn.
+    - L3: a sheet swapped away after it changed under the panel, with nothing unsaved, takes its last toast about that change along.
+    - L4: tests, browser scenarios, this entry, and Usage's line on which failed parts a press retries.
+- **MCP App: "Check how wrong a map is" is the main job.** The start card
+  shows it first, its button the one contained button once signed in, with a
+  plain line ("You check squares of the map yourself, picked at random. You
+  get how often it is wrong, with a range, for the map or for each part it is
+  saved in."), and the other jobs under "Other jobs". The projects card names
+  it "Check how wrong it is", first on a row, and leaves it out for
+  embeddings and detection.
+- **MCP App: "Find the windows to look at first" is not offered for Studio
+  results** while `FIRST_IN_STUDIO` is False (the owner's decision pending):
+  not on the start card, the menu or the projects card. With it True, only a
+  class map with top-k scores offers it. The instructions' review-set rule
+  is rewritten here (soul.md unchanged), and the tool's listed description
+  says before any run that no recorded experiment supports the order on a
+  Studio result and that it reads about 100 single pixels; a ranked one
+  starts with that note. A regression band refused by the Check card, and
+  the reason a review set of an unthresholded band is forbidden, no longer
+  point to a review set.
+- **The estimate takes Cannot tell (`?`) in `wrong`, and reads `wrong`
+  exactly** (`tools/estimation.py`, every surface: the agent's own loop,
+  the web UI, the MCP App). With the plan's `design_path`, a `?` window is
+  counted right at each interval's lower end and wrong at its upper
+  (`estimate_error_rate(unjudged=)`): the point becomes a range, the
+  confidence and proportional designs' second interval becomes the union
+  bound over the strata, there is no per-class table and no figure, a
+  `must_state` line says how many windows could not be judged, and the next
+  steps say a zone needs them judged. `olmoearth_certify_zone`,
+  `olmoearth_write_certificate`, a certificate plan's (`seed_from_map`)
+  estimate and the estimate of windows labelled without a design refuse `?`
+  by name; a certificate plan's `how_to_label` asks for 1 or 0 on every
+  window. A `wrong` cell is read as `0`, `1`, `0.0`, `1.0` or `?` only:
+  `0.5` and `1.5`, read before as right and wrong, are now refused. A class
+  map's estimate takes `?` in its references too (`reference`, or the sheet's
+  `reference_class` with `wrong` blank or `?` on the same windows), bounded
+  the same way through the same `unjudged=` argument; a blank reference is
+  still refused, and the certify route still refuses `?`.
 - **The README opens with the OlmoEarth logo and the Agent tag again**
   (`webui/assets/`, as the web UI shows them) instead of the plain title,
   above the beta line, which stays. The walkthrough is recorded again (35

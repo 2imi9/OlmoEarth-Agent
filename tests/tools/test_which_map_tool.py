@@ -1120,3 +1120,48 @@ async def test_the_grade_runs_off_the_event_loop(
     assert out["ok"] is True, out
     assert {name for name, _t in threads} == {"grade", "figure"}
     assert all(t is not loop_thread for _name, t in threads), threads
+
+
+@pytest.mark.asyncio
+async def test_the_mcp_label_panel_writes_a_two_map_sheet_the_grade_reads() -> None:
+    """The MCP App's label panel on a two-map sheet: the design's own classes
+    (kept at its top level) are offered, the class seen is written per window,
+    '?' where the reviewer cannot tell, and the grade reads the sheet."""
+    from olmoearth_agent.mcp_app import sheet as panel
+
+    plan = await _plan(N_DIFFER)
+    data = panel.read_sheet(plan["labels_csv_path"])
+    assert data["kind"] == "two_map" and data["label_rule"] == "class"
+    # The panel's finish button asks which map is more accurate, by this grade.
+    assert data["job"] == "which_map"
+    assert data["finish_label"] == "Say which map is more accurate"
+    assert (
+        f"Say which map is more accurate from it: {GRADE} with design_path "
+        f"{data['design_path']} and labels_path {data['path']}."
+    ) in data["finish_message"]
+    stored = [str(c) for c in _design(plan)["classes"]]
+    offered = [a["value"] for a in data["answers"]]
+    assert offered[: len(stored)] == stored and offered[-1] == "?"
+    assert data["face"] == "pair"
+    # What the panel sends: each window's class seen by its handle (the
+    # server's own map from handle to window, never sent to the page).
+    _, handles = panel.window_handles(data["path"])
+    answers = [
+        {
+            "handle": w["handle"],
+            "answer": "?" if i == 0 else _truth(*_window(handles[w["handle"]])),
+        }
+        for i, w in enumerate(data["windows"])
+    ]
+    panel.save_answers(
+        data["path"],
+        sheet_id=data["sheet_id"],
+        face=data["face"],
+        rule=data["label_rule"],
+        answers=answers,
+    )
+    out = await _call(
+        GRADE, {"design_path": data["design_path"], "labels_path": data["path"]}
+    )
+    assert out["ok"] is True, out
+    assert out["result"]["n_unjudged"] == 1

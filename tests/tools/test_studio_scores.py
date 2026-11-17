@@ -1452,8 +1452,11 @@ def test_the_plan_refuses_what_these_files_cannot_hold() -> None:
         files_plan(unit)
     depth = _unit_record()
     depth["result_metadata"]["regression_fields"][0]["max_value"] = 40.0
-    with pytest.raises(ValueError, match="olmoearth_review_set_from_result"):
+    # A regression band in other units: how wrong it is goes to the plan tool
+    # with a threshold, never to a review set (round 4).
+    with pytest.raises(ValueError, match="olmoearth_plan_label_sample") as info:
         files_plan(depth)
+    assert "olmoearth_review_set_from_result" not in str(info.value)
     plan = files_plan(_topk_record())
     assert (plan.kind, plan.k, plan.values) == ("top_k", 2, (0, 1))
     assert files_plan(_unit_record()).kind == "unit_score"

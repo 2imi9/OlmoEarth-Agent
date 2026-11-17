@@ -200,6 +200,70 @@ def percent(value: float | None) -> str:
     return f"{pct:.2g}%"
 
 
+# --------------------------------------------------------------------------- the result card
+
+#: The result key of a result's card: the few rows a panel shows above its
+#: figure, each ``[name, value]`` or ``[name, value, detail]`` (an interval's
+#: method, say). Every string is written by the tool from its own result,
+#: with the helpers its ``must_state`` uses (:func:`percent`, the same ``:g``
+#: forms), so card and sentence agree; the panel computes nothing.
+CARD_KEY = "card"
+#: Result keys only a panel reads: the MCP App drops them from the copy of a
+#: result the model reads (``mcp_app/server.py``).
+VIEW_ONLY_KEYS = (CARD_KEY,)
+#: Most rows one card holds.
+CARD_MAX_ROWS = 6
+
+
+def card_row(name: str, value: Any, detail: Any = None) -> list[str] | None:
+    """One card row: ``[name, value]``, plus ``detail`` when given; None for no value."""
+    if value is None or value == "":
+        return None
+    row = [name, str(value)]
+    if detail is not None and detail != "":
+        row.append(str(detail))
+    return row
+
+
+def add_card(out: dict[str, Any], rows: Iterable[list[str] | None]) -> dict[str, Any]:
+    """Set ``out``'s card to the rows that are not None, at most :data:`CARD_MAX_ROWS`.
+
+    A result whose rows are all None gets no card key.
+    """
+    kept = [row for row in rows if row is not None][:CARD_MAX_ROWS]
+    if kept:
+        out[CARD_KEY] = kept
+    return out
+
+
+def labels_card_value(
+    n_labelled: Any, n_population: Any, n_unjudged: Any = 0
+) -> str | None:
+    """The card's ``Labels`` value: ``"N of M windows"``, and the windows not judged.
+
+    None when the result gives no labelled count.
+    """
+    if n_labelled is None:
+        return None
+    text = f"{n_labelled} of {n_population} windows"
+    if n_unjudged:
+        text += f", {n_unjudged} not judged (?)"
+    return text
+
+
+def sampled_grid_card_value(sampling: Any) -> str | None:
+    """The card's ``Sampled grid`` value of a Studio result's sampling, or None.
+
+    ``"16x16, 171 valid points"`` from a sampling block's ``grid`` and
+    ``n_valid``; None for a block without them.
+    """
+    if not isinstance(sampling, Mapping) or not sampling.get("grid"):
+        return None
+    if sampling.get("n_valid") is None:
+        return None
+    return f"{sampling['grid']}, {sampling['n_valid']} valid points"
+
+
 # --------------------------------------------------------------------------- claims about labels and designs
 
 
@@ -745,10 +809,13 @@ def topk_scores_must_state(quantized: bool = True) -> str:
 #: scores, the per-pixel scores it downloaded: the same scores as
 #: :func:`topk_scores_must_state`'s, but the scores file it writes ranks a
 #: window by its pooled top-1 score, not the margin, so the sentence says they
-#: rank windows.
+#: rank windows. In the reader test's words (A/check-9, 13 Nov 2026), without
+#: its "Note:": the raw (uncalibrated) scores, stored in 254 steps (quantized
+#: to 1/254), 25 words.
+# WORDING: r4p2
 STUDIO_TOPK_SCORES_MUST_STATE = (
-    "These scores are Studio's uncalibrated softmax scores, quantized to "
-    "1/254: they rank windows and are not probabilities that a class is right."
+    "Studio stores the model's raw scores (how sure it was) in 254 steps: they "
+    "rank windows and are not probabilities that a class is right."
 )
 
 #: What every later result on such a scores file states
@@ -929,8 +996,8 @@ def review_set_for_unthresholded_regression(
         "(olmoearth_review_set_from_result) ranks a band's windows by their "
         "distance from a decision threshold, and this band has none: it has no "
         "margins, no 'most ambiguous' or lowest-margin windows and no per-class "
-        "review; a review set of this band needs a threshold for it "
-        "(olmoearth_review_set_from_result takes 'threshold')",
+        "review; no recorded experiment supports ranking such a band, with a "
+        "threshold or without",
     )
 
 

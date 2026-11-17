@@ -95,6 +95,22 @@ What each needs and gives: [What it checks](docs/Usage.md#what-it-checks).
   `make setup` installs it.
 
 
+Use in Claude, with panels
+--------------------------
+
+`olmoearth-agent-mcp` (the `mcp` extra) serves the agent's tools to Claude Desktop as an MCP App. Claude is the
+model, and panels beside the chat show the results:
+
+- the Studio sign-in, on a page in your browser served by your own computer (the key never passes through Claude);
+- your Studio projects;
+- a map to draw the area;
+- each determination's figure and caption;
+- a plan's label sheet, labelled as the estimate reads it (the class seen blind by default; right or wrong shows the
+  map's class) and saved into the CSV.
+
+No answer check reads Claude's reply. Setup in [In Claude, with views](docs/Usage.md#in-claude-with-views-mcp-app).
+
+
 Use from Claude Code
 --------------------
 

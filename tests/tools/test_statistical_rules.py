@@ -729,11 +729,16 @@ def _under_drawn() -> tuple[list[int], list[int]]:
 
 def _missed(c: Any, producer: dict[str, Any]) -> str:
     """The must_state sentence of a class whose producer's accuracy lies below:
-    the producer's side only (the step 11 review), the class named once."""
+    the producer's side only (the step 11 review), in the reader test's words
+    (A/estimate-5): the class as the map writes it, "class 3" for a bare code
+    ("Class 3" opening the sentence)."""
+    bare = isinstance(c, int)
+    name = f"class {c}" if bare else str(c)
+    lead = f"Class {c}" if bare else name
     return (
-        f"Class {c}: the map finds only {rules.percent(producer['low'])} to "
-        f"{rules.percent(producer['high'])} of the class's ground "
-        "(producer's accuracy); it misses the rest."
+        f"{lead}: of the windows you would label {name}, the map finds only "
+        f"{rules.percent(producer['low'])} to {rules.percent(producer['high'])}; "
+        "it misses the rest."
     )
 
 
@@ -947,8 +952,10 @@ def test_a_written_class_of_several_words_keeps_the_must_state_short() -> None:
     """The step 11 checkers: a Studio class map writes its classes as labels,
     often of several words, and a must_state that named the class twice took
     "Permanent water bodies" to 26 words, so the contract raised and the
-    estimate failed. Named once, each such label fits and passes the contract
-    as the tool adds it; a label too long even so is left to the fact."""
+    estimate failed. The reader test's words (A/estimate-5) name it twice
+    again in a shorter sentence: a label of up to four words fits (25 words
+    at four) and passes the contract as the tool adds it; a label too long
+    even so is left to the fact."""
     row = _apart(0.6)
     producer = row["valid"]["producer_accuracy"]
     labels = (
@@ -961,7 +968,8 @@ def test_a_written_class_of_several_words_keeps_the_must_state_short() -> None:
         assert fact is not None and fact["classes"][0]["class"] == label
         assert f"Class {label}: what the map calls class {label}" in fact["sentence"]
         assert stated == [_missed(label, producer)]
-        assert stated[0].count(label) == 1
+        assert stated[0].count(label) == 2
+        assert stated[0].startswith(f"{label}: of the windows you would label {label},")
         assert all(len(s.split()) <= MUST_STATE_MAX_WORDS for s in stated), label
         out = rules.add_contract({}, must_state=stated)
         assert out["must_state"] == stated
@@ -1889,3 +1897,43 @@ def test_one_ranked_class_with_none_correct_is_still_the_lowest_of_nothing() -> 
     assert fact is not None and fact["lowest"] == []
     assert "class 0 (0 of 6 correct" in fact["sentence"]
     assert "so no class is ranked against it" in fact["sentence"]
+
+
+# --------------------------------------------------------------------------- the result card
+
+
+def test_a_card_row_is_two_or_three_strings_and_none_without_a_value() -> None:
+    assert rules.card_row("Seed", 7) == ["Seed", "7"]
+    assert rules.card_row("Design", "random", "for a certificate") == [
+        "Design",
+        "random",
+        "for a certificate",
+    ]
+    assert rules.card_row("Design", "random", "") == ["Design", "random"]
+    assert rules.card_row("Seed", None) is None
+    assert rules.card_row("Seed", "") is None
+    # A zero is a value.
+    assert rules.card_row("Seed", 0) == ["Seed", "0"]
+
+
+def test_add_card_drops_empty_rows_and_caps_them() -> None:
+    rows = [rules.card_row(f"Row {i}", i or None) for i in range(10)]
+    out: dict[str, Any] = {"available": True}
+    assert rules.add_card(out, rows) is out
+    assert out[rules.CARD_KEY] == [
+        [f"Row {i}", str(i)] for i in range(1, 1 + rules.CARD_MAX_ROWS)
+    ]
+    empty: dict[str, Any] = {}
+    rules.add_card(empty, [None, rules.card_row("Seed", None)])
+    assert rules.CARD_KEY not in empty
+    assert rules.CARD_KEY in rules.VIEW_ONLY_KEYS
+
+
+def test_the_card_values_shared_by_the_tools() -> None:
+    assert rules.labels_card_value(12, 400) == "12 of 400 windows"
+    assert rules.labels_card_value(12, 400, 2) == "12 of 400 windows, 2 not judged (?)"
+    assert rules.labels_card_value(None, 400) is None
+    block = {"grid": "16x16", "n_valid": 171}
+    assert rules.sampled_grid_card_value(block) == "16x16, 171 valid points"
+    assert rules.sampled_grid_card_value({"grid": "6x6"}) is None
+    assert rules.sampled_grid_card_value(None) is None
