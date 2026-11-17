@@ -43,8 +43,10 @@ from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.estimation import (
     DEFAULT_MIN_PER_CLASS,
+    UNJUDGED_HOW,
     _jsonable,
     build_estimation_tools,
+    unjudged_must_state,
 )
 from olmoearth_agent.tools.registry import ToolContext, ToolRegistry
 from olmoearth_agent.tools.review_set import CLASS_READS, build_review_set_tools
@@ -547,9 +549,12 @@ async def test_the_plan_numbers_are_the_packages(design: str) -> None:
     fact = _fact(plan, "label_budget")
     assert (fact["labels"], fact["width"]) == (rate["labels"], 0.2)
     sentence = fact["sentence"]
-    # No rate stated: the package's 50%, named as an assumption.
+    # No rate stated: the package's 50%, named as its planning figure, not a
+    # finding about the map (the reader test's A/check-6).
     assert rate["error_rate_stated"] is False
-    assert "assumed wrong 50.0% of the time" in sentence
+    assert "assumes a map wrong 50.0% of the time" in sentence
+    assert "That is a planning figure, not a finding about your map" in sentence
+    assert f"This plan picks {fact['planned']} windows." in sentence
     # The class design: the budget plans a random sample's interval, and the
     # union bound's width against it is the package's conditional statement.
     assert ("union bound" in sentence) is (design == "class")
@@ -832,10 +837,124 @@ async def test_wrong_alone_gives_the_rate_and_must_agree_with_the_classes() -> N
     )
     assert clash["ok"] is False
     assert "wrong disagrees with the class seen on 1 of 40 windows" in clash["error"]
-    unjudged = await _call(
-        GRADE, {"design_path": plan["design_path"], "reference": ["?", *seen[1:]]}
+    # r4h S4: a blank class seen is refused, naming ? for a window that cannot
+    # be told; a ? is taken (test_a_class_maps_cannot_tell_is_bounded_both_ways)
+    # but must sit on the same windows in wrong when both are given.
+    blank = await _call(
+        GRADE, {"design_path": plan["design_path"], "reference": ["", *seen[1:]]}
     )
-    assert unjudged["ok"] is False and "'?'" in unjudged["error"]
+    assert blank["ok"] is False
+    assert (
+        f"1 of 40 design windows have no class (first: window {indices[0]}); write "
+        "the class seen, or ? where it cannot be told, in every drawn window"
+    ) in blank["error"]
+    apart = await _call(
+        GRADE,
+        {
+            "design_path": plan["design_path"],
+            "wrong": wrong,
+            "reference": ["?", *seen[1:]],
+        },
+    )
+    assert apart["ok"] is False
+    assert (
+        f"window {indices[0]} is ? in one of wrong and the class seen but not in "
+        "the other: write ? in both, or a label in both"
+    ) in apart["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("design", ["random", "class"])
+@pytest.mark.parametrize("route", ["reference", "sheet", "sheet with wrong"])
+async def test_a_class_maps_cannot_tell_is_bounded_both_ways(
+    design: str, route: str
+) -> None:
+    """r4h S4: a ? in the class seen (the reference argument; the sheet's
+    reference_class with wrong blank, as the class face saves Cannot tell; or
+    with wrong ? on the same windows) is graded as a seen sheet's Cannot tell.
+    The valid interval is estimate_error_rate(unjudged=, valid=True)'s on the
+    same sample and flags, called directly; its lower end is the labels' with
+    each ? the map's class, its upper end with each ? another class;
+    n_unjudged counts them, the count is stated after the valid interval, and
+    there is no per-class table and no figure."""
+    plan = await _plan(design, budget=40, seed=5, min_per_class=5)
+    stored = _design(plan)
+    sample, population = stored["sample"], stored["population"]
+    indices = sample["indices"]
+    map_class = population["map_class"]
+    seen = _seen(indices)
+    unsure = [k in (0, 3) for k in range(len(indices))]
+    refs = ["?" if u else s for u, s in zip(unsure, seen)]
+    args: dict[str, Any] = {"design_path": plan["design_path"]}
+    if route == "reference":
+        args["reference"] = refs
+    else:
+        ref_of = dict(zip(indices, refs))
+
+        def fill(_order: int, row: dict[str, str]) -> None:
+            ref = ref_of[int(row["window_index"])]
+            row["reference_class"] = ref
+            if route == "sheet":
+                row["wrong"] = ""
+            else:
+                row["wrong"] = "?" if ref == "?" else _wrong_in(row)
+
+        args["labels_path"] = _fill_sheet(plan, fill)
+    out = await _call(GRADE, args)
+    assert out["ok"] is True, out
+    result = out["result"]
+
+    # The package's own call on the same sample, the ? windows flagged.
+    wrong = [
+        0 if u else int(CLASSES.index(s) != map_class[i])
+        for u, s, i in zip(unsure, seen, indices)
+    ]
+    words = wording.class_wording(sample)
+    direct = words(
+        _jsonable(
+            estimate.estimate_error_rate(sample, wrong, unjudged=unsure, valid=True)
+        )
+    )
+    valid = result["valid_interval"]
+    assert valid == direct["valid_interval"]
+    assert result["n_unjudged"] == 2
+    assert valid.get("estimate") is None
+    low, high = valid["estimate_range"]
+    assert low < high
+
+    # Each ? counted right (the map's class) at the lower end, wrong at the upper.
+    ends: dict[int, dict[str, Any]] = {}
+    for shift in (0, 1):
+        filled = [
+            CLASSES[(map_class[i] + shift) % 3] if u else s
+            for u, s, i in zip(unsure, seen, indices)
+        ]
+        graded = await _call(
+            GRADE, {"design_path": plan["design_path"], "reference": filled}
+        )
+        assert graded["ok"] is True, graded
+        assert graded["result"].get("n_unjudged", 0) == 0
+        ends[shift] = graded["result"]["valid_interval"]
+    assert valid["low"] == ends[0]["low"]
+    assert valid["high"] == ends[1]["high"]
+
+    # The seen sheets' rules: no per-class table, no figure, the count stated
+    # after the valid interval; ? is no class and no outsider.
+    assert "per_class" not in result
+    assert "figure_path" not in result and "figure_caption" not in result
+    assert result["must_state"][0] == rules.valid_interval_must_state(
+        valid.get("estimate"),
+        valid["low"],
+        valid["high"],
+        design,
+        len(indices),
+        class_map=True,
+    )
+    assert result["must_state"][1] == unjudged_must_state(2, len(indices))
+    assert UNJUDGED_HOW in result["report"]
+    assert result["classes"] == {str(c): v for c, v in enumerate(CLASSES)}
+    assert "references_outside_the_maps_classes" not in result
+    assert rules.ZONE_FOR_A_CLASS_MAP in _ids(result)
 
 
 @pytest.mark.asyncio
@@ -1034,3 +1153,44 @@ async def test_a_scores_maps_class_design_cannot_certify() -> None:
     )
     assert certify["result"]["certified"] is False
     assert "simple random sample" in certify["result"]["reason"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("design", ["random", "class"])
+async def test_the_mcp_label_panel_writes_a_sheet_the_estimate_grades(
+    design: str,
+) -> None:
+    """The MCP App's label panel (``mcp_app.sheet``, as ``views/sheet.js`` sends
+    it): the class seen, and only that cell, written into the plan's own sheet,
+    which the estimate then grades; the panel reads the label rule and the
+    design file from the plan's files."""
+    from olmoearth_agent.mcp_app import sheet as panel
+
+    plan, by_list = await _graded(design)
+    data = panel.read_sheet(plan["labels_csv_path"])
+    assert data["label_rule"] == "class" and data["kind"] == "one_map"
+    assert data["design_path"] == str(Path(plan["design_path"]).resolve())
+    stored = [str(c) for c in _design(plan)["population"]["classes"]]
+    assert [a["value"] for a in data["answers"]][: len(stored)] == stored
+    assert data["face"] == "class"
+    # What the panel sends: each window's class seen by its handle; the
+    # reviewer sees the ground (the sheet's row here, never the page's).
+    _, handles = panel.window_handles(data["path"])
+    with open(data["path"], encoding="utf-8", newline="") as fh:
+        row_of = {int(r["window_index"]): r for r in csv.DictReader(fh)}
+    answers = [
+        {"handle": w["handle"], "answer": _seen_in(row_of[handles[w["handle"]]])}
+        for w in data["windows"]
+    ]
+    panel.save_answers(
+        data["path"],
+        sheet_id=data["sheet_id"],
+        face="class",
+        rule=data["label_rule"],
+        answers=answers,
+    )
+    out = await _call(
+        GRADE, {"design_path": data["design_path"], "labels_path": data["path"]}
+    )
+    assert out["ok"] is True, out
+    assert out["result"]["valid_interval"] == by_list["valid_interval"]

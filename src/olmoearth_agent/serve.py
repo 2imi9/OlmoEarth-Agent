@@ -55,8 +55,8 @@ from olmoearth_agent.llm import AnthropicLLM, OlmoEarthLLM, ServingConfig
 from olmoearth_agent.llm.anthropic_client import DEFAULT_ANTHROPIC_BASE_URL
 from olmoearth_agent.llm.router import classify_brief
 from olmoearth_agent.llm.types import Message
+from olmoearth_agent.reporting.figure_file import FIGURE_MAX_BYTES, read_figure_svg
 from olmoearth_agent.security import egress
-from olmoearth_agent.security.paths import workspace_root
 from olmoearth_agent.skills import SKILLS, SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
 from olmoearth_agent.studio.client import (
@@ -64,7 +64,6 @@ from olmoearth_agent.studio.client import (
     StudioAccessError,
     StudioConfig,
 )
-from olmoearth_agent.tools.review_set import write_root
 from olmoearth_agent.tools.sampling import band_value
 
 #: Hard cap on agent round-trips a single browser request may trigger.
@@ -86,7 +85,7 @@ _VALID_FORCED_SKILLS = frozenset(
 _MAX_HISTORY_TURNS = 12
 
 #: The largest determination figure (bytes) the bridge inlines into an event.
-_FIGURE_MAX_BYTES = 2 * 1024 * 1024
+_FIGURE_MAX_BYTES = FIGURE_MAX_BYTES
 
 #: Bounded in-memory caches so a repeated map pan / difference scan does not
 #: re-fetch the same auth-gated Studio raster tiles or pixel values (which are
@@ -262,25 +261,9 @@ def _figure_svg(event: dict[str, Any]) -> str | None:
     envelope = event.get("result")
     inner = envelope.get("result") if isinstance(envelope, dict) else None
     path = inner.get("figure_path") if isinstance(inner, dict) else None
-    if not isinstance(path, str) or not path:
-        return None
-    try:
-        real = Path(os.path.realpath(path))
-        roots = (write_root(), workspace_root())
-        inside = any(real.is_relative_to(os.path.realpath(root)) for root in roots)
-        if not inside or not real.name.endswith("_figure.svg"):
-            return None
-        if not real.is_file():  # never open a directory or a pipe
-            return None
-        with real.open("rb") as fh:
-            data = fh.read(_FIGURE_MAX_BYTES + 1)
-        if len(data) > _FIGURE_MAX_BYTES:
-            return None
-        return data.decode("utf-8")
-    except (OSError, ValueError, UnicodeDecodeError):
-        # A path that cannot be resolved (a NUL byte), or a file gone,
-        # unreadable or not text since the tool wrote it: no figure.
-        return None
+    # The checks on the path (a *_figure.svg under a root, at most
+    # _FIGURE_MAX_BYTES) are read_figure_svg's, shared with the MCP App.
+    return read_figure_svg(path)
 
 
 def _for_browser(event: dict[str, Any]) -> dict[str, Any]:

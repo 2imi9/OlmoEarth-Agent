@@ -23,6 +23,7 @@ from olmoearth_agent.analysis.raster_compare import (
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.result_ids import resolving
 from olmoearth_agent.tools.sampling import (
     band_value,
     is_categorical,
@@ -394,7 +395,7 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "required": ["result_id"],
                 },
             ),
-            handler=_get_prediction_result,
+            handler=resolving("result_id")(_get_prediction_result),
             capability=Capability(
                 does="one result's tile URLs, properties and declared outputs, "
                 "without its geometry"
@@ -430,7 +431,7 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "required": ["result_id", "lon", "lat"],
                 },
             ),
-            handler=_pixel_value,
+            handler=resolving("result_id", caught=True)(_pixel_value),
             capability=Capability(does="one result's value at one lon/lat point"),
         ),
     ]

@@ -32,6 +32,13 @@ serve = [
 claude = [
     "anthropic>=0.40",  # native Claude backend (olmoearth_agent.llm.anthropic_client)
 ]
+# The agent's tools and views as an MCP App inside Claude (src/olmoearth_agent/
+# mcp_app, `olmoearth-agent-mcp`): the official MCP Python SDK, MIT licence.
+# 1.26 serves a resource's _meta (the views' CSP); below 2, whose server API
+# changed (olmoearth-inferencex pins its own mcp extra the same way).
+mcp = [
+    "mcp>=1.26,<2",
+]
 # Design-based error estimation (tools/estimation.py) and the scores provider
 # (tools/scores_file.py): the companion package brings numpy, so it stays
 # optional; the core package has no numpy. Its `geo` extra brings rasterio,
@@ -69,6 +76,9 @@ olmoearth-agent-serve = "olmoearth_agent.serve:main"
 # A Claude Code session as the agent's model, one model call per command
 # (docs/Usage.md, Claude Code as the model).
 olmoearth-agent-bridge = "olmoearth_agent.bridge.cli:main"
+# The agent's tools and views inside Claude, as an MCP App on stdio
+# (docs/Usage.md, In Claude, with views).
+olmoearth-agent-mcp = "olmoearth_agent.mcp_app.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/olmoearth_agent"]

@@ -163,7 +163,17 @@ async def test_binary_score_ranks_the_least_decided_windows_first(
     assert not confident & {(r["row"], r["col"]) for r in review}
     assert review[0]["predicted_class"] == 1 and review[4]["predicted_class"] == 0
     assert "never first" in out["signal"]
-    assert any("not a sample" in c for c in out["caveats"])
+    # r4h V2 (D/D-said-2 FINAL): not a random sample, no error rate from it,
+    # no point on it known to be wrong; never "chosen to hold errors" or
+    # "overstates", which no recorded experiment shows for a Studio result.
+    assert out["caveats"][-1] == (
+        "This list is not a random sample: no error rate follows from it, and no "
+        "point on it is known to be wrong. To say how wrong the map is, the user "
+        "checks a random sample (for you: olmoearth_plan_label_sample)."
+    )
+    caveats = " ".join(out["caveats"])
+    assert "chosen to hold errors" not in caveats
+    assert "overstates" not in caveats
 
     # Rule 1: windows by (row, col) and index only; locations stay in the file.
     assert not _BANNED_KEYS & _keys(out)
@@ -172,6 +182,11 @@ async def test_binary_score_ranks_the_least_decided_windows_first(
     assert saved["scores"][0] == pytest.approx([0.03, 0.97])
     assert len(saved["centres_lon_lat"]) == 13
     assert "olmoearth_plan_label_sample" in out["next_step"]
+    # The reader test's B/C3: the file named whole, places never shown.
+    assert (
+        "Each window's place and score are saved on this computer in the file "
+        f"{out['scores_path']}. Places are never shown in the chat or on the card."
+    ) in out["next_step"]
 
 
 @pytest.mark.asyncio
@@ -301,7 +316,11 @@ async def test_another_range_needs_a_threshold(
             {"result_id": "cnt", "grid": 4, "threshold": 5.0, "error_rate": 0.2}, ctx
         )
     assert refused["ranked"] is False
-    assert "needs a decision threshold" in refused["reason"]
+    # The reader test's B/C4: the declared range, and the cut-off as threshold.
+    assert refused["reason"].startswith(
+        "This map's values are declared to run from 0 to 10, not from 0 to 1,"
+    )
+    assert "pass it as threshold" in refused["reason"]
     assert refused["declared_range"] == [0.0, 10.0]
     # exp86 round 8 (brief 3 on Studio): the most ambiguous windows of a band
     # with no threshold were offered for review; the refusal forbids it.
@@ -312,7 +331,9 @@ async def test_another_range_needs_a_threshold(
     }
     review = claims["review_set_for_unthresholded_regression"]
     assert review.startswith("'sample_karst_score' (declared range [0, 10])")
-    assert "a review set of this band needs a threshold for it" in review
+    # Round 4: the reason sends no one to a review set with a threshold.
+    assert "no recorded experiment supports ranking such a band" in review
+    assert "takes 'threshold'" not in review
     assert ranked["ranked"] is True
     assert "review_set_for_unthresholded_regression" not in {
         c["id"] for c in ranked["forbidden_claims"]

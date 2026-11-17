@@ -312,7 +312,9 @@ async def _from_result_needs_threshold(_tmp: Path) -> None:
         results={"k": _result("k", "karst", _regression("karst", 0.2, 1.2))}
     )
     out = await _call("olmoearth_review_set_from_result", {"result_id": "k"}, studio)
-    _refused(out, "needs a decision threshold")
+    # The reader test's B/C4: the declared range, and the cut-off as threshold.
+    _refused(out, "declared to run from 0.2 to 1.2, not from 0 to 1")
+    _refused(out, "pass it as threshold")
 
 
 @probe(
@@ -448,7 +450,7 @@ async def _plan_needs_threshold(_tmp: Path) -> None:
         "olmoearth_plan_label_sample", {"result_id": "k", "budget": 20}, studio
     )
     assert out["ok"] is True and out["result"]["ranked"] is False
-    assert "needs a decision threshold" in out["result"]["reason"]
+    assert "pass it as threshold" in out["result"]["reason"]
 
 
 @probe(

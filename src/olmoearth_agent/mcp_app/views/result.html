@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OlmoEarth result</title>
+<script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
+<link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
+<style>
+  figure { margin: 0; }
+  /* The tool's figure, framed like Studio's server-drawn legend image. */
+  figure img { display: block; max-width: 100%; height: auto; background: #fff;
+    border: 1px solid rgb(204,204,204); border-radius: 4px; }
+  figcaption { margin-top: 8px; font-size: 12px; line-height: 18px; color: var(--text); }
+  .notes p { margin: 0 0 4px; }
+  /* The sheet's path in the plan card's fold (planFile, r4-m M3) wraps
+     anywhere: a long path never makes a narrow panel scroll sideways. */
+  .csv-path { overflow-wrap: anywhere; }
+  /* A review set's windows: one card each, in rank order, in a grid that
+     fills the panel (two columns on a phone); a card opens its pictures in
+     the pane under the strip, full width. */
+  .review-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
+    max-height: 420px; overflow: auto; }
+  .review-strip button.window-card { min-height: 44px; display: flex; align-items: center; gap: 10px;
+    text-align: left; padding: 8px 12px; background: var(--paper); min-width: 0; }
+  .review-strip button.window-card[aria-expanded="true"] { background: var(--selected); border-color: var(--text); }
+  .window-card .rank { flex: none; font-size: 20px; line-height: 28px; font-weight: 600; }
+  .window-card .caption { min-width: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+  /* A card with its Street map button under it: one cell of the grid (r4-k
+     K7); the card is a button of its own, so the map button sits beside it,
+     never inside it. */
+  .review-strip .window-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .review-strip .window-cell button.link { align-self: flex-start; }
+  /* Points without picture cards: one Street map button each, in rank order,
+     wrapping (r4-k K7). */
+  .row.review-links { gap: 4px; }
+  .review-csv .csv-file { overflow-wrap: anywhere; }
+  .review-pane { min-width: 0; }
+  .review-pane h3:focus { outline: none; }
+  .review-pane h3:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .oe-numbers td { font-variant-numeric: tabular-nums; }
+  /* The estimate's result card: figure first, one short line each. */
+  .oe-result p, .oe-result h2, .oe-result h3 { margin: 0; }
+  /* A gap between the card's lines (r4-h V3): the rule above takes every
+     line's margin away, so these name the card as closely and come after. */
+  section.oe-result > * + * { margin-top: 12px; }
+  .oe-result .stack > * + * { margin-top: 8px; }
+  .oe-result .oe-more > * + * { margin-top: 12px; }
+  .oe-rate { display: flex; flex-direction: column; gap: 8px; }
+  .oe-rate p.big { font-size: 20px; line-height: 28px; font-weight: 600; }
+  @media (max-width: 560px) {
+    .review-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<main id="root" class="stack"><div class="muted">Waiting for the result...</div></main>
+<script>
+// WORDING: r4k K2
+setTimeout(function(){if(!window.OE_STARTED){var r=document.getElementById('root');if(r)r.textContent='This card could not start here. Carry on in the chat.';}},10000);
+</script>
+<script type="module">
+import { App } from "@EXT_APPS_URL@";
+/*@SCRIPTS@*/
+
+const root = document.getElementById('root');
+
+/* What kind of result this is, in Studio's overline style; never the raw tool name. */
+const KIND = {
+  olmoearth_plan_label_sample: 'Label plan',
+  olmoearth_estimate_map_error: 'Map error estimate',
+  olmoearth_certify_zone: 'Certified zone',
+  // The look-first card's overline: never "review set" on a face (r4-j J5).
+  // WORDING: r4j J5
+  olmoearth_review_set: 'Look first',
+  // WORDING: r4j J5
+  olmoearth_review_set_from_result: 'Look first',
+  olmoearth_compare_results: 'Comparison',
+  olmoearth_compare_review: 'Comparison',
+  olmoearth_write_certificate: 'Certificate',
+  olmoearth_verify_certificate: 'Certificate check',
+  olmoearth_case_narrative: 'Report',
+  olmoearth_provenance_summary: 'Provenance',
+  olmoearth_search_predictions: 'Predictions',
+  olmoearth_fetch_results: 'Prediction results',
+  olmoearth_submit_prediction: 'Prediction',
+  olmoearth_get_prediction: 'Prediction',
+  olmoearth_get_prediction_result: 'Prediction result',
+  olmoearth_scores_from_file: 'Model run',
+  olmoearth_scores_from_studio: 'Model run',
+  olmoearth_pixel_value: 'Point value',
+  olmoearth_studio_label_inventory: 'Labels',
+};
+const kindOf = (tool) => KIND[tool] || OE.humanize(String(tool || 'result').replace(/^olmoearth_/, ''));
+
+/* A figure is SVG the server read from the tool's own *_figure.svg; shown as
+   an image, so nothing in it can run. svg: the result's own, or a plan's that
+   the server held and gave later (olmoearth_app_plan_figure). The save
+   button only where the host saves files (r4-l L1: OE.canDownload, as the
+   look-first CSV): Claude offers no downloadFile, so a press there could
+   never work; no button and no line in its place, Full screen as before. */
+function figureBlock(app, data, svg = data.figure.svg) {
+  const bytes = new TextEncoder().encode(svg);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  const src = 'data:image/svg+xml;base64,' + btoa(binary);
+  const name = (data.tool || 'figure') + '_figure.svg';
+  const canSave = typeof OE.canDownload === 'function' && OE.canDownload(app);
+  return OE.el('figure', { class: 'card' },
+    OE.el('img', { src, alt: data.figure.caption || 'Determination figure' }),
+    data.figure.caption ? OE.el('figcaption', {}, data.figure.caption) : null,
+    OE.el('div', { class: 'row', style: 'margin-top:12px' },
+      OE.fullscreenButton(app),
+      canSave && OE.el('button', {
+        class: 'small',
+        onclick: async () => {
+          try {
+            const answer = await app.downloadFile({ contents: [{ type: 'resource', resource: { uri: 'file:///' + name, mimeType: 'image/svg+xml', text: svg } }] });
+            if (answer && answer.isError) OE.toast('The download was not allowed.', true);
+          } catch (err) { OE.toast('Download failed: ' + err.message, true); }
+        },
+      }, SAVE_PICTURE)));
+}
+
+/* The figure's save button (the reader test's B/R13): the figure draws rows
+   and columns, never a place. */
+// WORDING: r4p2
+const SAVE_PICTURE = 'Save the picture (SVG file, no places in it)';
+
+/* The result's must_state lines as footnotes, each whole, as the tool wrote it. */
+function notesBlock(lines) {
+  return OE.el('div', { class: 'notes footnote' },
+    lines.map((s) => OE.el('p', {}, 'Note: ' + (typeof s === 'string' ? s : JSON.stringify(s)))));
+}
+
+/* The result's card: the rows the tool wrote (a name, a value, and a detail
+   such as an interval's method), shown as written; the view computes nothing. */
+function cardBlock(rows) {
+  return OE.el('div', { class: 'card' }, OE.kv(rows.map(([name, value, detail]) => [name,
+    detail ? OE.el('span', {}, OE.el('span', {}, value), OE.el('span', { class: 'small muted', style: 'display:block' }, detail)) : value])));
+}
+
+/* A refusal the tool returned (no zone on this design, say): its reason, whole. */
+function reasonBlock(reason) {
+  return OE.el('div', { class: 'card' }, reason);
+}
+
+/* Said in place of a plan's figure while its sheet is labelled blind and is
+   not complete: the figure shades the map by its confidence, which on a
+   confidence design is its stratum. The server says the same words
+   (sheet.FIGURE_LATER) when it holds the figure; no unit and no "window"
+   (the owner's ruling 6, 13 Nov 2026: a plan's sheet is of squares or of
+   points). */
+// WORDING: squares
+const FIGURE_LATER = "The plan's figure shades the map by its confidence, so it shows here once the whole sheet is labelled.";
+
+/* The plan's sheet: the one contained button opens it here. Its words and the
+   count beside it come from the sheet's counts (olmoearth_app_sheet_progress:
+   "2 of 5 labelled", "Continue labelling"), read when the panel opens, each
+   time it is shown again, when it gets the focus (at most once every 3 s)
+   and after each save of the editor opened here; an
+   older read that answers after a newer one is dropped, and a failed read
+   keeps OPEN_FIRST ("Open the sheet here", the server's sheet.OPEN_FIRST)
+   and shows no count. Nothing takes the
+   focus on load; the press reads the sheet itself (olmoearth_app_sheet).
+   After each read the card tells Claude silently (OE.tellClaude) its sheet's
+   name and path, how far it is labelled and the button's words; the editor
+   opened here tells its own counts beside them.
+
+   The plan's figure (figureSlot) is drawn only once a read says the sheet is
+   not blind (labelled right or wrong) or is complete: a blind sheet that is
+   not (the class seen; progress's blind) gets a sentence in its place, and
+   so does a sheet whose counts cannot be read. While the server holds the
+   figure (data.figure.held: no SVG reached the page), the first read that
+   allows it asks the server for it (olmoearth_app_plan_figure, one call in
+   flight at a time); a refusal shows its own words in the figure's place,
+   and the next read asks again. */
+/* The plan card's button before its first read of the counts, and after a
+   failed one: the server's sheet.OPEN_FIRST, word for word (round 4 pass 2,
+   finding 13: the same words for a sheet of squares or of points). */
+// WORDING: r4p2
+const OPEN_FIRST = 'Open the sheet here';
+function sheetButton(app, data, figureSlot) {
+  const slot = OE.el('div', { class: 'stack' });
+  const count = OE.el('span', { class: 'small', id: 'oe-sheet-progress' });
+  let figure = null;  // made the first time it is shown
+  let svg = data.figure && typeof data.figure.svg === 'string' ? data.figure.svg : null;
+  let asking = null;  // the server's answer for a held figure, while it is asked
+  function askFigure() {
+    if (!asking) {
+      asking = OE.call(app, 'olmoearth_app_plan_figure', { labels_csv_path: data.labels_csv_path })
+        .then((answer) => { if (answer && typeof answer.svg === 'string' && answer.svg) svg = answer.svg; })
+        .finally(() => { asking = null; });
+    }
+    return asking;
+  }
+  function showFigure(on, why) {
+    if (!figureSlot) return;
+    if (!on) {
+      // A sentence in the figure's place: FIGURE_LATER, or why it was not given.
+      const words = why || FIGURE_LATER;
+      if (figure && figureSlot.contains(figure)) figure.remove();
+      const said = figureSlot.firstChild;
+      if (!said || said.textContent !== words) figureSlot.replaceChildren(OE.el('div', { class: 'small muted' }, words));
+      return;
+    }
+    if (!figure) figure = figureBlock(app, data, svg);
+    if (!figureSlot.contains(figure)) figureSlot.replaceChildren(figure);
+  }
+  // Busy while the sheet is read (aria-disabled keeps the focus); then the
+  // focus goes on to the editor's heading, since the button goes away.
+  let busy = false, opened = false;
+  const button = OE.el('button', {
+    class: 'primary',
+    'aria-describedby': 'oe-sheet-progress',
+    onclick: async () => {
+      if (busy) return;
+      busy = true;
+      button.setAttribute('aria-disabled', 'true');
+      try {
+        const sheet = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.labels_csv_path });
+        // Each save the server takes reads the counts again: the figure shows once the sheet is complete.
+        // Full screen (where the host offers it) lays the editor's face out for the mode.
+        const editor = OE.sheetEditor(app, sheet, {
+          headerAction: OE.fullscreenButton(app, OE.sheetMode), onSaved: () => refresh(),
+        });
+        slot.replaceChildren(editor);
+        const heading = editor.querySelector('h1');
+        if (heading) heading.setAttribute('tabindex', '-1');
+        const hadFocus = document.activeElement === button;
+        opened = true;
+        button.remove();
+        count.remove();  // the editor counts from here on
+        if (lastGot !== undefined) tellCard(lastGot, null);
+        if (hadFocus) OE.focusIfHere(heading);
+      } catch (err) {
+        OE.toast(err.message, true);
+        busy = false;
+        button.setAttribute('aria-disabled', 'false');
+      }
+    },
+  }, OPEN_FIRST);
+  /* What the card tells Claude about its sheet (OE.tellClaude), after each
+     read of its counts: the sheet's name and path, how far it is labelled and
+     the button's words, or that its editor is open here. Counts only. */
+  function tellCard(got, words) {
+    const path = data.labels_csv_path;
+    if (!got) {
+      OE.tellClaude(app, 'Plan card: the counts of its label sheet (labels_csv_path ' + path + ') cannot be read now.');
+      return;
+    }
+    const name = typeof got.name === 'string' && got.name ? got.name : String(path).split(/[\\/]/).pop();
+    const shown = typeof got.progress === 'string' ? got.progress : 'not counted';
+    OE.tellClaude(app, 'Plan card: its label sheet ' + name + ' (labels_csv_path ' + path + ') is ' + shown + '; '
+      + (opened ? 'the sheet is open in this card.' : 'its button reads "' + words + '".'));
+  }
+  let lastGot;  // the last read of the counts (null when it failed), for what the card tells Claude
+  let reads = 0;  // the newest read: an older one that answers after it is dropped
+  let lastRead = 0;  // when the counts were last asked for (the focus asks at most once every 3 s)
+  async function refresh() {
+    const mine = ++reads;
+    lastRead = Date.now();
+    let words = OPEN_FIRST, line = '', got = null;
+    try {
+      got = await OE.call(app, 'olmoearth_app_sheet_progress', { labels_csv_path: data.labels_csv_path });
+      if (typeof got.open_label === 'string' && got.open_label) words = got.open_label;
+      if (typeof got.progress === 'string') line = got.progress;
+    } catch (_) { got = null; /* no count: the button keeps its first words */ }
+    if (mine !== reads) return;
+    if (!opened) {
+      button.textContent = words;
+      count.textContent = line;
+    }
+    lastGot = got;
+    tellCard(got, words);
+    // The figure: once the sheet is not blind, or every window is labelled.
+    const rows = got ? Number(got.n_rows) : NaN, labelled = got ? Number(got.n_labelled) : NaN;
+    const complete = rows > 0 && labelled >= rows;
+    const allowed = Boolean(got) && (got.blind === false || complete);
+    let why = null;
+    if (allowed && !svg && figureSlot) {
+      // Held by the server until now: asked for, then drawn.
+      try { await askFigure(); } catch (err) { why = err.message; }
+      if (mine !== reads) return;
+      if (!svg && !why) why = 'The plan\'s figure could not be read.';
+    }
+    showFigure(allowed && Boolean(svg), why);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && slot.isConnected) refresh();
+  });
+  window.addEventListener('focus', () => {
+    if (slot.isConnected && Date.now() - lastRead >= 3000) refresh();
+  });
+  refresh();
+  // No file path on the face (r4-m M3): the sheet as a file is in the fold
+  // (planFile), with why answering there is not blind.
+  return OE.el('div', { class: 'stack' },
+    OE.el('div', { class: 'row' }, button, count),
+    slot);
+}
+
+/* A view's unit word: 'point' for single pixels at grid points (a Studio
+   result's sampled points, a plan drawn by result_id), anything else
+   'square' (the server's unit, sheet.window_unit; the lead's ruling W). */
+const unitOf = (unit) => (unit === 'point' ? 'point' : 'square');
+
+/* The plan's sheet as a file, in the plan card's closed fold only, never on
+   its face (r4-m M3, reader test 3's E/F2: readers did not know where or
+   what the file is, and opening it ends blind labelling for good). The file
+   holds the map's class at each square (or point) beside the answer
+   columns, which the sheet here hides. In the sheet's own unit (data.unit,
+   the server's: 'point' for a plan drawn on a grid over a Studio result);
+   the path wraps anywhere (.csv-path). A sheet labelled right or wrong
+   (data.right_or_wrong, the server's) shows the map's class itself, so its
+   line names what the file adds there: each square's place, order and
+   stratum, which that face does not send (W.wrongLine in sheet.js). */
+// WORDING: r4m M3
+const PLAN_FILE_HEAD = 'The sheet is also a file on this computer: ';
+// WORDING: r4m M3
+const PLAN_FILE_TAIL = (unit) => '. It shows the map\'s class at each ' + unitOf(unit) + ', so answering there is'
+  + ' not blind; use the sheet here instead.';
+// WORDING: r4m M3
+const PLAN_FILE_TAIL_WRONG = (unit) => '. It shows each ' + unitOf(unit) + '\'s place, order and stratum, which the'
+  + ' sheet here hides; use the sheet here instead.';
+function planFile(data) {
+  const tail = data.right_or_wrong === true ? PLAN_FILE_TAIL_WRONG(data.unit) : PLAN_FILE_TAIL(data.unit);
+  return OE.el('p', { class: 'small csv-path oe-plan-file' }, PLAN_FILE_HEAD,
+    OE.el('span', { class: 'mono' }, data.labels_csv_path), tail);
+}
+
+/* The words of a review set's window cards and their pane, each window a
+   square (or point) of the review set's whole count (round 4's low findings
+   2, 3 and 7: "Square k of 140", though at most 50 are listed), and the
+   numbers fold's column heads, which keep the tool's own words. unit is the
+   review block's (review.review_view's unit: 'point' for a Studio result's
+   sampled points, else 'square'), so one card never calls its points
+   squares (r4-d-1 finding R8). noPictures and noAnswer are sheet.js's
+   fallbacks, word for word. The test scene's caption is the server's own
+   for a review set (imagery.REVIEW_TEST_CAPTION). */
+// WORDING: squares
+const reviewWords = (unit) => {
+  const one = unitOf(unit);
+  const One = one === 'point' ? 'Point' : 'Square';
+  return {
+    card: (k, total, caption) => One + ' ' + k + ' of ' + total + (caption ? ': ' + caption : ''),
+    heading: (k, total) => One + ' ' + k + ' of ' + total,
+    firstShown: (n, total) => 'The first ' + n + ' of ' + total + ' ' + one + 's are shown here; the rest are in the full list.',
+    more: (k) => 'Show ' + k + ' more',
+    // "The numbers for these squares", or "The numbers for these points".
+    numbers: 'The numbers for these ' + one + 's',
+    columns: ['Rank', 'Window index', 'Row', 'Column', 'Margin'],
+    score: 'Score',
+    loading: 'Loading the pictures...',
+    turnOn: 'Turn on pictures',
+    turnOff: 'Turn off pictures',
+    test: 'Try the public test scene',
+    testHead: 'Public test scene',
+    back: (k) => 'Back to ' + one + ' ' + k,
+    again: 'Try again',
+    close: 'Close',
+    previous: 'Previous',
+    next: 'Next',
+    noPictures: 'No pictures.',
+    noAnswer: 'No answer.',
+    windowLabel: (k) => one + ' ' + k,
+    testLabel: 'the public test scene',
+    // A window's Street map button (r4-k K7), in the label sheet's words
+    // (sheet.js streetMap, openMapOf, noLink): the button, its name, a link
+    // the server did not give, and a press that failed.
+    // WORDING: r4k K7
+    streetMap: 'Street map',
+    // WORDING: r4k K7
+    mapOf: (k) => 'Street map: ' + one + ' ' + k + ' on OpenStreetMap',
+    // WORDING: r4k K7
+    noLink: (k) => 'No map link for ' + one + ' ' + k + '.',
+    // WORDING: r4k K7
+    notOpened: (why) => 'The map was not opened: ' + why + '.',
+    // WORDING: r4k K7
+    linkNotMade: 'the link could not be made',
+    // The words before the row of Street map buttons of points without
+    // picture cards, each button its rank (r4-k K7).
+    // WORDING: r4k K7
+    mapsLabel: 'Street map:',
+    // The look-first list as a CSV file with each place (r4-k K8): the
+    // button, the line naming the file the server wrote where the host takes
+    // no downloads, and the toasts of a refusal or a failure.
+    // WORDING: r4k K8
+    csv: 'Save the list with places (CSV file)',
+    // WORDING: r4k K8
+    csvSaved: (file) => 'Saved on this computer as ' + file + '.',
+    // WORDING: r4k K8
+    csvNotSaved: (why) => 'The list was not saved: ' + why + '.',
+    // WORDING: r4k K8
+    listNotMade: 'the list could not be made',
+    // WORDING: r4k K8
+    notAllowed: 'The download was not allowed.',
+    // WORDING: r4k K8
+    downloadFailed: 'the download failed',
+  };
+};
+/* An OpenStreetMap link, the only kind a Street map button opens (the
+   server's sheet.osm_url). */
+const OSM_LINK = 'https://www.openstreetmap.org/';
+/* The look-first CSV's file name as the server gives it (a name, never a
+   path), else null. */
+const csvName = (v) => (typeof v === 'string' && /^[A-Za-z0-9_.-]{1,200}\.csv$/.test(v) ? v : null);
+/* A sentence the server or the host gave, without its closing stops, to end
+   with one of ours. */
+const bareText = (v) => String(v ?? '').trim().replace(/\.+$/, '');
+/* Cards shown at first, and added by each "Show more". */
+const REVIEW_STEP = 12;
+
+/* The numbers behind a review set's windows, in a closed fold: rank, window
+   index, row, column, margin and (a Studio result's) score, each number to
+   3 places; never a place. Its summary names them by the block's unit. */
+function numbersFold(windows, unit) {
+  const words = reviewWords(unit);
+  const three = (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(3) : '');
+  const whole = (v) => (Number.isInteger(v) ? String(v) : '');
+  const scored = windows.some((w) => w.numbers && typeof w.numbers.score === 'number');
+  const head = [...words.columns, ...(scored ? [words.score] : [])];
+  const rows = windows.map((w) => {
+    const m = w.numbers && typeof w.numbers === 'object' ? w.numbers : {};
+    return [whole(w.rank), whole(m.window_index), whole(m.row), whole(m.col), three(m.margin),
+      ...(scored ? [three(m.score)] : [])];
+  });
+  return OE.el('details', { class: 'oe-numbers' },
+    OE.el('summary', {}, words.numbers),
+    OE.el('div', { class: 'table-frame' }, OE.el('table', {},
+      OE.el('thead', {}, OE.el('tr', {}, head.map((h) => OE.el('th', {}, h)))),
+      OE.el('tbody', {}, rows.map((r) => OE.el('tr', {}, r.map((c) => OE.el('td', {}, c))))))));
+}
+
+/* A review set's listed windows (the view's review block,
+   review.review_view): with a key (its scores file records the map), one
+   card per window in rank order, REVIEW_STEP at first, then "Show N more";
+   a card's press opens its pictures in the pane under the strip, the way the
+   label sheet shows them (OE.datesBlock: the dates in a strip, the colour
+   switch, the window outlined), with Previous and Next in rank order and
+   Close. The pane asks the server by the review's key and the window's rank
+   (olmoearth_app_review_image): never a path or a place. While pictures are
+   off its answer is the question, with Turn on pictures and the public test
+   scene; nothing reaches Earth Search before Turn on. A failure shows its
+   sentence and Try again, and is not kept. With no key (inline scores, no
+   recorded map, no record), why_none in place of the cards. Then the
+   numbers, in a closed fold. Every word that names a window is the block's
+   unit word (block.unit: "point" for a Studio result's sampled points).
+   Nothing takes the focus on load.
+
+   Places (r4-k K7, K8): with a key (the block's key: its record names each
+   listed window's place, a Studio result's points included, whose block
+   has no pictures), each card has a Street map button under it, and points
+   without picture cards get a row of Street map buttons, one per point in
+   rank order, in place of the numbers' table (the owner's ruling 3 of 13
+   Nov 2026: no index, row or column table); a press asks the server for
+   that window's link by the key and the rank (olmoearth_app_review_link)
+   and opens it in the user's browser (OE.open), as the label sheet does.
+   Under the cards (or the row), one outlined button saves the list with
+   each place as a CSV file (csvBlock). A place never enters the page's
+   text, a toast or what Claude is told. */
+function reviewBlock(app, block) {
+  const unit = unitOf(block.unit);
+  const REVIEW_WORDS = reviewWords(unit);
+  const windows = (Array.isArray(block.windows) ? block.windows : [])
+    .filter((w) => w && typeof w === 'object' && Number.isInteger(w.rank));
+  // n: the cards listed, which the paging (Next, Show more) stays within;
+  // total: the review set's own count (n_review), which the cards and the
+  // pane name ("Square k of 140"), with a line when fewer are listed.
+  const n = windows.length;
+  const total = Number.isInteger(block.n_review) && block.n_review >= n ? block.n_review : n;
+  // linkKey: the review's key, by which the Street map buttons and the CSV
+  // ask the server (r4-k K7, K8); key: the same, only when the block says
+  // its windows have pictures (the cards and their pane).
+  const linkKey = typeof block.key === 'string' && /^[0-9a-f]{24}$/.test(block.key) ? block.key : null;
+  const key = block.pictures === true ? linkKey : null;
+  const section = OE.el('section', { class: 'stack review' });
+  const linking = new Set();  // the ranks whose map link is being asked for
+  /* A window's map link, asked of the server at the press (the page holds
+     no place), then opened in the user's browser; only an OpenStreetMap
+     link is opened, and the link is never shown, toasted or told to Claude.
+     Busy while asked (aria-disabled), so a second press asks nothing. */
+  async function openMap(rank) {
+    if (linking.has(rank)) return;
+    const mark = (busy) => {
+      for (const b of section.querySelectorAll('[data-focus="map:' + rank + '"]')) {
+        b.setAttribute('aria-disabled', String(busy));
+      }
+    };
+    linking.add(rank);
+    mark(true);
+    try {
+      const got = await OE.call(app, 'olmoearth_app_review_link', { review_key: linkKey, rank });
+      const url = got && typeof got.url === 'string' ? got.url : '';
+      if (url.startsWith(OSM_LINK)) await OE.open(app, url);
+      else OE.toast(REVIEW_WORDS.noLink(rank), true);
+    } catch (err) {
+      OE.toast(REVIEW_WORDS.notOpened(bareText(err.message) || REVIEW_WORDS.linkNotMade), true);
+    } finally {
+      linking.delete(rank);
+      mark(false);
+    }
+  }
+  /* A window's Street map button: its words (a card's "Street map", or a
+     row's rank), named for its window. */
+  const mapButton = (rank, words) => OE.el('button', {
+    type: 'button', class: 'link', 'data-focus': 'map:' + rank, 'aria-label': REVIEW_WORDS.mapOf(rank),
+    'aria-disabled': String(linking.has(rank)), onclick: () => openMap(rank),
+  }, words);
+  /* The look-first list with each window's place as a CSV file (r4-k K8):
+     one outlined button. Where the host takes downloads (OE.canDownload),
+     the server's text (olmoearth_app_review_csv, save false) goes straight
+     to app.downloadFile as a text/csv file; else the server writes the same
+     file under review_sets/ (save true) and the line under the button names
+     it, as the plan card names its sheet. The text never enters the page or
+     what Claude is told. Busy while asked (aria-disabled). */
+  function csvBlock() {
+    const said = OE.el('div', { class: 'small csv-file', 'aria-live': 'polite' });
+    let busy = false;
+    const button = OE.el('button', {
+      type: 'button', 'data-focus': 'csv',
+      onclick: async () => {
+        if (busy) return;
+        busy = true;
+        button.setAttribute('aria-disabled', 'true');
+        try {
+          if (typeof OE.canDownload === 'function' && OE.canDownload(app)) {
+            const got = await OE.call(app, 'olmoearth_app_review_csv', { review_key: linkKey, save: false });
+            const text = got && typeof got.text === 'string' ? got.text : '';
+            if (!text) throw new Error(REVIEW_WORDS.listNotMade);
+            // WORDING: r4k K8 (the server's file name, else this one)
+            const name = csvName(got.name) || 'look_first_not_a_sample.csv';
+            // The host's own error is never shown: it may repeat the file's text.
+            let answer;
+            try {
+              answer = await app.downloadFile({ contents: [{ type: 'resource', resource: { uri: 'file:///' + name, mimeType: 'text/csv', text } }] });
+            } catch (_) {
+              throw new Error(REVIEW_WORDS.downloadFailed);
+            }
+            if (answer && answer.isError) OE.toast(REVIEW_WORDS.notAllowed, true);
+          } else {
+            const got = await OE.call(app, 'olmoearth_app_review_csv', { review_key: linkKey, save: true });
+            const file = csvName(got && got.file);
+            if (!file) throw new Error(REVIEW_WORDS.listNotMade);
+            said.textContent = REVIEW_WORDS.csvSaved(file);
+          }
+        } catch (err) {
+          OE.toast(REVIEW_WORDS.csvNotSaved(bareText(err.message) || REVIEW_WORDS.listNotMade), true);
+        } finally {
+          busy = false;
+          button.setAttribute('aria-disabled', 'false');
+        }
+      },
+    }, REVIEW_WORDS.csv);
+    return OE.el('div', { class: 'stack review-csv' }, OE.el('div', { class: 'row' }, button), said);
+  }
+  if (!key || !n) {
+    if (typeof block.why_none === 'string' && block.why_none) {
+      section.append(OE.el('div', { class: 'small muted why-none' }, block.why_none));
+    }
+    if (n && linkKey) {
+      // Points without picture cards whose places the record names (r4-k
+      // K7): a row of Street map buttons, each its rank, in place of the
+      // numbers' table; a line when fewer are listed; then the CSV (K8).
+      if (n < total) section.append(OE.el('div', { class: 'small muted' }, REVIEW_WORDS.firstShown(n, total)));
+      section.append(OE.el('div', { class: 'row review-links', role: 'group', 'aria-label': REVIEW_WORDS.streetMap },
+        OE.el('span', { class: 'small', 'aria-hidden': 'true' }, REVIEW_WORDS.mapsLabel),
+        windows.map((w) => mapButton(w.rank, String(w.rank)))), csvBlock());
+    } else if (n) section.append(numbersFold(windows, unit));
+    return section;
+  }
+  const state = { shown: Math.min(REVIEW_STEP, n), open: null, colour: 'nir', answers: new Map(),
+    run: 0, loading: null, test: null };
+  const strip = OE.el('div', { class: 'review-strip' });
+  const more = OE.el('button', { type: 'button', class: 'link' });
+  const pane = OE.el('div', { class: 'card stack review-pane', hidden: true });
+
+  /* The cards shown, each with its Street map button under it (r4-k K7). */
+  function cards() {
+    strip.replaceChildren(...windows.slice(0, state.shown).map((w, i) => OE.el('div', { class: 'window-cell' },
+      OE.el('button', {
+        type: 'button', class: 'window-card', 'data-focus': 'card:' + w.rank,
+        'aria-label': REVIEW_WORDS.card(w.rank, total, w.caption), 'aria-expanded': String(state.open === i),
+        onclick: () => (state.open === i ? close() : open(i, { fromCard: true })),
+      }, OE.el('span', { class: 'rank', 'aria-hidden': 'true' }, String(w.rank)),
+      OE.el('span', { class: 'caption', 'aria-hidden': 'true' }, w.caption || '')),
+      mapButton(w.rank, REVIEW_WORDS.streetMap))));
+    const left = n - state.shown;
+    more.hidden = left <= 0;
+    more.textContent = REVIEW_WORDS.more(Math.min(REVIEW_STEP, left));
+  }
+  /* The cards say which window's pane is open, in place: no card is rebuilt,
+     so the focus stays where it is. */
+  function mark() {
+    for (const b of strip.querySelectorAll('button.window-card')) {
+      b.setAttribute('aria-expanded', String(b.dataset.focus === 'card:' + (state.open === null ? '' : windows[state.open].rank)));
+    }
+  }
+  more.addEventListener('click', () => {
+    const first = state.shown;
+    state.shown = Math.min(n, state.shown + REVIEW_STEP);
+    cards();
+    mark();
+    // The button may go once every card shows: the focus goes on to the first new card.
+    if (more.hidden) OE.focusIfHere(strip.querySelector('[data-focus="card:' + windows[first].rank + '"]'));
+  });
+  /* Open window i's pane. A card's press (fromCard) brings the pane into
+     view once drawn (low finding 10: after "Show more", the pane can sit far
+     below the card); Previous and Next inside the pane leave the scroll as
+     it is. The focus stays where it is. */
+  function open(i, { fromCard = false } = {}) {
+    if (i >= state.shown) { state.shown = Math.min(n, i + 1); cards(); }
+    state.open = i;
+    state.test = null;
+    mark();
+    load(i);  // draws the pane at once (loading, or the answer kept), then asks
+    if (fromCard && typeof pane.scrollIntoView === 'function') pane.scrollIntoView({ block: 'nearest' });
+  }
+  function close() {
+    const was = state.open;
+    const inPane = pane.contains(document.activeElement);
+    state.open = null;
+    state.test = null;
+    mark();
+    render();
+    if (inPane && was !== null) OE.focusIfHere(strip.querySelector('[data-focus="card:' + windows[was].rank + '"]'));
+  }
+  async function load(i) {
+    const w = windows[i];
+    if (state.answers.has(w.rank)) { render(); return; }
+    const run = state.run;
+    state.loading = w.rank;
+    render();
+    let answer;
+    try {
+      answer = await OE.call(app, 'olmoearth_app_review_image', { review_key: key, rank: w.rank });
+    } catch (err) {
+      answer = { ok: false, error: err.message };
+    }
+    if (run !== state.run) return;  // pictures switched on or off meanwhile: asked again then
+    if (state.loading === w.rank) state.loading = null;
+    if (answer && (answer.ok || answer.needs_consent)) state.answers.set(w.rank, answer);
+    if (state.open === i) render(answer);
+  }
+  /* Pictures switched on or off by the user's own press, after the question. */
+  async function setPictures(on) {
+    try {
+      await OE.call(app, 'olmoearth_app_imagery', { on });
+    } catch (err) {
+      OE.toast(err.message, true);
+      return;
+    }
+    state.answers.clear();
+    state.run += 1;
+    state.loading = null;
+    state.test = null;
+    if (state.open !== null) await load(state.open);
+  }
+  /* The public test scene, in the pane in place of the window, asked as a
+     review set's (review: the server's caption and failure then name no
+     sheet, label or kelp map). */
+  async function loadTest() {
+    const from = state.open;
+    state.test = { loading: true };
+    render();
+    let answer;
+    try {
+      answer = await OE.call(app, 'olmoearth_app_window_image', { test_scene: true, review: true });
+    } catch (err) {
+      answer = { ok: false, error: err.message };
+    }
+    if (state.open !== from || !state.test) return;  // closed or moved meanwhile
+    state.test = answer || { ok: false, error: REVIEW_WORDS.noAnswer };
+    render();
+  }
+  const choose = (kind) => { state.colour = kind; render(); };
+  /* The pane for the open window (or the test scene). The control that had
+     the focus in the pane gets it back by its data-focus key, else the
+     pane's heading does. shown overrides the kept answer (a failure). */
+  function render(shown) {
+    if (state.open === null) { pane.hidden = true; pane.replaceChildren(); return; }
+    const active = document.activeElement;
+    const had = active && pane.contains(active) ? (active.dataset && active.dataset.focus) || 'heading' : null;
+    const i = state.open;
+    const w = windows[i];
+    const button = (focus, text, onclick, attrs = {}) => OE.el('button', {
+      type: 'button', class: 'small', 'data-focus': focus, onclick, ...attrs }, text);
+    const heading = OE.el('h3', { tabindex: '-1', 'data-focus': 'heading' },
+      state.test ? REVIEW_WORDS.testHead : REVIEW_WORDS.heading(w.rank, total));
+    const top = OE.el('div', { class: 'spread' }, heading,
+      OE.el('div', { class: 'row' },
+        state.test ? button('back', REVIEW_WORDS.back(w.rank), () => { state.test = null; render(); }) : [
+          button('previous', REVIEW_WORDS.previous, () => open(i - 1), { disabled: i === 0 }),
+          button('next', REVIEW_WORDS.next, () => open(i + 1), { disabled: i === n - 1 }),
+        ],
+        OE.el('button', { type: 'button', class: 'link', 'data-focus': 'close', onclick: close }, REVIEW_WORDS.close)));
+    const parts = [top];
+    if (state.test) {
+      // The server's review caption says what the scene is (no line of its own here).
+      const t = state.test;
+      if (t.loading) parts.push(OE.el('div', { class: 'faint' }, REVIEW_WORDS.loading));
+      else if (!t.ok) parts.push(OE.el('div', { class: 'error small' }, t.error || REVIEW_WORDS.noPictures));
+      else {
+        parts.push(OE.datesBlock(Array.isArray(t.dates) ? t.dates : [], REVIEW_WORDS.testLabel,
+          { colour: state.colour, choose, strip: true }));
+        if (t.caption) parts.push(OE.el('div', { class: 'footnote' }, t.caption));
+      }
+    } else {
+      if (w.caption) parts.push(OE.el('div', { class: 'small' }, w.caption));
+      const answer = shown || state.answers.get(w.rank) || (state.loading === w.rank ? { loading: true } : null);
+      if (!answer || answer.loading) parts.push(OE.el('div', { class: 'faint' }, REVIEW_WORDS.loading));
+      else if (answer.needs_consent) {
+        parts.push(OE.el('div', { class: 'card summary stack' },
+          OE.el('div', {}, answer.ask),
+          OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
+            OE.el('button', { type: 'button', 'data-focus': 'turn-on', onclick: () => setPictures(true) }, REVIEW_WORDS.turnOn)),
+          answer.test_ask ? OE.el('div', { class: 'small faint' }, answer.test_ask) : null,
+          answer.test_ask ? OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
+            OE.el('button', { type: 'button', class: 'link', 'data-focus': 'test', onclick: loadTest }, REVIEW_WORDS.test)) : null));
+      } else if (!answer.ok) {
+        parts.push(OE.el('div', { class: 'error small' }, answer.error || REVIEW_WORDS.noPictures),
+          OE.el('div', { class: 'row' }, button('again', REVIEW_WORDS.again, () => load(i))));
+      } else {
+        parts.push(OE.datesBlock(Array.isArray(answer.dates) ? answer.dates : [], REVIEW_WORDS.windowLabel(w.rank),
+          { colour: state.colour, choose, strip: true, unit }));
+        if (answer.caption) parts.push(OE.el('div', { class: 'footnote' }, answer.caption));
+        parts.push(OE.el('div', { class: 'row', style: 'justify-content:flex-end;gap:16px' },
+          OE.el('button', { type: 'button', class: 'link', 'data-focus': 'test', onclick: loadTest }, REVIEW_WORDS.testHead),
+          OE.el('button', { type: 'button', class: 'link', 'data-focus': 'turn-off', onclick: () => setPictures(false) }, REVIEW_WORDS.turnOff)));
+      }
+    }
+    pane.hidden = false;
+    pane.replaceChildren(...parts);
+    if (had) {
+      const again = pane.querySelector('[data-focus="' + had + '"]');
+      OE.focusIfHere(again && !again.disabled ? again : heading);
+    }
+  }
+  cards();
+  if (n < total) section.append(OE.el('div', { class: 'small muted' }, REVIEW_WORDS.firstShown(n, total)));
+  section.append(strip, more, pane, csvBlock(), numbersFold(windows, unit));
+  return section;
+}
+
+/* A review set of a Studio result (its block's check_request, the server's):
+   one button that sends the projects card's check request for this map
+   (OE.JOB_TEXT.check), with the reader test's line (B/R10). A host that does
+   not take the message shows it to type (OE.sendJob). */
+// WORDING: r4p2
+const CHECK_WORDS = {
+  line: 'You label a random sample. This list is not one.',
+  button: 'Check how wrong this map is',
+};
+function checkBlock(app, request) {
+  if (!request || typeof request !== 'object') return null;
+  const id = /^[A-Za-z0-9_.:-]{1,200}$/;
+  const resultId = typeof request.result_id === 'string' ? request.result_id : '';
+  // The prediction's id may be unknown (null: a review set's result names
+  // none); olmoearth_check_map needs the result's id only.
+  const predictionId = typeof request.prediction_id === 'string' ? request.prediction_id : '';
+  if (!id.test(resultId) || (predictionId && !id.test(predictionId))) return null;
+  const name = typeof request.name === 'string' ? request.name : '';
+  let text = OE.JOB_TEXT.check({ result_id: resultId, prediction_id: predictionId, name });
+  // No prediction id: the request names none (no empty brackets).
+  if (!predictionId) text = text.replace(' (prediction_id )', '');
+  // No Studio name given: the request names none (no empty quote).
+  if (!name) text = text.replace(OE.named(''), '');
+  const typed = OE.typeSlot();
+  return OE.el('div', { class: 'card stack' },
+    OE.el('div', {}, CHECK_WORDS.line),
+    OE.el('div', { class: 'row' },
+      OE.el('button', { class: 'primary', onclick: () => OE.sendJob(app, text, typed) }, CHECK_WORDS.button)),
+    typed);
+}
+
+/* The estimate's words on its result card and its unfinished sheet: the
+   design of 13 Nov 2026 (two figure-first cards) and the reader test's
+   FINAL texts (A/estimate-7, A/estimate-8 and A/estimate-9, window ->
+   square; reader test 2: B/result-two-ranges, B/result-parts-not-averaged,
+   A/F03). Counts and the tool's own ranges only. unit is the view's (the
+   result's unit, or the unfinished sheet's): "point" for a sheet of single
+   pixels at grid points, so the card says points where the sheet did
+   (r4-d-1 findings R2 and R7); anything else "square". The rate, its range
+   and what the card cannot tell are the server's sentences (headline,
+   last_line), shown whole. */
+// WORDING: squares; r4h R4 (checked), r4h R3 (partsHead, otherPart)
+const RESULT_WORDS = {
+  title: 'Result: this map',
+  // "80 squares checked", and with Cannot tell answers ", 2 Cannot tell" (k).
+  checked: (n, unit, k) => OE.counted(n, unitOf(unit)) + ' checked' + (k > 0 ? ', ' + k + ' Cannot tell' : ''),
+  ruleUsed: (text) => 'Rule you used: “' + text + '”',
+  ruleTyped: '(typed before the squares were picked)',
+  ruleOwner: '(the app owner\'s rule, 11 Nov 2026)',
+  gradedBefore: (at) => 'The answers on this sheet changed after it was first graded (' + at + ').'
+    + ' Answers changed after seeing where the map disagrees make this result invalid.',
+  // "The 80 squares you checked", "The 20 points you checked".
+  squaresHead: (n, unit) => (n === 1 ? 'The ' + unitOf(unit) + ' you checked'
+    : 'The ' + n + ' ' + unitOf(unit) + 's you checked'),
+  partsHead: 'One result per part, never averaged',
+  // k: the parts not checked yet (round 4 pass 2, finding 17); the server's
+  // SAY_OTHER and SAY_OTHERS, word for word, with their reason (r4-m M2:
+  // this check gives no range for a combined rate, so readers do not average).
+  // WORDING: r4m M2
+  otherPart: (k) => (k === 1
+    ? 'Check the other part too. Report the parts\' results side by side; do not average or add them: this check'
+      + ' gives no range for a combined rate.'
+    : 'Check the other ' + k + ' parts too. Report the parts\' results side by side; do not average or add them:'
+      + ' this check gives no range for a combined rate.'),
+  details: 'Details',
+  // The second check, picked class by class: the outlined button under the
+  // uncovered lines, and what it is, in Details beside it only (r4-i O3).
+  // WORDING: r4i O3
+  classCheck: 'Check each class the map draws',
+  // WORDING: r4i O3
+  classCheckDetail: (unit) => 'Check each class the map draws: a separate check with its own ranges. It picks '
+    + unitOf(unit) + 's for each class the map draws, which need not be the classes you did not see. It is planned'
+    + ' after this result was read, so it is its own check and is never pooled with this one.',
+  sheetFile: (name, unit) => 'To see where the sampled ' + unitOf(unit) + 's are, open the label sheet file ('
+    + name + ') in a spreadsheet or GIS. It lists each ' + unitOf(unit) + '\'s place and whether the map was'
+    + ' right there. These are sampled ' + unitOf(unit) + 's only, not all of the map\'s errors.',
+  unfinished: (left, n, unit) => 'Not finished yet: ' + left + ' of ' + n + ' ' + unitOf(unit) + 's on this sheet'
+    + ' have no answer. Answer every ' + unitOf(unit) + ', then press Estimate the error rate again.',
+};
+
+/* The rate and its range together (div.oe-rate): the server's headline,
+   which holds the rate and its 95% range in one sentence ("The map is wrong
+   on about 1 square in 8: 12.5%, 95% range 6.1% to 21.7%."; with Cannot
+   tell, "Error rate: 10.0% to 12.5%, 95% range 6.1% to 21.7%."), then the
+   line that draws them (OE.fig.rateLine: the rate as a dot, or with Cannot
+   tell its two ends as a short dark bar, over the pale 95% band, with the
+   band's two ends as numbers under it: the server's low_text and high_text,
+   r4-k K6), then, when which part of its map the sheet is is not known, the
+   server's hedge (r4-h R4). No other text: without the figure helpers, the
+   headline alone. The page computes nothing: every number shown is the
+   server's text. */
+function rateBlock(r) {
+  const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+  const text = (v) => (typeof v === 'string' && v ? v : '');
+  if (!text(r.headline)) return null;
+  const rate = finite(r.rate) ? r.rate : null;
+  const line = OE.fig && typeof OE.fig.rateLine === 'function' && finite(r.low) && finite(r.high)
+    ? OE.fig.rateLine({
+      rate, low: r.low, high: r.high,
+      rateLow: finite(r.rate_low) ? r.rate_low : null, rateHigh: finite(r.rate_high) ? r.rate_high : null,
+      rateText: rate !== null ? text(r.rate_text) : text(r.rate_range_text), rangeText: text(r.range_text),
+      // The band's two ends as numbers under it (r4-k K6): the server's texts.
+      lowText: text(r.low_text), highText: text(r.high_text),
+    })
+    : null;
+  return OE.el('div', { class: 'oe-rate' },
+    OE.el('p', { class: 'big' }, r.headline),
+    line,
+    text(r.hedge) ? OE.el('p', { class: 'oe-hedge' }, r.hedge) : null);
+}
+
+/* The second check of a result card, picked class by class (r4-i O3), from
+   the server's class_check ({result_id, part_file, unit}): the ids it names,
+   each matching the job buttons' id pattern (the part's file only when the
+   server gives one: a map in several parts), with its unit word; else null,
+   so no button and no Details line are drawn. */
+function classCheckOf(r, unit) {
+  const id = /^[A-Za-z0-9_.:-]{1,200}$/;
+  const c = r.class_check && typeof r.class_check === 'object' ? r.class_check : null;
+  if (!c || typeof c.result_id !== 'string' || !id.test(c.result_id)) return null;
+  const partFile = typeof c.part_file === 'string' ? c.part_file : null;
+  if (partFile !== null && !id.test(partFile)) return null;
+  return { result_id: c.result_id, part_file: partFile, unit: unitOf(typeof c.unit === 'string' ? c.unit : unit) };
+}
+
+/* The estimate's result card (data.result, the server's, for an ok
+   olmoearth_estimate_map_error on a label sheet), figure first, three
+   lines (r4-h): the title and what was checked (with how many were Cannot
+   tell); (1) the headline with its line and the hedge (rateBlock); (2) what
+   the check did not cover (the server's uncovered lines: one rare class
+   with its counts, or the rare classes' names only; the classes no square
+   had), directly under it, and under them, when the server names the
+   result by ids, one outlined button that asks Claude for a second check
+   picked class by class (r4-i O3, OE.JOB_TEXT.byClass); the rule used; a
+   sheet changed after its first grading; the squares checked, each
+   coloured by the class seen, outlined where the map said otherwise, a
+   Cannot tell square empty and dashed (r4-i O2), with a count line per
+   class seen with enough squares, or with Cannot tell answers the server's
+   one line in their place (squares.no_split) (OE.fig.squares); the parts,
+   one result each and never averaged (OE.fig.parts, only with two or more
+   parts), and to check the other part while one is not; (3) the last line
+   (the server's: what it was checked against, no verdict); then the rest
+   in a closed Details fold: the rare classes' counted lines
+   (uncovered_detail, r4-i F2), the unseen classes' names
+   (squares.unseen_detail), what the second check is (beside its button
+   only), the tool's rows, its figure with where the sheet file is, and the
+   tool's notes. The words that count what was checked follow the result's
+   unit (r.unit: squares, or points). Each part's result stands alone;
+   nothing here is computed. */
+function resultCard(app, data) {
+  const r = data.result;
+  const text = (v) => (typeof v === 'string' && v ? v : '');
+  const unit = unitOf(r.unit);
+  const n = Number.isInteger(r.n_checked) ? r.n_checked : null;
+  const unjudged = Number.isInteger(r.n_unjudged) && r.n_unjudged > 0 ? r.n_unjudged : 0;
+  const card = OE.el('section', { class: 'card stack oe-result' });
+  card.append(OE.el('h2', {}, text(r.title_text) || RESULT_WORDS.title));
+  const sub = [text(r.period_text), n !== null ? RESULT_WORDS.checked(n, unit, unjudged) : '']
+    .filter(Boolean).join(' · ');
+  if (sub) card.append(OE.el('p', { class: 'small muted' }, sub));
+  const rate = rateBlock(r);
+  if (rate) card.append(rate);
+  // What the check did not cover, directly under the headline (r4-h R2).
+  const uncovered = (Array.isArray(r.uncovered) ? r.uncovered : []).filter((s) => text(s));
+  if (uncovered.length) {
+    card.append(OE.el('div', { class: 'stack oe-uncovered' }, uncovered.map((s) => OE.el('p', {}, s))));
+  }
+  // Under them, the second check picked class by class (r4-i O3): one
+  // outlined button whose press sends Claude the request; a message the host
+  // does not take shows beside it, to type (OE.sendJob).
+  const classCheck = classCheckOf(r, unit);
+  if (classCheck) {
+    const typed = OE.typeSlot();
+    card.append(OE.el('div', { class: 'row oe-class-check' },
+      OE.el('button', { type: 'button', onclick: () => OE.sendJob(app, OE.JOB_TEXT.byClass(classCheck), typed) },
+        RESULT_WORDS.classCheck),
+      typed));
+  }
+  if (r.rule && typeof r.rule === 'object' && text(r.rule.text)) {
+    const whose = r.rule.source === 'typed' ? RESULT_WORDS.ruleTyped
+      : r.rule.source === 'owner' ? RESULT_WORDS.ruleOwner : '';
+    card.append(OE.el('p', { class: 'small' }, RESULT_WORDS.ruleUsed(r.rule.text) + (whose ? ' ' + whose : '')));
+  }
+  const before = r.graded_before && typeof r.graded_before === 'object' ? r.graded_before : null;
+  if (before && before.changed === true) {
+    card.append(OE.el('p', { class: 'small error' }, RESULT_WORDS.gradedBefore(text(before.first_at) || 'earlier')));
+  }
+  const sq = r.squares && typeof r.squares === 'object' ? r.squares : null;
+  // The names of the classes no square had, for the Details fold, when the
+  // uncovered line says only how many (more than five of them).
+  const unseenDetail = sq ? text(sq.unseen_detail) || null : null;
+  if (sq && Array.isArray(sq.cells) && sq.cells.length && OE.fig && typeof OE.fig.squares === 'function') {
+    // A class seen in enough squares gets its line; the others have none
+    // (null): the uncovered lines above say them. With Cannot tell answers no
+    // class has a line, and the server's one line takes their place (r4-i O2).
+    const lines = (Array.isArray(sq.classes) ? sq.classes : [])
+      .filter((c) => c && typeof c === 'object' && text(c.line)).map((c) => OE.el('p', { class: 'small' }, c.line));
+    if (text(sq.no_split)) lines.push(OE.el('p', { class: 'small oe-no-split' }, sq.no_split));
+    card.append(OE.el('div', { class: 'stack' },
+      OE.el('h3', {}, RESULT_WORDS.squaresHead(n !== null ? n : sq.cells.length, unit)), OE.fig.squares(sq),
+      ...lines));
+  }
+  const parts = (Array.isArray(r.parts) ? r.parts : []).filter((p) => p && typeof p === 'object');
+  if (parts.length > 1 && OE.fig && typeof OE.fig.parts === 'function') {
+    // How many other parts are not checked yet: one line, singular or plural.
+    const other = parts.filter((p) => p.state === 'not').length;
+    card.append(OE.el('div', { class: 'stack' },
+      OE.el('h3', {}, RESULT_WORDS.partsHead), OE.fig.parts(parts, { mode: 'result' }),
+      other ? OE.el('p', { class: 'small' }, RESULT_WORDS.otherPart(other)) : null));
+  }
+  if (text(r.last_line)) card.append(OE.el('p', { class: 'small' }, r.last_line));
+  const rows = Array.isArray(r.fold_rows) && r.fold_rows.length ? r.fold_rows
+    : (Array.isArray(data.card) ? data.card : []);
+  const folded = [];
+  // First the rare classes' counted lines, when the face names two or more
+  // without counts (r4-i F2), then the unseen names, then what the second
+  // check is, beside its button only (r4-i O3).
+  const fewDetail = (Array.isArray(r.uncovered_detail) ? r.uncovered_detail : []).filter((s) => text(s));
+  fewDetail.forEach((s) => folded.push(OE.el('p', { class: 'small oe-few-detail' }, s)));
+  if (unseenDetail) folded.push(OE.el('p', { class: 'small oe-unseen-detail' }, unseenDetail));
+  if (classCheck) {
+    folded.push(OE.el('p', { class: 'small oe-class-check-detail' }, RESULT_WORDS.classCheckDetail(classCheck.unit)));
+  }
+  if (rows.length) folded.push(cardBlock(rows));
+  if (data.figure && data.figure.svg) {
+    folded.push(figureBlock(app, data));
+    if (text(r.sheet_name)) folded.push(OE.el('p', { class: 'small' }, RESULT_WORDS.sheetFile(r.sheet_name, unit)));
+  }
+  if (Array.isArray(data.must_state) && data.must_state.length) folded.push(notesBlock(data.must_state));
+  if (folded.length) card.append(OE.fold(RESULT_WORDS.details, ...folded));
+  return card;
+}
+
+/* Said on the fold that holds a card's rest once its lead has words (a
+   plan's and a review set's, the server's LEAD), and a plan's or a review
+   set's card table and notes always (r4-h V7), and a plan's sheet as a file
+   (planFile, r4-m M3). */
+// WORDING: r4p2
+const FOLD_LABEL = 'More about this result';
+
+/* The review tools, whose picture (the sampled grid shaded from most sure to
+   least sure, no place in it) is the first thing in the closed fold, with
+   the tool's caption (r4-i F8, the round's fallback: the picture's own
+   title, subtitle, legend and caption say "windows", "review budget" and
+   "review set", which no face says, and the figure has no way to leave them
+   out), and whose one legend line follows it there, nothing of it on the
+   face (r4-j J4: on the face it explained no picture in view). */
+const REVIEW_TOOLS = ['olmoearth_review_set', 'olmoearth_review_set_from_result'];
+/* The legend line for that picture, by the review block's unit: a Studio
+   result's points (one pixel read in each square of its grid), else squares. */
+// WORDING: r4h V1
+const REVIEW_LEGEND = (unit) => (unitOf(unit) === 'point'
+  ? 'Shade is the order only, most sure to least sure among the points read, not an amount of doubt; each square'
+    + ' stands for the one pixel read in it.'
+  : 'Shade is the order only, most sure to least sure among the squares read, not an amount of doubt.');
+
+function show(app, params) {
+  const data = OE.viewData(params);
+  OE.disposeEditors(root);  // a label editor drawn before drops its timers and listeners
+  root.replaceChildren(OE.el('div', { class: 'overline' }, kindOf(data.tool)));
+  if (data.needs_sign_in) {
+    const panel = OE.signInPanel(app, {
+      acceptCurrent: true,  // signed in since, in another panel: no page needed
+      // WORDING: r4p2 (where Studio makes a key, after "your Studio API key", as in the default note)
+      note: 'This tool needs OlmoEarth Studio. Sign in on a page this app opens in your browser, served on this computer; your Studio API key (in Studio, open your profile, then API Keys) goes from there to the OlmoEarth Agent here, not through Claude.',
+      onDone: (status) => {
+        // Signed in: one contained button, the one that runs the tool again,
+        // which takes the focus the sign-in's button had. A message the host
+        // does not take shows under it, to type (OE.sendJob).
+        const typed = OE.typeSlot();
+        const again = OE.el('button', {
+          class: 'primary', onclick: () => OE.sendJob(app, 'I have signed in to OlmoEarth Studio. Run ' + data.tool + ' again.', typed),
+        }, 'Run it again');
+        panel.replaceWith(OE.el('div', { class: 'card stack' },
+          OE.el('div', {}, OE.accountLine(status.account)),
+          OE.el('div', { class: 'row', style: 'justify-content:flex-end' }, again, typed)));
+        OE.focusIfHere(again);
+      },
+    });
+    root.append(panel);
+    return;
+  }
+  if (!data.ok) {
+    // A sheet not labelled through (the server's unfinished counts): what is
+    // left, as a step, not a failure; no hint for Claude (A/estimate-9). Its
+    // unit word is the unfinished counts' unit (else the view's): points
+    // for a sheet of points, else squares.
+    const unfinished = data.unfinished && typeof data.unfinished === 'object' ? data.unfinished : null;
+    const left = unfinished ? unfinished.left : null;
+    const of = unfinished ? unfinished.n : null;
+    if (Number.isInteger(left) && Number.isInteger(of) && left > 0 && of >= left) {
+      root.append(OE.el('div', { class: 'card' }, RESULT_WORDS.unfinished(left, of, unfinished.unit || data.unit)));
+      return;
+    }
+    root.append(OE.el('div', { class: 'card error' },
+      OE.el('div', {}, data.error || 'The tool failed.'),
+      data.hint ? OE.el('div', { class: 'small', style: 'margin-top:8px;color:var(--text)' }, data.hint) : null));
+    return;
+  }
+  // The estimate of a label sheet: its own figure-first card, which holds
+  // the rest in its Details fold.
+  if (data.result && typeof data.result === 'object') {
+    root.append(resultCard(app, data));
+    return;
+  }
+  // The lead (null while it has no words, so nothing moves), then a review
+  // set's window cards, then a refusal's reason, always on the face (round
+  // 4 pass 2, finding 18: never folded under lines about a list that does not
+  // exist), then the card's other parts: a plan's and a review set's card
+  // table and notes always in the closed fold (r4-h V7), lead or not; every
+  // other part as before, in the fold only once the lead has words. A review
+  // set's picture, with the tool's caption, is the fold's first node (r4-i
+  // F8), and its one legend line the next (r4-j J4), never on the face; no
+  // picture, no legend line.
+  const lead = OE.lead(data.lead);
+  if (lead) root.append(lead);
+  const plan = Boolean(data.labels_csv_path);
+  const review = REVIEW_TOOLS.includes(data.tool);
+  if (data.review && typeof data.review === 'object') root.append(reviewBlock(app, data.review));
+  if (typeof data.reason === 'string' && data.reason) root.append(reasonBlock(data.reason));
+  const keepFolded = plan || review;
+  const inFold = [];
+  const onFace = [];
+  // A node goes to the fold once the lead has words, and a plan's or a
+  // review set's card table and notes (keep) always.
+  const put = (node, keep) => { (lead || (keep && keepFolded) ? inFold : onFace).push(node); };
+  const reviewFigure = review && data.figure && data.figure.svg ? figureBlock(app, data) : null;
+  if (reviewFigure) {
+    // Its legend line directly after it, in the fold (r4-j J4), by the review
+    // block's unit (a Studio result's points), else the view's.
+    const unit = data.review && typeof data.review === 'object' ? data.review.unit : data.unit;
+    inFold.push(reviewFigure, OE.el('div', { class: 'small review-legend' }, REVIEW_LEGEND(unit)));
+  }
+  if (Array.isArray(data.card) && data.card.length) put(cardBlock(data.card), true);
+  // A plan's figure waits for its sheet's counts (sheetButton): never drawn
+  // beside a blind sheet that is not complete, whose SVG the server holds.
+  let figureSlot = null;
+  if (plan && data.figure && (data.figure.svg || data.figure.held)) put(figureSlot = OE.el('div', { class: 'stack' }), false);
+  else if (data.figure && data.figure.svg && !reviewFigure) put(figureBlock(app, data), false);
+  if (Array.isArray(data.must_state) && data.must_state.length) put(notesBlock(data.must_state), true);
+  // A plan's sheet as a file: the fold's last line, never on the face (r4-m M3).
+  if (plan) inFold.push(planFile(data));
+  root.append(...onFace);
+  if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));
+  // A review set of a Studio result: the check of how wrong the map is, under the notes.
+  const ask = data.review && typeof data.review === 'object' ? checkBlock(app, data.review.check_request) : null;
+  if (ask) root.append(ask);
+  if (plan) root.append(sheetButton(app, data, figureSlot));
+  if (root.children.length === 1) root.append(OE.el('div', {}, 'Done.'));
+}
+
+await OE.start('olmoearth-result', {
+  onResult: (params, app) => show(app, params),
+  // The host's display mode (full screen, and back): a label editor's face follows it.
+  onContext: (ctx) => OE.sheetMode(ctx.displayMode),
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OlmoEarth Studio sign-in</title>
+<script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
+<link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
+</head>
+<body>
+<main id="root" class="stack"><div class="muted">Loading...</div></main>
+<script>
+// WORDING: r4k K2
+setTimeout(function(){if(!window.OE_STARTED){var r=document.getElementById('root');if(r)r.textContent='This card could not start here. Carry on in the chat.';}},10000);
+</script>
+<script type="module">
+import { App } from "@EXT_APPS_URL@";
+/*@SCRIPTS@*/
+
+const root = document.getElementById('root');
+
+const SOURCE = {
+  environment: 'OLMOEARTH_API_KEY in the server\'s configuration',
+  'key-file': 'The saved key file',
+  'signed-in': 'Signed in for this session',
+};
+
+/* The account card: who the key signs in as, as Studio's key and value rows.
+   'Use another key' opens the sign-in below the card, not inside it. */
+function accountCard(app, status, { signedInNow = false } = {}) {
+  const account = status.account || {};
+  const n = account.n_projects;
+  const projects = typeof n === 'number' ? (n >= 50 ? '50 or more' : String(n)) : null;
+  const another = OE.el('button', { class: 'link', 'aria-expanded': 'false' }, 'Use another key');
+  const slot = OE.el('div', {});
+  another.addEventListener('click', () => {
+    if (slot.firstChild) { slot.replaceChildren(); another.setAttribute('aria-expanded', 'false'); return; }
+    // One contained button per view: after a fresh sign-in, 'Continue in the chat' keeps it.
+    slot.replaceChildren(OE.signInPanel(app, { primary: !signedInNow, onDone: (s) => render(app, s, { signedInNow: true }) }));
+    another.setAttribute('aria-expanded', 'true');
+  });
+  const actions = OE.el('div', { class: 'row' },
+    OE.signOutButton(app, { cls: 'small', onSignOut: (s) => render(app, s) }));
+  if (signedInNow) {
+    actions.append(OE.el('button', {
+      class: 'primary', onclick: () => OE.say(app, 'I have signed in to OlmoEarth Studio. Continue.'),
+    }, 'Continue in the chat'));
+  }
+  return [
+    OE.el('section', { class: 'card stack' },
+      OE.el('h1', {}, 'Studio account'),
+      OE.kv([
+        ['User', account.user_name || null],
+        ['Organization', account.organization || null],
+        ['Projects', projects],
+        ['Key source', SOURCE[status.source] || null],
+      ]),
+      OE.el('div', { class: 'spread' }, another, actions)),
+    slot,
+  ];
+}
+
+function render(app, status, { signedInNow = false } = {}) {
+  root.replaceChildren();
+  if (status && status.signed_in && !status.key_problem) {
+    root.append(...accountCard(app, status, { signedInNow }));
+    // Just signed in with the panel's button (the focus was in it): on to the next step.
+    if (signedInNow) {
+      const next = [...root.querySelectorAll('button.primary')].find((b) => b.textContent === 'Continue in the chat');
+      OE.focusIfHere(next);
+    }
+    return;
+  }
+  if (status && status.key_problem) {
+    root.append(OE.el('div', { class: 'card error small' }, status.key_problem));
+  }
+  root.append(OE.signInPanel(app, { onDone: (s) => render(app, s, { signedInNow: true }) }));
+}
+
+await OE.start('olmoearth-sign-in', {
+  onResult: (params, app) => render(app, OE.viewData(params)),
+});
+</script>
+</body>
+</html>

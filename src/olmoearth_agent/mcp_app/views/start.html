@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OlmoEarth Agent start</title>
+<script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
+<link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
+<style>
+  /* The jobs: one row each, in two columns every row shares: the buttons in
+     the first, each as wide as the widest label, and each one line in the
+     second, all from one left edge, wrapped lines staying in it; a message to
+     type spans both, under its row. On a narrow panel, one column: each
+     button full width, its line under it. (The widest label is about 310px,
+     so below 560px the second column would be too narrow to read.) */
+  .items { list-style: none; margin: 0; padding: 0; }
+  .items.jobs { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 12px; }
+  .items li { padding: 10px 0; border-top: 1px solid var(--rule); }
+  .jobs li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; row-gap: 4px; }
+  .items li:first-child { border-top: 0; padding-top: 0; }
+  .items li:last-child { padding-bottom: 0; }
+  .jobs li > button { grid-column: 1; width: 100%; }
+  .jobs li > .line { grid-column: 2; }
+  .jobs li > .oe-type { grid-column: 1 / -1; }
+  /* The main job's row first; then a small heading over the other jobs,
+     spanning both columns, so the buttons keep sharing one. */
+  .jobs li.main > .line { color: var(--text); }
+  .jobs li.jobs-head { padding-bottom: 0; }
+  .jobs li.jobs-head > h2 { grid-column: 1 / -1; font-size: 12px; line-height: 18px; font-weight: 600;
+    color: var(--text-2); }
+  @media (max-width: 560px) {
+    .items.jobs { grid-template-columns: minmax(0, 1fr); }
+    .jobs li > button, .jobs li > .line, .jobs li > .oe-type, .jobs li.jobs-head > h2 { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+<main id="root" class="stack"><div class="muted">Loading...</div></main>
+<script>
+// WORDING: r4k K2
+setTimeout(function(){if(!window.OE_STARTED){var r=document.getElementById('root');if(r)r.textContent='This card could not start here. Carry on in the chat.';}},10000);
+</script>
+<script type="module">
+import { App } from "@EXT_APPS_URL@";
+/*@SCRIPTS@*/
+
+const root = document.getElementById('root');
+
+/* What the start card says about the key while signed out: what a key is
+   and where Studio makes one (B/S4), then what to do without a Studio
+   account (r4-h P1: A/F15, E/start-3), at the end. */
+// WORDING: r4h P1
+const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio makes for you (in Studio, open your profile, then API Keys). It stays on this computer and goes only to Studio, never through Claude. No Studio account? Ask whoever made the map how to get one of your own. Do not use their key.';
+
+/* The card's three plain lines under its title (OE.lead): what it is, what
+   to do next (r4-h P1, D/D-start-1: a job below, or a question typed in the
+   chat), what it cannot tell. Nothing folds on this card. */
+// WORDING: r4h P1
+const START_LEAD = {
+  what: 'Jobs this app can do with your Studio maps. The first checks how wrong a map is.',
+  next: 'Sign in if asked, then press a job below, or type what you want in the chat.',
+  cannot: 'Nothing about your map yet. No job here finds the error without your own answers.',
+};
+
+/* Each drawing of the card takes the next number; the status read on mount,
+   when it answers after a later drawing, is dropped. */
+let generation = 0;
+
+/* Signed in: a key in effect that Studio has not refused. */
+const signedIn = (status) => Boolean(status && status.signed_in && !status.key_problem);
+
+/* One job: a button that sends its request to Claude as the user's words
+   (OE.sendJob: a message the host does not take shows under the row, to
+   type), and its one line. The main job's button is the card's one contained
+   button once signed in (the sign-in holds that role while signed out);
+   the others are outlined. Off (disabled) while signed out; aria-disabled
+   while its message is being sent, so it keeps the focus. */
+function jobRow(app, job, on) {
+  const slot = OE.typeSlot();
+  let busy = false;
+  const main = job.main === true;
+  const button = OE.el('button', { type: 'button', class: main && on ? 'primary' : null, disabled: !on }, job.label);
+  button.addEventListener('click', async () => {
+    if (busy || button.disabled) return;
+    busy = true;
+    button.setAttribute('aria-disabled', 'true');
+    try { await OE.sendJob(app, job.message, slot); } finally {
+      busy = false;
+      button.setAttribute('aria-disabled', 'false');
+    }
+  });
+  return OE.el('li', { class: main ? 'main' : null }, button, OE.el('div', { class: 'small muted line' }, job.line), slot);
+}
+
+/* The jobs in one grid, so the columns stay shared: the main job's row
+   first (the server marks it; the first job when none is marked), then a
+   row spanning both columns with the heading "Other jobs", then the rest. */
+function jobRows(app, jobs, on) {
+  const marked = jobs.findIndex((j) => j && j.main === true);
+  const at = marked >= 0 ? marked : 0;
+  const main = { ...jobs[at], main: true };
+  const others = jobs.filter((_, i) => i !== at);
+  return [
+    jobRow(app, main, on),
+    // WORDING: held for the reader test
+    others.length ? OE.el('li', { class: 'jobs-head' }, OE.el('h2', {}, 'Other jobs')) : null,
+    ...others.map((job) => jobRow(app, job, on)),
+  ];
+}
+
+function render(app, data) {
+  generation += 1;
+  const status = data.status || {};
+  const on = signedIn(status);
+  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  root.replaceChildren(OE.el('h1', {}, 'What this app can do'));
+  const lead = OE.lead(START_LEAD);
+  if (lead) root.append(lead);
+  if (on) {
+    root.append(OE.accountBar(app, status.account, { onSignOut: (s) => render(app, { ...data, status: s }) }));
+  } else {
+    if (status.key_problem) root.append(OE.el('div', { class: 'card error small' }, status.key_problem));
+    root.append(OE.signInPanel(app, {
+      acceptCurrent: true,  // a sign-in made in another panel counts here
+      note: KEY_NOTE,
+      onDone: (s) => {
+        render(app, { ...data, status: s });
+        // The user pressed the sign-in's button: the focus goes on to the first job.
+        OE.focusIfHere(root.querySelector('.jobs button'));
+      },
+    }));
+  }
+  if (!jobs.length) {
+    root.append(OE.el('div', { class: 'faint' }, 'Ask Claude what this app can do.'));
+    return;
+  }
+  root.append(OE.el('section', { class: 'card stack' },
+    OE.el('ul', { class: 'items jobs', 'aria-label': 'Jobs' }, jobRows(app, jobs, on)),
+    on ? null : OE.el('div', { class: 'small faint' }, 'Sign in to start a job.')));
+}
+
+/* Once, when the card opens: whether the user signed in or out since the tool
+   ran (a card reopened from the history). It moves no focus; when it fails, the
+   card stays as drawn. */
+async function recheck(app, data) {
+  const mine = generation;
+  let now = null;
+  try { now = await OE.call(app, 'olmoearth_app_status'); } catch (err) { return; }
+  if (mine !== generation || !now) return;
+  if (signedIn(now) !== signedIn(data.status)) render(app, { ...data, status: now });
+}
+
+await OE.start('olmoearth-start', {
+  onResult: (params, app) => {
+    const data = OE.viewData(params);
+    render(app, data);
+    recheck(app, data);
+  },
+});
+</script>
+</body>
+</html>

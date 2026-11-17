@@ -82,6 +82,7 @@ from olmoearth_agent.security.paths import safe_path, workspace_root
 from olmoearth_agent.tools import inferencex
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
+from olmoearth_agent.tools.result_ids import resolving
 from olmoearth_agent.tools.sampling import (
     FAILED,
     NODATA,
@@ -932,7 +933,49 @@ async def _review_set(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]
                 budget=float(out["realised_budget"]),
             )
         )
-    return out
+    return rules.add_card(out, _review_set_card(out))
+
+
+#: What ranks a review set drawn with ``order='boundary_first'``, as the
+#: tool's schema names that order: its card's "Ranked by", the margin (the
+#: result's ``signal``) as the row's detail, never the margin alone.
+BOUNDARY_FIRST_RANKING = (
+    "windows touching a predicted class boundary first (order boundary_first), "
+    "then margin, lowest first"
+)
+
+
+def _review_set_card(out: dict[str, Any]) -> list[list[str] | None]:
+    """The card rows of a review set, from its result's own fields.
+
+    How many windows to look at first, of how many, at the budget realised;
+    what ranks them (:data:`BOUNDARY_FIRST_RANKING` for a boundary-first
+    set, whose windows are not the least confident ones, with the margin as
+    its detail); and the full list's file, when one was written.
+    """
+    n_review, n_windows = out.get("n_review"), out.get("n_windows")
+    budget = out.get("realised_budget")
+    first = (
+        f"{n_review:,} of {n_windows:,} (budget {float(budget):g})"
+        if isinstance(n_review, int)
+        and isinstance(n_windows, int)
+        and isinstance(budget, (int, float))
+        else None
+    )
+    path = out.get("review_list_path")
+    ranked = (
+        rules.card_row("Ranked by", BOUNDARY_FIRST_RANKING, out.get("signal"))
+        if out.get("order") == "boundary_first"
+        else rules.card_row("Ranked by", out.get("signal"))
+    )
+    return [
+        # WORDING: r4h V7
+        rules.card_row("Squares to look at first", first),
+        ranked,
+        rules.card_row(
+            "Full list", os.path.basename(path) if isinstance(path, str) else None
+        ),
+    ]
 
 
 #: The date forms ``olmoearth_compare_review`` takes, as the package's
@@ -1760,13 +1803,25 @@ async def sample_result_scores(
     if decl and decl.get("value_type") == "regression":
         rng = declared_range(None, decl)
         if not (rng == (0.0, 1.0)) and threshold is None:
+            # The reader test's B/C4 (13 Nov 2026) where a range is declared;
+            # with none declared, the words before it.
+            # WORDING: r4p2
+            reason = (
+                f"This map's values are declared to run from {rng[0]:g} to "
+                f"{rng[1]:g}, not from 0 to 1, so the app cannot tell which value, "
+                "if any, separates yes from no. If the map has such a cut-off "
+                "value, pass it as threshold to rank its windows; whoever made "
+                "the map can say."
+                if rng
+                else "this regression band declares the range none, not [0, 1]: a "
+                "margin is a distance from a decision, so ranking it needs a "
+                "decision threshold. Pass threshold (the value at which the map's "
+                "decision flips) to rank by distance from it."
+            )
             return _refusal(
                 result_id,
                 name,
-                f"this regression band declares the range {list(rng) if rng else 'none'}, "
-                "not [0, 1]: a margin is a distance from a decision, so ranking it "
-                "needs a decision threshold. Pass threshold (the value at which "
-                "the map's decision flips) to rank by distance from it.",
+                reason,
                 declared_range=list(rng) if rng else None,
             )
 
@@ -2022,10 +2077,12 @@ async def _review_set_from_result(
             "Budgets are fractions of the valid sampled windows, not of the map's "
             "pixels.",
             # No upstream figure: no recorded experiment covers a Studio band
-            # (exp86 round 8 carried such figures to cases they exclude).
-            "This review set is chosen to hold errors; it is not a sample, and "
-            "its error rate overstates the map's. To say how wrong the map is, "
-            "use olmoearth_plan_label_sample.",
+            # (exp86 round 8 carried such figures to cases they exclude), so
+            # nothing says the points listed first are wrong more often.
+            # WORDING: r4h V2 (D/D-said-2 FINAL)
+            "This list is not a random sample: no error rate follows from it, and "
+            "no point on it is known to be wrong. To say how wrong the map is, the "
+            "user checks a random sample (for you: olmoearth_plan_label_sample).",
         ],
         "facts": ranked["facts"],
         "must_state": ranked["must_state"],
@@ -2059,10 +2116,14 @@ async def _review_set_from_result(
     if bool(args.get("save_scores", True)):
         name = f"scores_{slug(result_id, 12)}_{slug(str(sampled.property_name))}_g{grid}.json"
         out["scores_path"] = write_json_file(name, sampled.to_file())
+        # Its last sentences in the reader test's words (B/C3, 13 Nov 2026).
+        # WORDING: r4p2
         out["next_step"] = (
             "To estimate how wrong this map is, pass scores_path to "
-            "olmoearth_plan_label_sample (it chooses which windows to label); "
-            "the file also holds each window's location for the reviewer."
+            "olmoearth_plan_label_sample (it chooses which windows to label). "
+            "Each window's place and score are saved on this computer in the "
+            f"file {out['scores_path']}. Places are never shown in the chat or "
+            "on the card."
         )
         if topk:
             out["next_step"] += f" {TOPK_ZONE_STEP}"
@@ -2076,7 +2137,58 @@ async def _review_set_from_result(
             budget=float(ranked["realised_budget"]),
         )
     )
-    return out
+    return rules.add_card(out, _review_from_result_card(out))
+
+
+#: Most budgets a review set of a result lists on its card, one row each.
+CARD_BUDGETS = 3
+
+
+def _review_from_result_card(out: dict[str, Any]) -> list[list[str] | None]:
+    """The card rows of a review set of a Studio result, from its own fields.
+
+    One row per budget, at most :data:`CARD_BUDGETS` (with more budgets, the
+    first ``CARD_BUDGETS - 1`` and the last, the largest, which the figure
+    outlines), in the reader test's words (B/R3 and B/R4, 13 Nov 2026): the
+    share checked, its windows and the margin they reach ("how decided"), and
+    on the largest budget's row, the one the figure outlines, its windows of
+    the valid sampled windows; the sampled grid; the property; and what ranks
+    them, with the result's ``signal`` as the detail.
+    """
+    budgets = out.get("budgets") or []
+    n_valid = (out.get("sampling") or {}).get("n_valid")
+    # The outlined (last) budget always gets its row (round 4 pass 2,
+    # finding 24): a card that listed only the first rows would leave the set
+    # the picture outlines without one.
+    listed = (
+        budgets
+        if len(budgets) <= CARD_BUDGETS
+        else [*budgets[: CARD_BUDGETS - 1], budgets[-1]]
+    )
+    rows: list[list[str] | None] = []
+    for entry in listed:
+        k = int(entry["n_review"])
+        outlined = (
+            f" ({k:,} of {int(n_valid):,}; outlined in the picture)"
+            if entry is budgets[-1] and isinstance(n_valid, int)
+            else ""
+        )
+        # WORDING: r4p2
+        rows.append(
+            rules.card_row(
+                f"If you check {100 * float(entry['budget']):g}% of the windows",
+                f"the first {k:,} window{'' if k == 1 else 's'}{outlined}; how "
+                f"decided: up to {float(entry['margin_cut']):g}",
+            )
+        )
+    return [
+        *rows,
+        rules.card_row(
+            "Sampled grid", rules.sampled_grid_card_value(out.get("sampling"))
+        ),
+        rules.card_row("Property", out.get("property_name")),
+        rules.card_row("Ranked by", "margin, lowest first", out.get("signal")),
+    ]
 
 
 async def _budget_ceiling(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
@@ -2293,7 +2405,7 @@ def build_review_set_tools() -> list[RegisteredTool]:
                     "required": ["result_id"],
                 },
             ),
-            handler=_review_set_from_result,
+            handler=resolving("result_id")(_review_set_from_result),
             capability=Capability(
                 does="rank a Studio result's sampled windows for review by "
                 "distance from its decision or its top-k margin",

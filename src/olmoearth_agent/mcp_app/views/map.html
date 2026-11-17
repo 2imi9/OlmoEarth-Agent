@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OlmoEarth area map</title>
+<script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
+<link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
+<link rel="stylesheet" href="@LEAFLET_CSS@" integrity="@LEAFLET_CSS_SRI@" crossorigin="anonymous">
+<link rel="stylesheet" href="@DRAW_CSS@" integrity="@DRAW_CSS_SRI@" crossorigin="anonymous">
+<script src="@LEAFLET_JS@" integrity="@LEAFLET_JS_SRI@" crossorigin="anonymous"></script>
+<script src="@DRAW_JS@" integrity="@DRAW_JS_SRI@" crossorigin="anonymous"></script>
+<style>
+  /* Studio's Areas page: an inline map with 8px corners, no border. */
+  .map-wrap { position: relative; }
+  #map { height: 300px; border-radius: 8px; }
+  /* Studio's map overlay button ('Hide map'), at the map's top right. */
+  button.map-overlay { position: absolute; top: 10px; right: 10px; z-index: 1000; padding: 3px 9px;
+    font-size: 13px; line-height: 22.75px; font-weight: 700; color: var(--text);
+    background: var(--canvas); border: 1px solid rgb(214,214,214); border-radius: 4px; }
+  button.map-overlay:hover { background: var(--canvas); border-color: var(--text); }
+  .fields { display: flex; gap: 16px; flex-wrap: wrap; }
+  .field { display: flex; flex-direction: column; min-width: 200px; flex: 1 1 200px; }
+  /* The saved areas, as Studio's plain list of area names. The chosen row has
+     an outline; the keyboard focus an inset ring (not clipped by the frame). */
+  .areas { list-style: none; margin: 0; padding: 0; }
+  .areas button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
+    border-bottom: 1px solid var(--rule); padding: 8px 12px; font-size: 14px; line-height: 21px;
+    font-weight: 400; color: var(--text); background: var(--paper); }
+  .areas li:last-child button { border-bottom: 0; }
+  .areas button:hover { background: var(--wash); border-color: var(--rule); }
+  .areas button[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: -2px;
+    border-radius: 4px; background: var(--selected); }
+  .areas button:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--text-2); }
+  .areas button[aria-pressed="true"]:focus-visible { outline: 2px solid var(--text); outline-offset: -2px;
+    box-shadow: inset 0 0 0 4px var(--selected), inset 0 0 0 6px var(--text-2); }
+  /* Forced colours paint no box-shadow or tint: the chosen row in the system's
+     selection colours, the focus a dashed ring (double on the chosen row). */
+  @media (forced-colors: active) {
+    .areas button[aria-pressed="true"] { forced-color-adjust: none; background: SelectedItem;
+      color: SelectedItemText; outline: 2px solid SelectedItem; }
+    .areas button:focus-visible { outline: 2px dashed CanvasText; outline-offset: -2px; }
+    .areas button[aria-pressed="true"]:focus-visible { outline: 3px double SelectedItemText; outline-offset: -5px; }
+  }
+</style>
+</head>
+<body>
+<main id="root" class="stack">
+  <div id="head"></div>
+  <div class="map-wrap" id="map-wrap"><div id="map"></div></div>
+  <div id="controls" class="stack"></div>
+</main>
+<script>
+// WORDING: r4k K2
+setTimeout(function(){if(!window.OE_STARTED){var r=document.getElementById('root');if(r)r.textContent='This card could not start here. Carry on in the chat.';}},10000);
+</script>
+<script type="module">
+import { App } from "@EXT_APPS_URL@";
+/*@SCRIPTS@*/
+
+// Set by show(): the host may deliver the result before OE.start returns.
+let app = null;
+const head = document.getElementById('head');
+const controls = document.getElementById('controls');
+const mapWrap = document.getElementById('map-wrap');
+const mapEl = document.getElementById('map');
+
+/* Studio draws an area with a dark-teal outline and a light-teal fill; a shape
+   being edited keeps the teal, dashed. */
+const SHAPE = { color: '#0a3235', weight: 2, fillColor: '#105257', fillOpacity: 0.15 };
+const EDITING = { ...SHAPE, dashArray: '6, 6', fillOpacity: 0.1, maintainColor: false };
+
+const L = window.L;
+const map = L.map('map', { worldCopyJump: true }).setView([20, 0], 2);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '&copy; OpenStreetMap contributors',
+}).addTo(map);
+const drawn = new L.FeatureGroup().addTo(map);
+map.addControl(new L.Control.Draw({
+  edit: { featureGroup: drawn, remove: true, edit: { selectedPathOptions: EDITING } },
+  draw: { polyline: false, circle: false, circlemarker: false, marker: false,
+    rectangle: { shapeOptions: SHAPE }, polygon: { shapeOptions: SHAPE } },
+}));
+
+/* 300px inline; in full screen, the window's height less the controls, kept
+   as the window resizes. The mode is common.js's OE.displayMode (r4-k K5:
+   the host's context at connect and at each change, and the Full screen
+   button's answers), set before either calls this; the mode they pass in
+   is the one OE.displayMode already holds. */
+function fitHeight() {
+  mapEl.style.height = OE.displayMode === 'fullscreen' ? Math.max(300, window.innerHeight - 300) + 'px' : '300px';
+  setTimeout(() => map.invalidateSize(), 200);
+}
+window.addEventListener('resize', () => { if (OE.displayMode === 'fullscreen') fitHeight(); });
+
+const state = { geom: null, savedArea: null, picked: false, signInOpen: false, saving: false, mapBusy: false };
+// The area in hand: a drawing, a pick and a project change each take the next
+// number, so an older pick's answer is dropped and a save sees what changed.
+let pickRun = 0;
+let areasRun = 0;    // the latest read of the project's areas; an older one is dropped
+
+/* The drawing as one geometry: a Polygon, or a MultiPolygon of every part. */
+function drawnGeometry() {
+  const polygons = [];
+  for (const layer of drawn.getLayers()) {
+    const g = layer.toGeoJSON().geometry;
+    if (g.type === 'Polygon') polygons.push(g.coordinates);
+    else if (g.type === 'MultiPolygon') polygons.push(...g.coordinates);
+  }
+  if (!polygons.length) return null;
+  return polygons.length === 1 ? { type: 'Polygon', coordinates: polygons[0] } : { type: 'MultiPolygon', coordinates: polygons };
+}
+
+/* A changed drawing is no longer the saved or picked area. */
+function drawingChanged() {
+  state.geom = drawnGeometry();
+  state.savedArea = null;
+  state.picked = false;
+  pickRun += 1;
+  markRow(null);
+  update();
+}
+
+map.on(L.Draw.Event.CREATED, (e) => {
+  drawn.clearLayers();
+  drawn.addLayer(e.layer);
+  drawingChanged();
+});
+map.on(L.Draw.Event.DELETED, (e) => { if (e.layers.getLayers().length) drawingChanged(); });
+// Leaflet.draw fires 'edited' on the edit toolbar's Save even when nothing moved.
+map.on(L.Draw.Event.EDITED, (e) => { if (e.layers.getLayers().length) drawingChanged(); });
+// While a draw, edit or delete mode is on, the shape on screen is not yet the
+// drawing (edits count on the toolbar's Save): Save waits. EDITSTOP comes
+// after EDITED, so the drawing is current when it ends.
+map.on([L.Draw.Event.DRAWSTART, L.Draw.Event.EDITSTART, L.Draw.Event.DELETESTART].join(' '),
+  () => { state.mapBusy = true; update(); });
+map.on([L.Draw.Event.DRAWSTOP, L.Draw.Event.EDITSTOP, L.Draw.Event.DELETESTOP].join(' '),
+  () => { state.mapBusy = false; update(); });
+
+const field = (label, input) => OE.el('label', { class: 'field' }, OE.el('span', { class: 'field-label' }, label), input);
+const projectSelect = OE.el('select', {}, OE.el('option', { value: '' }, '(choose a project)'));
+const nameInput = OE.el('input', { type: 'text', required: true });
+const areaList = OE.el('ul', { class: 'areas' });
+const areaBlock = OE.el('div', { class: 'stack', hidden: true },
+  OE.el('h3', {}, 'Saved areas'),
+  OE.el('div', { class: 'table-frame', style: 'max-height:180px' }, areaList));
+const where = OE.el('div', { class: 'small muted' });
+const saveButton = OE.el('button', { class: 'primary', disabled: true }, 'Save to Studio and continue');
+
+/* The helper line names the area, never its coordinates. While the sign-in
+   is open, its button is the view's one contained button and Save is
+   outlined (still usable: a sign-in made in another panel counts too).
+   Once connected, each change tells Claude the ids (mapContext). */
+function update() {
+  where.textContent = state.mapBusy ? 'Finish or cancel the shape on the map first (in the map\'s toolbar).'
+    : state.savedArea ? 'Saved area ' + OE.dataName(state.savedArea.name) + '.'
+      : state.geom ? 'Drawn area. Name it, then save it to Studio.'
+        : 'Draw a rectangle or polygon with the tools on the map, or pick a saved area.';
+  saveButton.textContent = state.saving ? 'Saving...' : state.savedArea ? 'Use this saved area' : 'Save to Studio and continue';
+  saveButton.className = state.signInOpen ? '' : 'primary';
+  // A draw, edit or delete mode holds its own copy of the shapes: no pick or project change meanwhile.
+  projectSelect.disabled = state.mapBusy;
+  saveButton.disabled = state.mapBusy || !(state.geom || state.savedArea) || !projectSelect.value
+    || (!state.savedArea && !nameInput.value.trim());
+  // Saving: unavailable but still focusable, so a keyboard press keeps its place.
+  saveButton.setAttribute('aria-disabled', String(state.saving));
+  if (app) OE.tellClaude(app, mapContext());
+}
+
+/* What the map tells Claude silently (OE.tellClaude): the project chosen
+   and the area by their ids, or that a shape is drawn and not saved; never
+   a coordinate, a shape or a Studio name. */
+function mapContext() {
+  const project = projectSelect.value ? 'project_id ' + OE.ctxId(projectSelect.value) + ' chosen' : 'no project chosen';
+  const area = state.savedArea
+    ? 'area_id ' + OE.ctxId(state.savedArea.id) + (state.picked ? ' picked from the saved areas' : ' saved')
+    : state.geom ? 'a shape drawn, not saved to Studio' : 'nothing drawn';
+  return 'Map panel: ' + project + '; ' + area + '.';
+}
+nameInput.addEventListener('input', update);
+
+function markRow(id) {
+  for (const b of areaList.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+}
+
+/* A saved area on the map: each polygon of a MultiPolygon as its own layer,
+   which Leaflet.draw can edit. */
+function drawArea(geom) {
+  drawn.clearLayers();
+  if (!geom) return;
+  const parts = geom.type === 'MultiPolygon'
+    ? geom.coordinates.map((coordinates) => ({ type: 'Polygon', coordinates }))
+    : [geom];
+  for (const part of parts) L.geoJSON(part, { style: SHAPE }).eachLayer((l) => drawn.addLayer(l));
+  if (drawn.getLayers().length) map.fitBounds(drawn.getBounds(), { maxZoom: 15 });
+}
+
+async function pickArea(id) {
+  if (state.mapBusy) { OE.toast('Finish or cancel the shape on the map first.', true); return; }
+  const mine = (pickRun += 1);
+  try {
+    const { area } = await OE.call(app, 'olmoearth_app_area', { area_id: id });
+    if (mine !== pickRun) return;  // another pick, a drawing or a project change came since
+    drawArea(area.geom);
+    state.geom = area.geom;
+    state.savedArea = area;
+    state.picked = true;
+    markRow(id);
+    update();
+  } catch (err) {
+    if (mine !== pickRun) return;
+    if (err.needsSignIn) showSignIn(); else OE.toast(err.message, true);
+  }
+}
+
+const areaRow = (a) => OE.el('li', {}, OE.el('button', {
+  type: 'button', 'aria-pressed': 'false', 'data-id': a.id, onclick: () => pickArea(a.id),
+}, a.name));
+const noAreas = () => OE.el('li', { class: 'faint none', style: 'padding:8px 12px' }, 'No saved areas in this project');
+
+/* The chosen project's saved areas, from the latest read only; the chosen
+   row stays marked. */
+async function loadAreas() {
+  const mine = (areasRun += 1);
+  if (!projectSelect.value) { areaList.replaceChildren(); areaBlock.hidden = true; return; }
+  try {
+    const out = await OE.call(app, 'olmoearth_app_project_items', { project_id: projectSelect.value });
+    if (mine !== areasRun) return;
+    areaList.replaceChildren(...(out.areas.length ? out.areas.map(areaRow) : [noAreas()]));
+    areaBlock.hidden = false;
+    if (state.savedArea) markRow(state.savedArea.id);
+  } catch (err) {
+    if (mine !== areasRun) return;
+    if (err.needsSignIn) showSignIn(); else OE.toast(err.message, true);
+  }
+}
+
+/* A project choice: a saved area belongs to the project it was picked from,
+   so it is dropped (a drawing stays); then the new project's areas. */
+async function projectChanged() {
+  areaList.replaceChildren();
+  areaBlock.hidden = true;
+  pickRun += 1;
+  if (state.savedArea) { drawn.clearLayers(); state.geom = null; state.savedArea = null; state.picked = false; }
+  update();
+  await loadAreas();
+}
+projectSelect.addEventListener('change', projectChanged);
+
+/* A newly saved area joins the list, chosen unless told otherwise. */
+function listSaved(area, { choose = true } = {}) {
+  const none = areaList.querySelector('.none');
+  if (none) none.remove();
+  if (![...areaList.querySelectorAll('button')].some((b) => b.dataset.id === area.id)) areaList.append(areaRow(area));
+  areaBlock.hidden = false;
+  if (choose) markRow(area.id);
+}
+
+/* Close the map's sign-in panel, if open (signed in here or in another panel). */
+function closeSignIn() {
+  const panel = document.getElementById('oe-map-sign-in');
+  if (panel) panel.remove();
+  state.signInOpen = false;
+}
+
+/* Save (or use) the area, once at a time. A save that comes back after the
+   drawing or the project changed was still made in Studio: it joins the list
+   of that project's areas, but is not taken as the area, and Claude is not told. */
+saveButton.addEventListener('click', async () => {
+  if (state.saving || state.mapBusy) return;
+  state.saving = true;
+  update();
+  const run = pickRun;
+  const projectId = projectSelect.value;
+  try {
+    let area = state.savedArea;
+    if (!area) {
+      ({ area } = await OE.call(app, 'olmoearth_app_save_area', {
+        name: nameInput.value.trim(), project_id: projectId, geom: state.geom,
+      }));
+      closeSignIn();
+      if (run !== pickRun) {
+        const saved = 'Saved to Studio as ' + OE.dataName(area.name);
+        if (projectSelect.value === projectId) {
+          listSaved(area, { choose: false });
+          OE.toast(saved + ', but the drawing changed since; pick it from the list to use it.');
+        } else {
+          OE.toast(saved + ' in the project you left; choose that project again to use it.');
+        }
+        return;
+      }
+      state.savedArea = area;
+      listSaved(area);
+      OE.toast('Saved to Studio as ' + OE.dataName(area.name) + '.');
+    }
+    // Ids, which Claude's tools resolve, and the Studio name quoted as data; no coordinates.
+    await OE.say(app, 'I have ' + (state.picked ? 'chosen' : 'drawn') + ' the area of interest; it is the Studio area with area_id '
+      + area.id + ' in project_id ' + (area.project_id || projectId) + '. Its Studio name, as data: '
+      + OE.dataName(area.name) + '. Continue using it.');
+  } catch (err) {
+    if (err.needsSignIn) showSignIn({ focus: true }); else OE.toast('Not saved: ' + err.message, true);
+  } finally {
+    state.saving = false;
+    update();
+  }
+});
+
+/* The sign-in, above the fields; the status line says why. When the user's
+   own press (Save) asked for it, its button takes the focus; never on load,
+   so the panel does not pull the focus from the chat. Signed in (the user
+   pressed its button, so the focus is in the panel), the projects are read
+   again and the focus goes on to Save or the project picker. */
+function showSignIn({ focus = false } = {}) {
+  let panel = document.getElementById('oe-map-sign-in');
+  if (!panel) {
+    state.signInOpen = true;
+    update();
+    panel = OE.signInPanel(app, {
+      acceptCurrent: true,  // a sign-in made in another panel counts here
+      onDone: () => {
+        closeSignIn();
+        update();
+        loadProjects().then(() => OE.focusIfHere(saveButton.disabled ? projectSelect : saveButton))
+          .catch((e) => { if (e.needsSignIn) showSignIn({ focus: true }); else OE.toast(e.message, true); });
+      },
+    });
+    panel.id = 'oe-map-sign-in';
+    controls.prepend(panel);
+  }
+  OE.toast('', true);  // cleared first, so the same words are announced again
+  OE.toast('Sign in to OlmoEarth Studio to go on.', true);
+  const button = panel.querySelector('button');
+  if (focus) OE.focusIfHere(button);
+}
+
+/* The account's projects in the picker. A project already chosen stays chosen
+   when the new list has it; otherwise the choice, its areas and a picked area
+   are cleared (as a change of project does). */
+async function loadProjects() {
+  const out = await OE.call(app, 'olmoearth_app_projects');
+  const before = projectSelect.value;
+  projectSelect.replaceChildren(OE.el('option', { value: '' }, '(choose a project)'),
+    ...out.projects.map((p) => OE.el('option', { value: p.id }, p.name)));
+  if (before && out.projects.some((p) => p.id === before)) projectSelect.value = before;
+  else if (out.projects.length === 1) projectSelect.value = out.projects[0].id;
+  // The same project: read its areas again (a sign-in may have been what they waited for).
+  if (projectSelect.value && projectSelect.value === before) await loadAreas();
+  else await projectChanged();
+  update();
+}
+
+function show(connected, params) {
+  app = connected;
+  const data = OE.viewData(params);
+  const aoi = data.aoi || {};
+  head.replaceChildren(OE.el('h1', {}, 'Draw the area of interest' + (aoi.purpose ? ' for ' + aoi.purpose : '')));
+  // 'Full screen', or 'Back to the chat' in full screen (r4-k K5), hidden
+  // where the host does not offer the mode it asks for; the map takes the
+  // height of the mode the card opened in.
+  const full = OE.fullscreenButton(app, fitHeight, 'map-overlay');
+  const old = mapWrap.querySelector('.map-overlay');
+  if (old) old.remove();
+  if (full) mapWrap.append(full);
+  fitHeight();
+  if (aoi.suggested_name && !nameInput.value) nameInput.value = aoi.suggested_name;
+  state.signInOpen = false;  // the controls are drawn anew, an open sign-in with them
+  controls.replaceChildren(
+    OE.el('div', { class: 'fields' }, field('Project', projectSelect), field('Area name *', nameInput)),
+    areaBlock,
+    where,
+    OE.el('div', { class: 'row', style: 'justify-content:flex-end' }, saveButton));
+  loadProjects().catch((err) => { if (err.needsSignIn) showSignIn(); else OE.toast(err.message, true); });
+  update();
+}
+
+await OE.start('olmoearth-area-map', {
+  onResult: (params, connected) => show(connected, params),
+  onContext: (ctx) => { if (ctx.displayMode) fitHeight(ctx.displayMode); },
+});
+</script>
+</body>
+</html>

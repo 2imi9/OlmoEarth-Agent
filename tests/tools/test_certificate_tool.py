@@ -138,11 +138,14 @@ async def _direct_run(root: Path) -> dict[str, Any]:
 SOUTH_UP, SOUTH_UP_RASTER = "south_up", "scores.tif"
 
 
-async def _south_up_run(root: Path) -> dict[str, Any]:
+async def _south_up_run(
+    root: Path, classes: dict[str, str] | None = None
+) -> dict[str, Any]:
     """A direct run whose scores raster is south up, read by the tool.
 
     A score_area.py run (its raster and a ``manifest.json`` that says the
-    values are probabilities) of 32 x 64 pixels, 128 windows of 4 px, whose
+    values are probabilities, and names the channels' ``classes`` when given)
+    of 32 x 64 pixels, 128 windows of 4 px, whose
     row 0 is the south edge: the y step is positive. GDAL georeferences such
     a grid, and the zone mask on its windows, with a ModelTransformation
     matrix, which olmoearth-inferencex refused in a zone mask from 1.17.0 to
@@ -161,7 +164,11 @@ async def _south_up_run(root: Path) -> dict[str, Any]:
     }
     with rasterio.open(run / SOUTH_UP_RASTER, "w", **profile) as dst:
         dst.write(_softmax(40, 32, 64))
-    manifest = {"scores": {"file": SOUTH_UP_RASTER, "values": "probabilities"}}
+    manifest: dict[str, Any] = {
+        "scores": {"file": SOUTH_UP_RASTER, "values": "probabilities"}
+    }
+    if classes is not None:
+        manifest["classes"] = classes
     (run / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return await _ok("olmoearth_scores_from_file", {"run_dir": SOUTH_UP})
 
@@ -234,6 +241,14 @@ async def test_a_certificate_round_trip_reproduces(_scores_root: Path) -> None:
     assert plan["seed"] == expected == plan["seed_from_map"]["seed"]
     assert plan["seed_from_map"]["alpha"] == ALPHA
     assert plan["seed_from_map"]["map_sha256"] == drawn_seed["map_sha256"]
+    # Its card names the test the plan fixed, and the map's seed.
+    card = {row[0]: row[1:] for row in plan["card"]}
+    assert card["Design"] == [
+        "random",
+        f"certificate plan: alpha={ALPHA:g}, delta=0.1, rule 'prefix', fixed "
+        "before any label",
+    ]
+    assert card["Seed"] == [str(expected)]
     design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
     sheet = Path(plan["seed_from_map"]["package_sheet"])
     with open(sheet, encoding="utf-8", newline="") as fh:
@@ -651,6 +666,78 @@ async def test_a_certificate_rests_on_the_labels_first_given(
     assert again["ok"] is False and "was drawn before" in again["error"]
     assert plan["design_path"] in again["error"]
     assert _sheet_wrong(sheet) == ["0"] * BUDGET
+
+
+#: Class names a run's manifest gives its three channels.
+NAMED_CLASSES = {"0": "water", "1": "kelp", "2": "sand"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("named", [True, False])
+async def test_the_label_panels_finish_certifies_at_the_plans_alpha(
+    _scores_root: Path, named: bool
+) -> None:
+    """The MCP App panel's finish button on a certificate plan's sheet names
+    olmoearth_certify_zone at the alpha the plan fixed, never the estimate,
+    and the call it names, on the labels the panel saved, certifies.
+
+    A run whose manifest names its classes: the panel asks for the class seen
+    (no Cannot tell on a certificate plan) and never gets the map's class;
+    here the reviewer sees the map's class in every window, and the server
+    writes wrong 0 from the design. A run that names none (its scores file
+    calls the channels class_0, class_1, class_2) is labelled right or wrong,
+    with the map's class shown (owner ruling 1): wrong 0 on every window."""
+    from olmoearth_agent.mcp_app import sheet as panel
+
+    if named:
+        run = await _south_up_run(_scores_root, classes=NAMED_CLASSES)
+    else:
+        run = await _direct_run(_scores_root)
+    plan = await _map_plan(run["scores_path"])
+    data = panel.read_sheet(plan["labels_csv_path"])
+    assert (data["job"], data["finish_label"]) == ("certify", "Certify the zone")
+    assert data["finish_call"] == (
+        f"olmoearth_certify_zone with design_path {data['design_path']}, "
+        f"labels_path {data['path']} and alpha {ALPHA:g} (fixed by the plan)"
+    )
+    assert "estimate_map_error" not in data["finish_message"]
+    # The panel's answers go by handle (the server's own map from handle to
+    # window, never sent to the page).
+    _, handles = panel.window_handles(data["path"])
+    windows = [handles[w["handle"]] for w in data["windows"]]
+    if named:
+        assert data["label_rule"] == "seen" and data["face"] == "seen"
+        assert '"map_class"' not in json.dumps(data)
+        assert [a["label"] for a in data["answers"]] == ["Water", "Kelp", "Sand"]
+        design = json.loads(Path(data["design_path"]).read_text(encoding="utf-8"))
+        on_map = design["population"]["map_class"]
+        values = [str(on_map[w]) for w in windows]
+    else:
+        assert data["label_rule"] == "wrong" and data["face"] == "wrong"
+        assert all("map_class" in w for w in data["windows"])
+        assert [a["value"] for a in data["answers"]] == ["0", "1"]
+        assert "rule_note" not in data
+        values = ["0"] * len(windows)
+    panel.save_answers(
+        data["path"],
+        sheet_id=data["sheet_id"],
+        face=data["face"],
+        rule=data["label_rule"],
+        answers=[
+            {"handle": w["handle"], "answer": v}
+            for w, v in zip(data["windows"], values, strict=True)
+        ],
+    )
+    assert _sheet_wrong(Path(data["path"])) == ["0"] * len(windows)
+    zone = await _ok(
+        "olmoearth_certify_zone",
+        {
+            "design_path": data["design_path"],
+            "labels_path": data["path"],
+            "alpha": ALPHA,
+        },
+    )
+    assert zone["certified"] is True
 
 
 @pytest.mark.asyncio
