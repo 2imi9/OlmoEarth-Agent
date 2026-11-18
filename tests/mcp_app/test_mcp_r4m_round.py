@@ -85,11 +85,17 @@ CLASS_MAP_TELL = (
     "points.' Then ask the user two questions"
 )
 
-#: M4: the Check card's second line on a class map without scores.
+#: M4: the Check card's second line on a class map without scores, as round
+#: r5-e K7 cuts it (what the check gives is in its Details).
 CLASS_MAP_SECOND = (
-    "You get how often the map is wrong over a grid of points spread across the "
-    "map, with a range, not for every pixel. Each point needs your own imagery or "
-    "records from the map's dates; the app shows no pictures of points."
+    "The app shows no pictures of points: each needs your own imagery or records "
+    "from the map's dates."
+)
+#: M4: the sentence the model's note gives the user first (its own words since
+#: r5-e K7, "in these words or plainer"; the card says the same in another order).
+NOTE_TELL = (
+    "Each point needs your own imagery or records from the map's dates; the app "
+    "shows no pictures of points."
 )
 
 #: M5: the box's label beside the kelp rule, as r5-b J18 shortens it (the map
@@ -98,8 +104,10 @@ RULE_OWN = (
     "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
 )
 
-#: M6: what every sheet face says after its instruction.
-HIDDEN = "The map's answer is hidden: answer without looking at the map."
+#: M6: what every sheet face says after its instruction; r5-e H1: a clause of
+#: the first line ("..., without looking at the map."), no longer a sentence
+#: that says the answer is hidden and not to look.
+HIDDEN = ", without looking at the map."
 
 #: M8: the cloud line (reworded after review: only the case the rule leaves
 #: open; r5-d R02: as a case, not a fact about the square shown), the pane's
@@ -311,8 +319,13 @@ def test_m2_side_by_side_carries_its_reason_everywhere() -> None:
     assert "  // WORDING: r4m M2\n  otherPart: (k) => (k === 1\n" in words
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
-    assert _concat(one, {}) == server.SAY_OTHER.strip()
-    assert _concat(many, {"k": "3"}) == server.SAY_OTHERS.format(k="3").strip()
+    # Round r5-e, R4: the first sentence on the card's face, the second (with
+    # its reason, the server's SAY_SIDE_BY_SIDE word for word) in Details.
+    side = _concat(_entry(words, "sideBySide: "), {})
+    assert side == server.SAY_SIDE_BY_SIDE.strip()
+    assert _concat(one, {}) + " " + side == server.SAY_OTHER.strip()
+    many_said = _concat(many, {"k": "3"}) + " " + side
+    assert many_said == server.SAY_OTHERS.format(k="3").strip()
 
 
 # --------------------------------------------------------------------------- M3
@@ -356,13 +369,14 @@ def test_m3_the_fold_says_the_file_is_not_blind() -> None:
         " : PLAN_FILE_TAIL(data.unit);" in made
     )
     show = _between(page, "function show(app, params) {", "\n}\n")
+    # Round r5-e, R3: the sheet's button right under the lines, then Details.
     assert _in_order(
         show,
         "put(notesBlock(data.must_state), true);",
         "if (plan) inFold.push(planFile(data));",
-        "root.append(...onFace);\n  if (inFold.length) root.append(OE.fold(FOLD_LABEL,"
-        " ...inFold));",
-        "root.append(sheetButton(app, data, figureSlot));",
+        "root.append(...onFace);",
+        "if (plan) root.append(sheetButton(app, data, figureSlot));",
+        "if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));",
     )
     assert ".csv-path { overflow-wrap: anywhere; }" in page
 
@@ -412,8 +426,9 @@ def test_m3_a_plans_view_data_names_its_unit(
 
 
 def test_m4_a_class_maps_check_card_says_no_pictures_of_points() -> None:
-    """The second line, before any count is fixed; C6's tag kept under M4's;
-    the sheet's own line stays as it was."""
+    """The second line, before any count is fixed; C6's tag kept under M4's
+    (and r5-e's over it: K7 cut the face to two lines); the sheet's own line
+    stays as it was."""
     page = _read("check.html")
     lines = _after(
         page,
@@ -422,24 +437,25 @@ def test_m4_a_class_maps_check_card_says_no_pictures_of_points() -> None:
     )
     said = tuple(_concat(s, {}) for s in lines.rstrip(",").split(",\n"))
     assert said == (
-        "This map can be checked, on single points picked at random instead of squares.",
+        "This map can be checked on points picked at random, instead of squares.",
         CLASS_MAP_SECOND,
     )
     assert "at most 256 points" not in page
+    # r5-e H1: the sheet's line ends "..., without looking at the map."
     assert _said("whatPlaced", "point").startswith(
         "This sheet has no pictures. See where each point is, then say what was "
-        "there from your own imagery or records."
+        "there from your own imagery or records"
     )
 
 
 def test_m4_the_models_note_says_it_before_the_count() -> None:
     """In a client with no panel the model's note is all the user hears: it
-    says the card's sentence word for word before the question on the count
-    (review of r4-m), with its WORDING line."""
+    says the card's sentence before the question on the count (review of
+    r4-m; word for word until r5-e K7 put the card's in another order), with
+    its WORDING line."""
     note = server.CHECK_CLASS_MAP_NOTE
     assert CLASS_MAP_TELL in note
-    tell = CLASS_MAP_SECOND.split(" range, not for every pixel. ")[1]
-    assert f"'{tell}'" in note
+    assert f"'{NOTE_TELL}'" in note
     assert note.index(CLASS_MAP_TELL) < note.index("(1) 'How many points can you")
     source = Path(inspect.getsourcefile(server) or "").read_text(encoding="utf-8")
     tag = "# WORDING: r4h C6, E/said-refused-2; r4m M4\nCHECK_CLASS_MAP_NOTE = ("
@@ -472,13 +488,14 @@ def test_m6_every_sheet_face_says_not_to_look_at_the_map() -> None:
     its WORDING line; the old sentence ends nowhere with a stop. The
     right-or-wrong face has no such line: it shows the map's class. r5-b J11
     gave whatBare (no pictures, no places) other words, which keep "without
-    looking at the map"."""
+    looking at the map". r5-e H1: what and whatPlaced end with the clause
+    HIDDEN, one sentence each."""
     editor = _editor()
     assert "what: wrongFace ? null : picturesPossible ? W.what : whatBare," in editor
     for unit in ("square", "point"):
         one = "point" if unit == "point" else "square"
         assert _said("what", unit) == (
-            f"For each {one}, say what you see in the satellite pictures. {HIDDEN}"
+            f"Say what you see in each {one}'s satellite pictures{HIDDEN}"
         )
         # r5-b J11: a sheet with no pictures and no places says it cannot
         # show where a square is; it still says not to look at the map.
@@ -487,7 +504,7 @@ def test_m6_every_sheet_face_says_not_to_look_at_the_map() -> None:
         assert f"of each {one}, without looking at the map; " in bare
         assert _said("whatPlaced", unit) == (
             f"This sheet has no pictures. See where each {one} is, then say what was "
-            f"there from your own imagery or records. {HIDDEN}"
+            f"there from your own imagery or records{HIDDEN}"
         )
     lines = _words().split("\n")
     for key, tag in (
@@ -585,10 +602,13 @@ def test_m8_the_pane_shows_the_rules_absent_half_and_the_cloud_line() -> None:
 def test_m8_the_rule_block_says_the_cloud_line_on_a_face_with_cannot_tell() -> None:
     """Review of r4-m: the page copy has the rule the pictures have (both
     imagery.rule_for), so the pane's own rule lines are a fallback. The
-    sheet's rule block says the cloud line, after the scope, in the kelp-only
+    sheet's rule block says the cloud line, after the rule, in the kelp-only
     line's place, on a face that takes Cannot tell and can show pictures; the
-    block keeps three lines, and the kelp-only line where there is no cloud
-    line (a certificate plan's face, a sheet with no pictures)."""
+    kelp-only line is drawn only where there is no cloud line (a certificate
+    plan's face, a sheet with no pictures). r5-e H2: the scope is in the
+    Details fold now, and after review the kelp-only line follows it there
+    (limitNote), so the block (a box) holds the rule and, on such a face, the
+    cloud line."""
     editor = _editor()
     assert _in_order(
         editor,
@@ -599,12 +619,18 @@ def test_m8_the_rule_block_says_the_cloud_line_on_a_face_with_cannot_tell() -> N
     assert _in_order(
         block,
         "OE.el('strong', {}, 'Rule: '), pageRule),",
-        "data.rule_scope) : null,",
-        "    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)\n"
-        "      : typeof data.rule_limit === 'string' && data.rule_limit ? ",
+        "    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine) : null,\n",
         "    ruleExamples) : null;",
     )
     assert block.count("W.cloudLine") == 1
+    assert "data.rule_scope" not in block and "data.rule_limit" not in block
+    assert _in_order(
+        editor,
+        "  const scopeNote = typeof data.rule_scope === 'string'",
+        "  const limitNote = pageRule && scopeNote && !cloudOnFace && typeof "
+        "data.rule_limit === 'string' && data.rule_limit ? ",
+        "    classNoPeriod, scopeNote, limitNote, gradedWhy,\n",
+    )
 
 
 def test_m8_a_dates_heading_leaves_its_scene_cloud_to_the_panes_fold() -> None:

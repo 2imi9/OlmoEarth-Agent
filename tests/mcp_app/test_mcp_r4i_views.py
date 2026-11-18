@@ -201,7 +201,7 @@ def test_f8_a_review_sets_picture_is_folded_and_its_legend_after_it() -> None:
     is the first node of the fold, before the card table and the notes. r4-j
     J4: its one legend line is the fold's next node, only with a picture, and
     nothing of it is on the face (it explained no picture in view there);
-    then the check button and the plan's sheet as before."""
+    the check button and the plan's sheet come before the fold (r5-e R3)."""
     page = _read("result.html")
     assert "reviewPicture" not in page
     figure = _between(page, "function figureBlock(app, data,", "\n}\n")
@@ -211,9 +211,12 @@ def test_f8_a_review_sets_picture_is_folded_and_its_legend_after_it() -> None:
     assert caption in figure
     assert page.count("OE.el('figcaption'") == 1
     show = _between(page, "function show(app, params) {", "\n}\n")
+    # r5-e: the legend sits inside the picture's own box, over its buttons.
     pushed = (
-        "inFold.push(reviewFigure, OE.el('div', { class: 'small review-legend' },"
-        " REVIEW_LEGEND(unit)));"
+        "const legend = OE.el('div', { class: 'small review-legend' },"
+        " REVIEW_LEGEND(unit));\n"
+        "    reviewFigure.insertBefore(legend, reviewFigure.querySelector(':scope > .row'));\n"
+        "    inFold.push(reviewFigure);"
     )
     for text in (
         "const reviewFigure = review && data.figure && data.figure.svg"
@@ -236,16 +239,23 @@ def test_f8_a_review_sets_picture_is_folded_and_its_legend_after_it() -> None:
         "put(cardBlock(data.card), true);",
         "put(notesBlock(data.must_state), true);",
     )
+    # Round r5-e, R3: the one action (the check button, the plan's sheet
+    # button) right under the lines that lead to it, then one Details fold,
+    # whose last node is the look-first list's numbers.
     assert _in_order(
         show,
         "if (lead) root.append(lead);",
-        "root.append(reviewBlock(app, data.review));",
+        "const listBlock = data.review && typeof data.review === 'object'"
+        " ? reviewBlock(app, data.review) : null;",
+        "if (listBlock) root.append(listBlock);",
         "root.append(reasonBlock(data.reason));",
         pushed,
-        "root.append(...onFace);\n  if (inFold.length) root.append(OE.fold(FOLD_LABEL,"
-        " ...inFold));",
+        "if (plan) inFold.push(planFile(data));",
+        "if (listBlock && listBlock.numbers) inFold.push(listBlock.numbers);",
+        "root.append(...onFace);",
         "if (ask) root.append(ask);",
-        "root.append(sheetButton(app, data, figureSlot));",
+        "if (plan) root.append(sheetButton(app, data, figureSlot));",
+        "if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));",
     )
     assert "REVIEW_LEGEND(" not in _between(show, "const lead = ", "reviewBlock(app")
 

@@ -12,6 +12,21 @@
   .project .desc { margin: 4px 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden; min-height: 42px; }
   .project.open { grid-column: 1 / -1; cursor: default; }
+  /* r5-e S6: a closed card's bottom row (when it was made, "Tell Claude: this
+     project", "Show its maps") at the card's foot, so cards that share a grid
+     row end their buttons on one line; an open card spans the row and keeps
+     block layout. */
+  .project:not(.open) { display: flex; flex-direction: column; }
+  .project:not(.open) > .spread { margin-top: auto; }
+  /* In that column the ring's top margin no longer folds into the
+     description's (margins do not collapse in a flex column), so the ring
+     gives its own up there: it sits 8 px under the description closed as
+     open, and does not move when a card opens or closes. */
+  .project:not(.open) > .glyph-slot > .glyph-card { margin-top: 0; }
+  /* r5-e S7: the line on what the rings show, in one block with the cards it
+     explains: 12 px under the search (the stack's gap), 6 px over the cards,
+     so it reads with the cards, not as a hint of the search field (R2). */
+  .ring-block > #oe-ring-says { margin-bottom: 6px; }
   /* A project's title is its button (no button inside a button), with a chevron for its state. */
   main button.title { all: unset; box-sizing: border-box; display: flex; align-items: center; width: 100%;
     cursor: pointer; font: inherit; color: inherit; }
@@ -65,6 +80,9 @@
      on its first line, the name, the model and the status at full width on
      the next (the dates' slot then keeps no width of its own). */
   .items .pred-acts { margin-top: 4px; }
+  /* r5-e S6: the Outputs text button as wide as "Hide outputs", so a row's
+     job buttons start at one left edge whether its outputs are open or not. */
+  .items .pred-acts > button.link { min-width: 92px; text-align: left; }
   @media (max-width: 480px) {
     .items .lead.pred { flex-wrap: wrap; }
     .items .lead.pred > .lead-text { flex-basis: 100%; }
@@ -247,18 +265,24 @@ const showState = (button, name, open) => {
   button.setAttribute('aria-expanded', String(open));
 };
 
-/* The card's three plain lines under its heading (OE.lead): what it is (one
-   name for a thing: maps, and Studio's own word for a run), what to do next
+/* The card's one line under its heading (OE.lead, r5-e S5): what to do next
    (r5-a V3: the "Show its maps" button opens a project, its name still does
    too; then Check beside the map; r5-c S04: the button names in quotes, one
-   sentence), what this app cannot tell. Nothing else folds on this card but
-   an open project's models (MODELS_FOLD). */
-// WORDING: r5c S04
+   sentence). What the card is, its heading and PREDICTIONS_NOTE say; what
+   this app cannot tell, the server tells Claude. Nothing else folds on this
+   card but an open project's models (MODELS_FOLD). */
+// WORDING: r5e
 const PROJECTS_LEAD = {
-  what: 'Your Studio projects. Each holds the maps its models made over an area and a period; Studio calls each run a prediction.',
-  next: 'Next: press "Show its maps" on the project that holds your map, then "Check how wrong it is" beside the map.',
-  cannot: 'This app cannot tell which of several similar projects holds your map. Ask whoever made them.',
+  next: 'Press "Show its maps" on the project that holds your map, then "Check how wrong it is" beside the map.',
 };
+
+/* What the ring on each project card shows, said once, above the cards
+   (r5-e S7: it was the same caption beside every ring); shown only while a
+   card in view has its ring (compact rows draw none). It names the ring on
+   a project: an open project's prediction rows have rings of their own
+   (one prediction's months), which the rest of the line is not true of. */
+// WORDING: r5e
+const RING_SAYS = 'The ring on each project shows the months of the year that project\'s predictions cover, all years and areas counted together.';
 
 /* An open project's Models box sits in a closed fold of this name (r4-h
    A/F33): it serves making a new map, not the check. */
@@ -292,8 +316,11 @@ const NOT_A_MAP = 'Embeddings are not a map these jobs can check or rank.';
 
 /* One line under each completed prediction's row (r5-a V3): what the map
    shows and whether Check can run on it, by its model's kind (glyph.py:
-   classes, values, detection; unknown when the kind is not recorded, or the
-   prediction names no model). "At each pixel" is said only of a values
+   values, detection; unknown when the kind is not recorded, or the
+   prediction names no model). A class map's row has none (r5-e S7: the
+   line was the same on every class row, and its Check button beside it
+   says the same), so the rows whose lines differ stand out. "At each
+   pixel" is said only of a values
    model whose grain is pixel (values); one whose grain is another, or not
    recorded, gets the same sentence without it (valuesAny). A model the
    prediction names whose record is not among the models read here gets
@@ -301,9 +328,8 @@ const NOT_A_MAP = 'Embeddings are not a map these jobs can check or rank.';
    keeps NOT_A_MAP, as before, whatever its status. A failed row says why it
    has no button (failed, r5-c S08); a row still running says nothing. None
    names what a check samples: this card never does. */
-// WORDING: r5a V3 (classes, detection, unknown, unread); r5c S08 (values, valuesAny, failed)
+// WORDING: r5a V3 (detection, unknown, unread); r5c S08 (values, valuesAny, failed); r5e (classes: none)
 const ROW_SAYS = {
-  classes: 'Shows classes. Check can run on it.',
   values: 'Shows a number at each pixel. Check works if that number is a score from 0 to 1; its Check card tells you.',
   valuesAny: 'Shows a number. Check works if that number is a score from 0 to 1; its Check card tells you.',
   detection: 'Shows detections, not a map of classes. Check cannot run on it.',
@@ -314,16 +340,16 @@ const ROW_SAYS = {
 const rowSays = (kind, done, grain, unread, status) => (kind === 'embeddings' ? NOT_A_MAP
   : !done ? (status === 'failed' ? ROW_SAYS.failed : null) : unread ? ROW_SAYS.unread
     : kind === 'values' ? (grain === 'pixel' ? ROW_SAYS.values : ROW_SAYS.valuesAny)
-      : ['classes', 'detection'].includes(kind) ? ROW_SAYS[kind] : ROW_SAYS.unknown);
+      : kind === 'classes' ? null : kind === 'detection' ? ROW_SAYS.detection : ROW_SAYS.unknown);
 
 /* What the tick boxes are for, said under the Predictions heading after
    PREDICTIONS_NOTE where boxes are drawn (tick, r5-c S06: it was the first
    sentence of how); under the predictions, how a comparison works, and once
    two are ticked (B/P7). */
-// WORDING: r4p2 (ready); r5c S06 (tick, how)
+// WORDING: r4p2 (ready); r5e (tick, how: shorter, r5-e S5)
 const COMPARE = {
-  tick: 'Tick two finished maps of the same area and dates to say which is more accurate.',
-  how: 'You label a sample of the places where the two maps differ. The answer says which map is right more often there, or that these labels cannot tell; it does not say how accurate either map is.',
+  tick: 'Tick two finished maps of the same area and dates to compare them.',
+  how: 'You label only where the two maps differ. You see which is right more often there, or that your labels cannot tell, but not how accurate either map is.',
   ready: 'Two ticked. Press the button to start.',
 };
 
@@ -407,9 +433,10 @@ function resultRow(app, p, r, done, kind) {
    recorded); model its model's record, when read: its name and what it
    outputs follow the prediction's name, in the Models list's words (B/P1).
    An embeddings row, which has no job buttons, says why under it; every
-   other completed row says there what it shows and whether Check can run on
-   it (rowSays, r5-a V3), or that its model was not read, when it names one
-   whose record is not here; a failed row says that it failed (r5-c S08).
+   other completed row but a class map's (r5-e S7) says there what it shows
+   and whether Check can run on it (rowSays, r5-a V3), or that its model was
+   not read, when it names one whose record is not here; a failed row says
+   that it failed (r5-c S08).
    Its results show as its outputs, their list opening with OUTPUTS.first
    when the row has job buttons and there are several; a lone output has
    no job buttons of its own (r5-c S05: the row's use it). While a list of
@@ -592,8 +619,9 @@ function comparer(app, project) {
 }
 
 /* One summary card (Studio's dashboard): a title, an optional note under
-   it, a 'Recent' caption, the newest few items, 'See all (n)' for the rest,
-   and an optional footer. */
+   it, a 'Recent' caption only when 'See all (n)' follows (r5-e S5: a lone
+   'Recent' over a short list said nothing), the newest few items, 'See all
+   (n)' for the rest, and an optional footer. */
 function summaryCard(title, list, row, footer = null, note = null) {
   const sorted = list.slice().sort((a, b) => String(b.creation_time || '').localeCompare(String(a.creation_time || '')));
   const n = sorted.length >= 200 ? '200+' : String(sorted.length);  // the server reads at most 200
@@ -616,7 +644,7 @@ function summaryCard(title, list, row, footer = null, note = null) {
   return OE.el('div', { class: 'card summary proj-summary' },
     OE.el('h2', {}, title),
     note ? OE.el('div', { class: 'small muted' }, note) : null,
-    sorted.length ? [caption, ul, more, footer] : OE.el('div', { class: 'faint', style: 'margin-top:4px' }, 'No ' + title.toLowerCase()));
+    sorted.length ? [more ? caption : null, ul, more, footer] : OE.el('div', { class: 'faint', style: 'margin-top:4px' }, 'No ' + title.toLowerCase()));
 }
 
 /* The project's models (those its predictions name): each a row with its
@@ -722,8 +750,10 @@ function opener(app, project, title, slot, onState) {
   };
 }
 
-/* The description: blank until known, 'No description' when Studio has none. */
-const descText = (p) => (p.description === undefined ? '' : p.description || 'No description');
+/* The description, or blank: until it is known, and when Studio has none
+   (r5-e S7: 'No description' under every such name said the same on each
+   card; the card keeps the description's height, so the cards line up). */
+const descText = (p) => (p.description ? String(p.description) : '');
 
 /* A project as a card. Its bottom row: when it was made, then, at the right,
    "Tell Claude: this project" as a text button and "Show its maps" (r5-a
@@ -809,12 +839,18 @@ function renderProjects(app, projects, account, source = null) {
   const search = OE.el('input', { type: 'search', class: 'search', 'aria-label': 'Search projects',
     placeholder: 'Search by project name or description...' });
   const matches = (p, q) => !q || (p.name + ' ' + (p.description || '')).toLowerCase().includes(q);
+  // r5-e S7: what the rings show, once, above the cards; shown only while a card in view has its ring (not
+  // before the rings' read answers, when it fails or gives none, or when the search leaves no card with a
+  // ring). Not made with compact rows, which draw no ring.
+  const ringSays = !compact && list.length ? OE.el('div', { class: 'small muted', id: 'oe-ring-says', hidden: true }, RING_SAYS) : null;
+  const ringLine = () => { if (ringSays) ringSays.hidden = !target.querySelector('.glyph-card'); };
   const fill = () => {
     const q = search.value.trim().toLowerCase();
     const shown = items.filter((it) => matches(it.project, q));
     const empty = compact ? OE.el('tr', {}, OE.el('td', { colspan: '3', class: 'faint' }, 'No projects'))
       : OE.el('div', { class: 'faint' }, 'No projects');
     target.replaceChildren(...(shown.length ? shown.flatMap((it) => it.nodes) : [empty]));
+    ringLine();
   };
   search.addEventListener('input', fill);
   // Who is signed in, and Sign out, are in the top line (r5-a V2), not beside the heading.
@@ -823,7 +859,9 @@ function renderProjects(app, projects, account, source = null) {
   root.replaceChildren(...[
     OE.el('h1', {}, 'Projects in this Studio account'),
     OE.lead(PROJECTS_LEAD),
-    inProgressCard(app, onScreen), search, container,
+    inProgressCard(app, onScreen), search,
+    // r5-e S7: the rings' line in one block with the cards it explains (R2: not a loose line under the search field).
+    ringSays ? OE.el('div', { class: 'ring-block' }, ringSays, container) : container,
   ].filter(Boolean));
   fill();
   tellScreen(app, onScreen);
@@ -835,8 +873,9 @@ function renderProjects(app, projects, account, source = null) {
       .then((out) => {
         if (mine !== generation) return;
         for (const it of items) it.setGlyph((out.glyphs || {})[it.project.id] || null);
+        ringLine();  // no fill() here: moving the nodes would drop the focus
       })
-      .catch(() => { /* no rings: the cards stay as they are */ });
+      .catch(() => { /* no rings: the cards stay as they are, and the rings' line stays hidden */ });
   }
   return {
     merge(fresh) {

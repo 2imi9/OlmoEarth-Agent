@@ -4,7 +4,7 @@
 
    On a panel at least 680 px wide it is the overview figure of the OlmoEarth
    docs itself (docs.olmoearth.allenai.org, used with Ai2's permission, owner
-   17 Nov 2026), as a picture inlined by views.py (@OVERVIEW_DATA_URL@, from
+   17 Nov 2026), as a picture inlined by views.py (as PICTURE, from
    views/brand/olmoearth-overview.jpg: nothing is loaded from elsewhere). On
    a narrower panel that picture's words would be too small to read, so a
    strip of three boxes drawn in code says the same in plain words: Studio
@@ -18,9 +18,13 @@
    has two forms, CAPTION for the docs figure and CAPTION_NARROW for the
    strip (r5-d R04), shown at the same widths as what each describes.
 
-   The drawing uses common.js's tokens, but for the one small tile, which
-   takes the fixed colours TILE (a tile stands for a map, whose classes have
-   colours of their own). No mint: the dot on the line is the canvas colour.
+   The drawing uses common.js's tokens only. Its one small map, in the box
+   "Studio / makes a map", is a picture (r5-e S8): a finished Studio map
+   from the docs (views/brand/studio-map-example.jpg, inlined by views.py
+   as MAP_EXAMPLE), cut from inside its prediction layer, so it holds no
+   place, no base map, no Studio panel and no legend; aria-hidden with the
+   drawing (the wrapper's name says what Studio makes). No mint: the dot on
+   the line is the canvas colour.
    The drawing says no number: the line with a band and a dot has no label,
    so it never reads as a result. No call, no timer, no listener; everything
    lives inside OE.overview, so no name here meets one of the scripts
@@ -31,6 +35,10 @@ OE.overview = (() => {
 
   /* The docs figure, as a data URL (views.py fills it in). */
   const PICTURE = '@OVERVIEW_DATA_URL@';
+
+  /* The narrow strip's example map (r5-e S8), a JPEG as a data URL
+     (views.py fills it in). */
+  const MAP_EXAMPLE = '@MAP_EXAMPLE_DATA_URL@';
 
   /* An SVG element: svg('rect', {x: 1}, ...children); lists of children,
      nested too, are taken apart. */
@@ -73,25 +81,11 @@ OE.overview = (() => {
     narrowGet: ['You get', 'how often it is', 'wrong, with a', 'range'],
   };
 
-  /* The tile's colours: its ground, then its patches'. The one place a
-     colour is written out (see the head of this file). */
-  const TILE = { crops: ['#d9e8c8', '#7fb069', '#e6c36a', '#b7d48f'] };
-
-  /* The tile's patches over its ground, as [which of its TILE colours, the
-     patch's outline] in the tile's own 38 x 38 units; a patch at a corner
-     follows the tile's rounded corner. */
-  const PATCHES = {
-    crops: [
-      [1, 'M4 0H19V13H0V4A4 4 0 0 1 4 0Z'],
-      [2, 'M19 13H38V25H19Z'],
-      [3, 'M6 25H21V38H6Z'],
-      [3, 'M25 0H34A4 4 0 0 1 38 4V9H25Z'],
-    ],
-  };
-
+  /* r5-e S3: the docs picture has no box of its own: it sits, with its
+     caption and the docs link, in the start card's one white box
+     (.oe-overview-wrap, start.html). */
   const STYLE = `
-.oe-overview img.wide { display: none; width: 100%; max-width: 748px; height: auto;
-  background: var(--paper); border: 1px solid var(--divider); border-radius: 12px; }
+.oe-overview img.wide { display: none; width: 100%; max-width: 748px; height: auto; border-radius: 8px; }
 .oe-overview svg { display: block; width: 100%; height: auto; }
 .oe-overview svg.narrow { max-width: 440px; }
 .oe-overview-cap .cap-wide { display: none; }
@@ -104,7 +98,7 @@ OE.overview = (() => {
 .oe-overview text { font-family: var(--font); fill: var(--text); }
 .oe-overview .t { font-size: 13px; font-weight: 600; }
 .oe-overview .s { font-size: 11.5px; font-weight: 400; fill: var(--text-2); }
-.oe-overview .box { fill: var(--paper); stroke: var(--divider); stroke-width: 1; }
+.oe-overview .box { fill: var(--canvas); stroke: var(--divider); stroke-width: 1; }
 .oe-overview .ln { fill: none; stroke: var(--text-2); stroke-width: 1.25; stroke-linecap: round;
   stroke-linejoin: round; opacity: .55; }
 .oe-overview .tile-edge { fill: none; stroke: var(--field); stroke-width: 1; }
@@ -132,9 +126,11 @@ OE.overview = (() => {
      s a small line). */
   const text = (cls, x, y, words, anchor = null) => svg('text', { class: cls, x, y, 'text-anchor': anchor }, words);
 
-  /* A box and what it holds, as one group (g.inbox, the box first): white
-     (cls box), or the dark box of this app (cls app, the group .dark). The
-     browser test measures that each text of a group stays inside its box. */
+  /* A box and what it holds, as one group (g.inbox, the box first): the
+     canvas colour (cls box: cream inside the start card's white box, as a
+     summary card inside a white card; not white in white), or the dark box
+     of this app (cls app, the group .dark). The browser test measures that
+     each text of a group stays inside its box. */
   const inbox = (cls, x, y, w, h, rx, ...inside) => svg('g', { class: cls === 'app' ? 'inbox dark' : 'inbox' },
     svg('rect', { class: cls, x, y, width: w, height: h, rx }), inside);
 
@@ -149,13 +145,6 @@ OE.overview = (() => {
       class: 'ln', d: `${d}M${bx + 3 * dy} ${by + 3 * dx}L${x} ${y}L${bx - 3 * dy} ${by - 3 * dx}`,
     });
   };
-
-  /* One example tile with its corner at (x, y), size units wide (38 as
-     drawn): its ground, its patches, then a thin edge. */
-  const tile = (kind, x, y, size = 38) => svg('g', { transform: `translate(${x} ${y}) scale(${size / 38})` },
-    svg('rect', { width: 38, height: 38, rx: 4, fill: TILE[kind][0] }),
-    PATCHES[kind].map(([colour, d]) => svg('path', { d, fill: TILE[kind][colour] })),
-    svg('rect', { class: 'tile-edge', width: 38, height: 38, rx: 4 }));
 
   /* A grid of count squares, cols to a row, from (x, y): each size wide,
      pitch apart; those whose place in the grid is in picked stand out. */
@@ -178,12 +167,14 @@ OE.overview = (() => {
     class: 'wide', src: PICTURE, alt: '', 'aria-hidden': 'true', draggable: 'false', width: '1500', height: '843',
   });
 
-  /* The narrow strip, 348 x 96: Studio makes a map, you check random
+  /* The narrow strip, 348 x 96: Studio makes a map (r5-e S8: a finished
+     Studio map from the docs, 40 x 40, with a thin edge), you check random
      squares, you get how often it is wrong, with a range. */
   const narrow = () => svg('svg', { class: 'narrow', viewBox: '0 0 348 96', 'aria-hidden': 'true', focusable: 'false' },
     inbox('box', 1, 1, 100, 94, 8,
       text('t', 11, 21, WORDS.narrowStudio[0]), text('s', 11, 37, WORDS.narrowStudio[1]),
-      tile('crops', 11, 46, 40)),
+      svg('image', { href: MAP_EXAMPLE, x: 11, y: 46, width: 40, height: 40, preserveAspectRatio: 'xMidYMid slice' }),
+      svg('rect', { class: 'tile-edge', x: 11, y: 46, width: 40, height: 40, rx: 2 })),
     arrow('M103 48H119', 119, 48, 'r'),
     inbox('box', 123, 1, 100, 94, 8,
       text('t', 133, 21, WORDS.narrowCheck[0]), text('s', 133, 37, WORDS.narrowCheck[1]),

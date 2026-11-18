@@ -165,9 +165,10 @@ LABEL_MUST_STATE = (
 RULE_SCOPE = "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
 
 #: Said after :data:`RULE_SCOPE` where no box carries the rest (the last
-#: round's F9, 14 Nov 2026): the sheet's rule block (as ``rule_limit`` with
-#: the owner's rule, ``sheet._rule_fields``; on a face that takes Cannot tell
-#: and can show pictures the cloud line takes its place, r4-m M8) and the
+#: round's F9, 14 Nov 2026): the sheet's Details fold (as ``rule_limit`` with
+#: the owner's rule, ``sheet._rule_fields``, right after the scope there since
+#: r5-e H2; not on a face that takes Cannot tell and can show pictures, whose
+#: rule box has the cloud line, r4-m M8) and the
 #: estimate's note to the model. The pictures' answer carries it too
 #: (:func:`_window_image`), which the pane no longer draws (r4-m M8). The Check card
 #: keeps C5's words, since its box says the rest. It always follows the scope,

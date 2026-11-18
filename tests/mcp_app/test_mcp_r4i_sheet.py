@@ -411,9 +411,10 @@ def test_the_sheets_cannot_tell_words_are_the_string_tables() -> None:
         "per-class lines."
     )
     for one in ("square", "point"):
+        # r5-e H1: the face's line keeps the press and "do not guess"; what a
+        # guess costs is the fold's sentence (cannotTell) alone.
         assert _said("cannotTellLine", one) == (
-            f"Cannot judge a {one}? Press Cannot tell. Do not guess: a Cannot tell "
-            "makes the range wider, a guess can make the result wrong."
+            f"Cannot judge a {one}? Press Cannot tell; do not guess."
         )
         assert _said("cannotTell", one) == (
             f"Cannot tell is for a {one} you cannot judge from the dates shown." + rest
@@ -479,19 +480,29 @@ def test_the_page_copy_and_the_counts_say_the_owners_rule_is_for_kelp(
 
 
 def test_the_panel_shows_the_kelp_only_line_after_the_scope() -> None:
-    """F9 in sheet.js: the rule block shows data.rule_limit right after
-    data.rule_scope, each as a small faint line. The pictures pane (a page
-    copy with no rule, an answer with one) no longer repeats the scope and
-    the kelp-only line: r4-m M8 puts the rule's Absent half and the cloud
-    line there instead (tests/mcp_app/test_mcp_r4m_round.py)."""
+    """F9 in sheet.js: the panel shows data.rule_limit right after
+    data.rule_scope, which names kelp canopy maps before it. r5-e H2 moved
+    the scope from the rule block to the Details fold (scopeNote), and, after
+    review, the kelp-only line with it (limitNote: alone under the rule,
+    "any other map" had nothing to refer to); it is drawn only with the
+    scope and, as before, only where the face has no cloud line. The
+    pictures pane (a page copy with no rule, an answer with one) no longer
+    repeats the scope and the kelp-only line: r4-m M8 puts the rule's Absent
+    half and the cloud line there instead
+    (tests/mcp_app/test_mcp_r4m_round.py)."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
-    scope = block.index("data.rule_scope) : null,")
-    limit = block.index(
-        "typeof data.rule_limit === 'string' && data.rule_limit ? OE.el('div', "
-        "{ class: 'small faint' }, data.rule_limit) : null"
+    assert "OE.el('strong', {}, 'Rule: '), pageRule)," in block
+    assert "data.rule_scope" not in block and "data.rule_limit" not in block
+    scope = editor.index("  const scopeNote = typeof data.rule_scope === 'string'")
+    limit = editor.index(
+        "  const limitNote = pageRule && scopeNote && !cloudOnFace && typeof "
+        "data.rule_limit === 'string' && data.rule_limit ? OE.el('div', "
+        "{ class: 'small' }, data.rule_limit) : null;\n"
     )
     assert scope < limit
+    fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
+    assert "    classNoPeriod, scopeNote, limitNote, gradedWhy,\n" in fold
     pane = _between(editor, "    let ruleLines = null;", "\n    const dated = ")
     assert "answer.rule_scope" not in pane and "answer.rule_limit" not in pane
 

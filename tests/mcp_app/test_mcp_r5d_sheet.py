@@ -36,8 +36,9 @@ CLOUD_LINE_POINTS = "If cloud covers the point on every date, press Cannot tell.
 CLOUD_OLD = "No clear date of this"
 #: R06: beside the ready finish button on a graded sheet (W.everyDoneGraded).
 EVERY_DONE_GRADED = "This sheet already gave its result."
-#: R06: the line beside it on every other sheet, unchanged (W.everyDone).
-EVERY_DONE = "All answered and saved. After you press, do not change an answer."
+#: R06: the line beside it on every other sheet (W.everyDone; r5-e H5: its
+#: second sentence alone).
+EVERY_DONE = "After you press, do not change an answer."
 #: R08: the class face's line with no period known (W.classWhat(null)), for
 #: squares: the words of r4-h's E/sheet-3, unchanged.
 CLASS_NO_PERIOD = (
@@ -157,7 +158,10 @@ def test_r02_the_cloud_line_is_drawn_where_it_was() -> None:
     lines on a face that takes Cannot tell; nowhere else."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
-    assert "    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)\n" in block
+    # r5-e H2, after review: the block's one line after the rule (the kelp-only
+    # line that stood in its place on other faces is in the Details fold).
+    cloud = "    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine) : null,\n"
+    assert cloud in block
     pane = _between(editor, "    let ruleLines = null;", "\n    const dated = ")
     assert "takesQ ? OE.el('div', { class: 'small' }, W.cloudLine) : null);" in pane
     assert _code(editor).count("W.cloudLine") == 2
@@ -177,7 +181,11 @@ def test_r06_a_graded_sheets_footer_says_it_gave_its_result() -> None:
     assert _said("everyDone", "square") == EVERY_DONE
     assert _said("graded", "square").startswith(EVERY_DONE_GRADED + " ")
     assert _tag_above("everyDoneGraded") == ["// WORDING: r5d R06"]
-    assert _tag_above("everyDone") == ["// WORDING: r4h S2 A/F17; r5b J29"]
+    # r5-e H5 changed W.everyDone's words: its tag stands above r5-b's.
+    assert _tag_above("everyDone") == [
+        "// WORDING: r4h S2 A/F17; r5b J29",
+        "// WORDING: r5e H5",
+    ]
     editor = _editor()
     assert (
         "  // WORDING: r5d R06\n"
@@ -219,8 +227,10 @@ def test_r08_the_class_line_with_no_period_is_in_the_fold() -> None:
     )
     assert editor.index("  const period = ") < editor.index("  const classNoPeriod = ")
     fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
+    # r5-e H2 and H5: the rule's scope, its kelp-only line (after review) and
+    # the graded notice's reason follow it.
     assert (
-        "data.name),\n    classNoPeriod,\n"
+        "data.name),\n    classNoPeriod, scopeNote, limitNote, gradedWhy,\n"
         "    instruction, hint, ...foldLines, clearNote, examplesNote, readingNote,"
         " mixNote,\n" in fold
     )

@@ -737,24 +737,22 @@ def test_l3_the_wording_is_marked_and_the_old_start_is_gone() -> None:
 def test_l4_the_check_card_says_what_a_second_press_does() -> None:
     page = _read("check.html")
     assert f"// WORDING: r5a L4\nconst PICKED_BEFORE = '{PICKED_BEFORE}';" in page
-    # One line right under the press, in the press's own block (it goes
-    # with the press when a sheet opens in its place).
-    again = (
-        "  const againLine = OE.el('div', { class: 'small muted', "
-        "id: 'oe-check-again' }, PICKED_BEFORE);\n"
-    )
-    assert again in page
+    # Round r5-e K4 moved the line from under the press into the card's
+    # Details, after how the pick is fixed (tests/mcp_app/test_mcp_r5e_check.py):
+    # no line is left under the press but the one that says why it is off.
+    # It keeps L4's rule there: shown only while the card has a press and
+    # shows no part as picked or as pressed with no reply.
+    assert "againLine" not in page and "oe-check-again" not in page
     start = "  const pressArea = OE.el('div', { class: 'stack' },"
     lines = _between(page, start, ";\n").split("\n")
     at = lines.index("    OE.el('div', { class: 'row' }, press),")
-    assert lines[at + 1] == "    againLine,"
-    assert page.count("PICKED_BEFORE") == 2
-    # Hidden while the card shows a part as picked, or as pressed with no
-    # reply: the press then picks another part's squares (new ones), or is
-    # held, so "the same squares open" would be false.
-    update = _between(page, "  function updatePress() {", "\n  }\n")
-    hidden = (
-        "    againLine.hidden = models.some("
-        "(m) => m.kind === 'drawn' || m.kind === 'unknown');\n"
+    assert lines[at + 1] == "    limitLine)"
+    fold = _between(page, "  function fillFold() {", "\n  }\n")
+    shown = (
+        "    const again = drawable().length > 0 && !models.some((m) => "
+        "m.kind === 'drawn' || m.kind === 'unknown');\n"
+        "    nodes.push(OE.el('p', {}, FIXED));\n"
+        "    if (again) nodes.push(OE.el('p', {}, PICKED_BEFORE));\n"
     )
-    assert hidden in update
+    assert shown in fold
+    assert page.count("PICKED_BEFORE") == 2

@@ -454,7 +454,7 @@ def test_l2_the_press_retries_those_that_have_waited_longest() -> None:
         "  function limitWords(",
         "  function updatePress() {",
         "  function fillZone(m) {",
-        "  function fillParts() {",
+        # (fillParts went with the Check card's parts figure in round r5-e K2.)
         "  function fillFold() {",
         "  async function drawPicked() {",
     ):

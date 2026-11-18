@@ -533,7 +533,9 @@ def test_k9_example_pictures_beside_the_owners_rule_only() -> None:
         "  const ruleBlock = pageRule ?",
     )
     rule = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
-    assert rule.endswith("data.rule_limit) : null,\n    ruleExamples) : null;")
+    # r5-e H2, after review: the line before the examples is the cloud line
+    # alone (the kelp-only line follows the scope in the Details fold).
+    assert rule.endswith("W.cloudLine) : null,\n    ruleExamples) : null;")
     fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
     assert "instruction, hint, ...foldLines, clearNote, examplesNote," in fold
     layout = _between(editor, "  wrap.append(", "  // One listener for the keys")

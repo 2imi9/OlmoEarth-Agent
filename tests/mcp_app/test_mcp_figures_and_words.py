@@ -24,30 +24,31 @@ KEY_NOTE = (
     "how to get one of your own. Do not use their key."
 )
 
-#: The start card's second lead line (r4-h P1, D/D-start-1), signed out
-#: (r5-c S03: signed in, START_NEXT_IN in start.html takes its place).
-START_NEXT = (
-    "Sign in below first; then press a job, or type what you want in the chat."
-)
+#: The start card's lead line (r4-h P1, D/D-start-1), signed out (r5-c S03:
+#: signed in, START_NEXT_IN in start.html takes its place; r5-e S1: the
+#: card's only line, in shorter words).
+START_NEXT = "Sign in first, then press a job or ask Claude in the chat."
 
-#: The projects card's second lead line (r5-a V3: it names the button that
-#: opens a project; before, r4-h A/F30, the project's name; r5-c S04: the
-#: button names in quotes, one sentence).
+#: The projects card's lead line (r5-a V3: it names the button that opens a
+#: project; before, r4-h A/F30, the project's name; r5-c S04: the button
+#: names in quotes, one sentence; r5-e S5: the card's only line, no "Next: ").
 PROJECTS_NEXT = (
-    'Next: press "Show its maps" on the project that holds your map, then '
+    'Press "Show its maps" on the project that holds your map, then '
     '"Check how wrong it is" beside the map.'
 )
 
 #: The sheet's words of the r4-h string table that this file pins (S1, S2,
 #: S3; {one} is the sheet's unit word, {finish} its finish button's words).
 CODE_LINE = "While you label, this panel is not sent a {one}'s number, place or order."
-# r5-b J29: the finish line's second sentence has its object.
-EVERY_DONE = "All answered and saved. After you press, do not change an answer."
-# r5-b J13: the lead's third line, which took in the line on changing an answer.
-NO_RESULT = (
-    "No result until every {one} is answered. You can change an answer until you "
-    "press {finish}."
-)
+# r5-b J29: the finish line's second sentence has its object; r5-e H5: it is
+# that sentence alone.
+EVERY_DONE = "After you press, do not change an answer."
+# r5-b J13: the lead's third line, which took in the line on changing an
+# answer; r5-e H1 removed it (the greyed finish button and the counter say it).
+NO_RESULT = "No result until every {one} is answered."
+# r5-e H1: the lead's second line, the face's one Cannot tell line, which
+# speaks of no picture, so it has one form.
+CANNOT_TELL_LINE = "Cannot judge a {one}? Press Cannot tell; do not guess."
 BLIND_SEEN = (
     "Blind: this panel is not sent what the map says for a {one}, or where the "
     "{one} is, so you answer without seeing the map's answer."
@@ -58,11 +59,11 @@ WHAT_BARE = (
     "Answer only from your own records of each {one}, without looking at the map; "
     "with none, stop and tell Claude."
 )
-# r4-m M6: whoever answers must not look at the map either.
+# r4-m M6: whoever answers must not look at the map either (r5-e H1: in one
+# clause).
 WHAT_PLACE = (
     "This sheet has no pictures. See where each {one} is, then say what was there "
-    "from your own imagery or records. The map's answer is hidden: answer without "
-    "looking at the map."
+    "from your own imagery or records, without looking at the map."
 )
 
 #: The slim line on top of every view (B/S6).
@@ -158,21 +159,17 @@ def test_the_start_card_says_where_a_key_is_made() -> None:
     assert "Sign in in your browser" not in common
 
 
-def test_the_start_card_has_its_three_lines_and_no_fold() -> None:
-    """r4-h P1 (D/D-start-1): the second line names the jobs below and a
-    question typed in the chat; the hidden job is not named."""
+def test_the_start_card_has_its_one_line_and_no_fold() -> None:
+    """r4-h P1 (D/D-start-1): the line names the jobs and Claude in the chat;
+    the hidden job is not named. r5-e S1: it is the card's only line (the
+    title says what the card is; what a check cannot tell is said where
+    labelling happens)."""
     page = _read("start.html")
-    lead = _between(page, "const START_LEAD = {", "\n};")
-    for line in (
-        "what: 'Jobs this app can do with your Studio maps. The first checks how "
-        "wrong a map is.'",
-        f"next: '{START_NEXT}'",
-        # r5-c S03: the third line has a subject.
-        "cannot: 'This card knows nothing about your map yet; only your own answers "
-        "can show how wrong it is.'",
-    ):
-        assert line in lead, line
-    assert "// WORDING: r4h P1\nconst START_LEAD = {" in page
+    lead = _between(page, "const START_LEAD = {", "};")
+    assert lead == f"const START_LEAD = {{ next: '{START_NEXT}' "
+    assert "// WORDING: r5e\nconst START_LEAD = {" in page
+    for gone in ("Jobs this app can do", "This card knows nothing about your map"):
+        assert gone not in page, gone
     assert "press Check how wrong a map is" not in page
     # r5-c S03: signed in, the next line no longer asks to sign in.
     assert "OE.lead(on ? { ...START_LEAD, next: START_NEXT_IN } : START_LEAD)" in page
@@ -202,13 +199,9 @@ def test_the_lead_draws_its_lines_with_their_keys() -> None:
 def test_the_projects_card_words() -> None:
     page = _read("studio.html")
     for text in (
-        # r5-c S04: one name for the thing (maps), Studio's word after it, and
-        # the third line's subject.
-        "Your Studio projects. Each holds the maps its models made over an area "
-        "and a period; Studio calls each run a prediction.",
+        # r5-e S5: the card's one line (what the card is and what this app
+        # cannot tell are gone from it).
         f"next: '{PROJECTS_NEXT}',",
-        "This app cannot tell which of several similar projects holds your map. "
-        "Ask whoever made them.",
         "OE.lead(PROJECTS_LEAD)",
         "OE.el('h1', {}, 'Projects in this Studio account')",
         "label: (kind) => 'Tell Claude: this ' + kind,",
@@ -222,11 +215,12 @@ def test_the_projects_card_words() -> None:
         "Each prediction is a model run over an area and a period; its output is "
         "the map.",
         "Embeddings are not a map these jobs can check or rank.",
-        "tick: 'Tick two finished maps of the same area and dates to say which is "
-        "more accurate.',",
-        "how: 'You label a sample of the places where the two maps differ. The "
-        "answer says which map is right more often there, or that these labels "
-        "cannot tell; it does not say how accurate either map is.',",
+        # r5-e S5: COMPARE.tick and COMPARE.how, shorter.
+        "tick: 'Tick two finished maps of the same area and dates to compare "
+        "them.',",
+        "how: 'You label only where the two maps differ. You see which is right "
+        "more often there, or that your labels cannot tell, but not how accurate "
+        "either map is.',",
         "Two ticked. Press the button to start.",
         "Starts nothing yet: you first draw or pick the area and give the dates. "
         "Needs a Studio key that can write.",
@@ -241,6 +235,10 @@ def test_the_projects_card_words() -> None:
         # r5-c S04, S05: the words before this round.
         "Inside each are its predictions",
         "What this run produced",
+        # r5-e S5: the lines the card no longer has.
+        "Your Studio projects. Each holds the maps",
+        "This app cannot tell which of several similar projects",
+        "Next: press",
     ):
         assert gone not in page, gone
     # Tell Claude starts no job: its press says the ids and the quoted name only.
@@ -250,7 +248,7 @@ def test_the_projects_card_words() -> None:
     row = _between(page, "function resultRow(", "\n}\n")
     assert "names.join(', ')" in row
     assert "OE.tellClaude" not in row and "OE.say" not in row
-    lead_tag = "// WORDING: r5c S04\n"
+    lead_tag = "// WORDING: r5e\n"
     assert lead_tag + "const PROJECTS_LEAD = {" in page
 
 
@@ -275,9 +273,13 @@ def test_the_glyph_words() -> None:
         "'embeddings (numbers for other programs; these jobs cannot check or rank "
         "it)'" in glyph
     )
+    # r5-e S7: the ring's caption is said once, above the cards (studio.html),
+    # not beside every ring.
+    assert "months of the year its predictions cover" not in glyph
     assert (
-        "'months of the year its predictions cover (all years and areas counted "
-        "together)'" in glyph
+        "const RING_SAYS = 'The ring on each project shows the months of the year "
+        "that project\\'s predictions cover, all years and areas counted together.';"
+        in _read("studio.html")
     )
     assert "colours not read'" not in glyph and "folded together'" not in glyph
     short = _between(glyph, "OE.glyph.outputWords = (m) => {", "\n};")
@@ -449,11 +451,10 @@ def test_the_result_cards_fixes_of_pass_2() -> None:
     assert "rest.push(reasonBlock(" not in page
     assert show.index("root.append(reasonBlock(") < show.index("OE.fold(FOLD_LABEL")
     # (K): where Studio makes a key, as in the default note; since r5-b J19
-    # three plain lines, the card's own, then the panel's two (common.js).
-    assert (
-        "note: ['This step needs OlmoEarth Studio.', OE.SIGN_IN_OPENS,"
-        " OE.SIGN_IN_KEY_GOES]," in show
-    )
+    # plain lines, since r5-e R2 the panel's two alone (common.js): the
+    # card's own first line said the sign-in's heading again.
+    assert "note: [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES]," in show
+    assert "This step needs OlmoEarth Studio." not in show
 
 
 def test_the_sheet_names_its_windows_by_its_unit_word() -> None:
@@ -512,19 +513,20 @@ def test_a_sheet_that_can_show_no_pictures_promises_none() -> None:
     Pictures button is drawn; a page copy without the field shows them.
     r4-h S3 (E/sheet-1): a sheet of points with a place says first that it
     has no pictures and what to judge from; without a place, since r5-b J11,
-    that it cannot show where a point is. r5-b J13: the lead's other two
-    lines (Cannot tell; no result until every answer) speak of no picture,
-    so they have one form."""
+    that it cannot show where a point is. r5-b J13: the lead's other lines
+    speak of no picture, so they have one form; r5-e H1: that is the Cannot
+    tell line alone (no result until every answer is gone)."""
     script = _read("sheet.js")
-    for said in (WHAT_BARE, WHAT_PLACE, NO_RESULT):
+    for said in (WHAT_BARE, WHAT_PLACE, CANNOT_TELL_LINE):
         assert _holds(script, said), said
+    assert not _holds(script, NO_RESULT)
     editor = _between(script, "OE.sheetEditor = (app, data,", "\n};")
     for text in (
         "const picturesPossible = data.pictures_possible !== false;",
         "const picturesOff = picturesPossible ? OE.el(",
         "const facePicturesButton = picturesPossible ? OE.el('button', {",
         "W.whatBare",
-        "W.noResult(finishWords)",
+        "W.cannotTellLine",
     ):
         assert text in editor, text
     rows = _between(editor, "  function renderList(", "\n  }\n")
@@ -536,15 +538,15 @@ def test_the_seen_instruction_does_not_repeat_the_hidden_answer() -> None:
     sent to this panel"; the lead and the blind line say it. r4-h S2
     (B/sheet-change-answer): "Right or wrong is worked out when each label is
     saved." gives way to the line that an answer can change until the finish
-    button is pressed; S1 (B/sheet-blind-line): the blind line in its words."""
+    button is pressed (r5-e H5: beside the ready finish button, EVERY_DONE;
+    r5-e H1 dropped the lead's line, NO_RESULT); S1 (B/sheet-blind-line): the
+    blind line in its words."""
     script = _read("sheet.js")
     code = _code(script)
     assert "class is not sent to this panel" not in code
     assert "Right or wrong is worked out when each label is saved." not in code
-    assert _holds(script, NO_RESULT)
-    # r4-m M6: with who must not look at the map.
-    assert _holds(
-        script, "The map's answer is hidden: answer without looking at the map."
-    )
+    assert _holds(script, EVERY_DONE) and not _holds(script, NO_RESULT)
+    # r4-m M6: with who must not look at the map (r5-e H1: in one clause).
+    assert _holds(script, ", without looking at the map.")
     assert _holds(script, BLIND_SEEN)
     assert "so you label without seeing" not in code

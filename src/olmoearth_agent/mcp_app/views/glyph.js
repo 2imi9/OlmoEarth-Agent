@@ -9,7 +9,8 @@
        (binary), with the year as text beside it;
      - a project's: a month darker the more of its predictions cover it, in
        fixed steps (none, 1, 2 to 4, 5 or more), with the count beside it;
-       all years and areas counted together, as its caption says;
+       all years and areas counted together, as the panel's one line above
+       the cards says (r5-e S7);
    - a model's output tile, a legend and not a picture of a map: 4x4 per
      pixel, 2x2 per window; classes as cells (hollow while their colours are
      not read), values as grey bands light at the bottom, detection as a box,
@@ -180,22 +181,22 @@ OE.glyph.predictionRow = (p) => {
     OE.el('span', { class: 'glyph-year', 'aria-hidden': 'true' }, p.years || 'no dates'));
 };
 
-/* A project on its card: the graded ring, the count beside it, the caption. */
+/* A project on its card: the graded ring, the count beside it, and a note
+   only where this card differs (r5-e S7: what a ring shows is said once,
+   above the cards, by the projects panel: RING_SAYS in studio.html). */
 OE.glyph.projectCard = (g) => {
   const s = 56;
   // No readable dates at all: the dashed "not recorded" ring, not "no month".
   const colors = Array.isArray(g.months) ? g.months.map((v) => OE.glyph.COLORS.steps[v] || null) : null;
   const count = g.count + (g.capped ? '+' : '') + ' prediction' + (g.count === 1 && !g.capped ? '' : 's');
   const undated = g.count - g.dated;
-  // WORDING: r4p2 (B/P3); r5c S14 (a project with no prediction: 'No maps yet', not the ring's long caption)
-  const note = g.count === 0 ? 'No maps yet' : !colors ? 'dates not recorded'
-    : 'months of the year its predictions cover (all years and areas counted together)'
-      + (undated > 0 ? '; ' + undated + ' without dates' : '');
+  // WORDING: r4p2 (B/P3); r5c S14 (a project with no prediction: 'No maps yet'); r5e (the ring's caption said once, above the cards)
+  const note = g.count === 0 ? 'No maps yet' : !colors ? 'dates not recorded' : undated > 0 ? undated + ' without dates' : null;
   return OE.el('div', { class: 'glyph-card' },
     drawing(s, OE.glyph.ring(s, { colors })),
     OE.el('div', {},
       OE.el('div', { class: 'glyph-count' }, count),
-      OE.el('div', { class: 'small faint' }, note),
+      note ? OE.el('div', { class: 'small faint' }, note) : null,
       colors ? OE.el('span', { class: 'sr-only' }, 'Predictions per month: ' + stepWords(g.months) + '.') : null));
 };
 

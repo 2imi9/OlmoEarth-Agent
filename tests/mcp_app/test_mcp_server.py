@@ -655,9 +655,11 @@ def test_start_job_strings() -> None:
     """Four jobs, short one-line labels and lines, each message a request with a
     verb that ends at the projects card; the start card is the app's own tool.
     The check is the main job (``main`` on it only); its line says what the
-    user gets in plain words, with the panel's words ("squares", "part",
-    "range"), and promises no number before any label. The run's line (the
-    reader test's B/S5) says a press starts nothing."""
+    user gets in plain words, with the panel's words ("squares", "range"),
+    and promises no number before any label. The run's line (the reader
+    test's B/S5) says what the press waits for. r5-e S2: each line sits inside
+    its button, so it is at most 85 characters (two lines at 380 px); the
+    check's line no longer brings in the parts a map is saved in."""
     jobs = server.START_JOBS
     assert len(jobs) == 4
     assert [j["key"] for j in jobs] == ["check", "first", "which", "run"]
@@ -666,8 +668,8 @@ def test_start_job_strings() -> None:
     for i, job in enumerate(jobs):
         assert set(job) == (text_keys | {"main"} if i == 0 else text_keys)
         assert len(job["label"]) <= 72 and "\n" not in job["label"]
-        # A line of the reader test's length (B/S5 is 161 characters).
-        assert len(job["line"]) <= 170 and "\n" not in job["line"]
+        # r5-e S2: a line inside its button, two lines at 380 px at most.
+        assert len(job["line"]) <= 85 and "\n" not in job["line"]
         assert job["message"].split()[0] in {"Check", "Find", "Say", "Run"}
         assert "Show my Studio projects so I can pick" in job["message"]
         for key in text_keys:
@@ -678,11 +680,12 @@ def test_start_job_strings() -> None:
     line = jobs[0]["line"]
     assert not re.search(r"\d", line) and "%" not in line
     assert "squares" in line and "wrong" in line and "range" in line
-    assert "part" in line and "window" not in line  # the panel's one word
+    assert "random" in line and "window" not in line  # the panel's one word
+    assert "part" not in line  # r5-e S2: a first-time user cannot place it
     # The look-first job, when offered, names the one case it is for.
     assert "class map" in jobs[1]["line"] and "top-k" in jobs[1]["needs"]
     assert "can write" in jobs[3]["line"]
-    assert "Pressing this starts nothing" in jobs[3]["line"]
+    assert "once you pick a model, an area and dates" in jobs[3]["line"]
     assert "olmoearth_start" not in build_default_registry().names()
     assert server.OWN_TOOLS["olmoearth_start"][0] == "start"
     assert "olmoearth_start (the start card)" in _words(server.MCP_RULES)
@@ -3335,11 +3338,12 @@ async def test_the_leads_three_lines(
     shown = await app.call_agent_tool(
         "olmoearth_review_set", {"scores_path": str(_review_scores(_roots))}, views=True
     )
+    # Round r5-e, R2: shorter, and no longer "Where to look first: ..." under
+    # the overline "Look first".
     assert _view(shown)["lead"] == {
-        "what": "Where to look first: the 2 squares where the model was least sure, "
-        "of the 8 read. The number 2 was fixed in advance; it is not a count of "
-        "doubtful squares. No labels were used, so this does not say whether any of "
-        "them is wrong, or how wrong the map is.",
+        "what": "The 2 squares the model was least sure of, among the 8 read; the "
+        "number 2 was chosen in advance, not a count of doubtful squares. No labels "
+        "were used, so the map may be right or wrong there.",
         "next": server.REVIEW_LEAD_NEXT,
         "cannot": None,
     }
@@ -3370,9 +3374,11 @@ async def test_a_studio_review_sets_lead_says_points_and_a_refusal_has_none(
 ) -> None:
     """A review set of a Studio result reads one pixel at each point of a
     grid: its first line says points, of how many read (its sampling's
-    n_valid), on which grid, never squares; one point is "point". A review
-    set the tool refused (ranked false, with its reason) has no lead at all,
-    so the view keeps the r4-b-2 layout: the reason on the face, no fold."""
+    n_valid), never squares (round r5-e, R2: no longer on which grid; the
+    fold's legend says each square stands for the one pixel read in it); one
+    point is "point". A review set the tool refused (ranked false, with its
+    reason) has no lead at all, so the view keeps the r4-b-2 layout: the
+    reason on the face, no fold."""
     app = _app()
     sampled = _ranked(
         n_review=7, n_windows=96, sampling={"grid": "10x10", "n_valid": 72}
@@ -3381,12 +3387,13 @@ async def test_a_studio_review_sets_lead_says_points_and_a_refusal_has_none(
     shown = await app.call_agent_tool(
         "olmoearth_review_set_from_result", {"result_id": "r9"}, views=True
     )
+    # No check_request here (the result names no result_id), so the next
+    # line stays (r5-e R2 drops it only beside the check card).
+    assert "check_request" not in _view(shown)["review"]
     assert _view(shown)["lead"] == {
-        "what": "Where to look first: the 7 points where the model was least sure, "
-        "of the 72 read (one pixel at the centre of each square of a 10 x 10 grid; "
-        "the rest of each square was not read). The number 7 was fixed in "
-        "advance; it is not a count of doubtful points. No labels were used, so "
-        "this does not say whether any of them is wrong, or how wrong the map is.",
+        "what": "The 7 points the model was least sure of, among the 72 read; the "
+        "number 7 was chosen in advance, not a count of doubtful points. No labels "
+        "were used, so the map may be right or wrong there.",
         "next": server.REVIEW_LEAD_NEXT_NO_PICTURES_POINTS,
         "cannot": None,
     }
@@ -3401,10 +3408,9 @@ async def test_a_studio_review_sets_lead_says_points_and_a_refusal_has_none(
         {},
     )
     assert one["what"] == (
-        "Where to look first: the 1 point where the model was least sure, of the "
-        "72 read. The number 1 was fixed in advance; it is not a count of doubtful "
-        "points. No labels were used, so this does not say whether any of them is "
-        "wrong, or how wrong the map is."
+        "The 1 point the model was least sure of, among the 72 read; the number 1 "
+        "was chosen in advance, not a count of doubtful points. No labels were "
+        "used, so the map may be right or wrong there."
     )
     assert server._grid_text([16, 16]) == "16 x 16"
     assert server._grid_text("bad") is None

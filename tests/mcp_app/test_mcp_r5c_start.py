@@ -15,10 +15,11 @@ item as specs/r5-c-audit/build_list.md gives it. The views are read as text
   while a key stays in effect; the panel's account card names the key in
   its "Key" row and draws no Sign out for that key (the server's side of
   the source and of the sign-in tool's note: test_mcp_server.py);
-- S03: the start card's next line asks to sign in only while signed out,
-  and its third line has a subject;
-- S09: the browser sign-in page opens with what to paste, its key field has
-  a label of its own, and its card is white;
+- S03: the start card's next line asks to sign in only while signed out
+  (r5-e S1: that line is now the card's only one, in new words);
+- S09: the browser sign-in page opens with what to paste (r5-e S4: in
+  shorter words), its key field has a label of its own, and its card is
+  white;
 - S13: the docs link inside the start card's caption is underlined.
 """
 
@@ -63,23 +64,16 @@ KEY_ROWS = {
 INSTALLED = "sk_test_installed_key_1"
 TYPED = "sk_test_typed_key_2"
 
-#: S03: the start card's next line signed out, the same line signed in, and
-#: its third line.
-START_NEXT_OUT = (
-    "Sign in below first; then press a job, or type what you want in the chat."
-)
-START_NEXT_IN = "Press a job below, or type what you want in the chat."
-START_CANNOT = (
-    "This card knows nothing about your map yet; only your own answers can show "
-    "how wrong it is."
-)
+#: S03: the start card's next line signed out, and the same line signed in
+#: (r5-e S1: the card's one line, in its words; the third line is gone).
+START_NEXT_OUT = "Sign in first, then press a job or ask Claude in the chat."
+START_NEXT_IN = "Press a job, or ask Claude in the chat."
+START_CANNOT_GONE = "This card knows nothing about your map yet"
 
-#: S09: the sign-in page's first paragraph, its words joined.
+#: S09: the sign-in page's first paragraph, its words joined (r5-e S4).
 PAGE_FIRST = (
-    "Paste your Studio API key below. To make one, open your profile in Studio, "
-    "then API Keys. This page runs on this computer: the key goes from here to "
-    "the OlmoEarth Agent, not through Claude, and is checked with Studio before "
-    "it is used."
+    "Paste your Studio API key (in Studio: your profile, then API Keys). It goes "
+    "from this computer to the OlmoEarth Agent, not through Claude."
 )
 
 #: Words no face holds (r4-i's rule), and no choice is marked recommended.
@@ -361,19 +355,14 @@ def test_s01_an_own_key_that_is_no_key_leaves_the_user_signed_out(
 
 def test_s03_the_start_cards_lines_say_what_to_do_signed_out_and_in() -> None:
     """S03: signed out, the next line asks to sign in first; signed in, it
-    names the jobs and the chat only; the third line has a subject and no
-    "error"; the card keeps its three lines and no fold."""
+    names the jobs and the chat only; no fold. r5-e S1: that line is the
+    card's only one (no "what", no "cannot"), marked r5e."""
     page = _read("start.html")
-    lead = _between(page, "const START_LEAD = {", "\n};") + "\n"
-    assert "// WORDING: r4h P1\nconst START_LEAD = {" in page
-    for line in (
-        f"  // WORDING: r5c S03\n  next: {_js(START_NEXT_OUT)},\n",
-        f"  // WORDING: r5c S03\n  cannot: {_js(START_CANNOT)},\n",
-    ):
-        assert line in lead, line
-    assert re.findall(r"^  (\w+): '", lead, re.M) == ["what", "next", "cannot"]
-    next_in = f"// WORDING: r5c S03\nconst START_NEXT_IN = {_js(START_NEXT_IN)};\n"
+    lead = f"// WORDING: r5e\nconst START_LEAD = {{ next: {_js(START_NEXT_OUT)} }};\n"
+    assert lead in page
+    next_in = f"// WORDING: r5e\nconst START_NEXT_IN = {_js(START_NEXT_IN)};\n"
     assert next_in in page
+    assert START_CANNOT_GONE not in page and "what: '" not in page
     render = _between(page, "function render(app, data) {", "\n}\n")
     assert _in_order(
         render,
@@ -385,7 +374,7 @@ def test_s03_the_start_cards_lines_say_what_to_do_signed_out_and_in() -> None:
     for gone in ("Sign in if asked", "Nothing about your map yet", "finds the error"):
         assert gone not in page, gone
     assert "OE.fold(" not in page and "<details" not in page
-    for line in (START_NEXT_OUT, START_NEXT_IN, START_CANNOT):
+    for line in (START_NEXT_OUT, START_NEXT_IN):
         assert not _OFF_FACE.search(line), line
 
 
