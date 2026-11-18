@@ -61,14 +61,16 @@ SHEET_FILE_POINTS = (
     "of the map's errors."
 )
 
-#: An unfinished sheet's line, of squares (the e2e's UNFINISHED) and of points.
+#: An unfinished sheet's line, of squares (the e2e's UNFINISHED) and of points
+#: (round r5-d R10: where to answer and press, the label sheet and the
+#: sheet's own finish button, an estimate's here; "the rest" for one or many).
 UNFINISHED_SQUARES = (
-    "Not finished yet: 3 of 80 squares on this sheet have no answer. Answer every "
-    "square, then press Estimate the error rate again."
+    "Not finished yet: 3 of 80 squares on this sheet have no answer. Answer the rest "
+    "on the label sheet, then press Estimate the error rate there."
 )
 UNFINISHED_POINTS = (
-    "Not finished yet: 2 of 20 points on this sheet have no answer. Answer every "
-    "point, then press Estimate the error rate again."
+    "Not finished yet: 2 of 20 points on this sheet have no answer. Answer the rest "
+    "on the label sheet, then press Estimate the error rate there."
 )
 
 #: Cannot tell on a sheet with pictures, and on one that can show none (r4-h
@@ -215,19 +217,23 @@ def test_the_result_cards_words_follow_its_unit() -> None:
     tag = "// WORDING: squares; r4h R4 (checked), r4h R3 (partsHead, otherPart)\n"
     assert tag + "const RESULT_WORDS = {" in page
     words = _between(page, "const RESULT_WORDS = {", "\n};")
+    # Round r5-d R03: the counts with thousands commas from 1,000, as the
+    # headline writes them (tests/mcp_app/test_mcp_r5d_result.py).
     assert (
-        "  checked: (n, unit, k) => OE.counted(n, unitOf(unit)) + ' checked'"
-        " + (k > 0 ? ', ' + k + ' Cannot tell' : '')," in words
+        "  checked: (n, unit, k) => n.toLocaleString('en-US') + ' ' + unitsOf(unit, n)"
+        " + ' checked'\n    + (k > 0 ? ', ' + k.toLocaleString('en-US')"
+        " + ' Cannot tell' : '')," in words
     )
     assert "OE.counted(n, 'square')" not in page
     assert re.search(r"\bwindows?\b", words, re.I) is None
     head = _after(words, "squaresHead: (n, unit) => (n === 1 ? ", "),\n")
     one, many = head.split("\n    : ")
     for unit, n, said_one, said_many in (
-        ("square", "80", "The square you checked", "The 80 squares you checked"),
-        ("point", "20", "The point you checked", "The 20 points you checked"),
+        ("square", 80, "The square you checked", "The 80 squares you checked"),
+        ("point", 20, "The point you checked", "The 20 points you checked"),
+        ("square", 4000, "The square you checked", "The 4,000 squares you checked"),
     ):
-        names = {"unitOf(unit)": unit, "n": n}
+        names = {"unitOf(unit)": unit, "n.toLocaleString('en-US')": f"{n:,}"}
         assert _concat(one, names) == said_one
         assert _concat(many, names) == said_many
     sheet_file = _entry(words, "sheetFile: (name, unit) => ")
@@ -236,12 +242,18 @@ def test_the_result_cards_words_follow_its_unit() -> None:
         ("point", "points_to_label.csv", SHEET_FILE_POINTS),
     ):
         assert _concat(sheet_file, {"unitOf(unit)": unit, "name": name}) == said
-    unfinished = _entry(words, "unfinished: (left, n, unit) => ")
+    start = "unfinished: (left, n, unit, press = 'Estimate the error rate') => "
+    unfinished = _entry(words, start)
     for unit, left, n, said in (
         ("square", "3", "80", UNFINISHED_SQUARES),
         ("point", "2", "20", UNFINISHED_POINTS),
     ):
-        names = {"unitOf(unit)": unit, "left": left, "n": n}
+        names = {
+            "left.toLocaleString('en-US')": left,
+            "n.toLocaleString('en-US')": n,
+            "unitsOf(unit, n)": unit + "s",
+            "press": "Estimate the error rate",
+        }
         assert _concat(unfinished, names) == said
 
 
@@ -262,7 +274,9 @@ def test_the_result_card_and_the_unfinished_line_read_the_unit() -> None:
         " ? r.n_unjudged : 0;" in card
     )
     show = _between(page, "function show(app, params) {", "\n}\n")
-    assert "RESULT_WORDS.unfinished(left, of, unfinished.unit || data.unit)" in show
+    assert (
+        "RESULT_WORDS.unfinished(left, of, unfinished.unit || data.unit, press)" in show
+    )
 
 
 def test_the_classes_nobody_saw_are_said_under_the_headline() -> None:

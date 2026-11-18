@@ -306,19 +306,26 @@ OE.call = async (app, name, args = {}, options = undefined) => {
 
 /* Send the user's words to Claude, as if typed (a button the user pressed).
    A host that declines answers isError rather than throwing. True when the
-   host took the message, false (after a toast) when it did not. A message
-   taken clears the status line while it still shows the failure line this
-   function wrote last (r5-b J20), so a card never says that a message was
-   sent beside a line that says one was not; any other line stays. */
+   host took the message, false when it did not (after a toast, unless
+   quiet). A message taken clears the status line while it still shows the
+   failure line this function wrote last (r5-b J20), so a card never says
+   that a message was sent beside a line that says one was not; any other
+   line stays. quiet (r5-d R07): a press whose own slot says what became of
+   the message (OE.sendJob) writes no failure line, so a message not taken
+   is said once, beside its button, and a screen reader hears it once; a
+   press with no slot ("Tell Claude: this project", the sign-in's "Continue
+   in the chat") keeps the toast. */
 // WORDING: r5b J20
 OE.NOT_TAKEN = 'Claude did not take the message; type it in the chat instead.';
 let saidFailed = null;  // the failure line OE.say last wrote
-OE.say = async (app, text) => {
+OE.say = async (app, text, { quiet = false } = {}) => {
   try {
     const answer = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] });
     if (answer && answer.isError) {
-      saidFailed = OE.NOT_TAKEN;
-      OE.toast(saidFailed, true);
+      if (!quiet) {
+        saidFailed = OE.NOT_TAKEN;
+        OE.toast(saidFailed, true);
+      }
       return false;
     }
     const bar = document.getElementById('oe-toast');
@@ -326,8 +333,10 @@ OE.say = async (app, text) => {
     saidFailed = null;
     return true;
   } catch (err) {
-    saidFailed = 'Could not send the message to Claude: ' + err.message;
-    OE.toast(saidFailed, true);
+    if (!quiet) {
+      saidFailed = 'Could not send the message to Claude: ' + err.message;
+      OE.toast(saidFailed, true);
+    }
     return false;
   }
 };
@@ -363,9 +372,11 @@ OE.clearSlot = (slot) => {
    declined it): OE.JOB_NOT_SENT in the error colour, then, outside the line,
    the whole text, selectable, so its ids are not lost. Each press replaces
    what the one before left; a press that ends before sending clears it
-   (OE.clearSlot). OE.say's toast goes once a later message is taken. */
+   (OE.clearSlot). With a slot, OE.say writes no toast (quiet, r5-d R07):
+   the slot says it; a toast an earlier press without a slot wrote goes once
+   a later message is taken. */
 OE.sendJob = async (app, text, slot) => {
-  const sent = await OE.say(app, text);
+  const sent = await OE.say(app, text, { quiet: Boolean(slot) });
   if (slot) {
     const line = OE.clearSlot(slot);
     if (!sent) slot.append(OE.el('code', {}, text));

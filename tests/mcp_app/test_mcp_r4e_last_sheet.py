@@ -867,7 +867,9 @@ def test_the_class_faces_instruction_names_the_period() -> None:
     )
     editor = _between(_script(), "OE.sheetEditor = (app, data,", "\n};")
     told = _between(editor, "  function faceInstructionText() {", "\n  }\n")
-    assert "if (face === 'class') return W.classWhat(period);" in told
+    # r5-d R08: on the face only with the period; without it, in the fold
+    # (tests/mcp_app/test_mcp_r5d_sheet.py).
+    assert "if (face === 'class') return period ? W.classWhat(period) : '';" in told
     assert "on the ground there, as the map writes classes" not in _script()
     assert (
         "const period = typeof data.period_text === 'string' && data.period_text"
@@ -1007,9 +1009,11 @@ def test_the_footer_shows_the_finish_button_from_the_first_open() -> None:
         "else if (!ok && done.contains(everyDoneLine)) everyDoneLine.remove();",
     ):
         assert text in finish, text
+    # r5-d R06: a sheet already graded says that it gave its result instead.
     assert (
-        "const everyDoneLine = OE.el('span', { class: 'small' }, W.everyDone);"
-        in editor
+        "const everyDoneLine = OE.el('span', { class: 'small' },\n"
+        "    data.graded && typeof data.graded === 'object' ? W.everyDoneGraded"
+        " : W.everyDone);" in editor
     )
     assert "function finished(" not in editor
     # A save that failed keeps Save labels in view until one goes through.

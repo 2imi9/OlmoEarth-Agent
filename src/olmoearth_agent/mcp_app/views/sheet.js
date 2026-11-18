@@ -179,7 +179,9 @@
    finish_label: estimate the error rate, certify the zone, or say which map
    is more accurate), greyed until every window is labelled and saved, then
    with "All answered and saved. After you press, do not change an answer."
-   beside it (A/F17, r5-b J29); its message (finish_message) names the tool
+   beside it (A/F17, r5-b J29; on a sheet that already gave its result,
+   "This sheet already gave its result.", r5-d R06); its message
+   (finish_message) names the tool
    Claude calls. After a press the footer says what became of the message
    (OE.sendJob, r5-b J20), as the job buttons do: OE.JOB_SENT once the host
    took it, or OE.JOB_NOT_SENT in the error colour over the whole text when
@@ -232,7 +234,8 @@
    certificate's own need; none on a two-map sheet), and that there is no
    result until every answer is given, and an answer can change until the
    finish press. Then the face's instruction where it has one (right or
-   wrong, the class seen with the map's period, a two-map sheet's) and the
+   wrong, the class seen with the map's period, a two-map sheet's; a class
+   face whose period is not known has its line in the fold, r5-d R08) and the
    row of switches only where one exists (a two-map sheet's blind switch).
    Right above the answers and above the list (J14), the labelling rule of
    the page copy, at body size with "Rule: " in bold (data.reading_rule and
@@ -245,7 +248,8 @@
    and the pane no longer says it (a page copy with no rule and pictures
    with one: the pane shows the rule's two halves and, on a face with Cannot
    tell, the cloud line, r4-m M8, and the face's line goes). ONE closed
-   "Details" fold under the answers holds the sheet's file name, a seen
+   "Details" fold under the answers holds the sheet's file name, a class
+   face's line when the map's period is not known (r5-d R08), a seen
    sheet's first sentence and what Cannot tell does to the result, the keys,
    what never reaches this panel (the blind, code or right-or-wrong line),
    the Street map line, the note that no date is marked clear, that the
@@ -300,7 +304,14 @@ OE.OTHER = '__oe_other_class__';  // the select's 'Other class...' entry
    noRulePair on a two-map sheet); a two-map sheet's hidden sentence
    (hiddenPair, J28), what its first line says once the maps' answers are
    shown (shownPair) and its no-pictures, no-places line (whatBarePair); and
-   the finish line's second sentence with its object (everyDone, J29). */
+   the finish line's second sentence with its object (everyDone, J29).
+
+   Round r5-d (17 Nov 2026, the last audit of the whole app): the cloud line
+   says a case, not a fact about the square shown (cloudLine, R02); a sheet
+   that already gave its result says so beside the finish button too
+   (everyDoneGraded, R06); the class face's line with no period known is in
+   the Details fold (classWhat, R08); the list's menu says Cannot tell as
+   the face's button does (R13). */
 // WORDING: squares
 OE.sheetWords = (unit) => {
   const one = unit === 'point' ? 'point' : 'square';
@@ -362,8 +373,12 @@ OE.sheetWords = (unit) => {
     // copy has no rule. Only the case the rule leaves open: one clear date
     // is enough for Present, and Absent counts the clear dates alone, so a
     // square clouded on every date is Cannot tell, not Absent by default.
+    // Worded as a case, not a fact (r5-d R02): it stands above the face and
+    // the list before any square's pictures are open, and "No clear date of
+    // this square" read as said of the square shown.
+    // WORDING: r5d R02
     // WORDING: r4m M8
-    cloudLine: 'No clear date of this ' + one + ' (cloud over it on every date): press Cannot tell.',
+    cloudLine: 'If cloud covers the ' + one + ' on every date, press Cannot tell.',
     // The pane's closed fold that holds each date's scene cloud, off the
     // dates' headings (r4-m M8), and its first line, clear's own second
     // sentence.
@@ -463,6 +478,11 @@ OE.sheetWords = (unit) => {
     // second sentence has its object now (r5-b J29).
     // WORDING: r4h S2 A/F17; r5b J29
     everyDone: 'All answered and saved. After you press, do not change an answer.',
+    // In everyDone's place on a sheet that already gave its result (r5-d
+    // R06): its notice says not to change an answer now, so the footer does
+    // not say an answer may change until the press.
+    // WORDING: r5d R06
+    everyDoneGraded: 'This sheet already gave its result.',
     // In the Details fold, where the sheet has a blind switch (C/sheet-3).
     // WORDING: r4h S1 C/sheet-3
     codeLine: 'While you label, this panel is not sent a ' + one + '\'s number, place or order.',
@@ -924,13 +944,18 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      test 2's E/sheet-3: no "on the ground"), and a two-map sheet's, which
      names the button it has, Cannot tell, and says "there", not "on the
      ground" (r5-b J28); a seen sheet has none here (its lead says what to
-     do). */
+     do). The class face's line is on the face only where the sheet knows
+     the map's period, which it names (r5-d R08); without it the line was a
+     fourth line that began as the lead does and only asked for the period,
+     so it is in the Details fold (classNoPeriod), and the face keeps its
+     three lines. */
   // WORDING: r4h S1 S3; r5b J28 (the two-map sheet's)
   function faceInstructionText() {
     const one = W.one;
     if (twoMap) return 'For each ' + one + ', pick the class you see there; press Cannot tell when you cannot judge it.';
     if (wrongFace) return 'For each ' + one + ', say whether the map is right there (the map\'s class is shown).';
-    if (face === 'class') return W.classWhat(period);
+    // WORDING: r5d R08 (the class face's line, on the face only with the map's period)
+    if (face === 'class') return period ? W.classWhat(period) : '';
     return '';
   }
 
@@ -1086,7 +1111,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         if (select.value && !browsing) advance(h, 's:' + h);
       },
     }, OE.el('option', { value: '' }, '(class seen)'),
-    options.map((c) => OE.el('option', { value: c }, c === OE.UNJUDGED ? '? (cannot tell)' : c)));
+    // Cannot tell in the words of the face's button (r5-d R13: it read
+    // "? (cannot tell)"); its value stays OE.UNJUDGED.
+    // WORDING: r5d R13
+    options.map((c) => OE.el('option', { value: c }, c === OE.UNJUDGED ? 'Cannot tell (?)' : c)));
     if (current && !options.includes(current)) {
       select.append(OE.el('option', { value: current }, current));
     }
@@ -2365,7 +2393,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      message that names the tool to call; the footer then says it was sent,
      or shows it to type when the host did not take it (OE.sendJob). Once
      ready, the line beside it says answers must not change after the press
-     (W.everyDone, A/F17). A
+     (W.everyDone, A/F17); on a sheet that already gave its result it says
+     only that (W.everyDoneGraded, r5-d R06), as the notice over the sheet
+     does, never that an answer may change until the press. A
      server without the finish fields gets the old words. The button is made
      once and kept in place, so it keeps the focus when the progress is drawn
      again; once ready after the last answer it takes the focus, if the user
@@ -2378,8 +2408,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      again. */
   let finishButton = null;
   let finishing = false;
-  // The line beside the finish button once every answer is saved (A/F17).
-  const everyDoneLine = OE.el('span', { class: 'small' }, W.everyDone);
+  // The line beside the finish button once every answer is saved (A/F17);
+  // a sheet already graded says that it gave its result (r5-d R06).
+  // WORDING: r5d R06
+  const everyDoneLine = OE.el('span', { class: 'small' },
+    data.graded && typeof data.graded === 'object' ? W.everyDoneGraded : W.everyDone);
   /* Whether the sheet can be sent for grading now: complete and saved. */
   const ready = () => complete() && !pending() && !state.stale;
   async function finishPress(message) {
@@ -2557,8 +2590,14 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // Details fold, only on a sheet that can show pictures (r5-b J13; before,
   // on the lead's third line).
   const readingNote = picturesPossible ? OE.el('div', { class: 'small' }, W.reading) : null;
+  // The class face's line where the sheet does not know the map's period
+  // (r5-d R08): in the fold, before what Cannot tell does, no longer a fourth
+  // line on the face (faceInstructionText); its words are classWhat's own.
+  // WORDING: r5d R08 (where it stands)
+  const classNoPeriod = face === 'class' && !period ? OE.el('div', { class: 'small' }, W.classWhat(null)) : null;
   // ONE closed fold under the answers (the last round's S1): the sheet's file
-  // name (it may be long: it wraps anywhere), the instruction's rest and what
+  // name (it may be long: it wraps anywhere), the class face's line with no
+  // period known (r5-d R08), the instruction's rest and what
   // Cannot tell does, the keys, what never reaches this panel, the Street map
   // line, the clear-date note, where the example pictures come from (r4-k
   // K9; the sheet keeps its one fold), that the answers are a reading of
@@ -2568,6 +2607,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const foldLabel = 'Details';
   const foldParts = [
     OE.el('div', { class: 'mono', style: 'overflow-wrap:anywhere' }, data.name),
+    classNoPeriod,
     instruction, hint, ...foldLines, clearNote, examplesNote, readingNote, mixNote,
   ].filter(Boolean);
   const details = typeof OE.fold === 'function' ? OE.fold(foldLabel, ...foldParts)

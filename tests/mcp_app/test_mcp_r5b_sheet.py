@@ -594,8 +594,10 @@ def test_j29_the_finish_line_says_what_must_not_change() -> None:
     assert _said("everyDone", "square") == EVERY_DONE
     assert "    // WORDING: r4h S2 A/F17; r5b J29\n    everyDone: " in _words()
     assert "Answers must not change after you press" not in _code(_script())
-    line = "const everyDoneLine = OE.el('span', { class: 'small' }, W.everyDone);"
+    # r5-d R06: on a sheet that already gave its result, W.everyDoneGraded.
+    line = "const everyDoneLine = OE.el('span', { class: 'small' },\n"
     assert line in _editor()
+    assert "? W.everyDoneGraded : W.everyDone);" in _editor()
 
 
 # ------------------------------------------------------------------- the marks

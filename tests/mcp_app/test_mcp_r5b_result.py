@@ -10,9 +10,11 @@ scripts).
   in N". The boundary rates are worked by hand below. After review: beside
   its 95% range, only a phrase that lies inside the range as printed is
   said, the nearer such; with none, the headline gives the rate plainly.
-- J02: with Cannot tell the headline keeps the everyday form: the subject is
-  wrong on between the rate's two ends, with how many were Cannot tell; "to"
-  is the 95% range's alone.
+- J02: a rate of two figures keeps the everyday form: the subject is wrong
+  on between the rate's two ends; "to" is the 95% range's alone. Since round
+  r5-d R03 (tests/mcp_app/test_mcp_r5d_result.py) only with no Cannot tell:
+  with Cannot tell the subject is wrong on the lower end, or the higher if
+  the Cannot tell were wrong.
 - J22: a rate of 0 is written "0.0% wrong" after "right on every square".
 - J01, J02 and J22 change the words only: every number and text the view
   carries beside the headline is as before, and so is the model's line.
@@ -64,16 +66,18 @@ GRADED = (
     "Answers changed after seeing where the map disagrees make this result invalid."
 )
 
-#: J02: the build list's sentence, for the West part with 2 Cannot tell.
-BETWEEN_WEST = (
-    "The West part is wrong on between 10.0% and 12.5% of squares (2 Cannot tell); "
-    "95% range 6.1% to 21.7%."
+#: J02's headline with 2 Cannot tell, for the West part, as round r5-d R03
+#: words it (it read "... wrong on between 10.0% and 12.5% of squares (2
+#: Cannot tell); 95% range ...").
+OR_CANNOT_WEST = (
+    "The West part is wrong on 10.0% of squares, or 12.5% if the 2 Cannot tell were "
+    "wrong; 95% range 6.1% to 21.7%."
 )
 
-#: J02: the same for a map whose part is not known (inline labels).
-BETWEEN_MAP = (
-    "The map is wrong on between 10.0% and 12.5% of squares (2 Cannot tell); 95% "
-    "range 6.1% to 21.7%."
+#: The same for a map whose part is not known (inline labels).
+OR_CANNOT_MAP = (
+    "The map is wrong on 10.0% of squares, or 12.5% if the 2 Cannot tell were wrong; "
+    "95% range 6.1% to 21.7%."
 )
 
 #: J22: the build list's sentence, for the West part with every square right.
@@ -207,11 +211,16 @@ def _inner(rate: float | None = 0.125, **extra: Any) -> dict[str, Any]:
     return inner
 
 
-def _ranged(k: int = 2) -> dict[str, Any]:
-    """The same with ``k`` Cannot tell answers: no single rate, the rate's
-    own two ends 10.0% and 12.5%."""
-    inner = _inner(None, n_unjudged=k)
-    inner["valid_interval"]["estimate_range"] = [0.1, 0.125]
+def _ranged(k: int = 2, n: int = 80) -> dict[str, Any]:
+    """The same with ``k`` Cannot tell answers of ``n`` labels: no single
+    rate; the rate's own two ends a tenth of the labels wrong, then those
+    and the ``k`` Cannot tell wrong too, as the package's pair is (round
+    r5-d R03: ``n // 10`` and ``n // 10 + k`` of ``n``, so 10.0% and 12.5%
+    for 2 of 80); with none, 10.0% and 12.5% as given."""
+    inner = _inner(None, n_unjudged=k, n_labelled=n)
+    wrong = n // 10
+    ends = [wrong / n, (wrong + k) / n] if k else [0.1, 0.125]
+    inner["valid_interval"]["estimate_range"] = ends
     return inner
 
 
@@ -439,52 +448,55 @@ def test_j01_a_rate_with_no_phrase_inside_its_range_is_said_plainly() -> None:
 # --------------------------------------------------------------------------- J02
 
 
-def test_j02_the_headline_with_cannot_tell_says_between() -> None:
-    """J02: the subject is wrong on between the rate's two ends of squares
-    (or points), with how many were Cannot tell; "to" is used once, for the
-    95% range. Inline labels: the subject is the map."""
+def test_j02_between_is_kept_without_cannot_tell() -> None:
+    """J02, as round r5-d R03 leaves it: "between" the rate's two ends is
+    the headline of a rate of two figures with no Cannot tell; with Cannot
+    tell the subject is wrong on the lower end, or the higher if the Cannot
+    tell were wrong (HEADLINE_OR_CANNOT), of squares or points; "to" is used
+    once, for the 95% range. Inline labels: the subject is the map."""
     words = (
-        "{subject} is wrong on between {low} and {high} of {units}{cannot}; 95% "
-        "range {range}."
+        "{subject} is wrong on between {low} and {high} of {units}; 95% range "
+        "{range}."
     )
     assert server.HEADLINE_BETWEEN == words
-    assert server.HEADLINE_CANNOT == " ({k} Cannot tell)"
-    assert sheet.CANNOT_TELL in server.HEADLINE_CANNOT
+    assert not hasattr(server, "HEADLINE_CANNOT")
     view = _result(_ranged(), None, None)["view"]
-    assert view["headline"] == BETWEEN_MAP
+    assert view["headline"] == OR_CANNOT_MAP
     assert view["headline"].count(" to ") == 1
-    assert "Error rate" not in view["headline"]
-    points = _result(_ranged(1), None, None, "point")["view"]
+    assert "Error rate" not in view["headline"] and "between" not in view["headline"]
+    # 4 of 40 points wrong, then 5 with the one Cannot tell (round r5-d R03).
+    points = _result(_ranged(1, n=40), None, None, "point")["view"]
     assert points["headline"] == (
-        "The map is wrong on between 10.0% and 12.5% of points (1 Cannot tell); 95% "
-        "range 6.1% to 21.7%."
+        "The map is wrong on 10.0% of points, or 12.5% if the Cannot tell was wrong; "
+        "95% range 6.1% to 21.7%."
     )
-    many = _result(_ranged(1200), None, None)["view"]
-    assert "of squares (1,200 Cannot tell); 95% range" in many["headline"]
-    source = _server_source()
-    assert "# WORDING: r5b J02\nHEADLINE_BETWEEN = (\n" in source
-    assert '# WORDING: r5b J02\nHEADLINE_CANNOT = " ({k} Cannot tell)"\n' in source
+    # 1,200 of 12,000 wrong, then 2,400 with the 1,200 Cannot tell: 20.0%.
+    many = _result(_ranged(1200, n=12000), None, None)["view"]
+    assert "if the 1,200 Cannot tell were wrong; 95% range" in many["headline"]
+    marked = "# WORDING: r5b J02; r5d R03 (no Cannot tell here)\nHEADLINE_BETWEEN = ("
+    assert marked in _server_source()
 
 
 def test_j02_the_part_is_the_subject(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """J02: on a map in two parts the part is the sentence's subject, as in
-    the build list: "The West part is wrong on between ..."."""
+    the build list, in round r5-d R03's words with Cannot tell: "The West
+    part is wrong on 10.0% of squares, or ..."."""
     _stand_in(monkeypatch, _context(root))
     path = str(root / "west_to_label.csv")
     view = _result(_ranged(), path, MARK)["view"]
     assert view["title_text"] == "Result: West part of Kelp Q2"
-    assert view["headline"] == BETWEEN_WEST
+    assert view["headline"] == OR_CANNOT_WEST
     assert view["hedge"] is None
 
 
 def test_j02_changes_the_words_only() -> None:
     """J02: the rate's two ends, the 95% range, their texts and the count of
     Cannot tell answers are as before; no rate in words; the model's first
-    line is as before (SAY_RATE_RANGED). With no Cannot tell counted, no
-    brackets. A rate with no everyday sentence keeps HEADLINE_RANGED, and a
-    result with no rate at all its range-only line."""
+    line is as before (SAY_RATE_RANGED). With no Cannot tell counted, J02's
+    "between" form. A rate with no everyday sentence keeps HEADLINE_RANGED,
+    and a result with no rate at all its range-only line."""
     got = _result(_ranged(), None, None)
     view = got["view"]
     assert (view["say"], view["rate"], view["rate_text"]) == (None, None, None)

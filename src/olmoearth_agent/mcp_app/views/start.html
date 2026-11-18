@@ -53,10 +53,12 @@ import { App } from "@EXT_APPS_URL@";
 const root = document.getElementById('root');
 
 /* What the start card says about the key while signed out: what a key is
-   and where Studio makes one (B/S4), then what to do without a Studio
-   account (r4-h P1: A/F15, E/start-3), at the end. */
+   and where Studio makes one (B/S4), then where the key goes, in the words
+   of every other sign-in text (OE.SIGN_IN_KEY_GOES, r5-d R12), then what to
+   do without a Studio account (r4-h P1: A/F15, E/start-3), at the end. */
+// WORDING: r5d R12
 // WORDING: r4h P1
-const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio makes for you (in Studio, open your profile, then API Keys). It stays on this computer and goes only to Studio, never through Claude. No Studio account? Ask whoever made the map how to get one of your own. Do not use their key.';
+const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio makes for you (in Studio, open your profile, then API Keys). The key goes to the OlmoEarth Agent here, not through Claude. No Studio account? Ask whoever made the map how to get one of your own. Do not use their key.';
 
 /* The card's three plain lines under its title (OE.lead): what it is, what
    to do next (r4-h P1, D/D-start-1: a job below, or a question typed in the
@@ -124,12 +126,17 @@ function jobRows(app, jobs, on) {
 /* The overview figure (OE.overview.figure, a role=img element) and, under
    it and outside it, its one small caption with the docs link after the
    words (OE.docsLink: a text button, and the slot that shows the address
-   when the host does not open it). The same signed in and signed out. */
+   when the host does not open it). The same signed in and signed out. The
+   caption's words are two spans, one shown at a time (r5-d R04, overview.js
+   STYLE): the docs figure's (cap-wide) from 680 px up, the narrow strip's
+   (cap-narrow) below, so the caption says what is shown. */
 function overviewBlock(app) {
   const [docs, address] = OE.docsLink(app);
   return OE.el('div', { class: 'oe-overview-wrap' },
     OE.overview.figure(),
-    OE.el('div', { class: 'small muted oe-overview-cap' }, OE.overview.CAPTION, ' ', docs, address));
+    OE.el('div', { class: 'small muted oe-overview-cap' },
+      OE.el('span', { class: 'cap-wide' }, OE.overview.CAPTION),
+      OE.el('span', { class: 'cap-narrow' }, OE.overview.CAPTION_NARROW), ' ', docs, address));
 }
 
 /* After Sign out (the top line's button, the user's own press): the card is

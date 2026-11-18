@@ -527,11 +527,14 @@ def test_k3_a_pixel_at_exactly_half_is_not_the_named_class() -> None:
 
 def test_k4_only_an_exception_name_at_the_start_is_dropped() -> None:
     """``"<Name>Error: "`` and ``"<Name>Exception: "`` at the very start, as
-    the registry writes a failure; any other text is as it was. A
-    ``KeyError``'s own text is only the missing key's repr, so it is put in
-    plain words around it."""
+    the registry writes a failure, and after it an ``OSError``'s number
+    (round r5-d R11); any other text is as it was. A ``KeyError``'s own text
+    is only the missing key's repr, so it is put in plain words around it."""
     plain = server._plain_error
     assert plain("ValueError: the raster holds too much") == "the raster holds too much"
+    assert plain("OSError: [Errno 28] No space left on device") == (
+        "No space left on device"
+    )
     assert plain("RuntimeError: GET /x failed (ReadTimeout)") == (
         "GET /x failed (ReadTimeout)"
     )
@@ -633,10 +636,9 @@ def test_k4_a_failed_parts_error_is_plain_on_the_card_only() -> None:
         "draw": {"budget": 20},
     }
     reply = {"check_key": "k", "error": "OSError: [Errno 28] No space left on device"}
-    assert server._draw_for_view(reply)["error"] == (
-        "[Errno 28] No space left on device"
-    )
-    assert reply["error"].startswith("OSError: ")
+    # Round r5-d R11: the OSError's number goes from the card's copy too.
+    assert server._draw_for_view(reply)["error"] == "No space left on device"
+    assert reply["error"].startswith("OSError: [Errno 28] ")
     quiet = {"check_key": "k", "error": None}
     assert server._draw_for_view(quiet) is quiet
 

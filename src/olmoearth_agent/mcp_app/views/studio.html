@@ -275,14 +275,15 @@ const PREDICTIONS_NOTE = 'Each prediction is a model run over an area and a peri
    and the list's first line where the row above has job buttons and the run
    made more than one map (A/projects-3, B/P2; r5-c S05: a lone output has no
    buttons of its own, since the row's use it). The words a toast or an
-   empty list says about them. */
-// WORDING: r4p2 (label, none, noneYet); r5c S05 (first, several)
+   empty list says about them. A row's press on a run of several says it
+   in that first line alone (r5-d R09: its own line under the row, which
+   said how many maps, repeated it and went). */
+// WORDING: r4p2 (label, none, noneYet); r5c S05 (first)
 const OUTPUTS = {
   label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),
   first: 'This run made more than one map. Use the buttons on the one you mean.',
   none: 'No outputs',
   noneYet: 'This prediction has no outputs yet.',
-  several: (n) => 'This run made ' + n + ' maps. Pick one in the list under it.',
 };
 
 /* Said under an embeddings prediction's row, which has no job buttons (B/P1). */
@@ -411,7 +412,10 @@ function resultRow(app, p, r, done, kind) {
    whose record is not here; a failed row says that it failed (r5-c S08).
    Its results show as its outputs, their list opening with OUTPUTS.first
    when the row has job buttons and there are several; a lone output has
-   no job buttons of its own (r5-c S05: the row's use it). */
+   no job buttons of its own (r5-c S05: the row's use it). While a list of
+   several is open, the row's own job buttons are away (r5-d R09): the
+   outputs' buttons are the ones to press; they come back when it closes,
+   and a press on them opens it again. */
 function predictionRow(app, p, compare, kind, model = null) {
   const done = p.status === 'completed';
   const results = OE.el('ul', { class: 'items sub', hidden: true });
@@ -420,6 +424,7 @@ function predictionRow(app, p, compare, kind, model = null) {
   const getResults = () => cache || (cache = OE.call(app, 'olmoearth_app_results', { prediction_id: p.id })
     .catch((err) => { cache = null; throw err; }));
   let filled = false;
+  let several = false;  // r5-d R09: the run made several maps (set when the list is drawn)
   let hasJobs = false;  // set once the row's jobs are made, before any press can fill the list
   const fill = (out) => {
     if (filled) return;
@@ -430,6 +435,9 @@ function predictionRow(app, p, compare, kind, model = null) {
     const rows = list.map((r) => resultRow(app, p, r, done && list.length > 1, kind));
     results.replaceChildren(...(!list.length ? [OE.el('li', { class: 'faint' }, OUTPUTS.none)]
       : hasJobs && list.length > 1 ? [OE.el('li', { class: 'small faint' }, OUTPUTS.first), ...rows] : rows));
+    // r5-d R09: a run of several maps: while its list is open, the row's
+    // own jobs are away (show), since a press on them only opens it.
+    several = done && list.length > 1;
   };
   const read = async () => {
     try {
@@ -446,6 +454,15 @@ function predictionRow(app, p, compare, kind, model = null) {
     toggle.textContent = label(shown);
     toggle.setAttribute('aria-label', label(shown) + ' of ' + p.name);
     toggle.setAttribute('aria-expanded', String(shown));
+    // r5-d R09: while a list of several is open its outputs' buttons are the
+    // ones to press, so the row's own are away; they come back when it
+    // closes. The toggle stays in place (it keeps the focus); the slot is
+    // not touched, so a line an earlier press wrote there stays.
+    const away = shown && several;
+    for (const b of jobs) {
+      if (away) b.remove();
+      else if (b.parentNode !== acts) acts.append(b);
+    }
   };
   let loading = false;  // aria-disabled while loading, so the button keeps the focus
   toggle.addEventListener('click', async () => {
@@ -469,12 +486,19 @@ function predictionRow(app, p, compare, kind, model = null) {
     if (!list.length) { OE.toast(OUTPUTS.noneYet); return; }
     // Where to look first: only a result with top-k class scores has an order.
     if (key === 'first' && !list.some((r) => OE.hasTopK(r.property_names || []))) {
+      // r5-d R09: with several, the list opens and the row's jobs are away
+      // (show): each output's Check is in view, and takes the focus.
+      if (list.length > 1) { show(true); OE.focusIfHere(results.querySelector('button')); }
       OE.toast(OE.NO_FIRST);
       return;
     }
     if (list.length > 1) {
       show(true);
-      OE.toast(OUTPUTS.several(list.length));
+      // r5-d R09: the list's first line (OUTPUTS.first) says there are
+      // several, once (the slot, emptied above, says nothing); the pressed
+      // button is away (show), so the focus goes to the first output's
+      // first job.
+      OE.focusIfHere(results.querySelector('button'));
       return;
     }
     await OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: list[0].id, prediction_id: p.id, name: p.name }), slot);
@@ -497,6 +521,7 @@ function predictionRow(app, p, compare, kind, model = null) {
   const says = rowSays(kind, done, model && model.grain, unread, p.status);
   // r5-c S07: Outputs and the jobs on a line of their own under the lead
   // (.pred-acts), so Outputs always starts it at the row's left edge.
+  const acts = OE.el('div', { class: 'row pred-acts' }, toggle, jobs);
   return OE.el('li', { style: 'display:block' },
     OE.el('div', { class: 'spread' },
       OE.el('span', { class: 'row lead pred' }, box, OE.glyph.predictionRow(p),
@@ -504,7 +529,7 @@ function predictionRow(app, p, compare, kind, model = null) {
           OE.el('span', { class: 'name' }, p.name),
           made ? OE.el('span', { class: 'small faint pred-model' }, made) : null,
           p.status ? OE.chip(p.status, { ring: done }) : null))),
-    OE.el('div', { class: 'row pred-acts' }, toggle, jobs),
+    acts,
     says ? OE.el('div', { class: 'small faint pred-says' }, says) : null,
     slot, results);
 }

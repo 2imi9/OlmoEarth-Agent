@@ -278,8 +278,9 @@ def test_j20_a_job_buttons_slot_says_what_became_of_its_message() -> None:
         "  return line;",
     ]
     send = _between(common, "OE.sendJob = async (app, text, slot) => {", "\n};")
+    # r5-d R07: with a slot, OE.say is quiet (the slot says it, no toast).
     assert send.splitlines()[1:] == [
-        "  const sent = await OE.say(app, text);",
+        "  const sent = await OE.say(app, text, { quiet: Boolean(slot) });",
         "  if (slot) {",
         "    const line = OE.clearSlot(slot);",
         "    if (!sent) slot.append(OE.el('code', {}, text));",
@@ -312,24 +313,30 @@ def test_j20_a_message_taken_clears_only_the_failure_line_of_say() -> None:
     message is taken it clears the status line, and only while that still
     shows the failure line OE.say wrote last, so a card never says "Sent to
     the chat" beside "Claude did not take the message", and any other line
-    (a save, a sign-in) stays."""
+    (a save, a sign-in) stays. r5-d R07: a quiet call (a job button's, whose
+    slot says it) writes no failure line; the success path is as it was."""
     common = _read("common.js")
-    assert (
+    head = "OE.say = async (app, text, { quiet = false } = {}) => {"
+    named = (
         f"// WORDING: r5b J20\nOE.NOT_TAKEN = '{NOT_TAKEN}';\n"
         "let saidFailed = null;  // the failure line OE.say last wrote\n"
-        "OE.say = async (app, text) => {" in common
     )
-    say = _between(common, "OE.say = async (app, text) => {", "\n};")
+    assert named + head in common
+    say = _between(common, head, "\n};")
     for text in (
-        "      saidFailed = OE.NOT_TAKEN;\n"
-        "      OE.toast(saidFailed, true);\n"
+        "      if (!quiet) {\n"
+        "        saidFailed = OE.NOT_TAKEN;\n"
+        "        OE.toast(saidFailed, true);\n"
+        "      }\n"
         "      return false;\n",
         "    const bar = document.getElementById('oe-toast');\n"
         "    if (bar && saidFailed && bar.textContent === saidFailed) OE.toast('');\n"
         "    saidFailed = null;\n"
         "    return true;\n",
-        "    saidFailed = 'Could not send the message to Claude: ' + err.message;\n"
-        "    OE.toast(saidFailed, true);\n"
+        "    if (!quiet) {\n"
+        "      saidFailed = 'Could not send the message to Claude: ' + err.message;\n"
+        "      OE.toast(saidFailed, true);\n"
+        "    }\n"
         "    return false;\n",
     ):
         assert text in say, text
@@ -369,8 +376,9 @@ def test_j20_a_press_that_sends_nothing_leaves_no_word_of_the_last() -> None:
     """J20: on the projects card a prediction's two jobs share one slot, and
     the comparer's button has its own; each press clears it first
     (OE.clearSlot, which keeps the status line in place), so a press that
-    ends in a toast and sends nothing (several outputs, no class scores)
-    does not leave "Sent to the chat" from an earlier press under it."""
+    sends nothing (several outputs: the list opens, its first line says so,
+    r5-d R09; no class scores: a toast) does not leave "Sent to the chat"
+    from an earlier press under it."""
     studio = _read("studio.html")
     row = _between(studio, "function predictionRow(", "\n}\n")
     assert "OE.clearSlot(slot);\n    const out = await read();\n" in row

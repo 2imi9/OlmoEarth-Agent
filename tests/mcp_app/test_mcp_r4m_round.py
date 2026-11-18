@@ -102,10 +102,9 @@ RULE_OWN = (
 HIDDEN = "The map's answer is hidden: answer without looking at the map."
 
 #: M8: the cloud line (reworded after review: only the case the rule leaves
-#: open), the pane's fold's summary and first line.
-CLOUD_LINE = (
-    "No clear date of this square (cloud over it on every date): press Cannot tell."
-)
+#: open; r5-d R02: as a case, not a fact about the square shown), the pane's
+#: fold's summary and first line.
+CLOUD_LINE = "If cloud covers the square on every date, press Cannot tell."
 CLOUD_FOLD = "Scene cloud of each date"
 CLOUD_WHOLE = "Scene cloud is for the whole satellite image, not this square."
 

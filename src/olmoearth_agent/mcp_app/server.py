@@ -1430,6 +1430,14 @@ def _lines(value: Any) -> list[str]:
 #: tool's failure (``"ValueError: ..."``, ``f"{type(exc).__name__}: {exc}"``).
 _ERROR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception): ")
 
+#: An ``OSError``'s number (``"[Errno 28] No space left on device"``; a name
+#: lookup's is negative, ``"[Errno -2] ..."``; or, on Windows, a Win32
+#: error's, ``"[WinError 32] ..."``), which a card leaves out (round r5-d,
+#: R11): an OSError's number at the start of the error, after the
+#: exception's name if there is one, when words follow it.
+# WORDING: r5d R11 (what a card's error leaves out)
+_ERRNO = re.compile(r"^\[(?:Errno|WinError) -?\d+\] (?=\S)")
+
 #: A ``KeyError`` as a card shows it (round r5-a, K4): its own text is only
 #: the missing key's repr (``"'labels'"``), no words. ``{key}`` is that repr.
 # WORDING: r5a K4
@@ -1438,14 +1446,20 @@ MISSING_ENTRY = "the tool did not find an entry it needs ({key})"
 
 def _plain_error(error: str) -> str:
     """An error as a card shows it (round r5-a, K4): without the exception's
-    name at its start (``"ValueError: "``), the rest as it is; a ``KeyError``,
-    whose rest is only a key's repr, in :data:`MISSING_ENTRY`'s words.
+    name at its start (``"ValueError: "``) and without an OSError's number
+    at the start of the error, after the exception's name if there is one,
+    when words follow it (``"[Errno 28] "``, or, on Windows, a Win32
+    error's, ``"[WinError 32] "``; :data:`_ERRNO`, round r5-d R11), the rest
+    as it is; a ``KeyError``, whose rest is only a key's repr, in
+    :data:`MISSING_ENTRY`'s words.
 
-    For the view data only: the model's text keeps the name, and so does a
-    check's stored draw record, whose error ``check.FINAL_ERRORS`` matches by
-    that name to say whether a press may retry.
+    For the view data only: the model's text keeps the name and the number,
+    and so does a check's stored draw record, whose error
+    ``check.FINAL_ERRORS`` matches by that name to say whether a press may
+    retry.
     """
     plain = _ERROR_NAME.sub("", error, count=1)
+    plain = _ERRNO.sub("", plain, count=1)
     if error.startswith("KeyError: ") and plain.strip():
         return MISSING_ENTRY.format(key=plain.strip())
     return plain
@@ -1459,8 +1473,8 @@ def _card_error(error: Any) -> Any:
 
 def _refusal_words(error: str) -> str:
     """A refusal's own words for a panel: the error without its exception's
-    name (``"ValueError: "``, :func:`_plain_error`), its first letter a
-    capital."""
+    name (``"ValueError: "``) and an OSError's number (round r5-d R11;
+    :func:`_plain_error`), its first letter a capital."""
     words = _plain_error(error.strip())
     return words[:1].upper() + words[1:]
 
@@ -1677,25 +1691,44 @@ HEADLINE = "{say}: {rate}, 95% range {range}."
 #: the range are the estimate's, unchanged.
 # WORDING: r5b J22
 HEADLINE_ZERO_WRONG = " wrong"
-#: The same with Cannot tell, where the rate is itself two figures (the
-#: reader test's B/result-two-ranges; round r5-b, J02): the everyday form
-#: stays, its subject the part (:func:`_subject`); the rate's own two ends
-#: are said "between ... and ...", so "to" is the 95% range's alone;
-#: ``{units}`` is "squares" or "points"; ``{cannot}`` says why there are two
-#: figures (:data:`HEADLINE_CANNOT`), or nothing with no Cannot tell counted.
-#: Every figure is the estimate's own, formatted as before.
-# WORDING: r5b J02
+#: The same where the rate is itself two figures and no answer was Cannot
+#: tell (the reader test's B/result-two-ranges; round r5-b, J02): the
+#: everyday form stays, its subject the part (:func:`_subject`); the rate's
+#: own two ends are said "between ... and ...", so "to" is the 95% range's
+#: alone; ``{units}`` is "squares" or "points". With Cannot tell,
+#: :data:`HEADLINE_OR_CANNOT` (round r5-d, R03). Every figure is the
+#: estimate's own, formatted as before.
+# WORDING: r5b J02; r5d R03 (no Cannot tell here)
 HEADLINE_BETWEEN = (
-    "{subject} is wrong on between {low} and {high} of {units}{cannot}; 95% range "
-    "{range}."
+    "{subject} is wrong on between {low} and {high} of {units}; 95% range {range}."
 )
-#: :data:`HEADLINE_BETWEEN`'s ``{cannot}``: how many answers were Cannot tell
-#: (``sheet.CANNOT_TELL``, the sheet's own word), in brackets.
-# WORDING: r5b J02
-HEADLINE_CANNOT = " ({k} Cannot tell)"
+#: The same with Cannot tell (round r5-d, R03): the rate's two ends are the
+#: rate with every Cannot tell counted right, ``{low}``, then with every one
+#: counted wrong, ``{high}`` (the package's ``estimate_range``: in
+#: ``oe_inferencex.estimate.valid.whole_map_valid`` a ``?`` window counts
+#: right at the lower end and wrong at the upper), so the sentence says
+#: which is which, and the two ends no longer read as a second range beside
+#: the 95% range (J02's "between 10.0% and 12.5% of squares (2 Cannot
+#: tell)" did). ``{which}`` is :data:`HEADLINE_WHICH_ONE` or
+#: :data:`HEADLINE_WHICH`. Every figure is the estimate's own, formatted as
+#: before.
+# WORDING: r5d R03
+HEADLINE_OR_CANNOT = (
+    "{subject} is wrong on {low} of {units}, or {high} if {which} wrong; 95% "
+    "range {range}."
+)
+#: :data:`HEADLINE_OR_CANNOT`'s ``{which}`` for one Cannot tell answer
+#: (``sheet.CANNOT_TELL``, the sheet's own word).
+# WORDING: r5d R03
+HEADLINE_WHICH_ONE = "the Cannot tell was"
+#: :data:`HEADLINE_OR_CANNOT`'s ``{which}`` for ``{k}`` of them, ``{k}``
+#: written with thousands commas.
+# WORDING: r5d R03
+HEADLINE_WHICH = "the {k} Cannot tell were"
 #: A rate that has no everyday sentence (:func:`say_rate` gave none), plain:
 #: ``{of}`` names the part (:func:`_of_part`), or nothing. Until round r5-b
-#: also the headline with Cannot tell (J02: :data:`HEADLINE_BETWEEN` now).
+#: also the headline with Cannot tell (J02: :data:`HEADLINE_BETWEEN`; since
+#: r5-d R03, :data:`HEADLINE_OR_CANNOT`).
 # WORDING: r4h R4
 HEADLINE_RANGED = "Error rate{of}: {rate_range}, 95% range {range}."
 
@@ -2057,11 +2090,17 @@ GRADED_LINE = (
 RULE_TYPED_NOTE = "(typed before the squares were picked)"
 # WORDING: r4p2
 RULE_OWNER_NOTE = "(the app owner's rule, 11 Nov 2026)"
-#: ``{units}`` and ``{unit}``: squares, or points for a sheet of points.
-# WORDING: squares
+#: ``{units}``: squares, or points for a sheet of points. The card has no
+#: button of its own, so the second sentence says where the answers and the
+#: press are: the label sheet, and ``{press}``, the sheet's own finish
+#: button (``sheet.JOB_LABELS``: "Estimate the error rate" on an estimate's
+#: plan, "Certify the zone" on a certificate plan's; :func:`_unfinished`).
+#: "The rest" reads for one square left or many (round r5-d, R10: it said
+#: "Answer every square, then press Estimate the error rate again.").
+# WORDING: squares; r5d R10
 UNFINISHED = (
     "Not finished yet: {left} of {n} {units} on this sheet have no answer. Answer "
-    "every {unit}, then press Estimate the error rate again."
+    "the rest on the label sheet, then press {press} there."
 )
 #: The estimate's refusal of a sheet with windows unlabelled (every form of
 #: it names how many of how many design windows have no label).
@@ -2180,20 +2219,28 @@ GRADED_AGAIN_NOTE = (
 )
 
 
-def _unfinished(error: str, unit: str = sheet.UNIT_SQUARE) -> dict[str, Any] | None:
-    """A refused estimate's unlabelled windows: ``{left, n, unit, text}``
-    (:data:`UNFINISHED`, in ``unit``: what the sheet's windows are,
-    ``sheet.window_unit``), or ``None`` for any other failure."""
+def _unfinished(
+    error: str, unit: str = sheet.UNIT_SQUARE, press: str | None = None
+) -> dict[str, Any] | None:
+    """A refused estimate's unlabelled windows: ``{left, n, unit, press,
+    text}`` (:data:`UNFINISHED`, in ``unit``: what the sheet's windows are,
+    ``sheet.window_unit``), or ``None`` for any other failure. ``press`` is
+    the sheet's own finish button, as the sheet draws it
+    (:func:`_finish_label`, round r5-d R10); with none (inline labels, a
+    sheet that cannot be read) the estimate's,
+    ``sheet.JOB_LABELS["estimate"]``."""
     match = _UNFINISHED.search(error)
     if match is None:
         return None
     left, n = int(match[1]), int(match[2])
+    button = press or sheet.JOB_LABELS["estimate"]
     return {
         "left": left,
         "n": n,
         "unit": _unit_word(unit),
+        "press": button,
         "text": UNFINISHED.format(
-            left=f"{left:,}", n=f"{n:,}", units=_units(unit, n), unit=_unit_word(unit)
+            left=f"{left:,}", n=f"{n:,}", units=_units(unit, n), press=button
         ),
     }
 
@@ -2692,6 +2739,23 @@ def _sheet_version_now(path: str | None) -> str | None:
     return version if isinstance(version, str) else None
 
 
+def _finish_label(path: str | None) -> str | None:
+    """The finish button's words on an estimate's sheet, as the sheet draws
+    them (``sheet.sheet_progress``'s ``finish_label``: "Estimate the error
+    rate", "Certify the zone" on a certificate plan's, "Say which map is
+    more accurate" on a two-map sheet, "Ask Claude to grade it" with no
+    design file beside it), which an unfinished card names (round r5-d
+    R10); ``None`` for no sheet or one that cannot be read (never raises;
+    blocking)."""
+    if path is None:
+        return None
+    try:
+        label = sheet.sheet_progress(path).get("finish_label")
+    except Exception:  # noqa: BLE001 - unknown: the estimate's own words
+        return None
+    return label if isinstance(label, str) and label else None
+
+
 def _grade_mark(
     path: str | None, design: Any, before: str | None
 ) -> tuple[str, dict[str, Any]] | None:
@@ -2769,10 +2833,13 @@ def _estimate_result(
     whose subject is the part when the part is known, with the exact rate
     and the 95% range; words whose share lies outside that range are not
     said, :data:`HEADLINE_RANGED` then; a rate of 0 written "0.0% wrong",
-    :data:`HEADLINE_ZERO_WRONG`; with Cannot tell :data:`HEADLINE_BETWEEN`,
-    the same subject "wrong on between" the rate's own two ends, ``rate_low``
-    and ``rate_high``, with how many were Cannot tell, ``n_unjudged``; round
-    r5-b, J02 and J22: the words only, every figure is the estimate's);
+    :data:`HEADLINE_ZERO_WRONG`; with Cannot tell :data:`HEADLINE_OR_CANNOT`,
+    the same subject wrong on the rate's lower end, ``rate_low``, "or" its
+    higher, ``rate_high``, if the Cannot tell answers, ``n_unjudged`` of them,
+    were wrong, round r5-d, R03; a rate of two figures with no Cannot tell,
+    :data:`HEADLINE_BETWEEN`, "wrong on between" its two ends; rounds r5-b,
+    J02 and J22, and r5-d, R03: the words only, every figure is the
+    estimate's);
     ``low_text`` and ``high_text``, the 95% range's two ends formatted as
     ``range_text`` is, which the rate line labels under its band (r4-k K6,
     the owner's choice of 16 Nov 2026); the
@@ -2862,16 +2929,33 @@ def _estimate_result(
     where = _in_part(part)
     count = f"{n:,}"
     units = _units(unit, n)
-    if ranged and rate_range_text:
-        # With Cannot tell the rate is two figures: the everyday form stays,
-        # "between ... and ..." with how many were Cannot tell, so "to" is
-        # the 95% range's alone (round r5-b, J02). The figures are unchanged.
+    if ranged and rate_range_text and n_unjudged:
+        # With Cannot tell the rate is two figures, every Cannot tell counted
+        # right, then every one counted wrong (the package's estimate_range):
+        # the sentence says so, the higher figure "if the Cannot tell were
+        # wrong", so "to" is the 95% range's alone (round r5-d, R03). The
+        # figures are unchanged.
+        if n_unjudged == 1:
+            which = HEADLINE_WHICH_ONE
+        else:
+            which = HEADLINE_WHICH.format(k=f"{n_unjudged:,}")
+        headline = HEADLINE_OR_CANNOT.format(
+            subject=_subject(part),
+            low=rules.percent(rate_low),
+            high=rules.percent(rate_high),
+            units=_units(unit),
+            which=which,
+            range=range_text,
+        )
+    elif ranged and rate_range_text:
+        # A rate of two figures with no Cannot tell: the everyday form stays,
+        # "between ... and ...", so "to" is the 95% range's alone (round
+        # r5-b, J02). The figures are unchanged.
         headline = HEADLINE_BETWEEN.format(
             subject=_subject(part),
             low=rules.percent(rate_low),
             high=rules.percent(rate_high),
             units=_units(unit),
-            cannot=HEADLINE_CANNOT.format(k=f"{n_unjudged:,}") if n_unjudged else "",
             range=range_text,
         )
     elif say is not None and rate_text is not None:
@@ -3077,8 +3161,9 @@ def _estimate_result(
         "unit": unit,
         "n_checked": n,
         # The card's big sentence: the rate in words with the exact rate and
-        # its 95% range, or with Cannot tell "wrong on between" the rate's
-        # own two ends (R1, R4; round r5-b J02, J22).
+        # its 95% range, or with Cannot tell the rate's lower end "or" its
+        # higher "if the Cannot tell were wrong" (R1, R4; round r5-b J02, J22;
+        # r5-d R03).
         "headline": headline,
         "say": say,
         "rate": rate,
@@ -3654,8 +3739,9 @@ def _check_zone_for_view(zone: dict[str, Any]) -> dict[str, Any]:
     """One zone of the Check card as its view data has it: a drawn plan's
     ``facts`` and ``forbidden_claims`` (:data:`VIEW_HIDDEN_DRAW`), which the
     model reads with the zone, left out, and a failed draw's ``error``
-    without its exception's name (:func:`_plain_error`, round r5-a K4; the
-    model's zone and the draw record keep it)."""
+    without its exception's name and an OSError's number (round r5-d R11;
+    :func:`_plain_error`, round r5-a K4; the model's zone and the draw
+    record keep them)."""
     if isinstance(zone.get("error"), str):
         zone = {**zone, "error": _plain_error(zone["error"])}
     draw = zone.get("draw")
@@ -3667,9 +3753,9 @@ def _check_zone_for_view(zone: dict[str, Any]) -> dict[str, Any]:
 
 def _draw_for_view(view: dict[str, Any]) -> dict[str, Any]:
     """One zone of a press's reply (:func:`check.draw_view`) as the card gets
-    it: its ``error`` without the exception's name (:func:`_plain_error`,
-    round r5-a K4). The draw record and the press's log line keep the error
-    as the plan gave it."""
+    it: its ``error`` without the exception's name and an OSError's number
+    (round r5-d R11; :func:`_plain_error`, round r5-a K4). The draw record
+    and the press's log line keep the error as the plan gave it."""
     error = view.get("error")
     if not isinstance(error, str):
         return view
@@ -3902,7 +3988,9 @@ class AppServer:
         inline labels gets the card with no sheet's part, rule, squares or
         name), worded in squares or points by the design behind it
         (:func:`_graded_design`, :func:`_unit_of`), as is an unfinished
-        sheet's count; its first text block is ``{"say_first", "note"}``
+        sheet's count, which names the sheet's own finish button
+        (:func:`_finish_label`, round r5-d R10); its first text block is
+        ``{"say_first", "note"}``
         (:data:`SAY_FIRST_NOTE`), then :data:`GRADED_AGAIN_NOTE` and
         :data:`RULE_USED_NOTE` where they apply, with panels or without."""
         from mcp import types
@@ -3941,12 +4029,18 @@ class AppServer:
         estimate: dict[str, Any] | None = None
         unit = sheet.UNIT_SQUARE
         design: dict[str, Any] | None = None
+        press: str | None = None
         if name == ESTIMATE_TOOL:
             # What the graded design's windows are: squares, or points.
             design = await asyncio.to_thread(
                 _graded_design, graded_path, arguments.get("design_path")
             )
             unit = await asyncio.to_thread(_unit_of, design)
+            error = str(envelope.get("error") or "")
+            if envelope.get("ok") is False and _UNFINISHED.search(error):
+                # A sheet left unfinished: the card names the sheet's own
+                # finish button, as the sheet draws it (round r5-d R10).
+                press = await asyncio.to_thread(_finish_label, graded_path)
         if (
             name == ESTIMATE_TOOL
             and envelope.get("ok") is True
@@ -3971,7 +4065,15 @@ class AppServer:
                 inline_reference=arguments.get("reference"),
             )
         view = await asyncio.to_thread(
-            self._view_data, name, envelope, progress, arguments, views, estimate, unit
+            self._view_data,
+            name,
+            envelope,
+            progress,
+            arguments,
+            views,
+            estimate,
+            unit,
+            press,
         )
         block = view.get("review")
         pictured = views and isinstance(block, dict) and block.get("pictures") is True
@@ -4024,6 +4126,7 @@ class AppServer:
         views: bool = False,
         estimate: dict[str, Any] | None = None,
         unit: str = sheet.UNIT_SQUARE,
+        press: str | None = None,
     ) -> dict[str, Any]:
         """What the result view shows: the card, a refusal's reason, the figure,
         the contract.
@@ -4036,7 +4139,8 @@ class AppServer:
         allows it (``olmoearth_app_plan_figure``).
 
         A failed result's ``error`` is its text without the exception's name
-        (:func:`_plain_error`), and its ``hint``, written for the model, is
+        and an OSError's number (round r5-d R11; :func:`_plain_error`), and
+        its ``hint``, written for the model, is
         kept only when the card offers the sign-in (round r5-a K4); the
         model's text has both as the tool gave them.
 
@@ -4047,8 +4151,10 @@ class AppServer:
         carries ``result`` (``estimate``'s view, :func:`_estimate_result`);
         an estimate refused for windows left unlabelled carries
         ``unfinished`` (:func:`_unfinished`, in ``unit``'s words: squares, or
-        points for a sheet of points) and no ``hint`` (the registry's hint is
-        for the model). A plan with a sheet carries ``unit``, what its
+        points for a sheet of points, naming ``press``, the sheet's own
+        finish button, :func:`_finish_label`, round r5-d R10) and no
+        ``hint`` (the registry's hint is for the model). A plan with a sheet
+        carries ``unit``, what its
         sheet is of (:func:`_points_plan`: "point" or "square"), for the
         fold's line on the sheet as a file (r4-m M3), and ``right_or_wrong``,
         whether that sheet is labelled right or wrong (``progress``'s
@@ -4121,7 +4227,7 @@ class AppServer:
             if estimate is not None:
                 data["result"] = estimate["view"]
             elif not data["ok"]:
-                unfinished = _unfinished(str(envelope.get("error") or ""), unit)
+                unfinished = _unfinished(str(envelope.get("error") or ""), unit, press)
                 if unfinished is not None:
                     data["unfinished"] = unfinished
                     data["hint"] = None
@@ -4389,10 +4495,11 @@ class AppServer:
         # A score whose values run far outside 0 to 1 is not a 0-to-1 score
         # (an undeclared no-data fill, another scale): clipped, each such
         # pixel would count at full confidence, so the whole card is refused
-        # before any offer is written (round r5-a K2).
+        # before any offer is written (round r5-a K2). Its sentence is plain,
+        # so the card shows it on its face (round r5-d R01).
         not_a_score = _not_a_score(inner)
         if not_a_score is not None:
-            return self._check_failed({"ok": False, "error": not_a_score})
+            return self._check_failed({"ok": False, "error": not_a_score}, plain=True)
         # A map of presence and absence has the owner's labelling rule, which
         # the user may replace with the map's own before its first part is
         # drawn (rule_owner: the card's box); any other needs the user's own
@@ -4605,6 +4712,7 @@ class AppServer:
         *,
         result_id: str | None = None,
         map_view: dict[str, Any] | None = None,
+        plain: bool = False,
     ) -> Any:
         """The Check card's answer when the result cannot be checked: no press.
 
@@ -4612,7 +4720,8 @@ class AppServer:
         ``must_state``, ``forbidden_claims``), and for a class map without
         top-k scores (known by its contract, :func:`_class_map_refusal`)
         :data:`CHECK_CLASS_MAP_NOTE` too. The view gets the
-        error without its exception's name (:func:`_plain_error`), whether to
+        error without its exception's name and an ``OSError``'s number
+        (:func:`_plain_error`, round r5-d R11), whether to
         offer the sign-in and, only then, the hint (round r5-a K4: the
         registry's hint is written for the model), or for a class map
         the refusal's words as its ``reason`` (the card folds them),
@@ -4623,7 +4732,11 @@ class AppServer:
         score (one regression field on another range, :func:`_number_map`;
         round r5-b X1) the view's ``error`` and ``next`` are the card's two
         plain lines (:data:`CHECK_NUMBER_MAP`, :data:`CHECK_NUMBER_MAP_NEXT`)
-        in place of the tool's sentence, which the model's text keeps.
+        in place of the tool's sentence, which the model's text keeps. With
+        ``plain``, an error the server wrote in plain words for the card's
+        face (:data:`CHECK_NOT_A_SCORE`), the view's ``plain`` is true: the
+        card shows that error on its face, over its own line, not in its
+        fold (round r5-d R01); the model's text is the same.
         """
         from mcp import types
 
@@ -4654,6 +4767,8 @@ class AppServer:
         else:
             hint = envelope.get("hint") if view["needs_sign_in"] else None
             view.update(error=_plain_error(error), hint=hint)
+            if plain:
+                view["plain"] = True
         return types.CallToolResult(
             content=_text(model), isError=True, _meta={VIEW_DATA_KEY: view}
         )
@@ -5164,7 +5279,8 @@ class AppServer:
         a final failure or a changed raster draws nothing. A key, count or
         record that is refused gets ``outcome`` ``"refused"`` and its error.
         A failed draw's error reaches the card without its exception's name
-        (:func:`_draw_for_view`, round r5-a K4); its record keeps the name.
+        and an OSError's number (round r5-d R11; :func:`_draw_for_view`,
+        round r5-a K4); its record keeps both.
         A press cancelled after its claim (the page's call timed out or was
         dropped) records the draw stopped, which a press retries with its
         pinned settings, and logs it ``"cancelled"`` (:func:`_stop_draw`,
@@ -5227,8 +5343,9 @@ class AppServer:
         )
         await asyncio.to_thread(_log_press, entry)
         view = check.draw_view(record, outcome=outcome, error=claim.get("error"))
-        # The card's copy: the error without its exception's name (r5-a K4);
-        # the draw record and the log line above keep it.
+        # The card's copy: the error without its exception's name (r5-a K4)
+        # and an OSError's number (round r5-d R11); the draw record and the
+        # log line above keep it.
         return _draw_for_view(view)
 
     async def _check_plan(self, key: str, record: dict[str, Any]) -> dict[str, Any]:

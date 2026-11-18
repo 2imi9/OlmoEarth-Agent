@@ -485,7 +485,10 @@ def test_j10_answers_not_saved_are_said_on_their_parts_own_line() -> None:
         swap,
         "const dropped = current && typeof current.oeUnsaved === 'function'"
         " ? current.oeUnsaved() : 0;",
-        "    m.sheetError = null;\n    m.line = null;",
+        "    m.sheetError = null;\n",
+        # Round r5-d R05 clears the toast in the same words between them
+        # (test_mcp_r5d_check.py).
+        "    m.line = null;\n",
         "action.replaceChildren(editor);\n    renderAll();\n",
         "    if (dropped > 0 && before && before.draw) {\n",
         "      before.line = NOT_SAVED_PART(dropped, label(before));\n"
@@ -961,7 +964,8 @@ async def test_x1_the_real_tool_on_a_mocked_studio(
 def test_x1_the_page_draws_the_two_lines_and_nothing_else() -> None:
     """X1: the page shows the view's two lines whole, as text, in a plain
     card under the card's title: no press, no count, no fold and no copy of
-    the server's words. Any other failed card is drawn as before."""
+    the server's words. Any other failed card is drawn by the last branch
+    (round r5-d R01 changed it: test_mcp_r5d_check.py)."""
     page = _read("check.html")
     card = _between(page, "function numberMapCard(data, next) {", "\n}\n")
     assert _in_order(
@@ -980,7 +984,7 @@ def test_x1_the_page_draws_the_two_lines_and_nothing_else() -> None:
         "const next = typeof data.next === 'string' && data.next ? data.next : null;",
         "if (!data.ok && next && typeof data.error === 'string' && data.error) {\n"
         "    numberMapCard(data, next);",
-        "if (!data.ok) {\n    root.append(OE.el('div', { class: 'card error' },",
+        "if (!data.ok) {\n    // The check could not start (r5-d R01)",
     )
     assert "// WORDING: r5b X1 (the server's words, shown whole)\n" in page
     for copied in ("This map gives a number at each pixel", "counts as a yes"):

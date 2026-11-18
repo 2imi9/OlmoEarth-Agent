@@ -14,7 +14,9 @@
    is its wrapper's (role=img, the title and the description as its
    aria-label; the picture and the drawing are aria-hidden). The caption and
    the docs link sit outside that wrapper (the start card puts them there):
-   what a role=img element holds is hidden from a screen reader.
+   what a role=img element holds is hidden from a screen reader. The caption
+   has two forms, CAPTION for the docs figure and CAPTION_NARROW for the
+   strip (r5-d R04), shown at the same widths as what each describes.
 
    The drawing uses common.js's tokens, but for the one small tile, which
    takes the fixed colours TILE (a tile stands for a map, whose classes have
@@ -54,6 +56,12 @@ OE.overview = (() => {
      the role=img wrapper, the docs link after it). */
   // WORDING: r5c docs figure
   const CAPTION = 'How OlmoEarth makes maps (a figure from the OlmoEarth docs). This app comes after: it checks how often a map is wrong.';
+  /* The caption on a narrow panel (r5-d R04), where the strip shows and not
+     the docs figure that CAPTION describes. The start card draws each in a
+     span of its own; the panel's width picks the one shown (STYLE), as it
+     picks the drawing. */
+  // WORDING: r5d R04
+  const CAPTION_NARROW = 'How a check of a Studio map works.';
 
   /* The narrow strip's words: three boxes. A list is one label over several
      lines (SVG text does not wrap: each break is set here). No digit and no
@@ -86,9 +94,12 @@ OE.overview = (() => {
   background: var(--paper); border: 1px solid var(--divider); border-radius: 12px; }
 .oe-overview svg { display: block; width: 100%; height: auto; }
 .oe-overview svg.narrow { max-width: 440px; }
+.oe-overview-cap .cap-wide { display: none; }
 @media (min-width: 680px) {
   .oe-overview img.wide { display: block; }
   .oe-overview svg.narrow { display: none; }
+  .oe-overview-cap .cap-wide { display: inline; }
+  .oe-overview-cap .cap-narrow { display: none; }
 }
 .oe-overview text { font-family: var(--font); fill: var(--text); }
 .oe-overview .t { font-size: 13px; font-weight: 600; }
@@ -192,5 +203,5 @@ OE.overview = (() => {
     return OE.el('div', { class: 'oe-overview', role: 'img', 'aria-label': TITLE + ' ' + DESC }, wide(), narrow());
   };
 
-  return { STYLE, style, figure, CAPTION };
+  return { STYLE, style, figure, CAPTION, CAPTION_NARROW };
 })();

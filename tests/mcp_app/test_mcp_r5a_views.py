@@ -45,6 +45,8 @@ CAPTION = (
     "How OlmoEarth makes maps (a figure from the OlmoEarth docs). This app comes "
     "after: it checks how often a map is wrong."
 )
+#: r5-d R04: the caption on a narrow panel, where the strip shows.
+CAPTION_NARROW = "How a check of a Studio map works."
 DOCS_LABEL = "What is OlmoEarth? (docs)"
 DOCS_URL = "https://docs.olmoearth.allenai.org/"
 
@@ -159,14 +161,14 @@ def test_v1_only_the_start_view_inlines_the_overview() -> None:
 def test_v1_the_overview_lives_inside_one_name_and_never_updates() -> None:
     """V1: one IIFE, OE.overview, with no name of its own at the top of the
     module it is inlined into; no call, timer, listener or load; it returns
-    its style, the figure and the caption; its one placeholder is the docs
-    figure's."""
+    its style, the figure and the caption (r5-d R04: its two forms); its one
+    placeholder is the docs figure's."""
     script = _read("overview.js")
     assert script.count("OE.overview = (() => {") == 1
     assert script.rstrip().endswith("})();")
     top = re.compile(r"^(?:const|let|var|function|async function|class)\b", re.M)
     assert top.search(script) is None
-    assert "  return { STYLE, style, figure, CAPTION };\n" in script
+    assert "  return { STYLE, style, figure, CAPTION, CAPTION_NARROW };\n" in script
     for banned in (
         "OE.call(",
         "callServerTool",
@@ -280,12 +282,12 @@ def test_v1_the_figures_words() -> None:
     said = " ".join(words)
     for part in ("Studio", "squares", "range"):
         assert part in said, part
-    for text in (*words, TITLE, DESC, CAPTION):
+    for text in (*words, TITLE, DESC, CAPTION, CAPTION_NARROW):
         assert re.search(r"[0-9%]", text) is None, text
         assert _OFF_FACE.search(text) is None, text
         assert "What this app can do" not in text, text
     for jargon in ("foundation model", "inference", "fine-tun", "embedding"):
-        assert jargon not in (DESC + CAPTION).lower(), jargon
+        assert jargon not in (DESC + CAPTION + CAPTION_NARROW).lower(), jargon
     drawn = _between(script, "  const narrow = () => ", "  const figure = () => {")
     keys = re.findall(r"^    ([A-Za-z]+): ", table, re.M)
     assert keys == ["narrowStudio", "narrowCheck", "narrowGet"]
@@ -338,7 +340,10 @@ def test_v1_the_caption_and_the_docs_link_sit_outside_the_figure() -> None:
         "OE.el('div', { class: 'oe-overview-wrap' },",
         "OE.overview.figure(),",
         "{ class: 'small muted oe-overview-cap' }",
-        "OE.overview.CAPTION, ' ', docs, address));",
+        # r5-d R04: the caption's two forms, one span each, then the link.
+        "OE.el('span', { class: 'cap-wide' }, OE.overview.CAPTION),",
+        "OE.el('span', { class: 'cap-narrow' }, OE.overview.CAPTION_NARROW),",
+        "' ', docs, address));",
     )
 
 

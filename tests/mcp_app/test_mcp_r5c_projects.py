@@ -12,7 +12,9 @@ here runs the scripts):
   word), the buttons' names in quotes in one sentence, and the third line's
   subject;
 - S05: a lone output draws no buttons of its own (the row's use it), and only
-  a list of several opens with its first line; the toast says how many maps;
+  a list of several opens with its first line, which a row's press on such
+  a run leaves as the one line (r5-d R09: the line that said how many maps,
+  a toast and then the row's own, is gone);
 - S06: the note under the Predictions heading, and what the tick boxes do
   after it only where boxes are drawn; COMPARE.how lost that sentence;
 - S07: a prediction row's Outputs and jobs are a line of their own under the
@@ -46,11 +48,9 @@ PROJECTS_LEAD = {
     ),
 }
 
-#: S05: the outputs list's first line, and the toast for a run with n maps.
+#: S05: the outputs list's first line (the toast for a run with n maps that
+#: S05 kept went in r5-d R09).
 OUTPUTS_FIRST = "This run made more than one map. Use the buttons on the one you mean."
-OUTPUTS_SEVERAL = (
-    "several: (n) => 'This run made ' + n + ' maps. Pick one in the list under it.',"
-)
 
 #: S06: the note under the Predictions heading, what a tick box does, and how
 #: a comparison works.
@@ -177,13 +177,14 @@ def test_s04_the_projects_cards_three_lines() -> None:
 def test_s05_a_lone_output_has_no_buttons_of_its_own() -> None:
     """S05: the outputs list's rows get their jobs only when the run made
     more than one map, and only then does the list open with its first line;
-    a job pressed on the row of a run with several still opens the list and
-    says so; the words are marked r5c."""
+    a job pressed on the row of a run with several still opens the list,
+    whose first line says so (r5-d R09: nothing else does); the words are
+    marked r5c."""
     page = _read("studio.html")
     outputs = _between(page, "const OUTPUTS = {", "\n};")
     assert f"  first: '{OUTPUTS_FIRST}',\n" in outputs
-    assert OUTPUTS_SEVERAL in outputs
-    tag = "// WORDING: r4p2 (label, none, noneYet); r5c S05 (first, several)\n"
+    assert "several" not in outputs
+    tag = "// WORDING: r4p2 (label, none, noneYet); r5c S05 (first)\n"
     assert tag + "const OUTPUTS = {" in page
     row = _between(page, "function predictionRow(", "\n}\n")
     fill = _between(row, "const fill = (out) => {", "\n  };")
@@ -195,15 +196,15 @@ def test_s05_a_lone_output_has_no_buttons_of_its_own() -> None:
         ": hasJobs && list.length > 1 ? [OE.el('li', { class: 'small faint' },"
         " OUTPUTS.first), ...rows] : rows));" in fill
     )
-    # A row's job on a run with several: the list opens, the toast says how many.
+    # A row's job on a run with several: the list opens, and (r5-d R09) its
+    # first line alone says so: no toast, no line in the row's slot.
     job = _between(row, "const job = (key) => ", "\n  });")
     assert _in_order(
         job,
-        "if (list.length > 1) {",
-        "show(true);",
-        "OE.toast(OUTPUTS.several(list.length));",
+        "    if (list.length > 1) {\n      show(true);\n",
         "await OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: list[0].id,",
     )
+    assert "OUTPUTS.several" not in page
     result = _between(page, "function resultRow(", "\n}\n")
     assert "const jobs = !done ? [] : [" in result
     for gone in ("What this run produced", "pick a job on one of them below"):
@@ -254,11 +255,13 @@ def test_s07_outputs_have_a_line_of_their_own_and_a_narrow_lead_wraps() -> None:
     row = _between(page, "function predictionRow(", "\n}\n")
     lead = "OE.el('span', { class: 'row lead pred' }, box, OE.glyph.predictionRow(p),"
     assert lead in row
+    # r5-d R09: the line is made before the row (show puts the row's jobs
+    # away from it and back) and stands right after the spread.
     assert _in_order(
         row,
+        "const acts = OE.el('div', { class: 'row pred-acts' }, toggle, jobs);",
         "OE.el('div', { class: 'spread' },",
-        "p.status ? OE.chip(p.status, { ring: done }) : null))),",
-        "OE.el('div', { class: 'row pred-acts' }, toggle, jobs),",
+        "p.status ? OE.chip(p.status, { ring: done }) : null))),\n    acts,\n",
         "says ? OE.el('div', { class: 'small faint pred-says' }, says) : null,",
         "slot, results);",
     )
@@ -390,7 +393,7 @@ def test_r5c_every_changed_string_is_marked() -> None:
     glyph = _read("glyph.js")
     for tag in ("S04", "S06", "S11"):
         assert f"// WORDING: r5c {tag}" in page, tag
-    assert "r5c S05 (first, several)" in page and "r5c S08 (values" in page
+    assert "r5c S05 (first)" in page and "r5c S08 (values" in page
     assert "r5c S06 (tick, how)" in page
     for tag in ("S02", "S14"):
         assert f"r5c {tag}" in glyph, tag

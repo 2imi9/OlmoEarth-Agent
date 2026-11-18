@@ -304,6 +304,9 @@ function sheetButton(app, data, figureSlot) {
    result's sampled points, a plan drawn by result_id), anything else
    'square' (the server's unit, sheet.window_unit; the lead's ruling W). */
 const unitOf = (unit) => (unit === 'point' ? 'point' : 'square');
+/* The unit word for n of them, as the server's _units writes it: singular
+   for one ("1 square"), else plural ("80 squares"; r5-d R10). */
+const unitsOf = (unit, n) => unitOf(unit) + (n === 1 ? '' : 's');
 
 /* The plan's sheet as a file, in the plan card's closed fold only, never on
    its face (r4-m M3, reader test 3's E/F2: readers did not know where or
@@ -827,8 +830,12 @@ function checkBlock(app, request) {
 // WORDING: squares; r4h R4 (checked), r4h R3 (partsHead, otherPart)
 const RESULT_WORDS = {
   title: 'Result: this map',
-  // "80 squares checked", and with Cannot tell answers ", 2 Cannot tell" (k).
-  checked: (n, unit, k) => OE.counted(n, unitOf(unit)) + ' checked' + (k > 0 ? ', ' + k + ' Cannot tell' : ''),
+  // "80 squares checked", and with Cannot tell answers ", 2 Cannot tell" (k);
+  // from 1,000 with thousands commas, as the headline writes the same count
+  // ("4,000 squares checked, 1,200 Cannot tell"; r5-d R03).
+  // WORDING: r5d R03 (counts)
+  checked: (n, unit, k) => n.toLocaleString('en-US') + ' ' + unitsOf(unit, n) + ' checked'
+    + (k > 0 ? ', ' + k.toLocaleString('en-US') + ' Cannot tell' : ''),
   ruleUsed: (text) => 'Rule you used: “' + text + '”',
   ruleTyped: '(typed before the squares were picked)',
   ruleOwner: '(the app owner\'s rule, 11 Nov 2026)',
@@ -836,9 +843,11 @@ const RESULT_WORDS = {
   // WORDING: r5b J07
   gradedBefore: (at) => 'Answers on this sheet changed after its first result (' + at + ').'
     + ' Answers changed after seeing where the map disagrees make this result invalid.',
-  // "The 80 squares you checked", "The 20 points you checked".
+  // "The 80 squares you checked", "The 20 points you checked"; from 1,000
+  // with a thousands comma, "The 4,000 squares you checked" (r5-d R03).
+  // WORDING: r5d R03 (counts)
   squaresHead: (n, unit) => (n === 1 ? 'The ' + unitOf(unit) + ' you checked'
-    : 'The ' + n + ' ' + unitOf(unit) + 's you checked'),
+    : 'The ' + n.toLocaleString('en-US') + ' ' + unitOf(unit) + 's you checked'),
   partsHead: 'One result per part, never averaged',
   // k: the parts not checked yet (round 4 pass 2, finding 17); the server's
   // SAY_OTHER and SAY_OTHERS, word for word, with their reason (r4-m M2:
@@ -861,15 +870,22 @@ const RESULT_WORDS = {
   sheetFile: (name, unit) => 'To see where the sampled ' + unitOf(unit) + 's are, open the label sheet file ('
     + name + ') in a spreadsheet or GIS. It lists each ' + unitOf(unit) + '\'s place and whether the map was'
     + ' right there. These are sampled ' + unitOf(unit) + 's only, not all of the map\'s errors.',
-  unfinished: (left, n, unit) => 'Not finished yet: ' + left + ' of ' + n + ' ' + unitOf(unit) + 's on this sheet'
-    + ' have no answer. Answer every ' + unitOf(unit) + ', then press Estimate the error rate again.',
+  // The server's UNFINISHED, word for word (r5-d R10): this card has no
+  // button, so it says where to answer and press; press is the sheet's own
+  // finish button (the server's unfinished.press), else the estimate's. The
+  // counts with thousands commas and the unit singular for a sheet of one,
+  // as the server writes them ("1,200 of 4,000 squares", "1 of 1 square").
+  // WORDING: r5d R10
+  unfinished: (left, n, unit, press = 'Estimate the error rate') => 'Not finished yet: ' + left.toLocaleString('en-US')
+    + ' of ' + n.toLocaleString('en-US') + ' ' + unitsOf(unit, n) + ' on this sheet have no answer. Answer the rest'
+    + ' on the label sheet, then press ' + press + ' there.',
 };
 
 /* The rate and its range together (div.oe-rate): the server's headline,
    which holds the rate and its 95% range in one sentence ("The map is wrong
    on about 1 square in 8: 12.5%, 95% range 6.1% to 21.7%."; with Cannot
-   tell, "The map is wrong on between 10.0% and 12.5% of squares (2 Cannot
-   tell); 95% range 6.1% to 21.7%.", r5-b J02), then the
+   tell, "The map is wrong on 10.0% of squares, or 12.5% if the 2 Cannot
+   tell were wrong; 95% range 6.1% to 21.7%.", r5-d R03), then the
    line that draws them (OE.fig.rateLine: the rate as a dot, or with Cannot
    tell its two ends as a short dark bar, over the pale 95% band, with the
    band's two ends as numbers under it: the server's low_text and high_text,
@@ -1046,9 +1062,11 @@ function resultCard(app, data) {
 /* Said on the fold that holds a card's rest once its lead has words (a
    plan's and a review set's, the server's LEAD), and a plan's or a review
    set's card table and notes always (r4-h V7), and a plan's sheet as a file
-   (planFile, r4-m M3). */
-// WORDING: r4p2
-const FOLD_LABEL = 'More about this result';
+   (planFile, r4-m M3). "Details", as every other card's fold (the result
+   card's RESULT_WORDS.details, the label sheet's and the Check card's): it
+   read "More about this result" (r5-d R14). */
+// WORDING: r4p2; r5d R14
+const FOLD_LABEL = 'Details';
 
 /* The review tools, whose picture (the sampled grid shaded from most sure to
    least sure, no place in it) is the first thing in the closed fold, with
@@ -1102,7 +1120,10 @@ function show(app, params) {
     const left = unfinished ? unfinished.left : null;
     const of = unfinished ? unfinished.n : null;
     if (Number.isInteger(left) && Number.isInteger(of) && left > 0 && of >= left) {
-      root.append(OE.el('div', { class: 'card' }, RESULT_WORDS.unfinished(left, of, unfinished.unit || data.unit)));
+      // The button it names: the sheet's own finish button, as the server
+      // read it (r5-d R10), else the estimate's (the words' default).
+      const press = typeof unfinished.press === 'string' && unfinished.press ? unfinished.press : undefined;
+      root.append(OE.el('div', { class: 'card' }, RESULT_WORDS.unfinished(left, of, unfinished.unit || data.unit, press)));
       return;
     }
     root.append(OE.el('div', { class: 'card error' },

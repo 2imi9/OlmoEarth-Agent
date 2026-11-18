@@ -1411,12 +1411,14 @@ async def test_the_other_part_graded_and_a_map_of_one_part(
 
 def _ranged(**extra: Any) -> dict[str, Any]:
     """An ok estimate with 2 Cannot tell answers: the rate is its own range
-    (10% to 15%), the 95% range 5% to 25%."""
+    (10% to 12.5%: 8 of the 80 wrong, then 10 with the 2 Cannot tell wrong
+    too, as CT_SQUARES holds them; round r5-d R03's headline says so), the
+    95% range 5% to 25%."""
     return _estimate(
         n_unjudged=2,
         valid_interval={
             "estimate": None,
-            "estimate_range": [0.1, 0.15],
+            "estimate_range": [0.1, 0.125],
             "low": 0.05,
             "high": 0.25,
             "method": METHOD,
@@ -1426,13 +1428,14 @@ def _ranged(**extra: Any) -> dict[str, Any]:
 
 
 #: sheet.class_counts of a sheet of 80 squares, 2 of them Cannot tell: Kelp
-#: seen in 3 of the judged ones (rare), Absent in 75, Cloud in none.
+#: seen in 3 of the judged ones (rare), Absent in 75, Cloud in none; 8 of the
+#: judged ones wrong.
 CT_COUNTS = {
     "n": 80,
     "n_unjudged": 2,
     "classes": [
         {"code": "1", "name": "Kelp", "seen": 3, "agreed": 1, "outside": False},
-        {"code": "0", "name": "Absent", "seen": 75, "agreed": 70, "outside": False},
+        {"code": "0", "name": "Absent", "seen": 75, "agreed": 69, "outside": False},
         {"code": "2", "name": "Cloud", "seen": 0, "agreed": 0, "outside": False},
     ],
 }
@@ -1446,12 +1449,12 @@ CT_SQUARES = {
     "face": "seen",
     "cells": [{"seen": "1", "wrong": False}] * 1
     + [{"seen": "1", "wrong": True}] * 2
-    + [{"seen": "0", "wrong": False}] * 70
-    + [{"seen": "0", "wrong": True}] * 5
+    + [{"seen": "0", "wrong": False}] * 69
+    + [{"seen": "0", "wrong": True}] * 6
     + [{"seen": None, "wrong": False, "unjudged": True}] * 2,
     "classes": [
         {"code": "1", "name": "Kelp", "seen": 3, "agreed": 1, "outside": False},
-        {"code": "0", "name": "Absent", "seen": 75, "agreed": 70, "outside": False},
+        {"code": "0", "name": "Absent", "seen": 75, "agreed": 69, "outside": False},
         {"code": "2", "name": "Cloud", "seen": 0, "agreed": 0, "outside": False},
     ],
 }
@@ -1462,9 +1465,10 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """With Cannot tell the rate is a range: one headline that says the part
-    is wrong on between its two ends, with how many were Cannot tell, then
-    the 95% range (round r5-b, J02: before, "Error rate of the West part:
-    10.0% to 15.0%, 95% range ...", two "x to y" pairs side by side); the
+    is wrong on its lower end, or its higher if the Cannot tell were wrong,
+    then the 95% range (round r5-d, R03; r5-b J02 said "between" its ends
+    with the count in brackets; before, "Error rate of the West part: 10.0%
+    to 12.5%, 95% range ...", two "x to y" pairs side by side); the
     two ends and the count for the card's bar and subtitle (R4); no rate in
     words (``say``). Under the headline the rare
     class by name only, never its counts (a Cannot tell square may hold it,
@@ -1491,12 +1495,12 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     result = await app.call_agent_tool(ESTIMATE, args, views=True)
     card = _view(result)["result"]
     assert (card["say"], card["rate"], card["rate_text"]) == (None, None, None)
-    assert card["rate_range_text"] == "10.0% to 15.0%"
+    assert card["rate_range_text"] == "10.0% to 12.5%"
     assert card["headline"] == (
-        "The West part is wrong on between 10.0% and 15.0% of squares (2 Cannot "
-        "tell); 95% range 5.0% to 25.0%."
+        "The West part is wrong on 10.0% of squares, or 12.5% if the 2 Cannot tell "
+        "were wrong; 95% range 5.0% to 25.0%."
     )
-    assert (card["rate_low"], card["rate_high"]) == (0.1, 0.15)
+    assert (card["rate_low"], card["rate_high"]) == (0.1, 0.125)
     assert card["n_unjudged"] == 2
     # F1: the rare class by name only, then the unseen line, as without.
     assert card["uncovered"] == [
@@ -1516,7 +1520,7 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     assert len(squares["cells"]) == 80
     marked = [c for c in squares["cells"] if c["unjudged"]]
     assert marked == [{"seen": None, "wrong": False, "unjudged": True}] * 2
-    assert sum(c["wrong"] for c in squares["cells"]) == 7
+    assert sum(c["wrong"] for c in squares["cells"]) == 8
     assert [c["line"] for c in squares["classes"]] == [None, None, None]
     assert [c["range"] for c in squares["classes"]] == [None, None, None]
     assert squares["no_split"] == (
@@ -1540,7 +1544,7 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     said = json.loads(_texts(result)[0])["say_first"]
     assert said[0] == (
         "From 80 squares checked in the West part, the error rate is a range, 10.0% "
-        "to 15.0%, with the 95% range 5.0% to 25.0%."
+        "to 12.5%, with the 95% range 5.0% to 25.0%."
     )
     assert said[3] == (
         'You saw "Cloud" in no square. Too few squares to say how well the map '
@@ -1945,12 +1949,14 @@ async def test_an_unfinished_sheet_of_points_says_points(
     _stand_in(app, monkeypatch, root, failed, ctx=None)
     args = {"labels_path": str(sheet_path)}
     view = _view(await app.call_agent_tool(ESTIMATE, args, views=True))
+    # Round r5-d R10: the sheet's own finish button, an estimate's plan's.
     assert view["unfinished"] == {
         "left": 3,
         "n": 20,
         "unit": "point",
+        "press": "Estimate the error rate",
         "text": "Not finished yet: 3 of 20 points on this sheet have no answer. Answer "
-        "every point, then press Estimate the error rate again.",
+        "the rest on the label sheet, then press Estimate the error rate there.",
     }
     await app.aclose()
 
@@ -2558,12 +2564,15 @@ async def test_an_unfinished_sheet_says_how_many_are_left_and_no_hint(
     args = {"design_path": str(root / "west.json"), "labels_path": str(sheet_path)}
     result = await app.call_agent_tool(ESTIMATE, args, views=True)
     view = _view(result)
+    # Round r5-d R10: the sheet's own finish button; no design file is beside
+    # this sheet, so it reads sheet.NO_JOB_LABEL there.
     assert view["unfinished"] == {
         "left": 3,
         "n": 80,
         "unit": "square",
+        "press": sheet.NO_JOB_LABEL,
         "text": "Not finished yet: 3 of 80 squares on this sheet have no answer. Answer "
-        "every square, then press Estimate the error rate again.",
+        "the rest on the label sheet, then press Ask Claude to grade it there.",
     }
     assert view["hint"] is None and "result" not in view
     assert calls["record"] == []

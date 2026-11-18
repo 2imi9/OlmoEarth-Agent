@@ -14,13 +14,14 @@ import re
 
 from olmoearth_agent.mcp_app import sheet, views
 
-#: The start card's sentence about the key (B/S4), then what to do without a
-#: Studio account (r4-h P1: A/F15, E/start-3).
+#: The start card's sentence about the key (B/S4), where it goes in every
+#: other sign-in text's words (r5-d R12), then what to do without a Studio
+#: account (r4-h P1: A/F15, E/start-3).
 KEY_NOTE = (
     "You need your own Studio API key: a secret code that Studio makes for you "
-    "(in Studio, open your profile, then API Keys). It stays on this computer and "
-    "goes only to Studio, never through Claude. No Studio account? Ask whoever "
-    "made the map how to get one of your own. Do not use their key."
+    "(in Studio, open your profile, then API Keys). The key goes to the OlmoEarth "
+    "Agent here, not through Claude. No Studio account? Ask whoever made the map "
+    "how to get one of your own. Do not use their key."
 )
 
 #: The start card's second lead line (r4-h P1, D/D-start-1), signed out
@@ -134,10 +135,12 @@ def test_every_view_says_what_the_panel_is() -> None:
 
 def test_the_start_card_says_where_a_key_is_made() -> None:
     """B/S4, and r4-h P1: what to do without a Studio account, at the end of
-    the note (after "never through Claude."), never with their key."""
+    the note (after "not through Claude.", r5-d R12's words), never with
+    their key."""
     page = _read("start.html")
-    assert f"// WORDING: r4h P1\nconst KEY_NOTE = '{KEY_NOTE}';" in page
-    said = KEY_NOTE.index("never through Claude.")
+    tag = "// WORDING: r5d R12\n// WORDING: r4h P1\n"
+    assert f"{tag}const KEY_NOTE = '{KEY_NOTE}';" in page
+    said = KEY_NOTE.index("not through Claude.")
     assert said < KEY_NOTE.index("No Studio account?")
     assert "note: KEY_NOTE," in page
     # r5-b J19: the panel's default note is two plain lines, the first saying

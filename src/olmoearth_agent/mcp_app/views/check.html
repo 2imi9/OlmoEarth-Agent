@@ -405,6 +405,15 @@ const RETRY = (n) => 'Press ' + PRESS + ' to try again with the same number: ' +
 const NOT_READ = 'This part cannot be checked: ';
 // WORDING: squares
 const NO_PART = 'No part of this map can be checked here.';
+// The card when the check could not start (r5-d R01: it was one red line in
+// the server's words): what happened and what to do, in plain words, true on
+// a first open and on a card opened again, whatever the cause (a refusal the
+// same on every open, a read that timed out): it promises nothing of opening
+// it again, and what was picked or saved before is untouched by a failed
+// start. The server's own words are in Details, or first in the red card.
+// WORDING: r5d R01
+const CHECK_FAILED = 'The check could not start. Anything picked or saved before is kept. Ask Claude what to do next:'
+  + ' it has the reason.';
 
 /* How long one press may take to answer (ms): the server's own limit for a
    draw under way (check.STALE_SECONDS, 600 s), past which a draw is shown as
@@ -1171,7 +1180,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      part says in its own red line, and one toast in the same words, how
      many of its answers were not saved and what to do (NOT_SAVED_PART, r5-b
      J10; oeUnsaved: a count, never a window); the line goes when that part's
-     sheet opens again. With none to count, its own last toast about
+     sheet opens again, and the toast too while it still says those words
+     (r5-d R05). With none to count, its own last toast about
      that change goes (oeLeave, r4-l L3). */
   async function openZone(m, { hadFocus = null } = {}) {
     if (busy || m.opening || !m.draw) return;
@@ -1200,7 +1210,12 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     }
     m.opening = false;
     m.sheetError = null;
-    m.line = null;  // its sheet opens again: the line on answers not saved goes (r5-b J10)
+    // Its sheet opens again: the line on answers not saved goes (r5-b J10),
+    // and so does the toast that said it in the same words (r5-d R05; the
+    // same test as OE.say's clear: any other toast stays).
+    const bar = document.getElementById('oe-toast');
+    if (m.line && bar && bar.textContent === m.line) OE.toast('');
+    m.line = null;
     // Each save the server takes reads this zone's counts again; Full screen
     // (where the host offers it) lays the editor's face out for the mode.
     const editor = OE.sheetEditor(app, sheet, {
@@ -1342,9 +1357,18 @@ function show(app, params) {
     return;
   }
   if (!data.ok) {
-    root.append(OE.el('div', { class: 'card error' },
-      OE.el('div', {}, data.error || 'The check failed.'),
-      data.hint ? OE.el('div', { class: 'small', style: 'margin-top:8px;color:var(--text)' }, data.hint) : null));
+    // The check could not start (r5-d R01): the title, one plain line in the
+    // red card, and the server's words (its plain error, and a hint when the
+    // view holds one) in a closed Details fold. A refusal the server wrote for
+    // this card's face (data.plain: a map that is not a score from 0 to 1,
+    // r5-a K2) is the red card's first line instead, over the plain line, with
+    // no fold.
+    root.append(OE.el('h2', {}, TITLE));
+    const own = data.plain === true && typeof data.error === 'string' && data.error ? data.error : null;
+    root.append(OE.el('div', { class: own ? 'card error stack' : 'card error' },
+      own ? OE.el('div', {}, own) : null, OE.el('div', {}, CHECK_FAILED)));
+    const said = own ? [] : [data.error, data.hint].filter((s) => typeof s === 'string' && s);
+    if (said.length) root.append(OE.fold(DETAILS, ...said.map((s) => OE.el('div', { class: 'small' }, s))));
     return;
   }
   const zones = (Array.isArray(data.zones) ? data.zones : []).filter((z) => z && typeof z === 'object');
