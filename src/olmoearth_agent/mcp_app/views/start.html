@@ -7,13 +7,21 @@
 <script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
 <link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
 <style>
+  /* r5-f F16: the canvas and the text before the module runs, and when it
+     cannot start (the watchdog's line): OE.STYLE's own canvas and text
+     colours and a system sans-serif, which OE.STYLE takes over from once
+     the module runs. */
+  html { background: #faf2e9; }
+  body { margin: 0; padding: 0 16px 16px; font: 14px/21px system-ui, -apple-system, 'Segoe UI', sans-serif; color: #0a3235; }
   /* The jobs (r5-e S2): one column of tiles, one per job, each a button
      that holds the job's label and its one line, so the line sits inside the
      job's own box; every tile is as wide as the column and at least 86 px
      tall (the label, two small lines, the padding and the border), so the
-     tiles are one size at every width. A message to type sits under its
-     tile; a small heading over the other jobs. Signed out the tiles are off,
-     but each line keeps a readable colour. */
+     tiles are one size at every width. A message to copy sits under its
+     tile; a small heading over the other jobs. Signed out the tiles are off
+     (a flat edge, no dark fill, "Sign in to start a job." over them), but
+     each label and each line keeps a readable colour (r5-f F03: the label
+     took the disabled grey, 1.9:1 on white, under its own readable line). */
   .items { list-style: none; margin: 0; padding: 0; }
   .items.jobs { display: grid; grid-template-columns: minmax(0, 1fr); }
   .jobs li { padding: 4px 0; }
@@ -21,7 +29,7 @@
     align-items: flex-start; gap: 2px; padding: 10px 16px; text-align: left; }
   .jobs .job-label { font-weight: 600; }
   .jobs .job-line { font-size: 12px; line-height: 18px; font-weight: 400; }
-  .jobs button.job:disabled .job-line { color: var(--text-2); }
+  .jobs button.job:disabled .job-label, .jobs button.job:disabled .job-line { color: var(--text-2); }
   .jobs li.jobs-head > h2 { font-size: 12px; line-height: 18px; font-weight: 600; color: var(--text-2); }
   /* The overview figure (overview.js), its one small caption and the docs
      link in the caption's line, sized as it (r5-a V1), underlined, so more
@@ -36,6 +44,12 @@
   @media (min-width: 680px) { .oe-overview-wrap { max-width: 774px; } }
   .oe-overview-cap { margin-top: 6px; }
   .oe-overview-cap button.link { font-size: 12px; line-height: 18px; padding: 0 4px;
+    text-decoration: underline; text-underline-offset: 2px; }
+  /* The sign-in note's last line (r5-g G2): "Request access", a text button
+     inside the sentence, at the sentence's size and line height with no
+     padding, so the words around it keep their spacing and the line its
+     height; underlined as the docs link is (r5-c S13). */
+  .oe-access button.link { font-size: 14px; line-height: 21px; padding: 0;
     text-decoration: underline; text-underline-offset: 2px; }
 </style>
 </head>
@@ -53,11 +67,28 @@ const root = document.getElementById('root');
 
 /* What the start card says about the key while signed out: what a key is
    and where Studio makes one (B/S4), then where the key goes, in the words
-   of every other sign-in text (OE.SIGN_IN_KEY_GOES, r5-d R12), then what to
-   do without a Studio account (r4-h P1: A/F15, E/start-3), at the end. */
+   of every other sign-in text (OE.SIGN_IN_KEY_GOES, r5-d R12). Then, a line
+   of its own at the end (accessLine), what to do without a Studio account
+   (r4-h P1: A/F15, E/start-3; r5-g G2, the owner's words of 18 Nov 2026):
+   ask for one with OlmoEarth's own "Request access", never use someone
+   else's key. */
+// WORDING: r5g
 // WORDING: r5d R12
-// WORDING: r4h P1
-const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio makes for you (in Studio, open your profile, then API Keys). The key goes to the OlmoEarth Agent here, not through Claude. No Studio account? Ask whoever made the map how to get one of your own. Do not use their key.';
+const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio makes for you (in Studio, open your profile, then API Keys). The key goes to the OlmoEarth Agent here, not through Claude.';
+// WORDING: r5g
+const ACCESS_BEFORE = 'No Studio account? ';
+// WORDING: r5g
+const ACCESS_AFTER = ' on olmoearth.allenai.org. Do not use someone else\'s key.';
+
+/* The note's last line (r5-g G2): its words around OE.accessLink's text
+   button ("Request access", which the host opens at OlmoEarth's site), then
+   the link's slot, inside the line, which shows the address to copy when the
+   host does not open it. Signed out only: the sign-in panel, which holds the
+   note, is drawn only then (a signed-in user has an account). */
+function accessLine(app) {
+  const [access, address] = OE.accessLink(app);
+  return OE.el('div', { class: 'oe-access' }, ACCESS_BEFORE, access, ACCESS_AFTER, address);
+}
 
 /* The card's one line under its title (OE.lead): what to do next (r5-e S1,
    the owner's note 3: the title already says what the card is, and what a
@@ -166,7 +197,8 @@ function render(app, data) {
     if (status.key_problem) root.append(OE.el('div', { class: 'card error small' }, status.key_problem));
     root.append(OE.signInPanel(app, {
       acceptCurrent: true,  // a sign-in made in another panel counts here
-      note: KEY_NOTE,
+      // The note's two lines: the key, then Request access (r5-g G2).
+      note: [KEY_NOTE, accessLine(app)],
       onDone: (s) => {
         render(app, { ...data, status: s });
         // The user pressed the sign-in's button: the focus goes on to the first job.

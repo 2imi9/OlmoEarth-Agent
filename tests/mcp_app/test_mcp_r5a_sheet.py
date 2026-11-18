@@ -431,7 +431,8 @@ def test_l1_a_thrown_error_is_never_printed_in_the_pane() -> None:
     page = _read("result.html")
     caught = "} catch (_) {\n      answer = OE.picturesFailed();\n    }"
     functions = (
-        (editor, "  async function loadPictures(h) {"),
+        # r5-f F01: reveal, whether a press of Pictures asked for it.
+        (editor, "  async function loadPictures(h, reveal = false) {"),
         (editor, "  async function loadTest() {"),
         (page, "  async function load(i) {"),
         (page, "  async function loadTest() {"),
@@ -459,7 +460,9 @@ def test_l1_try_again_repeats_the_call_for_the_same_square() -> None:
     assert "const asked = loadPictures(h);" in retry
     # A failure is never kept as an answer: the next ask is a new call. It
     # stays in the pane only while its window is shown.
-    load = _between(editor, "  async function loadPictures(h) {", "\n  }\n")
+    load = _between(
+        editor, "  async function loadPictures(h, reveal = false) {", "\n  }\n"
+    )
     assert "state.images.delete(h);" in load
     assert "state.failed = { h, answer: answer || {} };" in load
     # The pane reads the kept failure when it is drawn again in place (else

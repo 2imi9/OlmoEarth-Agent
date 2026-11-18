@@ -78,10 +78,17 @@ POINTS_GRID = (
 )
 #: K8: a part's short line, the retry's (this press, or a later one when more
 #: picks failed than one press takes), the other parts' after a press with no
-#: reply, the part pressed then, and the toast.
+#: reply, the part pressed then, and the toast. The retry's two lines in round
+#: r5-f F11's words: which press, and whose (they read "The press tries again
+#: with 80 squares." and "A later press tries again with 80 squares."; the
+#: one that waits says it is not in this press, as the line under the press
+#: says "this press"; tests/mcp_app/test_mcp_r5f_check.py).
 FAILED_SHORT = "The pick failed."
-RETRY_80 = "The press tries again with 80 squares."
-RETRY_LATER_80 = "A later press tries again with 80 squares."
+RETRY_80 = "Press Pick the squares to try again with 80 squares."
+RETRY_LATER_80 = (
+    "Not in this press: it waits for a later press of Pick the squares "
+    "(80 squares)."
+)
 #: K8: the press's toast when a part was not picked (it promises no reason on
 #: a part's face: a failed pick's reason is in Details).
 NOT_ALL_PICKED = "Not every part's squares were picked; each part says so."
@@ -655,9 +662,11 @@ def test_k8_after_a_press_with_no_reply_the_gate_alone_says_what_to_do() -> None
 
 def test_a_long_word_breaks_inside_the_gate_and_a_parts_card() -> None:
     """Rule R2: free text in the white cards (a typed rule in the gate, the
-    server's words on a sheet that cannot be read in a part) breaks a word
-    too long for its line, so it never runs out of its card; a map in one
-    part (a plain section) does not scroll sideways on such a word either."""
+    server's words on a part that cannot be checked) breaks a word too long
+    for its line, so it never runs out of its card; a map in one part (a
+    plain section) does not scroll sideways on such a word either. Since
+    round r5-f F04 the server's words on a sheet that cannot be read are in
+    Details, whose lines break the same way (test_mcp_r5f_check.py)."""
     page = _read("check.html")
     assert "  .gate, section.part { overflow-wrap: anywhere; }\n" in page
 

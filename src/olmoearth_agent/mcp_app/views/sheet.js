@@ -335,7 +335,13 @@ OE.OTHER = '__oe_other_class__';  // the select's 'Other class...' entry
    and the pictures line with the press (picturesOff; in the list, a row's
    Show: picturesOffList, H4). The finish line is its second sentence alone
    (everyDone, H5), and the graded notice leaves its reason to the fold
-   (graded, gradedWhy). */
+   (graded, gradedWhy).
+
+   Round r5-f (18 Nov 2026, the audit after the design round): while a
+   square has no answer the footer says why the finish button is grey
+   (notYet, F02: r5-e H1 left that to the button and the counter, which say
+   it in no words); and a sheet with no pictures and no places ends its line
+   with the way out as a question of its own (whatBare, whatBarePair, F12). */
 // WORDING: squares
 OE.sheetWords = (unit) => {
   const one = unit === 'point' ? 'point' : 'square';
@@ -376,15 +382,19 @@ OE.sheetWords = (unit) => {
     reading: 'Your answers are a reading of satellite pictures, not a visit on site.',
     // A sheet with no pictures and no places cannot show where a point is
     // (r5-b J11: "say what is there" left every answer a guess): it says
-    // what to answer from, and to stop with nothing to answer from.
+    // what to answer from, and to stop with nothing to answer from. The way
+    // out is a question and an answer of its own (r5-f F12: as the tail of
+    // the sentence before it, "none" had nothing clear to point at).
+    // WORDING: r5f F12
     // WORDING: r4m M6; r5b J11
     whatBare: 'This sheet has no pictures and no places, so it cannot show where a ' + one + ' is. Answer only from'
-      + ' your own records of each ' + one + ', without looking at the map; with none, stop and tell Claude.',
-    // whatBare on a two-map sheet: the maps (r5-b J28; whatBare has no
-    // hidden sentence to swap).
+      + ' your own records of each ' + one + ', without looking at the map. No records? Stop and tell Claude.',
+    // whatBare on a two-map sheet: the maps (r5-b J28; a two-map sheet never
+    // takes whatBare, and "the maps." is not the clause its lead swaps).
+    // WORDING: r5f F12
     // WORDING: r5b J28
     whatBarePair: 'This sheet has no pictures and no places, so it cannot show where a ' + one + ' is. Answer only'
-      + ' from your own records of each ' + one + ', without looking at the maps; with none, stop and tell Claude.',
+      + ' from your own records of each ' + one + ', without looking at the maps. No records? Stop and tell Claude.',
     // A sheet with places to open (data.has_place), squares or points (r5-b
     // J11): no pictures, what to judge from; ending with what's own clause
     // (r5-e H1), so a two-map sheet swaps it the same way.
@@ -528,6 +538,11 @@ OE.sheetWords = (unit) => {
     // WORDING: r5e H5
     // WORDING: r4h S2 A/F17; r5b J29
     everyDone: 'After you press, do not change an answer.',
+    // In everyDone's place while a square has no answer yet (r5-f F02): why
+    // the finish button is grey, in words (the grey button and the counter
+    // say it in none).
+    // WORDING: r5f F02
+    notYet: 'Answer every ' + one + ' first.',
     // In everyDone's place on a sheet that already gave its result (r5-d
     // R06): its notice says not to change an answer now, so the footer does
     // not say an answer may change until the press.
@@ -1408,7 +1423,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      for a class map of many classes), the rest in a list; the window's own
      answer when it is none of them (a class typed in); and on a face that
      takes any class, "Other class..." (the group's last cell, r5-e H3) or
-     the field to type it. */
+     the field to type it. A name may break after each underscore
+     (OE.softBreaks, r5-f F14: "evergreen_needleleaf_woodland" was cut in
+     mid-word by the cell's overflow-wrap, which stays for a word with none);
+     its text is as the server wrote it. */
   function faceAnswers(w) {
     const h = w.handle;
     const k = place(h);
@@ -1422,8 +1440,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }, [...named.slice(0, 9), ...cannotTell].map((a) => OE.el('button', {
       type: 'button', 'data-focus': answerFocus(a.value, h), 'aria-pressed': String(current === a.value),
       'aria-keyshortcuts': a.keys.join(' ') || null, onclick: () => facePick(a.value),
-    }, a.label + (a.keys.length ? ' (' + a.keys[0] + ')' : ''))),
-    own ? OE.el('button', { type: 'button', 'data-focus': 'x:' + h, 'aria-pressed': 'true', onclick: () => facePick(current) }, current) : null);
+    }, OE.softBreaks(a.label + (a.keys.length ? ' (' + a.keys[0] + ')' : '')))),
+    own ? OE.el('button', { type: 'button', 'data-focus': 'x:' + h, 'aria-pressed': 'true', onclick: () => facePick(current) }, OE.softBreaks(current)) : null);
     const rest = named.slice(9);
     if (rest.length) {
       const list = OE.el('select', {
@@ -1578,7 +1596,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
 
   /* One window or List, at the user's press, or a list row's number (at),
      which shows that window on the face; kept for the editors drawn after
-     it on this page (OE.sheetView). */
+     it on this page (OE.sheetView). On the face an open pane goes to its
+     foot: a question kept for the window shown is brought into view (r5-f
+     F01); the switch to List leaves the scroll as it is, by the table. */
   function setView(v, at) {
     if (v !== 'face' && v !== 'list') return;
     state.view = v;
@@ -1588,6 +1608,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     if (v === 'face') {
       area.replaceChildren(faceEl);
       goTo(at || state.at, at ? 'face' : null);
+      if (state.shown !== null && state.shown === state.at) questionInView(state.images.get(state.at));
       return;
     }
     clearTimeout(picturesTimer);
@@ -1714,10 +1735,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     OE.focusIfHere(wrap.querySelector('[data-focus="' + CSS.escape('i:' + h) + '"]'));
   }
 
-  /* A window's Pictures button: opens its pane, or closes it when it is open. */
+  /* A window's Pictures button: opens its pane, or closes it when it is open.
+     Its press brings the question into view (reveal, r5-f F01). */
   function togglePictures(h) {
     if (state.shown === h) { closePictures(h); return; }
-    loadPictures(h);
+    loadPictures(h, true);
   }
 
   /* The pictures of a window, asked of the server by its handle (it finds
@@ -1727,12 +1749,16 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      as the server can take). A call that throws shows one fixed sentence
      (OE.picturesFailed), never the thrown error's text. A failure stays in
      the pane while its window is shown (state.failed), with Try again where
-     another try can get past it. */
-  async function loadPictures(h) {
+     another try can get past it. After a press of Pictures (Show in the
+     list: reveal), an answer that is the question is brought into view
+     (questionInView, r5-f F01), also when it was kept from an earlier press;
+     a pane that follows an answer, Previous or Next leaves the scroll as it
+     is. */
+  async function loadPictures(h, reveal = false) {
     state.shown = h;
     state.test = null;
     markPictures();
-    if (state.images.has(h)) { renderPreview(); return; }
+    if (state.images.has(h)) { renderPreview(); if (reveal) questionInView(state.images.get(h)); return; }
     const run = state.imagesRun;
     state.failed = null;
     state.images.set(h, { loading: true });
@@ -1753,7 +1779,43 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       state.images.delete(h);
       if (state.shown === h) state.failed = { h, answer: answer || {} };
     }
-    if (state.shown === h) renderPreview(answer);
+    if (state.shown === h) { renderPreview(answer); if (reveal) questionInView(answer); }
+  }
+
+  /* The question that needs a yes, brought into view (r5-f F01) after a
+     press of Pictures (Show in the list), and of One square while its pane
+     is open with the question kept (setView). It is drawn under the answers;
+     on a panel of fixed height (full screen, a host that caps the inline
+     height) only its first line showed above the pinned footer and "Turn on
+     pictures" was out of view, so a square could be answered with nothing
+     looked at. The pane scrolls the least that shows it whole above the
+     footer when it fits (its scroll margin: the footer's height and 8 px);
+     a pane taller than the panel shows its top, and then the least that
+     brings the row of "Turn on pictures" (data-ask-yes) into view above the
+     footer. A pane already in view does not move; a pane that follows an
+     answer, Previous or Next scrolls nothing. The focus stays where it is:
+     the pane is a polite live region, so a screen reader hears the
+     question. No word changes. The scroll waits two frames for the layout
+     to settle (after the check): run at once, it could land while the face
+     was redrawn shorter, and the browser then held it short of the row. */
+  function questionInView(answer) {
+    if (!answer || !answer.needs_consent || typeof preview.scrollIntoView !== 'function') return;
+    const later = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    later(() => later(() => { if (preview.isConnected) bringQuestionUp(); }));
+  }
+  function bringQuestionUp() {
+    const foot = wrap.querySelector('.sheet-footer');
+    const margin = ((foot ? foot.offsetHeight : 0) + 8) + 'px';
+    preview.style.scrollMarginBottom = margin;
+    preview.scrollIntoView({ block: 'nearest' });
+    // Then the least scroll of the page that puts the row of "Turn on pictures" above the footer, worked out from
+    // the two rectangles (after the check: scrollIntoView with a scroll margin stopped short of it here).
+    const yes = preview.querySelector('[data-ask-yes]');
+    if (!yes || !foot) return;
+    const at = yes.getBoundingClientRect();
+    const below = at.bottom + 8 - foot.getBoundingClientRect().top;
+    if (below > 0) window.scrollBy(0, Math.min(below, Math.max(0, at.top)));
+    else if (at.top < 0) window.scrollBy(0, at.top - 8);
   }
 
   /* Try again in the pane (r5-a L1): the same call once more for this
@@ -1828,11 +1890,20 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       OE.el('span', { class: 'row', style: 'gap:4px' },
         state.view === 'list' && data.has_place ? OE.el('button', { class: 'link', 'data-focus': 'm:' + h, 'aria-disabled': String(linking.has(h)), 'aria-label': W.openMapOf(k), onclick: () => openMap(h) }, W.streetMap) : null,
         OE.el('button', { class: 'link', onclick: () => closePictures(h) }, 'Close pictures')));
-    if (answer.loading) { preview.replaceChildren(head, OE.el('div', { class: 'faint' }, 'Loading the pictures...')); return; }
+    // While the next window's pictures load, the pane keeps the height it had (r5-f F01, after the check): a short
+    // "Loading" line made the page shorter, the browser squeezed the scroll, and the face jumped when Next was
+    // pressed with the pane open. Any other answer drops the kept height.
+    if (answer.loading) {
+      if (preview.childNodes.length && !preview.style.minHeight) preview.style.minHeight = preview.offsetHeight + 'px';
+      preview.replaceChildren(head, OE.el('div', { class: 'faint' }, 'Loading the pictures...'));
+      return;
+    }
+    preview.style.minHeight = '';
     if (answer.needs_consent) {
       preview.replaceChildren(head, OE.el('div', { class: 'card summary stack' },
         OE.el('div', {}, answer.ask),
-        OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
+        // The row questionInView keeps in view on a short panel (r5-f F01).
+        OE.el('div', { class: 'row', style: 'justify-content:flex-end', 'data-ask-yes': '' },
           OE.el('button', { onclick: () => setPictures(true) }, 'Turn on pictures')),
         answer.test_ask ? OE.el('div', { class: 'small faint' }, answer.test_ask) : null,
         answer.test_ask ? OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
@@ -2481,7 +2552,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      ready, the line beside it says answers must not change after the press
      (W.everyDone, A/F17); on a sheet that already gave its result it says
      only that (W.everyDoneGraded, r5-d R06), as the notice over the sheet
-     does, never that an answer may change until the press. A
+     does, never that an answer may change until the press. While a window
+     has no answer the same place says why the button is grey (W.notYet, r5-f
+     F02; r5-e H1 took the lead's sentence on it away, and a grey button and
+     a counter say it in no words): not while the sheet is stale (its own
+     footer words), not while only a save is pending, and never on a sheet
+     that already gave its result (its notice says not to change an answer
+     now, r5-b J06, so nothing there asks for one). A
      server without the finish fields gets the old words. The button is made
      once and kept in place, so it keeps the focus when the progress is drawn
      again; once ready after the last answer it takes the focus, if the user
@@ -2499,6 +2576,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // WORDING: r5d R06
   const everyDoneLine = OE.el('span', { class: 'small' },
     data.graded && typeof data.graded === 'object' ? W.everyDoneGraded : W.everyDone);
+  // In its place while a window has no answer yet (r5-f F02); a sheet
+  // already graded has none (asksForAnswers). The finish button names it
+  // as its description meanwhile (updateFinish), so a screen reader that
+  // reaches the grey button hears why.
+  // WORDING: r5f F02
+  const notYetLine = OE.el('span', { class: 'small', id: 'oe-not-yet-' + Math.random().toString(36).slice(2) }, W.notYet);
+  const asksForAnswers = !(data.graded && typeof data.graded === 'object');
   /* Whether the sheet can be sent for grading now: complete and saved. */
   const ready = () => complete() && !pending() && !state.stale;
   async function finishPress(message) {
@@ -2540,7 +2624,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   /* The footer's finish button as the counts stand: greyed until ready,
      with the A/F17 line beside it once ready (the button node stays in
      place, so it keeps the focus); once ready after the last answer, it
-     takes the focus if the user has not moved it since. */
+     takes the focus if the user has not moved it since. While a window has
+     no answer, the line in that place says to answer every one first (r5-f
+     F02): counted as the counter counts (count() < n), so it is not said on
+     a sheet with no window, nor on one whose every window is answered but
+     which holds two sets of answers (its notice says what is in the way).
+     While it is said, the button's aria-describedby names it; else the
+     button has none, so it never names a line that is not there. */
   function updateFinish() {
     const button = finishControl();
     const ok = ready();
@@ -2548,6 +2638,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     if (!done.contains(button)) done.replaceChildren(button);
     if (ok && !done.contains(everyDoneLine)) done.prepend(everyDoneLine);
     else if (!ok && done.contains(everyDoneLine)) everyDoneLine.remove();
+    const waits = asksForAnswers && !ok && !state.stale && count() < n;
+    if (waits && !done.contains(notYetLine)) done.prepend(notYetLine);
+    else if (!waits && done.contains(notYetLine)) notYetLine.remove();
+    if (waits) button.setAttribute('aria-describedby', notYetLine.id);
+    else button.removeAttribute('aria-describedby');
     if (ok && state.finishFrom !== null && !quietSave) {
       const active = document.activeElement;
       const stayed = !active || active === document.body

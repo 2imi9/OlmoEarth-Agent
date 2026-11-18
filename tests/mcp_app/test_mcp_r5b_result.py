@@ -86,20 +86,21 @@ ZERO_WEST = (
     "0.0% to 4.5%."
 )
 
-#: The Cannot tell square's rule in figures.js (r4-i O2), which J04 keeps.
+#: The Cannot tell square's rule in figures.js (r4-i O2), which J04 keeps
+#: (since r5-g G1 the squares' own: the legend's swatches are gone).
 CANNOT_CSS = (
-    ".oe-sq.cannot, .oe-swatch.cannot { background: transparent; box-shadow: none;"
+    ".oe-sq.cannot { background: transparent; box-shadow: none;"
     " border: 1px dashed var(--text); box-sizing: border-box; }"
 )
 
-#: J04: the three fills and the outline's legend sample, in figures.js's order.
+#: J04: the three fills, in figures.js's order (since r5-g G1 a tally row's
+#: square; the legend's swatches and its outline sample are gone).
 FILL_RULES = (
-    ".oe-sq.f0, .oe-swatch.f0 { background: var(--text); }\n"
-    ".oe-sq.f1, .oe-swatch.f1 { background: var(--paper);"
+    ".oe-sq.f0 { background: var(--text); }\n"
+    ".oe-sq.f1 { background: var(--paper);"
     " box-shadow: inset 0 0 0 2px var(--text); }\n"
-    ".oe-sq.f2, .oe-swatch.f2 { background: rgba(16,82,87,.45);"
+    ".oe-sq.f2 { background: rgba(16,82,87,.45);"
     " box-shadow: inset 0 0 0 1px var(--text); }\n"
-    ".oe-swatch.blank { background: transparent; box-shadow: none; }\n"
 )
 
 #: One token of a JS concatenation: a single-quoted string, a plus, or a name
@@ -775,28 +776,28 @@ def test_j27_the_points_street_map_buttons_are_outlined() -> None:
 def test_j04_the_second_and_third_class_are_told_by_more_than_a_pale_fill() -> None:
     """J04: the first class seen is filled dark; the second is hollow (paper
     with a 2 px dark ring), the third a mid teal with a 1 px dark ring; no
-    mint in the figures (the look keeps it for a completed status' ring);
-    the legend's sample for the red outline has nothing inside. Cannot tell
-    stays dashed and empty, the red outline as it was."""
+    mint in the figures (the look keeps it for a completed status' ring).
+    Cannot tell stays dashed and empty, the red outline as it was. Round
+    r5-g, G1: the legend, with its swatches and its outline sample (the red
+    ring with nothing inside), is gone; each tally row's square is the mark
+    (tests/mcp_app/test_mcp_r5g_result.py)."""
     script = _read("figures.js")
     style = _between(script, "  const STYLE = `", "`;")
     assert FILL_RULES in style
     assert "--mint" not in script
     for gone in (
         "{ background: var(--mint); }",
-        ".oe-swatch.f2 { background: var(--wash-2); }",
-        ".oe-swatch.blank { background: var(--paper); }",
+        ".oe-swatch",
+        "'blank wrong'",
     ):
-        assert gone not in style, gone
+        assert gone not in script, gone
     # The three fills differ from each other.
-    fills = re.findall(r"\.oe-sq\.f\d, \.oe-swatch\.f\d \{ ([^}]*)\}", style)
+    fills = re.findall(r"\.oe-sq\.f\d \{ ([^}]*)\}", style)
     assert len(fills) == 3 and len(set(fills)) == 3
     assert CANNOT_CSS in style
     assert style.index(FILL_RULES) < style.index(CANNOT_CSS)
-    wrong = ".oe-sq.wrong, .oe-swatch.wrong { outline: 3px solid var(--error);"
+    wrong = ".oe-sq.wrong { outline: 3px solid var(--error);"
     assert wrong + " outline-offset: 2px; }" in style
-    # The legend's outline entry is still the blank swatch with the outline.
-    assert "entries.push({ cls: 'blank wrong'," in script
     head = script[: script.index("OE.fig = (() => {")]
     assert "the second --mint" not in head and "r5-b J04" in head
 
@@ -813,8 +814,10 @@ def test_j29_the_steps_margin_and_the_darker_labels_and_band() -> None:
     assert ".oe-steps { list-style: none; margin: 12px 0 0; padding: 0;" in style
     assert ".oe-fig .tick-label { font-size: 11px; fill: var(--text-2); }\n" in style
     assert ".oe-fig .band { fill: var(--text-2); fill-opacity: .45; }\n" in style
-    for gone in ("fill-opacity: .3;", "fill: var(--grey)", "margin: 0; padding: 0;"):
+    for gone in ("fill-opacity: .3;", "fill: var(--grey)"):
         assert gone not in style, gone
+    # The steps' own rule no longer zeroes their margin (other figures' lists may).
+    assert ".oe-steps { list-style: none; margin: 0; padding: 0;" not in style
     # The axis keeps its grey stroke.
     assert ".oe-fig .axis { stroke: var(--grey); stroke-width: 1; }\n" in style
     assert "r5-b, J29" in script[: script.index("OE.fig = (() => {")]

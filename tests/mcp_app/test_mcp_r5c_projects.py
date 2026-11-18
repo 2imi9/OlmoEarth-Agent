@@ -41,8 +41,12 @@ PROJECTS_LEAD = {
 }
 
 #: S05: the outputs list's first line (the toast for a run with n maps that
-#: S05 kept went in r5-d R09).
-OUTPUTS_FIRST = "This run made more than one map. Use the buttons on the one you mean."
+#: S05 kept went in r5-d R09), in r5-f F13's words (S05 wrote "This run made
+#: more than one map. Use the buttons on the one you mean.").
+OUTPUTS_FIRST = (
+    "This run made more than one map; Studio names them only by the ids below. "
+    "Not sure which is yours? Ask whoever made the run."
+)
 
 #: S06: the note under the Predictions heading, what a tick box does, and how
 #: a comparison works.

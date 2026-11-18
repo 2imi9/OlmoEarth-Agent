@@ -256,8 +256,16 @@ def test_h1_a_two_map_sheet_still_swaps_its_clause() -> None:
     )
     swap = "  const pairShown = pairHidden.replace(W.hiddenPair, W.shownPair);\n"
     assert swap in editor
-    # whatBare has no hidden clause: a two-map sheet has its own whatBarePair.
-    assert HIDDEN_ONE not in _said("whatBare", "square")
+    # A two-map sheet has its own whatBarePair, which holds neither clause, so
+    # no swap touches it. whatBare (r5-f F12: its first sentence now ends with
+    # hiddenOne's words) is never a two-map sheet's line.
+    for unit in ("square", "point"):
+        bare_pair = _said("whatBarePair", unit)
+        assert HIDDEN_ONE not in bare_pair and HIDDEN_PAIR not in bare_pair, unit
+    assert (
+        "const whatBare = data.has_place ? W.whatPlaced : (twoMap ? "
+        "W.whatBarePair : W.whatBare);" in editor
+    )
 
 
 # --------------------------------------------------------------------------- H2

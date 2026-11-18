@@ -84,8 +84,13 @@ CANNOT_TELL = (
 )
 CANNOT_TELL_BARE = CANNOT_TELL.replace(" from the dates shown", "")
 
-#: The Check card's words of r4-h (the plan's string table).
-STEP_3 = "3. Someone who can recognise it in a satellite picture looks at each one."
+#: The Check card's words of r4-h (the plan's string table). Step 3 in round
+#: r5-f F09's words: it said "recognise it", and nothing on the face is "it"
+#: (tests/mcp_app/test_mcp_r5f_check.py).
+STEP_3 = (
+    "3. Someone who can recognise what the map shows looks at each one in a "
+    "satellite picture."
+)
 #: The line over the press: two sentences since r5-b J18 (the third, on rare
 #: classes, is in Details only), one line at 780 px since r5-e K4.
 CANNOT = (
@@ -711,10 +716,17 @@ def test_r4h_the_result_cards_parts_are_never_averaged() -> None:
     assert "Which part this is" not in page
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
+    # Round r5-f, F07: the face's line ends with a sentence of its own (where
+    # to check the other part), which the server's lines do not have.
+    ask = " Ask Claude to open the Check card again."
+    one_said = _concat(one, {})
+    many_said = _concat(many, {"k": "3"})
+    assert one_said.endswith(ask) and many_said.endswith(ask)
     side = _concat(_entry(words, "sideBySide: "), {})
     assert side == server.SAY_SIDE_BY_SIDE.strip()
-    assert _concat(one, {}) + " " + side == OTHER_PART == server.SAY_OTHER.strip()
-    shown = _concat(many, {"k": "3"}) + " " + side
+    first = one_said.removesuffix(ask) + " " + side
+    assert first == OTHER_PART == server.SAY_OTHER.strip()
+    shown = many_said.removesuffix(ask) + " " + side
     assert shown == OTHER_PARTS == server.SAY_OTHERS.format(k="3").strip()
 
 

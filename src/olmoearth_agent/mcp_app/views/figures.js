@@ -35,25 +35,42 @@
      number: it places the server's texts.
    - parts(parts, {mode}): two or more parts of a map side by side, each as
      wide as its share (share_value or share; at least 12% wide, and never
-     narrower than its label's longest word, so no word is broken), its label
-     (else its name) inside its box, every box one height (r5-e R5; it stood
-     under an empty bar); on a panel of 560 px or less the parts are stacked,
-     each full width. mode 'plan' (the Check card, r4-h A/F08):
+     narrower than its label on one line: r5-f F05; at the 12% floor a label
+     wrapped to four lines, and the row's one height made the part beside it
+     a tall dark slab), the parts that do not fit one row going on to the
+     next, never wider than its share there (a short last row stays short,
+     at the left; a part alone on a later row grew over the whole row, wider
+     than the parts of larger shares); its label (else its name) inside its
+     box, every box one height (r5-e R5; it stood under an empty bar); on a
+     panel of 560 px or less the parts are stacked, each full width, and a
+     label may wrap there.
+     mode 'plan' (the Check card, r4-h A/F08):
      state 'open' dashed (not picked yet), 'picked' a solid outline, neither
      filled. mode 'result': state 'this' filled, 'graded' lightly filled,
      'not' dashed.
-   - squares({cells, classes, legend}): the squares checked, 14 px each,
-     wrapping, in the order given, marked by the class the reviewer saw
-     (the first class seen filled --text; the second hollow, a 2 px --text
-     ring on --paper; the third a mid teal, --text-2 at 45%, with a 1 px
-     --text ring: r5-b J04, so each is told from the card and from the
-     others by more than a pale fill, and mint stays the ring of a completed
-     status; classes no cell has take no mark), a thick red outline set off
-     from the square where the map said otherwise (r4-h V2), a Cannot tell
-     square (unjudged) empty and dashed, never filled or outlined (r4-i O2),
-     and a legend of at most five entries, one per class seen, one for Cannot
-     tell and one for the outline, whose sample is the red ring alone with
-     nothing inside (r5-b J04: it was a white square, which read as a class).
+   - squares({cells, classes, legend}): the squares checked as a tally
+     (r5-g G1, the owner's note of 18 Nov 2026: 4,000 squares drawn one by
+     one were a wall several screens tall, and r5-f F06's bar above 200 of
+     them is gone with the grid): one row per kind of square that occurs,
+     in the order the cells arrive (a class seen where the map agreed, the
+     same class where the map said otherwise, Cannot tell last), each row
+     the kind's own square, 14 px, then "× N" (the cells of that kind,
+     counted, with thousands commas), then its words ('You saw "absent";
+     the map agreed', 'You saw "absent"; the map said otherwise', 'Cannot
+     tell'); a kind with no square has no row, and the rows' counts add up
+     to the squares. The square is the mark the grid drew, by the class the
+     reviewer saw (the first class seen filled --text; the second hollow, a
+     2 px --text ring on --paper; the third a mid teal, --text-2 at 45%,
+     with a 1 px --text ring: r5-b J04, so each is told from the card and
+     from the others by more than a pale fill, and mint stays the ring of a
+     completed status), a thick red outline set off from it where the map
+     said otherwise (r4-h V2; the only red of the figure), a Cannot tell
+     square (unjudged) empty and dashed, never filled or outlined (r4-i O2).
+     Every row is one height and the counts one column, each × over the one
+     above it and each count's last digit too; the rows are in the figures'
+     small type (12 px, as the parts' labels). No legend: each row says its
+     own meaning once. The figure has one name for a screen reader, each
+     row's words with its count.
 
    Round r5-b, J29: the steps keep 12 px above them (b: this style sheet is
    put in the page after common.js's, so its margin beat .stack's gap and
@@ -94,9 +111,10 @@ OE.fig = (() => {
 .oe-fig .end-label { font-size: 11px; font-weight: 600; }
 .oe-fig .rate-bar { fill: var(--text); }
 .oe-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.oe-steps > li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
-.oe-steps .oe-step-pic { display: block; flex: none; }
+  grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; }
+.oe-steps > li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0;
+  padding: 10px; background: var(--paper); border: 1.5px solid var(--text-2); border-radius: 6px; }
+.oe-steps .oe-step-pic { display: block; flex: none; align-self: center; }
 .oe-steps .cell { fill: var(--wash-2); stroke: var(--outline); stroke-width: 1; }
 .oe-steps .cell.picked { fill: var(--text); stroke: var(--text); }
 .oe-steps .scene { fill: var(--text-2); }
@@ -106,8 +124,8 @@ OE.fig = (() => {
 .oe-steps .pill.on { fill: var(--selected); stroke: var(--text); }
 @media (max-width: 560px) { .oe-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .oe-rateline svg { display: block; max-width: 100%; height: auto; }
-.oe-parts { display: flex; gap: 4px; align-items: stretch; }
-.oe-part { min-width: min-content; display: flex; flex-direction: column; gap: 4px; }
+.oe-parts { display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch; }
+.oe-part { min-width: max-content; max-width: var(--oe-share, none); display: flex; flex-direction: column; gap: 4px; }
 .oe-part-box { flex: 1; min-height: 28px; padding: 4px 8px; display: flex; align-items: center;
   border: 1.5px solid var(--text-2); border-radius: 2px; background: var(--paper); }
 .oe-part.this .oe-part-box { background: var(--text); border-color: var(--text); }
@@ -117,18 +135,23 @@ OE.fig = (() => {
 .oe-part.open .oe-part-box { border-style: dashed; background: transparent; }
 .oe-part.picked .oe-part-box { background: transparent; }
 .oe-part-label { color: var(--text); overflow-wrap: break-word; }
-@media (max-width: 560px) { .oe-parts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; } }
-.oe-sq-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 5px; }
-.oe-sq, .oe-swatch { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 2px;
+@media (max-width: 560px) { .oe-parts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; }
+  .oe-parts > .oe-part { min-width: 0; max-width: none; } }
+.oe-sq { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 2px;
   box-shadow: inset 0 0 0 1px var(--divider); }
-.oe-sq.f0, .oe-swatch.f0 { background: var(--text); }
-.oe-sq.f1, .oe-swatch.f1 { background: var(--paper); box-shadow: inset 0 0 0 2px var(--text); }
-.oe-sq.f2, .oe-swatch.f2 { background: rgba(16,82,87,.45); box-shadow: inset 0 0 0 1px var(--text); }
-.oe-swatch.blank { background: transparent; box-shadow: none; }
-.oe-sq.cannot, .oe-swatch.cannot { background: transparent; box-shadow: none; border: 1px dashed var(--text); box-sizing: border-box; }
-.oe-sq.wrong, .oe-swatch.wrong { outline: 3px solid var(--error); outline-offset: 2px; }
-.oe-sq-legend { list-style: none; margin: 8px 0 0; padding: 0 0 0 5px; display: flex; flex-wrap: wrap; gap: 8px 16px; }
-.oe-sq-legend > li { display: inline-flex; align-items: center; gap: 12px; }
+.oe-sq.f0 { background: var(--text); }
+.oe-sq.f1 { background: var(--paper); box-shadow: inset 0 0 0 2px var(--text); }
+.oe-sq.f2 { background: rgba(16,82,87,.45); box-shadow: inset 0 0 0 1px var(--text); }
+.oe-sq.cannot { background: transparent; box-shadow: none; border: 1px dashed var(--text); box-sizing: border-box; }
+.oe-sq.wrong { outline: 3px solid var(--error); outline-offset: 2px; }
+.oe-sq-tally { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: 1fr; row-gap: 6px; }
+.oe-sq-tally > li { display: grid; grid-template-columns: 24px var(--oe-tally-n, 7ch) minmax(0, 1fr);
+  column-gap: 10px; align-items: center; min-height: 24px; }
+.oe-sq-tally > li > .oe-sq { justify-self: center; }
+.oe-tally-n { display: flex; justify-content: space-between; gap: 6px; white-space: nowrap;
+  font-variant-numeric: tabular-nums; font-weight: 600; }
+.oe-tally-words { min-width: 0; overflow-wrap: anywhere; }
 `;
 
   /* The figures' rules, put in the page's head once. */
@@ -309,9 +332,10 @@ OE.fig = (() => {
      FLOOR (a part under it is drawn at FLOOR and the others share the rest
      by their shares); equal widths when a share is missing, they add up to
      nothing, or the floor cannot hold for so many parts. The style sheet
-     keeps a part at least as wide as its label's longest word, and stacks
-     the parts full width on a panel of 560 px or less, where the widths
-     here are not used. */
+     keeps a part at least as wide as its label on one line (r5-f F05; the
+     parts that do not fit one row go on to the next) and, above that, no
+     wider than its width here, and stacks the parts full width on a panel
+     of 560 px or less, where the widths here are not used. */
   const FLOOR = 0.12;
   const widths = (shares) => {
     const n = shares.length;
@@ -341,9 +365,12 @@ OE.fig = (() => {
      height (r5-e R5, the owner's note of 17 Nov 2026: no loose words under
      an empty box); on a filled box (this result) the words are light. The
      widths follow each part's share from 561 px up, never narrower than a
-     part's longest word (a part at the 12% floor broke its words letter by
-     letter); at 560 px or less the parts are stacked, each full width, in
-     rows of one height. */
+     part's label on one line (r5-f F05: at its longest word, r5-e R5, a
+     part at the 12% floor wrapped its label to four lines and the row grew
+     as tall; narrower still, it broke its words letter by letter), and the
+     parts that do not fit one row go on to the next, never wider than their
+     shares there (a short last row stays short, at the left); at 560 px or
+     less the parts are stacked, each full width, in rows of one height. */
   const parts = (list, options) => {
     const items = (Array.isArray(list) ? list : []).filter((p) => p && typeof p === 'object');
     if (items.length < 2) return null;
@@ -358,28 +385,40 @@ OE.fig = (() => {
     const pieces = items.map((p, i) => {
       // A state the card does not know is drawn outlined, saying nothing.
       const state = known.includes(p.state) ? p.state : 'plan';
-      return OE.el('div', { class: 'oe-part ' + state, style: 'flex: ' + round2(w[i] * 100) + ' 1 0%' },
+      // r5-f F05: --oe-share is the style sheet's max-width, so a part on a
+      // later row of the wrap does not grow past its share to fill that row.
+      const share = round2(w[i] * 100);
+      return OE.el('div', { class: 'oe-part ' + state, style: 'flex: ' + share + ' 1 0%; --oe-share: ' + share + '%' },
         OE.el('div', { class: 'oe-part-box' }, OE.el('span', { class: 'oe-part-label small' }, labels[i])));
     });
     return OE.el('div', { class: 'oe-fig oe-parts', role: 'img', 'aria-label': labels.join('; ') }, pieces);
   };
 
-  /* The squares checked. cells [{seen, wrong, unjudged}]: seen is the class
-     code the reviewer gave, wrong whether the map said otherwise (true or
-     1), unjudged true for a square answered Cannot tell (r4-i O2: drawn
-     empty and dashed, no fill and never outlined, and left out of the
-     fills' count and order). classes [{code, name}] give the order of the
-     fills among the classes that have cells; legend
-     [{code, text}] names a class's fill, [{unjudged: true, text}] the dashed
-     square, [{wrong: true, text}] the outline (a class without an entry is
-     named by its name, the dashed square by CANNOT_KEY, the outline by
-     WRONG_KEY). The legend's order: the classes, Cannot tell, the outline.
-     The grid's aria-label is the legend with each count. */
+  /* The squares checked, as a tally (r5-g G1). cells [{seen, wrong,
+     unjudged}]: seen is the class code the reviewer gave, wrong whether the
+     map said otherwise (true or 1), unjudged true for a square answered
+     Cannot tell (r4-i O2: drawn empty and dashed, no fill and never
+     outlined, and left out of the fills' count and order). classes [{code,
+     name}] give the order of the fills among the classes that have cells;
+     legend [{code, text}] names what the reviewer saw of a class ('You saw
+     "absent"'), [{unjudged: true, text}] the dashed square (a class without
+     an entry is SAW and its name, the dashed square CANNOT_KEY); the
+     legend's {wrong: true} entry is not drawn, since a row of squares where
+     the map said otherwise says so itself (OTHERWISE). One row per kind of
+     square, in the order its first cell arrives; the rows' counts are the
+     cells counted, so they add up to every cell. The figure's aria-label is
+     each row's words with its count. */
   const FILLS = ['f0', 'f1', 'f2'];
-  // WORDING: r4p2
-  const WRONG_KEY = 'Outlined in red: the map said otherwise';
+  // WORDING: r5g (the fallback when a class has no legend entry; the server's LEGEND_SAW, r4p2)
+  const SAW = 'You saw ';
+  // WORDING: r5g
+  const AGREED = '; the map agreed';
+  // WORDING: r5g
+  const OTHERWISE = '; the map said otherwise';
   // WORDING: r4i O2
   const CANNOT_KEY = 'Cannot tell';
+  // WORDING: r5g
+  const TIMES = '× ';
   const isWrong = (c) => c.wrong === true || c.wrong === 1;
   const isCannot = (c) => c.unjudged === true;
   const squares = (data) => {
@@ -404,34 +443,52 @@ OE.fig = (() => {
       if (count.get(k) && !order.includes(k)) order.push(k);
     }
     const fill = (code) => FILLS[Math.min(order.indexOf(key(code)), FILLS.length - 1)];
-    const nameOf = (code) => {
+    // What the reviewer saw of a class: the server's legend words ('You saw
+    // "absent"'), else SAW and the class's name, else its code.
+    const seenOf = (code) => {
       const given = legend.find((e) => !e.wrong && !e.unjudged && key(e.code) === code);
       if (given && words(given.text)) return words(given.text);
       const c = classes.find((x) => key(x.code) === code);
-      return (c && words(c.name)) || code;
+      return SAW + ((c && words(c.name)) || code);
     };
-    const entries = order.filter((code) => count.get(code)).slice(0, FILLS.length)
-      .map((code) => ({ cls: fill(code), text: nameOf(code), n: count.get(code) }));
-    // Cannot tell: after the classes, before the outline.
-    const nCannot = cells.length - judged.length;
-    if (nCannot) {
-      const given = legend.find((e) => e.unjudged === true && words(e.text));
-      entries.push({ cls: 'cannot', text: given ? words(given.text) : CANNOT_KEY, n: nCannot });
+    const cannot = legend.find((e) => e.unjudged === true && words(e.text));
+    // Round r5-g, G1: one row per kind of square that occurs (a class seen
+    // and whether the map said otherwise; Cannot tell), in the order its
+    // first cell arrives, which is the cells' own grouping (class by class,
+    // right before wrong, Cannot tell last: sheet.graded_squares); each kind
+    // counts its cells, so no number is added and the counts add up to every
+    // cell. It replaces the grid of one mark per square and r5-f F06's bar
+    // above 200 of them (the owner's note of 18 Nov 2026: 4,000 squares were
+    // a wall several screens tall).
+    const kinds = new Map();
+    for (const c of cells) {
+      const k = isCannot(c) ? 'cannot' : 'seen ' + key(c.seen) + (isWrong(c) ? ' wrong' : '');
+      if (kinds.has(k)) kinds.get(k).n += 1;
+      else kinds.set(k, { cell: c, n: 1 });
     }
-    const nWrong = judged.filter(isWrong).length;
-    if (nWrong) {
-      const given = legend.find((e) => e.wrong === true && words(e.text));
-      entries.push({ cls: 'blank wrong', text: given ? words(given.text) : WRONG_KEY, n: nWrong });
-    }
-    const field = OE.el('div', {
-      class: 'oe-sq-grid', role: 'img', 'aria-label': entries.map((e) => e.text + ' (' + e.n + ')').join('; '),
-    }, cells.map((c) => OE.el('span', {
-      class: isCannot(c) ? 'oe-sq cannot' : 'oe-sq ' + fill(c.seen) + (isWrong(c) ? ' wrong' : ''),
-    })));
-    // The legend is said by the grid's aria-label, with the counts.
-    const keys = OE.el('ul', { class: 'oe-sq-legend small', 'aria-hidden': 'true' },
-      entries.map((e) => OE.el('li', {}, OE.el('span', { class: 'oe-swatch ' + e.cls }), e.text)));
-    return OE.el('div', { class: 'oe-fig oe-squares' }, field, keys);
+    const rows = [...kinds.values()].map(({ cell, n }) => {
+      const wrong = !isCannot(cell) && isWrong(cell);
+      return {
+        mark: isCannot(cell) ? 'oe-sq cannot' : 'oe-sq ' + fill(cell.seen) + (wrong ? ' wrong' : ''),
+        n: n.toLocaleString('en-US'),
+        text: isCannot(cell) ? (cannot ? words(cannot.text) : CANNOT_KEY)
+          : seenOf(key(cell.seen)) + (wrong ? OTHERWISE : AGREED),
+      };
+    });
+    // The counts' column is as wide as the longest count and its ×, the same
+    // on every row (r5-e R1), so each × stands over the one above it and the
+    // counts' last digits line up; the rows are one height (the style sheet).
+    const widest = Math.max(...rows.map((r) => r.n.length)) + TIMES.length;
+    const tally = OE.el('ul', { class: 'oe-sq-tally small', style: '--oe-tally-n: calc(' + widest + 'ch + 6px)' },
+      rows.map((r) => OE.el('li', {},
+        OE.el('span', { class: r.mark }),
+        OE.el('span', { class: 'oe-tally-n' }, OE.el('span', {}, TIMES), OE.el('span', {}, r.n)),
+        OE.el('span', { class: 'oe-tally-words' },
+          typeof OE.softBreaks === 'function' ? OE.softBreaks(r.text) : r.text))));
+    // One name for a screen reader: the rows' words, each with its count.
+    return OE.el('div', {
+      class: 'oe-fig oe-squares', role: 'img', 'aria-label': rows.map((r) => r.text + ' (' + r.n + ')').join('. '),
+    }, tally);
   };
 
   return { STYLE, style, steps, rateLine, parts, squares };

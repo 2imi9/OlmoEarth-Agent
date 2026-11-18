@@ -11,6 +11,12 @@
 <script src="@LEAFLET_JS@" integrity="@LEAFLET_JS_SRI@" crossorigin="anonymous"></script>
 <script src="@DRAW_JS@" integrity="@DRAW_JS_SRI@" crossorigin="anonymous"></script>
 <style>
+  /* r5-f F16: the canvas and the text before the module runs, and when it
+     cannot start (the watchdog's line): OE.STYLE's own canvas and text
+     colours and a system sans-serif, which OE.STYLE takes over from once
+     the module runs. */
+  html { background: #faf2e9; }
+  body { margin: 0; padding: 0 16px 16px; font: 14px/21px system-ui, -apple-system, 'Segoe UI', sans-serif; color: #0a3235; }
   /* Studio's Areas page: an inline map with 8px corners, no border. */
   .map-wrap { position: relative; }
   #map { height: 300px; border-radius: 8px; }
@@ -144,7 +150,11 @@ const areaList = OE.el('ul', { class: 'areas' });
 const areaBlock = OE.el('div', { class: 'stack', hidden: true },
   OE.el('h3', {}, 'Saved areas'),
   OE.el('div', { class: 'table-frame', style: 'max-height:180px' }, areaList));
-const where = OE.el('div', { class: 'small muted' });
+// r5-f F15: the card's one instruction, at body size, the first line under
+// the map (show() puts it before the fields; it was a small line at the
+// bottom, under the fields and the saved areas, so a first-time user saw no
+// instruction and dragged the map).
+const where = OE.el('div', { class: 'muted' });
 const saveButton = OE.el('button', { class: 'primary', disabled: true }, 'Save to Studio and continue');
 
 /* The helper line names the area, never its coordinates. While the sign-in
@@ -305,7 +315,7 @@ saveButton.addEventListener('click', async () => {
   }
 });
 
-/* The sign-in, above the fields; the status line says why. When the user's
+/* The sign-in, above the instruction and the fields; the status line says why. When the user's
    own press (Save) asked for it, its button takes the focus; never on load,
    so the panel does not pull the focus from the chat. Signed in (the user
    pressed its button, so the focus is in the panel), the projects are read
@@ -364,10 +374,12 @@ function show(connected, params) {
   fitHeight();
   if (aoi.suggested_name && !nameInput.value) nameInput.value = aoi.suggested_name;
   state.signInOpen = false;  // the controls are drawn anew, an open sign-in with them
+  // r5-f F15: the instruction first, right under the map, then the fields,
+  // the saved areas and the button's row.
   controls.replaceChildren(
+    where,
     OE.el('div', { class: 'fields' }, field('Project', projectSelect), field('Area name *', nameInput)),
     areaBlock,
-    where,
     OE.el('div', { class: 'row', style: 'justify-content:flex-end' }, saveButton));
   loadProjects().catch((err) => { if (err.needsSignIn) showSignIn(); else OE.toast(err.message, true); });
   update();

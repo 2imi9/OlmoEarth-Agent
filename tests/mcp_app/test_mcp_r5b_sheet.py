@@ -55,11 +55,12 @@ GRADED = (
     "opinion needs another person and a fresh sheet."
 )
 #: J11: the first line of a sheet with no pictures and no places (W.whatBare);
-#: {one} is the sheet's unit word.
+#: {one} is the sheet's unit word. r5-f F12: the way out is a question of its
+#: own (it was the tail "; with none, stop and tell Claude.").
 WHAT_BARE = (
     "This sheet has no pictures and no places, so it cannot show where a {one} is. "
-    "Answer only from your own records of each {one}, without looking at the map; "
-    "with none, stop and tell Claude."
+    "Answer only from your own records of each {one}, without looking at the map. "
+    "No records? Stop and tell Claude."
 )
 #: J13: the lead's third line (W.noResult); r5-e H1 removed it (the greyed
 #: finish button and the counter say it). The script joined the unit word in
@@ -567,10 +568,12 @@ def test_j28_a_two_map_sheet_in_plain_words() -> None:
         assert _said(key, "square").endswith(HIDDEN_ONE), key
     swap = "leadWords.what.replace(W.hiddenOne, W.hiddenPair)"
     assert "if (twoMap && leadWords.what) leadWords.what = " + swap + ";" in editor
-    # The no-pictures, no-places line on a two-map sheet: the maps.
+    # The no-pictures, no-places line on a two-map sheet: the maps (r5-f F12:
+    # the clause now ends its sentence, "the map." once in the line).
     for unit in ("square", "point"):
         bare = WHAT_BARE.format(one=unit)
-        assert _said("whatBarePair", unit) == bare.replace("the map;", "the maps;")
+        assert bare.count("the map.") == 1
+        assert _said("whatBarePair", unit) == bare.replace("the map.", "the maps.")
     # Unticked, the first line says the answers are shown; ticked, hidden.
     assert _said("shownPair", "square") == SHOWN_PAIR
     for text in (

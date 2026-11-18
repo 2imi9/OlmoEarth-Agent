@@ -97,9 +97,15 @@ RULE_LOST = (
 NO_ANSWER = "No answer came back: this part may or may not be picked."
 PRESS_NO_ANSWER = "The press got no answer back."
 
-#: J17: the heading once no part offers a number.
+#: J17: the heading once no part offers a number. Round r5-f F11: "the sheet"
+#: on a map in one part (it said "a sheet" on a map with one), "a part's
+#: sheet" on a map in parts (tests/mcp_app/test_mcp_r5f_check.py).
 ALL_ANSWERED = (
-    "Every square is answered. Open a sheet, then press Estimate the error rate."
+    "Every square is answered. Open the sheet, then press Estimate the error rate."
+)
+ALL_ANSWERED_PARTS = (
+    "Every square is answered. Open a part's sheet, then press Estimate the error "
+    "rate."
 )
 YOUR_SQUARES = "Your squares"
 
@@ -501,8 +507,18 @@ def test_j17_the_heading_follows_what_the_card_holds() -> None:
     sheet is open here, a part is picked, every picked part is answered
     whole and no part may still be picked elsewhere; else "Your squares"."""
     page = _read("check.html")
-    for name, said in (("ALL_ANSWERED", ALL_ANSWERED), ("YOUR_SQUARES", YOUR_SQUARES)):
-        assert f"// WORDING: r5b J17\nconst {name} = '{said}';\n" in page, name
+    assert f"// WORDING: r5b J17\nconst YOUR_SQUARES = '{YOUR_SQUARES}';\n" in page
+    # Round r5-f F11: the line names the sheet by whether the map is in parts
+    # (its function takes several: nParts > 1).
+    assert "// WORDING: r5b J17\nconst ALL_ANSWERED = (several) => " in page
+    which = "(several ? 'a part\\'s sheet' : 'the sheet')"
+    answered = _after(page, "const ALL_ANSWERED = (several) => ", ";\n")
+    assert answered.count(which) == 1
+    for sheet, said in (
+        ("the sheet", ALL_ANSWERED),
+        ("a part's sheet", ALL_ANSWERED_PARTS),
+    ):
+        assert _concat(answered.replace(which, "WHICH"), {"WHICH": sheet}) == said
     assert "  const ask = OE.el('p', { class: 'ask' }, ASK);\n" in page
     assert "  root.append(gate);\n  root.append(ask);\n" in page
     fill = _between(page, "  function fillAsk() {", "\n  }\n")
@@ -514,11 +530,11 @@ def test_j17_the_heading_follows_what_the_card_holds() -> None:
         "const done = opened === null && drawn.length > 0 && !pending "
         "&& drawn.every((m) => complete(m.draw));",
         "ask.textContent = drawable().length ? ASK "
-        ": done ? ALL_ANSWERED : YOUR_SQUARES;",
+        ": done ? ALL_ANSWERED(nParts > 1) : YOUR_SQUARES;",
     )
     for where in ("  function renderAll() {", "  async function refreshZone(m) {"):
         assert "    fillAsk();\n" in _between(page, where, "\n  }\n"), where
-    for said in (ALL_ANSWERED, YOUR_SQUARES):
+    for said in (ALL_ANSWERED, ALL_ANSWERED_PARTS, YOUR_SQUARES):
         assert _OFF_FACE.search(said) is None, said
 
 
@@ -663,8 +679,9 @@ def test_j25_the_parts_dead_ends_say_what_to_tell_claude() -> None:
         _after(page, "const RETRY = (n) => ", ";\n"),
         {"PRESS": "Pick the squares", "OE.counted(n, 'square')": "80 squares"},
     )
-    # Round r5-e K8: one line after "The pick failed." (test_mcp_r5e_check.py).
-    assert retry == "The press tries again with 80 squares."
+    # Round r5-e K8: one line after "The pick failed." (test_mcp_r5e_check.py);
+    # round r5-f F11: it names the press by its button (test_mcp_r5f_check.py).
+    assert retry == "Press Pick the squares to try again with 80 squares."
     assert "// WORDING: r5b J25\n// WORDING: squares\nconst RETRY = " in page
     for gone in (
         "ask Claude about it",

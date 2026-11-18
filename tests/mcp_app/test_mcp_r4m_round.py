@@ -321,11 +321,18 @@ def test_m2_side_by_side_carries_its_reason_everywhere() -> None:
     one, many = after.split("\n    : ")
     # Round r5-e, R4: the first sentence on the card's face, the second (with
     # its reason, the server's SAY_SIDE_BY_SIDE word for word) in Details.
+    # Round r5-f, F07: the face's line then says where, in a sentence of its
+    # own that the model's lines do not have.
+    ask = " Ask Claude to open the Check card again."
     side = _concat(_entry(words, "sideBySide: "), {})
     assert side == server.SAY_SIDE_BY_SIDE.strip()
-    assert _concat(one, {}) + " " + side == server.SAY_OTHER.strip()
-    many_said = _concat(many, {"k": "3"}) + " " + side
-    assert many_said == server.SAY_OTHERS.format(k="3").strip()
+    one_said = _concat(one, {})
+    assert one_said.endswith(ask)
+    assert one_said.removesuffix(ask) + " " + side == server.SAY_OTHER.strip()
+    many_said = _concat(many, {"k": "3"})
+    assert many_said.endswith(ask)
+    many_first = many_said.removesuffix(ask) + " " + side
+    assert many_first == server.SAY_OTHERS.format(k="3").strip()
 
 
 # --------------------------------------------------------------------------- M3
@@ -498,10 +505,11 @@ def test_m6_every_sheet_face_says_not_to_look_at_the_map() -> None:
             f"Say what you see in each {one}'s satellite pictures{HIDDEN}"
         )
         # r5-b J11: a sheet with no pictures and no places says it cannot
-        # show where a square is; it still says not to look at the map.
+        # show where a square is; it still says not to look at the map (r5-f
+        # F12: the clause ends its sentence, and the way out follows it).
         bare = _said("whatBare", unit)
         assert bare.startswith("This sheet has no pictures and no places, so it")
-        assert f"of each {one}, without looking at the map; " in bare
+        assert f"of each {one}, without looking at the map. No records? " in bare
         assert _said("whatPlaced", unit) == (
             f"This sheet has no pictures. See where each {one} is, then say what was "
             f"there from your own imagery or records{HIDDEN}"

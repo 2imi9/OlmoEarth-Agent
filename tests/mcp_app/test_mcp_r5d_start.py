@@ -40,26 +40,35 @@ CAPTION = (
 #: R04: the caption on a narrow panel, where the strip of three boxes shows.
 CAPTION_NARROW = "How a check of a Studio map works."
 
-#: R07: OE.say's status line when the host declines a message, and what a job
-#: button's slot says then (both as r5-b J20 wrote them).
+#: R07: OE.say's status line when the host declines a message (as r5-b J20
+#: wrote it), and what a job button's slot says then (r5-f F08: "Copy it into
+#: the chat:"; r5-b J20 wrote "Type it in the chat:").
 NOT_TAKEN = "Claude did not take the message; type it in the chat instead."
-JOB_NOT_SENT = "Claude did not get this message. Type it in the chat:"
+JOB_NOT_SENT = "Claude did not get this message. Copy it into the chat:"
 
-#: R09: the outputs list's first line where the run made several maps (r5-c
-#: S05's words), the one line a row's press on such a run leaves, and the end
-#: of the line that said how many maps (OUTPUTS.several), which is gone.
-OUTPUTS_FIRST = "This run made more than one map. Use the buttons on the one you mean."
+#: R09: the outputs list's first line where the run made several maps (r5-f
+#: F13's words; r5-c S05 wrote "This run made more than one map. Use the
+#: buttons on the one you mean."), the one line a row's press on such a run
+#: leaves, and the end of the line that said how many maps (OUTPUTS.several),
+#: which is gone.
+OUTPUTS_FIRST = (
+    "This run made more than one map; Studio names them only by the ids below. "
+    "Not sure which is yours? Ask whoever made the run."
+)
 SEVERAL_GONE = "Pick one in the list under it."
 
 #: R12: where the key goes, as every other sign-in text says it.
 KEY_GOES = "The key goes to the OlmoEarth Agent here, not through Claude."
 
-#: R12: the start card's note about the key, whole.
+#: R12: the start card's note about the key, whole: since r5-g G2 it ends at
+#: where the key goes, and what to do without a Studio account is the note's
+#: next line, of its own (start.html accessLine); it said "No Studio account?
+#: Ask whoever made the map how to get one of your own. Do not use their
+#: key." after KEY_GOES.
 KEY_NOTE = (
     "You need your own Studio API key: a secret code that Studio makes for you "
     "(in Studio, open your profile, then API Keys). The key goes to the OlmoEarth "
-    "Agent here, not through Claude. No Studio account? Ask whoever made the map "
-    "how to get one of your own. Do not use their key."
+    "Agent here, not through Claude."
 )
 
 #: Words no face holds (r4-i's rule), and no choice is marked recommended.
@@ -332,16 +341,17 @@ def test_r12_the_start_card_says_where_the_key_goes_as_every_sign_in_text() -> N
     """R12: the start card's note says where the key goes in the words of
     OE.SIGN_IN_KEY_GOES (the Check card's and a result card's sign-in),
     marked r5d; the rest of the note is as it was, the line on a Studio
-    account after it; no view keeps the old sentence, which said the key
-    goes only to Studio."""
+    account after it (r5-g G2: a line of its own, the note's next, so the
+    sentence ends with KEY_GOES and is marked r5g too); no view keeps the
+    old sentence, which said the key goes only to Studio."""
     page = _read("start.html")
-    tag = "// WORDING: r5d R12\n// WORDING: r4h P1\n"
+    tag = "// WORDING: r5g\n// WORDING: r5d R12\n"
     assert f"{tag}const KEY_NOTE = '{KEY_NOTE}';" in page
     assert f"OE.SIGN_IN_KEY_GOES = '{KEY_GOES}';" in _read("common.js")
-    assert KEY_NOTE.index(KEY_GOES) < KEY_NOTE.index("No Studio account?")
+    assert KEY_NOTE.endswith(" " + KEY_GOES)
     assert KEY_NOTE.startswith("You need your own Studio API key: ")
-    assert KEY_NOTE.endswith("Do not use their key.")
-    assert "note: KEY_NOTE," in page
+    assert "No Studio account?" not in KEY_NOTE
+    assert "note: [KEY_NOTE, accessLine(app)]," in page
     old = ("goes only to Studio", "never through Claude", "It stays on this computer")
     for name in views.VIEWS:
         html = views.view_html(name)

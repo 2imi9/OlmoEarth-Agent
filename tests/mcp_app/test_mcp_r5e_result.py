@@ -58,13 +58,12 @@ _TOKEN = re.compile(
     r"\s*(?:'((?:[^'\\]|\\.)*)'|(\+)|([A-Za-z_][A-Za-z0-9_.]*(?:\([^()]*\))?))"
 )
 
-#: R2: the plan's one line, of squares and of points.
-PLAN_SQUARES = (
-    "The squares to check, picked before any answer: answer every one on the sheet."
-)
-PLAN_POINTS = (
-    "The points to check, picked before any answer: answer every one on the sheet."
-)
+#: R2: the plan's first line, of squares and of points, and its second; their
+#: words are round r5-f's (F10), two lines since r5-f F02 (the card takes the
+#: second off once its sheet is open there, whose footer says it).
+PLAN_SQUARES = "The squares to check were picked at random and are now fixed."
+PLAN_POINTS = "The points to check were picked at random and are now fixed."
+PLAN_NEXT = "Answer every one on the sheet to get the result."
 
 #: R2: the look-first lead of 14 squares among 280 read, and of 7 points
 #: among 72 read (one point in the singular below).
@@ -82,6 +81,8 @@ LOOK_POINTS = (
 #: R4: the face's line under the parts, and its second sentence, in Details.
 OTHER_ONE = "Check the other part too."
 OTHER_THREE = "Check the other 3 parts too."
+#: Round r5-f, F07: the face's own second sentence, after the server's first.
+ASK_CHECK = "Ask Claude to open the Check card again."
 SIDE_BY_SIDE = (
     "Report the parts' results side by side; do not average or add them: this check "
     "gives no range for a combined rate."
@@ -380,14 +381,16 @@ def test_r1_the_points_rank_buttons_are_one_width() -> None:
 
 
 def test_r2_the_plan_lead_is_one_line() -> None:
-    """R2: a plan's lead is one line, in squares or in points; its "next" said
-    the button's own words again (sheet.OPEN_FIRST) and its "cannot" what the
-    sheet's greyed finish button and counter show (r5-e H1 took the sheet's
-    sentence too), so both are gone; marked; no face word kept off faces."""
-    assert server.PLAN_LEAD == {"what": PLAN_SQUARES, "next": None, "cannot": None}
+    """R2: a plan's lead was one line, in squares or in points; its "next"
+    said the button's own words again (sheet.OPEN_FIRST) and its "cannot"
+    what the sheet's greyed finish button and counter show (r5-e H1 took the
+    sheet's sentence too), so both went; since r5-f F02 its "next" says what
+    answering every one gives (no button's words), and the card takes it off
+    once its sheet is open there; marked; no face word kept off faces."""
+    assert server.PLAN_LEAD == {"what": PLAN_SQUARES, "next": PLAN_NEXT, "cannot": None}
     assert server.PLAN_LEAD_POINTS == {
         "what": PLAN_POINTS,
-        "next": None,
+        "next": PLAN_NEXT,
         "cannot": None,
     }
     assert server.LEAD["olmoearth_plan_label_sample"] == server.PLAN_LEAD
@@ -397,7 +400,7 @@ def test_r2_the_plan_lead_is_one_line() -> None:
         "olmoearth_plan_label_sample", {}, {"labels_csv_path": "x", "unit": "point"}
     )
     assert points == server.PLAN_LEAD_POINTS
-    for line in (PLAN_SQUARES, PLAN_POINTS):
+    for line in (PLAN_SQUARES, PLAN_POINTS, PLAN_NEXT):
         assert sheet.OPEN_FIRST not in line
         assert _OFF_FACE.search(line) is None, line
     source = _server_source()
@@ -601,7 +604,9 @@ def test_r4_the_parts_line_says_one_sentence_and_details_the_reason() -> None:
     sentence of the server's SAY_OTHER (SAY_OTHERS for k parts); the second,
     with its reason, is sideBySide, the server's SAY_SIDE_BY_SIDE word for
     word, in the card's Details once the map has two parts or more, after the
-    rule and the class lines, before the rare classes' counted lines; marked."""
+    rule and the class lines, before the rare classes' counted lines; marked.
+    Since round r5-f, F07 the face's line ends with a sentence of its own
+    (ASK_CHECK: where to check the other part), which the model's lines lack."""
     page = _read("result.html")
     words = _between(page, "const RESULT_WORDS = {", "\n};")
     assert "  // WORDING: r5e R4\n  // WORDING: r4m M2\n  otherPart: (k) => " in words
@@ -609,8 +614,8 @@ def test_r4_the_parts_line_says_one_sentence_and_details_the_reason() -> None:
     assert marked in words
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
-    assert _concat(one, {}) == OTHER_ONE
-    assert _concat(many, {"k": "3"}) == OTHER_THREE
+    assert _concat(one, {}) == OTHER_ONE + " " + ASK_CHECK
+    assert _concat(many, {"k": "3"}) == OTHER_THREE + " " + ASK_CHECK
     side = _concat(_entry(words, "sideBySide: "), {})
     assert side == SIDE_BY_SIDE == server.SAY_SIDE_BY_SIDE.strip()
     assert OTHER_ONE + " " + side == server.SAY_OTHER.strip()
@@ -729,7 +734,8 @@ def test_r5_each_parts_words_sit_inside_its_box() -> None:
     )
     assert "OE.el('div', { class: 'oe-part-label small' }" not in script
     for token in (
-        ".oe-parts { display: flex; gap: 4px; align-items: stretch; }\n",
+        ".oe-parts { display: flex; flex-wrap: wrap; gap: 4px;"
+        " align-items: stretch; }\n",
         ".oe-part-box { flex: 1; min-height: 28px; padding: 4px 8px; display: flex;"
         " align-items: center;\n  border: 1.5px solid var(--text-2);"
         " border-radius: 2px; background: var(--paper); }\n",
@@ -753,23 +759,30 @@ def test_r5_no_part_is_narrower_than_its_longest_word() -> None:
     """R5 on a narrow panel with a small part (a part at the 12% floor had
     about 18 px for its words at 380 px, so its label broke letter by letter
     into about ten lines and both boxes grew to about 200 px): a part is never
-    narrower than its label's longest word (min-content, which break-word,
-    unlike anywhere, does not shrink), so the share sets the width above that;
-    at 560 px or less (the steps' own breakpoint) the parts are stacked, each
-    full width, in rows of one height. The row's own rule is as R5 made it,
-    and the stacked rule comes after it."""
+    narrower than its label's longest word, so the share sets the width above
+    that; at 560 px or less (the steps' own breakpoint) the parts are stacked,
+    each full width, in rows of one height. The stacked rule comes after the
+    row's own. Since round r5-f, F05 the least width is the whole label on one
+    line (max-content; with min-content, r5-e's, the label of a part at the
+    floor wrapped to four lines and the row grew as tall), the row wraps the
+    parts that do not fit, a part is never wider than its share there, and a
+    stacked part may be narrower than its label again and is full width, so
+    the label can wrap there (tests/mcp_app/test_mcp_r5f_result.py)."""
     script = _read("figures.js")
     for token in (
-        ".oe-parts { display: flex; gap: 4px; align-items: stretch; }\n"
-        ".oe-part { min-width: min-content; display: flex; flex-direction: column;"
-        " gap: 4px; }\n",
+        ".oe-parts { display: flex; flex-wrap: wrap; gap: 4px;"
+        " align-items: stretch; }\n"
+        ".oe-part { min-width: max-content; max-width: var(--oe-share, none);"
+        " display: flex; flex-direction: column; gap: 4px; }\n",
         ".oe-part-label { color: var(--text); overflow-wrap: break-word; }\n"
         "@media (max-width: 560px) { .oe-parts { display: grid;"
-        " grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; } }\n",
+        " grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; }\n"
+        "  .oe-parts > .oe-part { min-width: 0; max-width: none; } }\n",
     ):
         assert token in script, token
     for gone in (
-        ".oe-part { min-width: 0;",
+        "\n.oe-part { min-width: 0;",
+        "min-width: min-content",
         ".oe-part-label { color: var(--text); overflow-wrap: anywhere; }",
     ):
         assert gone not in script, gone

@@ -2968,22 +2968,22 @@ def test_a_class_maps_range_is_matched_by_its_name_never_by_a_code_key() -> None
 
 
 def test_the_plan_lead_needs_its_sheet() -> None:
-    """A plan's line only beside its sheet (round r5-e, R2: one line, which
-    no longer says the button's words, sheet.OPEN_FIRST, again, nor the
-    sheet's "no result" line); a plan drawn on a grid over a Studio result
-    (its sampling) says points, not squares."""
+    """A plan's lines only beside its sheet (round r5-e, R2, which no longer
+    say the button's words, sheet.OPEN_FIRST, again, nor the sheet's "no
+    result" line; two lines since r5-f F02); a plan drawn on a grid over a
+    Studio result (its sampling) says points, not squares."""
     with_sheet = server._lead(
         "olmoearth_plan_label_sample", {}, {"labels_csv_path": "x"}
     )
     assert with_sheet == server.PLAN_LEAD
     assert sheet.OPEN_FIRST == "Open the sheet here"
     assert with_sheet == {
-        "what": "The squares to check, picked before any answer: answer every one "
-        "on the sheet.",
-        "next": None,
+        "what": "The squares to check were picked at random and are now fixed.",
+        "next": "Answer every one on the sheet to get the result.",
         "cannot": None,
     }
     assert sheet.OPEN_FIRST not in str(with_sheet["what"])
+    assert sheet.OPEN_FIRST not in str(with_sheet["next"])
     assert server._lead("olmoearth_plan_label_sample", {}, {}) == {
         "what": None,
         "next": None,
@@ -2994,9 +2994,8 @@ def test_the_plan_lead_needs_its_sheet() -> None:
         "olmoearth_plan_label_sample", sampled, {"labels_csv_path": "x"}
     )
     assert points == {
-        "what": "The points to check, picked before any answer: answer every one "
-        "on the sheet.",
-        "next": None,
+        "what": "The points to check were picked at random and are now fixed.",
+        "next": "Answer every one on the sheet to get the result.",
         "cannot": None,
     }
     assert "square" not in " ".join(str(v) for v in points.values())
