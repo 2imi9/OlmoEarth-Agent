@@ -806,11 +806,12 @@ def test_the_sheets_face_lines_are_the_string_tables() -> None:
     assert _said("streetMap", "square") == "Street map"
     assert _said("openMapOf", "point", k="4") == "Street map: point 4 on OpenStreetMap"
     # A sheet with no pictures and no places (r5-b J11): it cannot show where
-    # a point is, so it says what to answer from.
+    # a point is, so it says what to answer from (r5-f F12: the way out is a
+    # question of its own).
     assert _said("whatBare", "point") == (
         "This sheet has no pictures and no places, so it cannot show where a point "
         "is. Answer only from your own records of each point, without looking at the "
-        "map; with none, stop and tell Claude."
+        "map. No records? Stop and tell Claude."
     )
 
 

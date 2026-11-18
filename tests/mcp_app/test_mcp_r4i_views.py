@@ -76,9 +76,9 @@ UNIT_ELSE = "\n    : "
 PART_CHOICE = "(r.part_file ? ' (the part in file ' + r.part_file + ')' : '')"
 WHICH_CHOICE = "(r.part_file ? 'that part' : 'this map')"
 
-#: The dashed square's CSS (r4-i O2).
+#: The dashed square's CSS (r4-i O2); since r5-g G1 no legend swatch shares it.
 CANNOT_CSS = (
-    ".oe-sq.cannot, .oe-swatch.cannot { background: transparent; box-shadow: none;"
+    ".oe-sq.cannot { background: transparent; box-shadow: none;"
     " border: 1px dashed var(--text); box-sizing: border-box; }"
 )
 
@@ -261,11 +261,14 @@ def test_f8_a_review_sets_picture_is_folded_and_its_legend_after_it() -> None:
 
 
 def test_o2_the_grid_draws_a_cannot_tell_square_empty_and_dashed() -> None:
-    """r4-i O2: a cell with unjudged true is span.oe-sq.cannot (no fill class,
-    never ' wrong'), left out of the fills' count and order; the legend names
-    it "Cannot tell" (the server's {unjudged} entry, else CANNOT_KEY, the
-    sheet's own word) with a dashed swatch and its count in the grid's
-    aria-label, after the classes and before the red outline."""
+    """r4-i O2: a cell with unjudged true is drawn span.oe-sq.cannot (no fill
+    class, never ' wrong'), left out of the fills' count and order; its row
+    says "Cannot tell" (the server's {unjudged} entry, else CANNOT_KEY, the
+    sheet's own word), with its count in the figure's aria-label. Round r5-g,
+    G1: the squares are a tally, one row per kind in the order the cells
+    come, so the Cannot tell row is last (its cells are); the legend, its
+    dashed swatch and the outline's entry are gone with the grid
+    (tests/mcp_app/test_mcp_r5g_result.py)."""
     script = _read("figures.js")
     assert "  // WORDING: r4i O2\n  const CANNOT_KEY = 'Cannot tell';" in script
     assert sheet.CANNOT_TELL == "Cannot tell"
@@ -277,23 +280,25 @@ def test_o2_the_grid_draws_a_cannot_tell_square_empty_and_dashed() -> None:
         " + 1);",
         "for (const v of [...classes.map((c) => c.code), ...judged.map((c) => c.seen)])"
         " {",
-        "class: isCannot(c) ? 'oe-sq cannot' : 'oe-sq ' + fill(c.seen)"
-        " + (isWrong(c) ? ' wrong' : ''),",
-        "const given = legend.find((e) => e.unjudged === true && words(e.text));",
-        "entries.push({ cls: 'cannot', text: given ? words(given.text) : CANNOT_KEY,"
-        " n: nCannot });",
-        "const nWrong = judged.filter(isWrong).length;",
+        "const wrong = !isCannot(cell) && isWrong(cell);",
+        "mark: isCannot(cell) ? 'oe-sq cannot' : 'oe-sq ' + fill(cell.seen)"
+        " + (wrong ? ' wrong' : ''),",
+        "const cannot = legend.find((e) => e.unjudged === true && words(e.text));",
+        "text: isCannot(cell) ? (cannot ? words(cannot.text) : CANNOT_KEY)",
         "const given = legend.find((e) => !e.wrong && !e.unjudged"
         " && key(e.code) === code);",
-        "'aria-label': entries.map((e) => e.text + ' (' + e.n + ')').join('; '),",
+        "'aria-label': rows.map((r) => r.text + ' (' + r.n + ')').join('. '),",
     ):
         assert text in squares, text
-    for gone in ("for (const c of cells) count.set(", "...cells.map((c) => c.seen)"):
+    for gone in (
+        "for (const c of cells) count.set(",
+        "...cells.map((c) => c.seen)",
+        "oe-swatch",
+        "entries.push(",
+    ):
         assert gone not in squares, gone
-    # The legend's order: the classes, Cannot tell, the outline.
-    assert _in_order(squares, "const entries = order", "cls: 'cannot'", "'blank wrong'")
-    assert "OE.el('span', { class: 'oe-swatch ' + e.cls })" in squares
     assert CANNOT_CSS in script
+    assert ".oe-swatch" not in script
     assert _OFF_FACE.search("Cannot tell") is None
 
 

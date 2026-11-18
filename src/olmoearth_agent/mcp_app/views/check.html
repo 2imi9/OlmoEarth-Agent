@@ -7,6 +7,12 @@
 <script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
 <link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
 <style>
+  /* r5-f F16: the canvas and the text before the module runs, and when it
+     cannot start (the watchdog's line): OE.STYLE's own canvas and text
+     colours and a system sans-serif, which OE.STYLE takes over from once
+     the module runs. */
+  html { background: #faf2e9; }
+  body { margin: 0; padding: 0 16px 16px; font: 14px/21px system-ui, -apple-system, 'Segoe UI', sans-serif; color: #0a3235; }
   .notes p { margin: 0 0 4px; }
   .ask { margin: 0; font-weight: 600; }
   /* A part's counts: one button each, the count in bold (no drawing: r4-h
@@ -37,9 +43,12 @@
   .oe-strips img { display: block; width: 100%; max-width: 360px; height: auto; border-radius: 2px; }
   .oe-strips > div { flex: 1 1 200px; min-width: 0; }
   /* Free text in the white cards (a typed rule, the server's words on a
-     sheet that cannot be read): a word too long for its line breaks, so it
+     part that cannot be checked): a word too long for its line breaks, so it
      never runs out of its card, nor makes a map in one part scroll sideways. */
   .gate, section.part { overflow-wrap: anywhere; }
+  /* The same for a part's lines in Details (r5-f F04: the server's words on
+     a sheet that cannot be read, which name the sheet's file, are there). */
+  .fold-part { overflow-wrap: anywhere; }
   .gate input[type=text] { width: 100%; }
   /* The gate takes the focus after a press with no reply (its one line says
      what to do, drawPicked): the ring only for a keyboard, as on the sheet's
@@ -144,7 +153,7 @@ import { App } from "@EXT_APPS_URL@";
    on, retries the draws_max that have waited longest (the server's
    failed_at, earliest first: r4-l L2, so a pick past the limit gets its
    turn), the line says the rest wait for the next press, and each part that
-   waits says a later press tries it (RETRY_LATER). The press is
+   waits says it is not in this press and waits for a later one (RETRY_LATER). The press is
    off too while the gate's rule is shorter than RULE_MIN characters, or
    the box holds 1 to RULE_MIN - 1 (code points of
    the rule as the server keeps it: ruleText). The call may run long (each
@@ -168,11 +177,14 @@ const root = document.getElementById('root');
    sentences are shown whole, in Details. */
 // WORDING: squares
 const TITLE = 'Check how wrong this map is';
+/* Step 3 says what the one who looks must recognise, what the map shows
+   (r5-f F09: it said "recognise it", and nothing on the face is "it"). */
+// WORDING: r5f F09 (step 3)
 // WORDING: squares; r4h critic gap 2 (step 3)
 const STEPS = [
   '1. The map is cut into small squares.',
   '2. The app picks some at random.',
-  '3. Someone who can recognise it in a satellite picture looks at each one.',
+  '3. Someone who can recognise what the map shows looks at each one in a satellite picture.',
   '4. You get how often the map is wrong, with a range.',
 ];
 /* Step 1 with the square's size (r4-h A/F13), when every part's is known
@@ -183,9 +195,13 @@ const STEP_SIZED = (metres) => '1. The map is cut into squares about ' + metres 
 const ASK = 'How many squares do you want to check?';
 /* The same heading once no part offers a number (r5-b J17: it still asked
    with nothing to choose): every picked part answered whole and no sheet
-   open here, or, any other way, the squares picked. */
+   open here, or, any other way, the squares picked. r5-f F11: "the sheet"
+   on a map in one part (it said "a sheet" on a map with one), "a part's
+   sheet" on a map in parts (several). */
+// WORDING: r5f F11
 // WORDING: r5b J17
-const ALL_ANSWERED = 'Every square is answered. Open a sheet, then press Estimate the error rate.';
+const ALL_ANSWERED = (several) => 'Every square is answered. Open ' + (several ? 'a part\'s sheet' : 'the sheet')
+  + ', then press Estimate the error rate.';
 // WORDING: r5b J17
 const YOUR_SQUARES = 'Your squares';
 /* One line under the question (r5-e K1), while a part offers more than one
@@ -387,6 +403,23 @@ const BUSY = 'This part\'s squares are being picked right now.';
 // WORDING: r5b J25
 // WORDING: squares
 const FINAL = 'This part cannot be picked again here. Tell Claude that the pick failed for this part.';
+/* A picked part whose sheet cannot be read when the card opens (SHEET_UNREAD;
+   name: the part's, on a map in parts), and a sheet that did not open on a
+   press of its button (SHEET_NOT_OPENED), r5-f F04: the face says what to
+   do, in plain words. The server's reason, which may name the sheet's file
+   and a step no button here does ("plan the sample again"), is in the
+   part's lines in Details, after the words the face said before
+   (SHEET_UNREAD_WHY, SHEET_NOT_OPENED_WHY). */
+// WORDING: r5f F04
+const SHEET_UNREAD = (name) => 'Its sheet cannot be opened now. Tell Claude that the sheet'
+  + (name ? ' of ' + name : '') + ' cannot be opened.';
+// WORDING: r5f F04
+const SHEET_NOT_OPENED = 'The sheet could not be opened. Press the button to try again; if it fails again, tell'
+  + ' Claude.';
+// WORDING: r5f F04 (in Details since r5-f)
+const SHEET_UNREAD_WHY = 'Its sheet cannot be read now: ';
+// WORDING: r5f F04 (in Details since r5-f)
+const SHEET_NOT_OPENED_WHY = 'The sheet could not be opened: ';
 /* A class map without top-k scores (r4-h C6, E/check-2 and E/check-1
    FINALs): it can be checked, on points; the button sends Claude the check
    on points (OE.JOB_TEXT.points); the tool's sentence is in Details. "points"
@@ -433,16 +466,29 @@ const PICK_FAILED = 'The pick failed: ';
    no longer show the server's words eighteen times. */
 // WORDING: r5e
 const FAILED_SHORT = 'The pick failed.';
+/* What the press does for a failed pick, after FAILED_SHORT on its part's
+   face. r5-f F11: it names the press by its button's words (PRESS, written
+   out here), so the line says which press and whose; it read "The press
+   tries again with 80 squares." */
+// WORDING: r5f F11
 // WORDING: r5e
 // WORDING: r5b J25
 // WORDING: squares
-const RETRY = (n) => 'The press tries again with ' + OE.counted(n, 'square') + '.';
+const RETRY = (n) => 'Press Pick the squares to try again with ' + OE.counted(n, 'square') + '.';
 /* A failed pick this press does not retry: more picks failed than one press
    takes, and the press retries those that have waited longest (sendPlan), so
-   a later press tries this one; the line under the press says how many wait. */
+   a later press tries this one; the line under the press says how many wait.
+   r5-f F11: the part says it is not in this press (the line under the press
+   speaks of "this press" too) and waits for a later press, named by its
+   button's words, with its number; it read "A later press tries again with
+   70 squares." Never "the next press": past twice draws_max failed picks
+   even the press after this one may not take it (r4-l L2 gives it its turn
+   on some later press). */
+// WORDING: r5f F11
 // WORDING: r5e
 // WORDING: squares
-const RETRY_LATER = (n) => 'A later press tries again with ' + OE.counted(n, 'square') + '.';
+const RETRY_LATER = (n) => 'Not in this press: it waits for a later press of Pick the squares ('
+  + OE.counted(n, 'square') + ').';
 // WORDING: r5b J25
 // WORDING: squares
 const NOT_READ = 'This part cannot be checked: ';
@@ -547,7 +593,8 @@ function zoneModel(z, index) {
     refused: z.refused, refusedAt: z.refused_at, changed: Boolean(z.raster_changed), changedText: null,
     // The server's line on pixels set into 0 to 1 (a score map, r5-a K2), for Details; else null.
     clipped: typeof z.clipped === 'string' && z.clipped ? z.clipped : null,
-    line: null, fresh: false, repeat: false, sheetError: null, opening: false, reads: 0,
+    // sheetError: the face's line when its sheet did not open on a press; sheetWhy: the reason, for Details (F04).
+    line: null, fresh: false, repeat: false, sheetError: null, sheetWhy: null, opening: false, reads: 0,
     body: null, heading: null, openButton: null, progressEl: null, group: null,
   };
   if (z.state === 'drawn' && z.draw && typeof z.draw.labels_csv_path === 'string' && z.draw.labels_csv_path) {
@@ -922,8 +969,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     if (m.kind === 'pick') {
       parts.push(countsBlock(m));
     } else if (m.kind === 'retry') {
-      // One line (r5-e K8): the short red words, then what this press does, or, when more picks failed than one
-      // press takes and this one waits (sendPlan), that a later press does; the reason is in Details. Which
+      // One line (r5-e K8): the short red words, then that the press tries it again (RETRY, r5-f F11: the press
+      // by its button's words), or, when more picks failed than one press takes and this one waits (sendPlan),
+      // that it is not in this press and waits for a later one (RETRY_LATER); the reason is in Details. Which
       // picks a press retries changes only with a press's answer or an opened sheet, each followed by renderAll.
       const now = sendPlan().send.includes(m);
       parts.push(OE.el('div', {}, OE.el('span', { class: 'error' }, FAILED_SHORT), ' ',
@@ -933,11 +981,17 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       const head = m.repeat ? REPEATED(d.budget, dayText(d.pressed_at)) : PICKED(d.budget, dayText(d.pressed_at));
       m.progressEl = OE.el('span', {}, d.progress ? ' ' + bare(d.progress) + '.' : '');
       parts.push(OE.el('div', {}, OE.el('span', {}, head), m.progressEl));
-      if (d.sheet_error && !d.progress) {
-        parts.push(OE.el('div', { class: 'small' }, 'Its sheet cannot be read now: ' + bare(d.sheet_error) + '.'));
+      // A sheet that cannot be read now (r5-f F04): what to do, in body type, the part by its name on a map in
+      // parts; the server's reason (it may name the sheet's file) is in Details (fillFold). When a press of its
+      // button failed too, that one line turns red, so the press visibly got its answer, and SHEET_NOT_OPENED is
+      // not drawn beside it: the sheet failed twice (the card's read, the press), so the line stays the one that
+      // says to tell Claude, not one that says to press again.
+      const unread = Boolean(d.sheet_error) && !d.progress;
+      if (unread) {
+        parts.push(OE.el('div', m.sheetError ? { class: 'error' } : {}, SHEET_UNREAD(nParts > 1 ? label(m) : null)));
       }
       if (m.changed) parts.push(OE.el('div', { class: 'error' }, m.changedText || CHANGED));
-      if (m.sheetError) parts.push(OE.el('div', { class: 'error' }, m.sheetError));
+      if (m.sheetError && !unread) parts.push(OE.el('div', { class: 'error' }, m.sheetError));
       if (opened === m) {
         parts.push(OE.el('div', { class: 'small muted' }, OPEN_HERE));
       } else {
@@ -978,7 +1032,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     const drawn = models.filter((m) => m.kind === 'drawn');
     const pending = models.some((m) => m.kind === 'unknown' || m.kind === 'busy' || m.kind === 'later');
     const done = opened === null && drawn.length > 0 && !pending && drawn.every((m) => complete(m.draw));
-    ask.textContent = drawable().length ? ASK : done ? ALL_ANSWERED : YOUR_SQUARES;
+    ask.textContent = drawable().length ? ASK : done ? ALL_ANSWERED(nParts > 1) : YOUR_SQUARES;
     moreLine.hidden = !models.some((m) => m.kind === 'pick' && m.offer.length > 1);
   }
 
@@ -990,7 +1044,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      plans gave (the labelling rule is on the face, fillGate). r5-e: a failed
      pick's reason in the server's words (K8) and what a second press does for
      a user who comes back (K4), the latter only while the card has a press
-     and shows no part as picked or as pressed with no reply (r5-a L4's rule). */
+     and shows no part as picked or as pressed with no reply (r5-a L4's rule).
+     r5-f F04: why a picked part's sheet cannot be read now, or did not open
+     on a press, in the server's words (the face says only what to do). */
   function fillFold() {
     const nodes = [];
     if (nParts > 1) nodes.push(OE.el('p', {}, SEVERAL(nParts)));
@@ -1006,6 +1062,15 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       // A failed pick's reason, as the server gave it (r5-e K8: the part's face says only FAILED_SHORT).
       if ((m.kind === 'retry' || m.kind === 'failed') && m.error) {
         lines.push(OE.el('div', {}, PICK_FAILED + bare(m.error) + '.'));
+      }
+      // Why a picked part's sheet cannot be read now, or did not open on a press, in the server's words (r5-f
+      // F04: the part's face says only what to do, SHEET_UNREAD or SHEET_NOT_OPENED). A failed press's reason
+      // that says again the one its sheet could not be read for is not said twice; a different one still shows.
+      const unreadWhy = m.kind === 'drawn' && m.draw && m.draw.sheet_error && !m.draw.progress
+        ? bare(m.draw.sheet_error) : null;
+      if (unreadWhy) lines.push(OE.el('div', {}, SHEET_UNREAD_WHY + unreadWhy + '.'));
+      if (m.sheetWhy && m.sheetWhy !== unreadWhy) {
+        lines.push(OE.el('div', {}, SHEET_NOT_OPENED_WHY + m.sheetWhy + '.'));
       }
       if (m.kind !== 'drawn') {
         m.offer.forEach((o) => lines.push(OE.el('div', {}, OE.counted(o.labels, 'square') + ': ' + o.sentence)));
@@ -1065,7 +1130,12 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   /* A drawn zone's progress words and counts, read again (counts only); an
      older read answered after a newer one is dropped, and a failed read
      changes nothing. The heading follows the counts (a part checked whole);
-     the rule is never taken from here (r4-h Q4: the press reply's). */
+     the rule is never taken from here (r4-h Q4: the press reply's). A sheet
+     that could not be read when the card opened and whose counts read now
+     (the user comes back, say, from saving it again as the reason in Details
+     says) no longer says it cannot be opened (r5-f F04): its part and Details
+     are drawn again, the focus kept on its open button. A press of that
+     button that failed is another read, so its line stays. */
   async function refreshZone(m) {
     if (!m.draw || !m.draw.labels_csv_path) return;
     const mine = ++m.reads;
@@ -1074,6 +1144,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       got = await OE.call(app, 'olmoearth_app_sheet_progress', { labels_csv_path: m.draw.labels_csv_path });
     } catch (_) { got = null; }
     if (mine !== m.reads || !got || !m.draw) return;
+    const unread = Boolean(m.draw.sheet_error) && !m.draw.progress;
     if (typeof got.progress === 'string') m.draw.progress = got.progress;
     if (typeof got.open_label === 'string' && got.open_label) m.draw.open_label = got.open_label;
     if (typeof got.name === 'string' && got.name) m.draw.name = got.name;
@@ -1081,6 +1152,13 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     if (Number.isInteger(got.n_labelled)) m.draw.n_labelled = got.n_labelled;
     if (m.progressEl) m.progressEl.textContent = m.draw.progress ? ' ' + bare(m.draw.progress) + '.' : '';
     if (m.openButton) m.openButton.textContent = m.draw.open_label || 'Open the sheet';
+    if (unread && typeof got.progress === 'string' && got.progress) {
+      const had = Boolean(m.openButton) && document.activeElement === m.openButton;
+      m.draw.sheet_error = null;
+      fillZone(m);
+      fillFold();
+      if (had) OE.focusIfHere(m.openButton);
+    }
     fillAsk();
     tellCard();
   }
@@ -1218,7 +1296,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      stays, with its own Save, when that save fails; the heading takes the
      focus if the press or the open button had it. Nothing opens while a
      press is answered. A sheet that cannot be read keeps the open button and
-     says why. An editor that stopped saving (its sheet changed under the
+     says to press it again, and to tell Claude if it fails again; why is in
+     Details (r5-f F04). When its sheet could not be read when the card opened
+     either, its line that says to tell Claude turns red instead (fillZone),
+     and Details says the reason once. An editor that stopped saving (its sheet changed under the
      panel) gives way without a save, and once the other sheet is open its
      part says in its own red line, and one toast in the same words, how
      many of its answers were not saved and what to do (NOT_SAVED_PART, r5-b
@@ -1246,12 +1327,18 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       sheet = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: m.draw.labels_csv_path });
     } catch (err) {
       m.opening = false;
-      m.sheetError = 'The sheet could not be opened: ' + bare(err.message || 'it could not be read') + '.';
+      // The face says what to do; the reason, in the server's words, goes to Details (r5-f F04, fillFold).
+      m.sheetError = SHEET_NOT_OPENED;
+      m.sheetWhy = bare(err.message || 'it could not be read');
       renderAll();
       if (had) OE.focusIfHere(m.openButton);
       return;
     }
     m.opening = false;
+    // The sheet was read, so why it could not be read when the card opened no longer holds (r5-f F04: else its
+    // card said "Its sheet cannot be opened now." beside "Its sheet is open below.").
+    m.draw.sheet_error = null;
+    m.sheetWhy = null;
     m.sheetError = null;
     // Its sheet opens again: the line on answers not saved goes (r5-b J10),
     // and so does the toast that said it in the same words (r5-d R05; the

@@ -14,15 +14,22 @@ import re
 
 from olmoearth_agent.mcp_app import sheet, views
 
-#: The start card's sentence about the key (B/S4), where it goes in every
-#: other sign-in text's words (r5-d R12), then what to do without a Studio
-#: account (r4-h P1: A/F15, E/start-3).
+#: The start card's sentence about the key (B/S4), then where it goes in
+#: every other sign-in text's words (r5-d R12). What to do without a Studio
+#: account (r4-h P1: A/F15, E/start-3) is a line of its own after it since
+#: r5-g G2 (ACCESS_BEFORE, the "Request access" button, ACCESS_AFTER); it
+#: said "Ask whoever made the map how to get one of your own. Do not use
+#: their key." at the end of this sentence.
 KEY_NOTE = (
     "You need your own Studio API key: a secret code that Studio makes for you "
     "(in Studio, open your profile, then API Keys). The key goes to the OlmoEarth "
-    "Agent here, not through Claude. No Studio account? Ask whoever made the map "
-    "how to get one of your own. Do not use their key."
+    "Agent here, not through Claude."
 )
+
+#: r5-g G2: the words around the note's last line's text button, as
+#: start.html writes them (its quote escaped).
+ACCESS_BEFORE = "No Studio account? "
+ACCESS_AFTER = " on olmoearth.allenai.org. Do not use someone else\\'s key."
 
 #: The start card's lead line (r4-h P1, D/D-start-1), signed out (r5-c S03:
 #: signed in, START_NEXT_IN in start.html takes its place; r5-e S1: the
@@ -53,11 +60,12 @@ BLIND_SEEN = (
     "Blind: this panel is not sent what the map says for a {one}, or where the "
     "{one} is, so you answer without seeing the map's answer."
 )
-# r5-b J11: a sheet with no pictures and no places cannot show where a point is.
+# r5-b J11: a sheet with no pictures and no places cannot show where a point is
+# (r5-f F12: the way out is a question of its own).
 WHAT_BARE = (
     "This sheet has no pictures and no places, so it cannot show where a {one} is. "
-    "Answer only from your own records of each {one}, without looking at the map; "
-    "with none, stop and tell Claude."
+    "Answer only from your own records of each {one}, without looking at the map. "
+    "No records? Stop and tell Claude."
 )
 # r4-m M6: whoever answers must not look at the map either (r5-e H1: in one
 # clause).
@@ -136,14 +144,16 @@ def test_every_view_says_what_the_panel_is() -> None:
 
 def test_the_start_card_says_where_a_key_is_made() -> None:
     """B/S4, and r4-h P1: what to do without a Studio account, at the end of
-    the note (after "not through Claude.", r5-d R12's words), never with
-    their key."""
+    the note (r5-g G2: its own line, after the sentence that ends "not
+    through Claude.", r5-d R12's words), never with someone else's key."""
     page = _read("start.html")
-    tag = "// WORDING: r5d R12\n// WORDING: r4h P1\n"
+    tag = "// WORDING: r5g\n// WORDING: r5d R12\n"
     assert f"{tag}const KEY_NOTE = '{KEY_NOTE}';" in page
-    said = KEY_NOTE.index("not through Claude.")
-    assert said < KEY_NOTE.index("No Studio account?")
-    assert "note: KEY_NOTE," in page
+    assert KEY_NOTE.endswith("not through Claude.")
+    assert f"// WORDING: r5g\nconst ACCESS_BEFORE = '{ACCESS_BEFORE}';" in page
+    assert f"// WORDING: r5g\nconst ACCESS_AFTER = '{ACCESS_AFTER}';" in page
+    assert ACCESS_AFTER.endswith("Do not use someone else\\'s key.")
+    assert "note: [KEY_NOTE, accessLine(app)]," in page
     # r5-b J19: the panel's default note is two plain lines, the first saying
     # where Studio makes a key; its button says what its press does.
     common = _read("common.js")
@@ -207,9 +217,10 @@ def test_the_projects_card_words() -> None:
         "label: (kind) => 'Tell Claude: this ' + kind,",
         "title: 'Tells Claude which one you mean. Starts no job.',",
         "label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),",
-        # r5-c S05: the outputs list's first line, only where there are several.
-        "first: 'This run made more than one map. Use the buttons on the one you "
-        "mean.',",
+        # r5-c S05: the outputs list's first line, only where there are several
+        # (r5-f F13: its words).
+        "first: 'This run made more than one map; Studio names them only by the "
+        "ids below. Not sure which is yours? Ask whoever made the run.',",
         # r5-c S06: the note under the heading; the boxes' sentence moved out of
         # COMPARE.how into COMPARE.tick.
         "Each prediction is a model run over an area and a period; its output is "
@@ -322,18 +333,20 @@ def test_figures_have_the_plans_shapes() -> None:
     parts = _between(script, "  const parts = (", "\n  };")
     assert "if (items.length < 2) return null;" in parts
     squares = _between(script, "  const squares = (", "\n  };")
-    # At most three class entries, then one for Cannot tell (r4-i O2) and one
-    # for the outline: five in all.
-    assert ".slice(0, FILLS.length)" in squares
-    assert squares.count("entries.push(") == 2
+    # Round r5-g, G1: one tally row per kind of square that occurs (Cannot
+    # tell, r4-i O2, one of them); the legend, which had at most five entries,
+    # is gone, and the fills stay three.
+    assert "const kinds = new Map();" in squares
+    assert ".slice(0, FILLS.length)" not in squares
+    assert "entries.push(" not in squares
     assert "const FILLS = ['f0', 'f1', 'f2'];" in script
     # Round r5-b, J04: the second class hollow, the third a mid teal with a
     # dark ring (before: mint, and a pale grey that vanished on the card).
     for token in (
-        ".oe-sq.f0, .oe-swatch.f0 { background: var(--text); }",
-        ".oe-sq.f1, .oe-swatch.f1 { background: var(--paper);"
+        ".oe-sq.f0 { background: var(--text); }",
+        ".oe-sq.f1 { background: var(--paper);"
         " box-shadow: inset 0 0 0 2px var(--text); }",
-        ".oe-sq.f2, .oe-swatch.f2 { background: rgba(16,82,87,.45);"
+        ".oe-sq.f2 { background: rgba(16,82,87,.45);"
         " box-shadow: inset 0 0 0 1px var(--text); }",
         "width: 14px; height: 14px",
     ):
@@ -402,14 +415,15 @@ def test_the_parts_figure_draws_the_check_cards_states() -> None:
 
 def test_the_red_outline_stands_off_the_dark_squares() -> None:
     """r4-h V2: the outline where the map said otherwise is 3 px, set 2 px off
-    the square, and the grid's gap is 8 px so outlines stay apart."""
+    the square. Round r5-g, G1: the grid, whose 8 px gap kept the outlines
+    apart, is gone; a tally row's square sits in a column of 24 px, so its
+    outline (5 px on each side of 14 px) stays inside the row."""
     script = _read("figures.js")
-    assert (
-        ".oe-sq.wrong, .oe-swatch.wrong { outline: 3px solid var(--error);"
-        " outline-offset: 2px; }" in script
-    )
-    grid = ".oe-sq-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 5px; }"
-    assert grid in script
+    wrong = ".oe-sq.wrong { outline: 3px solid var(--error); outline-offset: 2px; }"
+    assert wrong in script
+    column = ".oe-sq-tally > li { display: grid; grid-template-columns: 24px "
+    assert column in script
+    assert ".oe-sq-grid" not in script
     assert "outline: 2px solid var(--error)" not in script
 
 

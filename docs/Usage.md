@@ -581,11 +581,15 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   panels keeps both, for the user who fills the CSV. The plan's `how_to_label` is the package's sentence, passed on
   as written.
 
-  A plan card says one line under its overline: "The squares to check, picked before any answer: answer every one on
-  the sheet." ("points" for a sheet of points; r5-e R2: it said "Press Open the sheet here and answer every square."
-  over that very button, and "No result until every square is answered.", which the sheet's greyed finish button and
-  counter show; the sheet's own sentence is gone too: H1). Its button, the card's
-  one contained button, comes right under that line and before the closed "Details" fold, the card's last block
+  A plan card says two lines under its overline: "The squares to check were picked at random and are now fixed." and
+  "Answer every one on the sheet to get the result." ("points" for a sheet of points; r5-f F10: it read "The squares
+  to check, picked before any answer: answer every one on the sheet.", which did not say whose answer, that the pick
+  is random, or when the result comes; r5-e R2: before that it said "Press Open the sheet here and answer every
+  square." over that very button, and "No result until every square is answered.", which the sheet's greyed finish
+  button and counter show; the sheet's own sentence is gone too: H1). Once the sheet opens in the card, the second
+  line goes with the button: the sheet's footer then says "Answer every square first." beside its grey finish button,
+  so the card says it once (r5-f F10 with F02). Its button, the card's
+  one contained button, comes right under those lines and before the closed "Details" fold, the card's last block
   (r5-e R3; it came after the fold); once the sheet opens in the card, Details sits under the sheet.
   The plan's button remembers its sheet. Beside it, the panel says how far the sheet is labelled ("2 of 5 labelled",
   with ", 1 cannot tell" when a window says so), and the button reads "Open the sheet here" before any label,
@@ -649,7 +653,8 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   after the fold); its lead then has no second line, since that card says it with its button (r5-e R2: it asked
   for "a random pick of points"; a review set without that card keeps its second line).
 - **`olmoearth_load_context`.** The page of projects the tool read, as cards (name, description, creation date), or as
-  compact rows (name, created) past eight projects, with a search by name or description. A date reads "1 Oct 2026"
+  compact rows (name, created) past eight projects, with a search by name or description (its grey hint, like every
+  field's, is the text's colour at .7, 5.3:1 on white; r5-f F03: .6, 4.0:1). A date reads "1 Oct 2026"
   (the day, the month's three-letter name from a fixed table, "Sep" too, the year; r5-c S11), which no country
   reads as another day. A long project name
   shows on up to two lines on its card, its whole name in the tooltip (r5-c S12). The card's one line says what to
@@ -709,7 +714,9 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     result whose first property is the base of its top-k bands; a press on a prediction with no such result says so
     and sends nothing. The press reads the prediction's results once (`olmoearth_app_results`): one result is sent by
     its id; with none the panel says so; with several it opens the list, which starts "This run made more than one
-    map. Use the buttons on the one you mean.", the one line that says so (r5-d R09: "This run made 2 maps. Pick one
+    map; Studio names them only by the ids below. Not sure which is yours? Ask whoever made the run." (r5-f F13: it
+    ended "Use the buttons on the one you mean.", over rows named only by Studio's ids; a result carries no more than
+    its id and the names of what it holds), the one line that says so (r5-d R09: "This run made 2 maps. Pick one
     in the list under it." is no longer said, in the status line or under the row), and moves the focus to the first
     output's Check; each result row has its own buttons. While a run's list of several outputs is open (by a press
     or by "Outputs"), the row's own job buttons are away, since their press only opens it; "Hide outputs" brings
@@ -728,8 +735,9 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     name, so a model the project has never run is not offered here.
 
   A job button's press shows under the button (r5-b J20): "Sent to the chat. Claude answers there." once Claude took
-  the message; when the host does not take it, "Claude did not get this message. Type it in the chat:" in red, over
-  the whole text, to copy. The same holds for the start card's jobs, the Check card's and a result card's buttons
+  the message; when the host does not take it, "Claude did not get this message. Copy it into the chat:" in red
+  (r5-f F08: it said "Type it in the chat:"), over the whole text in a box that one click selects whole, to copy.
+  The same holds for the start card's jobs, the Check card's and a result card's buttons
   and a sheet's finish button. That line is the only place that says it: the status line at the card's foot does not
   repeat it, so a screen reader hears it once (r5-d R07). "Tell Claude: this project" and the sign-in's "Continue in
   the chat" show no line under them; a message the host does not take says so in the status line at the card's foot.
@@ -739,7 +747,7 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   says why in the status line, and a row's job on a run with two outputs opens the list, whose first line says so,
   while the row's job buttons are away (r5-d R09). Closing a list does not empty that line. The line under a button
   is a status region in place before the first press, out of the layout while empty, so a screen reader announces
-  its first words; the message to type is outside it and is not read out with it.
+  its first words; the message to copy is outside it and is not read out with it.
 
   Above the search, "In progress" lists the label sheets on this computer that are part labelled (some windows
   labelled, not all) and have their plan's design file beside them, newest first: what the labels are for ("Checking
@@ -858,8 +866,15 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     words (r5-d R05: the sheet open then saves its answers; any other toast stays), and the file name stays in the
     sheet's "Details".
     When it held none, the old editor's last toast about that change is cleared
-    (r4-l L3). A sheet that cannot be opened after a good draw keeps that button, with the
-    reason, and so does a sheet that cannot be read as CSV ("NAME cannot be read as CSV (...); save it again as CSV UTF-8, comma-separated");
+    (r4-l L3). A sheet that cannot be opened after a good draw keeps that button, and its part says in plain words
+    what to do ("The sheet could not be opened. Press the button to try again; if it fails again, tell Claude."); a
+    part picked earlier whose sheet cannot be read when the card opens says "Its sheet cannot be opened now. Tell
+    Claude that the sheet of West part cannot be opened." (no part's name on a map in one part) over its button, until
+    a press of that button opens the sheet, or its counts read when the panel is shown again; a press that fails too
+    turns that line red and adds no second line, and Details say the reason once. The reason, in the server's words,
+    is in the part's lines in "Details" (r5-f F04; it stood on the face, with the
+    sheet's file name): "NAME does not exist; plan the sample again", or, for a sheet that cannot be read as CSV,
+    "NAME cannot be read as CSV (...); save it again as CSV UTF-8, comma-separated";
   - a zone not read as a map, or with no count planned, says so; a class map without top-k scores is sent to
     `olmoearth_plan_label_sample`, since its grid spans every zone, and Claude is told to say first that each point
     needs the user's own imagery or records from the map's dates and that the app shows no pictures of points (the
@@ -908,7 +923,10 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   a rate before every window is labelled and the user asks.") but not the blind rule, since the user then fills a CSV
   that shows `map_class`.
 - **`olmoearth_request_aoi`.** A map (OpenStreetMap tiles, Leaflet.draw). The user draws a rectangle or polygon, or picks
-  one of the project's saved areas from the list under the map, and presses the button. A drawn area is created in
+  one of the project's saved areas from the list under the map, and presses the button. The card's one instruction,
+  "Draw a rectangle or polygon with the tools on the map, or pick a saved area." (then what was drawn or saved), is
+  the first line under the map, at body size, before the Project and name fields and the saved areas (r5-f F15: it
+  was a small line at the bottom, under them); the sign-in, when it opens, stands above it. A drawn area is created in
   Studio. Its `area_id`, `project_id` and name go to the chat as the user's next message; no coordinates do, and the
   panel shows none. The tool's description, as this server lists it, says so (the agent's own web UI keeps its words).
 - **`olmoearth_label_sheet`.** A plan's `*_to_label.csv`, one row per window, labelled the way the estimate reads it
@@ -1007,8 +1025,12 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   a chat opened again shows the sheet as it is now, and a sheet that cannot be opened or read then shows a card that
   says so and what to do ("This label sheet could not be opened. Ask Claude to open it again."), with the reason in
   its Details (r5-b J25). The finish button
-  sits in the footer from the first open, greyed until every window is labelled and saved; then "After you press, do
-  not change an answer." shows beside it, on the counter's row (r5-e H5; it began "All answered and saved.", which the
+  sits in the footer from the first open, greyed until every window is labelled and saved. While a window has no
+  answer, "Answer every square first." ("point" on a sheet of points) stands beside it, so the grey button has its
+  reason in words, and the button names that line as its description (`aria-describedby`), so a screen reader that
+  reaches it hears why (r5-f F02; not while the sheet stopped saving, which has its own footer words, not while only a
+  save is pending, and never on a sheet that already gave its result). Once ready, "After you press, do
+  not change an answer." shows in that place, on the counter's row (r5-e H5; it began "All answered and saved.", which the
   counter and the saved note say; on a sheet that already gave its result, "This sheet already gave its result.", as
   its note says: r5-d R06). Beside the counter, "Saved automatically" is plain
   text; "Save labels" shows only while a change waits, a save runs or one failed. The finish button keeps to the
@@ -1025,7 +1047,8 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
 
   A sheet with no design file beside it keeps "Ask Claude to grade it". When Claude took the message, the footer
   says "Sent to the chat. Claude answers there."; when the host does not take it, "Claude did not get this message.
-  Type it in the chat:" with the whole text, as the job buttons do (r5-b J20). In a client without panels,
+  Copy it into the chat:" with the whole text, as the job buttons do (r5-b J20; r5-f F08: it said "Type it in the
+  chat:"). In a client without panels,
   `olmoearth_label_sheet` names the same call in its text.
 
   **The sheet's face (reader test 2; laid out again by r5-b J13 and J14, and by r5-e H1, H2 and H5).** "Label
@@ -1035,8 +1058,8 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   maps' classes show, "Say what you see in each square's satellite pictures. The two maps' answers are shown now.";
   a sheet with no pictures and no places has its own line, below); and one Cannot tell line, "Cannot judge a square?
   Press Cannot tell; do not guess." (what a guess costs is in Details; or a certificate's own need; none on a
-  two-map sheet). There is no third line: "No result until every square is answered. ..." is gone, as the greyed
-  finish button and the counter say it (r5-e H1). A sheet that already gave its result says so in a note in body
+  two-map sheet). There is no third line: "No result until every square is answered. ..." is gone (r5-e H1); the
+  footer says it beside the greyed finish button, "Answer every square first." (r5-f F02, above). A sheet that already gave its result says so in a note in body
   type, in two lines ("This sheet already gave its result. Do not change an answer now; a second opinion needs
   another person and a fresh sheet."; why, "A change made after seeing where the map disagrees makes the result
   invalid.", is in its Details: r5-e H5), and keeps the first of the lead's lines only (r5-b J06). Then the face's
@@ -1078,8 +1101,9 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   to judge from ("This sheet has no pictures. See where each square is, then say what was there from your own imagery
   or records, without looking at the map."). A sheet with no
   pictures and no places says "This sheet has no pictures and no places, so it cannot show where a point is. Answer
-  only from your own records of each point, without looking at the map; with none, stop and tell Claude." (r5-b J11;
-  on a two-map sheet "... without looking at the maps; ...").
+  only from your own records of each point, without looking at the map. No records? Stop and tell Claude." (r5-b J11;
+  r5-f F12: the way out is a question of its own; it was the tail "; with none, stop and tell Claude."; on a two-map
+  sheet "... without looking at the maps. No records? ...").
 
   **One window at a time.** The panel opens on one window (the face): "Square 3 of 20", what the window shows beside
   its answer (the map's class on right or wrong, and what an unticked blind switch shows), the answers the server
@@ -1099,7 +1123,8 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   inside its edge (r5-b J16). The answers are equal cells of one grid, every row as tall as the tallest (two a row
   on a narrow panel, four on a wide one; three answers stand two and one under 516 px; the list of more classes
   takes two cells), so a tick does not widen the answer given, and a class name of one long word breaks inside its
-  cell; Previous and Next are one width, and so are the buttons of each joined toggle (r5-e C1). A list row's
+  cell, after an underscore where it has one ("evergreen_needleleaf_woodland" no longer breaks in mid-word; the
+  name's text is as written: r5-f F14); Previous and Next are one width, and so are the buttons of each joined toggle (r5-e C1). A list row's
   answers are one width where the row has room: side by side on a wide panel, one under the other on a panel under
   480 px; beside the open pictures pane they keep their words' widths, so the row stays one line.
   Everything about the window shown (its heading, Previous and Next, what it shows, its answers, Pictures, Street map
@@ -1143,7 +1168,12 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     two-map sheet, a class map's).
 
   The pictures follow the focus to the next window when the pane is open or pictures are on. A closed pane with pictures
-  off stays closed, and the server still asks before it fetches anything. On a panel at least 760 pixels wide the
+  off stays closed, and the server still asks before it fetches anything. When a press of Pictures (Show in the list)
+  draws that question, also one kept from an earlier press, the panel scrolls it into view: the whole pane above the
+  sheet's footer when it fits, else its top and at least the row of "Turn on pictures" above the footer, so that
+  button is not left under the footer of a panel of fixed height (r5-f F01); the press of One square does the same
+  for a question kept for the square it shows. The focus stays where it is, and nothing else scrolls the sheet: a
+  pane that follows an answer, Previous or Next leaves the scroll as it is. On a panel at least 760 pixels wide the
   open pane sits beside the table; on a narrower one it stays under it. There is no running error rate, no interval
   while labelling, no suggested label and no sort by confidence; the counter of labelled windows stays.
 
@@ -1218,7 +1248,8 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   dates. Needs a key that can write."), and "Find the
   windows to look at first" only while `FIRST_IN_STUDIO` is true. The tiles are one column, each full width and
   one size at every width (at least 86 px tall), the line inside its tile, named by its label with the line as its
-  description (r5-e S2); signed out, a tile that is off keeps its line readable, and "Sign in to start a job."
+  description (r5-e S2); signed out, a tile that is off keeps its label and its line in the readable secondary text
+  colour (r5-f F03: the label took the disabled grey, 1.9:1 on white), and "Sign in to start a job."
   stands over the tiles, inside their card. Each request asks Claude to show
   the user's projects, where the projects card's job buttons pick the prediction or the model. Under its one line
   the card shows one figure: how OlmoEarth makes a map, and where this app comes in. On a panel at least 680 pixels
@@ -1242,15 +1273,23 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   the main job's button. Signed out, the jobs are off, and the card shows the sign-in (a white card;
   its button reads "Open the sign-in page", r5-b J19) with one sentence:
   the Studio API key is the user's own, a secret code Studio makes (profile, then API Keys); "The key goes to the
-  OlmoEarth Agent here, not through Claude." (r5-d R12: the words of every other sign-in text); with no Studio
-  account, ask whoever made the map how to get one, never use their key. Its
+  OlmoEarth Agent here, not through Claude." (r5-d R12: the words of every other sign-in text). Then a line of its
+  own (r5-g G2): "No Studio account? Request access on olmoearth.allenai.org. Do not use someone else's key.",
+  where "Request access" is a text button, underlined as the docs link is, that opens https://olmoearth.allenai.org/
+  (OlmoEarth's site, whose own "Request access" asks for an account) in the browser through the host; when the host
+  does not open it, the address is shown under the line to copy (common.js `OE.accessLink`, in the shape of
+  `OE.docsLink`). It said "Ask whoever made the map how to get one of your own. Do not use their key." before. A
+  signed-in card has no such line. When the host declines a link, the status line at the card's foot says "The
+  link was not opened."; a later link it opens (this one, the docs link or the sign-in page) clears that line, and
+  no other (`OE.open`). Its
   one line under its title (r5-c S03, r5-e S1): "Sign in first, then press a job or ask Claude in the chat."; signed
   in, "Press a job, or ask Claude in the chat." (the title says what the card is; what a check cannot tell is said on
   the Check card and the sheet, where labelling happens). When the card opens it asks
   the server once whether the user has signed in or out, or another key or account is now in effect, since, and
   redraws if so (r5-c S01). A job's press says under its row
-  "Sent to the chat. Claude answers there."; a message the host does not take is shown under its job, to type in
-  the chat, under the line "Claude did not get this message. Type it in the chat:" (r5-b J20). In a client without panels, the tool's text names the same jobs, the
+  "Sent to the chat. Claude answers there."; a message the host does not take is shown under its job, to copy into
+  the chat, under the line "Claude did not get this message. Copy it into the chat:" (r5-b J20; r5-f F08: "Type it
+  in the chat:" before). In a client without panels, the tool's text names the same jobs, the
   main one first with what it gives, then the others with what each needs, and says to sign in first when the user
   is not signed in.
 
@@ -1273,8 +1312,9 @@ swapped with one search.
   prediction names its model and output (an embeddings row says it cannot be checked), an open project's Models box
   sits in a closed "Make a new map" fold, and "Run on an area" says it starts nothing yet.
 - *The Check card.* Its title, the map's Studio name and period, four small step pictures (step 1 names the square's
-  size when every part's is the same; step 3 says someone who can recognise the feature in a satellite picture looks
-  at each square), then "How many squares do you want to check?" and under it, while a part offers more than one
+  size when every part's is the same; step 3 reads "Someone who can recognise what the map shows looks at each one
+  in a satellite picture."; r5-f F09: it said "recognise it", and nothing on the face is "it"), then "How many
+  squares do you want to check?" and under it, while a part offers more than one
   number, one line: "More squares: more work, and a narrower range." (r5-e K1; before, words under each count, the
   same in every part). Each part, headed by its name and size ("West part (1,234 squares)"), offers the package's
   counts, each button its number alone ("20 squares") with no drawing, all of one size (one grid of equal columns,
@@ -1307,9 +1347,13 @@ swapped with one search.
   in its own card "Not picked yet. To pick this part's squares, ask Claude to open the Check card again."; a picked
   part's card says how far its sheet is answered, beside its open button (no line under an open sheet names the
   other parts any more, r5-e K2). The labelling rule, its scope, its example pictures and its box sit in one white
-  card (r5-e K5); a word too long for a line breaks inside that card, and inside a part's. Once no part
-  offers a number the heading no longer asks (r5-b J17): "Your squares", or, with every picked part answered whole
-  and no sheet open, "Every square is answered. Open a sheet, then press Estimate the error rate." A press on a part
+  card (r5-e K5); a word too long for a line breaks inside that card, inside a part's, and inside a part's lines in
+  "Details" (r5-f F04: the server's words on a sheet that cannot be read, with its file's name, are there, and the
+  part's card says "Its sheet cannot be opened now. Tell Claude that the sheet of West part cannot be opened."). Once
+  no part offers a number the heading no longer asks (r5-b J17): "Your squares", or, with every picked part answered
+  whole and no sheet open, "Every square is answered. Open the sheet, then press Estimate the error rate." on a map
+  in one part and "Every square is answered. Open a part's sheet, then press Estimate the error rate." on a map in
+  parts (r5-f F11; it said "Open a sheet" on both). A press on a part
   picked before, in another window, says "Already picked on <day>: <n> squares. That pick stays; the number chosen now
   is not used." When an open sheet gives way with answers it could not save, its part says so in its own red line,
   by the part's name, with the next step ("1 answer for Part 1 was not saved: its sheet was changed somewhere else.
@@ -1318,8 +1362,11 @@ swapped with one search.
   that cannot be picked says what to tell Claude (r5-b J25: "This part cannot be picked again here. Tell Claude that
   the pick failed for this part."; "No number is planned for this part. Ask Claude to plan it with a number of your
   own."; "This part cannot be checked: <reason>."). A failed pick says "The pick failed." once on its part's face
-  ("The pick failed. The press tries again with 80 squares." when the press retries it; "The pick failed. A later
-  press tries again with 80 squares." when more picks failed than one press takes and this one waits), the server's
+  ("The pick failed. Press Pick the squares to try again with 80 squares." when the press retries it; "The pick
+  failed. Not in this press: it waits for a later press of Pick the squares (80 squares)." when more picks failed
+  than one press takes and this one waits (the line under the press calls that press "this press" too); r5-f F11:
+  they read "The press tries again with 80 squares." and "A later press tries again with 80 squares.", which did
+  not say which press or whose), the server's
   reason in the part's lines in "Details" (r5-e K8); a press that did not pick every part says "Not every part's
   squares were picked; each part says so." After a press that got no answer back the card picks nothing more (r5-b
   J09): the gate's one line is the one place that says to ask Claude to open the card again, and the focus, when
@@ -1435,15 +1482,28 @@ swapped with one search.
   (`olmoearth_plan_label_sample` on the `scores_path` that `olmoearth_check_map` gives for that part, since the
   planner has no part argument and by result id samples the whole result; points by result id), its own check and
   ranges, never pooled with this one, asking first how many squares (or points); Details say what that check is. Then
-  the squares checked, one cell each, marked by the class seen (the first class filled dark, the second a hollow
-  dark square, the third a mid teal with a dark edge, never mint, which the look keeps for a completed status:
-  r5-b J04) and outlined in red where the map said otherwise, the legend's sample for that outline the red ring
-  alone; "One result per
+  the squares checked as a tally, one row per kind of square that occurs, at every number of squares (r5-g G1, the
+  owner's note of 18 Nov 2026: 4,000 squares drawn one by one were a wall several screens tall; it replaces the grid
+  of one cell per square and r5-f F06's bar above 200 squares): each row is the kind's own square, marked by the
+  class seen (the first class filled dark, the second a hollow dark square, the third a mid teal with a dark edge,
+  never mint, which the look keeps for a completed status: r5-b J04) and outlined in red where the map said
+  otherwise, then "× N" (the squares of that kind, with thousands commas: "× 2,400"), then its words ('You saw
+  "absent"; the map agreed', 'You saw "absent"; the map said otherwise', "Cannot tell"), in the order the squares
+  come (each class seen where the map agreed, the same class where it said otherwise, Cannot tell last); a kind with
+  no square has no row, the counts add up to the squares checked, and the rows where the map said otherwise are
+  the only red of the figure. Every row is one height and the counts one column, in the figures' small type
+  (as the parts' labels); there is no legend, since each row
+  says what it is, and the figure has one name for a screen reader, each row's words with its count; "One result per
   part, never averaged" with the parts figure (each part's words, "West part: this result", inside its own box, every
   box in the row one height: r5-e R5; they stood under an empty bar; a part's width follows its share from 561 px up,
-  never narrower than its longest word, and on a panel of 560 px or less the parts are stacked, each full width), and
+  never narrower than its label on one line, and the parts that do not fit one row go on to the next, never wider
+  than their shares there, so a short last row stays short, at the left: r5-f F05; at
+  its longest word a small part's label wrapped to four lines and the row grew as tall; on a panel of 560 px or less
+  the parts are stacked, each full width), and
   while a part is unchecked: "Check the
-  other part too." ("Check the other 2 parts too."). On a map of two parts or more Details then says "Report the
+  other part too. Ask Claude to open the Check card again." ("Check the other 2 parts too. Ask Claude to open the
+  Check card again."; r5-f F07: the line then says where, since nothing on this card checks a part, and Claude's own
+  lines do not have that sentence). On a map of two parts or more Details then says "Report the
   parts' results side by side; do not average or add them: this check gives no range for a combined rate." (r4-m M2;
   Claude's lines and the Check card's say the same reason; on the face since r5-e R4 only the first sentence, the
   second said the heading again), after the rule and the class lines. The rest is in "Details": first the rule used, printed
@@ -1462,8 +1522,8 @@ swapped with one search.
   (2 Cannot tell); ...", r5-b J02, which readers took for the range, and before that "Error rate of the West part:
   10.0% to 12.5%, 95% range ..."; "between" stays for a rate of two figures with no Cannot tell), drawn as a short
   dark bar over the pale band, the bar labelled "10.0% to 12.5%" as before. The squares stay (the
-  owner's ruling O2): a Cannot tell square is an empty dashed square, the legend names it ("Cannot tell") after the
-  classes and before the red outline, and no class has a count line; one line takes their place ("No split by class:
+  owner's ruling O2): a Cannot tell square is an empty dashed square, its row ("Cannot tell") the last of the tally,
+  and no class has a count line; one line takes their place ("No split by class:
   2 squares were Cannot tell, and each could be either."). Claude's lines add a fourth with the classes seen too
   rarely or not at all (with Cannot tell, "You saw X in no square." for those no square had); the third ends with the
   area sentence on a map of more than two classes, and on a map of two parts or more whose parts are all graded the
@@ -1582,8 +1642,10 @@ result changes nothing. An error the host bridge reports is one toast, "Somethin
 a card's status line (its foot) is announced to a screen reader at once (an alert), any other message politely
 (r5-b J29). Each page
 runs a small watchdog before its script: if the card has not connected after 10 s (its client or the map's Leaflet did
-not load), it says "This card could not start here. Carry on in the chat.". After it connects, and when Claude
-closes it, each panel sends the server one report of what its host supports (`olmoearth_app_host_report`: the
+not load), it says "This card could not start here. Carry on in the chat.", on the panel's cream canvas in its text
+colour and a system sans-serif: each page's head carries those few rules before the card's own scripts, and its style
+takes over once its script runs (r5-f F16; the line stood in default serif type on a white page). After it connects,
+and when Claude closes it, each panel sends the server one report of what its host supports (`olmoearth_app_host_report`: the
 capability keys, display modes and context keys by name, the kind of height and the host's name, never a value), and
 the server logs it in one INFO line (logger `olmoearth_agent.mcp_app.server.host`); it also logs once the client's
 extension keys and the UI extension's MIME types. Where panels show, the agent's tools and the app's own are listed

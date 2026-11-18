@@ -14,7 +14,8 @@ files are read as text (no test here runs the scripts):
   model names the same button;
 - J20: a job button's slot says what became of its message: "Sent to the
   chat. Claude answers there.", or, in the error colour, "Claude did not get
-  this message. Type it in the chat:" over the message; the slot's line is
+  this message. Copy it into the chat:" (r5-f F08: it said "Type it in the
+  chat:") over the message; the slot's line is
   its status region, in place (out of the layout) before the first press; a
   press that sends nothing clears the slot, and a message taken clears
   OE.say's own failure line from the status line;
@@ -60,9 +61,10 @@ STEP_NEEDS = "This step needs OlmoEarth Studio."
 OLD_BUTTON = "Sign in in your browser"
 
 #: J20: what a job button's slot says once Claude took the message, and when
-#: it did not.
+#: it did not (r5-f F08: "Copy it into the chat:", before "Type it in the
+#: chat:").
 JOB_SENT = "Sent to the chat. Claude answers there."
-JOB_NOT_SENT = "Claude did not get this message. Type it in the chat:"
+JOB_NOT_SENT = "Claude did not get this message. Copy it into the chat:"
 
 #: J20: OE.say's status line when the host declines a message (the words as
 #: before, now named), which a message taken later clears.
@@ -201,12 +203,14 @@ def test_j19_the_sign_in_panels_words() -> None:
     for text in (
         "const button = OE.el('button', { class: primary ? 'primary' : '' },"
         " OE.SIGN_IN_BUTTON);",
+        # r5-g G2: a line may be an element (the start card's Request access
+        # line), placed as given; a string is a div of its own, as before.
         "const given = (Array.isArray(note) ? note : [note])"
-        ".filter((s) => typeof s === 'string' && s);",
+        ".filter((s) => (typeof s === 'string' && s) || s instanceof Node);",
         "const lines = given.length ? given : OE.SIGN_IN_NOTE;",
         "return OE.el('section', { class: 'card dialog stack' },",
         "OE.el('div', { class: 'oe-sign-note' },"
-        " lines.map((s) => OE.el('div', {}, s))),",
+        " lines.map((s) => (s instanceof Node ? s : OE.el('div', {}, s)))),",
     ):
         assert text in panel, text
     assert "summary" not in _code(panel)
@@ -223,7 +227,8 @@ def test_j19_the_sign_in_panels_words() -> None:
 def test_j19_the_check_card_and_a_result_card_say_it_in_three_lines() -> None:
     """J19: the Check card's and a result card's sign-in note is three plain
     lines: the card's own, then the panel's two (what the button opens, where
-    the key goes); the start card keeps its own one sentence (r5-a's)."""
+    the key goes); the start card keeps its own one sentence (r5-a's), then
+    (r5-g G2) its Request access line."""
     check = _between(_read("check.html"), "function signIn(app, tool) {", "\n}\n")
     # Round r5-e, K6: the Check card's note is the panel's two lines; its own
     # first line said the sign-in's heading again.
@@ -244,7 +249,8 @@ def test_j19_the_check_card_and_a_result_card_say_it_in_three_lines() -> None:
         assert "This tool needs OlmoEarth Studio" not in page
         assert "served on this" not in page
         assert "goes from there" not in page
-    assert "note: KEY_NOTE," in _read("start.html")
+    # r5-g G2: the start card's note is its sentence, then its Request access line.
+    assert "note: [KEY_NOTE, accessLine(app)]," in _read("start.html")
 
 
 def test_j19_every_view_and_the_server_name_the_new_button() -> None:
@@ -272,7 +278,7 @@ def test_j20_a_job_buttons_slot_says_what_became_of_its_message() -> None:
     common = _read("common.js")
     for text in (
         f"// WORDING: r5b J20\nOE.JOB_SENT = '{JOB_SENT}';",
-        f"// WORDING: r5b J20\nOE.JOB_NOT_SENT = '{JOB_NOT_SENT}';",
+        f"// WORDING: r5f F08\nOE.JOB_NOT_SENT = '{JOB_NOT_SENT}';",
         "OE.typeSlot = () => OE.el('div', { class: 'oe-type small' },"
         " OE.el('div', { role: 'status' }));",
     ):
@@ -443,9 +449,11 @@ def test_j29_the_footers_row_keeps_to_the_right_edge() -> None:
 
 
 def test_j29_a_fields_grey_hint_is_darker() -> None:
-    """J29 (d): the placeholder's colour is the text's at .6 (before, .42)."""
+    """J29 (d): the placeholder's colour is the text's at .7 (r5-f F03: 5.3:1
+    on a white field; J29 set .6, 4.0:1; before, .42)."""
     style = _style()
-    assert "input::placeholder { color: rgba(10,50,53,.6); }" in style
+    assert "input::placeholder { color: rgba(10,50,53,.7); }" in style
+    assert "rgba(10,50,53,.6)" not in _code(style)
     assert "rgba(10,50,53,.42)" not in _code(style)
 
 

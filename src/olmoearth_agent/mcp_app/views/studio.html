@@ -7,6 +7,12 @@
 <script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
 <link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
 <style>
+  /* r5-f F16: the canvas and the text before the module runs, and when it
+     cannot start (the watchdog's line): OE.STYLE's own canvas and text
+     colours and a system sans-serif, which OE.STYLE takes over from once
+     the module runs. */
+  html { background: #faf2e9; }
+  body { margin: 0; padding: 0 16px 16px; font: 14px/21px system-ui, -apple-system, 'Segoe UI', sans-serif; color: #0a3235; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
   .project h2 { font-size: 20px; line-height: 28px; }
   .project .desc { margin: 4px 0 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
@@ -301,11 +307,16 @@ const PREDICTIONS_NOTE = 'Each prediction is a model run over an area and a peri
    buttons of its own, since the row's use it). The words a toast or an
    empty list says about them. A row's press on a run of several says it
    in that first line alone (r5-d R09: its own line under the row, which
-   said how many maps, repeated it and went). */
+   said how many maps, repeated it and went). r5-f F13: the first line says
+   that Studio names the maps only by the ids in the rows under it, and whom
+   to ask (it said "Use the buttons on the one you mean.", over rows the
+   user had nothing to tell apart by); a result carries only its id and the
+   names of what it holds, so the face cannot say more. */
 // WORDING: r4p2 (label, none, noneYet); r5c S05 (first)
 const OUTPUTS = {
   label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),
-  first: 'This run made more than one map. Use the buttons on the one you mean.',
+  // WORDING: r5f F13
+  first: 'This run made more than one map; Studio names them only by the ids below. Not sure which is yours? Ask whoever made the run.',
   none: 'No outputs',
   noneYet: 'This prediction has no outputs yet.',
 };

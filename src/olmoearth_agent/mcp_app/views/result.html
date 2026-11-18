@@ -7,6 +7,12 @@
 <script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
 <link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
 <style>
+  /* r5-f F16: the canvas and the text before the module runs, and when it
+     cannot start (the watchdog's line): OE.STYLE's own canvas and text
+     colours and a system sans-serif, which OE.STYLE takes over from once
+     the module runs. */
+  html { background: #faf2e9; }
+  body { margin: 0; padding: 0 16px 16px; font: 14px/21px system-ui, -apple-system, 'Segoe UI', sans-serif; color: #0a3235; }
   figure { margin: 0; }
   /* The tool's figure, framed like Studio's server-drawn legend image. */
   figure img { display: block; max-width: 100%; height: auto; background: #fff;
@@ -243,6 +249,10 @@ function sheetButton(app, data, figureSlot) {
         opened = true;
         button.remove();
         count.remove();  // the editor counts from here on
+        // The lead's second line (to answer every one) goes too: the sheet's
+        // footer says it beside its grey button from here on (r5-f F10, F02).
+        const answerEvery = root.querySelector(':scope > .oe-lead > p.next');
+        if (answerEvery) answerEvery.remove();
         if (lastGot !== undefined) tellCard(lastGot, null);
         if (hadFocus) OE.focusIfHere(heading);
       } catch (err) {
@@ -873,12 +883,19 @@ const RESULT_WORDS = {
   // sentence of the server's SAY_OTHER and SAY_OTHERS, word for word. Their
   // second sentence, with its reason (r4-m M2: this check gives no range for
   // a combined rate, so readers do not average), is sideBySide, in Details
-  // since r5-e R4: on the face it said the heading over it again.
+  // since r5-e R4: on the face it said the heading over it again. The face
+  // adds a sentence of its own (r5-f F07): "Check the other part too." read
+  // as an instruction, yet nothing on this card checks a part and nothing
+  // said how, so the line now says where: the Check card's own words for a
+  // part not picked (check.html LATER: "... ask Claude to open the Check
+  // card again."). The server's SAY_OTHER and SAY_OTHERS, the model's text,
+  // do not have it.
+  // WORDING: r5f F07
   // WORDING: r5e R4
   // WORDING: r4m M2
   otherPart: (k) => (k === 1
-    ? 'Check the other part too.'
-    : 'Check the other ' + k + ' parts too.'),
+    ? 'Check the other part too. Ask Claude to open the Check card again.'
+    : 'Check the other ' + k + ' parts too. Ask Claude to open the Check card again.'),
   // WORDING: r5e R4
   // WORDING: r4m M2 (server SAY_SIDE_BY_SIDE, word for word), in Details since r5-e
   sideBySide: 'Report the parts\' results side by side; do not average or add them: this check gives no range for a'
@@ -971,11 +988,12 @@ function classCheckOf(r, unit) {
    had), directly under it, and under them, when the server names the
    result by ids, one outlined button that asks Claude for a second check
    picked class by class (r4-i O3, OE.JOB_TEXT.byClass); the squares
-   checked, each
-   coloured by the class seen, outlined where the map said otherwise, a
-   Cannot tell square empty and dashed (r4-i O2), and with Cannot tell
-   answers the server's one line under them (squares.no_split: it explains
-   the dashed squares) (OE.fig.squares); the parts,
+   checked as a tally (r5-g G1: one row per kind of square, its own square
+   coloured by the class seen, outlined in red where the map said
+   otherwise, a Cannot tell square empty and dashed, r4-i O2, then "× N"
+   and the row's words; no mark per square, and no legend), and with Cannot
+   tell answers the server's one line under them (squares.no_split: it
+   explains the dashed square's row) (OE.fig.squares); the parts,
    one result each and never averaged (OE.fig.parts, only with two or more
    parts), and to check the other part while one is not; then the rest
    in a closed Details fold: first the rule used and the count line of each
@@ -1070,7 +1088,8 @@ function resultCard(app, data) {
   classLines.forEach((line) => folded.push(line));
   // On a map of two parts or more: the parts' results side by side, never
   // averaged, with its reason (r5-e R4: off the face, where it said the
-  // parts' heading again; the face keeps "Check the other part too.").
+  // parts' heading again; the face keeps "Check the other part too.", and
+  // since r5-f F07 where that check is started).
   if (parts.length > 1) folded.push(OE.el('p', { class: 'small oe-side-by-side' }, RESULT_WORDS.sideBySide));
   // Then the rare classes' counted lines, when the face names two or more
   // without counts (r4-i F2), and the server's area sentence of a map of

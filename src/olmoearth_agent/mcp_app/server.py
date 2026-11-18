@@ -366,23 +366,29 @@ LEAD_LINES = ("what", "next", "cannot")
 #: its "cannot", no result until every square is answered, is what the
 #: sheet's greyed finish button and counter show, r5-e H1; the owner's note 3
 #: of 17 Nov 2026 asks for fewer lines): what the squares are, and where to
-#: answer them.
+#: answer them. Two short sentences since r5-f F10: "picked before any
+#: answer" did not say whose answer, nor that the pick is random and fixed,
+#: nor that the result comes once every one is answered. Two lines of the
+#: lead since r5-f F02 (R4 allows two): the second ("next") is taken off the
+#: card once its sheet is open there (result.html), where the sheet's footer
+#: says "Answer every square first." beside its grey button, so the card says
+#: it once.
 # WORDING: squares; r5e R2
 PLAN_LEAD: dict[str, str | None] = {
-    # WORDING: r5e R2
-    "what": "The squares to check, picked before any answer: answer every one on "
-    "the sheet.",
-    "next": None,
+    # WORDING: r5f F10 F02
+    "what": "The squares to check were picked at random and are now fixed.",
+    # WORDING: r5f F10 F02
+    "next": "Answer every one on the sheet to get the result.",
     "cannot": None,
 }
 #: The same, for a plan whose windows are points of a grid over a Studio
 #: result (:func:`_points_plan`).
 # WORDING: squares; r5e R2
 PLAN_LEAD_POINTS: dict[str, str | None] = {
-    # WORDING: r5e R2
-    "what": "The points to check, picked before any answer: answer every one on "
-    "the sheet.",
-    "next": None,
+    # WORDING: r5f F10 F02
+    "what": "The points to check were picked at random and are now fixed.",
+    # WORDING: r5f F10 F02
+    "next": "Answer every one on the sheet to get the result.",
     "cannot": None,
 }
 #: A review set's first line (B/R11), with how many squares it lists and of

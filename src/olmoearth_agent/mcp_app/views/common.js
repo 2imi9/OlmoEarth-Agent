@@ -69,7 +69,7 @@ body { margin: 0; padding: 0 16px 16px; background: var(--canvas); color: var(--
 .oe-account .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--text); font-weight: 600; }
 .oe-account button.link { flex: none; font-size: 12px; line-height: 18px; padding: 0 4px; }
-/* The address of a link the host did not open (OE.docsLink), whole and selectable. */
+/* The address of a link the host did not open (OE.docsLink, OE.accessLink), whole and selectable. */
 .oe-link-slot:empty { display: none; }
 .oe-link-slot code { user-select: all; overflow-wrap: anywhere; }
 h1, h2, h3 { margin: 0; }
@@ -164,8 +164,9 @@ input[type=text], input[type=password], input[type=search], select {
 select { padding-right: 32px; }
 input:focus, select:focus { outline: none; border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
 button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-/* A field's grey hint, dark enough to read (r5-b J29: .6, before .42). */
-input::placeholder { color: rgba(10,50,53,.6); }
+/* A field's grey hint, dark enough to read (r5-b J29: .6, before .42; r5-f
+   F03: .7, 5.3:1 on a white field: at .6 it was 4.0:1, under 4.5:1). */
+input::placeholder { color: rgba(10,50,53,.7); }
 .search { border-radius: 32px; padding: 8px 16px 8px 38px; width: 100%; background-repeat: no-repeat;
   background-position: 14px center; background-size: 16px;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%230a3235' d='M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z'/></svg>"); }
@@ -210,6 +211,10 @@ details[open] > summary::after { transform: rotate(-135deg); }
 .oe-type code { display: block; margin-top: 2px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--divider);
   border-radius: 4px; user-select: all; overflow-wrap: anywhere; white-space: pre-wrap; }
 /* The label sheet's footer: sticky, a hairline above, the counter and the one button. */
+/* No scroll anchoring on a sheet (r5-f F01, after the check): when the pictures pane under the answers grows,
+   the browser kept a node below it in place and scrolled the face's heading and answers away, and undid the
+   scroll that brings the question into view. */
+section.sheet { overflow-anchor: none; }
 .sheet-footer { position: sticky; bottom: 0; margin: 16px -16px -16px; padding: 12px 16px;
   border-top: 1px solid var(--divider); background: var(--paper); border-radius: 0 0 4px 4px; }
 /* The footer's row with the finish button keeps to the right edge, also when
@@ -313,6 +318,25 @@ OE.el = (tag, attrs = {}, ...children) => {
   return node;
 };
 
+/* A name's words as children for OE.el, with a place to break after each
+   underscore: a wbr element, which holds no character, so the text stays as
+   it was written (r5-f F14: on a label sheet's answer a class name such as
+   "evergreen_needleleaf_woodland" breaks after an underscore first, no
+   longer in mid-word; the overflow-wrap of .face .answers button stays for
+   a word with none). The split uses no lookbehind, which an older browser
+   would refuse for the whole script. */
+OE.softBreaks = (text) => {
+  const parts = String(text).split('_');
+  const out = [];
+  parts.forEach((part, i) => {
+    const piece = i < parts.length - 1 ? part + '_' : part;
+    if (!piece) return;
+    if (out.length) out.push(document.createElement('wbr'));
+    out.push(piece);
+  });
+  return out;
+};
+
 
 /* What a tool result carries for its view: the server puts it in the result's
    _meta (not read by the model); an app tool's result has it as structuredContent. */
@@ -382,15 +406,17 @@ OE.say = async (app, text, { quiet = false } = {}) => {
 };
 
 /* What a job button's slot says after a press (r5-b J20): that the message
-   went to the chat, or that it did not, over the message to type. */
+   went to the chat, or that it did not, over the message. r5-f F08: "Copy
+   it into the chat" (it said "Type it in the chat": nobody retypes ten lines
+   of ids, and the box under the line selects whole on one click). */
 // WORDING: r5b J20
 OE.JOB_SENT = 'Sent to the chat. Claude answers there.';
-// WORDING: r5b J20
-OE.JOB_NOT_SENT = 'Claude did not get this message. Type it in the chat:';
+// WORDING: r5f F08
+OE.JOB_NOT_SENT = 'Claude did not get this message. Copy it into the chat:';
 
 /* Where a job button's press says what became of its message (OE.sendJob):
    its first child is its status line (r5-b J20), the slot's one live part,
-   so a screen reader hears that line and not the message to type under it.
+   so a screen reader hears that line and not the message to copy under it.
    Empty, and kept out of the layout but in the accessibility tree, until a
    press, so a screen reader hears its first line. */
 OE.typeSlot = () => OE.el('div', { class: 'oe-type small' }, OE.el('div', { role: 'status' }));
@@ -407,7 +433,7 @@ OE.clearSlot = (slot) => {
 
 /* A job button's press: its request goes to Claude as the user's words, and
    slot says what became of it beside the button (r5-b J20), so a press never
-   seems to have done nothing and the reason for a text to type is where the
+   seems to have done nothing and the reason for a text to copy is where the
    text is. Sent: the line says OE.JOB_SENT, muted. Not sent (the host
    declined it): OE.JOB_NOT_SENT in the error colour, then, outside the line,
    the whole text, selectable, so its ids are not lost. Each press replaces
@@ -428,15 +454,21 @@ OE.sendJob = async (app, text, slot) => {
 
 /* Open a link in the user's browser; false when the host declined. The
    host's own error is never shown (r4-k K7): it may repeat the link, and a
-   street map link holds a place. */
+   street map link holds a place. A declined link writes LINK_NOT_OPENED in
+   the status line; a later link opened clears that line while it still
+   shows it (r5-g G2, as OE.say does, r5-b J20), so a card never says a link
+   was not opened after one was; any other line stays. */
+// WORDING: r4k K7
+OE.LINK_NOT_OPENED = 'The link was not opened.';
 OE.open = async (app, url) => {
   try {
     const answer = await app.openLink({ url });
-    if (answer && answer.isError) { OE.toast('The link was not opened.', true); return false; }
+    if (answer && answer.isError) { OE.toast(OE.LINK_NOT_OPENED, true); return false; }
+    const bar = document.getElementById('oe-toast');
+    if (bar && bar.textContent === OE.LINK_NOT_OPENED) OE.toast('');
     return true;
   } catch (_) {
-    // WORDING: r4k K7
-    OE.toast('The link was not opened.', true);
+    OE.toast(OE.LINK_NOT_OPENED, true);
     return false;
   }
 };
@@ -458,7 +490,7 @@ OE.DOCS_BY_HAND = 'Open this address in your browser:';
    while the host is asked, so it keeps the focus. When the host does not
    open it (OE.open's toast says so) the slot shows the address, whole and
    selectable: it is public and fixed, no id and no place in it. A later
-   press that opens it empties the slot. */
+   press that opens it empties the slot and clears OE.open's toast. */
 OE.docsLink = (app) => {
   const slot = OE.el('div', { class: 'oe-link-slot small' });
   let busy = false;
@@ -470,6 +502,42 @@ OE.docsLink = (app) => {
     try {
       const opened = await OE.open(app, OE.DOCS_URL);
       slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.DOCS_BY_HAND), OE.el('code', {}, OE.DOCS_URL)]));
+    } finally {
+      busy = false;
+      button.setAttribute('aria-disabled', 'false');
+    }
+  });
+  return [button, slot];
+};
+
+/* OlmoEarth's own site (public and fixed), whose "Request access" asks for
+   a Studio account: what the start card's signed-out note opens for a
+   person with none (r5-g G2, the owner's words of 18 Nov 2026). The label
+   is the site's own words for its button. */
+OE.ACCESS_URL = 'https://olmoearth.allenai.org/';
+// WORDING: r5g
+OE.ACCESS_LABEL = 'Request access';
+
+/* A text button that opens OlmoEarth's site in the user's browser, where a
+   person with no Studio account presses Request access, and its slot:
+   [button, slot], in the shape of OE.docsLink. The host opens the address
+   (OE.open), the page never does; aria-disabled while the host is asked, so
+   it keeps the focus. When the host does not open it (OE.open's toast says
+   so) the slot shows the address, whole and selectable, under the docs
+   link's words (OE.DOCS_BY_HAND): it is public and fixed, no id and no place
+   in it. A later press that opens it empties the slot and clears OE.open's
+   toast. */
+OE.accessLink = (app) => {
+  const slot = OE.el('div', { class: 'oe-link-slot small' });
+  let busy = false;
+  const button = OE.el('button', { type: 'button', class: 'link' }, OE.ACCESS_LABEL);
+  button.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    button.setAttribute('aria-disabled', 'true');
+    try {
+      const opened = await OE.open(app, OE.ACCESS_URL);
+      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.DOCS_BY_HAND), OE.el('code', {}, OE.ACCESS_URL)]));
     } finally {
       busy = false;
       button.setAttribute('aria-disabled', 'false');
@@ -1092,9 +1160,11 @@ OE.SIGN_IN_NOTE = [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES];
 /* The Studio sign-in, framed as a Studio dialog without the modal parts: a
    white card, as every other card (r5-b J19; before, cream on the cream
    canvas). note is its lines under the title, each its own div: a list of
-   sentences, or one string (the start card's); none gives SIGN_IN_NOTE. The
-   key is never typed here: the button opens a one-time page this server
-   serves on 127.0.0.1 in the user's own browser, where the key goes straight
+   sentences, or one string; none gives SIGN_IN_NOTE. A line may be an
+   element, a div placed as given (the start card's Request access line, its
+   text button inside it: r5-g G2). The key is never typed here: the button
+   opens a one-time page this server serves on 127.0.0.1 in the user's own
+   browser, where the key goes straight
    to the server, in no MCP message. The panel then asks the server, 2 s after
    each answer, whether a sign-in was made on the page since the button was
    pressed (the server's sign_ins count went up), so a key already in effect
@@ -1170,12 +1240,13 @@ OE.signInPanel = (app, { onDone, note, primary = true, acceptCurrent = false } =
       status.textContent = err.message;
     }
   });
-  // The note's lines: a list as given, one string as one line, else the default.
-  const given = (Array.isArray(note) ? note : [note]).filter((s) => typeof s === 'string' && s);
+  // The note's lines: a list as given, one string as one line, else the
+  // default; a line that is an element (r5-g G2) is placed as it is.
+  const given = (Array.isArray(note) ? note : [note]).filter((s) => (typeof s === 'string' && s) || s instanceof Node);
   const lines = given.length ? given : OE.SIGN_IN_NOTE;
   return OE.el('section', { class: 'card dialog stack' },
     OE.el('h2', {}, 'Sign in to OlmoEarth Studio'),
-    OE.el('div', { class: 'oe-sign-note' }, lines.map((s) => OE.el('div', {}, s))),
+    OE.el('div', { class: 'oe-sign-note' }, lines.map((s) => (s instanceof Node ? s : OE.el('div', {}, s)))),
     status, link,
     OE.el('div', { class: 'row', style: 'justify-content:flex-end' }, button));
 };

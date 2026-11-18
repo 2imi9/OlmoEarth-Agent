@@ -219,7 +219,8 @@ def test_s2_the_job_tiles_are_one_column_of_one_size() -> None:
     """S2: the jobs are one column at every width (no two-column grid, no
     subgrid, no 560 px rule); each tile is full width and at least 86 px
     tall, its label over its line from one left edge; the line keeps a
-    readable colour on a tile that is off (signed out)."""
+    readable colour on a tile that is off (signed out), and so does the label
+    (r5-f F03: it took the disabled grey, 1.9:1 on white)."""
     style = _style("start.html")
     grid = ".items.jobs { display: grid; grid-template-columns: minmax(0, 1fr); }"
     assert grid in style
@@ -242,7 +243,10 @@ def test_s2_the_job_tiles_are_one_column_of_one_size() -> None:
         ".jobs .job-line { font-size: 12px; line-height: 18px; font-weight: 400; }"
         in style
     )
-    assert ".jobs button.job:disabled .job-line { color: var(--text-2); }" in style
+    assert (
+        ".jobs button.job:disabled .job-label, .jobs button.job:disabled .job-line "
+        "{ color: var(--text-2); }" in style
+    )
     assert (
         ".jobs li.jobs-head > h2 { font-size: 12px; line-height: 18px; "
         "font-weight: 600; color: var(--text-2); }" in style
