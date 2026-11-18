@@ -125,8 +125,12 @@ BAD_KEY = "check_key is not one of this card's checks"
 #: Why a press on a check with no offer record is refused.
 UNKNOWN_CHECK = "This check is not known here; ask Claude to open the Check card again."
 
-#: Why a press with a count the card did not offer is refused.
-NOT_OFFERED = "That count was not offered on this card."
+#: Why a press with a count the card did not offer is refused. The card shows
+#: it under a number it offered itself when it was drawn (the offer on the
+#: server is newer), so the words say what to do and not "count" (round r5-b,
+#: J25).
+# WORDING: r5b J25
+NOT_OFFERED = "This card is out of date. Ask Claude to open the Check card again."
 
 #: Why no press is offered when the records cannot be written.
 NOT_WRITABLE = (

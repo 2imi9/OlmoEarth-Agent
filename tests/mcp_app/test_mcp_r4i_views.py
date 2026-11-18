@@ -34,8 +34,12 @@ _TOKEN = re.compile(
 )
 
 #: The Check card's gate line, and the toast of a press, while a press got no
-#: reply (r4-i F6).
-RULE_LOST = "Ask Claude to open the Check card again to see the rule."
+#: reply (r4-i F6), in the words of r5-b J09: the card picks nothing more,
+#: and the card opened again shows the rule and what was picked.
+RULE_LOST = (
+    "This card can pick no more squares. Ask Claude to open the Check card "
+    "again: it shows the rule and what was picked."
+)
 
 #: The result card's second check (r4-i O3): the button, its Details line
 #: ({many} the card's plural unit word) and the message its press sends.
@@ -137,9 +141,15 @@ def test_f6_a_press_with_no_reply_holds_the_press_and_says_one_line() -> None:
     shows one line, RULE_LOST, and is not hidden (no rule and no box), and a
     press toasts RULE_LOST and returns before any call and without moving the
     focus; RULE_FIRST stays for the rule gate. A reply that carries the rule
-    clears it, as before; the pictures' limit stays out of Details then."""
+    clears it, as before; the pictures' limit stays out of Details then.
+    r5-b J09 rewords the line and leaves no part with numbers after such a
+    press, so no press is left to hold: the guard stays first in the press.
+    r5-b J08: a press with nothing chosen fills the line under the press
+    (updatePress) and no longer toasts; a press held by 1 to 9 characters in
+    the box beside the kelp rule toasts BOX_SHORT, not RULE_FIRST."""
     page = _read("check.html")
-    assert f"// WORDING: r4i F6\nconst RULE_LOST = '{RULE_LOST}';" in page
+    assert "// WORDING: r5b J09\n// WORDING: r4i F6\nconst RULE_LOST = " in page
+    assert _concat(_after(page, "const RULE_LOST = ", ";\n"), {}) == RULE_LOST
     held = _after(page, "  const gateHeld = () => ", ";\n")
     assert held.startswith("ruleLost || ")
     for text in (
@@ -164,8 +174,9 @@ def test_f6_a_press_with_no_reply_holds_the_press_and_says_one_line() -> None:
         press,
         "if (busy) return;",
         line,
-        "Pick how many squares to check first.",
-        "if (gateHeld()) { OE.toast(RULE_FIRST); OE.focusIfHere(ruleInput); return; }",
+        "if (!picked.length) { updatePress(); return; }",
+        "if (gateHeld()) { OE.toast(gateMode === 'replace' ? BOX_SHORT : RULE_FIRST);"
+        " OE.focusIfHere(ruleInput); return; }",
         "OE.call(app, 'olmoearth_app_check_draw'",
     )
     assert "ruleLost = false;\n      gateMode = '';" in press
@@ -277,21 +288,30 @@ def test_o2_the_grid_draws_a_cannot_tell_square_empty_and_dashed() -> None:
 
 
 def test_o2_the_result_card_says_no_split_in_place_of_the_class_lines() -> None:
-    """r4-i O2: the squares block's lines are the class lines with text, then
-    the server's squares.no_split (a string) as p.small.oe-no-split; the
-    heading is as before (n_checked counts the Cannot tell squares)."""
+    """r4-i O2: under the squares, the server's squares.no_split (a string)
+    as p.small.oe-no-split; the heading is as before (n_checked counts the
+    Cannot tell squares). Round r5-b, J23: the class lines with text are
+    made beside the squares (p.small.oe-class-line) but go to the Details
+    fold, after the rule used; only the no-split line stays under the
+    squares, since it explains the dashed ones."""
     card = _between(_read("result.html"), "function resultCard(", "\n}\n")
     said = (
-        "if (text(sq.no_split)) lines.push(OE.el('p', { class: 'small oe-no-split' },"
-        " sq.no_split));"
+        "text(sq.no_split) ? OE.el('p', { class: 'small oe-no-split' },"
+        " sq.no_split) : null));"
     )
     assert said in card
+    assert "lines.push(" not in card and "...lines" not in card
     assert _in_order(
         card,
-        "const lines = (Array.isArray(sq.classes) ? sq.classes : [])",
-        said,
+        "let classLines = [];",
+        "classLines = (Array.isArray(sq.classes) ? sq.classes : [])",
+        ".map((c) => OE.el('p', { class: 'small oe-class-line' }, c.line));",
         "RESULT_WORDS.squaresHead(n !== null ? n : sq.cells.length, unit)),"
-        " OE.fig.squares(sq),\n      ...lines));",
+        " OE.fig.squares(sq),\n      text(sq.no_split) ? OE.el(",
+        "const folded = [];",
+        "RESULT_WORDS.ruleUsed(",
+        "classLines.forEach((line) => folded.push(line));",
+        "fewDetail.forEach(",
     )
 
 
@@ -338,7 +358,9 @@ def test_o3_the_class_check_button_under_the_uncovered_lines() -> None:
     when a string) by ids matching the job buttons' pattern; right after the
     uncovered block, one outlined button (no 'primary') whose press goes
     through OE.sendJob with an OE.typeSlot beside it; its Details line only
-    beside it, after the rare classes' counted lines and the unseen names."""
+    beside it, after the rare classes' counted lines and the unseen names.
+    Round r5-b, J23: the rule used is no longer on the face under the
+    button; it is the Details fold's first line."""
     page = _read("result.html")
     check = _between(page, "function classCheckOf(r, unit) {", "\n}\n")
     for text in (
@@ -368,6 +390,7 @@ def test_o3_the_class_check_button_under_the_uncovered_lines() -> None:
         "oe-uncovered",
         "const classCheck = classCheckOf(r, unit);",
         "oe-class-check' },",
+        "const folded = [];",
         "RESULT_WORDS.ruleUsed(",
     )
     detail = (
@@ -388,8 +411,10 @@ def test_o3_the_class_check_button_under_the_uncovered_lines() -> None:
 
 def test_f2_the_rare_classes_counted_lines_go_first_in_details() -> None:
     """r4-i F2: the server's uncovered_detail (each rare class's counted line,
-    when the face names two or more without counts) is the first thing in
-    the Details fold, each as p.small.oe-few-detail, and never on the face."""
+    when the face names two or more without counts) is in the Details fold,
+    each as p.small.oe-few-detail, and never on the face; first of the
+    fold's lines about classes nobody or few saw (round r5-b, J23: the rule
+    used and the class lines now stand before them)."""
     card = _between(_read("result.html"), "function resultCard(", "\n}\n")
     for text in (
         "const fewDetail = (Array.isArray(r.uncovered_detail) ? r.uncovered_detail"

@@ -74,12 +74,15 @@
    2026): it is labelled with the class seen, and the panel never shows the
    map's answer on it. A sheet already labelled right or wrong (by a
    spreadsheet) opens on the face the server offers first. A mix of the two
-   label columns shows its sentence with a link that clears the column in
-   the way (clear_column), then reads the sheet again. While a column is
+   label columns says the sheet holds two sets of answers, with a button
+   that removes the set in the way, each named by what it holds (r5-b J21:
+   "Remove the right-or-wrong marks, keep the classes picked"; the server's
+   own sentence is in the Details fold); the press clears that column
+   (clear_column), then reads the sheet again. While a column is
    cleared no answer is taken (the face or the list is inert and
    aria-busy), so none is lost when the editor is drawn again. A clear the
-   server took whose sheet then cannot be read says the column was cleared,
-   and the page offers to reopen the sheet.
+   server took whose sheet then cannot be read says the answers were
+   removed, and the page offers to reopen the sheet.
 
    Pictures (olmoearth_app_window_image, by handle): the server finds the
    window from the files on disk and answers with pictures, the labelling
@@ -91,6 +94,17 @@
    2's A/F21) asks the server for that one window's OpenStreetMap link at
    the press (olmoearth_app_window_link) and opens it; it never shows the
    map being checked.
+
+   Pictures that fail or are missing (r5-a L1, L2). A picture call waits up
+   to 200 s (OE.PICTURES_WAIT_MS). A call that throws shows one fixed
+   sentence (OE.PICTURES_NOT_ARRIVED), never the thrown error's text, with a
+   "Try again" button in the pane that repeats the call for that window; the
+   server's own sentences another try can get past (its answer's again: a
+   slow fetch, the catalogue, the image files) get the button too, the test
+   scene's included. When no month of the map's period has a scene with data
+   on the window (the answer's no_image), the pane says one fixed line
+   (OE.NO_IMAGE) in place of a list of empty months, and on a face that
+   takes Cannot tell, " Press Cannot tell.".
 
    Blind when labelling the class seen: the map's class is not sent, and no
    page is ever sent a stratum. The one blind switch is a two-map sheet's
@@ -160,15 +174,22 @@
 
    The footer (reader test 2's B/sheet-finish-button): the counter, then
    "Saved automatically" as plain text while nothing waits to be saved, or
-   Save labels while a change waits, a save runs or one failed ("Not saved"
-   once the sheet changed under the page); and from the first open the
-   finish button, named for the sheet's job (read_sheet's finish_label:
-   estimate the error rate, certify the zone, or say which map is more
-   accurate), greyed until every window is labelled and saved, then with
-   "All answered and saved. Answers must not change after you press." beside
-   it (A/F17); its message (finish_message) names the tool Claude calls.
-   When the host does not take the message, the footer shows "Type this in
-   the chat:" and the whole text (OE.sendJob), as the job buttons do.
+   Save labels while a change waits, a save runs or one failed; and from the
+   first open the finish button, named for the sheet's job (read_sheet's
+   finish_label: estimate the error rate, certify the zone, or say which map
+   is more accurate), greyed until every window is labelled and saved, then
+   with "All answered and saved. After you press, do not change an answer."
+   beside it (A/F17, r5-b J29; on a sheet that already gave its result,
+   "This sheet already gave its result.", r5-d R06); its message
+   (finish_message) names the tool
+   Claude calls. After a press the footer says what became of the message
+   (OE.sendJob, r5-b J20), as the job buttons do: OE.JOB_SENT once the host
+   took it, or OE.JOB_NOT_SENT in the error colour over the whole text when
+   it did not. Once the sheet changed under the page (r5-b J15) no Save
+   button shows: beside the counter, how many answers given here are not
+   saved ("2 answers not saved", or "Not saving"), and beside "Reopen the
+   sheet", at body size, that the sheet was changed somewhere else, whether
+   answers were lost and what to do.
 
    The labelling step in the list. After an answer (a press or a key that
    sets one, a class picked from the list, a typed class accepted), the focus
@@ -200,31 +221,42 @@
    now at its place), so labelling with the keyboard does not lose its place.
 
    The reader tests' words (13 Nov 2026, OE.sheetWords), laid out by the last
-   round's S1 (reader test 2: the face was a wall of text). Under "Label
-   sheet", the part of the map it is for (data.part.heading, the server's);
-   a graded sheet (data.graded) says its answers should not change now; then
-   three lines (what this is, what to do next, what it cannot tell; their
-   plain form, with no Pictures button anywhere, on a sheet whose page copy
-   says pictures_possible false; on a sheet of points with places, what to
-   judge from). The labelling rule of the page copy (data.reading_rule and
+   round's S1 (reader test 2: the face was a wall of text) and by round
+   r5-b's J13 and J14 (the user-side audit: five paragraphs stood before the
+   first answer, and the rule was the smallest text). Under "Label sheet",
+   the part of the map it is for (data.part.heading, the server's); a graded
+   sheet (data.graded) says, at body size, that its answers should not
+   change now, and its lead keeps its first line only (J06); then the lead,
+   three lines: what this is (its plain form, with no Pictures button
+   anywhere, on a sheet whose page copy says pictures_possible false; on a
+   sheet of points with places, what to judge from; on a two-map sheet, that
+   both maps' answers are hidden, J28), the one line on Cannot tell (or a
+   certificate's own need; none on a two-map sheet), and that there is no
+   result until every answer is given, and an answer can change until the
+   finish press. Then the face's instruction where it has one (right or
+   wrong, the class seen with the map's period, a two-map sheet's; a class
+   face whose period is not known has its line in the fold, r5-d R08) and the
+   row of switches only where one exists (a two-map sheet's blind switch).
+   Right above the answers and above the list (J14), the labelling rule of
+   the page copy, at body size with "Rule: " in bold (data.reading_rule and
    rule_scope: the owner's, or the one the user typed on the Check card
    before the draw; after the owner's, data.rule_limit, that it is for kelp
    canopy maps only: the last round's F9; in its place, on a face that takes
-   Cannot tell and can show pictures, the cloud line, r4-m M8) shows from
-   the first open; the pane then shows only that no rule is set, when none
-   is (a page copy with
-   no rule and pictures with one: the pane shows the rule's two halves and,
-   on a face with Cannot tell, the cloud line, r4-m M8). Then the face's
-   instruction where it has one (right or wrong, the class seen with the
-   map's period, a two-map sheet's), one line on Cannot tell (or a
-   certificate's own need), and, until graded, that an answer can change
-   until the finish press (S2); the row of switches only where one exists (a
-   two-map sheet's blind switch). ONE closed "Details" fold under
-   the answers holds the sheet's file name, a seen sheet's first sentence and
-   what Cannot tell does to the result, the keys, what never reaches this
-   panel (the blind, code or right-or-wrong line), the Street map line and
-   the note that no date is marked clear. While pictures are off and no pane
-   is open, one line in the pane's place says how to see them. */
+   Cannot tell and can show pictures, the cloud line, r4-m M8), from the
+   first open; with no rule on the page copy, on a sheet that can show
+   pictures, one line in its place says none was set and what to do (J26),
+   and the pane no longer says it (a page copy with no rule and pictures
+   with one: the pane shows the rule's two halves and, on a face with Cannot
+   tell, the cloud line, r4-m M8, and the face's line goes). ONE closed
+   "Details" fold under the answers holds the sheet's file name, a class
+   face's line when the map's period is not known (r5-d R08), a seen
+   sheet's first sentence and what Cannot tell does to the result, the keys,
+   what never reaches this panel (the blind, code or right-or-wrong line),
+   the Street map line, the note that no date is marked clear, that the
+   answers are a reading of pictures and not a visit on site (J13), and, on
+   a sheet that holds two sets of answers, the server's sentence on them
+   (J21). While pictures are off and no pane is open, one line in the pane's
+   place, at body size (J05), says how to see them. */
 
 OE.UNJUDGED = '?';
 OE.OTHER = '__oe_other_class__';  // the select's 'Other class...' entry
@@ -243,23 +275,43 @@ OE.OTHER = '__oe_other_class__';  // the select's 'Other class...' entry
    (a plan drawn by result_id); anything else is 'square'. Every word that
    names a window on the face, the list and the pane comes from here (the
    lead's ruling W); tool names, fields and what Claude is told keep
-   "window". The three lines have a plain form (whatBare, nextBare,
-   cannotBare) for a sheet that can show no pictures (read_sheet's
-   pictures_possible false, round 4 pass 2, finding 10), and so does Cannot
-   tell (cannotTellBare: no "dates shown" where no date is shown); a sheet
-   of points with places to open says what to judge from (whatPlaced, reader
-   test 2's E/sheet-1).
+   "window". The lead's first line has a plain form (whatBare) for a sheet
+   that can show no pictures (read_sheet's pictures_possible false, round 4
+   pass 2, finding 10), and so does Cannot tell (cannotTellBare: no "dates
+   shown" where no date is shown); a sheet with places to open says what to
+   judge from (whatPlaced, reader test 2's E/sheet-1; squares or points,
+   r5-b J11).
 
    The last round (r4h, reader test 2): one Cannot tell line on the face
    (cannotTellLine, S1), the rest of what Cannot tell does in the Details
    fold (cannotTell, A/F04), the fold's blind and code lines (S1), the
-   finality lines (changeLine, everyDone: S2), the class face's period
+   finality line (everyDone: S2), the class face's period
    (classWhat, E/sheet-3), and "Street map" for the map button (A/F21).
 
    This round (r4i, 14 Nov 2026): the face's Cannot tell line says what a
    guess costs as well (F5), and the fold's cost sentence says the grid of
    squares stays with Cannot tell and only the per-class lines go (F5, the
-   owner's O2). */
+   owner's O2).
+
+   Round r5-b (17 Nov 2026, the user-side audit): the lead is three lines
+   (what, the Cannot tell line, noResult: J13; next, nextBare, cannot,
+   cannotBare and changeLine are gone, and the reading line is in the fold);
+   a sheet with no pictures and no places says it cannot show where a point
+   is (whatBare, J11); the graded notice in words that are on a button
+   (graded, J06); the footer once the sheet changed elsewhere
+   (changedElsewhere, J15), or after a removal whose sheet could not be read
+   again (notReadAgain); no rule in words that say what to do (noRule, J26;
+   noRulePair on a two-map sheet); a two-map sheet's hidden sentence
+   (hiddenPair, J28), what its first line says once the maps' answers are
+   shown (shownPair) and its no-pictures, no-places line (whatBarePair); and
+   the finish line's second sentence with its object (everyDone, J29).
+
+   Round r5-d (17 Nov 2026, the last audit of the whole app): the cloud line
+   says a case, not a fact about the square shown (cloudLine, R02); a sheet
+   that already gave its result says so beside the finish button too
+   (everyDoneGraded, R06); the class face's line with no period known is in
+   the Details fold (classWhat, R08); the list's menu says Cannot tell as
+   the face's button does (R13). */
 // WORDING: squares
 OE.sheetWords = (unit) => {
   const one = unit === 'point' ? 'point' : 'square';
@@ -278,17 +330,42 @@ OE.sheetWords = (unit) => {
     // WORDING: r4m M6
     what: 'For each ' + one + ', say what you see in the satellite pictures. The map\'s answer is hidden: answer'
       + ' without looking at the map.',
-    next: (finish) => 'Press Pictures, turn them on, answer every ' + one + ', then press ' + finish + '.',
-    cannot: 'No result while you check. Your answers are a reading of satellite pictures, not a visit on site.',
-    // WORDING: r4m M6
-    whatBare: 'For each ' + one + ', say what is there. The map\'s answer is hidden: answer without looking at the'
-      + ' map.',
-    // A sheet of points with places to open (data.has_place): no pictures, what to judge from.
+    // That sentence of what and whatPlaced, and what a two-map sheet's lead
+    // says in its place (r5-b J28: both maps' answers are hidden).
+    // WORDING: r5b J28
+    hiddenOne: 'The map\'s answer is hidden: answer without looking at the map.',
+    // WORDING: r5b J28
+    hiddenPair: 'Both maps\' answers are hidden: answer without looking at the maps.',
+    // In hiddenPair's place while the reviewer has unticked the switch and
+    // the face shows what the two maps say (r5-b J28).
+    // WORDING: r5b J28
+    shownPair: 'The two maps\' answers are shown now.',
+    // The lead's third line (r5-b J13: in place of "No result while you
+    // check." and of the separate line on changing an answer); finish is the
+    // sheet's own finish label.
+    // WORDING: r5b J13
+    noResult: (finish) => 'No result until every ' + one + ' is answered. You can change an answer until you press '
+      + finish + '.',
+    // In the Details fold of a sheet that can show pictures (r5-b J13;
+    // before, on the lead's third line).
+    // WORDING: r5b J13
+    reading: 'Your answers are a reading of satellite pictures, not a visit on site.',
+    // A sheet with no pictures and no places cannot show where a point is
+    // (r5-b J11: "say what is there" left every answer a guess): it says
+    // what to answer from, and to stop with nothing to answer from.
+    // WORDING: r4m M6; r5b J11
+    whatBare: 'This sheet has no pictures and no places, so it cannot show where a ' + one + ' is. Answer only from'
+      + ' your own records of each ' + one + ', without looking at the map; with none, stop and tell Claude.',
+    // whatBare on a two-map sheet: the maps (r5-b J28; whatBare has no
+    // hidden sentence to swap).
+    // WORDING: r5b J28
+    whatBarePair: 'This sheet has no pictures and no places, so it cannot show where a ' + one + ' is. Answer only'
+      + ' from your own records of each ' + one + ', without looking at the maps; with none, stop and tell Claude.',
+    // A sheet with places to open (data.has_place), squares or points (r5-b
+    // J11): no pictures, what to judge from.
     // WORDING: r4h S3 E/sheet-1; r4m M6
     whatPlaced: 'This sheet has no pictures. See where each ' + one + ' is, then say what was there from your own'
       + ' imagery or records. The map\'s answer is hidden: answer without looking at the map.',
-    nextBare: (finish) => 'Answer every ' + one + ', then press ' + finish + '.',
-    cannotBare: 'No result while you check.',
     clear: 'The panel marks no date as clear: you decide, from the outlined square itself.'
       + ' Scene cloud is for the whole satellite image, not this square.',
     // Under the rule, on a face that takes Cannot tell and can show pictures
@@ -296,8 +373,12 @@ OE.sheetWords = (unit) => {
     // copy has no rule. Only the case the rule leaves open: one clear date
     // is enough for Present, and Absent counts the clear dates alone, so a
     // square clouded on every date is Cannot tell, not Absent by default.
+    // Worded as a case, not a fact (r5-d R02): it stands above the face and
+    // the list before any square's pictures are open, and "No clear date of
+    // this square" read as said of the square shown.
+    // WORDING: r5d R02
     // WORDING: r4m M8
-    cloudLine: 'No clear date of this ' + one + ' (cloud over it on every date): press Cannot tell.',
+    cloudLine: 'If cloud covers the ' + one + ' on every date, press Cannot tell.',
     // The pane's closed fold that holds each date's scene cloud, off the
     // dates' headings (r4-m M8), and its first line, clear's own second
     // sentence.
@@ -305,6 +386,11 @@ OE.sheetWords = (unit) => {
     cloudFold: 'Scene cloud of each date',
     // WORDING: r4m M8
     cloudWhole: 'Scene cloud is for the whole satellite image, not this ' + one + '.',
+    // The pane's one line when no month of the map's period has a scene
+    // with data here (OE.NO_IMAGE, r5-a L2), in place of a list of empty
+    // months; a face that takes Cannot tell adds OE.NO_IMAGE_PRESS.
+    // WORDING: r5a L2
+    noImage: OE.NO_IMAGE(one),
     picturesOff: 'Nothing to look at yet. Press Pictures to see satellite pictures of this ' + one + '.'
       + ' You are asked first what is sent.',
     // The face's one Cannot tell line, where the sheet takes Cannot tell.
@@ -327,13 +413,26 @@ OE.sheetWords = (unit) => {
     // The map button and the list's column (A/F21).
     // WORDING: r4h A/F21
     streetMap: 'Street map',
-    graded: 'This sheet has been graded. Changing an answer now, knowing where the map disagrees, makes the'
-      + ' result invalid. A second opinion needs another person checking a fresh blind sheet.',
+    // The notice on a sheet already graded (the owner's extra 2), in words
+    // that are on a button (r5-b J06: "graded" was on none).
+    // WORDING: r5b J06
+    graded: 'This sheet already gave its result. Do not change an answer now: a change made after seeing where the'
+      + ' map disagrees makes the result invalid. A second opinion needs another person and a fresh sheet.',
     // Plain text beside the counter while nothing waits to be saved (B/sheet-finish-button).
     saved: 'Saved automatically',
-    // On the face until the sheet is graded (B/sheet-change-answer); finish is the sheet's own finish label.
-    // WORDING: r4h S2
-    changeLine: (finish) => 'You can change an answer until you press ' + finish + '.',
+    // Beside "Reopen the sheet" once the sheet changed under the page (r5-b
+    // J15): what happened, whether answers given here are lost (k of them
+    // were not saved), and what to do next.
+    // WORDING: r5b J15
+    changedElsewhere: (k) => (k
+      ? 'This sheet was changed somewhere else, so ' + k + (k === 1 ? ' answer here was' : ' answers here were')
+        + ' not saved. Reopen the sheet, then answer ' + (k === 1 ? 'that ' + one : 'those ' + many) + ' again.'
+      : 'This sheet was changed somewhere else. Reopen the sheet to carry on.'),
+    // In changedElsewhere's place when this panel removed a set of answers
+    // and then could not read the sheet again (markStale('read')): nothing
+    // else changed it, and the toast says which answers went.
+    // WORDING: r5b J15
+    notReadAgain: 'This panel could not read the sheet again. Reopen the sheet to carry on.',
     // The class face's instruction, with the map's period where the sheet knows it (E/sheet-3).
     // WORDING: r4h S3 E/sheet-3
     classWhat: (period) => (period
@@ -341,7 +440,13 @@ OE.sheetWords = (unit) => {
         + '), using the map\'s class names.'
       : 'For each ' + one + ', pick what was there in the period the map covers, using the map\'s class names;'
         + ' ask whoever made the map for that period.'),
-    noRule: 'No labelling rule is set for this map: agree one before the first label.',
+    // WORDING: r5b J26
+    noRule: 'No rule was set for this map. Decide your rule before the first answer and use it for every ' + one
+      + '.',
+    // noRule on a two-map sheet.
+    // WORDING: r5b J26 J28
+    noRulePair: 'No rule was set for these two maps. Decide your rule before the first answer and use it for every '
+      + one + '.',
     // The face, the list and the pane (the lead's ruling W).
     title: (k, n) => One + ' ' + k + ' of ' + n,
     oneView: 'One ' + one,
@@ -369,9 +474,15 @@ OE.sheetWords = (unit) => {
       : One + 's ' + sorted.slice(0, -1).join(', ') + ' and ' + sorted[sorted.length - 1]),
     rereadMine: (name) => 'Saved to ' + name + '; the sheet was read again for the ' + many
       + ' the server worked out.',
-    // Beside the finish button once every answer is saved (A/F17).
-    // WORDING: r4h S2 A/F17
-    everyDone: 'All answered and saved. Answers must not change after you press.',
+    // Beside the finish button once every answer is saved (A/F17); the
+    // second sentence has its object now (r5-b J29).
+    // WORDING: r4h S2 A/F17; r5b J29
+    everyDone: 'All answered and saved. After you press, do not change an answer.',
+    // In everyDone's place on a sheet that already gave its result (r5-d
+    // R06): its notice says not to change an answer now, so the footer does
+    // not say an answer may change until the press.
+    // WORDING: r5d R06
+    everyDoneGraded: 'This sheet already gave its result.',
     // In the Details fold, where the sheet has a blind switch (C/sheet-3).
     // WORDING: r4h S1 C/sheet-3
     codeLine: 'While you label, this panel is not sent a ' + one + '\'s number, place or order.',
@@ -453,6 +564,38 @@ OE.examplePictures = (ex) => OE.el('div', { class: 'row oe-examples', style: 'ga
    window pane (result.html): pure functions of what they are given, so the
    editor's pictures are drawn as before. */
 
+/* How long the page waits for a picture call (r5-a L1): 200 s. The server
+   can take about 160 s on one call (up to 40 s for its turn, 40 s for the
+   sheet's search by another square, then its own search and its reads, 40 s
+   each), and the client's own default is shorter than that. Passed as the
+   call's timeout (OE.call's options) by the label editor's pane, its test
+   scene, and a review set's pane and test scene (result.html). */
+OE.PICTURES_WAIT_MS = 200000;
+/* A picture call that threw: it got no answer (the host's timeout, a dropped
+   bridge), or a failure the server did not put in one of its own sentences.
+   The pane then says this one fixed sentence, never the thrown error's own
+   text, with Try again (r5-a L1). */
+// WORDING: r5a L1
+OE.PICTURES_NOT_ARRIVED = 'The pictures did not arrive. Press Try again.';
+/* The pane's button under such a failure, and under the server's own
+   sentences another try can get past (its answer's again: a slow fetch, the
+   catalogue, the image files): the same call once more, for the same square. */
+// WORDING: r5a L1
+OE.TRY_AGAIN = 'Try again';
+/* What a pane shows for a picture call that threw: the fixed sentence, with
+   again. The error itself is not passed in, so its text cannot be shown. */
+OE.picturesFailed = () => ({ ok: false, error: OE.PICTURES_NOT_ARRIVED, again: true });
+/* No month of the map's period has a scene with data on this square (the
+   server's no_image, r5-a L2): one fixed line in the pane, in place of a
+   list of empty months, in the pane's unit word; then, on a face that takes
+   Cannot tell, what to press. A search the catalogue cut short is told by
+   the record beside the sheet, never here. */
+// WORDING: r5a L2
+OE.NO_IMAGE = (unit) => 'No satellite image was found for this ' + (unit === 'point' ? 'point' : 'square')
+  + ' in the map\'s period.';
+// WORDING: r5a L2
+OE.NO_IMAGE_PRESS = ' Press Cannot tell.';
+
 /* A picture the server sent: a data URL and whole-number sizes. */
 OE.goodPicture = (p) => Boolean(p && typeof p.src === 'string' && p.src.startsWith('data:image/')
   && Number.isFinite(Number(p.width)) && Number.isFinite(Number(p.height)));
@@ -492,7 +635,11 @@ OE.picture = (p, date, what, caption = null, unit = 'square') => {
    r4-m M8); by default the label as it is. The pictures' names keep the
    whole label. */
 OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, heading = null, unit = 'square' } = {}) => {
-  const kinds = [['nir', 'Near-infrared false colour'], ['true', 'True colour']];
+  // "False colour" names the near-infrared rendering (r5-b J24: the longer
+  // name wrapped the switch to two lines on a narrow panel; the caption
+  // under the pictures says what the colours show).
+  // WORDING: r5b J24
+  const kinds = [['nir', 'False colour'], ['true', 'True colour']];
   const colours = OE.toggle(kinds, colour, (kind) => { if (choose) choose(kind); },
     { label: 'Colours of the pictures', small: true });
   colours.querySelectorAll('button').forEach((b, i) => b.setAttribute('data-focus', 'colour:' + kinds[i][0]));
@@ -522,7 +669,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const W = OE.sheetWords(data.unit);
   // Whether this sheet can show pictures at all (the page copy's
   // pictures_possible: its plan has a scores file to place a window by).
-  // When it cannot, the three lines take their plain form, the line about
+  // When it cannot, the lead's first line takes its plain form, the line about
   // pictures being off is left out and no Pictures button is drawn, so the
   // consent question is never asked for nothing (round 4 pass 2, finding
   // 10). A page copy without the field (an older server) shows them, as
@@ -573,6 +720,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     filter: 'any',  // which rows the list shows: any, unlabelled or labelled
     images: new Map(),  // handle -> the server's answer (pictures or the question)
     imagesRun: 0,  // bumped when pictures are switched on or off: older answers are dropped
+    // The last picture call that failed, while its window's pane stays shown:
+    // { h, answer } (r5-a L1), so its sentence and Try again stay when the
+    // pane is drawn again. Never in images: the next ask is a new call.
+    failed: null,
     shown: null,  // the window whose pictures the pane shows
     test: null,  // the public test scene, when open: { from: handle, answer }
     colour: 'nir',  // which rendering the dates show: nir (false colour) or true
@@ -621,9 +772,17 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const saveButton = OE.el('button', { class: 'primary', onclick: () => { staleResends = 0; save(); } }, 'Save labels');
   // Shown only once a save was refused because the sheet changed under the page.
   const reopenButton = OE.el('button', { class: 'primary', onclick: () => reopen() }, 'Reopen the sheet');
-  // Where the finish message shows when the host does not take it (OE.sendJob).
+  // Beside it, what happened and what to do, at body size (r5-b J15): its
+  // words are W.changedElsewhere, set in updateProgress.
+  const staleLine = OE.el('span', { class: 'error' });
+  // Where the finish press says what became of its message (OE.sendJob, r5-b J20): the sent line, or the text to type.
   const finishType = OE.typeSlot();
   const notice = OE.el('div', { class: 'small' });
+  // The server's own sentence on a sheet that holds two sets of answers, in
+  // the Details fold (r5-b J21); the notice above the answers says it plainly
+  // (updateProgress).
+  const mixNote = OE.el('div', { class: 'small' });
+  mixNote.hidden = true;
   const body = OE.el('tbody');
   const table = OE.el('table', {}, OE.el('thead'), body);
   const done = OE.el('div', { class: 'row' });
@@ -638,12 +797,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const previewId = 'oe-pictures-' + Math.random().toString(36).slice(2);
   const preview = OE.el('div', { class: 'stack', id: previewId, 'aria-live': 'polite' });
   // The labelling rule of the page copy (the owner's, or one the user typed
-  // before the draw): shown under the instruction from the first open
+  // before the draw): shown right above the answers from the first open
   // (ruleBlock, A/sheet-2), so the pane does not repeat it.
   const pageRule = typeof data.reading_rule === 'string' && data.reading_rule ? data.reading_rule : '';
   // In the pane's place while pictures are off and no pane is open (A/sheet-1);
-  // never on a sheet that can show no pictures.
-  const picturesOff = picturesPossible ? OE.el('div', { class: 'small faint' }, W.picturesOff) : null;
+  // never on a sheet that can show no pictures. At body size and colour
+  // (r5-b J05: small and grey, it was passed over for the answers).
+  const picturesOff = picturesPossible ? OE.el('div', {}, W.picturesOff) : null;
   // The list: the table and the pane, beside each other while the pane is open, where there is room.
   const work = OE.el('div', { class: 'sheet-work' },
     OE.el('div', { class: 'table-frame', style: 'max-height:420px' }, table), preview);
@@ -652,27 +812,31 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const faceEl = OE.el('section', { class: 'face stack', tabindex: '-1', 'data-focus': 'face', 'aria-label': W.oneView });
   const faceTitle = OE.el('h2', {});
   const faceLive = OE.el('div', { 'aria-live': 'polite' }, faceTitle);
+  // Previous, Next, Pictures and Street map are outlined small buttons, as
+  // the look-first pane's Previous and Next (r5-b J05: as bare words they
+  // did not read as buttons, and a square could be answered with nothing
+  // looked at); the list's row buttons stay text buttons.
   const prevButton = OE.el('button', {
-    class: 'link', 'data-focus': 'prev', 'aria-label': W.prevLabel, onclick: () => pageBy(-1),
+    class: 'small', 'data-focus': 'prev', 'aria-label': W.prevLabel, onclick: () => pageBy(-1),
   }, 'Previous');
   const nextButton = OE.el('button', {
-    class: 'link', 'data-focus': 'next', 'aria-label': W.nextLabel, onclick: () => pageBy(1),
+    class: 'small', 'data-focus': 'next', 'aria-label': W.nextLabel, onclick: () => pageBy(1),
   }, 'Next');
   const faceExtra = OE.el('div', {});
   const faceAnswerArea = OE.el('div', { class: 'stack' });
   // No Pictures button on a sheet that can show no pictures (finding 10).
   const facePicturesButton = picturesPossible ? OE.el('button', {
-    class: 'link', 'aria-controls': previewId, onclick: () => { if (state.at) togglePictures(state.at); },
+    class: 'small', 'aria-controls': previewId, onclick: () => { if (state.at) togglePictures(state.at); },
   }, 'Pictures') : null;
   const faceMapButton = data.has_place ? OE.el('button', {
-    class: 'link', onclick: () => { if (state.at) openMap(state.at); },
+    class: 'small', onclick: () => { if (state.at) openMap(state.at); },
   }, W.streetMap) : null;
   const facePictures = OE.el('div', {});
   if (n) {
     faceEl.append(
-      OE.el('div', { class: 'face-top' }, faceLive, OE.el('div', { class: 'row', style: 'gap:4px' }, prevButton, nextButton)),
+      OE.el('div', { class: 'face-top' }, faceLive, OE.el('div', { class: 'row', style: 'gap:8px' }, prevButton, nextButton)),
       faceExtra, faceAnswerArea,
-      OE.el('div', { class: 'row', style: 'gap:4px' }, facePicturesButton, faceMapButton),
+      OE.el('div', { class: 'row', style: 'gap:8px' }, facePicturesButton, faceMapButton),
       facePictures);
   } else {
     faceEl.append(OE.el('div', { class: 'faint' }, W.none));
@@ -690,6 +854,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const pending = () => state.dirty.size;
   // An error's words without their last full stop.
   const bare = (text) => String(text || '').replace(/\.+$/, '');
+  // One of a sheet's two sets of answers, by what it holds, for the notice
+  // of a mix and the toasts of its removal (r5-b J21): the wrong column is
+  // "the right-or-wrong marks", the class column "the classes picked";
+  // never a column's name ("the wrong column" read as "the incorrect one").
+  // WORDING: r5b J21
+  const answersOf = (c) => (c === 'wrong' ? 'right-or-wrong marks' : 'classes picked');
   const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
   /* Whether the sheet, as the panel holds it, is one the estimate grades. */
@@ -731,10 +901,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // The map's period as the server reads it (read_sheet's period_text), for the class face.
   const period = typeof data.period_text === 'string' && data.period_text ? data.period_text : null;
 
-  /* The face's one line on Cannot tell (the last round's S1): where the
-     sheet takes it, W.cannotTellLine; a certificate plan's seen or
-     right-or-wrong sheet, which takes none, keeps its own line; a two-map
-     sheet says ? in its instruction. */
+  /* The face's one line on Cannot tell (the last round's S1), the second
+     line of the lead (r5-b J13): where the sheet takes it,
+     W.cannotTellLine; a certificate plan's seen or right-or-wrong sheet,
+     which takes none, keeps its own line; a two-map sheet says Cannot tell
+     in its instruction. */
   // WORDING: r4h S1
   const cannotLineText = (() => {
     if (twoMap) return '';
@@ -768,16 +939,23 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   }
 
   /* The instruction on the face: right or wrong (the map's class is shown;
-     Cannot tell or the certificate's need is the line under it), the class
+     Cannot tell or the certificate's need is in the lead), the class
      seen in the period the map covers, as the map writes classes (reader
-     test 2's E/sheet-3: no "on the ground"), and a two-map sheet's as
-     before; a seen sheet has none here (its lead says what to do). */
-  // WORDING: r4h S1 S3
+     test 2's E/sheet-3: no "on the ground"), and a two-map sheet's, which
+     names the button it has, Cannot tell, and says "there", not "on the
+     ground" (r5-b J28); a seen sheet has none here (its lead says what to
+     do). The class face's line is on the face only where the sheet knows
+     the map's period, which it names (r5-d R08); without it the line was a
+     fourth line that began as the lead does and only asked for the period,
+     so it is in the Details fold (classNoPeriod), and the face keeps its
+     three lines. */
+  // WORDING: r4h S1 S3; r5b J28 (the two-map sheet's)
   function faceInstructionText() {
     const one = W.one;
-    if (twoMap) return 'For each ' + one + ', pick the class you see on the ground there; pick ? when you cannot tell.';
+    if (twoMap) return 'For each ' + one + ', pick the class you see there; press Cannot tell when you cannot judge it.';
     if (wrongFace) return 'For each ' + one + ', say whether the map is right there (the map\'s class is shown).';
-    if (face === 'class') return W.classWhat(period);
+    // WORDING: r5d R08 (the class face's line, on the face only with the map's period)
+    if (face === 'class') return period ? W.classWhat(period) : '';
     return '';
   }
 
@@ -786,17 +964,28 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     counterNum.textContent = count() + '/' + n;
     counterNote.textContent = left ? left + ' change' + (left === 1 ? '' : 's') + ' not saved yet' : '';
     if (state.stale) {
-      // Nothing saves any more: Save is off, and "Reopen the sheet" is the one contained button.
-      saveButton.hidden = false;
-      savedNote.hidden = true;
+      // Nothing saves any more (r5-b J15): no Save button (before, a greyed
+      // button that read "Not saved": a status dressed as a dead button).
+      // Beside the counter, how many answers given here are not saved, or
+      // "Not saving"; beside "Reopen the sheet", the one contained button,
+      // what happened, whether an answer is lost and what to do, at body
+      // size (W.changedElsewhere; W.notReadAgain where this panel's own
+      // removal of a set of answers left a sheet it could not read again,
+      // with everything saved before it). A Save button that had the focus as
+      // it goes hands it to "Reopen the sheet".
+      const hadFocus = !saveButton.hidden && saveButton.contains(document.activeElement);
+      saveButton.hidden = true;
+      // Hidden, it is no contained button either: the page keeps one.
       saveButton.className = '';
-      saveButton.textContent = 'Not saved';
-      saveButton.setAttribute('aria-disabled', 'true');
+      savedNote.hidden = false;
+      // WORDING: r5b J15
+      savedNote.textContent = left ? OE.counted(left, 'answer') + ' not saved' : 'Not saving';
+      counterNote.textContent = '';
       notice.replaceChildren();
-      if (!done.contains(reopenButton)) {
-        done.replaceChildren(OE.el('span', { class: 'small error' },
-          'This sheet changed since the panel opened it.'), reopenButton);
-      }
+      mixNote.hidden = true;
+      staleLine.textContent = state.staleWhy === 'read' ? W.notReadAgain : W.changedElsewhere(left);
+      if (!done.contains(reopenButton)) done.replaceChildren(staleLine, reopenButton);
+      if (hadFocus && !quietSave) OE.focusIfHere(reopenButton);
       return;
     }
     // Save labels only while a change waits, a save runs or one failed; else
@@ -813,15 +1002,23 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     saveButton.textContent = state.saving ? 'Saving...' : 'Save labels';
     // Busy while saving: aria-disabled (save() ignores a press then), so the button keeps the focus.
     saveButton.setAttribute('aria-disabled', String(state.saving));
-    // A mix the estimate would refuse: say so, with the link that clears the
-    // column in the way.
+    // Two sets of answers on one sheet (state.mix: the server's word that
+    // the estimate would refuse it). The notice says so plainly, with a
+    // button that removes the set in the way, each set named by what it
+    // holds (answersOf; r5-b J21: "Clear the wrong column" read as "the
+    // incorrect one", and did not say which answers go). The server's own
+    // sentence is in the Details fold (mixNote).
     notice.replaceChildren();
+    mixNote.hidden = !state.mix;
+    mixNote.textContent = state.mix ? 'The estimate would refuse this sheet: ' + state.mix.problem + '.' : '';
     if (state.mix) {
       const mix = state.mix;
+      const kept = mix.column === 'wrong' ? 'reference_class' : 'wrong';
+      // WORDING: r5b J21
       notice.append(OE.el('div', {}, OE.el('span', { class: 'error' },
-        'The estimate would refuse this sheet: ' + mix.problem + '. '),
-      mix.column ? OE.el('button', { class: 'link', onclick: () => clearAndOpen(mix.column, face) },
-        'Clear the ' + mix.column + ' column') : null));
+        'This sheet holds two sets of answers, so no result can come from it. '),
+      mix.column ? OE.el('button', { class: 'small', onclick: () => clearAndOpen(mix.column, face) },
+        'Remove the ' + answersOf(mix.column) + ', keep the ' + answersOf(kept)) : null));
     }
     updateFinish();
   }
@@ -914,7 +1111,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         if (select.value && !browsing) advance(h, 's:' + h);
       },
     }, OE.el('option', { value: '' }, '(class seen)'),
-    options.map((c) => OE.el('option', { value: c }, c === OE.UNJUDGED ? '? (cannot tell)' : c)));
+    // Cannot tell in the words of the face's button (r5-d R13: it read
+    // "? (cannot tell)"); its value stays OE.UNJUDGED.
+    // WORDING: r5d R13
+    options.map((c) => OE.el('option', { value: c }, c === OE.UNJUDGED ? 'Cannot tell (?)' : c)));
     if (current && !options.includes(current)) {
       select.append(OE.el('option', { value: current }, current));
     }
@@ -1120,8 +1320,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   }
 
   /* The instructions (on the face, and in the fold) and the keys, then the
-     view shown: the face (renderFace) or the list's rows (renderList). */
+     view shown: the face (renderFace) or the list's rows (renderList). A
+     two-map sheet's first line says whether the maps' answers are hidden or
+     shown, by extraLines' own test (r5-b J28). */
   function render(focusKey) {
+    if (pairWhat) pairWhat.textContent = !state.blind && state.revealed ? pairShown : pairHidden;
     faceInstruction.textContent = faceInstructionText();
     faceInstruction.hidden = !faceInstruction.textContent;
     instruction.textContent = instructionText();
@@ -1446,28 +1649,47 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   /* The pictures of a window, asked of the server by its handle (it finds
      the window from the files on disk). An answer is kept until pictures
      are switched on or off (imagesRun); a failure is not kept, so the next
-     press asks again. */
+     press asks again. The call waits OE.PICTURES_WAIT_MS (r5-a L1: as long
+     as the server can take). A call that throws shows one fixed sentence
+     (OE.picturesFailed), never the thrown error's text. A failure stays in
+     the pane while its window is shown (state.failed), with Try again where
+     another try can get past it. */
   async function loadPictures(h) {
     state.shown = h;
     state.test = null;
     markPictures();
     if (state.images.has(h)) { renderPreview(); return; }
     const run = state.imagesRun;
+    state.failed = null;
     state.images.set(h, { loading: true });
     renderPreview();
     let answer;
     try {
-      answer = await OE.call(app, 'olmoearth_app_window_image', { labels_csv_path: data.path, sheet_id: data.sheet_id, handle: h });
-    } catch (err) {
-      answer = { ok: false, error: err.message };
+      answer = await OE.call(app, 'olmoearth_app_window_image',
+        { labels_csv_path: data.path, sheet_id: data.sheet_id, handle: h }, { timeout: OE.PICTURES_WAIT_MS });
+    } catch (_) {
+      answer = OE.picturesFailed();
     }
     if (run !== state.imagesRun) return;  // switched on or off meanwhile: asked again then
     // The question means pictures are off; pictures mean they are on.
     if (answer && answer.needs_consent) state.picturesOn = false;
     else if (answer && answer.ok) state.picturesOn = true;
     if (answer && (answer.ok || answer.needs_consent)) state.images.set(h, answer);
-    else state.images.delete(h);
+    else {
+      state.images.delete(h);
+      if (state.shown === h) state.failed = { h, answer: answer || {} };
+    }
     if (state.shown === h) renderPreview(answer);
+  }
+
+  /* Try again in the pane (r5-a L1): the same call once more for this
+     window. The pressed button goes with the old pane, so the focus goes to
+     the pane's heading, then and once the answer is drawn. */
+  async function retryPictures(h) {
+    const asked = loadPictures(h);
+    focusPaneHeading();
+    await asked;
+    focusPaneHeading();
   }
 
   /* Pictures switched on or off by the user's own press, after the question. */
@@ -1480,6 +1702,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }
     state.picturesOn = Boolean(on);
     state.images.clear();
+    state.failed = null;
     state.imagesRun += 1;
     state.test = null;
     const h = state.shown;
@@ -1512,7 +1735,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }
     if (state.test) { renderTest(); return; }
     const k = place(h);
-    const answer = shown || state.images.get(h) || { loading: true };
+    // A failure is kept only while its window stays shown (r5-a L1): another
+    // window's pane drops it, and coming back asks again, as before.
+    if (state.failed && state.failed.h !== h) state.failed = null;
+    const answer = shown || state.images.get(h) || (state.failed && state.failed.answer) || { loading: true };
     const head = OE.el('div', { class: 'spread' },
       state.view === 'face' ? OE.el('h3', {}, 'Pictures') : OE.el('h2', {}, W.paneHead(k)),
       OE.el('button', { class: 'link', onclick: () => closePictures(h) }, 'Close pictures'));
@@ -1528,11 +1754,30 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       return;
     }
     if (!answer.ok) {
-      preview.replaceChildren(head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'));
+      // Try again (r5-a L1) under a failure another try can get past: the
+      // server's again (a slow fetch, the catalogue, the image files), or a
+      // call that threw (OE.picturesFailed). It repeats the call for this
+      // window. Any other refusal would be the same again: its sentence alone.
+      preview.replaceChildren(...[head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'),
+        answer.again ? OE.el('div', { class: 'row' },
+          OE.el('button', { type: 'button', class: 'small', 'data-focus': 'again', onclick: () => retryPictures(h) },
+            OE.TRY_AGAIN)) : null].filter(Boolean));
+      return;
+    }
+    if (answer.no_image) {
+      // No month of the map's period has a scene with data on this window
+      // (r5-a L2): one fixed line in place of a list of empty months, and,
+      // on a face that takes Cannot tell, what to press. The pane keeps its
+      // test scene and its switch.
+      preview.replaceChildren(head,
+        OE.el('div', { class: 'small oe-no-image' }, W.noImage + (takesQ ? OE.NO_IMAGE_PRESS : '')),
+        OE.el('div', { class: 'row', style: 'justify-content:flex-end;gap:16px' },
+          OE.el('button', { class: 'link', onclick: () => loadTest() }, 'Public test scene'),
+          OE.el('button', { class: 'link', onclick: () => setPictures(false) }, 'Turn off pictures')));
       return;
     }
     const pictures = (answer.pictures || []).filter(goodPicture);
-    // The rule shows under the instruction from the first open (ruleBlock,
+    // The rule shows above the answers from the first open (ruleBlock,
     // A/sheet-2); here only when the page copy had none and this answer
     // has one: its Present half, then its Absent half word for word, then,
     // on a face that takes Cannot tell (not a certificate plan's), that a
@@ -1541,16 +1786,17 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     // come from imagery.rule_for, so this is the fallback for a page copy
     // whose rule could not be read; the rule block says the cloud line
     // otherwise. Its scope and the kelp-only line are not repeated here: the
-    // Check card and the result show them. The line that no rule is set
-    // stays here.
+    // Check card and the result show them. That no rule was set is said on
+    // the face, in the rule's place, from the first open (noRuleLine, r5-b
+    // J26), and no longer here; a rule these pictures bring takes that
+    // line's place.
     let ruleLines = null;
     if (!pageRule && answer.reading_rule) {
       const [present, absent] = ruleHalves(answer.reading_rule);
       ruleLines = OE.el('div', {}, OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + present),
         absent ? OE.el('div', { class: 'small', style: 'font-weight:600' }, absent) : null,
         takesQ ? OE.el('div', { class: 'small' }, W.cloudLine) : null);
-    } else if (!pageRule) {
-      ruleLines = OE.el('div', { class: 'small error' }, W.noRule);
+      if (noRuleLine) noRuleLine.hidden = true;
     }
     const dated = Array.isArray(answer.dates) && answer.dates.length > 0;
     const clouds = dated ? cloudFold(answer.dates) : null;
@@ -1637,9 +1883,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     focusPaneHeading();  // the pressed button went with the old pane
     let answer;
     try {
-      answer = await OE.call(app, 'olmoearth_app_window_image', { test_scene: true });
-    } catch (err) {
-      answer = { ok: false, error: err.message };
+      // As a window's pictures (r5-a L1): the long wait, and a call that
+      // throws shows the fixed sentence, never the thrown error's text.
+      answer = await OE.call(app, 'olmoearth_app_window_image', { test_scene: true },
+        { timeout: OE.PICTURES_WAIT_MS });
+    } catch (_) {
+      answer = OE.picturesFailed();
     }
     if (!state.test || state.test.from !== from) return;  // closed meanwhile
     state.test.answer = answer || { ok: false, error: 'No answer.' };
@@ -1669,7 +1918,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       OE.el('button', { class: 'link', onclick: closeTest }, W.back(place(state.test.from))));
     if (answer.loading) { preview.replaceChildren(head, OE.el('div', { class: 'faint' }, 'Loading the test scene...')); return; }
     if (!answer.ok) {
-      preview.replaceChildren(head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'));
+      // Try again as under a window's pictures (r5-a L1): the test scene's call once more.
+      preview.replaceChildren(...[head, OE.el('div', { class: 'error small' }, answer.error || 'No pictures.'),
+        answer.again ? OE.el('div', { class: 'row' },
+          OE.el('button', { type: 'button', class: 'small', 'data-focus': 'again', onclick: () => loadTest() },
+            OE.TRY_AGAIN)) : null].filter(Boolean));
       return;
     }
     // Its dates headed by their day too, their scene cloud in the fold (r4-m M8).
@@ -1697,9 +1950,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     timer = setTimeout(() => save({ auto: true }), wait);
   }
 
-  /* Nothing saves any more: the sheet changed under the page. */
-  function markStale() {
+  /* Nothing saves any more: the sheet changed under the page, or (why
+     'read', r5-b J15) this panel removed a set of answers and could not read
+     the sheet again, so the footer does not say it changed elsewhere. */
+  function markStale(why) {
     state.stale = true;
+    state.staleWhy = why || 'changed';
     clearTimeout(timer);
     updateProgress();
     tellClaude();
@@ -1926,13 +2182,16 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     return !pending() && !state.stale;
   }
 
-  /* Clear a label column on every window (the user's press on the link
-     beside a mix), then read the sheet on face ``to``. The clear names the
+  /* Remove one of a sheet's two sets of answers: clear a label column on
+     every window (the user's press on the button beside the notice of a
+     mix, r5-b J21), then read the sheet on face ``to``. The clear names the
      version this page holds: a sheet saved elsewhere since is read and
-     taken in first, and the user presses the link again. No
+     taken in first, and the user presses the button again. No
      answer is taken meanwhile (busyArea). A clear the server took whose
-     sheet then cannot be read says it was cleared, and the page offers to
-     reopen the sheet (markStale: this copy is no longer the file's). */
+     sheet then cannot be read says the answers were removed, and the page
+     offers to reopen the sheet (markStale: this copy is no longer the
+     file's). The toasts name the set by what it holds (answersOf), never by
+     its column. */
   async function clearAndOpen(column, to) {
     if (state.clearing || state.stale) return;
     state.clearing = true;
@@ -1958,10 +2217,14 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         if (onSaved) onSaved();
         try {
           const fresh = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path, face: to });
-          replaceEditor(fresh, 'The ' + column + ' column was cleared.');
+          // WORDING: r5b J21
+          replaceEditor(fresh, 'Removed: the ' + answersOf(column) + '.');
         } catch (err) {
-          markStale();
-          reopenToast('The ' + column + ' column was cleared, but the sheet could not be read again: '
+          // Nothing changed the file but this panel: the footer says the read
+          // failed (W.notReadAgain), not that it changed elsewhere.
+          markStale('read');
+          // WORDING: r5b J21
+          reopenToast('The ' + answersOf(column) + ' were removed, but the sheet could not be read again: '
             + bare(err.message || 'it could not be read') + '. Reopen it to go on.');
         }
       }
@@ -1977,8 +2240,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     if (!fresh) return;
     adopt(fresh);
     if (!state.stale) {
+      // WORDING: r5b J21
       OE.toast('Not cleared: the sheet was saved elsewhere since this panel read it, and it shows those labels now. '
-        + 'Press the link again to clear the ' + column + ' column.', true);
+        + 'Press the button again to remove the ' + answersOf(column) + '.', true);
     }
   }
 
@@ -2126,9 +2390,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      map), in the footer from the first open (reader test 2's
      B/sheet-finish-button): greyed (aria-disabled, so it keeps the focus)
      until every window is labelled and saved (ready), then it sends the
-     message that names the tool to call; when the host does not take it, the
-     footer shows it to type (OE.sendJob). Once ready, the line beside it
-     says answers must not change after the press (W.everyDone, A/F17). A
+     message that names the tool to call; the footer then says it was sent,
+     or shows it to type when the host did not take it (OE.sendJob). Once
+     ready, the line beside it says answers must not change after the press
+     (W.everyDone, A/F17); on a sheet that already gave its result it says
+     only that (W.everyDoneGraded, r5-d R06), as the notice over the sheet
+     does, never that an answer may change until the press. A
      server without the finish fields gets the old words. The button is made
      once and kept in place, so it keeps the focus when the progress is drawn
      again; once ready after the last answer it takes the focus, if the user
@@ -2141,8 +2408,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      again. */
   let finishButton = null;
   let finishing = false;
-  // The line beside the finish button once every answer is saved (A/F17).
-  const everyDoneLine = OE.el('span', { class: 'small' }, W.everyDone);
+  // The line beside the finish button once every answer is saved (A/F17);
+  // a sheet already graded says that it gave its result (r5-d R06).
+  // WORDING: r5d R06
+  const everyDoneLine = OE.el('span', { class: 'small' },
+    data.graded && typeof data.graded === 'object' ? W.everyDoneGraded : W.everyDone);
   /* Whether the sheet can be sent for grading now: complete and saved. */
   const ready = () => complete() && !pending() && !state.stale;
   async function finishPress(message) {
@@ -2219,10 +2489,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const filterBox = OE.el('div', {}, filter);
   filterBox.hidden = state.view !== 'list';
 
-  // What the two-map sheet's blind switch hides: which classes the two maps
-  // wrote; never a stratum, which no page is sent (the last round's F11).
-  // WORDING: r4i F11
-  const blindText = 'Blind: hide which classes the maps wrote';
+  // What the two-map sheet's blind switch hides: what the two maps say for a
+  // square; never a stratum, which no page is sent (the last round's F11).
+  // In plain words, with why it stays ticked (r5-b J28; whether it may be
+  // unticked before the last answer is the owner's to rule).
+  // WORDING: r4i F11; r5b J28
+  const blindText = 'Hide what the two maps say (keep it on while you answer)';
   // The row of switches, only where one exists: the two-map sheet's blind
   // switch (the owner's O1 took the class sheet's switches away).
   const switchRow = blind ? OE.el('div', { class: 'row', style: 'gap:16px' },
@@ -2242,21 +2514,41 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // "West part of this map (1 of 2)"), when the server names one.
   const partLine = data.part && typeof data.part === 'object' && typeof data.part.heading === 'string'
     && data.part.heading ? OE.el('div', { class: 'small' }, data.part.heading) : null;
-  // A sheet already graded: its answers should not change now (the owner's extra 2).
+  // A sheet already graded: its answers should not change now (the owner's
+  // extra 2), at body size (r5-b J06: it was the smallest text over the
+  // largest invitation to answer).
   const gradedNote = data.graded && typeof data.graded === 'object'
-    ? OE.el('div', { class: 'card summary small', role: 'note' }, W.graded) : null;
-  // The three lines on top: what this is (where the map's answer is hidden:
-  // not on the right-or-wrong face), what to do next, what it cannot tell;
-  // on a sheet that can show no pictures, their plain form, which promises
-  // no satellite picture (finding 10), and on a sheet of points with places
-  // to open, what to judge from (reader test 2's E/sheet-1).
+    ? OE.el('div', { class: 'card summary', role: 'note' }, W.graded) : null;
+  // The three lines on top (the lead, r5-b J13), before the face's
+  // instruction, the rule and the answers. What this is (where the map's
+  // answer is hidden: not on the right-or-wrong face); on a sheet that can
+  // show no pictures its plain form, which promises no satellite picture
+  // (finding 10), and on a sheet with places to open, squares or points, what
+  // to judge from (reader test 2's E/sheet-1; r5-b J11: a sheet of squares
+  // with places was told it had none). Then the face's one Cannot tell line
+  // (S1: W.cannotTellLine, or a certificate's own need; none on a two-map
+  // sheet), and that there is
+  // no result until every answer is given and an answer can change until the
+  // finish press (W.noResult, S2). A graded sheet keeps the first line only
+  // (r5-b J06): its notice says not to change an answer, so nothing here
+  // invites one.
   const finishWords = data.finish_label || 'Ask Claude to grade it';
-  const whatBare = W.one === 'point' && data.has_place ? W.whatPlaced : W.whatBare;
-  const leadLines = typeof OE.lead === 'function' ? OE.lead({
+  const whatBare = data.has_place ? W.whatPlaced : (twoMap ? W.whatBarePair : W.whatBare);
+  const leadWords = {
     what: wrongFace ? null : picturesPossible ? W.what : whatBare,
-    next: picturesPossible ? W.next(finishWords) : W.nextBare(finishWords),
-    cannot: picturesPossible ? W.cannot : W.cannotBare,
-  }) : null;
+    next: gradedNote ? null : cannotLineText || null,
+    cannot: gradedNote ? null : W.noResult(finishWords),
+  };
+  // A two-map sheet hides what both maps say (r5-b J28).
+  if (twoMap && leadWords.what) leadWords.what = leadWords.what.replace(W.hiddenOne, W.hiddenPair);
+  const leadLines = typeof OE.lead === 'function' ? OE.lead(leadWords) : null;
+  // While the reviewer has unticked the switch and the face shows what the
+  // two maps say, the first line says they are shown (W.shownPair), and the
+  // hidden form comes back with the switch (render; r5-b J28). Only the
+  // hidden sentence is swapped (whatBarePair has none, so it stays).
+  const pairWhat = twoMap && leadLines ? leadLines.querySelector('p.what') : null;
+  const pairHidden = pairWhat ? pairWhat.textContent : '';
+  const pairShown = pairHidden.replace(W.hiddenPair, W.shownPair);
   // Two example pictures under the owner's rule (r4-k K9), each captioned,
   // and the line on where they come from in the Details fold; only with the
   // server's examples (the owner's rule, both pictures on disk), else none.
@@ -2273,36 +2565,59 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // kelp-only line's place (r4-m M8, after review), so the block keeps three
   // lines: the page copy has the same rule as the pictures (both
   // imagery.rule_for), so the pane draws its own rule lines only where the
-  // page copy has none, and this is where a labeller reads the line.
+  // page copy has none, and this is where a labeller reads the line. The
+  // rule itself is at body size, "Rule: " in bold (r5-b J14: the one text
+  // needed at every answer was the smallest on the card), and the block
+  // stands right above the answers and above the list (wrap.append).
   const cloudOnFace = takesQ && picturesPossible;
   const ruleBlock = pageRule ? OE.el('div', { class: 'stack', style: 'gap:2px' },
-    OE.el('div', { class: 'small', style: 'font-weight:600' }, 'Rule: ' + pageRule),
+    OE.el('div', {}, OE.el('strong', {}, 'Rule: '), pageRule),
     typeof data.rule_scope === 'string' && data.rule_scope ? OE.el('div', { class: 'small faint' }, data.rule_scope) : null,
     cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)
       : typeof data.rule_limit === 'string' && data.rule_limit ? OE.el('div', { class: 'small faint' }, data.rule_limit) : null,
     ruleExamples) : null;
   const clearNote = pageRule ? (picturesPossible ? OE.el('div', { class: 'small faint' }, W.clear) : null) : null;
-  // The face's one Cannot tell line (S1), and, until the sheet is graded,
-  // that an answer can change until the finish press (S2).
-  const cannotLine = cannotLineText ? OE.el('div', {}, cannotLineText) : null;
-  const changeLine = gradedNote ? null : OE.el('div', {}, W.changeLine(finishWords));
+  // No rule on the page copy, on a sheet that can show pictures (r5-b J26):
+  // one line in the rule's place, at body size, from the first open (before,
+  // the pictures pane said it, small and red, only once pictures were on). It
+  // is hidden again if the pictures bring a rule the page copy could not read
+  // (renderPreview's fallback rule lines). Not on a graded sheet (r5-b J06:
+  // nothing under its notice invites an answer); a two-map sheet's names the
+  // two maps (W.noRulePair).
+  const noRuleLine = !pageRule && picturesPossible && !gradedNote
+    ? OE.el('div', { class: 'oe-no-rule' }, twoMap ? W.noRulePair : W.noRule) : null;
+  // That the answers are a reading of pictures, not a visit on site: in the
+  // Details fold, only on a sheet that can show pictures (r5-b J13; before,
+  // on the lead's third line).
+  const readingNote = picturesPossible ? OE.el('div', { class: 'small' }, W.reading) : null;
+  // The class face's line where the sheet does not know the map's period
+  // (r5-d R08): in the fold, before what Cannot tell does, no longer a fourth
+  // line on the face (faceInstructionText); its words are classWhat's own.
+  // WORDING: r5d R08 (where it stands)
+  const classNoPeriod = face === 'class' && !period ? OE.el('div', { class: 'small' }, W.classWhat(null)) : null;
   // ONE closed fold under the answers (the last round's S1): the sheet's file
-  // name (it may be long: it wraps anywhere), the instruction's rest and what
+  // name (it may be long: it wraps anywhere), the class face's line with no
+  // period known (r5-d R08), the instruction's rest and what
   // Cannot tell does, the keys, what never reaches this panel, the Street map
-  // line, the clear-date note and where the example pictures come from (r4-k
-  // K9; the sheet keeps its one fold).
+  // line, the clear-date note, where the example pictures come from (r4-k
+  // K9; the sheet keeps its one fold), that the answers are a reading of
+  // pictures (r5-b J13) and, on a sheet that holds two sets of answers, the
+  // server's own sentence on them (mixNote, r5-b J21).
   // WORDING: r4h S1
   const foldLabel = 'Details';
   const foldParts = [
     OE.el('div', { class: 'mono', style: 'overflow-wrap:anywhere' }, data.name),
-    instruction, hint, ...foldLines, clearNote, examplesNote,
+    classNoPeriod,
+    instruction, hint, ...foldLines, clearNote, examplesNote, readingNote, mixNote,
   ].filter(Boolean);
   const details = typeof OE.fold === 'function' ? OE.fold(foldLabel, ...foldParts)
     : OE.el('details', {}, OE.el('summary', {}, foldLabel), ...foldParts);
 
   // Annotation Lab's frame: one white section card, a teal title, the controls,
   // the face or the rows, the Details fold, and a footer with the counter and
-  // the finish button.
+  // the finish button. Before the answers the face says its three lines (the
+  // lead, r5-b J13) and, right above the answers and above the list, the rule
+  // (r5-b J14), or that none was set (r5-b J26).
   wrap.append(
     OE.el('div', { class: 'stack' },
       OE.el('div', { class: 'spread', style: 'align-items:flex-start' },
@@ -2310,14 +2625,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         headerAction),
       gradedNote,
       leadLines,
-      ruleBlock,
       faceInstruction,
-      cannotLine,
-      changeLine,
       ruleNote,
       switchRow,
       OE.el('div', { class: 'row', style: 'gap:16px' }, viewToggle, filterBox),
       notice,
+      ruleBlock,
+      noRuleLine,
       area,
       details),
     OE.el('div', { class: 'sheet-footer spread' }, progress, OE.el('div', { class: 'row' }, done, saveButton), finishType));

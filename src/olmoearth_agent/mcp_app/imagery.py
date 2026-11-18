@@ -60,7 +60,13 @@ pictures beside the owner's kelp rule; the app never calls it.
 
 What the view gets travels in the tool's ``structuredContent`` only; the
 model reads ``{"ok": true}``, a failure included. Errors are a closed set of
-fixed sentences: no coordinate, path, host or scene id.
+fixed sentences: no coordinate, path, host or scene id. A failure another
+try can get past (a slow fetch, the catalogue, the image files) carries
+``again``, and the pane offers "Try again" (:data:`RETRY_SENTENCES`, round
+r5-a L1). An answer for a square on which no month of the period has a
+scene with data carries ``no_image``, and the pane says one line in place of
+its empty months (:func:`_no_image`, r5-a L2); a search the catalogue cut
+short is told by the record's search line alone.
 """
 
 from __future__ import annotations
@@ -346,6 +352,15 @@ _REVIEW_FETCH_SENTENCE = {
     "budget": REVIEW_FETCH_FAILED,
 }
 
+#: The refusals another try can get past (r5-a L1): a slow fetch, the
+#: catalogue, the image files. A pane's answer with one of them carries
+#: ``again`` (true), and the pane then offers "Try again", which repeats the
+#: call for the same square. Any other refusal (the sheet changed, no map
+#: raster, the period) would be the same on a second try: no ``again``.
+RETRY_SENTENCES = frozenset(
+    {CATALOGUE_FAILED, FETCH_FAILED, REVIEW_FETCH_FAILED, TOO_SLOW}
+)
+
 MAX_MONTHS = 12
 #: Picture calls running at once (the design: two at a time), and how long a
 #: call waits for its turn or for another window's search of the same sheet.
@@ -365,6 +380,25 @@ def _ask_answer(test_ask: str = TEST_ASK) -> dict[str, Any]:
     """The answer while pictures are off: the question, and the test scene's
     (a sheet's, or a review set's :data:`REVIEW_TEST_ASK`)."""
     return {"ok": True, "needs_consent": True, "ask": CONSENT_ASK, "test_ask": test_ask}
+
+
+def _failed(said: str) -> dict[str, Any]:
+    """A fetch's refusal, for the pane: its fixed sentence, with ``again``
+    (true) when another try can get past it (:data:`RETRY_SENTENCES`, r5-a
+    L1); the key is left out otherwise."""
+    out: dict[str, Any] = {"ok": False, "error": said}
+    if said in RETRY_SENTENCES:
+        out["again"] = True
+    return out
+
+
+def _no_image(results: list[tuple[s2_fetch.Scene | None, Any, int]]) -> bool:
+    """Whether no month of the map's period has a scene with data on the
+    square (r5-a L2): every month's scene is ``None`` (:func:`_dates` then
+    lists empty months only). The pane says one fixed line in place of that
+    list. A search cut short (``complete`` false in the record's search
+    line) is told by the record alone, never by the pane."""
+    return all(scene is None for scene, _, _ in results)
 
 
 # ------------------------------------------------------------------ consent
@@ -943,9 +977,12 @@ def window_image(
     under :data:`CAPTION`, led by how big the outlined square is
     (:func:`square_size_text`, left out when its scores file gives no size);
     the answer names the window by its handle. A failure is ``{"ok": false,
-    "error": <one of the fixed sentences>}``. ``still_on`` (the server
-    passes :func:`is_on`) is asked again after any wait: pictures switched
-    off meanwhile send nothing.
+    "error": <one of the fixed sentences>}``, with ``again`` (true) when
+    another try can get past it (:data:`RETRY_SENTENCES`, r5-a L1). When no
+    month of the period has a scene with data on the square, the answer
+    carries ``no_image`` (true) beside its empty months (r5-a L2).
+    ``still_on`` (the server passes :func:`is_on`) is asked again after any
+    wait: pictures switched off meanwhile send nothing.
     """
     if not on:
         return _ask_answer()
@@ -987,12 +1024,12 @@ def _window_image(
     if len(months) > MAX_MONTHS:
         return {"ok": False, "error": LONG_PERIOD}
     if not _calls.acquire(timeout=WAIT_SECONDS):  # two picture calls at a time
-        return {"ok": False, "error": TOO_SLOW}
+        return _failed(TOO_SLOW)
     client = s2_fetch.client_factory()
     try:
         lock = _lock_for(real)
         if not lock.acquire(timeout=WAIT_SECONDS):  # one search per sheet
-            return {"ok": False, "error": TOO_SLOW}
+            return _failed(TOO_SLOW)
         try:
             if still_on is not None and not still_on():  # switched off meanwhile
                 return _ask_answer()
@@ -1010,7 +1047,7 @@ def _window_image(
         fetch = s2_fetch.Fetch(client, s2_fetch.Budget())
         results = s2_fetch.dated(fetch, scenes, box, square)
     except s2_fetch.FetchError as exc:
-        return {"ok": False, "error": _FETCH_SENTENCE.get(exc.kind, FETCH_FAILED)}
+        return _failed(_FETCH_SENTENCE.get(exc.kind, FETCH_FAILED))
     except OSError:
         return {"ok": False, "error": NO_RECORD}
     finally:
@@ -1043,7 +1080,7 @@ def _window_image(
     # first of the design's, as _map_of took it), in front of the caption.
     placed_by = sheet.picture_sources(design)
     size = window_size(placed_by[0]) if placed_by else None
-    return {
+    answer: dict[str, Any] = {
         "ok": True,
         "handle": handle,
         "synthetic": False,
@@ -1057,6 +1094,12 @@ def _window_image(
         "dates": dates,
         "pictures": [],
     }
+    # No month has a scene with data on this square (r5-a L2): the pane says
+    # one fixed line in place of the empty months. The key is left out
+    # otherwise, so an answer with a picture is as it was.
+    if _no_image(results):
+        answer["no_image"] = True
+    return answer
 
 
 def _write(
@@ -1114,6 +1157,8 @@ def review_image(
     fetch), then the dated pictures, one search per review set and its
     record beside the review's (``review_sets/<key>.imagery.jsonl``). No
     labelling rule and no "what a label is": nothing is labelled here.
+    ``again`` on a failure another try can get past and ``no_image`` when no
+    month has a scene with data on the square, as for a sheet (r5-a L1, L2).
     ``still_on`` is asked again after any wait, as for a sheet.
     """
     try:
@@ -1151,12 +1196,12 @@ def _review_image(
         return {"ok": False, "error": LONG_PERIOD}
     head = _review_header(str(key))
     if not _calls.acquire(timeout=WAIT_SECONDS):  # two picture calls at a time
-        return {"ok": False, "error": TOO_SLOW}
+        return _failed(TOO_SLOW)
     client = s2_fetch.client_factory()
     try:
         lock = _lock_for(real)
         if not lock.acquire(timeout=WAIT_SECONDS):  # one search per review set
-            return {"ok": False, "error": TOO_SLOW}
+            return _failed(TOO_SLOW)
         try:
             if still_on is not None and not still_on():  # switched off meanwhile
                 return _ask_answer(REVIEW_TEST_ASK)
@@ -1172,8 +1217,7 @@ def _review_image(
         fetch = s2_fetch.Fetch(client, s2_fetch.Budget())
         results = s2_fetch.dated(fetch, scenes, box, square)
     except s2_fetch.FetchError as exc:
-        said = _REVIEW_FETCH_SENTENCE.get(exc.kind, REVIEW_FETCH_FAILED)
-        return {"ok": False, "error": said}
+        return _failed(_REVIEW_FETCH_SENTENCE.get(exc.kind, REVIEW_FETCH_FAILED))
     except OSError:
         return {"ok": False, "error": REVIEW_NO_RECORD}
     finally:
@@ -1204,7 +1248,7 @@ def _review_image(
         )
     except OSError:
         return {"ok": False, "error": REVIEW_NO_RECORD}
-    return {
+    answer: dict[str, Any] = {
         "ok": True,
         "rank": rank,
         "synthetic": False,
@@ -1216,6 +1260,9 @@ def _review_image(
         "dates": dates,
         "pictures": [],
     }
+    if _no_image(results):  # as a sheet's square (r5-a L2)
+        answer["no_image"] = True
+    return answer
 
 
 _test_cache: dict[str, Any] = {}
@@ -1268,7 +1315,7 @@ def _public_test_scene(*, review: bool = False) -> dict[str, Any]:
         s2_fetch.parse_moment(TEST_PERIOD[1], end=True),
     )
     if not _calls.acquire(timeout=WAIT_SECONDS):
-        return {"ok": False, "error": TOO_SLOW}
+        return _failed(TOO_SLOW)
     client = s2_fetch.client_factory()
     try:
         scenes = _test_cache.get("scenes")
@@ -1285,7 +1332,7 @@ def _public_test_scene(*, review: bool = False) -> dict[str, Any]:
             said = _REVIEW_FETCH_SENTENCE.get(exc.kind, REVIEW_FETCH_FAILED)
         else:
             said = _FETCH_SENTENCE.get(exc.kind, FETCH_FAILED)
-        return {"ok": False, "error": said}
+        return _failed(said)
     finally:
         client.close()
         _calls.release()

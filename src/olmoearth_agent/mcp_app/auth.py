@@ -346,9 +346,10 @@ class KeyStore:
 
 #: The sign-in page, in OlmoEarth Studio's look (``views/common.js``): the
 #: dark-teal top bar with the wordmark and the AGENT tag, the cream canvas, and
-#: a Studio dialog without its backdrop (cream, 1px border, 4px corners, a
-#: 600 20px title, one 56px outlined field, the contained dark-teal button at
-#: the right). Nothing is loaded from elsewhere (system fonts).
+#: a Studio dialog without its backdrop (white, as the panel's cards since r5-b
+#: J19, r5-c S09; 1px border, 4px corners, a 600 20px title, one 56px outlined
+#: field under its own label, the contained dark-teal button at the right).
+#: Nothing is loaded from elsewhere (system fonts).
 _PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -360,7 +361,7 @@ body {{ margin: 0; min-height: 100vh; background: #faf2e9; color: #0a3235;
 .bar {{ display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #032629;
   box-shadow: 0 2px 4px -1px rgba(0,0,0,.2), 0 4px 5px 0 rgba(0,0,0,.14), 0 1px 10px 0 rgba(0,0,0,.12); }}
 .bar img {{ height: 18px; display: block; }}
-main {{ width: min(480px, calc(100vw - 32px)); margin: 56px auto; background: #faf2e9;
+main {{ width: min(480px, calc(100vw - 32px)); margin: 56px auto; background: #fff;
   border: 1px solid rgba(0,0,0,.12); border-radius: 4px; padding: 0 24px 20px; }}
 h1 {{ font-size: 20px; line-height: 28px; font-weight: 600; margin: 0 -24px 4px; padding: 16px 24px; }}
 p {{ margin: 0 0 12px; color: #105257; }}
@@ -370,6 +371,7 @@ input[type=password] {{ width: 100%; box-sizing: border-box; height: 56px; font:
 input[type=password]:hover {{ border-color: #0a3235; }}
 input[type=password]:focus {{ outline: none; border-color: #0a3235; box-shadow: inset 0 0 0 1px #0a3235; }}
 label {{ display: flex; gap: 8px; align-items: center; margin: 12px 0 16px; color: #105257; }}
+label.field {{ display: block; margin: 0 0 4px; color: #0a3235; font-weight: 600; }}
 input[type=checkbox] {{ accent-color: #105257; width: 16px; height: 16px; }}
 .actions {{ display: flex; justify-content: flex-end; }}
 button {{ font: inherit; font-size: 14px; line-height: 24.5px; font-weight: 500; padding: 6px 16px;
@@ -386,15 +388,21 @@ button:focus-visible {{ outline: 2px solid #0a3235; outline-offset: 2px; }}
 </main></body></html>
 """
 
+#: The sign-in form: what to paste and where Studio makes it, where the key
+#: goes; the key field named by a label of its own, which stays in view once
+#: the key is pasted (the placeholder does not; r5-c S09).
+#: WORDING: r5c S09 (the first paragraph, the field's label and placeholder)
 _FORM = """<h1>Sign in to OlmoEarth Studio</h1>
-<p>Your Studio API key (Studio: profile, API Keys). This page is served by the
-OlmoEarth Agent on this computer; the key goes from this page to it, not
-through Claude, and is checked with Studio before it is used.</p>
+<p>Paste your Studio API key below. To make one, open your profile in Studio,
+then API Keys. This page runs on this computer: the key goes from here to the
+OlmoEarth Agent, not through Claude, and is checked with Studio before it is
+used.</p>
 <p>A read-only key is enough to check maps; to save an area or run a model,
 use a key that can write.</p>
 {error}
 <form method="post" autocomplete="off">
-<input type="password" name="api_key" placeholder="Studio API key" aria-label="Studio API key"
+<label for="api-key" class="field">Studio API key</label>
+<input type="password" id="api-key" name="api_key" placeholder="Paste the key here"
   aria-describedby="key-error" required autofocus spellcheck="false">
 <label><input type="checkbox" name="remember" value="1" checked> Remember on this computer
 (a file only you can read)</label>

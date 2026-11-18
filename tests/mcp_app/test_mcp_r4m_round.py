@@ -92,21 +92,19 @@ CLASS_MAP_SECOND = (
     "records from the map's dates; the app shows no pictures of points."
 )
 
-#: M5: the box's label beside the kelp rule.
+#: M5: the box's label beside the kelp rule, as r5-b J18 shortens it (the map
+#: maker's meaning kept; what an empty box does is a small line under the box).
 RULE_OWN = (
-    "Not a kelp map? Write here what counts as Present and as Absent, in the map "
-    "maker's meaning if you know it; each square is judged by it. Left empty, the "
-    "kelp rule above is used."
+    "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
 )
 
 #: M6: what every sheet face says after its instruction.
 HIDDEN = "The map's answer is hidden: answer without looking at the map."
 
 #: M8: the cloud line (reworded after review: only the case the rule leaves
-#: open), the pane's fold's summary and first line.
-CLOUD_LINE = (
-    "No clear date of this square (cloud over it on every date): press Cannot tell."
-)
+#: open; r5-d R02: as a case, not a fact about the square shown), the pane's
+#: fold's summary and first line.
+CLOUD_LINE = "If cloud covers the square on every date, press Cannot tell."
 CLOUD_FOLD = "Scene cloud of each date"
 CLOUD_WHOLE = "Scene cloud is for the whole satellite image, not this square."
 
@@ -453,17 +451,16 @@ def test_m4_the_models_note_says_it_before_the_count() -> None:
 
 def test_m5_the_rule_box_says_what_to_write() -> None:
     """The box's label in its new words, C5's tag kept under M5's; the box
-    shows no grey hint (the placeholder is the gate's ask's alone), so there
-    is no hint to change."""
+    shows no grey hint. r5-b J18 shortens the label and sets no placeholder
+    anywhere: the gate's example is a small line under its box, and under
+    this box a small line says what an empty box does."""
     page = _read("check.html")
     assert "// WORDING: r4m M5\n// WORDING: r4h C5\nconst RULE_OWN = " in page
     assert _concat(_after(page, "const RULE_OWN = ", ";\n"), {}) == RULE_OWN
     assert "Write its own rule here" not in page
     gate = _between(page, "  function fillGate() {", "\n  }\n")
-    assert (
-        "if (mode === 'ask') ruleInput.setAttribute('placeholder', RULE_HINT); else "
-        "ruleInput.removeAttribute('placeholder');" in gate
-    )
+    assert "placeholder" not in gate
+    assert "gate.replaceChildren(...ruleLines(), boxed(RULE_OWN, RULE_EMPTY));" in gate
     assert "What the map's makers count as Present" not in page
 
 
@@ -473,7 +470,9 @@ def test_m5_the_rule_box_says_what_to_write() -> None:
 def test_m6_every_sheet_face_says_not_to_look_at_the_map() -> None:
     """what, whatBare and whatPlaced, for squares and for points, each with
     its WORDING line; the old sentence ends nowhere with a stop. The
-    right-or-wrong face has no such line: it shows the map's class."""
+    right-or-wrong face has no such line: it shows the map's class. r5-b J11
+    gave whatBare (no pictures, no places) other words, which keep "without
+    looking at the map"."""
     editor = _editor()
     assert "what: wrongFace ? null : picturesPossible ? W.what : whatBare," in editor
     for unit in ("square", "point"):
@@ -481,8 +480,11 @@ def test_m6_every_sheet_face_says_not_to_look_at_the_map() -> None:
         assert _said("what", unit) == (
             f"For each {one}, say what you see in the satellite pictures. {HIDDEN}"
         )
+        # r5-b J11: a sheet with no pictures and no places says it cannot
+        # show where a square is; it still says not to look at the map.
         bare = _said("whatBare", unit)
-        assert bare == f"For each {one}, say what is there. {HIDDEN}"
+        assert bare.startswith("This sheet has no pictures and no places, so it")
+        assert f"of each {one}, without looking at the map; " in bare
         assert _said("whatPlaced", unit) == (
             f"This sheet has no pictures. See where each {one} is, then say what was "
             f"there from your own imagery or records. {HIDDEN}"
@@ -490,7 +492,7 @@ def test_m6_every_sheet_face_says_not_to_look_at_the_map() -> None:
     lines = _words().split("\n")
     for key, tag in (
         ("what", "// WORDING: r4m M6"),
-        ("whatBare", "// WORDING: r4m M6"),
+        ("whatBare", "// WORDING: r4m M6; r5b J11"),
         ("whatPlaced", "// WORDING: r4h S3 E/sheet-1; r4m M6"),
     ):
         (at,) = [i for i, line in enumerate(lines) if line.startswith(f"    {key}: ")]
@@ -557,7 +559,7 @@ def test_m8_the_pane_shows_the_rules_absent_half_and_the_cloud_line() -> None:
     where the page copy has no rule; the sheet's own rule block is the next
     test's."""
     editor = _editor()
-    pane = _between(editor, "    let ruleLines = null;", "    } else if (!pageRule) {")
+    pane = _between(editor, "    let ruleLines = null;", "\n    const dated = ")
     for text in (
         "const [present, absent] = ruleHalves(answer.reading_rule);",
         "'Rule: ' + present",
@@ -596,7 +598,7 @@ def test_m8_the_rule_block_says_the_cloud_line_on_a_face_with_cannot_tell() -> N
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     assert _in_order(
         block,
-        "'Rule: ' + pageRule",
+        "OE.el('strong', {}, 'Rule: '), pageRule),",
         "data.rule_scope) : null,",
         "    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)\n"
         "      : typeof data.rule_limit === 'string' && data.rule_limit ? ",

@@ -37,10 +37,11 @@ from olmoearth_agent.analysis.review_set import MUST_STATE_STUDIO_FILES
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.types import ToolCall
 from olmoearth_agent.studio.client import StudioClient, StudioConfig
-from olmoearth_agent.tools import scores_file, studio_scores
+from olmoearth_agent.tools import inferencex, scores_file, studio_scores
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.certificate import STUDIO_COPY_NOTE, build_certificate_tools
 from olmoearth_agent.tools.estimation import (
+    CERTIFICATE_TOO_LARGE,
     SEED_FROM_STUDIO_RASTER_NOTE,
     build_estimation_tools,
 )
@@ -1154,9 +1155,13 @@ async def test_a_zone_over_the_value_cap_is_refused_before_it_is_decoded(
     httpx_mock: HTTPXMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MAX_ENTRY_BYTES was computed at import, so the entry cap does not trip
-    first."""
+    """The value cap is the strip cap since round r5-a (K1): a zone over
+    ``MAX_VALUES`` is read in strips (the tests at the end of this file),
+    and one over ``MAX_STRIP_VALUES`` is refused, in the words the refusal
+    had. MAX_ENTRY_BYTES was computed at import, so the entry cap does not
+    trip first."""
     monkeypatch.setattr(studio_scores.scores_file, "MAX_VALUES", 100)
+    monkeypatch.setattr(studio_scores.scores_file, "MAX_STRIP_VALUES", 100)
     entries = _topk_files(tmp_path, ("result_epsg32610_0_native.tif", _topk_bands(19)))
     await _refused(
         httpx_mock,
@@ -1512,3 +1517,416 @@ def test_only_a_studio_files_manifest_changes_the_provenance() -> None:
     assert "top-k softmax scores" in scores_file.STUDIO_PROVENANCE
     assert "full model output" not in scores_file.STUDIO_PROVENANCE
     assert scores_file.studio_notes({}) == {}
+
+
+# --------------------------------------------------------------------------- a zone over the limit, in strips (r5-a K1)
+
+#: Limits small enough that the wide zones below are over ``MAX_VALUES`` and
+#: are counted, written and pooled four rows a strip.
+STRIP_MAX_VALUES = 1000
+STRIP_BLOCK_VALUES = 8800
+
+#: The same for the narrow zones (600 and 300 pixels wide): four rows a strip
+#: before a write is rounded to whole blocks of the raster written.
+NARROW_BLOCK_VALUES = 2400
+
+#: The four zones decoded whole and in strips: two wide ones, whose scores
+#: raster GDAL writes one row to a block, and two narrow ones, whose blocks
+#: hold several rows.
+STRIP_KINDS = ["unit", "topk", "narrow_unit", "narrow_topk"]
+
+#: The wide zones' native file.
+WIDE = "result_epsg32616_0_native.tif"
+
+#: The keys of a zone's pooled block that hold the scores raster's sha256,
+#: or a name or sentence made from it.
+_DIGEST_KEYS = ("raster_check", "model_and_raster", "scores_file")
+
+
+def _wide_unit(height: int = 12, width: int = 2100) -> Any:
+    """One float32 band of a [0, 1] score, 2100 pixels wide unless told.
+
+    At 2100 pixels GDAL writes the scores raster one row to a block, so a
+    write in strips is several writes; at 600 (the narrow kind) a block holds
+    several rows, and a strip written must be whole blocks
+    (``studio_scores._strips``). Two pixels at -0.0147 in the first strip of
+    four rows and three at 1.0070 in the second and third; an invalid block
+    of two windows; the last row no-data (-1.0).
+    """
+    band = np.random.default_rng(21).uniform(0.05, 0.95, (1, height, width))
+    band = band.astype(np.float32)
+    band[0, 0, :2] = -0.0147
+    band[0, 5, 10] = 1.0070
+    band[0, 9, 11:13] = 1.0070
+    band[0, 4:8, :8] = -1.0
+    band[0, height - 1, :] = -1.0
+    return band
+
+
+def _wide_topk(seed: int, height: int = 12, width: int = 1100) -> Any:
+    """The four uint8 bands of a two-class top-2 zone, 1100 pixels wide unless
+    told (300 for the narrow kind, whose scores raster has blocks of several
+    rows).
+
+    As :func:`_topk_bands` fills them (raw rank-1 plus rank-2 scores of 254
+    but on one pixel; a rank-1 score of 255; row 2 invalid with values in
+    every other band), with an invalid block in the last strip of four rows.
+    """
+    rng = np.random.default_rng(seed)
+    cls1 = rng.integers(0, 2, (height, width)).astype(np.uint8)
+    raw1 = rng.integers(127, 254, (height, width)).astype(np.uint8)
+    raw1[0, :4] = 254
+    raw1[1, 0] = 255
+    raw2 = np.where(raw1 == 255, 0, 254 - raw1.astype(np.int16)).astype(np.uint8)
+    cls2 = (1 - cls1).astype(np.uint8)
+    cls1[2, :] = 255
+    raw1[2, :], cls2[2, :], raw2[2, :] = 200, 7, 54
+    cls1[8:, :6] = 255
+    return np.stack([cls1, raw1, cls2, raw2])
+
+
+def _wide_zone(
+    tmp_path: Path, kind: str
+) -> tuple[dict[str, Any], bytes, dict[str, Any]]:
+    """A zone's record, zip and the tool's arguments, by ``kind``
+    (:data:`STRIP_KINDS`: wide, or narrow with ``narrow_`` before it)."""
+    narrow = kind.startswith("narrow")
+    if kind.endswith("unit"):
+        band = _wide_unit(width=600) if narrow else _wide_unit()
+        native = _tif(tmp_path / "wide_unit.tif", band, -1.0, "EPSG:32616")
+        zipped = _zip({f"{UNIT_FOLDER}/{WIDE}": native})
+        clipped = {"result_id": UNIT_RID, "clip_out_of_range": True}
+        return _unit_record(), zipped, clipped
+    bands = _wide_topk(31, width=300) if narrow else _wide_topk(31)
+    entries = _topk_files(tmp_path, (WIDE, bands))
+    return _topk_record(), _zip(entries), {"result_id": RID}
+
+
+def _zone_files(result: dict[str, Any]) -> dict[str, Any]:
+    """What a one-zone result wrote: its raster's values, grid and block
+    height (the rows GDAL put in one block), the raster file's sha256, its
+    manifest and its scores file's bytes."""
+    (zone,) = result["zones"]
+    run = Path(zone["run_dir"])
+    with rasterio.open(run / "scores.tif") as src:
+        raster = {
+            "values": src.read(),
+            "dtypes": src.dtypes,
+            "crs": str(src.crs),
+            "transform": tuple(src.transform),
+            "nodata": src.nodata,
+            "names": src.descriptions,
+            "compression": src.compression,
+            "block_rows": int(src.block_shapes[0][0]),
+        }
+    return {
+        "raster": raster,
+        "sha256": hashlib.sha256((run / "scores.tif").read_bytes()).hexdigest(),
+        "manifest": _manifest(zone["run_dir"]),
+        "scores": Path(zone["scores_path"]).read_bytes(),
+    }
+
+
+def _but_the_raster_digest(scores: bytes) -> dict[str, Any]:
+    """A scores file's payload without its raster's sha256."""
+    payload: dict[str, Any] = json.loads(scores)
+    payload["raster"] = {k: v for k, v in payload["raster"].items() if k != "sha256"}
+    return payload
+
+
+async def _decoded_both_ways(
+    kind: str,
+    tmp_path: Path,
+    root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """A zone decoded whole, then, the zone removed, in strips.
+
+    ``(the whole decode's result, its files, the strip decode's result, its
+    files)``. The second call runs with the limits set small: it must go
+    through the strip reader to count (three strips of four rows) and again
+    to write (at least two strips), and never through a whole decode. Each
+    strip written starts on a block of the raster written and, but for the
+    last, is whole blocks of it: a wide zone's block is one row, a narrow
+    zone's several (read from the file written, so another GDAL default
+    shows here), which is where ``studio_scores._strips`` rounds a strip.
+    """
+    record, zipped, args = _wide_zone(tmp_path, kind)
+    _mock(httpx_mock, record, zipped, reusable=True)
+    whole = await _ok("olmoearth_scores_from_studio", args)
+    whole_files = _zone_files(whole)
+    shutil.rmtree(root / "studio_results")
+    reads: list[tuple[int, int]] = []
+    reader = "_unit_strip" if kind.endswith("unit") else "_topk_strip"
+    real = getattr(studio_scores, reader)
+    narrow = kind.startswith("narrow")
+
+    def strip_spy(*given: Any) -> Any:
+        """The strip reader, each read noted as ``(first row, rows)``."""
+        reads.append((int(given[-2]), int(given[-1])))
+        return real(*given)
+
+    def never(*_given: Any) -> Any:
+        """A whole decode, which a zone over the limit must not reach."""
+        raise AssertionError("the zone was decoded whole")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(scores_file, "MAX_VALUES", STRIP_MAX_VALUES)
+        patched.setattr(
+            scores_file,
+            "BLOCK_VALUES",
+            NARROW_BLOCK_VALUES if narrow else STRIP_BLOCK_VALUES,
+        )
+        patched.setattr(studio_scores, reader, strip_spy)
+        patched.setattr(studio_scores, "decode_unit", never)
+        patched.setattr(studio_scores, "decode_topk", never)
+        strips = await _ok("olmoearth_scores_from_studio", args)
+    assert len(reads) >= 5, reads
+    strips_files = _zone_files(strips)
+    block = strips_files["raster"]["block_rows"]
+    assert (block > 1) is narrow, block
+    assert reads[:3] == [(0, 4), (4, 4), (8, 4)], reads
+    written = reads[3:]
+    assert len(written) > 1 and sum(rows for _, rows in written) == 12, reads
+    assert all(top % block == 0 for top, _ in written), (block, reads)
+    assert all(rows % block == 0 for _, rows in written[:-1]), (block, reads)
+    return whole, whole_files, strips, strips_files
+
+
+def test_a_strip_written_is_whole_blocks_of_the_raster(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_strips`` gives full-width strips of about ``BLOCK_VALUES`` values;
+    with a block height (the rows GDAL puts in one block of the raster
+    written) a strip is rounded down to whole blocks, and is at least one
+    block when a block is taller than the strip would be. The count pass
+    passes no block height. Every strip starts on a block, and the strips
+    cover each row once."""
+    strips = studio_scores._strips
+    monkeypatch.setattr(scores_file, "BLOCK_VALUES", 2400)
+    assert list(strips(12, 600, 1)) == [(0, 4), (4, 4), (8, 4)]
+    assert list(strips(12, 600, 1, 3)) == [(0, 3), (3, 3), (6, 3), (9, 3)]
+    assert list(strips(14, 600, 1, 3))[-1] == (12, 2)
+    assert list(strips(12, 300, 2, 3)) == [(0, 3), (3, 3), (6, 3), (9, 3)]
+    monkeypatch.setattr(scores_file, "BLOCK_VALUES", 600)
+    assert list(strips(12, 600, 1, 5)) == [(0, 5), (5, 5), (10, 2)]
+    for values, height, block in ((2400, 14, 3), (600, 12, 5), (2400, 12, 1)):
+        monkeypatch.setattr(scores_file, "BLOCK_VALUES", values)
+        got = list(strips(height, 600, 1, block))
+        assert all(top % block == 0 for top, _ in got), got
+        rows = [row for top, n in got for row in range(top, top + n)]
+        assert rows == list(range(height)), got
+
+
+@needs_extra
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", STRIP_KINDS)
+async def test_a_zone_decoded_in_strips_equals_the_whole_decode(
+    kind: str,
+    tmp_path: Path,
+    _scores_root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A [0, 1] score zone, and a top-k zone, decoded whole and then in
+    strips: the raster's pixels (NaN places too), type, grid, no-data value,
+    band names and compression, the zone's counts, its manifest, its pooled
+    windows and its scores file are equal. Only the fields that hold the
+    raster file's sha256 are left out here: the test below compares the
+    file's bytes."""
+    whole, was, strips, now = await _decoded_both_ways(
+        kind, tmp_path, _scores_root, httpx_mock, monkeypatch
+    )
+    old, new = was["raster"], now["raster"]
+    assert new["values"].dtype == old["values"].dtype == np.float32
+    np.testing.assert_array_equal(new["values"], old["values"])
+    assert np.isnan(old["values"]).any() and np.isfinite(old["values"]).any()
+    for key in ("dtypes", "crs", "transform", "names", "compression", "block_rows"):
+        assert new[key] == old[key], key
+    assert np.isnan(old["nodata"]) and np.isnan(new["nodata"])
+    (zone_was,), (zone_now,) = whole["zones"], strips["zones"]
+    assert (zone_was["reused"], zone_now["reused"]) == (False, False)
+    for key, value in zone_was.items():
+        if key not in ("pooled", "scores_path"):
+            assert zone_now[key] == value, key
+    for key, value in zone_was["pooled"].items():
+        if key not in _DIGEST_KEYS:
+            assert zone_now["pooled"][key] == value, key
+    assert zone_now["pooled"]["n_valid"] > 0
+    for manifest in (was["manifest"], now["manifest"]):
+        manifest["scores"].pop("sha256")
+    assert now["manifest"] == was["manifest"]
+    scores_was = _but_the_raster_digest(was["scores"])
+    assert _but_the_raster_digest(now["scores"]) == scores_was
+    for key in ("kind", "classes", "n_zones", "n_pooled", "must_state", "facts"):
+        assert strips[key] == whole[key], key
+
+
+@needs_extra
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", STRIP_KINDS)
+async def test_a_zone_written_in_strips_is_the_whole_writes_file_byte_for_byte(
+    kind: str,
+    tmp_path: Path,
+    _scores_root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The raster written strip by strip is, byte for byte, the file one
+    write of the whole array gives: the same sha256, so the same scores file
+    and the same result. If this test fails while the one above passes, GDAL
+    lays a GeoTIFF written in strips out differently (the round's risk 2):
+    the values are equal and only the digest fields differ."""
+    whole, was, strips, now = await _decoded_both_ways(
+        kind, tmp_path, _scores_root, httpx_mock, monkeypatch
+    )
+    assert now["sha256"] == was["sha256"]
+    assert now["scores"] == was["scores"]
+    assert strips == whole
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_a_zone_read_in_strips_takes_no_certificate_plan(
+    tmp_path: Path,
+    _scores_root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A certificate plan (``seed_from_map``) has the package read the raster
+    whole, in a child process: on a zone whose raster holds more than
+    ``scores_file.MAX_VALUES`` values (one read in strips) it is refused in
+    plain words before a working folder is made or the package's command
+    line starts, and the result's ``next_step`` names the zone instead of
+    advising that plan. A plain random plan of the same zone is drawn. With
+    no such zone the next step is word for word what it was."""
+    record, zipped, args = _wide_zone(tmp_path, "unit")
+    _mock(httpx_mock, record, zipped, reusable=True)
+    usual = await _ok("olmoearth_scores_from_studio", args)
+    assert usual["next_step"] == (
+        "Pass a zone's scores_path to olmoearth_review_set (which windows to "
+        "check first) or olmoearth_plan_label_sample (how wrong the map is). For "
+        "a certified zone, plan design='random' with seed_from_map, fixed before "
+        f"labelling. {rules.POSSIBLE_NOT_CERTAIN} Each UTM zone is its own map "
+        "and its own sample."
+    )
+    shutil.rmtree(_scores_root / "studio_results")
+    started: list[Any] = []
+
+    async def never(*given: Any, **_named: Any) -> Any:
+        """The package's command line, which a refused plan must not start."""
+        started.append(given)
+        raise AssertionError("the package's command line was started")
+
+    monkeypatch.setattr(scores_file, "MAX_VALUES", STRIP_MAX_VALUES)
+    monkeypatch.setattr(scores_file, "BLOCK_VALUES", STRIP_BLOCK_VALUES)
+    monkeypatch.setattr(studio_scores, "CERTIFICATE_MAX_VALUES", STRIP_MAX_VALUES)
+    monkeypatch.setattr(inferencex, "run_cli_async", never)
+    got = await _ok("olmoearth_scores_from_studio", args)
+    (zone,) = got["zones"]
+    assert "with seed_from_map" not in got["next_step"]
+    assert (
+        "For a certified zone, plan design='random', fixed before labelling; "
+        "seed_from_map (for a certificate file) is not taken on a zone of more "
+        f"than 1,000 values: {WIDE}. {rules.POSSIBLE_NOT_CERTAIN}"
+    ) in got["next_step"]
+    plan_args = {"scores_path": zone["scores_path"], "budget": 20, "design": "random"}
+    refused = await _call(
+        "olmoearth_plan_label_sample",
+        {**plan_args, "seed_from_map": True, "alpha": 0.2},
+    )
+    assert refused["ok"] is False
+    assert refused["error"] == "ValueError: " + CERTIFICATE_TOO_LARGE.format(
+        values=12 * 2100, limit=STRIP_MAX_VALUES
+    )
+    assert "25,200 values" in refused["error"] and "1,000" in refused["error"]
+    assert started == []
+    assert not (_scores_root / "certificates").exists()
+    plan = await _ok("olmoearth_plan_label_sample", {**plan_args, "seed": 3})
+    design = json.loads(Path(plan["design_path"]).read_text(encoding="utf-8"))
+    assert len(design["sample"]["indices"]) == 20
+    assert started == []
+    assert not (_scores_root / "certificates").exists()
+
+
+async def _refused_both_ways(
+    httpx_mock: HTTPXMock,
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: dict[str, Any],
+    zipped: bytes,
+    args: dict[str, Any],
+    text: str,
+) -> None:
+    """A zone refused by the whole decode, then by the decode in strips: the
+    same error word for word, holding ``text``, and no zone written."""
+    _mock(httpx_mock, record, zipped)
+    whole = await _call("olmoearth_scores_from_studio", args)
+    with monkeypatch.context() as patched:
+        patched.setattr(scores_file, "MAX_VALUES", STRIP_MAX_VALUES)
+        patched.setattr(scores_file, "BLOCK_VALUES", STRIP_BLOCK_VALUES)
+        _mock(httpx_mock, record, zipped)
+        strips = await _call("olmoearth_scores_from_studio", args)
+    assert whole["ok"] is False and strips["ok"] is False
+    assert text in whole["error"], whole["error"]
+    assert strips["error"] == whole["error"]
+    assert not (root / "studio_results").exists()
+
+
+@needs_extra
+@pytest.mark.asyncio
+async def test_strip_refusals_use_the_whole_files_counts(
+    tmp_path: Path,
+    _scores_root: Path,
+    httpx_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each refusal of a whole decode, from a zone read in strips whose
+    faults lie in different strips: the counts are the whole file's, the
+    words the whole decode's, and where two kinds of fault are present the
+    one the whole decode names first is named."""
+    unit = _tif(tmp_path / "unit.tif", _wide_unit(), -1.0, "EPSG:32616")
+    await _refused_both_ways(
+        httpx_mock,
+        _scores_root,
+        monkeypatch,
+        _unit_record(),
+        _zip({f"{UNIT_FOLDER}/{WIDE}": unit}),
+        {"result_id": UNIT_RID},
+        "2 valid pixels lie below 0 and 3 above 1",
+    )
+    stray = _wide_topk(32)
+    stray[0, 0, 50], stray[0, 9, 50] = 2, 3
+    same = _wide_topk(33)
+    same[2, 0, 60], same[2, 10, 60] = same[0, 0, 60], same[0, 10, 60]
+    above = _wide_topk(34)
+    above[3, 1, 70] = int(above[1, 1, 70]) + 1
+    above[3, 9, 70] = int(above[1, 9, 70]) + 1
+    empty = _wide_topk(35)
+    empty[0] = 255
+    both = _wide_topk(36)
+    both[0, 9, 50] = 2
+    both[3, 1, 70] = int(both[1, 1, 70]) + 1
+    cases = (
+        (
+            stray,
+            "rank 1's class band holds [2, 3] on valid pixels; the result declares "
+            "the classes [0, 1]",
+        ),
+        (same, "ranks 1 and 2 name one class on 2 valid pixels"),
+        (above, "rank 2's score is above rank 1's on 2 valid pixels"),
+        (empty, "has no valid pixel: band 1 is no-data everywhere"),
+        (both, "rank 1's class band holds [2] on valid pixels"),
+    )
+    for bands, text in cases:
+        entries = _topk_files(tmp_path, (WIDE, bands))
+        await _refused_both_ways(
+            httpx_mock,
+            _scores_root,
+            monkeypatch,
+            _topk_record(),
+            _zip(entries),
+            {"result_id": RID},
+            text,
+        )

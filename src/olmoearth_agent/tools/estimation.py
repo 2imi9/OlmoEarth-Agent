@@ -161,7 +161,7 @@ from olmoearth_agent.analysis.review_set import (
 from olmoearth_agent.llm.types import ToolSpec
 from olmoearth_agent.reporting import figures
 from olmoearth_agent.security.paths import safe_path
-from olmoearth_agent.tools import inferencex
+from olmoearth_agent.tools import inferencex, scores_file
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.compare import (
     PAIR_MAX_GRID,
@@ -347,6 +347,20 @@ LABELS_FIXED = (
     "a certificate rests on the labels first given for its sample: labels "
     "changed after a result was seen are a second test, which neither "
     "certify's guarantee nor a certificate covers"
+)
+
+#: The refusal of a certificate plan (``seed_from_map``) on a zone whose
+#: raster holds more than ``scores_file.MAX_VALUES`` values (one read in
+#: strips from a Studio result's files, r5-a K1): ``oe-inferencex sample
+#: --seed-from-map`` reads the raster whole, in a child process with no
+#: memory limit. A random plan with a seed and ``olmoearth_certify_zone``
+#: read no raster. ``{values}`` and ``{limit}`` are whole numbers.
+# WORDING: r5a
+CERTIFICATE_TOO_LARGE = (
+    "this zone is too large for a certificate plan: its raster holds {values:,} "
+    "values and seed_from_map reads the raster whole, at most {limit:,}. Plan "
+    "design='random' with a seed instead: olmoearth_certify_zone can still "
+    "certify a zone of it, with no certificate file"
 )
 
 #: Said with a plan drawn with ``seed_from_map``: what its seed shows.
@@ -1950,13 +1964,37 @@ def _draw(
     return sample
 
 
+def _raster_values(shape: Any) -> int:
+    """Values (channels x pixels) of the raster shape a scores file records.
+
+    0 for a shape that is missing or is not a list of whole numbers: a scores
+    file that records none was written from a raster at or under
+    ``scores_file.MAX_VALUES``, the only kind read before r5-a K1.
+
+    Examples
+    --------
+    >>> _raster_values([3, 100, 200]), _raster_values([100, 200])
+    (60000, 20000)
+    >>> _raster_values(None), _raster_values([]), _raster_values(["3", 4])
+    (0, 0, 0)
+    """
+    if not isinstance(shape, list) or not shape:
+        return 0
+    if not all(isinstance(s, int) and not isinstance(s, bool) for s in shape):
+        return 0
+    return int(math.prod(shape))
+
+
 def _scores_raster(pop: Population) -> tuple[str, dict[str, Any]]:
     """The raster a direct run's scores file was read from, and the file's fields.
 
     A sample a certificate rests on is drawn from the map itself, so it needs
     the scores file ``olmoearth_scores_from_file`` writes, which records its
     raster's path, read over every channel: a certificate is of the map as
-    the package reads it.
+    the package reads it. The package reads that raster whole, so a zone
+    whose raster holds more than ``scores_file.MAX_VALUES`` values (one read
+    in strips, r5-a K1) is refused here, before any folder is made or the
+    package's command line starts (:data:`CERTIFICATE_TOO_LARGE`).
     """
     path = pop.source.get("scores_path")
     meta = load_scores_file(str(path)).meta if path else {}
@@ -1984,6 +2022,12 @@ def _scores_raster(pop: Population) -> tuple[str, dict[str, Any]]:
             "again with include_fill_class=true and plan on that file"
         )
         raise ValueError(msg)
+    # The limit is read from the module at the call, as the readers read it.
+    values = _raster_values(raster.get("shape"))
+    if values > scores_file.MAX_VALUES:
+        raise ValueError(
+            CERTIFICATE_TOO_LARGE.format(values=values, limit=scores_file.MAX_VALUES)
+        )
     real = os.path.realpath(str(raster["path"]))
     roots = read_roots()
     if not any(os.path.commonpath([r, real]) == r for r in roots):

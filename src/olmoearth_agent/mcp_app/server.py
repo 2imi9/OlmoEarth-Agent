@@ -113,6 +113,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import decimal
 import json
 import logging
 import math
@@ -245,17 +246,73 @@ RULE_9 = (
     "you do not know which map the user means."
 )
 
-#: Said to the model first with the projects panel (``olmoearth_load_context``
-#: where panels show): the ids and paths it may tell are what "this one"
-#: means. The panel tells each sheet in progress by its file name (data, as
-#: every context update is) and its ``labels_csv_path``. Then
-#: :data:`RULE_9`.
-PROJECTS_PANEL_NOTE = (
+#: The projects panel's buttons as the panel names them (``studio.html``:
+#: ``SHOW``'s closed label, ``JOBS.check``, ``TELL``'s label on a project,
+#: the compare button under an open project's predictions, ``MODELS_FOLD``
+#: and a model row's run button), for :data:`PROJECTS_PRESS_NOTE`; a test
+#: holds them to the page.
+PANEL_SHOW_MAPS = "Show its maps"
+PANEL_CHECK = "Check how wrong it is"
+PANEL_TELL_PROJECT = "Tell Claude: this project"
+PANEL_WHICH = "Which is more accurate?"
+PANEL_NEW_MAP = "Make a new map"
+PANEL_RUN = "Run on an area"
+
+#: Said to the model with the projects panel, before the rest of
+#: :data:`PROJECTS_PANEL_NOTE` (round r5-a, V3): the user picks by pressing;
+#: which finished maps have a Check button (every one but a detections or
+#: embeddings one, as ``OE.checkOffered`` has it); only a press opens a
+#: project (the Tell button's press opens it too); the one line to answer
+#: with when the user asks what to press or sends a project, by the job they
+#: are on (check a map, compare two, make a new map), and in which projects
+#: the compare and new-map presses show; and the panel's rows already say
+#: what each map outputs, so the predictions are not listed again in the
+#: chat. Where the panel shows, that comes before the first half of
+#: :data:`RULE_9`, kept whole after it ("say what each one outputs": only
+#: when Claude does list them); the rule's other half, never to call one
+#: recommended, holds always. Which of the two a model follows is measured by
+#: no test here. Tool output, sent only where panels show: no part of the
+#: instructions some clients cut short.
+# WORDING: r5a V3
+PROJECTS_PRESS_NOTE = (
+    "In the projects panel the user picks by pressing, not by typing. "
+    f"'{PANEL_SHOW_MAPS}' on a project opens it; each finished map there, "
+    "except a detections or embeddings one (its row says so), has a "
+    f"'{PANEL_CHECK}' button that sends you the whole request with its ids. "
+    "Only the user's press opens a project: you cannot open one from the chat. "
+    f"A press on '{PANEL_TELL_PROJECT}' sends you that project and opens it in "
+    "the panel as well. When the user asks what to press, or names or sends a "
+    "project while picking, answer in one line with the press for their job: "
+    f"to check a map, '{PANEL_SHOW_MAPS}' on that project if it is not open "
+    f"yet, then '{PANEL_CHECK}' beside the map; to compare two maps, tick two "
+    f"finished maps of one open project, then '{PANEL_WHICH}' under the list; "
+    f"to make a new map, open '{PANEL_NEW_MAP}' in an open project and press "
+    f"'{PANEL_RUN}' beside the model. The boxes to tick and '{PANEL_WHICH}' "
+    "show only in a project with two or more finished predictions, and "
+    f"'{PANEL_NEW_MAP}' only in a project whose predictions name a model. The "
+    "rows already say what each map outputs and whether the check can run, so "
+    "do not list the project's predictions in the chat or ask the user to type "
+    "an id, unless they ask for a list or say no panel shows. Where the panel "
+    "shows, its rows meet the rule below on saying what each prediction "
+    "outputs, so this comes first: say it yourself only when you do list them. "
+    "The rest of that rule holds always."
+)
+
+#: What the projects panel may tell silently (``olmoearth_load_context`` where
+#: panels show): the ids and paths it may tell are what "this one" means. The
+#: panel tells each sheet in progress by its file name (data, as every context
+#: update is) and its ``labels_csv_path``. Then :data:`RULE_9`.
+_PROJECTS_SILENT_NOTE = (
     "The projects panel may tell you silently which project is open and which "
     "predictions are picked to compare, by id, and which label sheets are in "
     "progress, each by its file name and labels_csv_path; when the user says "
     "'this one', use those ids or that labels_csv_path. " + RULE_9 + " " + CONTEXT_RULE
 )
+
+#: Said to the model first with the projects panel (``olmoearth_load_context``
+#: where panels show): what to press (:data:`PROJECTS_PRESS_NOTE`), then what
+#: the panel may tell silently, :data:`RULE_9` and :data:`CONTEXT_RULE`.
+PROJECTS_PANEL_NOTE = PROJECTS_PRESS_NOTE + " " + _PROJECTS_SILENT_NOTE
 
 #: A plan's result keys the model's copy leaves out where panels show and the
 #: plan has a sheet: the listed windows, each with its index, row, column,
@@ -921,6 +978,112 @@ CHECK_RESOLVED = (
 #: The progress words of a drawn zone whose sheet cannot be read.
 CHECK_SHEET_UNREAD = "its sheet cannot be read"
 
+#: The kind of a result that is one 0-to-1 score (``studio_scores.UNIT``).
+CHECK_UNIT_KIND = "unit_score"
+
+#: A 0-to-1 score map's cut, as the Check card says it (round r5-a, K3): one
+#: read-only line on its face, right over the rule gate, the same line among
+#: its Details' notes and first in the model's ``must_state``. The pooling
+#: counts a pixel as the named class strictly above 0.5 (the package's
+#: one-band rule, ``p > 0.5``, on the raster the Studio files tool writes), so
+#: the words say "above 0.5", never "0.5 or more". ``{name}`` is the score's
+#: class name (Studio's text, quoted as it is). One line of two sentences,
+#: 29 words and the name: the app adds it itself, past a tool's own
+#: ``must_state`` limits, as it adds ``imagery.LABEL_MUST_STATE``.
+# WORDING: r5a K3
+CHECK_CUT_LINE = (
+    "This map gives each pixel a score from 0 to 1, not a yes or no. This check "
+    'counts a pixel as "{name}" when its score is above 0.5.'
+)
+
+#: In the Check card's Details, per part (round r5-a, K2): how many pixels of
+#: a 0-to-1 score lay outside 0 to 1 and were set to the nearest end, when
+#: any did (the card reads such a map with ``clip_out_of_range``); one pixel,
+#: then ``{n}`` pixels (with thousands separators).
+# WORDING: r5a K2
+CHECK_CLIPPED_ONE = (
+    "1 pixel had a score outside 0 to 1 and was set to the nearest end, 0 or 1."
+)
+# WORDING: r5a K2
+CHECK_CLIPPED_MANY = (
+    "{n} pixels had a score outside 0 to 1 and were set to the nearest end, 0 or 1."
+)
+
+#: How far a 0-to-1 score's values may run and still be clipped by the Check
+#: card (round r5-a, K2): above the first of these and below the second, a
+#: whole unit past either end of 0 to 1. A score whose values stay between
+#: them is clipped: a model trained on 0 and 1 overshoots (the values
+#: measured on two real results ran from -0.0147 to 1.0070 and from -0.0865
+#: to 1.781, about 1 pixel in 100 outside 0 to 1). Values at or past them
+#: are not a 0-to-1 score (a no-data fill of -1 or 255 the file does not
+#: declare, a 0-to-100 scale, logits), and clipping would count each such
+#: pixel at full confidence, so the card refuses the map
+#: (:data:`CHECK_NOT_A_SCORE`). The bound is on the distance alone, never on
+#: how many pixels lie outside 0 to 1.
+CHECK_SCORE_LOWEST, CHECK_SCORE_HIGHEST = -1.0, 2.0
+
+#: The Check card's refusal of such a map, with the lowest and highest value
+#: of its parts (six significant digits): no exception's name and no place.
+# WORDING: r5a K2
+CHECK_NOT_A_SCORE = (
+    "This map's scores run from {low} to {high}, so it is not read as a score "
+    "from 0 to 1."
+)
+
+#: The Check card's refusal of a map of numbers that is not a 0-to-1 score
+#: (round r5-b, X1): a result that declares one regression field on another
+#: range, which ``olmoearth_scores_from_studio`` refuses in its own words.
+#: The card's face says these two plain lines instead (no tool name, no
+#: "probability to pool", no "threshold"); the model's text keeps the tool's
+#: sentence, which names the tool the model needs. ``{shown}`` is the field as
+#: the card says it: its name and declared range (:data:`CHECK_NUMBER_FIELD`,
+#: the numbers as the tool's error writes them, in plain digits). A field
+#: whose record declares no range (or an end that is no finite number) gets
+#: :data:`CHECK_NUMBER_MAP_BARE`, which makes no claim on its range: the tool
+#: found only that it is not declared ``[0, 1]``.
+# WORDING: r5b X1
+CHECK_NUMBER_MAP = (
+    "This map gives a number at each pixel ({shown}), not classes and not a "
+    "score from 0 to 1. This check works on a map of classes."
+)
+# WORDING: r5b X1
+CHECK_NUMBER_FIELD = '"{name}", from {low} to {high}'
+# WORDING: r5b X1
+CHECK_NUMBER_MAP_BARE = (
+    'This map gives a number at each pixel ("{name}", no range declared), not '
+    "classes. This check works on a map of classes."
+)
+#: The card's second line then: what to tell Claude, and what the check on
+#: such a map is like.
+# WORDING: r5b X1
+CHECK_NUMBER_MAP_NEXT = (
+    "To check it, tell Claude the value from which a pixel counts as a yes. The "
+    "check then asks you about single points, without pictures."
+)
+
+#: How ``studio_scores.files_plan`` starts and ends its refusal of a result
+#: that is neither a class map nor one ``[0, 1]`` score (its last ``raise``);
+#: between the two it lists the regression fields the result declares
+#: (:data:`_NUMBER_FIELD`). ``tests/mcp_app/test_mcp_r5b_check.py`` holds
+#: both against the tool's own error.
+_NUMBER_MAP_START = (
+    "this tool reads a class map with top-k scores or one regression field "
+    "declared [0, 1]; the result declares "
+)
+_NUMBER_MAP_END = (
+    ". A regression band in other units has no probability to pool; to say how "
+    "wrong it is, olmoearth_plan_label_sample plans labels once a threshold "
+    "is given (the value at which the map's decision flips)"
+)
+
+#: One regression field as that refusal lists it: its name as Python writes
+#: a string with no backslash in it (the text between the quotes is then the
+#: name itself), a space, and its declared range ``[low, high]`` or ``none``.
+_NUMBER_FIELD = re.compile(
+    r"""(?:'(?P<single>[^'\\]*)'|"(?P<double>[^"\\]*)") """
+    r"""(?:\[(?P<low>[^\[\],]+), (?P<high>[^\[\],]+)\]|none)"""
+)
+
 #: What ``olmoearth_review_set_from_result``'s description says here after its
 #: own words: before any run, the limits (no recorded experiment supports the
 #: order on a Studio result; a small grid of single pixels), the Check card
@@ -1263,11 +1426,214 @@ def _lines(value: Any) -> list[str]:
     return []
 
 
+#: An exception's name at the start of an error, as the registry writes a
+#: tool's failure (``"ValueError: ..."``, ``f"{type(exc).__name__}: {exc}"``).
+_ERROR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception): ")
+
+#: An ``OSError``'s number (``"[Errno 28] No space left on device"``; a name
+#: lookup's is negative, ``"[Errno -2] ..."``; or, on Windows, a Win32
+#: error's, ``"[WinError 32] ..."``), which a card leaves out (round r5-d,
+#: R11): an OSError's number at the start of the error, after the
+#: exception's name if there is one, when words follow it.
+# WORDING: r5d R11 (what a card's error leaves out)
+_ERRNO = re.compile(r"^\[(?:Errno|WinError) -?\d+\] (?=\S)")
+
+#: A ``KeyError`` as a card shows it (round r5-a, K4): its own text is only
+#: the missing key's repr (``"'labels'"``), no words. ``{key}`` is that repr.
+# WORDING: r5a K4
+MISSING_ENTRY = "the tool did not find an entry it needs ({key})"
+
+
+def _plain_error(error: str) -> str:
+    """An error as a card shows it (round r5-a, K4): without the exception's
+    name at its start (``"ValueError: "``) and without an OSError's number
+    at the start of the error, after the exception's name if there is one,
+    when words follow it (``"[Errno 28] "``, or, on Windows, a Win32
+    error's, ``"[WinError 32] "``; :data:`_ERRNO`, round r5-d R11), the rest
+    as it is; a ``KeyError``, whose rest is only a key's repr, in
+    :data:`MISSING_ENTRY`'s words.
+
+    For the view data only: the model's text keeps the name and the number,
+    and so does a check's stored draw record, whose error
+    ``check.FINAL_ERRORS`` matches by that name to say whether a press may
+    retry.
+    """
+    plain = _ERROR_NAME.sub("", error, count=1)
+    plain = _ERRNO.sub("", plain, count=1)
+    if error.startswith("KeyError: ") and plain.strip():
+        return MISSING_ENTRY.format(key=plain.strip())
+    return plain
+
+
+def _card_error(error: Any) -> Any:
+    """:func:`_plain_error` of an error that is text; anything else (``None``
+    for a result that did not fail) as it is."""
+    return _plain_error(error) if isinstance(error, str) else error
+
+
 def _refusal_words(error: str) -> str:
     """A refusal's own words for a panel: the error without its exception's
-    name (``"ValueError: "``), its first letter a capital."""
-    words = re.sub(r"^[A-Za-z]+(?:Error|Exception): ", "", error.strip())
+    name (``"ValueError: "``) and an OSError's number (round r5-d R11;
+    :func:`_plain_error`), its first letter a capital."""
+    words = _plain_error(error.strip())
     return words[:1].upper() + words[1:]
+
+
+def _check_cut(inner: dict[str, Any]) -> str | None:
+    """The cut line of a 0-to-1 score result (:data:`CHECK_CUT_LINE`, round
+    r5-a K3), naming the score's class as ``olmoearth_scores_from_studio``
+    lists it (class 1 of its ``classes``, else its ``property_name``);
+    ``None`` for any other kind of result, or one that names neither."""
+    if inner.get("kind") != CHECK_UNIT_KIND:
+        return None
+    name: Any = None
+    for entry in inner.get("classes") or []:
+        if isinstance(entry, dict) and entry.get("class") == 1:
+            name = entry.get("label")
+    if not isinstance(name, str) or not name:
+        name = inner.get("property_name")
+    if not isinstance(name, str) or not name:
+        return None
+    return CHECK_CUT_LINE.format(name=name)
+
+
+def _clipped_pixels(entry: Any) -> int:
+    """How many valid pixels of a 0-to-1 score zone lay outside 0 to 1 and
+    were clipped (``olmoearth_scores_from_studio``'s zone entry: ``clipped``
+    with ``below_0_pixels`` and ``above_1_pixels``); 0 when none were, or the
+    entry does not say."""
+    if not isinstance(entry, dict) or entry.get("clipped") is not True:
+        return 0
+    total = 0
+    for key in ("below_0_pixels", "above_1_pixels"):
+        value = entry.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            total += value
+    return total
+
+
+def _clipped_line(pixels: int) -> str | None:
+    """The Details line for ``pixels`` clipped pixels (:data:`CHECK_CLIPPED_ONE`,
+    :data:`CHECK_CLIPPED_MANY`), or ``None`` for none."""
+    if pixels < 1:
+        return None
+    if pixels == 1:
+        return CHECK_CLIPPED_ONE
+    return CHECK_CLIPPED_MANY.format(n=f"{pixels:,}")
+
+
+def _clipped_view(pixels: int) -> dict[str, str]:
+    """A zone's ``clipped`` line for the Check card's view data
+    (:func:`_clipped_line`), as keys to merge into the zone: none for no
+    clipped pixel, so a map inside 0 to 1 gets the zone it got before."""
+    line = _clipped_line(pixels)
+    return {} if line is None else {"clipped": line}
+
+
+def _not_a_score(inner: dict[str, Any]) -> str | None:
+    """The refusal of a 0-to-1 score result whose values run too far outside
+    0 to 1 to be one (:data:`CHECK_NOT_A_SCORE`, round r5-a K2), or ``None``.
+
+    The lowest and highest value over the zones that give a ``values_range``
+    of two finite numbers (``olmoearth_scores_from_studio``'s zone entry)
+    are held against :data:`CHECK_SCORE_LOWEST` and
+    :data:`CHECK_SCORE_HIGHEST` (both must lie strictly between them). A
+    result of another kind, and one whose
+    zones give no such range, is never refused here.
+    """
+    if inner.get("kind") != CHECK_UNIT_KIND:
+        return None
+    lows: list[float] = []
+    highs: list[float] = []
+    for zone in inner.get("zones") or []:
+        span = zone.get("values_range") if isinstance(zone, dict) else None
+        if not isinstance(span, (list, tuple)) or len(span) != 2:
+            continue
+        if not all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+            for v in span
+        ):
+            continue
+        lows.append(float(span[0]))
+        highs.append(float(span[1]))
+    if not lows:
+        return None
+    low, high = min(lows), max(highs)
+    if low > CHECK_SCORE_LOWEST and high < CHECK_SCORE_HIGHEST:
+        return None
+    return CHECK_NOT_A_SCORE.format(low=f"{low:.6g}", high=f"{high:.6g}")
+
+
+#: The most characters an end of a declared range takes on the card's face in
+#: plain digits (:func:`_plain_end`); a longer one keeps the tool's own text.
+_NUMBER_END_MOST = 15
+
+
+def _plain_end(text: str | None) -> str | None:
+    """An end of a declared range as the tool's error writes it (``{:g}``),
+    in plain digits (round r5-b X1: "1e+06" is "1000000", "-1e-07" is
+    "-0.0000001", nothing rounded or added; past :data:`_NUMBER_END_MOST`
+    characters, the tool's own text), or ``None`` when no range is declared
+    or the end is no finite number ("inf", "nan")."""
+    if text is None:
+        return None
+    try:
+        value = decimal.Decimal(text)
+    except decimal.InvalidOperation:
+        return None
+    if not value.is_finite():
+        return None
+    plain = format(value, "f")
+    return plain if len(plain) <= _NUMBER_END_MOST else text
+
+
+def _number_map(error: str) -> dict[str, str | None] | None:
+    """The one regression field of a result the Studio files tool refused as
+    neither a class map nor a 0-to-1 score (round r5-b, X1): ``{"name",
+    "low", "high"}``, the ends as the tool's error writes them in plain
+    digits (:func:`_plain_end`; ``low`` and ``high`` are ``None`` for a
+    field with no declared range, or with an end that is no finite number),
+    or ``None`` for any other error.
+
+    Known by the refusal's fixed start and fixed end (:data:`_NUMBER_MAP_START`,
+    :data:`_NUMBER_MAP_END`), with exactly one field between them
+    (:data:`_NUMBER_FIELD`), so words a property name holds cannot make
+    another error read as this one. A result that declares several regression
+    fields, or none, and a name Python writes with a backslash are not
+    matched: the card then shows the tool's sentence, as before. So is a
+    range the tool's text writes as ``[0, 1]``: the tool refused it, so its
+    true ends are near 0 and 1 but not exactly, and its text does not hold
+    them ("from 0 to 1, not ... a score from 0 to 1" would contradict itself).
+    """
+    plain = _plain_error(error.strip())
+    if not plain.startswith(_NUMBER_MAP_START) or not plain.endswith(_NUMBER_MAP_END):
+        return None
+    listed = plain[len(_NUMBER_MAP_START) : len(plain) - len(_NUMBER_MAP_END)]
+    match = _NUMBER_FIELD.fullmatch(listed)
+    if match is None:
+        return None
+    name = match["single"] if match["single"] is not None else match["double"]
+    if not name:
+        return None
+    low, high = _plain_end(match["low"]), _plain_end(match["high"])
+    if low is None or high is None:
+        return {"name": name, "low": None, "high": None}
+    if (low, high) == ("0", "1"):
+        return None
+    return {"name": name, "low": low, "high": high}
+
+
+def _number_map_words(field: dict[str, str | None]) -> str:
+    """The Check card's first line for a map of numbers (:data:`CHECK_NUMBER_MAP`,
+    round r5-b X1), from the field :func:`_number_map` read: with its declared
+    range (:data:`CHECK_NUMBER_FIELD`), or, when the record declares none,
+    :data:`CHECK_NUMBER_MAP_BARE`, which says no range and does not say it is
+    not a score from 0 to 1 (the tool found only that it is not declared so)."""
+    name, low, high = field["name"], field["low"], field["high"]
+    if low is None or high is None:
+        return CHECK_NUMBER_MAP_BARE.format(name=name)
+    shown = CHECK_NUMBER_FIELD.format(name=name, low=low, high=high)
+    return CHECK_NUMBER_MAP.format(shown=shown)
 
 
 def _resolved_line(resolved: Any) -> str | None:
@@ -1297,7 +1663,11 @@ SAY_RIGHT_EVERY = "{subject} was right on every {unit} you checked."
 SAY_WRONG_EVERY = "{subject} was wrong on every {unit} you checked."
 # WORDING: r4h R1
 SAY_ONE_IN = "{subject} is wrong on about 1 {unit} in {n}."
-# WORDING: r4h R1
+#: Above 0.5, and up to 0.5 where it is nearer the rate than
+#: :data:`SAY_ONE_IN` (round r5-b, J01: 0.41 is "about 4 squares in 10");
+#: beside a 95% range, the nearer of the two phrases that lies inside it,
+#: and when neither does, the headline gives the rate plainly.
+# WORDING: r4h R1; r5b J01 (said up to 0.5 too, where it is the nearer)
 SAY_N_IN_TEN = "{subject} is wrong on about {n} {units} in 10."
 #: From 0.95 up to (not at) 1: true for every rate that would round to 10
 #: in 10, which would read as every square (the peer's item 3, 13 Nov 2026).
@@ -1315,9 +1685,50 @@ SAY_OVER_NINE_FROM = 0.95
 #: reader test's E/est-1, A/F01; the separate "range:" line goes).
 # WORDING: r4h R1
 HEADLINE = "{say}: {rate}, 95% range {range}."
-#: The same with Cannot tell, where the rate is itself a range (the
-#: reader test's B/result-two-ranges): ``{of}`` names the part
-#: (:func:`_of_part`), or nothing.
+#: After :data:`HEADLINE`'s rate when the rate is 0 (round r5-b, J22): the
+#: sentence before it says "right on every square", so the number says what
+#: it counts, "0.0% wrong", and is not read as the share right. The rate and
+#: the range are the estimate's, unchanged.
+# WORDING: r5b J22
+HEADLINE_ZERO_WRONG = " wrong"
+#: The same where the rate is itself two figures and no answer was Cannot
+#: tell (the reader test's B/result-two-ranges; round r5-b, J02): the
+#: everyday form stays, its subject the part (:func:`_subject`); the rate's
+#: own two ends are said "between ... and ...", so "to" is the 95% range's
+#: alone; ``{units}`` is "squares" or "points". With Cannot tell,
+#: :data:`HEADLINE_OR_CANNOT` (round r5-d, R03). Every figure is the
+#: estimate's own, formatted as before.
+# WORDING: r5b J02; r5d R03 (no Cannot tell here)
+HEADLINE_BETWEEN = (
+    "{subject} is wrong on between {low} and {high} of {units}; 95% range {range}."
+)
+#: The same with Cannot tell (round r5-d, R03): the rate's two ends are the
+#: rate with every Cannot tell counted right, ``{low}``, then with every one
+#: counted wrong, ``{high}`` (the package's ``estimate_range``: in
+#: ``oe_inferencex.estimate.valid.whole_map_valid`` a ``?`` window counts
+#: right at the lower end and wrong at the upper), so the sentence says
+#: which is which, and the two ends no longer read as a second range beside
+#: the 95% range (J02's "between 10.0% and 12.5% of squares (2 Cannot
+#: tell)" did). ``{which}`` is :data:`HEADLINE_WHICH_ONE` or
+#: :data:`HEADLINE_WHICH`. Every figure is the estimate's own, formatted as
+#: before.
+# WORDING: r5d R03
+HEADLINE_OR_CANNOT = (
+    "{subject} is wrong on {low} of {units}, or {high} if {which} wrong; 95% "
+    "range {range}."
+)
+#: :data:`HEADLINE_OR_CANNOT`'s ``{which}`` for one Cannot tell answer
+#: (``sheet.CANNOT_TELL``, the sheet's own word).
+# WORDING: r5d R03
+HEADLINE_WHICH_ONE = "the Cannot tell was"
+#: :data:`HEADLINE_OR_CANNOT`'s ``{which}`` for ``{k}`` of them, ``{k}``
+#: written with thousands commas.
+# WORDING: r5d R03
+HEADLINE_WHICH = "the {k} Cannot tell were"
+#: A rate that has no everyday sentence (:func:`say_rate` gave none), plain:
+#: ``{of}`` names the part (:func:`_of_part`), or nothing. Until round r5-b
+#: also the headline with Cannot tell (J02: :data:`HEADLINE_BETWEEN`; since
+#: r5-d R03, :data:`HEADLINE_OR_CANNOT`).
 # WORDING: r4h R4
 HEADLINE_RANGED = "Error rate{of}: {rate_range}, 95% range {range}."
 
@@ -1351,20 +1762,37 @@ def _of_part(part: str | None) -> str:
 
 
 def say_rate(
-    rate: Any, unit: str = sheet.UNIT_SQUARE, part: str | None = None
+    rate: Any,
+    unit: str = sheet.UNIT_SQUARE,
+    part: str | None = None,
+    within: tuple[float, float] | None = None,
 ) -> str | None:
     """An error rate as one everyday sentence, or ``None`` for no rate.
 
     ``None``, NaN, a bool or a rate outside [0, 1]: ``None``. 0 and exactly
     1 say every square was right or wrong (:data:`SAY_RIGHT_EVERY`,
-    :data:`SAY_WRONG_EVERY`). Up to 0.5, "about 1 square in N" with N =
-    floor(1/rate + 0.5), written with thousands commas; above 0.5 and below
-    :data:`SAY_OVER_NINE_FROM`, "about N squares in 10" with N = floor(10 rate
-    + 0.5), never 10 there; from :data:`SAY_OVER_NINE_FROM` up to (not at) 1,
-    "more than 9 squares in 10" (:data:`SAY_OVER_NINE`). ``unit`` is what was
-    checked (:data:`sheet.UNIT_POINT` says points); ``part`` the part of its
-    map the rate is of, the sentence's subject (:func:`_subject`: "The map"
-    when none is named). Always shown beside the exact rate and range.
+    :data:`SAY_WRONG_EVERY`). Up to 0.5, the nearer of two phrases (round
+    r5-b, J01): "about 1 square in N" with N = floor(1/rate + 0.5), written
+    with thousands commas, or "about N squares in 10" with N = floor(10 rate
+    + 0.5), from 2 in 10 up, when that is strictly nearer the rate (0.41 and
+    0.40 say "about 4 squares in 10", 0.30 "about 3 squares in 10": before,
+    "1 square in 2" for 0.41 named a rate outside the range printed beside
+    it); a tie keeps "1 square in N" (0.5, 0.2), and 0.25 stays "1 square in
+    4", the nearer. Above 0.5 and below :data:`SAY_OVER_NINE_FROM`, "about N
+    squares in 10" with N = floor(10 rate + 0.5), never 10 there; from
+    :data:`SAY_OVER_NINE_FROM` up to (not at) 1, "more than 9 squares in 10"
+    (:data:`SAY_OVER_NINE`). ``within``, the 95% range printed beside the
+    words (its low and high), keeps only a phrase whose share lies inside
+    that range as it is printed (``rules.percent``): the nearer of the two
+    phrases that lies inside it, or ``None`` when neither does, and the
+    headline then gives the rate plainly (round r5-b, after review of J01:
+    0.44 beside 41.9% to 46.1% is neither 4 in 10 nor 1 in 2). 0, 1 and
+    "more than 9 in 10" are said whatever the range: the first two state the
+    sample, and from 0.95 up the range's top is above 9 in 10. ``unit`` is
+    what was checked (:data:`sheet.UNIT_POINT` says points); ``part`` the
+    part of its map the rate is of, the sentence's subject (:func:`_subject`:
+    "The map" when none is named). Always shown beside the exact rate and
+    range: only the words change with the phrase, never a number.
     """
     if isinstance(rate, bool) or not isinstance(rate, (int, float)):
         return None
@@ -1377,17 +1805,34 @@ def say_rate(
         return SAY_RIGHT_EVERY.format(subject=subject, unit=one)
     if value == 1.0:
         return SAY_WRONG_EVERY.format(subject=subject, unit=one)
+    if value >= SAY_OVER_NINE_FROM:
+        return SAY_OVER_NINE.format(subject=subject, units=many)
+    tenths = math.floor(10.0 * value + 0.5)
+    in_ten = SAY_N_IN_TEN.format(subject=subject, n=tenths, units=many)
+    # Each phrase with the share it names, the nearer the rate first.
+    phrases = [(tenths / 10.0, in_ten)]
     if value <= 0.5:
         try:
             n = math.floor(1.0 / value + 0.5)
         except (OverflowError, ZeroDivisionError):
             return None
-        return SAY_ONE_IN.format(subject=subject, unit=one, n=f"{n:,}")
-    if value >= SAY_OVER_NINE_FROM:
-        return SAY_OVER_NINE.format(subject=subject, units=many)
-    return SAY_N_IN_TEN.format(
-        subject=subject, n=math.floor(10.0 * value + 0.5), units=many
-    )
+        one_in = (1.0 / n, SAY_ONE_IN.format(subject=subject, unit=one, n=f"{n:,}"))
+        # The nearer of the two phrases (round r5-b, J01): "about N in 10",
+        # from 2 in 10 up, when it is strictly nearer the rate than "about 1
+        # in N" (0.41 is 4 in 10, not 1 in 2); a tie keeps "1 in N".
+        if tenths < 2:
+            phrases = [one_in]
+        elif abs(tenths / 10.0 - value) < abs(1.0 / n - value) - 1e-9:
+            phrases.append(one_in)
+        else:
+            phrases.insert(0, one_in)
+    if within is None:
+        return phrases[0][1]
+    # Beside its 95% range, only a phrase whose share lies inside the range
+    # as printed, else none: the headline then gives the rate plainly.
+    low = float(rules.percent(within[0])[:-1]) / 100.0
+    high = float(rules.percent(within[1])[:-1]) / 100.0
+    return next((w for s, w in phrases if low - 1e-9 <= s <= high + 1e-9), None)
 
 
 _MONTHS = (
@@ -1632,20 +2077,30 @@ PART_THIS = "{part}: this result"
 PART_GRADED = "{part}: checked"
 # WORDING: squares
 PART_NOT = "{part}: not checked yet"
-# WORDING: r4p2
+#: The result card's line for a sheet whose answers changed after its first
+#: result (round r5-b, J07: "graded" is on no other face; result.html's
+#: RESULT_WORDS.gradedBefore says the same words, and draws them directly
+#: under the title's line, above the rate).
+# WORDING: r4p2; r5b J07
 GRADED_LINE = (
-    "The answers on this sheet changed after it was first graded ({first_at}). "
+    "Answers on this sheet changed after its first result ({first_at}). "
     "Answers changed after seeing where the map disagrees make this result invalid."
 )
 # WORDING: squares
 RULE_TYPED_NOTE = "(typed before the squares were picked)"
 # WORDING: r4p2
 RULE_OWNER_NOTE = "(the app owner's rule, 11 Nov 2026)"
-#: ``{units}`` and ``{unit}``: squares, or points for a sheet of points.
-# WORDING: squares
+#: ``{units}``: squares, or points for a sheet of points. The card has no
+#: button of its own, so the second sentence says where the answers and the
+#: press are: the label sheet, and ``{press}``, the sheet's own finish
+#: button (``sheet.JOB_LABELS``: "Estimate the error rate" on an estimate's
+#: plan, "Certify the zone" on a certificate plan's; :func:`_unfinished`).
+#: "The rest" reads for one square left or many (round r5-d, R10: it said
+#: "Answer every square, then press Estimate the error rate again.").
+# WORDING: squares; r5d R10
 UNFINISHED = (
     "Not finished yet: {left} of {n} {units} on this sheet have no answer. Answer "
-    "every {unit}, then press Estimate the error rate again."
+    "the rest on the label sheet, then press {press} there."
 )
 #: The estimate's refusal of a sheet with windows unlabelled (every form of
 #: it names how many of how many design windows have no label).
@@ -1764,20 +2219,28 @@ GRADED_AGAIN_NOTE = (
 )
 
 
-def _unfinished(error: str, unit: str = sheet.UNIT_SQUARE) -> dict[str, Any] | None:
-    """A refused estimate's unlabelled windows: ``{left, n, unit, text}``
-    (:data:`UNFINISHED`, in ``unit``: what the sheet's windows are,
-    ``sheet.window_unit``), or ``None`` for any other failure."""
+def _unfinished(
+    error: str, unit: str = sheet.UNIT_SQUARE, press: str | None = None
+) -> dict[str, Any] | None:
+    """A refused estimate's unlabelled windows: ``{left, n, unit, press,
+    text}`` (:data:`UNFINISHED`, in ``unit``: what the sheet's windows are,
+    ``sheet.window_unit``), or ``None`` for any other failure. ``press`` is
+    the sheet's own finish button, as the sheet draws it
+    (:func:`_finish_label`, round r5-d R10); with none (inline labels, a
+    sheet that cannot be read) the estimate's,
+    ``sheet.JOB_LABELS["estimate"]``."""
     match = _UNFINISHED.search(error)
     if match is None:
         return None
     left, n = int(match[1]), int(match[2])
+    button = press or sheet.JOB_LABELS["estimate"]
     return {
         "left": left,
         "n": n,
         "unit": _unit_word(unit),
+        "press": button,
         "text": UNFINISHED.format(
-            left=f"{left:,}", n=f"{n:,}", units=_units(unit, n), unit=_unit_word(unit)
+            left=f"{left:,}", n=f"{n:,}", units=_units(unit, n), press=button
         ),
     }
 
@@ -2276,6 +2739,23 @@ def _sheet_version_now(path: str | None) -> str | None:
     return version if isinstance(version, str) else None
 
 
+def _finish_label(path: str | None) -> str | None:
+    """The finish button's words on an estimate's sheet, as the sheet draws
+    them (``sheet.sheet_progress``'s ``finish_label``: "Estimate the error
+    rate", "Certify the zone" on a certificate plan's, "Say which map is
+    more accurate" on a two-map sheet, "Ask Claude to grade it" with no
+    design file beside it), which an unfinished card names (round r5-d
+    R10); ``None`` for no sheet or one that cannot be read (never raises;
+    blocking)."""
+    if path is None:
+        return None
+    try:
+        label = sheet.sheet_progress(path).get("finish_label")
+    except Exception:  # noqa: BLE001 - unknown: the estimate's own words
+        return None
+    return label if isinstance(label, str) and label else None
+
+
 def _grade_mark(
     path: str | None, design: Any, before: str | None
 ) -> tuple[str, dict[str, Any]] | None:
@@ -2351,8 +2831,15 @@ def _estimate_result(
     :data:`RESULT_TITLE`, one part, no hedge), period and squares checked;
     the ``headline`` (:data:`HEADLINE`: the rate in words, :func:`say_rate`,
     whose subject is the part when the part is known, with the exact rate
-    and the 95% range; with Cannot tell :data:`HEADLINE_RANGED`, the rate's
-    own range, ``rate_low`` and ``rate_high``, and ``n_unjudged``);
+    and the 95% range; words whose share lies outside that range are not
+    said, :data:`HEADLINE_RANGED` then; a rate of 0 written "0.0% wrong",
+    :data:`HEADLINE_ZERO_WRONG`; with Cannot tell :data:`HEADLINE_OR_CANNOT`,
+    the same subject wrong on the rate's lower end, ``rate_low``, "or" its
+    higher, ``rate_high``, if the Cannot tell answers, ``n_unjudged`` of them,
+    were wrong, round r5-d, R03; a rate of two figures with no Cannot tell,
+    :data:`HEADLINE_BETWEEN`, "wrong on between" its two ends; rounds r5-b,
+    J02 and J22, and r5-d, R03: the words only, every figure is the
+    estimate's);
     ``low_text`` and ``high_text``, the 95% range's two ends formatted as
     ``range_text`` is, which the rate line labels under its band (r4-k K6,
     the owner's choice of 16 Nov 2026); the
@@ -2436,18 +2923,46 @@ def _estimate_result(
     range_text = f"{rules.percent(low)} to {rules.percent(high)}"
     # The part is the subject of the sentence that gets copied, so it cannot
     # be passed on as the whole map's (the reader test's E/est-1, A/F01).
-    say = say_rate(rate, unit, part) if rate is not None else None
+    # Its phrase lies inside the 95% range printed beside it, or there is
+    # none and the rate is said plainly (round r5-b, after review of J01).
+    say = say_rate(rate, unit, part, within=(low, high)) if rate is not None else None
     where = _in_part(part)
     count = f"{n:,}"
     units = _units(unit, n)
-    if ranged and rate_range_text:
-        headline = HEADLINE_RANGED.format(
-            of=_of_part(part), rate_range=rate_range_text, range=range_text
+    if ranged and rate_range_text and n_unjudged:
+        # With Cannot tell the rate is two figures, every Cannot tell counted
+        # right, then every one counted wrong (the package's estimate_range):
+        # the sentence says so, the higher figure "if the Cannot tell were
+        # wrong", so "to" is the 95% range's alone (round r5-d, R03). The
+        # figures are unchanged.
+        if n_unjudged == 1:
+            which = HEADLINE_WHICH_ONE
+        else:
+            which = HEADLINE_WHICH.format(k=f"{n_unjudged:,}")
+        headline = HEADLINE_OR_CANNOT.format(
+            subject=_subject(part),
+            low=rules.percent(rate_low),
+            high=rules.percent(rate_high),
+            units=_units(unit),
+            which=which,
+            range=range_text,
+        )
+    elif ranged and rate_range_text:
+        # A rate of two figures with no Cannot tell: the everyday form stays,
+        # "between ... and ...", so "to" is the 95% range's alone (round
+        # r5-b, J02). The figures are unchanged.
+        headline = HEADLINE_BETWEEN.format(
+            subject=_subject(part),
+            low=rules.percent(rate_low),
+            high=rules.percent(rate_high),
+            units=_units(unit),
+            range=range_text,
         )
     elif say is not None and rate_text is not None:
-        headline = HEADLINE.format(
-            say=say.rstrip("."), rate=rate_text, range=range_text
-        )
+        # A rate of 0 says what it counts, "0.0% wrong", after "right on
+        # every square" (round r5-b, J22); every other rate as before.
+        exact = rate_text + HEADLINE_ZERO_WRONG if rate == 0.0 else rate_text
+        headline = HEADLINE.format(say=say.rstrip("."), rate=exact, range=range_text)
     elif rate_text is not None:
         headline = HEADLINE_RANGED.format(
             of=_of_part(part), rate_range=rate_text, range=range_text
@@ -2646,7 +3161,9 @@ def _estimate_result(
         "unit": unit,
         "n_checked": n,
         # The card's big sentence: the rate in words with the exact rate and
-        # its 95% range, or with Cannot tell the rate's own range (R1, R4).
+        # its 95% range, or with Cannot tell the rate's lower end "or" its
+        # higher "if the Cannot tell were wrong" (R1, R4; round r5-b J02, J22;
+        # r5-d R03).
         "headline": headline,
         "say": say,
         "rate": rate,
@@ -3221,12 +3738,28 @@ VIEW_HIDDEN_DRAW = ("facts", "forbidden_claims")
 def _check_zone_for_view(zone: dict[str, Any]) -> dict[str, Any]:
     """One zone of the Check card as its view data has it: a drawn plan's
     ``facts`` and ``forbidden_claims`` (:data:`VIEW_HIDDEN_DRAW`), which the
-    model reads with the zone, left out."""
+    model reads with the zone, left out, and a failed draw's ``error``
+    without its exception's name and an OSError's number (round r5-d R11;
+    :func:`_plain_error`, round r5-a K4; the model's zone and the draw
+    record keep them)."""
+    if isinstance(zone.get("error"), str):
+        zone = {**zone, "error": _plain_error(zone["error"])}
     draw = zone.get("draw")
     if not isinstance(draw, dict) or not any(k in draw for k in VIEW_HIDDEN_DRAW):
         return zone
     kept = {k: v for k, v in draw.items() if k not in VIEW_HIDDEN_DRAW}
     return {**zone, "draw": kept}
+
+
+def _draw_for_view(view: dict[str, Any]) -> dict[str, Any]:
+    """One zone of a press's reply (:func:`check.draw_view`) as the card gets
+    it: its ``error`` without the exception's name and an OSError's number
+    (round r5-d R11; :func:`_plain_error`, round r5-a K4). The draw record
+    and the press's log line keep the error as the plan gave it."""
+    error = view.get("error")
+    if not isinstance(error, str):
+        return view
+    return {**view, "error": _plain_error(error)}
 
 
 def _stop_draw(
@@ -3455,7 +3988,9 @@ class AppServer:
         inline labels gets the card with no sheet's part, rule, squares or
         name), worded in squares or points by the design behind it
         (:func:`_graded_design`, :func:`_unit_of`), as is an unfinished
-        sheet's count; its first text block is ``{"say_first", "note"}``
+        sheet's count, which names the sheet's own finish button
+        (:func:`_finish_label`, round r5-d R10); its first text block is
+        ``{"say_first", "note"}``
         (:data:`SAY_FIRST_NOTE`), then :data:`GRADED_AGAIN_NOTE` and
         :data:`RULE_USED_NOTE` where they apply, with panels or without."""
         from mcp import types
@@ -3494,12 +4029,18 @@ class AppServer:
         estimate: dict[str, Any] | None = None
         unit = sheet.UNIT_SQUARE
         design: dict[str, Any] | None = None
+        press: str | None = None
         if name == ESTIMATE_TOOL:
             # What the graded design's windows are: squares, or points.
             design = await asyncio.to_thread(
                 _graded_design, graded_path, arguments.get("design_path")
             )
             unit = await asyncio.to_thread(_unit_of, design)
+            error = str(envelope.get("error") or "")
+            if envelope.get("ok") is False and _UNFINISHED.search(error):
+                # A sheet left unfinished: the card names the sheet's own
+                # finish button, as the sheet draws it (round r5-d R10).
+                press = await asyncio.to_thread(_finish_label, graded_path)
         if (
             name == ESTIMATE_TOOL
             and envelope.get("ok") is True
@@ -3524,7 +4065,15 @@ class AppServer:
                 inline_reference=arguments.get("reference"),
             )
         view = await asyncio.to_thread(
-            self._view_data, name, envelope, progress, arguments, views, estimate, unit
+            self._view_data,
+            name,
+            envelope,
+            progress,
+            arguments,
+            views,
+            estimate,
+            unit,
+            press,
         )
         block = view.get("review")
         pictured = views and isinstance(block, dict) and block.get("pictures") is True
@@ -3542,7 +4091,11 @@ class AppServer:
         if pictured:
             notes.append(REVIEW_PANEL_NOTE)
         if name == "olmoearth_load_context" and envelope.get("ok"):
-            view["account"] = (await self.account()).get("account")
+            # The account and the key's source: the panel's top line draws no
+            # Sign out for the app's own key from its first drawing (r5-c S01).
+            status = await self.account()
+            view["account"] = status.get("account")
+            view["source"] = status.get("source")
             if views:
                 # The panel may tell the model which project is open, by id.
                 notes.append(PROJECTS_PANEL_NOTE)
@@ -3573,6 +4126,7 @@ class AppServer:
         views: bool = False,
         estimate: dict[str, Any] | None = None,
         unit: str = sheet.UNIT_SQUARE,
+        press: str | None = None,
     ) -> dict[str, Any]:
         """What the result view shows: the card, a refusal's reason, the figure,
         the contract.
@@ -3584,6 +4138,12 @@ class AppServer:
         ``held`` but not its SVG; the card asks for the SVG once the sheet
         allows it (``olmoearth_app_plan_figure``).
 
+        A failed result's ``error`` is its text without the exception's name
+        and an OSError's number (round r5-d R11; :func:`_plain_error`), and
+        its ``hint``, written for the model, is
+        kept only when the card offers the sign-in (round r5-a K4); the
+        model's text has both as the tool gave them.
+
         A result view carries ``lead`` (:func:`_lead`). Where panels show
         (``views``), a ranked review set carries ``review``, its window cards
         (:func:`review.review_view`, from the call's ``arguments`` and the
@@ -3591,23 +4151,30 @@ class AppServer:
         carries ``result`` (``estimate``'s view, :func:`_estimate_result`);
         an estimate refused for windows left unlabelled carries
         ``unfinished`` (:func:`_unfinished`, in ``unit``'s words: squares, or
-        points for a sheet of points) and no ``hint`` (the registry's hint is
-        for the model). A plan with a sheet carries ``unit``, what its
+        points for a sheet of points, naming ``press``, the sheet's own
+        finish button, :func:`_finish_label`, round r5-d R10) and no
+        ``hint`` (the registry's hint is for the model). A plan with a sheet
+        carries ``unit``, what its
         sheet is of (:func:`_points_plan`: "point" or "square"), for the
         fold's line on the sheet as a file (r4-m M3), and ``right_or_wrong``,
         whether that sheet is labelled right or wrong (``progress``'s
         ``label_rule``; false when it cannot be read): that face shows the
         map's class too, so the line names what the file adds there. The
-        projects view carries ``first_in_studio`` (:data:`FIRST_IN_STUDIO`).
+        projects view carries ``first_in_studio`` (:data:`FIRST_IN_STUDIO`);
+        an ok one gets the account and the key's ``source`` after this
+        (:meth:`call_agent_tool`, r5-c S01).
         """
         inner = envelope.get("result")
         inner = inner if isinstance(inner, dict) else {}
+        needs_sign_in = bool(envelope.get("needs_sign_in"))
         data: dict[str, Any] = {
             "tool": name,
             "ok": envelope.get("ok") is not False,
-            "error": envelope.get("error"),
-            "hint": envelope.get("hint"),
-            "needs_sign_in": bool(envelope.get("needs_sign_in")),
+            # A card's error has no exception name, and the hint written for
+            # the model reaches a card only with the sign-in (round r5-a K4).
+            "error": _card_error(envelope.get("error")),
+            "hint": envelope.get("hint") if needs_sign_in else None,
+            "needs_sign_in": needs_sign_in,
             "must_state": envelope.get("must_state") or inner.get("must_state"),
         }
         card = _card(inner.get(CARD_KEY))
@@ -3660,7 +4227,7 @@ class AppServer:
             if estimate is not None:
                 data["result"] = estimate["view"]
             elif not data["ok"]:
-                unfinished = _unfinished(str(envelope.get("error") or ""), unit)
+                unfinished = _unfinished(str(envelope.get("error") or ""), unit, press)
                 if unfinished is not None:
                     data["unfinished"] = unfinished
                     data["hint"] = None
@@ -3684,15 +4251,24 @@ class AppServer:
             k: status.get(k) for k in ("signed_in", "source", "key_problem")
         }
         if signed_in:
-            model["note"] = "Signed in to OlmoEarth Studio." + (
-                " The panel shows the account and can sign out." if views else ""
-            )
+            tail = ""
+            if views and status.get("source") == "environment":
+                # WORDING: r5c S01 (sign_in.html draws no Sign out for this key)
+                tail = (
+                    " The panel shows the account. This app was installed with its"
+                    f" own key ({auth.KEY_ENV}), so the panel has no Sign out; only"
+                    " whoever installed the app can remove that key."
+                )
+            elif views:
+                tail = " The panel shows the account and can sign out."
+            model["note"] = "Signed in to OlmoEarth Studio." + tail
         elif views:
             url = await self.sign_in_page.start()
             model["sign_in_url"] = url
             model["note"] = (
-                "The sign-in panel is open. The user presses 'Sign in in your "
-                "browser' there and enters their Studio API key on that page; the "
+                # WORDING: r5b J19 (the button's name: common.js OE.SIGN_IN_BUTTON)
+                "The sign-in panel is open. The user presses 'Open the sign-in "
+                "page' there and enters their Studio API key on that page; the "
                 "key goes from their browser to this server, not through the chat. "
                 "Wait for them; never ask for the key in the chat. If no panel "
                 f"appears, give the user this link to open in a browser on this "
@@ -3827,9 +4403,19 @@ class AppServer:
         """``olmoearth_check_map``: a Studio result's Check card, or its counts as text.
 
         The result's files are read by ``olmoearth_scores_from_studio``
-        through :meth:`run_agent_tool`, unchanged: its resolver reads a
+        through :meth:`run_agent_tool`, with ``clip_out_of_range`` (round
+        r5-a K2: a 0-to-1 score with values outside 0 to 1 is clipped into
+        it and counted, not refused, however many pixels lie outside, while
+        its values stay between :data:`CHECK_SCORE_LOWEST` and
+        :data:`CHECK_SCORE_HIGHEST`; one whose values reach either is not
+        read as a 0-to-1 score and gets no offer, :func:`_not_a_score`;
+        nothing else changes): its resolver reads a
         prediction with one result as that result, and provenance records the
-        call as made. Each zone is its own map; its offer is written
+        call as made. A 0-to-1 score map says its cut (:func:`_check_cut`,
+        K3): first in the model's ``must_state`` and the view's, and as the
+        view's ``cut``; a part whose pixels were clipped says how many (the
+        view zone's ``clipped`` line, the model zone's ``clipped_pixels``).
+        Each zone is its own map; its offer is written
         (:func:`check.offer_zones`) and the card shows it: the label counts the
         package plans, none picked, or why the zone has none, and a zone drawn
         already with its sheet's progress. The model reads each zone's name,
@@ -3865,7 +4451,16 @@ class AppServer:
         rid = str(arguments.get("result_id") or "").strip()
         if not rid:
             return self._check_failed({"ok": False, "error": "missing result_id"})
-        envelope = await self.run_agent_tool(SCORES_TOOL, {"result_id": rid})
+        # With the flag the tool clips a 0-to-1 score's values outside 0 to 1
+        # into it, however far out and however many, and does not refuse the
+        # result (round r5-a K2): it counts the pixels and states it. The
+        # card then refuses a map whose values reach CHECK_SCORE_LOWEST
+        # or CHECK_SCORE_HIGHEST (_not_a_score, below). The flag changes
+        # nothing for a class map with top-k scores, nor for a score already
+        # inside 0 to 1.
+        envelope = await self.run_agent_tool(
+            SCORES_TOOL, {"result_id": rid, "clip_out_of_range": True}
+        )
         if envelope.get("ok") is not True:
             # A class map refused: its card's map line, read at best (F12).
             map_view = (
@@ -3897,6 +4492,14 @@ class AppServer:
                 content=_text({**unread, "reason": reason}),
                 _meta={VIEW_DATA_KEY: view},
             )
+        # A score whose values run far outside 0 to 1 is not a 0-to-1 score
+        # (an undeclared no-data fill, another scale): clipped, each such
+        # pixel would count at full confidence, so the whole card is refused
+        # before any offer is written (round r5-a K2). Its sentence is plain,
+        # so the card shows it on its face (round r5-d R01).
+        not_a_score = _not_a_score(inner)
+        if not_a_score is not None:
+            return self._check_failed({"ok": False, "error": not_a_score}, plain=True)
         # A map of presence and absence has the owner's labelling rule, which
         # the user may replace with the map's own before its first part is
         # drawn (rule_owner: the card's box); any other needs the user's own
@@ -3929,6 +4532,24 @@ class AppServer:
                 for z in zones
             }
         )
+        # A 0-to-1 score map: its cut, first among what the model must state
+        # and among the card's notes (round r5-a K3), and per part how many
+        # pixels outside 0 to 1 were set to the nearest end (K2).
+        cut = _check_cut(inner)
+        if cut is not None:
+            stated = [cut, *must]
+            must = [cut, *must]
+        clipped = {
+            str(z.get("file") or "").strip(): _clipped_pixels(z)
+            for z in inner.get("zones") or []
+            if isinstance(z, dict)
+        }
+        zone_entries: list[dict[str, Any]] = []
+        for z in zones:
+            entry = _check_zone_for_model(z, inner, views=views)
+            if clipped.get(str(z.get("file"))):
+                entry["clipped_pixels"] = clipped[str(z.get("file"))]
+            zone_entries.append(entry)
         notes = [CHECK_CARD_NOTE if views else CHECK_TEXT_NOTE]
         if not rule["set"]:
             notes.append(CHECK_NO_RULE_NOTE if views else CHECK_TEXT_NO_RULE_NOTE)
@@ -3956,7 +4577,7 @@ class AppServer:
             "kind": inner.get("kind"),
             "property_name": inner.get("property_name"),
             "n_zones": len(zones),
-            "zones": [_check_zone_for_model(z, inner, views=views) for z in zones],
+            "zones": zone_entries,
             "labelling_rule": labelling_rule,
             "note": " ".join([*notes, *_zone_notes(zones)]),
             "must_state": stated,
@@ -3969,7 +4590,11 @@ class AppServer:
             # The id the card tells the model it shows (a context update).
             "result_id": result_id,
             "zones": [
-                {**_check_zone_for_view(z), "square": squares.get(str(z.get("file")))}
+                {
+                    **_check_zone_for_view(z),
+                    "square": squares.get(str(z.get("file"))),
+                    **_clipped_view(clipped.get(str(z.get("file")), 0)),
+                }
                 for z in zones
             ],
             "must_state": must,
@@ -3988,6 +4613,9 @@ class AppServer:
             # The fold's raw-scores line is for a class map with top-k scores.
             "kind": inner.get("kind"),
         }
+        if cut is not None:
+            # A score map's cut, read only, on the card's face (r5-a K3).
+            view["cut"] = cut
         # Beside the owner's rule only, when the example pictures exist
         # (r4-k K9); otherwise the key is left out.
         examples = await asyncio.to_thread(examples_for, "check", rule.get("source"))
@@ -4084,6 +4712,7 @@ class AppServer:
         *,
         result_id: str | None = None,
         map_view: dict[str, Any] | None = None,
+        plain: bool = False,
     ) -> Any:
         """The Check card's answer when the result cannot be checked: no press.
 
@@ -4091,12 +4720,23 @@ class AppServer:
         ``must_state``, ``forbidden_claims``), and for a class map without
         top-k scores (known by its contract, :func:`_class_map_refusal`)
         :data:`CHECK_CLASS_MAP_NOTE` too. The view gets the
-        error, its hint and whether to offer the sign-in, or for a class map
+        error without its exception's name and an ``OSError``'s number
+        (:func:`_plain_error`, round r5-d R11), whether to
+        offer the sign-in and, only then, the hint (round r5-a K4: the
+        registry's hint is written for the model), or for a class map
         the refusal's words as its ``reason`` (the card folds them),
         ``points_request``, what the card's button asks Claude to check on
         points (:func:`_points_request`), and ``map_view`` as its ``map``
         (the map's name and period, :meth:`_refusal_map`) when it is given;
-        the model never gets it.
+        the model never gets it. For a map of numbers that is not a 0-to-1
+        score (one regression field on another range, :func:`_number_map`;
+        round r5-b X1) the view's ``error`` and ``next`` are the card's two
+        plain lines (:data:`CHECK_NUMBER_MAP`, :data:`CHECK_NUMBER_MAP_NEXT`)
+        in place of the tool's sentence, which the model's text keeps. With
+        ``plain``, an error the server wrote in plain words for the card's
+        face (:data:`CHECK_NOT_A_SCORE`), the view's ``plain`` is true: the
+        card shows that error on its face, over its own line, not in its
+        fold (round r5-d R01); the model's text is the same.
         """
         from mcp import types
 
@@ -4108,7 +4748,16 @@ class AppServer:
             "ok": False,
             "needs_sign_in": bool(envelope.get("needs_sign_in")),
         }
-        if _class_map_refusal(envelope):
+        number_field = None if view["needs_sign_in"] else _number_map(error)
+        if number_field is not None:
+            # A map of numbers, not a 0-to-1 score (r5-b X1): two plain lines
+            # on the card's face; the model keeps the tool's own sentence.
+            view.update(
+                error=_number_map_words(number_field),
+                next=CHECK_NUMBER_MAP_NEXT,
+                hint=None,
+            )
+        elif _class_map_refusal(envelope):
             request = _points_request(envelope, result_id)
             model["note"] = CHECK_CLASS_MAP_NOTE.format(result_id=request["result_id"])
             view["reason"] = _refusal_words(error)
@@ -4116,7 +4765,10 @@ class AppServer:
             if map_view is not None:
                 view["map"] = map_view
         else:
-            view.update(error=error, hint=envelope.get("hint"))
+            hint = envelope.get("hint") if view["needs_sign_in"] else None
+            view.update(error=_plain_error(error), hint=hint)
+            if plain:
+                view["plain"] = True
         return types.CallToolResult(
             content=_text(model), isError=True, _meta={VIEW_DATA_KEY: view}
         )
@@ -4626,6 +5278,9 @@ class AppServer:
         :func:`check.finish_draw` records the outcome. A repeat, a busy draw,
         a final failure or a changed raster draws nothing. A key, count or
         record that is refused gets ``outcome`` ``"refused"`` and its error.
+        A failed draw's error reaches the card without its exception's name
+        and an OSError's number (round r5-d R11; :func:`_draw_for_view`,
+        round r5-a K4); its record keeps both.
         A press cancelled after its claim (the page's call timed out or was
         dropped) records the draw stopped, which a press retries with its
         pinned settings, and logs it ``"cancelled"`` (:func:`_stop_draw`,
@@ -4687,7 +5342,11 @@ class AppServer:
             shown, outcome=outcome, asked=budget, draw=record, pressed_at=pressed
         )
         await asyncio.to_thread(_log_press, entry)
-        return check.draw_view(record, outcome=outcome, error=claim.get("error"))
+        view = check.draw_view(record, outcome=outcome, error=claim.get("error"))
+        # The card's copy: the error without its exception's name (r5-a K4)
+        # and an OSError's number (round r5-d R11); the draw record and the
+        # log line above keep it.
+        return _draw_for_view(view)
 
     async def _check_plan(self, key: str, record: dict[str, Any]) -> dict[str, Any]:
         """A claimed draw's plan: its pinned request through the plan tool

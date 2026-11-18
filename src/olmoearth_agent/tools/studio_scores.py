@@ -49,7 +49,12 @@ designs, the estimate and the certificate route read. A zone written before
 from the same native file (by its sha256) and decoded the same way is reused;
 a zone that cannot be pooled (more windows than a ranking takes at the patch
 asked, say) is reported beside the zones that were. Each zone is a map of its
-own, and no tool combines them.
+own, and no tool combines them. A zone whose probability raster holds more
+than ``scores_file.MAX_VALUES`` values is decoded, written and pooled in
+full-width strips, up to ``scores_file.MAX_STRIP_VALUES`` (r5-a K1), with the
+counts, refusals and raster values a whole decode gives; the zip and the
+zone's native file are still held whole in memory, and a native file over
+:data:`MAX_ENTRY_BYTES` (about 513 MB) is still refused before it is read.
 
 The zip is untrusted input. Only the native GeoTIFFs and the README are read,
 never extracted by name, and only when stored or deflated (CPython
@@ -88,6 +93,7 @@ import re
 import uuid
 import zipfile
 import zlib
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -138,11 +144,26 @@ TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 #: past it; a bzip2 or LZMA entry would (:data:`READ_METHODS`).
 MAX_UNCOMPRESSED_BYTES = 2 * 1024**3
 
-#: Most bytes of one zone's native GeoTIFF: an uncompressed file of the
-#: largest zone read (``scores_file.MAX_VALUES`` values of 8 bytes) and 1 MiB
-#: of header. A larger entry is refused before it is read, not once copies of
-#: it are in memory.
+#: Most bytes of one zone's native GeoTIFF: ``scores_file.MAX_VALUES`` values
+#: of 8 bytes and 1 MiB of header, about 513 MB. A larger entry is refused
+#: before it is read, not once copies of it are in memory. The cap stayed
+#: where it was when a zone over ``scores_file.MAX_VALUES`` began to be read
+#: in strips (r5-a K1): the entry is still held whole in memory, so a one-band
+#: float32 score zone passes it uncompressed up to about 128 million pixels
+#: (513,048,576 bytes / 4; a float64 one up to about 64 million); a top-k
+#: zone at the strip cap passes it too (2k uint8 bands, at most 512 MB).
 MAX_ENTRY_BYTES = 8 * scores_file.MAX_VALUES + (1 << 20)
+
+#: Most values of a zone's probability raster a certificate plan takes
+#: (``olmoearth_plan_label_sample`` with ``seed_from_map``): the package reads
+#: that raster whole, so the plan refuses a zone over
+#: ``scores_file.MAX_VALUES``, one read in strips
+#: (``estimation.CERTIFICATE_TOO_LARGE``, r5-a K1), and the result's
+#: ``next_step`` names such a zone (:func:`_next_step`). Set once from that
+#: limit, as :data:`MAX_ENTRY_BYTES` is, so a test that forces strips with a
+#: small ``scores_file.MAX_VALUES`` still gets the whole decode's result,
+#: its ``next_step`` too.
+CERTIFICATE_MAX_VALUES = scores_file.MAX_VALUES
 
 #: Most bytes of the zip's list of entries (its central directory), read from
 #: its end record before zipfile lists them: zipfile makes an object per
@@ -197,10 +218,13 @@ UNIT_ASSUMPTION_SENTENCE = (
     "Reading Studio's [0, 1] score as the probability of the positive class is "
     "an assumption: Studio declares only its range."
 )
-#: must_state when a ``[0, 1]`` score's values were clipped.
+#: must_state when a ``[0, 1]`` score's values were clipped: true whoever
+#: passed ``clip_out_of_range`` (the Check card passes it itself, r5-a K2, so
+#: the words name no request).
+# WORDING: r5a K2
 CLIPPED_SENTENCE = (
-    "Values outside [0, 1] were clipped into it on request, so those pixels' "
-    "scores are not the model's own."
+    "Values outside [0, 1] were clipped into it, so those pixels' scores are "
+    "not the model's own."
 )
 #: must_state of a result of several UTM zones: no tool combines them, so
 #: one zone's review set, estimate or certified zone is not the result's
@@ -649,10 +673,11 @@ def zip_entries(zf: zipfile.ZipFile, plan: FilesPlan) -> ZipEntries:
                 )
             _check_readable(info, name)
             if info.file_size > MAX_ENTRY_BYTES:
+                # WORDING: r5a
                 raise ValueError(
                     f"the files zip's {name} is {info.file_size} bytes, more than "
-                    f"the {MAX_ENTRY_BYTES} of the largest zone this tool reads "
-                    f"({scores_file.MAX_VALUES:,} values); nothing was read"
+                    f"the {MAX_ENTRY_BYTES} this tool reads for one zone's file; "
+                    "nothing was read"
                 )
             tifs.append(NativeEntry(info, name, tif["epsg"], tif["i"]))
         elif plan.kind == TOPK and readme is not None and _plain(readme["folder"]):
@@ -738,11 +763,17 @@ def check_readme(zf: zipfile.ZipFile, readmes: list[zipfile.ZipInfo]) -> bool:
 
 
 def _check_values(name: str, channels: int, height: int, width: int) -> None:
-    """Refuse a zone whose probability raster is over ``scores_file.MAX_VALUES``."""
-    if channels * height * width > scores_file.MAX_VALUES:
+    """Refuse a zone whose probability raster is over ``scores_file.MAX_STRIP_VALUES``.
+
+    A zone at or under ``scores_file.MAX_VALUES`` is decoded whole; a larger
+    one, up to this cap, is decoded and written in strips (r5-a K1,
+    :func:`read_zones`).
+    """
+    if channels * height * width > scores_file.MAX_STRIP_VALUES:
+        # WORDING: r5a (the words as they were; the number is the strip cap)
         raise ValueError(
             f"{name}: its probability raster holds {channels} x {height} x "
-            f"{width} values, more than {scores_file.MAX_VALUES:,} this tool "
+            f"{width} values, more than {scores_file.MAX_STRIP_VALUES:,} this tool "
             "reads; the zone was not written"
         )
 
@@ -915,6 +946,298 @@ def decode_unit(
     return band[None], counts
 
 
+# --------------------------------------------------------------------------- strips
+
+
+@dataclass(frozen=True)
+class StripWrite:
+    """A zone over ``scores_file.MAX_VALUES``, to be written strip by strip.
+
+    ``shape`` is its probability raster's ``(C, H, W)``; ``write`` takes the
+    output raster, open for writing, decodes each strip again from the
+    native file (still open) and writes it there (:func:`scan_unit`,
+    :func:`scan_topk`).
+    """
+
+    shape: tuple[int, int, int]
+    write: Callable[[Any], None]
+
+
+def _strips(
+    height: int, width: int, bands: int, block_rows: int = 1
+) -> Iterator[tuple[int, int]]:
+    """Full-width strips of a zone, top to bottom, each ``(first row, rows)``.
+
+    A strip holds about ``scores_file.BLOCK_VALUES`` values (``bands`` x
+    rows x ``width``), at least ``block_rows`` rows and a whole number of
+    them: a strip written to a raster then fills whole blocks of it, as one
+    write of the whole array does. The last strip takes the rows left.
+    """
+    block_rows = max(1, block_rows)
+    rows = max(1, scores_file.BLOCK_VALUES // max(1, bands * width))
+    rows = max(block_rows, rows // block_rows * block_rows)
+    for top in range(0, height, rows):
+        yield top, min(rows, height - top)
+
+
+def _unit_strip(np: Any, src: Any, top: int, rows: int) -> tuple[Any, Any]:
+    """One strip of a ``[0, 1]`` score's band as float32, and its valid pixels.
+
+    As :func:`decode_unit` reads the whole band: a pixel is valid where its
+    value is finite and not the file's no-data value.
+    """
+    from rasterio.windows import Window
+
+    window = Window(0, top, int(src.width), rows)
+    band = src.read(1, window=window).astype(np.float32)
+    valid = np.isfinite(band)
+    nodata = src.nodata
+    if nodata is not None and not math.isnan(nodata):
+        valid &= band != np.float32(nodata)
+    return band, valid
+
+
+def scan_unit(
+    np: Any, src: Any, plan: FilesPlan, name: str, clip: bool
+) -> tuple[dict[str, Any], StripWrite]:
+    """A ``[0, 1]`` score zone over ``scores_file.MAX_VALUES``, read in strips.
+
+    The counts :func:`decode_unit` gives, summed over full-width strips (the
+    values' range a running minimum and maximum), and how to write the
+    zone's raster strip by strip: each strip decoded again by the same
+    per-pixel steps (float32, clipped into ``[0, 1]``, NaN where invalid).
+    The refusals are raised once the whole file is scanned, in
+    :func:`decode_unit`'s order and words and with the whole file's counts;
+    nothing is written before them.
+
+    Raises
+    ------
+    ValueError
+        As :func:`decode_unit`: a file that is not one float band, no valid
+        pixel, or values outside ``[0, 1]`` without ``clip``.
+    """
+    dtype = np.dtype(src.dtypes[0])
+    if src.count != 1 or dtype.kind != "f":
+        raise ValueError(
+            f"{name} holds {src.count} band(s) of {dtype.name}; a [0, 1] score's "
+            "file holds one float band"
+        )
+    height, width = int(src.height), int(src.width)
+    _check_values(name, plan.channels, height, width)
+    n_valid = below = above = positive = 0
+    low, high = math.inf, -math.inf
+    for top, rows in _strips(height, width, 1):
+        band, valid = _unit_strip(np, src, top, rows)
+        values = band[valid]
+        if values.size == 0:
+            continue
+        n_valid += int(values.size)
+        below += int((values < 0.0).sum())
+        above += int((values > 1.0).sum())
+        low, high = min(low, float(values.min())), max(high, float(values.max()))
+        np.clip(band, 0.0, 1.0, out=band)
+        positive += int((valid & (band >= 0.5)).sum())
+    if n_valid == 0:
+        raise ValueError(f"{name} has no valid pixel")
+    if (below or above) and not clip:
+        raise ValueError(
+            f"{name}: {below} valid pixels lie below 0 and {above} above 1 (values "
+            f"run {low:.6g} to {high:.6g}); a score read as a probability lies in "
+            "[0, 1], so nothing was written. clip_out_of_range=true clips them "
+            "into [0, 1], and the result counts them"
+        )
+    names = plan.class_names
+    counts: dict[str, Any] = {
+        "valid_pixels": n_valid,
+        "nodata_pixels": height * width - n_valid,
+        "class_counts": {names["0"]: n_valid - positive, names["1"]: positive},
+        "class_counts_cut": "the positive class at a score of 0.5 or more",
+        "values_range": [low, high],
+        "below_0_pixels": below,
+        "above_1_pixels": above,
+        "clipped": bool(clip and (below or above)),
+    }
+
+    def write(dst: Any) -> None:
+        """Decode each strip again and write it to the open raster ``dst``."""
+        from rasterio.windows import Window
+
+        block_rows = int(dst.block_shapes[0][0])
+        for top, rows in _strips(height, width, 1, block_rows):
+            band, valid = _unit_strip(np, src, top, rows)
+            np.clip(band, 0.0, 1.0, out=band)
+            band[~valid] = np.nan
+            dst.write(band[None], window=Window(0, top, width, rows))
+
+    return counts, StripWrite((1, height, width), write)
+
+
+def _class_lut(np: Any, values: tuple[int, ...]) -> Any:
+    """A class band's value as its channel, -1 for a value no class declares."""
+    lut = np.full(256, -1, dtype=np.int16)
+    for channel, value in enumerate(values):
+        lut[value] = channel
+    return lut
+
+
+def _topk_strip(
+    np: Any, src: Any, plan: FilesPlan, lut: Any, top: int, rows: int
+) -> tuple[Any, list[Any], list[Any], list[Any], list[Any]]:
+    """One strip of a top-k zone, read as :func:`decode_topk` reads the whole.
+
+    Its valid pixels (band 1 is not the no-data value) and, for each rank in
+    order, the class band, each class's channel (-1 for a class not
+    declared), the raw score and the score decoded as ``(value - 1) / 254``,
+    a raw 0 as 0.0.
+    """
+    from rasterio.windows import Window
+
+    window = Window(0, top, int(src.width), rows)
+    valid = src.read(1, window=window) != TOPK_NODATA
+    klasses: list[Any] = []
+    codes: list[Any] = []
+    raws: list[Any] = []
+    probs: list[Any] = []
+    for r in range(1, plan.k + 1):
+        klass = src.read(2 * r - 1, window=window)
+        raw = src.read(2 * r, window=window)
+        prob = (raw.astype(np.float32) - 1.0) / 254.0
+        prob[raw == 0] = 0.0
+        klasses.append(klass)
+        codes.append(lut[klass])
+        raws.append(raw)
+        probs.append(prob)
+    return valid, klasses, codes, raws, probs
+
+
+def scan_topk(
+    np: Any, src: Any, plan: FilesPlan, name: str
+) -> tuple[dict[str, Any], StripWrite]:
+    """A top-k zone over ``scores_file.MAX_VALUES``, read in strips.
+
+    The counts :func:`decode_topk` gives, summed over full-width strips (the
+    decoded sum's range a running minimum and maximum), and how to write the
+    zone's probability raster strip by strip: each strip decoded again by
+    the same per-pixel steps. What :func:`decode_topk` refuses is counted
+    over the whole file first and then refused in its order and words (no
+    valid pixel; then, rank by rank, a class not declared, one class at two
+    ranks of a pixel, a score above the rank's before it), with the whole
+    file's counts; nothing is written before them.
+
+    Raises
+    ------
+    ValueError
+        As :func:`decode_topk`.
+    """
+    k, values = plan.k, plan.values
+    dtypes = sorted({str(d) for d in src.dtypes})
+    if src.count != 2 * k or dtypes != ["uint8"]:
+        raise ValueError(
+            f"{name} holds {src.count} band(s) of {', '.join(dtypes)}; a top-{k} "
+            f"file holds {2 * k} uint8 bands (the README's layout)"
+        )
+    if src.nodata != TOPK_NODATA:
+        raise ValueError(
+            f"{name} declares the no-data value {src.nodata}; a top-k file's is "
+            f"{TOPK_NODATA}, which marks an invalid pixel in band 1 (the README): "
+            "the format changed, so the zone was not read"
+        )
+    height, width = int(src.height), int(src.width)
+    _check_values(name, plan.channels, height, width)
+    lut = _class_lut(np, values)
+    two = plan.channels == 2 and k == 2
+    n_valid = sum_254 = below_half = 0
+    sum_low, sum_high = math.inf, -math.inf
+    stray: list[set[int]] = [set() for _ in range(k)]
+    same: dict[tuple[int, int], int] = {}
+    above = [0] * k
+    raw_zero = [0] * k
+    raw_255 = [0] * k
+    first = np.zeros(plan.channels, dtype=np.int64)
+    for top, rows in _strips(height, width, plan.channels):
+        valid, klasses, codes, raws, probs = _topk_strip(np, src, plan, lut, top, rows)
+        if not valid.any():
+            continue
+        n_valid += int(valid.sum())
+        for r in range(k):
+            code, raw = codes[r], raws[r]
+            bad = valid & (code < 0)
+            if bad.any():
+                stray[r].update(int(v) for v in np.unique(klasses[r][bad]))
+            for before in range(r):
+                hit = int((valid & (code == codes[before])).sum())
+                same[(before, r)] = same.get((before, r), 0) + hit
+            if r:
+                above[r] += int((valid & (raw > raws[r - 1])).sum())
+            raw_zero[r] += int((valid & (raw == 0)).sum())
+            raw_255[r] += int((valid & (raw == 255)).sum())
+        # A class not declared has no channel to count: it is refused below,
+        # before these counts are read.
+        known = valid & (codes[0] >= 0)
+        first += np.bincount(codes[0][known].astype(np.int64), minlength=plan.channels)
+        if two:
+            total = raws[0].astype(np.int16) + raws[1].astype(np.int16)
+            summed = (probs[0] + probs[1])[valid]
+            sum_254 += int((valid & (total == 254)).sum())
+            sum_low = min(sum_low, float(summed.min()))
+            sum_high = max(sum_high, float(summed.max()))
+            below_half += int((valid & (probs[0] < 0.5)).sum())
+    if n_valid == 0:
+        raise ValueError(f"{name} has no valid pixel: band 1 is no-data everywhere")
+    for r in range(1, k + 1):
+        if stray[r - 1]:
+            shown = sorted(stray[r - 1])[:6]
+            raise ValueError(
+                f"{name}: rank {r}'s class band holds {shown} on valid pixels; the "
+                f"result declares the classes {list(values)}"
+            )
+        for before in range(1, r):
+            hit = same.get((before - 1, r - 1), 0)
+            if hit:
+                raise ValueError(
+                    f"{name}: ranks {before} and {r} name one class on {hit} "
+                    "valid pixels, which no top-k field holds"
+                )
+        if above[r - 1]:
+            raise ValueError(
+                f"{name}: rank {r}'s score is above rank {r - 1}'s on "
+                f"{above[r - 1]} valid pixels, which no top-k field holds"
+            )
+    class_counts = {plan.labels[c]: int(first[c]) for c in range(plan.channels)}
+    counts: dict[str, Any] = {
+        "valid_pixels": n_valid,
+        "nodata_pixels": height * width - n_valid,
+        "class_counts": class_counts,
+        "raw_zero_scores_by_rank": raw_zero,
+        "raw_255_scores_by_rank": raw_255,
+    }
+    if two:
+        counts["two_class_check"] = {
+            "raw_sum_254_pixels": sum_254,
+            "decoded_sum_min": sum_low,
+            "decoded_sum_max": sum_high,
+            "rank1_below_half_pixels": below_half,
+        }
+
+    def write(dst: Any) -> None:
+        """Decode each strip again and write it to the open raster ``dst``."""
+        from rasterio.windows import Window
+
+        block_rows = int(dst.block_shapes[0][0])
+        for top, rows in _strips(height, width, plan.channels, block_rows):
+            strip = _topk_strip(np, src, plan, lut, top, rows)
+            valid, codes, probs = strip[0], strip[2], strip[4]
+            out = np.full((plan.channels, rows, width), np.nan, dtype=np.float32)
+            out[:, valid] = 0.0
+            for code, prob in zip(codes, probs):
+                for channel in range(plan.channels):
+                    hit = valid & (code == channel)
+                    out[channel][hit] = prob[hit]
+            dst.write(out, window=Window(0, top, width, rows))
+
+    return counts, StripWrite((plan.channels, height, width), write)
+
+
 def _decoding(manifest: dict[str, Any]) -> tuple[Any, Any, Any]:
     """What a zone's raster was decoded by: its classes, their channels and how.
 
@@ -977,15 +1300,21 @@ def _write_zone(
     zone_dir: Path,
     manifest: dict[str, Any],
     names: tuple[str, ...],
+    strips: StripWrite | None = None,
 ) -> None:
     """Write a zone's scores raster, then its manifest, each by an atomic rename.
 
     The raster is on the native file's grid (its CRS and transform), NaN
     no-data, deflate-compressed; the manifest records its sha256 and shape.
-    A write that fails leaves no part file behind.
+    A write that fails leaves no part file behind. ``strips`` is a zone over
+    ``scores_file.MAX_VALUES`` (``array`` is then ``None``): the same file,
+    written strip by strip (:class:`StripWrite`).
     """
     zone_dir.mkdir(parents=True, exist_ok=True)
-    channels, height, width = (int(s) for s in array.shape)
+    if strips is None:
+        channels, height, width = (int(s) for s in array.shape)
+    else:
+        channels, height, width = strips.shape
     part = zone_dir / f".{RASTER}.{uuid.uuid4().hex[:8]}.part"
     profile = {
         "driver": "GTiff",
@@ -1000,7 +1329,10 @@ def _write_zone(
     }
     try:
         with rasterio.open(part, "w", **profile) as dst:
-            dst.write(array)
+            if strips is None:
+                dst.write(array)
+            else:
+                strips.write(dst)
             for band, label in enumerate(names, 1):
                 dst.set_band_description(band, label)
         os.replace(part, zone_dir / RASTER)
@@ -1082,6 +1414,14 @@ def _manifest(
     return manifest
 
 
+def _in_strips(plan: FilesPlan, src: Any) -> bool:
+    """Whether a zone's probability raster holds more than
+    ``scores_file.MAX_VALUES`` values (channels x pixels, from the native
+    file's header), so that it is read and written in strips."""
+    values = plan.channels * int(src.height) * int(src.width)
+    return values > scores_file.MAX_VALUES
+
+
 def read_zones(
     data: bytes, plan: FilesPlan, info: ResultInfo, clip: bool, np: Any, rasterio: Any
 ) -> tuple[list[Zone], int, bool]:
@@ -1092,7 +1432,11 @@ def read_zones(
     :func:`decode_unit`), so a refusal is the same on every call, and written
     unless a complete zone from the same native file, decoded the same way,
     is already there (:func:`_reusable`); a reused zone's manifest is written
-    again, its raster kept, when what it records of the result changed.
+    again, its raster kept, when what it records of the result changed. A
+    zone whose probability raster holds more than ``scores_file.MAX_VALUES``
+    values (:func:`_in_strips`) is counted and then written strip by strip
+    (:func:`scan_topk`, :func:`scan_unit`), with the same counts, refusals,
+    manifest and raster values as a whole decode gives.
 
     Returns
     -------
@@ -1146,16 +1490,31 @@ def read_zones(
                         f"{entry.file}: not a GeoTIFF rasterio can read ({exc})"
                     ) from None
                 with src:
-                    if plan.kind == TOPK:
+                    # A zone over scores_file.MAX_VALUES is counted, then
+                    # written, strip by strip, and no whole array is held
+                    # (r5-a K1); a zone at or under it is decoded whole.
+                    strips: StripWrite | None = None
+                    array: Any = None
+                    large = _in_strips(plan, src)
+                    if large and plan.kind == TOPK:
+                        counts, strips = scan_topk(np, src, plan, entry.file)
+                    elif large:
+                        counts, strips = scan_unit(np, src, plan, entry.file, clip)
+                    elif plan.kind == TOPK:
                         array, counts = decode_topk(np, src, plan, entry.file)
                     else:
                         array, counts = decode_unit(np, src, plan, entry.file, clip)
-                    height, width = int(array.shape[1]), int(array.shape[2])
+                    if strips is None:
+                        height, width = int(array.shape[1]), int(array.shape[2])
+                    else:
+                        height, width = strips.shape[1], strips.shape[2]
                     fresh = _manifest(info, plan, entry.file, digest, counts)
                     stored = _reusable(zone_dir, digest, fresh)
                     updated = False
                     if stored is None:
-                        _write_zone(rasterio, src, array, zone_dir, fresh, names)
+                        _write_zone(
+                            rasterio, src, array, zone_dir, fresh, names, strips
+                        )
                     else:
                         # The raster is kept; the manifest is written again
                         # when what it records of the result changed (a model
@@ -1280,11 +1639,12 @@ def _zone_facts(zone: Zone, plan: FilesPlan, unused: bool) -> list[dict[str, Any
             out.append(_two_class_fact(file, n_valid, check, zeros[0]))
     elif counts["clipped"]:
         low, high = counts["values_range"]
+        # WORDING: r5a K2 (as CLIPPED_SENTENCE: it names no request)
         clipped = rules.fact(
             "studio_clipped",
             f"{file}: {counts['below_0_pixels']} valid pixels below 0 and "
             f"{counts['above_1_pixels']} above 1 (values {low:.6g} to {high:.6g}) "
-            "were clipped into [0, 1] on request.",
+            "were clipped into [0, 1].",
             file=file,
             below_0_pixels=counts["below_0_pixels"],
             above_1_pixels=counts["above_1_pixels"],
@@ -1364,6 +1724,39 @@ def _period(record: dict[str, Any]) -> dict[str, str] | None:
     if isinstance(start, str) and isinstance(end, str):
         return {"start": start, "end": end}
     return None
+
+
+def _next_step(plan: FilesPlan, zones: list[Zone]) -> str:
+    """The result's ``next_step``: where a zone's scores file goes next.
+
+    A zone whose probability raster holds more than
+    :data:`CERTIFICATE_MAX_VALUES` values takes no certificate plan
+    (``seed_from_map`` reads the raster whole), so the step names it and
+    advises a plain random plan; with no such zone the words are as they
+    were.
+    """
+    certified = (
+        "For a certified zone, plan design='random' with seed_from_map, fixed "
+        "before labelling."
+    )
+    large = [
+        zone.file
+        for zone in zones
+        if plan.channels * zone.height * zone.width > CERTIFICATE_MAX_VALUES
+    ]
+    if large:
+        # WORDING: r5a
+        certified = (
+            "For a certified zone, plan design='random', fixed before labelling; "
+            "seed_from_map (for a certificate file) is not taken on a zone of "
+            f"more than {CERTIFICATE_MAX_VALUES:,} values: {', '.join(large)}."
+        )
+    return (
+        "Pass a zone's scores_path to olmoearth_review_set (which windows to "
+        "check first) or olmoearth_plan_label_sample (how wrong the map is). "
+        f"{certified} {rules.POSSIBLE_NOT_CERTAIN} Each UTM zone is its own map "
+        "and its own sample."
+    )
 
 
 async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -1541,13 +1934,7 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         must.append(NATIVE_SENTENCE)
     else:
         facts.append(rules.fact("studio_native_files", NATIVE_SENTENCE))
-    out["next_step"] = (
-        "Pass a zone's scores_path to olmoearth_review_set (which windows to "
-        "check first) or olmoearth_plan_label_sample (how wrong the map is). For "
-        "a certified zone, plan design='random' with seed_from_map, fixed before "
-        f"labelling. {rules.POSSIBLE_NOT_CERTAIN} Each UTM zone is its own map "
-        "and its own sample."
-    )
+    out["next_step"] = _next_step(plan, zones)
     claim = rules.certification_guaranteed(
         "this result writes scores files and certifies nothing; a random plan of "
         "one zone makes a certified zone of that zone possible, and "

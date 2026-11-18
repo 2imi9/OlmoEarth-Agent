@@ -9,7 +9,9 @@
    The look is OlmoEarth Studio's working pages (a MUI theme), from values
    measured with getComputedStyle on 11 November 2026:
    - one slim line on top: the AGENT tag and the sentence that this panel
-     is the OlmoEarth Agent, an app inside Claude (not Studio itself);
+     is the OlmoEarth Agent, an app inside Claude (not Studio itself); at
+     its right, on the start and projects cards, the account and Sign out
+     (r5-a V2);
    - the cream canvas (#faf2e9), text #0a3235, secondary text #105257;
    - cards: white, 1px rgba(0,0,0,.12), 4px corners, no shadow at rest (object
      cards 12px, raised on hover);
@@ -55,6 +57,21 @@ body { margin: 0; padding: 0 16px 16px; background: var(--canvas); color: var(--
 .oe-line { display: flex; align-items: center; gap: 8px; margin: 0 -16px 12px; padding: 6px 16px;
   border-bottom: 1px solid var(--divider); font-size: 12px; line-height: 18px; color: var(--text-2); }
 .oe-line img { height: 14px; flex: none; display: block; }
+/* The line's words (r5-a V2): the sentence, then the account item at its
+   right (OE.setAccount: who, and a Sign out text button sized as the line);
+   on a narrow panel the item drops under the sentence, from its left edge.
+   Empty (signed out, and on the views that set none) the item is not drawn. */
+.oe-line-text { flex: 1 1 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-start;
+  justify-content: space-between; gap: 2px 12px; }
+.oe-said { flex: 1 1 260px; min-width: 0; }
+.oe-account { flex: 0 1 auto; min-width: 0; max-width: 100%; display: inline-flex; align-items: center; gap: 4px; }
+.oe-account:empty { display: none; }
+.oe-account .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text); font-weight: 600; }
+.oe-account button.link { flex: none; font-size: 12px; line-height: 18px; padding: 0 4px; }
+/* The address of a link the host did not open (OE.docsLink), whole and selectable. */
+.oe-link-slot:empty { display: none; }
+.oe-link-slot code { user-select: all; overflow-wrap: anywhere; }
 h1, h2, h3 { margin: 0; }
 h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text-2); }
 h2 { font-size: 16px; line-height: 28px; font-weight: 600; color: var(--text); }
@@ -75,6 +92,8 @@ h3 { font-size: 14px; line-height: 21px; font-weight: 600; color: var(--text); }
 .card.dialog { padding: 0 24px 20px; }
 .card.dialog > h2:first-child { font-size: 20px; line-height: 28px; margin: 0 -24px; padding: 16px 24px; }
 .card.dialog > h2:first-child + * { margin-top: 0; }
+/* The sign-in's note (OE.signInPanel, r5-b J19): a few plain lines, each its own. */
+.oe-sign-note > div + div { margin-top: 4px; }
 .error { color: var(--error); }
 .card.error { border-color: rgba(208,47,46,.5); }
 .ok { color: var(--text); }
@@ -103,14 +122,17 @@ button.link:hover { background: var(--wash); }
 button.link:disabled, button.link:disabled:hover,
 button.link[aria-disabled="true"], button.link[aria-disabled="true"]:hover {
   cursor: default; color: rgba(0,0,0,.26); background: none; }
-/* A joined toggle group (Studio's LIST VIEW / CARD VIEW). */
+/* A joined toggle group (Studio's LIST VIEW / CARD VIEW). The pressed one is
+   told by more than its pale fill (r5-b J16): 700, and a dark line inside
+   its edge. */
 .toggle { display: inline-flex; }
 .toggle button { border-radius: 0; border: 1px solid var(--divider); padding: 7px; margin-left: -1px;
   font-size: 13px; line-height: 22.75px; font-weight: 500; text-transform: uppercase; color: var(--grey); }
 .toggle button:first-child { margin-left: 0; border-radius: 4px 0 0 4px; }
 .toggle button:last-child { border-radius: 0 4px 4px 0; }
 .toggle button:hover { background: var(--wash); border-color: var(--divider); }
-.toggle button[aria-pressed="true"] { background: var(--selected); color: var(--text); }
+.toggle button[aria-pressed="true"] { background: var(--selected); color: var(--text); font-weight: 700;
+  box-shadow: inset 0 0 0 2px var(--text); }
 .toggle.small button { padding: 3px 9px; }
 /* A label sheet row's group of answers takes the focus after an answer
    (tabindex -1, not a button): a ring when the keyboard brought it there. */
@@ -127,7 +149,8 @@ input[type=text], input[type=password], input[type=search], select {
 select { padding-right: 32px; }
 input:focus, select:focus { outline: none; border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); }
 button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-input::placeholder { color: rgba(10,50,53,.42); }
+/* A field's grey hint, dark enough to read (r5-b J29: .6, before .42). */
+input::placeholder { color: rgba(10,50,53,.6); }
 .search { border-radius: 32px; padding: 8px 16px 8px 38px; width: 100%; background-repeat: no-repeat;
   background-position: 14px center; background-size: 16px;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%230a3235' d='M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z'/></svg>"); }
@@ -161,15 +184,26 @@ details[open] > summary::after { transform: rotate(-135deg); }
 /* The rest of a card in a closed fold (OE.fold), spaced as a stack once open. */
 .oe-more > summary + * { margin-top: 8px; }
 .oe-more > * + * { margin-top: 12px; }
-/* A job's message the host did not take, to type in the chat: on a line of its
-   own under the row, whole and selectable. */
+/* What became of a job button's message (OE.sendJob, r5-b J20), on a line of
+   its own under the row: that it was sent, or that it was not, over the
+   message, whole and selectable, to type in the chat. Until a press its
+   status line is empty, and the slot is out of the layout (no gap in a grid,
+   a row or a stack) but drawn, so the line is in the accessibility tree
+   before its first words and a screen reader hears them. */
 .oe-type { flex-basis: 100%; margin-top: 4px; }
-.oe-type:empty { display: none; }
+.oe-type:has(> [role=status]:empty) { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden;
+  clip-path: inset(50%); }
 .oe-type code { display: block; margin-top: 2px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--divider);
   border-radius: 4px; user-select: all; overflow-wrap: anywhere; white-space: pre-wrap; }
 /* The label sheet's footer: sticky, a hairline above, the counter and the one button. */
 .sheet-footer { position: sticky; bottom: 0; margin: 16px -16px -16px; padding: 12px 16px;
   border-top: 1px solid var(--divider); background: var(--paper); border-radius: 0 0 4px 4px; }
+/* The footer's row with the finish button keeps to the right edge, also when
+   the line beside the button makes it wrap under the counter (r5-b J29), and
+   when that line and the button wrap inside it on a narrow panel. div.row:
+   the counter is a span.row, and stays at the left. */
+.sheet-footer > div.row { margin-left: auto; justify-content: flex-end; }
+.sheet-footer > div.row > .row { justify-content: flex-end; }
 /* The label sheet's table and pictures pane: the pane under the table, or
    beside it while it is open on a panel at least 760px wide, the table's
    cells and answer buttons then a little narrower so the answers stay in view. */
@@ -186,22 +220,37 @@ details[open] > summary::after { transform: rotate(-135deg); }
    that scrolls sideways; in the host's full screen (.full) the dates are a
    grid. An answer given shows pressed; none is the contained button. The
    face takes the focus after each answer: a ring when the keyboard brought
-   it there, as the list's group of answers has. */
+   it there, as the list's group of answers has. In the strip (r5-b J24) each
+   date starts at the top, so a month without a picture is not stretched
+   beside the real ones, and none is wider than the strip, so a date's row
+   wraps Detail under Context on a narrow panel. A strip of several dates
+   keeps each 40px narrower than itself, so the edge of the next one stays in
+   view as a sign that the strip goes on; a lone date, and each cell of the
+   full screen grid, keep the whole width. */
 .face:focus { outline: none; }
 .face:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; border-radius: 4px; }
 .face-dates:focus { outline: none; }
 .face-dates:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
 .face-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.face-dates { display: flex; gap: 12px; overflow-x: auto; }
-.face-dates > * { flex: none; }
+.face-dates { display: flex; gap: 12px; overflow-x: auto; align-items: flex-start; }
+.face-dates > * { flex: none; max-width: 100%; }
+.face-dates > :not(:only-child) { max-width: calc(100% - 40px); }
 .face.full .face-dates { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); overflow: visible; }
+.face.full .face-dates > * { max-width: none; }
 .face .answers button { min-width: 96px; padding: 10px 16px; }
 /* Only a chosen answer looks chosen (r4-h A/F22): no hover fill or border
-   change on an answer not chosen, and a chosen one filled dark. */
+   change on an answer not chosen. A chosen one (r5-b J16) has the pale
+   selected fill, a dark line, 700 and a tick before its words, the look of
+   a chosen number on the Check card; the dark fill is the view's one
+   action's alone (before, r4-h filled a chosen answer dark too). The tick
+   has empty alt text, so the button's name stays its words and a screen
+   reader says "pressed" once (a browser without that form keeps the first
+   content, the tick alone). */
 .face .answers button:not([aria-pressed="true"]):not([aria-disabled="true"]):not(:disabled):hover {
   background: transparent; border-color: var(--outline); }
-.face .answers button[aria-pressed="true"] { background: var(--text); color: var(--canvas); border-color: var(--text);
-  font-weight: 600; }
+.face .answers button[aria-pressed="true"] { background: var(--selected); color: var(--text); border-color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--text); font-weight: 700; }
+.face .answers button[aria-pressed="true"]::before { content: "\\2713\\00a0"; content: "\\2713\\00a0" / ""; }
 `;
 
 /* HTML-escape any value. */
@@ -257,32 +306,82 @@ OE.call = async (app, name, args = {}, options = undefined) => {
 
 /* Send the user's words to Claude, as if typed (a button the user pressed).
    A host that declines answers isError rather than throwing. True when the
-   host took the message, false (after a toast) when it did not. */
-OE.say = async (app, text) => {
+   host took the message, false when it did not (after a toast, unless
+   quiet). A message taken clears the status line while it still shows the
+   failure line this function wrote last (r5-b J20), so a card never says
+   that a message was sent beside a line that says one was not; any other
+   line stays. quiet (r5-d R07): a press whose own slot says what became of
+   the message (OE.sendJob) writes no failure line, so a message not taken
+   is said once, beside its button, and a screen reader hears it once; a
+   press with no slot ("Tell Claude: this project", the sign-in's "Continue
+   in the chat") keeps the toast. */
+// WORDING: r5b J20
+OE.NOT_TAKEN = 'Claude did not take the message; type it in the chat instead.';
+let saidFailed = null;  // the failure line OE.say last wrote
+OE.say = async (app, text, { quiet = false } = {}) => {
   try {
     const answer = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] });
     if (answer && answer.isError) {
-      OE.toast('Claude did not take the message; type it in the chat instead.', true);
+      if (!quiet) {
+        saidFailed = OE.NOT_TAKEN;
+        OE.toast(saidFailed, true);
+      }
       return false;
     }
+    const bar = document.getElementById('oe-toast');
+    if (bar && saidFailed && bar.textContent === saidFailed) OE.toast('');
+    saidFailed = null;
     return true;
   } catch (err) {
-    OE.toast('Could not send the message to Claude: ' + err.message, true);
+    if (!quiet) {
+      saidFailed = 'Could not send the message to Claude: ' + err.message;
+      OE.toast(saidFailed, true);
+    }
     return false;
   }
 };
 
-/* Where a job button's message shows when the host does not take it: empty,
-   and not drawn, until then. */
-OE.typeSlot = () => OE.el('div', { class: 'oe-type small' });
+/* What a job button's slot says after a press (r5-b J20): that the message
+   went to the chat, or that it did not, over the message to type. */
+// WORDING: r5b J20
+OE.JOB_SENT = 'Sent to the chat. Claude answers there.';
+// WORDING: r5b J20
+OE.JOB_NOT_SENT = 'Claude did not get this message. Type it in the chat:';
 
-/* A job button's press: its request goes to Claude as the user's words. When
-   the host declines it, slot shows "Type this in the chat:" and the whole
-   text, selectable, so its ids are not lost; a later send clears it. */
+/* Where a job button's press says what became of its message (OE.sendJob):
+   its first child is its status line (r5-b J20), the slot's one live part,
+   so a screen reader hears that line and not the message to type under it.
+   Empty, and kept out of the layout but in the accessibility tree, until a
+   press, so a screen reader hears its first line. */
+OE.typeSlot = () => OE.el('div', { class: 'oe-type small' }, OE.el('div', { role: 'status' }));
+
+/* Empty a job button's slot (OE.typeSlot), its status line kept in place for
+   the next press to write in: a press that ends before it sends anything
+   leaves no word of the one before (r5-b J20). Returns the line. */
+OE.clearSlot = (slot) => {
+  const line = slot.firstElementChild;
+  while (line.nextSibling) line.nextSibling.remove();
+  line.textContent = '';
+  return line;
+};
+
+/* A job button's press: its request goes to Claude as the user's words, and
+   slot says what became of it beside the button (r5-b J20), so a press never
+   seems to have done nothing and the reason for a text to type is where the
+   text is. Sent: the line says OE.JOB_SENT, muted. Not sent (the host
+   declined it): OE.JOB_NOT_SENT in the error colour, then, outside the line,
+   the whole text, selectable, so its ids are not lost. Each press replaces
+   what the one before left; a press that ends before sending clears it
+   (OE.clearSlot). With a slot, OE.say writes no toast (quiet, r5-d R07):
+   the slot says it; a toast an earlier press without a slot wrote goes once
+   a later message is taken. */
 OE.sendJob = async (app, text, slot) => {
-  const sent = await OE.say(app, text);
+  const sent = await OE.say(app, text, { quiet: Boolean(slot) });
   if (slot) {
-    slot.replaceChildren(...(sent ? [] : [OE.el('div', {}, 'Type this in the chat:'), OE.el('code', {}, text)]));
+    const line = OE.clearSlot(slot);
+    if (!sent) slot.append(OE.el('code', {}, text));
+    line.className = sent ? 'muted' : 'error';
+    line.textContent = sent ? OE.JOB_SENT : OE.JOB_NOT_SENT;
   }
   return sent;
 };
@@ -300,6 +399,43 @@ OE.open = async (app, url) => {
     OE.toast('The link was not opened.', true);
     return false;
   }
+};
+
+/* The OlmoEarth docs' address (public and fixed): what the start card's
+   docs link opens (r5-a V1). */
+OE.DOCS_URL = 'https://docs.olmoearth.allenai.org/';
+
+/* The docs link's words: its label, and what its slot says over the address
+   when the host did not open it. */
+// WORDING: r5a V1
+OE.DOCS_LABEL = 'What is OlmoEarth? (docs)';
+// WORDING: r5a V1
+OE.DOCS_BY_HAND = 'Open this address in your browser:';
+
+/* A text button that opens the OlmoEarth docs in the user's browser
+   (OE.open), and its slot: [button, slot]. A button, as every link of a
+   view is: the host opens the address, the page never does. aria-disabled
+   while the host is asked, so it keeps the focus. When the host does not
+   open it (OE.open's toast says so) the slot shows the address, whole and
+   selectable: it is public and fixed, no id and no place in it. A later
+   press that opens it empties the slot. */
+OE.docsLink = (app) => {
+  const slot = OE.el('div', { class: 'oe-link-slot small' });
+  let busy = false;
+  const button = OE.el('button', { type: 'button', class: 'link' }, OE.DOCS_LABEL);
+  button.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    button.setAttribute('aria-disabled', 'true');
+    try {
+      const opened = await OE.open(app, OE.DOCS_URL);
+      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.DOCS_BY_HAND), OE.el('code', {}, OE.DOCS_URL)]));
+    } finally {
+      busy = false;
+      button.setAttribute('aria-disabled', 'false');
+    }
+  });
+  return [button, slot];
 };
 
 /* Move the focus to el only while this panel's frame has it: a focus that
@@ -521,14 +657,22 @@ OE.fold = (label, ...nodes) => OE.el('details', { class: 'oe-more' },
 // WORDING: r4p2
 OE.SUB = 'This panel is the OlmoEarth Agent, an app inside Claude. It works with your OlmoEarth Studio data. It is not Studio itself.';
 
-/* The one slim line on top of every view: the AGENT tag and OE.SUB. The tag's
-   alt is empty, since the sentence names the agent. */
+/* The one slim line on top of every view: the AGENT tag, OE.SUB and, right
+   of the sentence, the account item (#oe-account, r5-a V2): empty, and not
+   drawn, until a card that shows the account sets it (OE.setAccount: the
+   start card and the projects card; the other views leave it empty). The
+   tag's alt is empty, since the sentence names the agent. */
 OE.line = () => OE.el('header', { class: 'oe-line' },
   OE.el('img', { src: OE.TAG, alt: '' }),
-  OE.el('span', {}, OE.SUB));
+  OE.el('div', { class: 'oe-line-text' },
+    OE.el('span', { class: 'oe-said' }, OE.SUB),
+    OE.el('span', { id: 'oe-account', class: 'oe-account' })));
 
 /* A short status line at the bottom of the page: a live region that OE.start
-   puts in place before any message, so a screen reader announces the first. */
+   puts in place before any message, so a screen reader announces the first.
+   A plain message is announced politely (role status); an error at once
+   (r5-b J29: role alert, aria-live assertive), and the next plain message
+   politely again. */
 OE.toastRegion = () => {
   let bar = document.getElementById('oe-toast');
   if (!bar) {
@@ -539,6 +683,8 @@ OE.toastRegion = () => {
 };
 OE.toast = (text, isError = false) => {
   const bar = OE.toastRegion();
+  bar.setAttribute('role', isError ? 'alert' : 'status');
+  bar.setAttribute('aria-live', isError ? 'assertive' : 'polite');
   bar.className = 'small ' + (isError ? 'error' : 'muted');
   bar.textContent = text;
 };
@@ -869,7 +1015,42 @@ OE.accountLine = (account) => {
   return 'Signed in to OlmoEarth Studio as ' + who + org + '.';
 };
 
-/* The Studio sign-in, framed as a Studio dialog without the modal parts. The
+/* The account in the top line, short (r5-a V2): "Ana (Lab)"; "Your account
+   (Lab)" when Studio gave no name; "Signed in" with no account at all. With
+   the key the app was installed with (source 'environment', r5-c S01), what
+   is in use in place of whose: no Sign out can remove that key. */
+// WORDING: r5a V2
+OE.accountShort = (account, source = null) => {
+  // WORDING: r5c S01
+  if (source === 'environment') return 'Signed in with the app\'s own key';
+  if (!account) return 'Signed in';
+  const who = account.user_name || 'Your account';
+  const org = account.organization ? ' (' + account.organization + ')' : '';
+  return who + org;
+};
+
+/* The sign-in panel's words (r5-b J19). Its button says what its press
+   does. Its note is a few plain lines: SIGN_IN_OPENS says what the button
+   opens, where the key is typed and where Studio makes one; SIGN_IN_NOTE,
+   the default, adds where the key goes and that Studio checks it. A card
+   that needs Studio for its own step (the Check card, a result card) says
+   so in a first line of its own, then SIGN_IN_OPENS and SIGN_IN_KEY_GOES. */
+// WORDING: r5b J19
+OE.SIGN_IN_BUTTON = 'Open the sign-in page';
+// WORDING: r5b J19
+OE.SIGN_IN_OPENS = 'The button opens a sign-in page in your browser, on this computer. Enter your Studio API key there (in Studio: your profile, then API Keys).';
+// WORDING: r5b J19
+OE.SIGN_IN_KEY_GOES = 'The key goes to the OlmoEarth Agent here, not through Claude.';
+// WORDING: r5b J19
+OE.SIGN_IN_NOTE = [
+  OE.SIGN_IN_OPENS,
+  'The key goes to the OlmoEarth Agent here, not through Claude, and is checked with Studio before it is used.',
+];
+
+/* The Studio sign-in, framed as a Studio dialog without the modal parts: a
+   white card, as every other card (r5-b J19; before, cream on the cream
+   canvas). note is its lines under the title, each its own div: a list of
+   sentences, or one string (the start card's); none gives SIGN_IN_NOTE. The
    key is never typed here: the button opens a one-time page this server
    serves on 127.0.0.1 in the user's own browser, where the key goes straight
    to the server, in no MCP message. The panel then asks the server, 2 s after
@@ -886,7 +1067,7 @@ OE.signInPanel = (app, { onDone, note, primary = true, acceptCurrent = false } =
   // announced once, by the page's status line (OE.toast), which outlasts the panel.
   const status = OE.el('div', { class: 'small muted', role: 'status', 'aria-live': 'polite' });
   const link = OE.el('div', { class: 'small' });
-  const button = OE.el('button', { class: primary ? 'primary' : '' }, 'Sign in in your browser');
+  const button = OE.el('button', { class: primary ? 'primary' : '' }, OE.SIGN_IN_BUTTON);
   let timer = null;
   let run = 0;  // the current wait; a new click ends the one before
   let busy = false;
@@ -947,17 +1128,18 @@ OE.signInPanel = (app, { onDone, note, primary = true, acceptCurrent = false } =
       status.textContent = err.message;
     }
   });
-  return OE.el('section', { class: 'card summary dialog stack' },
+  // The note's lines: a list as given, one string as one line, else the default.
+  const given = (Array.isArray(note) ? note : [note]).filter((s) => typeof s === 'string' && s);
+  const lines = given.length ? given : OE.SIGN_IN_NOTE;
+  return OE.el('section', { class: 'card dialog stack' },
     OE.el('h2', {}, 'Sign in to OlmoEarth Studio'),
-    // WORDING: r4p2 (where Studio makes a key, after "Your Studio API key")
-    OE.el('div', {}, note
-      || 'You sign in on a page this app opens in your browser, served on this computer. Your Studio API key (in Studio, open your profile, then API Keys) goes from that page to the OlmoEarth Agent here, not through Claude, and is checked with Studio before it is used.'),
+    OE.el('div', { class: 'oe-sign-note' }, lines.map((s) => OE.el('div', {}, s))),
     status, link,
     OE.el('div', { class: 'row', style: 'justify-content:flex-end' }, button));
 };
 
-/* A Sign out button: a text button in a page's account line ('link'), small
-   outlined on the account card ('small'). */
+/* A Sign out button: a text button in the top line's account item ('link',
+   OE.setAccount), small outlined on the account card ('small'). */
 OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
   const out = OE.el('button', {
     class: cls,
@@ -965,9 +1147,11 @@ OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
       out.disabled = true;
       try {
         const result = await OE.call(app, 'olmoearth_app_sign_out');
-        // WORDING: r4p2 (the first: B/S7)
-        OE.toast(result.environment_key_remains
-          ? 'Signed out here. A key put in this app\'s settings when it was installed (OLMOEARTH_API_KEY) is still in use; whoever installed the app can remove it.'
+        // WORDING: r5c S01 (the first; the second: r4p2). By the key in effect,
+        // not environment_key_remains: an OLMOEARTH_API_KEY that is no key
+        // (the placeholder) leaves the user signed out.
+        OE.toast(result.signed_in && result.source === 'environment'
+          ? 'Still signed in: this app was installed with its own key. Only whoever installed it can remove it.'
           : 'Signed out; the saved key was removed.');
         if (onSignOut) onSignOut(result);
       } catch (err) {
@@ -978,6 +1162,30 @@ OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
   return out;
 };
 
-/* The signed-in line with a Sign out text button. */
-OE.accountBar = (app, account, { onSignOut } = {}) =>
-  OE.el('div', { class: 'row small' }, OE.accountLine(account), OE.signOutButton(app, { onSignOut }));
+/* The account item of the top line (#oe-account, OE.line), set by a card
+   that shows the account at each of its drawings (r5-a V2: the start card
+   and the projects card). Signed in: who (OE.accountShort; the whole
+   sentence, OE.accountLine, is the item's name for a screen reader and the
+   name's tooltip) and a Sign out text button, which calls the card's
+   onSignOut(result). With the key the app was installed with (source
+   'environment', r5-c S01) no Sign out: its press cannot remove that key, so
+   the item says only that this key is in use. Signed out: empty, which the
+   style does not draw, so a name never outlasts its sign-in. The pointer and
+   the keyboard stay where they are. Returns the Sign out button, or null. */
+OE.setAccount = (app, { signedIn = false, account = null, source = null, onSignOut } = {}) => {
+  const item = document.getElementById('oe-account');
+  if (!item) return null;
+  if (!signedIn) {
+    item.replaceChildren();
+    item.removeAttribute('role');
+    item.removeAttribute('aria-label');
+    return null;
+  }
+  const said = OE.accountLine(account);
+  const out = source === 'environment' ? null : OE.signOutButton(app, { onSignOut });
+  item.setAttribute('role', 'group');
+  item.setAttribute('aria-label', said);
+  item.replaceChildren(...[OE.el('span', { class: 'who', title: said }, OE.accountShort(account, source)), out]
+    .filter(Boolean));
+  return out;
+};

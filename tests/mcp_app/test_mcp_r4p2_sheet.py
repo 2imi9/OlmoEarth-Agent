@@ -972,7 +972,8 @@ def test_the_sheets_face_sentences_say_no_window() -> None:
     """The owner's ruling 6 (13 Nov 2026): "windows" goes from the card faces.
     A handle not on the sheet and the held figure name no unit (a sheet is of
     squares or of points); a row with no place is a square's (a Studio
-    result's points always carry theirs); the finish message names none."""
+    result's points always carry theirs); the finish message names the
+    sheet's own unit word (r5-a L3: "I have answered every square")."""
     assert sheet.UNKNOWN_HANDLE == "That square or point is not on this sheet."
     assert sheet.NO_PLACE == "This square has no place on the sheet to show on a map."
     assert sheet.FIGURE_LATER == (
@@ -980,11 +981,11 @@ def test_the_sheets_face_sentences_say_no_window() -> None:
         "the whole sheet is labelled."
     )
     message = sheet.finish_message(
-        "estimate", name="a_to_label.csv", call="c", labels_path="p"
+        "estimate", unit=sheet.UNIT_SQUARE, call="c", labels_path="p"
     )
     assert message == (
-        "I have finished labelling the sheet a_to_label.csv. Estimate the map's "
-        "error rate from it: c."
+        "I have answered every square of this sheet. Estimate the error rate. "
+        "Estimate the map's error rate from it: c."
     )
     for said in (sheet.UNKNOWN_HANDLE, sheet.NO_PLACE, sheet.FIGURE_LATER, message):
         assert "window" not in said.lower(), said

@@ -545,10 +545,13 @@ def test_fetch_failures_are_fixed_sentences(
         "ok": False,
         "error": imagery.NOT_READABLE,
     }
+    # A failure another try can get past says so (again, r5-a L1); the two
+    # refusals above would be the same on a second try, and carry no again.
     sky.catalogue_status = 500
     assert _pictures(path, 14, on=True) == {
         "ok": False,
         "error": imagery.CATALOGUE_FAILED,
+        "again": True,
     }
     sky.catalogue_status = 200
     # A redirect is never followed; a bucket that ignores the range is not read.
@@ -559,6 +562,7 @@ def test_fetch_failures_are_fixed_sentences(
         assert _pictures(path, 14, on=True) == {
             "ok": False,
             "error": imagery.FETCH_FAILED,
+            "again": True,
         }
         assert all(host != "elsewhere.example" for _, host, _ in sky.requests[before:])
     sky.bucket_status = None
@@ -570,6 +574,7 @@ def test_fetch_failures_are_fixed_sentences(
     assert _pictures(path, 14, on=True) == {
         "ok": False,
         "error": imagery.TOO_SLOW,
+        "again": True,
     }
 
 

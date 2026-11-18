@@ -129,27 +129,30 @@ const drawing = (s, parts, label) => OE.svg('svg', {
 }, parts);
 
 /* Words for a model's output beside its tile (the Models list's caption):
-   "per-pixel classes (drawn here without their colours)", "per-window
-   values", "embeddings (numbers for other programs; ...)" (B/P5, B/P6). */
-// WORDING: r4p2
+   "per-pixel classes (drawn here without their colours)", "per-tile
+   values", "embeddings (numbers for other programs; ...)" (B/P5, B/P6). A
+   model whose record's grain is the window is said to be per tile (r5-c
+   S02: no face says "window"). */
+// WORDING: r4p2; r5c S02 (per-tile, per tile)
 OE.glyph.outputText = (m) => {
   if (!m || !m.kind) return 'output not recorded';
   if (m.kind === 'detection') return m.kind;
   if (m.kind === 'embeddings') return 'embeddings (numbers for other programs; these jobs cannot check or rank it)';
-  const grain = m.grain === 'pixel' ? 'per-pixel ' : m.grain === 'window' ? 'per-window ' : '';
+  const grain = m.grain === 'pixel' ? 'per-pixel ' : m.grain === 'window' ? 'per-tile ' : '';
   // Said in words when the dashed frame shows it: no grain recorded.
-  const noGrain = m.grain ? '' : ', per pixel or per window not recorded';
+  const noGrain = m.grain ? '' : ', per pixel or per tile not recorded';
   // Values, not a confidence: the grey bands are the same for every values model.
   return m.kind === 'classes' ? grain + 'classes (drawn here without their colours' + noGrain + ')' : grain + 'values' + (noGrain ? ' (' + noGrain.slice(2) + ')' : '');
 };
 
 /* A model's output in the Models list's own words, without what its tile
    shows (a prediction's row draws no tile): "per-pixel classes",
-   "per-window values", "embeddings", "detection" (B/P1). */
+   "per-tile values", "embeddings", "detection" (B/P1). */
 OE.glyph.outputWords = (m) => {
   if (!m || !m.kind) return 'output not recorded';
   if (m.kind === 'detection' || m.kind === 'embeddings') return m.kind;
-  const grain = m.grain === 'pixel' ? 'per-pixel ' : m.grain === 'window' ? 'per-window ' : '';
+  // WORDING: r5c S02
+  const grain = m.grain === 'pixel' ? 'per-pixel ' : m.grain === 'window' ? 'per-tile ' : '';
   return grain + (m.kind === 'classes' ? 'classes' : 'values');
 };
 
@@ -163,14 +166,18 @@ const stepWords = (months) => {
   return groups.length ? groups.join('; ') : 'no month covered';
 };
 
-/* A prediction in a row: the ring (its months), the year beside it. */
+/* A prediction in a row: the ring (its months), the year beside it; a
+   prediction with no dates says "no dates" there (r5-c S02: "not recorded"
+   just before the run's name read as the run not being recorded), its ring
+   still named "Dates not recorded". */
 OE.glyph.predictionRow = (p) => {
   const s = 30;
   const colors = Array.isArray(p.months) ? p.months.map((v) => (v ? OE.glyph.COLORS.covered : null)) : null;
   const label = p.span ? 'Covers ' + p.span : 'Dates not recorded';
   return OE.el('span', { class: 'glyph-row' },
     drawing(s, OE.glyph.ring(s, { colors }), label),
-    OE.el('span', { class: 'glyph-year', 'aria-hidden': 'true' }, p.years || 'not recorded'));
+    // WORDING: r5c S02
+    OE.el('span', { class: 'glyph-year', 'aria-hidden': 'true' }, p.years || 'no dates'));
 };
 
 /* A project on its card: the graded ring, the count beside it, the caption. */
@@ -180,8 +187,8 @@ OE.glyph.projectCard = (g) => {
   const colors = Array.isArray(g.months) ? g.months.map((v) => OE.glyph.COLORS.steps[v] || null) : null;
   const count = g.count + (g.capped ? '+' : '') + ' prediction' + (g.count === 1 && !g.capped ? '' : 's');
   const undated = g.count - g.dated;
-  // WORDING: r4p2 (B/P3)
-  const note = !colors ? 'dates not recorded'
+  // WORDING: r4p2 (B/P3); r5c S14 (a project with no prediction: 'No maps yet', not the ring's long caption)
+  const note = g.count === 0 ? 'No maps yet' : !colors ? 'dates not recorded'
     : 'months of the year its predictions cover (all years and areas counted together)'
       + (undated > 0 ? '; ' + undated + ' without dates' : '');
   return OE.el('div', { class: 'glyph-card' },

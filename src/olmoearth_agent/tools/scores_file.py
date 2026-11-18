@@ -55,7 +55,12 @@ endpoint (:data:`STUDIO_PROVENANCE`), not made by a direct run. Its model is
 stated with no revision, which Studio does not expose (the manifest's
 ``revision`` holds the result id), and its scores file carries the manifest's
 ``studio`` block and assumption, so later results built on it repeat it
-(:func:`studio_notes`).
+(:func:`studio_notes`). Such a raster over :data:`MAX_VALUES` values, up to
+:data:`MAX_STRIP_VALUES`, is pooled strip by strip (:func:`_pool_strips`, r5-a
+K1): the same calls on full-width strips of whole window rows, so memory
+follows one strip, and the scores file is the one a whole read would write.
+A raster at or under :data:`MAX_VALUES`, and any direct run's raster, is read
+whole as before; a direct run's over the limit is still refused.
 
 Reading the GeoTIFF needs the optional ``inferencex`` extra (numpy and
 rasterio through ``olmoearth-inferencex[geo]``); without it the tool answers
@@ -71,6 +76,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import math
 import os
 import re
 import warnings
@@ -119,6 +125,38 @@ DEFAULT_PATCH = 4
 
 #: Largest raster read, in values (channels x pixels): about 256 MB of float32.
 MAX_VALUES = 64_000_000
+
+#: Largest raster read in strips, in values (channels x pixels). A raster
+#: this agent wrote from a Studio result's files (``tools/studio_scores.py``)
+#: that holds more than :data:`MAX_VALUES` is pooled strip by strip
+#: (:func:`_pool_strips`) up to this many; any other raster keeps
+#: :data:`MAX_VALUES` (r5-a K1).
+MAX_STRIP_VALUES = 256_000_000
+
+#: Values (channels x pixels) one strip of a raster read in strips holds, at
+#: most, unless one row of windows (or of pixels) alone holds more.
+BLOCK_VALUES = 2_000_000
+
+#: The review budgets ``assess_prediction`` reports at by default, whose
+#: cut-offs its tie warnings are about (:func:`_strip_warnings`).
+_BUDGETS = (0.01, 0.05, 0.10)
+
+#: The package's warning of pixels outside the window grid, word for word
+#: (``oe_inferencex.review.assess._assess``, 1.20.3): a strip's call cannot
+#: say it for the whole map, so :func:`_strip_warnings` does.
+_EDGE_WARNING = (
+    "{dropped} pixels ({percent:.1f}%) on the right and bottom edge do not fill a "
+    "{patch} px window and are never ranked; choose a patch that divides the map "
+    "to include them"
+)
+
+#: The package's warning of a review set cut inside a run of equal scores,
+#: word for word (``oe_inferencex.review.assess._assess``, 1.20.3).
+_TIE_WARNING = (
+    "review set at {budget:g}: {inside} of its {k} windows share the cut-off "
+    "score with {outside} windows left outside; among those the order is raster "
+    "position, not evidence"
+)
 
 #: ``score_kind`` of a scores file this tool writes.
 SCORE_KIND = "window_confidence"
@@ -493,11 +531,40 @@ def smallest_patch(height: int, width: int, start: int = DEFAULT_PATCH) -> int:
     return patch
 
 
-def _check_size(rasterio: Any, path: Path, patch: int) -> None:
+def _strips_ready(raster_io: Any, src: Any) -> bool:
+    """Whether a strip of an open raster gives the whole read's valid pixels.
+
+    The package's reader (``read_raster``) marks a pixel no-data where a band
+    is not finite, where every band holds the no-data value, or where GDAL's
+    mask or an alpha band says so. A raster of float32 bands whose no-data
+    value is NaN, with no alpha band and no GDAL mask (the package's own
+    ``_mask_bands``), is what ``olmoearth_scores_from_studio`` writes: its
+    mask is "every band finite", which a strip gives as the whole read does.
+    Any other raster is not read in strips.
+    """
+    nodata = src.nodata
+    if nodata is None or not math.isnan(nodata):
+        return False
+    if any(str(dtype) != "float32" for dtype in src.dtypes):
+        return False
+    alpha, other = raster_io._mask_bands(src)
+    return alpha is None and not other
+
+
+def _check_size(rasterio: Any, path: Path, patch: int, strip_io: Any = None) -> bool:
     """Refuse a raster too large to read, or with more windows than a ranking takes.
 
     A file rasterio cannot open is refused in the words of the package's own
     reader (``read_raster``), which this check runs before.
+
+    ``strip_io`` is the package's raster module when the raster may be read
+    in strips (one this agent wrote from Studio's files, holding
+    probabilities), else ``None``. Such a raster over :data:`MAX_VALUES` is
+    taken up to :data:`MAX_STRIP_VALUES` when a strip gives the whole read's
+    valid pixels (:func:`_strips_ready`); every other raster keeps the
+    refusal at :data:`MAX_VALUES`, in the same words. Returns whether the
+    raster is to be read in strips: never for one at or under
+    :data:`MAX_VALUES`.
     """
     try:
         src = rasterio.open(path)
@@ -507,10 +574,18 @@ def _check_size(rasterio: Any, path: Path, patch: int) -> None:
         ) from None
     with src:
         count, height, width = src.count, src.height, src.width
-    if count * height * width > MAX_VALUES:
+        strips = bool(
+            strip_io is not None
+            and count * height * width > MAX_VALUES
+            and _strips_ready(strip_io, src)
+        )
+    limit = MAX_STRIP_VALUES if strips else MAX_VALUES
+    if count * height * width > limit:
+        # WORDING: r5a (the words as they were; a raster read in strips is
+        # refused past the strip cap)
         raise ValueError(
             f"the raster holds {count} x {height} x {width} values, more than "
-            f"{MAX_VALUES:,} this tool reads; score a smaller area"
+            f"{limit:,} this tool reads; score a smaller area"
         )
     if patch > min(height, width):
         raise ValueError(f"patch {patch} px is larger than the {height} x {width} map")
@@ -521,6 +596,7 @@ def _check_size(rasterio: Any, path: Path, patch: int) -> None:
             f"{n:,} windows of {patch} px exceed the {MAX_WINDOWS:,} a ranking "
             f"takes; pass patch >= {smallest}"
         )
+    return strips
 
 
 def read_scores_raster(raster_io: Any, path: Path) -> tuple[Any, Any, Any]:
@@ -806,46 +882,53 @@ def read_run_files(
     )
 
 
-async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-    """Handler for ``olmoearth_scores_from_file``."""
-    try:
-        # The feature-folder paths of olmoearth-inferencex >= 1.19.0. The
-        # 1.18.1 path `assess` still resolves through the package's alias
-        # finder, and `cli.read_raster` through the CLI's own import of
-        # `common.raster`; neither is the module's own.
-        assess = inferencex.load("review.assess")
-        raster_io = inferencex.load("common.raster")
-    except inferencex.InferencexMissingError as exc:
-        return _missing(f"olmoearth-inferencex: {exc}")
-    try:
-        rasterio = importlib.import_module("rasterio")
-        np = importlib.import_module("numpy")
-        # The package's reader of an OlmoEarth run, for its words on how to
-        # write probabilities; it imports rasterio only when it reads.
-        reader = inferencex.load("readers.olmoearth")
-    except ImportError as exc:
-        return _missing(f"rasterio: {exc}")
+@dataclass
+class Pooled:
+    """A run's raster pooled to windows, by a whole read or strip by strip.
 
-    patch = int(args.get("patch", DEFAULT_PATCH))
-    if patch < 1:
-        raise ValueError(f"patch must be a positive number of pixels, got {patch}")
-    include_fill = bool(args.get("include_fill_class", False))
-    run_dir, named = resolve_run(str(args["run_dir"]))
-    run = read_run_files(run_dir, named, rasterio, np, str(reader.FIX_PROBABILITIES))
+    ``shape`` is the raster's as the package's reader returns it (``[H, W]``
+    for one band, else ``[C, H, W]``) and ``geo`` its transform and CRS;
+    ``kept`` the class channels read, ``labels`` their names by position and
+    ``fill`` the label-fill block, or ``None``. ``conf``, ``klass`` and
+    ``valid_w`` are the package's window confidence, majority class and
+    valid-window arrays, and ``p1_w`` each window's mean top-1 probability;
+    ``n_nodata_pixels`` counts the pixels with no prediction,
+    ``pixels_outside`` those outside the window grid, and ``warnings`` are
+    the package's, in its order.
+    """
+
+    shape: list[int]
+    geo: Any
+    kept: list[int]
+    labels: dict[int, str]
+    fill: dict[str, Any] | None
+    conf: Any
+    klass: Any
+    valid_w: Any
+    p1_w: Any
+    n_nodata_pixels: int
+    pixels_outside: int
+    warnings: list[str]
+
+
+def _pool_whole(
+    np: Any,
+    assess: Any,
+    raster_io: Any,
+    run: RunFiles,
+    is_logit: bool,
+    patch: int,
+    include_fill: bool,
+) -> Pooled:
+    """A run's raster read whole and pooled to windows.
+
+    The path of every raster at or under :data:`MAX_VALUES`, and of any
+    raster not read in strips: the package's reader, its
+    ``assess_prediction`` and this module's top-1 pooling, as they ran
+    before a larger Studio raster was read in strips (r5-a K1; the lines
+    moved here unchanged).
+    """
     manifest, raster = run.manifest, run.raster
-    kind = _values_kind(manifest)
-    is_logit = kind == "logits"
-    provenance = provenance_of(manifest)
-    studio = studio_source(manifest)
-
-    digest = _sha256(raster)
-    recorded = (manifest.get("scores") or {}).get("sha256")
-    if recorded and str(recorded).lower() != digest:
-        raise ValueError(
-            "the raster's sha256 is not the one its manifest records: the manifest "
-            "does not describe this file, so its classes and values cannot be trusted"
-        )
-    _check_size(rasterio, raster, patch)
     array, valid, geo = read_scores_raster(raster_io, raster)
     shape = list((manifest.get("scores") or {}).get("shape") or [])
     if shape and shape != list(array.shape) and shape[1:] != list(array.shape):
@@ -909,10 +992,262 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         arrays["pooled_argmax"],
         arrays["valid"],
     )
-    rows_n, cols_n = (int(s) for s in conf.shape)
-    idx = np.flatnonzero(valid_w.ravel())
     p1_px = np.where(valid, _top1(np, class_scores, is_logit), np.nan)
     p1_w = _pool_mean(np, p1_px, patch, bool(valid.all()))
+    return Pooled(
+        shape=list(array.shape),
+        geo=geo,
+        kept=kept,
+        labels=labels,
+        fill=fill,
+        conf=conf,
+        klass=klass,
+        valid_w=valid_w,
+        p1_w=p1_w,
+        n_nodata_pixels=int((~valid).sum()),
+        pixels_outside=int(out.get("pixels_outside_window_grid", 0)),
+        warnings=[str(w) for w in out.get("warnings", [])],
+    )
+
+
+def _strip_rows(bands: int, width: int, patch: int) -> int:
+    """Rows of one pooling strip: whole rows of windows, at least one.
+
+    About :data:`BLOCK_VALUES` values (bands x rows x ``width``), rounded
+    down to a whole number of window rows, so every window lies inside one
+    strip.
+    """
+    rows = BLOCK_VALUES // max(1, bands * width)
+    return max(patch, rows // patch * patch)
+
+
+def _strip_warnings(
+    assess: Any, conf: Any, valid_w: Any, patch: int, height: int, width: int
+) -> list[str]:
+    """The package's whole-map warnings for a probability map read in strips.
+
+    ``assess_prediction`` on the whole raster gives, in this order: its
+    probability warning; the pixels on the right and bottom edge outside the
+    window grid, when there are any; and, for each review budget whose
+    cut-off falls inside a run of equal window scores, how many tied windows
+    are left outside. A strip's call can say none of them for the map, so
+    they are rebuilt from the whole map's window arrays with the package's
+    own review order and tie rule (``review_order``, ``_tied_with``) and its
+    sentences (:data:`_EDGE_WARNING`, :data:`_TIE_WARNING`).
+    """
+    out = [str(assess.PROBABILITY_WARNING)]
+    dropped = height * width - (height // patch * patch) * (width // patch * patch)
+    if dropped:
+        percent = 100 * dropped / (height * width)
+        out.append(_EDGE_WARNING.format(dropped=dropped, percent=percent, patch=patch))
+    suspicion = -conf
+    flat = valid_w.ravel()
+    n_valid = int(flat.sum())
+    rank = assess.review_order(suspicion, valid_w)
+    for budget in _BUDGETS:
+        k = min(n_valid, max(1, int(round(budget * n_valid))))
+        idx = rank[:k]
+        tied = flat & assess._tied_with(suspicion, None, "confidence", patch, idx[-1])
+        inside = int(tied[idx].sum())
+        outside = int(tied.sum()) - inside
+        if outside > 0:
+            out.append(
+                _TIE_WARNING.format(budget=budget, inside=inside, k=k, outside=outside)
+            )
+    return out
+
+
+def _pool_strips(
+    np: Any,
+    rasterio: Any,
+    assess: Any,
+    run: RunFiles,
+    is_logit: bool,
+    patch: int,
+    include_fill: bool,
+) -> Pooled:
+    """A run's raster pooled to windows strip by strip, as a whole read pools it.
+
+    For a raster over :data:`MAX_VALUES` that :func:`_check_size` took for
+    strips: one this agent wrote from Studio's files, whose valid pixels are
+    those finite in every band (:func:`_strips_ready`). Full-width strips of
+    whole window rows (:func:`_strip_rows`; the last also takes the rows
+    under the last whole window) are read one at a time, and each goes
+    through the calls the whole read makes: the package's
+    ``assess_prediction`` for the window confidence, class and validity, and
+    this module's :func:`_top1` and :func:`_pool_mean` for the top-1
+    probability. A window lies inside one strip and takes its numbers from
+    its own pixels alone, so its row of the window arrays is the whole
+    read's.
+
+    What the package says of the whole map is rebuilt from those arrays
+    (:func:`_strip_warnings`). The whole raster's "every pixel valid" flag
+    picks the mean :func:`_pool_mean` takes, so the top-1 probability is
+    pooled both ways until a strip holds a pixel with no prediction. A strip
+    with no valid window is the package's refusal (``NO_VALID_WINDOW``) of
+    that strip alone: its windows are invalid, and the map is refused, in
+    the package's words, only when no strip has a valid one. A strip holding
+    values outside [0, 1] is refused by the package with that strip's range,
+    where a whole read would give the map's.
+    """
+    from rasterio.windows import Window
+
+    manifest, raster = run.manifest, run.raster
+    with rasterio.open(raster) as src:
+        count, height, width = int(src.count), int(src.height), int(src.width)
+        geo = {"transform": src.transform, "crs": src.crs}
+    full = [height, width] if count == 1 else [count, height, width]
+    shape = list((manifest.get("scores") or {}).get("shape") or [])
+    if shape and shape != full and shape[1:] != full:
+        raise ValueError(f"the manifest records shape {shape}; the raster is {full}")
+
+    fill: dict[str, Any] | None = None
+    marked: list[int] = []
+    if count == 1:
+        names = (
+            _class_names(manifest, 2) if len(manifest.get("classes") or {}) == 2 else {}
+        )
+        kept = [0, 1]
+        labels = {i: names.get(i, f"class_{i}") for i in kept}
+    else:
+        names = _class_names(manifest, count)
+        marked = fill_channels(manifest, names)
+        kept = [c for c in range(count) if include_fill or c not in marked]
+        if len(kept) < 2:
+            raise ValueError(
+                "fewer than two class channels remain once the label-fill channel "
+                "is left out; a margin needs two"
+            )
+        labels = {pos: names[c] for pos, c in enumerate(kept)}
+
+    grid = (height // patch, width // patch)
+    conf = np.full(grid, np.nan, dtype=np.float64)
+    klass = np.full(grid, -1, dtype=np.int64)
+    valid_w = np.zeros(grid, dtype=bool)
+    p1_some = np.full(grid, np.nan, dtype=np.float64)
+    p1_all = np.full(grid, np.nan, dtype=np.float64)
+    every_valid = True
+    n_nodata = 0
+    fill_argmax = 0
+    step = _strip_rows(count, width, patch)
+    last = grid[0] * patch
+    with rasterio.open(raster) as src:
+        for top in range(0, last, step):
+            # The last strip also takes the rows under the last whole window:
+            # in no window, they still count among the pixels with no
+            # prediction and a fill channel's argmax, as a whole read counts.
+            stop = height if top + step >= last else top + step
+            block = src.read(window=Window(0, top, width, stop - top))
+            array = block[0] if count == 1 else block
+            valid = np.isfinite(array).all(axis=0) if count > 1 else np.isfinite(array)
+            if marked:
+                best = np.argmax(np.where(valid[None], array, -np.inf), axis=0)
+                fill_argmax += int(((best == marked[0]) & valid).sum())
+            class_scores = array if count == 1 else array[kept]
+            rows = slice(top // patch, top // patch + (stop - top) // patch)
+            try:
+                out = assess.assess_prediction(
+                    class_scores, is_logit=is_logit, patch=patch, nodata_mask=~valid
+                )
+            except ValueError as exc:
+                if str(exc) != str(assess.NO_VALID_WINDOW):
+                    raise
+            else:
+                arrays = out["arrays"]
+                conf[rows] = arrays["confidence"]
+                klass[rows] = arrays["pooled_argmax"]
+                valid_w[rows] = arrays["valid"]
+            p1_px = np.where(valid, _top1(np, class_scores, is_logit), np.nan)
+            p1_some[rows] = _pool_mean(np, p1_px, patch, False)
+            every_valid = every_valid and bool(valid.all())
+            if every_valid:
+                p1_all[rows] = _pool_mean(np, p1_px, patch, True)
+            n_nodata += int((~valid).sum())
+    if not valid_w.any():
+        raise ValueError(str(assess.NO_VALID_WINDOW))
+    if marked:
+        channel = marked[0]
+        fill = {
+            "channel": channel,
+            "name": names[channel],
+            "excluded": not include_fill,
+            "note": str(manifest.get("class_note") or "the label fill value"),
+            "valid_pixels_where_it_is_the_argmax": fill_argmax,
+            "effect": (
+                "left out of the margin and the class vote: a window is "
+                "ranked on its real classes"
+                if not include_fill
+                else "kept on request: the ranking is the served map's, "
+                "over every channel"
+            ),
+        }
+    return Pooled(
+        shape=full,
+        geo=geo,
+        kept=kept,
+        labels=labels,
+        fill=fill,
+        conf=conf,
+        klass=klass,
+        valid_w=valid_w,
+        p1_w=p1_all if every_valid else p1_some,
+        n_nodata_pixels=n_nodata,
+        pixels_outside=height * width - last * (grid[1] * patch),
+        warnings=_strip_warnings(assess, conf, valid_w, patch, height, width),
+    )
+
+
+async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
+    """Handler for ``olmoearth_scores_from_file``."""
+    try:
+        # The feature-folder paths of olmoearth-inferencex >= 1.19.0. The
+        # 1.18.1 path `assess` still resolves through the package's alias
+        # finder, and `cli.read_raster` through the CLI's own import of
+        # `common.raster`; neither is the module's own.
+        assess = inferencex.load("review.assess")
+        raster_io = inferencex.load("common.raster")
+    except inferencex.InferencexMissingError as exc:
+        return _missing(f"olmoearth-inferencex: {exc}")
+    try:
+        rasterio = importlib.import_module("rasterio")
+        np = importlib.import_module("numpy")
+        # The package's reader of an OlmoEarth run, for its words on how to
+        # write probabilities; it imports rasterio only when it reads.
+        reader = inferencex.load("readers.olmoearth")
+    except ImportError as exc:
+        return _missing(f"rasterio: {exc}")
+
+    patch = int(args.get("patch", DEFAULT_PATCH))
+    if patch < 1:
+        raise ValueError(f"patch must be a positive number of pixels, got {patch}")
+    include_fill = bool(args.get("include_fill_class", False))
+    run_dir, named = resolve_run(str(args["run_dir"]))
+    run = read_run_files(run_dir, named, rasterio, np, str(reader.FIX_PROBABILITIES))
+    manifest, raster = run.manifest, run.raster
+    kind = _values_kind(manifest)
+    is_logit = kind == "logits"
+    provenance = provenance_of(manifest)
+    studio = studio_source(manifest)
+
+    digest = _sha256(raster)
+    recorded = (manifest.get("scores") or {}).get("sha256")
+    if recorded and str(recorded).lower() != digest:
+        raise ValueError(
+            "the raster's sha256 is not the one its manifest records: the manifest "
+            "does not describe this file, so its classes and values cannot be trusted"
+        )
+    # A raster this agent wrote from Studio's files, holding probabilities,
+    # is read in strips when it holds more than MAX_VALUES (r5-a K1); every
+    # other raster, and every raster at or under it, is read whole.
+    may_strip = studio is not None and not is_logit
+    if _check_size(rasterio, raster, patch, raster_io if may_strip else None):
+        pooled = _pool_strips(np, rasterio, assess, run, is_logit, patch, include_fill)
+    else:
+        pooled = _pool_whole(np, assess, raster_io, run, is_logit, patch, include_fill)
+    geo, fill, kept, labels = pooled.geo, pooled.fill, pooled.kept, pooled.labels
+    conf, klass, valid_w, p1_w = pooled.conf, pooled.klass, pooled.valid_w, pooled.p1_w
+    rows_n, cols_n = (int(s) for s in conf.shape)
+    idx = np.flatnonzero(valid_w.ravel())
 
     width = len(labels)
     margin_v = conf.ravel()[idx]
@@ -927,7 +1262,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     n_valid = int(idx.size)
     signal = (
         "the package's window confidence, the mean over the window's valid pixels of "
-        + (_PIXEL_CONFIDENCE[(is_logit, array.ndim == 3)])
+        + (_PIXEL_CONFIDENCE[(is_logit, len(pooled.shape) == 3)])
     )
     if fill and not include_fill:
         signal += ", label-fill channel left out"
@@ -936,7 +1271,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
     if run.kind == "from-olmoearth":
         stem = slug(f"olmoearth-{raster.stem}", 32)
     tag = "_fill" if fill and include_fill else ""
-    package_warnings = [str(w) for w in out.get("warnings", [])]
+    package_warnings = pooled.warnings
     payload: dict[str, Any] = {
         "format": "olmoearth-agent/scores@1",
         "provenance": provenance,
@@ -960,7 +1295,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
             "file": raster.name,
             "path": str(raster),
             "sha256": digest,
-            "shape": list(array.shape),
+            "shape": pooled.shape,
         },
         "run_files": run.files,
         "date_window": _date_window(manifest),
@@ -1003,8 +1338,8 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         "n_windows": rows_n * cols_n,
         "n_valid": n_valid,
         "n_nodata": rows_n * cols_n - n_valid,
-        "n_nodata_pixels": int((~valid).sum()),
-        "pixels_outside_window_grid": int(out.get("pixels_outside_window_grid", 0)),
+        "n_nodata_pixels": pooled.n_nodata_pixels,
+        "pixels_outside_window_grid": pooled.pixels_outside,
         "classes": payload["classes"],
         "fill_class": fill,
         "model": model,

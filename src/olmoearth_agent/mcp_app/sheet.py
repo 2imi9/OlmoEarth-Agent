@@ -1355,21 +1355,28 @@ def finish_call(
     return "olmoearth_certify_zone with " + ", ".join(paths) + " and " + at
 
 
-def finish_message(job: str | None, *, name: str, call: str, labels_path: str) -> str:
+def finish_message(job: str | None, *, unit: str, call: str, labels_path: str) -> str:
     """The message the finish button sends to the chat, naming ``call``.
 
-    A certificate plan's also asks Claude to offer the certificate once a zone
-    is certified. Without a design file (``job`` None) it is the panel's
-    older message, which names the sheet only. It names no unit, so it is
-    true of a sheet of squares and of one of points, and no "window" (the
-    owner's ruling 6 of 13 Nov 2026).
+    It starts in plain words (r5-a L3: the user reads it in the chat as
+    their own message): that every square of this sheet is answered
+    (``unit``, the sheet's unit word, :func:`window_unit`: "every point" on
+    a sheet of points), then the job in the finish button's own words
+    (:data:`JOB_LABELS`: estimate the error rate, certify the zone, say
+    which map is more accurate). The lines Claude needs follow as they
+    were: what to work out from the sheet, and the tool call. A certificate
+    plan's also asks Claude to offer the certificate once a zone is
+    certified. Without a design file (``job`` None) the plain start is
+    followed by the panel's older line, which names the sheet's path only.
+    No "window" (the owner's ruling 6 of 13 Nov 2026) and no file name in
+    the plain start.
     """
-    # WORDING: squares
-    start = f"I have finished labelling the sheet {name}. "
+    # WORDING: r5a L3
+    start = f"I have answered every {unit} of this sheet. "
     ask = _JOB_ASKS.get(job) if job else None
-    if ask is None:
+    if job is None or ask is None:
         return start + f"Estimate the map error from it: labels_path {labels_path}."
-    text = start + f"{ask}: {call}."
+    text = start + f"{JOB_LABELS[job]}. {ask}: {call}."
     if job == "certify":
         text += (
             " If a zone is certified, offer to write its certificate "
@@ -1382,7 +1389,8 @@ def _finish(
     real: Path, kind: str, design_path: Path | None, design: dict[str, Any] | None
 ) -> dict[str, Any]:
     """The sheet's job and its finish button, for the view and for Claude:
-    ``job``, ``finish_label``, ``finish_call`` and ``finish_message``."""
+    ``job``, ``finish_label``, ``finish_call`` and ``finish_message`` (in
+    the sheet's unit word, :func:`window_unit`)."""
     job = sheet_job(design, kind)
     call = finish_call(
         job,
@@ -1395,7 +1403,7 @@ def _finish(
         "finish_label": JOB_LABELS[job] if job else NO_JOB_LABEL,
         "finish_call": call,
         "finish_message": finish_message(
-            job, name=real.name, call=call, labels_path=str(real)
+            job, unit=window_unit(design), call=call, labels_path=str(real)
         ),
     }
 
