@@ -33,11 +33,11 @@ model; panels beside the chat show each step.
 <table>
 <tr>
 <td width="50%"><img src="docs/images/mcp-app/start.png" alt="Start card: the OlmoEarth overview figure and the three jobs"></td>
-<td width="50%"><img src="docs/images/mcp-app/check.png" alt="Check card: the four steps, the labelling rule, and how many squares to check in each part"></td>
+<td width="50%"><img src="docs/images/mcp-app/check.png" alt="Check card: the four steps as panels, the labelling rule, and how many squares to check in each part"></td>
 </tr>
 <tr>
 <td><img src="docs/images/mcp-app/sheet.png" alt="Label sheet: one square at a time, its answers and Cannot tell"></td>
-<td><img src="docs/images/mcp-app/result.png" alt="Result card: the error rate with its 95% range, and the squares checked"></td>
+<td><img src="docs/images/mcp-app/result.png" alt="Result card: the error rate with its 95% range, and the squares checked, counted by kind"></td>
 </tr>
 </table>
 
