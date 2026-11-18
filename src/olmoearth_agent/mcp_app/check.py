@@ -598,8 +598,8 @@ def _sheet_words(path: Any) -> dict[str, Any]:
     except csv.Error as exc:
         error = SHEET_NOT_CSV.format(name=Path(str(path)).name, error=exc)
         return {"progress": None, "open_label": None, "sheet_error": error}
-    # The counts too (never a row): the card says another part is not yet
-    # checked while a drawn sheet is not labelled whole.
+    # The counts too (never a row): the card's heading says every square is
+    # answered once each drawn sheet is labelled whole.
     return {
         "progress": progress["progress"],
         "open_label": progress["open_label"],

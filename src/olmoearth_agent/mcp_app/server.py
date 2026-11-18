@@ -353,7 +353,8 @@ REVIEW_UNSUPPORTED_NOTE = (
 
 #: The panels' three lines (the reader test's "three plain lines per step"):
 #: what a result is, what to do next, what it cannot say. ``OE.lead`` draws
-#: the lines that have words. The estimate (its ``result``), the certified
+#: the lines that have words, two at most (r5-e C2; since r5-e R2 no lead
+#: here has three). The estimate (its ``result``), the certified
 #: zone and the Check card (its own figure-first layout) draw none here; a
 #: plan's lines are for a plan with a sheet; a review set's first line is
 #: filled from its counts (:func:`_lead`). The model's lines are apart
@@ -361,44 +362,51 @@ REVIEW_UNSUPPORTED_NOTE = (
 #: scores file; "point" one that is a single pixel at a grid point over a
 #: Studio result (a plan or a review set drawn by result_id).
 LEAD_LINES = ("what", "next", "cannot")
-# WORDING: squares
+#: A plan's one line (r5-e R2: its "next" said the button's own words again;
+#: its "cannot", no result until every square is answered, is what the
+#: sheet's greyed finish button and counter show, r5-e H1; the owner's note 3
+#: of 17 Nov 2026 asks for fewer lines): what the squares are, and where to
+#: answer them.
+# WORDING: squares; r5e R2
 PLAN_LEAD: dict[str, str | None] = {
-    "what": "The plan: which squares to check, picked before any answer.",
-    # WORDING: squares
-    "next": f"Press {sheet.OPEN_FIRST} and answer every square.",
-    "cannot": "No result until every square is answered.",
+    # WORDING: r5e R2
+    "what": "The squares to check, picked before any answer: answer every one on "
+    "the sheet.",
+    "next": None,
+    "cannot": None,
 }
 #: The same, for a plan whose windows are points of a grid over a Studio
 #: result (:func:`_points_plan`).
-# WORDING: squares
+# WORDING: squares; r5e R2
 PLAN_LEAD_POINTS: dict[str, str | None] = {
-    # WORDING: squares
-    "what": "The plan: which points to check, picked before any answer.",
-    # WORDING: squares
-    "next": f"Press {sheet.OPEN_FIRST} and answer every point.",
-    # WORDING: squares
-    "cannot": "No result until every point is answered.",
+    # WORDING: r5e R2
+    "what": "The points to check, picked before any answer: answer every one on "
+    "the sheet.",
+    "next": None,
+    "cannot": None,
 }
 #: A review set's first line (B/R11), with how many squares it lists and of
 #: how many read, and that how many it lists was fixed in advance (a share
 #: of those read, given before the read), never a count of doubtful ones
-#: (the reader test's D/D-card-3).
-# WORDING: r4h V1, D/D-card-3
+#: (the reader test's D/D-card-3); shorter since r5-e R2 (it began "Where to
+#: look first:", under the overline "Look first").
+# WORDING: r4h V1, D/D-card-3; r5e R2
 REVIEW_LEAD_WHAT = (
-    "Where to look first: the {k} {squares} where the model was least sure, of "
-    "the {n} read. The number {k} was fixed in advance; it is not a count of "
-    "doubtful squares. No labels were used, so this does not say whether any of "
-    "them is wrong, or how wrong the map is."
+    "The {k} {squares} the model was least sure of, among the {n} read; the "
+    "number {k} was chosen in advance, not a count of doubtful squares. No labels "
+    "were used, so the map may be right or wrong there."
 )
 #: The same for a review set of a Studio result, whose windows are single
 #: pixels at the points of a grid (``sampling``): how many points it lists,
-#: of how many read, and on which grid (:data:`REVIEW_LEAD_GRID`).
-# WORDING: r4h V1, D/D-card-3
+#: of how many read. Since r5-e R2 without the grid's clause
+#: (:data:`REVIEW_LEAD_GRID`, which ``str.format`` now leaves out): the
+#: fold's legend (``REVIEW_LEGEND`` in result.html) says that each square
+#: stands for the one pixel read in it.
+# WORDING: r4h V1, D/D-card-3; r5e R2
 REVIEW_LEAD_POINTS = (
-    "Where to look first: the {k} {points} where the model was least sure, of "
-    "the {n} read{grid}. The number {k} was fixed in advance; it is not a count "
-    "of doubtful points. No labels were used, so this does not say whether any "
-    "of them is wrong, or how wrong the map is."
+    "The {k} {points} the model was least sure of, among the {n} read; the "
+    "number {k} was chosen in advance, not a count of doubtful points. No labels "
+    "were used, so the map may be right or wrong there."
 )
 # WORDING: squares
 REVIEW_LEAD_GRID = (
@@ -509,7 +517,10 @@ def _lead(
     only when the first is left out (the first already says no labels were
     used); its second without the pictures when the panel shows none
     (``data``'s ``review`` block), in points for a Studio result's
-    (:data:`REVIEW_LEAD_NEXT_NO_PICTURES_POINTS`).
+    (:data:`REVIEW_LEAD_NEXT_NO_PICTURES_POINTS`), and none at all when the
+    block carries a ``check_request`` (r5-e R2: the check card under the
+    list says it, with its button), so a scores file's set still points to
+    the main job.
     """
     out: dict[str, str | None] = dict.fromkeys(LEAD_LINES)
     out.update(LEAD.get(tool) or {})
@@ -559,7 +570,10 @@ def _lead(
                 )
             out["cannot"] = None
         block = data.get("review")
-        if not (isinstance(block, dict) and block.get("pictures") is True):
+        if isinstance(block, dict) and block.get("check_request"):
+            # r5-e R2: the check card under the list says it, with its button.
+            out["next"] = None
+        elif not (isinstance(block, dict) and block.get("pictures") is True):
             out["next"] = (
                 REVIEW_LEAD_NEXT_NO_PICTURES_POINTS
                 if points
@@ -599,7 +613,8 @@ FIRST_IN_STUDIO = False
 #: the server's MCP prompts: one source for the card's buttons, the text a
 #: client without panels names and the menu's entries (those offered:
 #: :func:`start_jobs`). ``label`` is the button (and the prompt's title),
-#: ``line`` the one line under it, ``needs`` what the job needs (for the
+#: ``line`` the one line inside it (r5-e S2: 85 characters at most, so two
+#: lines at 380 px), ``needs`` what the job needs (for the
 #: model's text), and ``message`` the request the button sends: each ends at
 #: the projects card, where the user picks. ``main`` (the first job only)
 #: marks the card's main row: its button is the card's contained one once
@@ -609,10 +624,9 @@ START_JOBS: tuple[dict[str, Any], ...] = (
         "key": "check",
         "prompt": "check_map_accuracy",
         "label": "Check how wrong a map is",
-        # WORDING: squares
-        "line": "You check squares of the map yourself, picked at random. You get "
-        "how often it is wrong, with a range, for the map or for each part it is "
-        "saved in.",
+        # WORDING: r5e
+        "line": "You check random squares of the map; you get how often it is "
+        "wrong, with a range.",
         "needs": "a completed Studio prediction, and your labels for a sample of "
         "its windows",
         "message": "Check how wrong one of my Studio maps is. Show my Studio "
@@ -648,10 +662,9 @@ START_JOBS: tuple[dict[str, Any], ...] = (
         "key": "run",
         "prompt": "run_model_on_area",
         "label": "Draw an area and run a model",
-        # WORDING: r4p2
-        "line": "Makes a new map: Studio runs the model on its own computers. "
-        "Pressing this starts nothing; you first pick a model, an area and dates. "
-        "Needs a key that can write.",
+        # WORDING: r5e
+        "line": "Makes a new map once you pick a model, an area and dates. Needs "
+        "a key that can write.",
         "needs": "a Studio API key that can write (it saves the area and starts "
         "the prediction)",
         "message": "Run one of my Studio models on an area I draw. Show my Studio "
@@ -2065,12 +2078,20 @@ LAST_LINE_ANSWERS = (
     "Checked against your answers, not a site visit; no verdict on whether the "
     "map is good enough."
 )
-#: Added to the last line when the map's own classes number more than two:
-#: the rate is a share of squares, never an area of one class; under the
-#: same condition to the model's third say-first line (:data:`SAY_LIMITS`).
+#: Said when the map's own classes number more than two: the rate is a share
+#: of squares, never an area of one class. Added to the model's third
+#: say-first line (:data:`SAY_LIMITS`); the card says it in Details, in words
+#: of its own (:data:`AREA_DETAIL`).
 # WORDING: r4h R5, E/est-5
 # WORDING: r4i F7
 LAST_LINE_AREA = " It says nothing about the area of any one class."
+#: The same on the card, under the same condition, as the last of the Details'
+#: ``uncovered_detail`` lines (r5-e R4: it ended the card's last line, which
+#: brought the face to five sentences). There it is a paragraph of its own
+#: after a class's counted line, where "It says ..." read as the map or that
+#: line, so it names its subject, as the card's other lines do ("this check").
+# WORDING: r5e R4
+AREA_DETAIL = "This check says nothing about the area of any one class."
 # WORDING: squares
 PART_THIS = "{part}: this result"
 # WORDING: squares
@@ -2848,7 +2869,10 @@ def _estimate_result(
     the graded sheet's class counts, for a random design only; the classes
     seen too rarely by name only with Cannot tell or with two or more of
     them), and ``uncovered_detail``, the counted lines of two or more such
-    classes for Details (``[]`` when none); ``class_check``, what the
+    classes for Details, then on a map of more than two classes
+    :data:`AREA_DETAIL` as a line of its own (r5-e R4: it ended the last
+    line, a fifth sentence on the face; ``[]`` when neither); ``class_check``,
+    what the
     card's "Check each class the map draws" button asks Claude for
     (:func:`_class_check`: the result, the part's file and the unit), or
     ``None``; the rule the labels
@@ -2865,8 +2889,8 @@ def _estimate_result(
     random design one range row and the package's method, unreworded; else
     the tool's card rows; the unseen classes' names when the face says only
     how many and no squares are drawn); the last line by whether pictures
-    were served, with :data:`LAST_LINE_AREA` on a map of more than two
-    classes. ``say_first`` are the lines the model says first (the first
+    were served, one sentence (the area sentence is in ``uncovered_detail``
+    since r5-e R4). ``say_first`` are the lines the model says first (the first
     hedged, :data:`SAY_PART_HEDGE`, when the parts are not known; the
     second asks for the parts side by side on a map of two parts or more,
     :data:`SAY_OTHER`, :data:`SAY_OTHERS` or :data:`SAY_SIDE_BY_SIDE`; the
@@ -3152,8 +3176,9 @@ def _estimate_result(
     else:
         n_classes = _design_classes(design)
     last_line = LAST_LINE_PICTURES if served else LAST_LINE_ANSWERS
-    if n_classes is not None and n_classes > 2:
-        last_line += LAST_LINE_AREA
+    # r5-e: the area sentence in Details, in words of its own there
+    # (AREA_DETAIL); the face keeps one last line.
+    area = [AREA_DETAIL] if n_classes is not None and n_classes > 2 else []
     view = {
         "title_text": title,
         "period_text": _period_text(ctx.get("period")) if ctx else None,
@@ -3185,9 +3210,10 @@ def _estimate_result(
         # Directly under the headline when the part is not known.
         "hedge": None if known else SAY_PART_HEDGE,
         # What the check did not cover, directly under the headline (R2), and
-        # the counted lines of two or more rare classes, for Details (F2).
+        # the counted lines of two or more rare classes, for Details (F2),
+        # then the area sentence of a map of more than two classes (r5-e R4).
         "uncovered": list(uncovered["lines"]),
-        "uncovered_detail": list(uncovered["few_detail"]),
+        "uncovered_detail": list(uncovered["few_detail"]) + area,
         # The button under those lines: a check picked class by class (O3).
         "class_check": _class_check(
             uncovered["lines"],

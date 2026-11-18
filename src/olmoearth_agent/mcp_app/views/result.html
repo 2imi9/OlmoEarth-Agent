@@ -18,24 +18,36 @@
   .csv-path { overflow-wrap: anywhere; }
   /* A review set's windows: one card each, in rank order, in a grid that
      fills the panel (two columns on a phone); a card opens its pictures in
-     the pane under the strip, full width. */
-  .review-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
-    max-height: 420px; overflow: auto; }
-  .review-strip button.window-card { min-height: 44px; display: flex; align-items: center; gap: 10px;
+     the pane under the strip, full width. Every card one size (r5-e R1, the
+     owner's note of 17 Nov 2026): one fixed height, two caption lines of 18
+     px, 8 + 8 padding and a 1 + 1 border (a fixed height, since rows of 1fr
+     shrink once the strip scrolls inside its 399 px: six rows and half of
+     the seventh, so a longer list shows a card cut mid-way, which reads as
+     more below; 420 px ended 6 px short of the seventh row and shaved its
+     edge), the rank in a column two digits wide, a caption longer than two
+     lines cut (its whole words in the card's name and in the pane). Street
+     map is no longer under each card: it is said once, in the pane of the
+     square that is open. */
+  .review-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px;
+    max-height: 399px; overflow: auto; }
+  .review-strip button.window-card { height: 54px; display: flex; align-items: center; gap: 10px;
     text-align: left; padding: 8px 12px; background: var(--paper); min-width: 0; }
   .review-strip button.window-card[aria-expanded="true"] { background: var(--selected); border-color: var(--text); }
-  .window-card .rank { flex: none; font-size: 20px; line-height: 28px; font-weight: 600; }
-  .window-card .caption { min-width: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
-  /* A card with its Street map button under it: one cell of the grid (r4-k
-     K7); the card is a button of its own, so the map button sits beside it,
-     never inside it. */
-  .review-strip .window-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .review-strip .window-cell button.link { align-self: flex-start; }
+  .window-card .rank { flex: 0 0 2ch; text-align: right; font-variant-numeric: tabular-nums; font-size: 20px;
+    line-height: 28px; font-weight: 600; }
+  .window-card .caption { min-width: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   /* Points without picture cards: one Street map button each, in rank order,
-     wrapping (r4-k K7). */
+     wrapping (r4-k K7); each as wide as a two-digit rank, so 1 to 9 and 10 to
+     50 are one size (r5-e R1). */
   .row.review-links { gap: 4px; }
+  .row.review-links button.small { min-width: 36px; font-variant-numeric: tabular-nums; }
   .review-csv .csv-file { overflow-wrap: anywhere; }
   .review-pane { min-width: 0; }
+  /* The open square's Previous and Next are one width (r5-e R1, design rule
+     R1), as the label sheet's face has them; Street map and Close keep
+     their own. */
+  .review-pane .review-pager { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
   .review-pane h3:focus { outline: none; }
   .review-pane h3:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .oe-numbers td { font-variant-numeric: tabular-nums; }
@@ -452,14 +464,17 @@ function numbersFold(windows, unit) {
    scene; nothing reaches Earth Search before Turn on. A failure shows its sentence,
    with Try again where another try can get past it (the answer's again), and
    is not kept. With no key (inline scores, no
-   recorded map, no record), why_none in place of the cards. Then the
-   numbers, in a closed fold. Every word that names a window is the block's
+   recorded map, no record), why_none in place of the cards. The numbers,
+   in a closed fold, are not drawn here: the block keeps them (its numbers)
+   and show puts them last in the card's one Details fold (r5-e R3: before,
+   a second closed fold under the cards). Every word that names a window is the block's
    unit word (block.unit: "point" for a Studio result's sampled points).
    Nothing takes the focus on load.
 
    Places (r4-k K7, K8): with a key (the block's key: its record names each
    listed window's place, a Studio result's points included, whose block
-   has no pictures), each card has a Street map button under it, and points
+   has no pictures), the open square's pane has one Street map button beside
+   Previous and Next (r5-e R1: no longer one under every card), and points
    without picture cards get a row of Street map buttons, one per point in
    rank order, in place of the numbers' table (the owner's ruling 3 of 13
    Nov 2026: no index, row or column table); a press asks the server for
@@ -510,10 +525,11 @@ function reviewBlock(app, block) {
       mark(false);
     }
   }
-  /* A window's Street map button: its words (a card's "Street map", or a
+  /* A window's Street map button: its words (the pane's "Street map", or a
      row's rank), named for its window. cls is its look: 'link' (a text
-     button) under a card, 'small' (outlined) in the points' row, where a
-     bare digit was too small a thing to press (r5-b J27). */
+     button) unless the caller says otherwise; 'small' (outlined) in the
+     points' row, where a bare digit was too small a thing to press (r5-b
+     J27), and in the open square's pane, beside Previous and Next (r5-e R1). */
   const mapButton = (rank, words, cls = 'link') => OE.el('button', {
     type: 'button', class: cls, 'data-focus': 'map:' + rank, 'aria-label': REVIEW_WORDS.mapOf(rank),
     'aria-disabled': String(linking.has(rank)), onclick: () => openMap(rank),
@@ -595,7 +611,7 @@ function reviewBlock(app, block) {
       section.append(OE.el('div', { class: 'row review-links', role: 'group', 'aria-label': REVIEW_WORDS.streetMap },
         OE.el('span', { class: 'small', 'aria-hidden': 'true' }, REVIEW_WORDS.mapsLabel),
         windows.map((w) => mapButton(w.rank, String(w.rank), 'small'))), csvBlock());
-    } else if (n) section.append(numbersFold(windows, unit));
+    } else if (n) section.numbers = numbersFold(windows, unit);  // r5-e R3: drawn last in the card's Details (show)
     return section;
   }
   const state = { shown: Math.min(REVIEW_STEP, n), open: null, colour: 'nir', answers: new Map(),
@@ -604,16 +620,15 @@ function reviewBlock(app, block) {
   const more = OE.el('button', { type: 'button', class: 'link' });
   const pane = OE.el('div', { class: 'card stack review-pane', hidden: true });
 
-  /* The cards shown, each with its Street map button under it (r4-k K7). */
+  /* The cards shown, each a button of its own, one size (r5-e R1: Street map
+     is in the open square's pane, said once, no longer under every card). */
   function cards() {
-    strip.replaceChildren(...windows.slice(0, state.shown).map((w, i) => OE.el('div', { class: 'window-cell' },
-      OE.el('button', {
-        type: 'button', class: 'window-card', 'data-focus': 'card:' + w.rank,
-        'aria-label': REVIEW_WORDS.card(w.rank, total, w.caption), 'aria-expanded': String(state.open === i),
-        onclick: () => (state.open === i ? close() : open(i, { fromCard: true })),
-      }, OE.el('span', { class: 'rank', 'aria-hidden': 'true' }, String(w.rank)),
-      OE.el('span', { class: 'caption', 'aria-hidden': 'true' }, w.caption || '')),
-      mapButton(w.rank, REVIEW_WORDS.streetMap))));
+    strip.replaceChildren(...windows.slice(0, state.shown).map((w, i) => OE.el('button', {
+      type: 'button', class: 'window-card', 'data-focus': 'card:' + w.rank,
+      'aria-label': REVIEW_WORDS.card(w.rank, total, w.caption), 'aria-expanded': String(state.open === i),
+      onclick: () => (state.open === i ? close() : open(i, { fromCard: true })),
+    }, OE.el('span', { class: 'rank', 'aria-hidden': 'true' }, String(w.rank)),
+    OE.el('span', { class: 'caption', 'aria-hidden': 'true' }, w.caption || ''))));
     const left = n - state.shown;
     more.hidden = left <= 0;
     more.textContent = REVIEW_WORDS.more(Math.min(REVIEW_STEP, left));
@@ -724,8 +739,12 @@ function reviewBlock(app, block) {
     const top = OE.el('div', { class: 'spread' }, heading,
       OE.el('div', { class: 'row' },
         state.test ? button('back', REVIEW_WORDS.back(w.rank), () => { state.test = null; render(); }) : [
-          button('previous', REVIEW_WORDS.previous, () => open(i - 1), { disabled: i === 0 }),
-          button('next', REVIEW_WORDS.next, () => open(i + 1), { disabled: i === n - 1 }),
+          // Previous and Next in one group, each as wide as the wider (r5-e R1; style .review-pager).
+          OE.el('div', { class: 'review-pager' },
+            button('previous', REVIEW_WORDS.previous, () => open(i - 1), { disabled: i === 0 }),
+            button('next', REVIEW_WORDS.next, () => open(i + 1), { disabled: i === n - 1 })),
+          // The open square's one Street map (r5-e R1), outlined beside Previous and Next, as the label sheet's face.
+          mapButton(w.rank, REVIEW_WORDS.streetMap, 'small'),
         ],
         OE.el('button', { type: 'button', class: 'link', 'data-focus': 'close', onclick: close }, REVIEW_WORDS.close)));
     const parts = [top];
@@ -782,7 +801,8 @@ function reviewBlock(app, block) {
   }
   cards();
   if (n < total) section.append(OE.el('div', { class: 'small muted' }, REVIEW_WORDS.firstShown(n, total)));
-  section.append(strip, more, pane, csvBlock(), numbersFold(windows, unit));
+  section.append(strip, more, pane, csvBlock());
+  section.numbers = numbersFold(windows, unit);  // r5-e R3: drawn last in the card's Details (show)
   return section;
 }
 
@@ -849,15 +869,20 @@ const RESULT_WORDS = {
   squaresHead: (n, unit) => (n === 1 ? 'The ' + unitOf(unit) + ' you checked'
     : 'The ' + n.toLocaleString('en-US') + ' ' + unitOf(unit) + 's you checked'),
   partsHead: 'One result per part, never averaged',
-  // k: the parts not checked yet (round 4 pass 2, finding 17); the server's
-  // SAY_OTHER and SAY_OTHERS, word for word, with their reason (r4-m M2:
-  // this check gives no range for a combined rate, so readers do not average).
+  // k: the parts not checked yet (round 4 pass 2, finding 17); the first
+  // sentence of the server's SAY_OTHER and SAY_OTHERS, word for word. Their
+  // second sentence, with its reason (r4-m M2: this check gives no range for
+  // a combined rate, so readers do not average), is sideBySide, in Details
+  // since r5-e R4: on the face it said the heading over it again.
+  // WORDING: r5e R4
   // WORDING: r4m M2
   otherPart: (k) => (k === 1
-    ? 'Check the other part too. Report the parts\' results side by side; do not average or add them: this check'
-      + ' gives no range for a combined rate.'
-    : 'Check the other ' + k + ' parts too. Report the parts\' results side by side; do not average or add them:'
-      + ' this check gives no range for a combined rate.'),
+    ? 'Check the other part too.'
+    : 'Check the other ' + k + ' parts too.'),
+  // WORDING: r5e R4
+  // WORDING: r4m M2 (server SAY_SIDE_BY_SIDE, word for word), in Details since r5-e
+  sideBySide: 'Report the parts\' results side by side; do not average or add them: this check gives no range for a'
+    + ' combined rate.',
   details: 'Details',
   // The second check, picked class by class: the outlined button under the
   // uncovered lines, and what it is, in Details beside it only (r4-i O3).
@@ -955,9 +980,12 @@ function classCheckOf(r, unit) {
    parts), and to check the other part while one is not; then the rest
    in a closed Details fold: first the rule used and the count line of each
    class seen with enough squares (r5-b J23: both were on the face, where a
-   class line put a second range beside the rate's), then the rare classes'
-   counted lines
-   (uncovered_detail, r4-i F2), the unseen classes' names
+   class line put a second range beside the rate's), then, on a map of two
+   parts or more, that the parts' results are reported side by side, never
+   averaged (sideBySide, r5-e R4: on the face it said the parts' heading
+   again), then the rare classes' counted lines
+   (uncovered_detail, r4-i F2; since r5-e R4 the server's area sentence of
+   a map of more than two classes ends it), the unseen classes' names
    (squares.unseen_detail), what the second check is (beside its button
    only), the tool's rows, its figure with where the sheet file is, and the
    tool's notes. The words that count what was checked follow the result's
@@ -1040,9 +1068,14 @@ function resultCard(app, data) {
     folded.push(OE.el('p', { class: 'small oe-rule-used' }, RESULT_WORDS.ruleUsed(r.rule.text) + (whose ? ' ' + whose : '')));
   }
   classLines.forEach((line) => folded.push(line));
+  // On a map of two parts or more: the parts' results side by side, never
+  // averaged, with its reason (r5-e R4: off the face, where it said the
+  // parts' heading again; the face keeps "Check the other part too.").
+  if (parts.length > 1) folded.push(OE.el('p', { class: 'small oe-side-by-side' }, RESULT_WORDS.sideBySide));
   // Then the rare classes' counted lines, when the face names two or more
-  // without counts (r4-i F2), then the unseen names, then what the second
-  // check is, beside its button only (r4-i O3).
+  // without counts (r4-i F2), and the server's area sentence of a map of
+  // more than two classes, its last line (r5-e R4), then the unseen names,
+  // then what the second check is, beside its button only (r4-i O3).
   const fewDetail = (Array.isArray(r.uncovered_detail) ? r.uncovered_detail : []).filter((s) => text(s));
   fewDetail.forEach((s) => folded.push(OE.el('p', { class: 'small oe-few-detail' }, s)));
   if (unseenDetail) folded.push(OE.el('p', { class: 'small oe-unseen-detail' }, unseenDetail));
@@ -1091,9 +1124,10 @@ function show(app, params) {
   if (data.needs_sign_in) {
     const panel = OE.signInPanel(app, {
       acceptCurrent: true,  // signed in since, in another panel: no page needed
-      // The note's three plain lines (r5-b J19): this card's own, then the panel's (common.js).
-      // WORDING: r5b J19
-      note: ['This step needs OlmoEarth Studio.', OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES],
+      // The note's two plain lines, the panel's (r5-b J19; common.js): r5-e R2
+      // dropped this card's own first line, which said the heading again.
+      // WORDING: r5b J19; r5e R2
+      note: [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES],
       onDone: (status) => {
         // Signed in: one contained button, the one that runs the tool again,
         // which takes the focus the sign-in's button had. A message the host
@@ -1145,12 +1179,17 @@ function show(app, params) {
   // other part as before, in the fold only once the lead has words. A review
   // set's picture, with the tool's caption, is the fold's first node (r4-i
   // F8), and its one legend line the next (r4-j J4), never on the face; no
-  // picture, no legend line.
+  // picture, no legend line. Round r5-e R3: the card's one contained action
+  // (a Studio look-first's check, a plan's sheet button) right under the
+  // lines that lead to it, then one Details fold, the card's last block,
+  // whose last node is a look-first list's numbers (a closed fold of their
+  // own); before, the action came after the fold and a second fold followed.
   const lead = OE.lead(data.lead);
   if (lead) root.append(lead);
   const plan = Boolean(data.labels_csv_path);
   const review = REVIEW_TOOLS.includes(data.tool);
-  if (data.review && typeof data.review === 'object') root.append(reviewBlock(app, data.review));
+  const listBlock = data.review && typeof data.review === 'object' ? reviewBlock(app, data.review) : null;
+  if (listBlock) root.append(listBlock);
   if (typeof data.reason === 'string' && data.reason) root.append(reasonBlock(data.reason));
   const keepFolded = plan || review;
   const inFold = [];
@@ -1160,10 +1199,13 @@ function show(app, params) {
   const put = (node, keep) => { (lead || (keep && keepFolded) ? inFold : onFace).push(node); };
   const reviewFigure = review && data.figure && data.figure.svg ? figureBlock(app, data) : null;
   if (reviewFigure) {
-    // Its legend line directly after it, in the fold (r4-j J4), by the review
+    // Its legend line inside the picture's own box, over its buttons (r5-e:
+    // no loose line under a box; in the fold since r4-j J4), by the review
     // block's unit (a Studio result's points), else the view's.
     const unit = data.review && typeof data.review === 'object' ? data.review.unit : data.unit;
-    inFold.push(reviewFigure, OE.el('div', { class: 'small review-legend' }, REVIEW_LEGEND(unit)));
+    const legend = OE.el('div', { class: 'small review-legend' }, REVIEW_LEGEND(unit));
+    reviewFigure.insertBefore(legend, reviewFigure.querySelector(':scope > .row'));
+    inFold.push(reviewFigure);
   }
   if (Array.isArray(data.card) && data.card.length) put(cardBlock(data.card), true);
   // A plan's figure waits for its sheet's counts (sheetButton): never drawn
@@ -1174,12 +1216,14 @@ function show(app, params) {
   if (Array.isArray(data.must_state) && data.must_state.length) put(notesBlock(data.must_state), true);
   // A plan's sheet as a file: the fold's last line, never on the face (r4-m M3).
   if (plan) inFold.push(planFile(data));
+  // A look-first list's numbers: a closed fold of their own, last in Details (r5-e R3: no second fold on the face).
+  if (listBlock && listBlock.numbers) inFold.push(listBlock.numbers);
   root.append(...onFace);
-  if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));
-  // A review set of a Studio result: the check of how wrong the map is, under the notes.
+  // r5-e: the one action right under the lines that lead to it, then one Details fold.
   const ask = data.review && typeof data.review === 'object' ? checkBlock(app, data.review.check_request) : null;
   if (ask) root.append(ask);
   if (plan) root.append(sheetButton(app, data, figureSlot));
+  if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));
   if (root.children.length === 1) root.append(OE.el('div', {}, 'Done.'));
 }
 

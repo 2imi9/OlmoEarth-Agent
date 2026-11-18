@@ -8,15 +8,15 @@ here runs the scripts):
 - S02: an undated prediction's year slot says "no dates"; a model whose
   record's grain is the window is "per-tile" on its row and in the Models
   list; no word the glyph draws says "window";
-- S04: the card's three lines: one name for the thing (maps, then Studio's
-  word), the buttons' names in quotes in one sentence, and the third line's
-  subject;
+- S04: the card's next line: the buttons' names in quotes in one sentence
+  (r5-e S5: now the card's only line, without "Next: ");
 - S05: a lone output draws no buttons of its own (the row's use it), and only
   a list of several opens with its first line, which a row's press on such
   a run leaves as the one line (r5-d R09: the line that said how many maps,
   a toast and then the row's own, is gone);
 - S06: the note under the Predictions heading, and what the tick boxes do
-  after it only where boxes are drawn; COMPARE.how lost that sentence;
+  after it only where boxes are drawn; COMPARE.how lost that sentence
+  (r5-e S5: COMPARE.tick and COMPARE.how in shorter words);
 - S07: a prediction row's Outputs and jobs are a line of their own under the
   lead; at 480 px or less the lead wraps, the name at full width;
 - S08: the values lines say which card tells; a failed row says why it has
@@ -32,19 +32,11 @@ import re
 
 from olmoearth_agent.mcp_app import views
 
-#: S04: the projects card's three lines.
+#: S04: the projects card's lines (r5-e S5: one line, without "Next: ").
 PROJECTS_LEAD = {
-    "what": (
-        "Your Studio projects. Each holds the maps its models made over an area "
-        "and a period; Studio calls each run a prediction."
-    ),
     "next": (
-        'Next: press "Show its maps" on the project that holds your map, then '
+        'Press "Show its maps" on the project that holds your map, then '
         '"Check how wrong it is" beside the map.'
-    ),
-    "cannot": (
-        "This app cannot tell which of several similar projects holds your map. "
-        "Ask whoever made them."
     ),
 }
 
@@ -58,14 +50,12 @@ PREDICTIONS_NOTE = (
     "Each prediction is a model run over an area and a period; "
     "its output is the map."
 )
-COMPARE_TICK = (
-    "Tick two finished maps of the same area and dates "
-    "to say which is more accurate."
-)
+#: r5-e S5: COMPARE.tick and COMPARE.how, shorter; the outcome that the
+#: labels cannot tell stays, since the tool can return it.
+COMPARE_TICK = "Tick two finished maps of the same area and dates to compare them."
 COMPARE_HOW = (
-    "You label a sample of the places where the two maps differ. The answer says "
-    "which map is right more often there, or that these labels cannot tell; it does "
-    "not say how accurate either map is."
+    "You label only where the two maps differ. You see which is right more often "
+    "there, or that your labels cannot tell, but not how accurate either map is."
 )
 
 #: S08: the lines this round changed or added under a prediction's row.
@@ -149,16 +139,16 @@ def test_s02_no_dates_and_per_tile_and_no_window_on_the_face() -> None:
     assert "per-window" not in code and "per window" not in code
 
 
-def test_s04_the_projects_cards_three_lines() -> None:
-    """S04: one name for the thing (maps, and Studio's word for a run), the
-    buttons' names in quotes in one sentence, and a subject for the third
-    line; marked r5c; each a short plain line with no barred word."""
+def test_s04_the_projects_cards_lead() -> None:
+    """S04: the buttons' names in quotes in one sentence, a short plain line
+    with no barred word. r5-e S5: it is the card's only line (no "what", no
+    "cannot", no "Next: "), marked r5e."""
     page = _read("studio.html")
-    lead = _between(page, "// WORDING: r5c S04\nconst PROJECTS_LEAD = {", "\n};")
+    lead = _between(page, "// WORDING: r5e\nconst PROJECTS_LEAD = {", "\n};")
     for key, line in PROJECTS_LEAD.items():
         assert f"  {key}: '{line}',\n" in lead + "\n", key
         assert not _OFF_FACE.search(line), line
-    assert lead.count("\n  ") == 3
+    assert lead.count("\n  ") == 1
     assert "OE.lead(PROJECTS_LEAD)" in page
     # One sentence for what to do: the buttons are named in quotes.
     assert PROJECTS_LEAD["next"].count(". ") == 0
@@ -223,7 +213,8 @@ def test_s06_the_tick_boxes_are_said_under_the_heading() -> None:
     assert f"  tick: '{COMPARE_TICK}',\n" in compare
     assert f"  how: '{COMPARE_HOW}',\n" in compare
     assert "  ready: 'Two ticked. Press the button to start.',\n" in compare + "\n"
-    assert "// WORDING: r4p2 (ready); r5c S06 (tick, how)\nconst COMPARE = {" in page
+    tag = "// WORDING: r4p2 (ready); r5e (tick, how: shorter, r5-e S5)\n"
+    assert tag + "const COMPARE = {" in page
     summary = _between(page, "function projectSummary(", "\n}\n")
     assert (
         "compare ? compare.footer() : null, compare ? PREDICTIONS_NOTE + ' ' + "
@@ -235,7 +226,8 @@ def test_s06_the_tick_boxes_are_said_under_the_heading() -> None:
         card,
         "OE.el('h2', {}, title),",
         "note ? OE.el('div', { class: 'small muted' }, note) : null,",
-        "sorted.length ? [caption, ul, more, footer]",
+        # r5-e S5: 'Recent' only when 'See all (n)' follows.
+        "sorted.length ? [more ? caption : null, ul, more, footer]",
     )
     comparer = _between(page, "function comparer(app, project) {", "\n}\n")
     assert "'aria-live': 'polite' }, COMPARE.how);" in comparer
@@ -296,8 +288,9 @@ def test_s08_the_values_lines_and_the_failed_row() -> None:
         assert not _OFF_FACE.search(line), line
     assert ROW_VALUES_ANY == ROW_VALUES.replace(" at each pixel", "")
     assert "its card says so" not in page
-    tag = "// WORDING: r5a V3 (classes, detection, unknown, unread); r5c S08 "
-    assert tag + "(values, valuesAny, failed)\nconst ROW_SAYS = {" in page
+    # r5-e S7: the classes line is gone, so the tag no longer names it.
+    tag = "// WORDING: r5a V3 (detection, unknown, unread); r5c S08 "
+    assert tag + "(values, valuesAny, failed); r5e (classes: none)\n" in page
     says = _between(
         page, "const rowSays = (kind, done, grain, unread, status) => ", ";\n"
     )
@@ -368,18 +361,16 @@ def test_s12_a_long_project_name_shows_on_two_lines() -> None:
 
 def test_s14_a_project_with_no_prediction_says_no_maps_yet() -> None:
     """S14: beside the empty ring of a project with no prediction, "No maps
-    yet" in place of the ring's long caption, which the other projects keep;
-    "Show its maps" stays on every project."""
+    yet"; "Show its maps" stays on every project. r5-e S7: the ring's long
+    caption is said once above the cards (studio.html RING_SAYS), so the
+    other projects say nothing there unless they differ."""
     glyph = _read("glyph.js")
     card = _between(glyph, "OE.glyph.projectCard = (g) => {", "\n};")
     assert (
         "const note = g.count === 0 ? 'No maps yet' : !colors ? 'dates not "
         "recorded'" in card
     )
-    assert (
-        "'months of the year its predictions cover (all years and areas counted "
-        "together)'" in card
-    )
+    assert "months of the year its predictions cover" not in card
     assert "// WORDING: r4p2 (B/P3); r5c S14" in card
     page = _read("studio.html")
     for start in ("function projectCard(app, p) {", "function projectRow(app, p) {"):
@@ -388,12 +379,15 @@ def test_s14_a_project_with_no_prediction_says_no_maps_yet() -> None:
 
 def test_r5c_every_changed_string_is_marked() -> None:
     """Every string this track changed sits under a WORDING: r5c mark (the
-    rule of the round), so each can be found with one search."""
+    rule of the round), so each can be found with one search; those that
+    round r5-e changed again (S04's line, S06's tick and how: r5-e S5) are
+    marked r5e."""
     page = _read("studio.html")
     glyph = _read("glyph.js")
-    for tag in ("S04", "S06", "S11"):
+    for tag in ("S06", "S11"):
         assert f"// WORDING: r5c {tag}" in page, tag
     assert "r5c S05 (first)" in page and "r5c S08 (values" in page
-    assert "r5c S06 (tick, how)" in page
+    assert "// WORDING: r5e\nconst PROJECTS_LEAD = {" in page
+    assert "r5e (tick, how: shorter, r5-e S5)" in page
     for tag in ("S02", "S14"):
         assert f"r5c {tag}" in glyph, tag

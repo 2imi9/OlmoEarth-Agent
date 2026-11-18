@@ -88,20 +88,14 @@ LATER = (
 )
 
 #: J09: the gate's line and a part's line after a press with no reply; the
-#: press's toast, word for word as before.
+#: press's toast. Round r5-e K8 shortened the part's line and the toast (the
+#: gate's line says once what to do: tests/mcp_app/test_mcp_r5e_check.py).
 RULE_LOST = (
     "This card can pick no more squares. Ask Claude to open the Check card "
     "again: it shows the rule and what was picked."
 )
-NO_ANSWER = (
-    "No answer came back, so this part's squares may or may not be picked. The "
-    "Check card opened again will say."
-)
-PRESS_NO_ANSWER = (
-    "The press got no answer back, so this card cannot say what was picked: a "
-    "part's squares may be picked, or still being picked. Ask Claude to open the "
-    "Check card again; it shows each part."
-)
+NO_ANSWER = "No answer came back: this part may or may not be picked."
+PRESS_NO_ANSWER = "The press got no answer back."
 
 #: J17: the heading once no part offers a number.
 ALL_ANSWERED = (
@@ -109,10 +103,11 @@ ALL_ANSWERED = (
 )
 YOUR_SQUARES = "Your squares"
 
-#: J18: the line over the press, the box's label and the line under the box.
+#: J18: the line over the press (in round r5-e K4's words), the box's label and
+#: the line under the box.
 CANNOT = (
-    "Your rule and number are fixed once you press. You can stop and come back "
-    "later; there is no result until every square is done."
+    "Once you press, your rule and number are fixed. You get a result once every "
+    "square is answered."
 )
 RULE_OWN = (
     "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
@@ -289,25 +284,15 @@ def _failed(error: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- J03
 
 
-def test_j03_a_counts_words_follow_its_place_among_the_parts_counts() -> None:
-    """J03: the words are chosen by the count's place among the part's
-    offers (one offer; the first; the last; any between), marked, and the
-    words by planned width are gone, so a part's one number never reads
-    "Longer" and 1,100 squares never "Quick"."""
+def test_j03_the_counts_words_by_width_and_by_place_are_gone() -> None:
+    """J03: the words by planned width are gone, so a part's one number never
+    reads "Longer" and 1,100 squares never "Quick". Round r5-e K1 took the
+    words by the count's place off the buttons too: a count is its number,
+    and one line under the question says what more squares give
+    (tests/mcp_app/test_mcp_r5e_check.py)."""
     page = _read("check.html")
-    words = (
-        "// WORDING: r5b J03\n"
-        "const COUNT_WORDS = (i, n) => "
-        "(n === 1 ? 'The one number planned for this part.'\n"
-        "  : i === 0 ? 'Least work. The widest range.'\n"
-        "    : i === n - 1 ? 'Most work. The narrowest range.' "
-        ": 'More work. A narrower range.');\n"
-    )
-    assert words in page
     counts = _between(page, "  function countsBlock(m) {", "\n  }\n")
-    assert "const buttons = m.offer.map((o, i) => {" in counts
-    drawn = "{ class: 'pick-words small' }, COUNT_WORDS(i, m.offer.length)));"
-    assert drawn in counts
+    assert "const buttons = m.offer.map((o) => {" in counts
     assert "o.width" not in counts and "fig(" not in counts
     for gone in (
         "WIDTH_WORDS",
@@ -315,10 +300,10 @@ def test_j03_a_counts_words_follow_its_place_among_the_parts_counts() -> None:
         "Quick. A wide range.",
         "Longer. A narrower range.",
         "A lot of work. A narrow range.",
+        "COUNT_WORDS",
+        "pick-words",
     ):
         assert gone not in page, gone
-    # Defined once, used once.
-    assert _code(page).count("COUNT_WORDS") == 2
 
 
 def test_j03_the_server_sends_a_parts_counts_in_ascending_order() -> None:
@@ -400,17 +385,16 @@ def test_j08_the_line_under_the_press_says_why_it_is_off() -> None:
 
 def test_j08_a_part_left_for_a_later_card_says_it_is_not_picked() -> None:
     """J08: a part left without a number says first that it is not picked,
-    then how to pick it, in body colour (no faint class)."""
+    then how to pick it, in body colour (no faint class). Round r5-e K8: after
+    a press with no reply such a part says only that it is not picked (the
+    gate's line says what to do: tests/mcp_app/test_mcp_r5e_check.py)."""
     page = _read("check.html")
     tags = "// WORDING: r5b J08\n// WORDING: r4h C3\nconst LATER = "
     assert tags in page
     assert _concat(_after(page, "const LATER = ", ";\n")) == LATER
     zone = _between(page, "  function fillZone(m) {", "\n  }\n")
-    later = (
-        "    } else if (m.kind === 'later') {\n"
-        "      parts.push(OE.el('div', {}, LATER));\n"
-    )
-    assert later in zone
+    assert "    } else if (m.kind === 'later') {\n" in zone
+    assert "      parts.push(OE.el('div', {}, ruleLost ? NOT_YET : LATER));\n" in zone
     assert "class: 'faint'" not in zone
 
 
@@ -421,8 +405,8 @@ def test_j09_after_a_press_with_no_reply_no_part_keeps_its_numbers() -> None:
     """J09: the press that got no reply marks its parts as maybe picked, and
     every other part that still offered numbers, or a retry, is left for the
     card opened again, so no numbers and no grey press stay; the gate's line
-    and the part's line say where the answer will be; the press's toast is
-    word for word as before."""
+    says where the answer will be (round r5-e K8 shortened the part's line
+    and the press's toast)."""
     page = _read("check.html")
     tags = "// WORDING: r5b J09\n// WORDING: r4i F6\nconst RULE_LOST = "
     assert tags in page
@@ -446,7 +430,9 @@ def test_j09_after_a_press_with_no_reply_no_part_keeps_its_numbers() -> None:
         "renderAll();",
     )
     # With no part left to pick, the press goes (updatePress) and the focus
-    # moves on from it (focusFallback).
+    # moves on from it: since r5-e to the gate's line after a press with no
+    # reply (tests/mcp_app/test_mcp_r5e_check.py); focusFallback stays for a
+    # press whose answer leaves no part to pick.
     update = _between(page, "  function updatePress() {", "\n  }\n")
     gone = (
         "    if (opened !== null || !can.length) {\n"
@@ -536,42 +522,26 @@ def test_j17_the_heading_follows_what_the_card_holds() -> None:
         assert _OFF_FACE.search(said) is None, said
 
 
-def test_j17_the_parts_captions_the_other_part_and_the_repeat() -> None:
-    """J17: a picked part's caption says how far it is answered (k of n by
-    its sheet's counts, "all answered" once whole, "picked, not checked yet"
-    only while the counts are not read); a part the card cannot pick says
-    so; the line under an open sheet names the one other part; a press on a
-    part picked before says that pick stays and the number chosen now is not
-    used."""
+def test_j17_a_repeat_says_the_pick_stays_and_the_parts_captions_are_gone() -> None:
+    """J17: a press on a part picked before says that pick stays and the
+    number chosen now is not used. Round r5-e K2 took the parts figure (with
+    its captions of how far a picked part is answered) and the line under an
+    open sheet off the Check card: each part's own card says its state once
+    (tests/mcp_app/test_mcp_r5e_check.py); the sheets' counts still set the
+    heading (countsRead, complete)."""
     page = _read("check.html")
-    names = {
-        "name": "West part",
-        "k.toLocaleString('en-US')": "5",
-        "n.toLocaleString('en-US')": "20",
-    }
-    for start, said in (
-        ("const PART_ANSWERED = (name, k, n) => ", "West part: 5 of 20 answered"),
-        ("const PART_DONE = (name) => ", "West part: all answered"),
-        ("const PART_CANNOT = (name) => ", "West part: cannot be picked here"),
-        ("const PART_PICKED = (name) => ", "West part: picked, not checked yet"),
-        ("const PART_OPEN = (name) => ", "West part: not picked yet"),
+    for gone in (
+        "PART_ANSWERED",
+        "PART_DONE",
+        "PART_CANNOT",
+        "PART_PICKED",
+        "PART_OPEN",
+        "fillParts",
+        "OTHER_OPEN",
+        "fillOther",
+        "otherLine",
     ):
-        assert _concat(_after(page, start, ";\n"), names) == said, start
-    for name in ("PART_ANSWERED", "PART_DONE", "PART_CANNOT"):
-        assert f"// WORDING: r5b J17\nconst {name} = " in page, name
-    parts = _between(page, "  function fillParts() {", "\n  }\n")
-    assert _in_order(
-        parts,
-        "const said = complete(d) ? PART_DONE(name)\n"
-        "          : countsRead(d) ? PART_ANSWERED(name, d.n_labelled, d.n_rows) "
-        ": PART_PICKED(name);",
-        "return { name, share: m.shareValue, state: 'picked', label: said };",
-        "const said = m.kind === 'unknown' ? name\n"
-        "        : m.kind === 'refused' || m.kind === 'failed' ? PART_CANNOT(name) "
-        ": PART_OPEN(name);",
-        "return { name, share: m.shareValue, state: 'open', label: said };",
-        "}), { mode: 'plan' });",
-    )
+        assert gone not in page, gone
     read = (
         "const countsRead = (d) => Boolean(d) && Number.isInteger(d.n_rows) "
         "&& Number.isInteger(d.n_labelled) && d.n_rows > 0;\n"
@@ -579,16 +549,6 @@ def test_j17_the_parts_captions_the_other_part_and_the_repeat() -> None:
     assert read in page
     whole = "const complete = (d) => countsRead(d) && d.n_labelled >= d.n_rows;\n"
     assert whole in page
-    other = (
-        "// WORDING: r5b J17\n// WORDING: squares\n"
-        "const OTHER_OPEN = (names) => "
-        "(names.length === 1 ? names[0] + ' is not checked yet.'\n"
-        "  : names.length + ' other parts are not checked yet.');\n"
-    )
-    assert other in page
-    fill = _between(page, "  function fillOther() {", "\n  }\n")
-    named = "otherLine.textContent = open.length ? OTHER_OPEN(open.map(label)) : '';"
-    assert named in fill
     assert "The other part is not checked yet." not in page
     repeat = _concat(
         _after(page, "const REPEATED = (n, day) => ", ";\n"),
@@ -606,28 +566,42 @@ def test_j17_the_parts_captions_the_other_part_and_the_repeat() -> None:
 
 def test_j18_two_sentences_over_the_press_and_the_parts_line_first() -> None:
     """J18: the line over the press drops its third sentence (Details keeps
-    the rare-class note), and "This map is saved in N parts" stands right
-    under the heading, before the numbers it explains; the parts figure
-    stays where it was, after the parts."""
+    the rare-class note), and the line on the map's parts stands right under
+    the heading, before the numbers it explains. Round r5-e: that line is in
+    a card beside the strips picture, under the heading's own line (K1, K3),
+    the line over the press is shorter and the come-back line is in Details
+    (K4), and the parts figure is gone (K2): tests/mcp_app/test_mcp_r5e_check.py."""
     page = _read("check.html")
     tags = "// WORDING: r5b J18\n// WORDING: r4h C2\nconst CANNOT = "
     assert tags in page
     assert _concat(_after(page, "const CANNOT = ", ";\n")) == CANNOT
     assert "a rare class may get no square" not in page
     fold = _between(page, "  function fillFold() {", "\n  }\n")
-    assert "nodes.push(OE.el('p', {}, FIXED), OE.el('p', {}, RARE));" in fold
+    # The come-back line keeps r5-a L4's rule in Details (only while the card
+    # has a press and shows no part as picked or as pressed with no reply).
+    pushed = (
+        "    nodes.push(OE.el('p', {}, FIXED));\n"
+        "    if (again) nodes.push(OE.el('p', {}, PICKED_BEFORE));\n"
+        "    nodes.push(OE.el('p', {}, RARE));\n"
+    )
+    assert pushed in fold
+    # The strips card where each part is a strip of its own, else the plain
+    # line in the same place (tests/mcp_app/test_mcp_r5e_check.py).
     line = (
         "  root.append(ask);\n"
-        "  if (nParts > 1) root.append(OE.el('div', { id: 'oe-check-parts-line' }, "
-        "PARTS_LINE(nParts)));\n"
-        "  for (const m of models) {\n"
+        "  root.append(moreLine);\n"
+        "  if (nParts > 1 && byStrip) {\n"
+        "    root.append(OE.el('div', { class: 'card oe-strips', "
+        "id: 'oe-check-parts-line' },\n"
     )
     assert line in page
-    figure = (
-        "  if (nParts > 1) root.append(partsSlot);\n"
-        "  root.append(action, otherLine, OE.fold(DETAILS, foldBody));\n"
+    strips = (
+        "      OE.el('div', {}, PARTS_LINE(nParts))));\n"
+        "  } else if (nParts > 1) {\n"
     )
-    assert figure in page
+    assert strips in page
+    assert "  root.append(action, OE.fold(DETAILS, foldBody));\n" in page
+    assert "partsSlot" not in page
     assert _code(page).count("PARTS_LINE(") == 1
 
 
@@ -689,9 +663,8 @@ def test_j25_the_parts_dead_ends_say_what_to_tell_claude() -> None:
         _after(page, "const RETRY = (n) => ", ";\n"),
         {"PRESS": "Pick the squares", "OE.counted(n, 'square')": "80 squares"},
     )
-    assert retry == (
-        "Press Pick the squares to try again with the same number: 80 squares."
-    )
+    # Round r5-e K8: one line after "The pick failed." (test_mcp_r5e_check.py).
+    assert retry == "The press tries again with 80 squares."
     assert "// WORDING: r5b J25\n// WORDING: squares\nconst RETRY = " in page
     for gone in (
         "ask Claude about it",
@@ -724,9 +697,11 @@ def test_j25_a_count_the_card_no_longer_offers_says_it_is_out_of_date() -> None:
 
 
 def test_j29c_under_480_px_each_count_is_a_row_of_its_own() -> None:
-    """J29 (c): on a narrow panel a count takes the whole line, its number
-    at the left and its words at the right, so three counts no longer break
-    two and one with the third stretched."""
+    """J29 (c): on a narrow panel a count takes the whole line, so three
+    counts no longer break two and one with the third stretched. Since r5-e
+    K1 a count has no words beside its number and the row comes from the
+    group's --same-min: 100% (tests/mcp_app/test_mcp_r5e_check.py); the r5-b
+    rule pinned here is kept as the build list says."""
     page = _read("check.html")
     rule = (
         "  @media (max-width: 480px) {\n"
@@ -995,49 +970,43 @@ def test_x1_the_page_draws_the_two_lines_and_nothing_else() -> None:
 
 
 def test_the_cut_line_and_the_come_back_line_of_r5a_stay() -> None:
-    """Round r5-a's two lines are on the card as it left them: the score
-    map's cut right over the gate, and the come-back line right under the
-    press, hidden while a part shows as picked or as pressed with no reply."""
+    """Round r5-a's two lines are on the card: the score map's cut right over
+    the gate, as it was; the come-back line, which stood right under the
+    press, is in Details since round r5-e K4 (test_mcp_r5e_check.py), so
+    under the press only the line that says why it is off is left."""
     page = _read("check.html")
     cut = (
         "  if (cut) root.append(OE.el('div', { id: 'oe-check-cut' }, cut));\n"
         "  root.append(gate);\n"
     )
     assert cut in page
-    again = (
-        "  const againLine = OE.el('div', { class: 'small muted', "
-        "id: 'oe-check-again' }, PICKED_BEFORE);\n"
-    )
-    assert again in page
+    assert "againLine" not in page and "oe-check-again" not in page
     start = "  const pressArea = OE.el('div', { class: 'stack' },"
     area = _between(page, start, ";\n")
     assert _in_order(
         area,
         "OE.el('div', { id: 'oe-check-cannot' }, CANNOT),",
         "OE.el('div', { class: 'row' }, press),",
-        "againLine,",
         "limitLine)",
     )
     # The slice stops right before the call's ";": the line under the press is last.
     assert area.endswith("    limitLine)")
-    update = _between(page, "  function updatePress() {", "\n  }\n")
-    hidden = (
-        "    againLine.hidden = models.some("
-        "(m) => m.kind === 'drawn' || m.kind === 'unknown');\n"
-    )
-    assert hidden in update
+    fold = _between(page, "  function fillFold() {", "\n  }\n")
+    assert "OE.el('p', {}, PICKED_BEFORE)" in fold
 
 
 def test_every_item_of_the_track_is_marked_in_the_page() -> None:
-    """Each new or changed string of this round carries its WORDING mark."""
+    """Each new or changed string of this round carries its WORDING mark.
+    Round r5-e took COUNT_WORDS (J03; K1), the parts figure's three captions
+    and OTHER_OPEN (J17; K2) off the card."""
     page = _read("check.html")
     marks = re.findall(r"// WORDING: r5b (J\d+|X1)", page)
     for item, count in (
-        ("J03", 1),
+        ("J03", 0),
         ("J08", 5),
         ("J09", 2),
         ("J10", 1),
-        ("J17", 7),
+        ("J17", 3),
         ("J18", 3),
         ("J25", 5),
         ("X1", 1),

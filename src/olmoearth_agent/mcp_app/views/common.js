@@ -85,6 +85,11 @@ h3 { font-size: 14px; line-height: 21px; font-weight: 600; color: var(--text); }
 .spread { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .stack > * + * { margin-top: 12px; }
 .card { background: var(--paper); border: 1px solid var(--divider); border-radius: 4px; padding: 16px; }
+/* r5-e: one rule for every group of same-kind controls: equal columns, every row as tall as the tallest. */
+.oe-same, .face .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--same-min, 136px), 1fr)); grid-auto-rows: 1fr; gap: 8px; align-items: stretch; }
+.oe-same > *, .face .answers > * { min-width: 0; }
+/* r5-e: a joined group or pair: every member as wide as the widest. */
+.toggle, .face-top > .row { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
 .card.object { border-radius: 12px; cursor: pointer; transition: box-shadow .3s cubic-bezier(.4,0,.2,1), background .3s; }
 .card.object:hover { box-shadow: var(--shadow-2); background: linear-gradient(var(--wash), var(--wash)), var(--paper); }
 .card.summary { background: var(--canvas); }
@@ -124,8 +129,8 @@ button.link[aria-disabled="true"], button.link[aria-disabled="true"]:hover {
   cursor: default; color: rgba(0,0,0,.26); background: none; }
 /* A joined toggle group (Studio's LIST VIEW / CARD VIEW). The pressed one is
    told by more than its pale fill (r5-b J16): 700, and a dark line inside
-   its edge. */
-.toggle { display: inline-flex; }
+   its edge. Its members are as wide as the widest (the r5-e rule after
+   .card); the -1px joins still work in its grid. */
 .toggle button { border-radius: 0; border: 1px solid var(--divider); padding: 7px; margin-left: -1px;
   font-size: 13px; line-height: 22.75px; font-weight: 500; text-transform: uppercase; color: var(--grey); }
 .toggle button:first-child { margin-left: 0; border-radius: 4px 0 0 4px; }
@@ -138,6 +143,16 @@ button.link[aria-disabled="true"], button.link[aria-disabled="true"]:hover {
    (tabindex -1, not a button): a ring when the keyboard brought it there. */
 .toggle[tabindex]:focus { outline: none; }
 .toggle[tabindex]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
+/* r5-e: on a panel under 480px a list row's answers (the one joined toggle in
+   a table cell) stand one under the other, each as wide as the widest: side
+   by side they did not fit their cell there, and each column fell back to
+   its own words' width. */
+@media (max-width: 480px) {
+  td > .toggle { grid-auto-flow: row; grid-auto-rows: 1fr; }
+  td > .toggle button { margin-left: 0; margin-top: -1px; border-radius: 0; }
+  td > .toggle button:first-child { margin-top: 0; border-radius: 4px 4px 0 0; }
+  td > .toggle button:last-child { border-radius: 0 0 4px 4px; }
+}
 /* Chips for kinds and statuses, never for an error rate. */
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 16px;
   background: var(--wash-2); font-size: 13px; line-height: 19.5px; font-weight: 400; color: var(--text); white-space: nowrap; }
@@ -176,11 +191,10 @@ details > summary::after { content: ""; width: 7px; height: 7px; border-right: 2
   border-bottom: 2px solid var(--text-2); transform: rotate(45deg); margin-right: 4px; transition: transform .2s; }
 details[open] > summary::after { transform: rotate(-135deg); }
 .footnote { font-size: 12px; line-height: 18px; color: var(--text); }
-/* A card's three plain lines (OE.lead): what it is, what to do next, what it
-   cannot tell, the last in the secondary colour. */
+/* A card's plain lines under its heading (OE.lead): at most two, in the body
+   colour; the rest goes in the card's Details fold (r5-e). */
 .oe-lead > p { margin: 0; }
 .oe-lead > p + p { margin-top: 4px; }
-.oe-lead > p.cannot { color: var(--text-2); }
 /* The rest of a card in a closed fold (OE.fold), spaced as a stack once open. */
 .oe-more > summary + * { margin-top: 8px; }
 .oe-more > * + * { margin-top: 12px; }
@@ -214,6 +228,9 @@ details[open] > summary::after { transform: rotate(-135deg); }
   .sheet-work.pane > .stack { position: sticky; top: 0; }
   .sheet-work.pane th, .sheet-work.pane td { padding-left: 8px; padding-right: 8px; }
   .sheet-work.pane .toggle.small button { padding-left: 6px; padding-right: 6px; }
+  /* r5-e: beside the open pane a row's answers keep their words' widths (not
+     the equal columns of a joined toggle), so the row stays one line. */
+  .sheet-work.pane td > .toggle { grid-auto-columns: auto; }
 }
 /* The label sheet's face: one window at a time. Inline it is a pager, the
    heading, Previous and Next and the answers on top and the dates in a strip
@@ -226,9 +243,22 @@ details[open] > summary::after { transform: rotate(-135deg); }
    wraps Detail under Context on a narrow panel. A strip of several dates
    keeps each 40px narrower than itself, so the edge of the next one stays in
    view as a sign that the strip goes on; a lone date, and each cell of the
-   full screen grid, keep the whole width. */
+   full screen grid, keep the whole width. Everything about the one square
+   sits in the face's own box (r5-e: a hairline edge, before only a focus
+   ring, which touched the text), the ring 2px outside it; on a panel of
+   420px or less its sides keep 6px inside, not 12px (the rule after it). */
+.face { border: 1px solid var(--rule); border-radius: 4px; padding: 12px; }
 .face:focus { outline: none; }
-.face:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; border-radius: 4px; }
+.face:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+/* The rule's box right above the face (r5-e H2) keeps the face's inset, so
+   the rule's words and the square's heading start at one left edge
+   (.card.oe-rule beats .card). */
+.card.oe-rule { padding: 12px; }
+/* r5-e C4: on a narrow panel the face keeps 6px at its sides (and the rule's
+   box with it, so the two still start at one edge), so a date of the strip
+   still holds a 240px picture (imagery._SCREEN): 380 - 32 - 34 - 2 - 12 =
+   300, less 40 and the date's 18 = 242. */
+@media (max-width: 420px) { .face, .card.oe-rule { padding: 12px 6px; } }
 .face-dates:focus { outline: none; }
 .face-dates:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
 .face-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
@@ -237,7 +267,17 @@ details[open] > summary::after { transform: rotate(-135deg); }
 .face-dates > :not(:only-child) { max-width: calc(100% - 40px); }
 .face.full .face-dates { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); overflow: visible; }
 .face.full .face-dates > * { max-width: none; }
-.face .answers button { min-width: 96px; padding: 10px 16px; }
+.face .answers > select { grid-column: span 2; }
+.face .answers button { min-width: 0; padding: 10px 12px; }
+.face .answers button.oe-other { border-style: dashed; color: var(--text-2); }
+/* r5-e: a class name of one long word breaks inside its cell (the cell's
+   width is the grid's, no longer the words'); it does not run over the
+   button's edge into the next cell. */
+.face .answers button { overflow-wrap: anywhere; }
+/* r5-e: where only one column fits (the face's inside under 280px: on the
+   label sheet a panel under 360px), the list takes one cell: a span of 2
+   would add a second column of another width. */
+@media (max-width: 359.98px) { .face .answers > select { grid-column: auto; } }
 /* Only a chosen answer looks chosen (r4-h A/F22): no hover fill or border
    change on an answer not chosen. A chosen one (r5-b J16) has the pale
    selected fill, a dark line, 700 and a tick before its words, the look of
@@ -636,15 +676,17 @@ OE.firstOffered = (kind, names) => (!kind || OE.FIRST_KINDS.includes(kind))
 // WORDING: held for the reader test
 OE.NO_FIRST = 'This map was not saved with class scores, so there is no order of windows to look at first.';
 
-/* A card's three plain lines (the reader test's): what it is, what to do
-   next, what it cannot tell, each a paragraph with its key as its class.
-   The start and projects cards give their own; a result view and the Check
-   card give the server's lead. null while every line is null (a lead the
-   server has no words for), so nothing is drawn and the layout is
-   unchanged; otherwise one block of at most three lines. */
+/* A card's plain lines under its heading (the reader test's keys): what it
+   is, what to do next, what it cannot tell, each a paragraph with its key as
+   its class. The start and projects cards give their own; a result view and
+   the sheet give theirs. null while every line is null (a lead the server
+   has no words for), so nothing is drawn and the layout is unchanged;
+   otherwise one block of at most two lines (r5-e, the owner: fewer; each
+   card sends two or fewer, so the cap is only a guard), all in the body
+   colour. */
 OE.lead = (lead) => {
   const lines = ['what', 'next', 'cannot'].map((k) => [k, lead && typeof lead[k] === 'string' ? lead[k] : null])
-    .filter(([, s]) => s);
+    .filter(([, s]) => s).slice(0, 2);  // r5-e: at most two lines (owner: fewer)
   if (!lines.length) return null;
   return OE.el('div', { class: 'oe-lead' }, lines.map(([k, s]) => OE.el('p', { class: k }, s)));
 };
@@ -1032,20 +1074,20 @@ OE.accountShort = (account, source = null) => {
 /* The sign-in panel's words (r5-b J19). Its button says what its press
    does. Its note is a few plain lines: SIGN_IN_OPENS says what the button
    opens, where the key is typed and where Studio makes one; SIGN_IN_NOTE,
-   the default, adds where the key goes and that Studio checks it. A card
-   that needs Studio for its own step (the Check card, a result card) says
-   so in a first line of its own, then SIGN_IN_OPENS and SIGN_IN_KEY_GOES. */
+   the default, adds where the key goes, in the words every sign-in text
+   uses (SIGN_IN_KEY_GOES; r5-e: no longer that Studio checks it, which a
+   wrong key's own error shows). A card that needs Studio for its own step
+   (the Check card, a result card) gives SIGN_IN_OPENS and SIGN_IN_KEY_GOES
+   too (r5-e K6, R2: the first line of its own, which said its heading
+   again, is gone). */
 // WORDING: r5b J19
 OE.SIGN_IN_BUTTON = 'Open the sign-in page';
 // WORDING: r5b J19
 OE.SIGN_IN_OPENS = 'The button opens a sign-in page in your browser, on this computer. Enter your Studio API key there (in Studio: your profile, then API Keys).';
 // WORDING: r5b J19
 OE.SIGN_IN_KEY_GOES = 'The key goes to the OlmoEarth Agent here, not through Claude.';
-// WORDING: r5b J19
-OE.SIGN_IN_NOTE = [
-  OE.SIGN_IN_OPENS,
-  'The key goes to the OlmoEarth Agent here, not through Claude, and is checked with Studio before it is used.',
-];
+// WORDING: r5e
+OE.SIGN_IN_NOTE = [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES];
 
 /* The Studio sign-in, framed as a Studio dialog without the modal parts: a
    white card, as every other card (r5-b J19; before, cream on the cream

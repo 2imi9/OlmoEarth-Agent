@@ -63,10 +63,10 @@ FIGURE_WORDS = [
     "range",
 ]
 
-#: V3: the projects card's second lead line (r5-c S04: the button names in
-#: quotes, one sentence).
+#: V3: the projects card's lead line (r5-c S04: the button names in quotes,
+#: one sentence; r5-e S5: the card's only line, no "Next: ").
 PROJECTS_NEXT = (
-    'Next: press "Show its maps" on the project that holds your map, then '
+    'Press "Show its maps" on the project that holds your map, then '
     '"Check how wrong it is" beside the map.'
 )
 
@@ -74,9 +74,9 @@ PROJECTS_NEXT = (
 #: (values: a values model whose grain is pixel; valuesAny: any other values
 #: model, the spec's sentence without "at each pixel"; unknown: the kind is
 #: not recorded; unread: the model it names was not read); r5-c S08: the
-#: values lines say which card tells, and a failed row says why it has none.
+#: values lines say which card tells, and a failed row says why it has none;
+#: r5-e S7: a class map's row has no line (its Check button says it).
 ROW_SAYS = {
-    "classes": "Shows classes. Check can run on it.",
     "values": (
         "Shows a number at each pixel. Check works if that number is a score from 0 "
         "to 1; its Check card tells you."
@@ -136,8 +136,9 @@ def _in_order(text: str, *pieces: str) -> bool:
 
 def test_v1_only_the_start_view_inlines_the_overview() -> None:
     """V1: overview.js is inlined into the start view, after common.js, and
-    into no other view; the card draws the figure under its three lines,
-    before the sign-in and the jobs, with no fold."""
+    into no other view; the card draws the figure under its line (r5-e S1:
+    one line, where it had three), before the sign-in and the jobs, with no
+    fold."""
     assert views.VIEWS["start"]["scripts"] == ("common.js", "overview.js")
     for name, spec in views.VIEWS.items():
         held = "OE.overview = (() => {" in views.view_html(name)
@@ -161,8 +162,9 @@ def test_v1_only_the_start_view_inlines_the_overview() -> None:
 def test_v1_the_overview_lives_inside_one_name_and_never_updates() -> None:
     """V1: one IIFE, OE.overview, with no name of its own at the top of the
     module it is inlined into; no call, timer, listener or load; it returns
-    its style, the figure and the caption (r5-d R04: its two forms); its one
-    placeholder is the docs figure's."""
+    its style, the figure and the caption (r5-d R04: its two forms); its
+    placeholders are the docs figure's and (r5-e S8) the narrow strip's
+    example map's."""
     script = _read("overview.js")
     assert script.count("OE.overview = (() => {") == 1
     assert script.rstrip().endswith("})();")
@@ -180,7 +182,10 @@ def test_v1_the_overview_lives_inside_one_name_and_never_updates() -> None:
         "OE.open(",
     ):
         assert banned not in script, banned
-    assert re.findall(r"@[A-Z_]+@", _code(script)) == ["@OVERVIEW_DATA_URL@"]
+    assert re.findall(r"@[A-Z_]+@", _code(script)) == [
+        "@OVERVIEW_DATA_URL@",
+        "@MAP_EXAMPLE_DATA_URL@",
+    ]
     for placeholder in ("@EXT_APPS", "@LEAFLET", "@DRAW", "@SCRIPTS@"):
         assert placeholder not in script, placeholder
     raw = {chr(0x2028), chr(0x2029), "\x00", "\x0b", "\x0c", "\x1b", "\x7f"}
@@ -210,10 +215,11 @@ def test_v1_the_wide_figure_is_the_docs_figure_inlined() -> None:
 
 
 def test_v1_the_narrow_strip_is_drawn_in_code_with_the_views_tokens() -> None:
-    """V1: the narrow strip is drawn in code: no marker and no id; a colour
-    is written out only in TILE, every other fill and stroke is a token; no
-    mint: the dot is the canvas colour. The only address in the script is
-    the SVG namespace."""
+    """V1: the narrow strip is drawn in code: no marker and no id; no colour
+    is written out (r5-e S8: the made-up tile and its colours, TILE, gave way
+    to a docs picture, a placeholder views.py fills in), every fill and
+    stroke is a token; no mint: the dot is the canvas colour. The only
+    address in the script is the SVG namespace."""
     script = _read("overview.js")
     code = _code(script)
     for banned in (
@@ -233,13 +239,14 @@ def test_v1_the_narrow_strip_is_drawn_in_code_with_the_views_tokens() -> None:
     assert script.count("http") == 1
     assert "const NS = 'http://www.w3.org/2000/svg';" in script
     assert re.search(r"\bid:\s", code) is None
-    tile = _between(script, "  const TILE = ", ";\n")
-    assert _HEX.findall(script) and _HEX.findall(script) == _HEX.findall(tile)
-    assert "crops: ['#" in tile
+    assert _HEX.findall(script) == []
+    for gone in ("const TILE", "const PATCHES", "const tile ="):
+        assert gone not in script, gone
     style = _between(script, "  const STYLE = `", "`;")
     for rule in (
         ".oe-overview text { font-family: var(--font); fill: var(--text); }",
-        ".oe-overview .box { fill: var(--paper); stroke: var(--divider); ",
+        # r5-e S3: the canvas colour, inside the start card's white box.
+        ".oe-overview .box { fill: var(--canvas); stroke: var(--divider); ",
         ".oe-overview .ln { fill: none; stroke: var(--text-2); ",
         ".oe-overview .app { fill: var(--text); }",
         ".oe-overview .dark text { fill: var(--canvas); }",
@@ -251,7 +258,9 @@ def test_v1_the_narrow_strip_is_drawn_in_code_with_the_views_tokens() -> None:
 def test_v1_one_picture_one_drawing_and_one_text_name() -> None:
     """V1: the docs picture and the narrow drawing, each aria-hidden, inside
     one role=img element named by the title and the description; the
-    drawing shows below 680 px, the picture from 680 px up, on a white card."""
+    drawing shows below 680 px, the picture from 680 px up, on a white card
+    (r5-e S3: the start card's box, .oe-overview-wrap, which holds the
+    caption too; the picture keeps no box of its own)."""
     script = _read("overview.js")
     assert script.count("viewBox: '0 0 348 96'") == 1
     assert "viewBox: '0 0 748 238'" not in script
@@ -263,7 +272,10 @@ def test_v1_one_picture_one_drawing_and_one_text_name() -> None:
     assert f"  // WORDING: r5c docs figure\n  const DESC = '{DESC}';\n" in script
     style = _between(script, "  const STYLE = `", "`;")
     assert "img.wide { display: none; width: 100%; max-width: 748px;" in style
-    assert "background: var(--paper); border: 1px solid var(--divider);" in style
+    assert "border: 1px solid" not in style
+    page_style = _between(_read("start.html"), "<style>", "</style>")
+    box = _between(page_style, ".oe-overview-wrap {", "}")
+    assert "background: var(--paper); border: 1px solid var(--divider);" in box
     wide = _between(style, "@media (min-width: 680px) {", "\n}\n")
     assert ".oe-overview img.wide { display: block; }" in wide
     assert ".oe-overview svg.narrow { display: none; }" in wide
@@ -493,7 +505,7 @@ def test_v3_the_next_line_names_the_show_button_every_project_has() -> None:
     project's name's."""
     page = _read("studio.html")
     assert f"  next: '{PROJECTS_NEXT}',\n" in page
-    tag = "// WORDING: r5c S04\nconst PROJECTS_LEAD = {"
+    tag = "// WORDING: r5e\nconst PROJECTS_LEAD = {"  # r5-e S5
     assert tag in page
     assert "// WORDING: r5a V3\nconst SHOW = { label: (open) => " in page
     assert "(open ? 'Hide its maps' : 'Show its maps') };\n" in page
@@ -574,13 +586,16 @@ def test_v3_each_completed_prediction_says_what_it_shows() -> None:
     kind is not recorded; an embeddings row keeps its own line whatever its
     status; a row not completed says nothing, but a failed one says it failed
     (r5-c S08); no line names a square or a window or calls a map
-    recommended; no row's Check is the contained button (B1 is not built)."""
+    recommended; no row's Check is the contained button (B1 is not built).
+    r5-e S7: a class map's row has no line (it was the same on every class
+    row, and the Check beside it says it)."""
     page = _read("studio.html")
     table = _between(page, "const ROW_SAYS = {", "\n};")
     assert (
-        "// WORDING: r5a V3 (classes, detection, unknown, unread); r5c S08 (values, "
-        "valuesAny, failed)\nconst ROW_SAYS = {" in page
+        "// WORDING: r5a V3 (detection, unknown, unread); r5c S08 (values, "
+        "valuesAny, failed); r5e (classes: none)\nconst ROW_SAYS = {" in page
     )
+    assert "classes:" not in table
     for kind, line in ROW_SAYS.items():
         assert f"  {kind}: '{line}',\n" in table + "\n", kind
         assert re.search(r"squares?|windows?|recommend", line, re.I) is None, line
@@ -596,7 +611,7 @@ def test_v3_each_completed_prediction_says_what_it_shows() -> None:
         "unread ? ROW_SAYS.unread",
         "kind === 'values' ? (grain === 'pixel' ? ROW_SAYS.values",
         "ROW_SAYS.valuesAny)",
-        "['classes', 'detection'].includes(kind) ? ROW_SAYS[kind]",
+        "kind === 'classes' ? null : kind === 'detection' ? ROW_SAYS.detection",
         "ROW_SAYS.unknown",
     )
     row = _between(page, "function predictionRow(", "\n}\n")

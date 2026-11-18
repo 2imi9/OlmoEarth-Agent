@@ -788,25 +788,20 @@ def _said(key: str, unit: str, **names: str) -> str:
 
 def test_the_sheets_face_lines_are_the_string_tables() -> None:
     """S1, S2, S3 and A/F21 (section 1), as the face says them, for squares
-    and for points; the Cannot tell line as r4i's F5 says it."""
+    and for points; the Cannot tell line as r4i's F5 says it, cut by r5-e H1
+    (what a guess costs is in the fold)."""
     assert _said("cannotTellLine", "square") == (
-        "Cannot judge a square? Press Cannot tell. Do not guess: a Cannot tell "
-        "makes the range wider, a guess can make the result wrong."
+        "Cannot judge a square? Press Cannot tell; do not guess."
     )
-    # r5-b J13: the lead's third line took in the line on changing an answer.
-    assert _said("noResult", "square", finish="Estimate the error rate") == (
-        "No result until every square is answered. You can change an answer until you "
-        "press Estimate the error rate."
-    )
-    # r5-b J29: the finish line's second sentence has its object.
-    assert _said("everyDone", "square") == (
-        "All answered and saved. After you press, do not change an answer."
-    )
-    # r4-m M6: "The map's answer is hidden: answer without looking at the map."
+    # r5-b J13 made noResult the lead's third line; r5-e H1 removed it.
+    assert "\n    noResult: " not in _words()
+    # r5-b J29: the finish line's second sentence has its object; r5-e H5: it
+    # is that sentence alone.
+    assert _said("everyDone", "square") == "After you press, do not change an answer."
+    # r4-m M6, in one clause since r5-e H1: "..., without looking at the map."
     assert _said("whatPlaced", "point") == (
         "This sheet has no pictures. See where each point is, then say what was "
-        "there from your own imagery or records. The map's answer is hidden: answer "
-        "without looking at the map."
+        "there from your own imagery or records, without looking at the map."
     )
     assert _said("streetMap", "square") == "Street map"
     assert _said("openMapOf", "point", k="4") == "Street map: point 4 on OpenStreetMap"
@@ -849,7 +844,8 @@ def test_the_sheets_fold_lines_are_the_string_tables() -> None:
 
 
 def test_the_class_faces_instruction_names_the_period() -> None:
-    """E/sheet-3, both forms: with the map's period, and without it."""
+    """E/sheet-3, both forms: with the map's period (r5-e H1: it starts with
+    what to do, no longer as the lead starts), and without it (unchanged)."""
     block = _after(
         _words(),
         "classWhat: (period) => (period",
@@ -858,8 +854,8 @@ def test_the_class_faces_instruction_names_the_period() -> None:
     known, unknown = block.split("\n      : ")
     names = {"one": "point", "period": PERIOD}
     assert _concat(known.strip().removeprefix("? "), names) == (
-        "For each point, pick what was there in the period the map covers (1 Apr "
-        "2024 to 30 Jun 2024), using the map's class names."
+        "Pick what was there during 1 Apr 2024 to 30 Jun 2024, using the map's class "
+        "names."
     )
     assert _concat(unknown, names) == (
         "For each point, pick what was there in the period the map covers, using "
@@ -908,7 +904,9 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
     tell line and the S2 line; no "sampling group (stratum)" anywhere, no
     "Open map". r5-b J13, J14: the Cannot tell line and the S2 line are the
     lead's second and third lines, and the rule stands right above the
-    answers (with no rule, the line that none was set: J26)."""
+    answers (with no rule, the line that none was set: J26). r5-e H1, H2: the
+    lead is two lines (no S2 line), and the rule's scope is in the fold, the
+    kelp-only line after it."""
     script = _script()
     editor = _between(script, "OE.sheetEditor = (app, data,", "\n};")
     assert "sampling group" not in script and "Open map" not in script
@@ -950,13 +948,16 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
         "const clearNote = pageRule ? (picturesPossible ? OE.el('div', { class: "
         "'small faint' }, W.clear) : null) : null;" in editor
     )
-    # r5-b J13: the Cannot tell line and the S2 line are the lead's second and
-    # third lines; a graded sheet has neither (r5-b J06).
+    # r5-b J13: the Cannot tell line is the lead's second line; a graded sheet
+    # has none (r5-b J06); r5-e H1: no sheet has the S2 line as a third.
     assert "next: gradedNote ? null : cannotLineText || null," in editor
-    assert "cannot: gradedNote ? null : W.noResult(finishWords)," in editor
-    # The rule block carries the rule and its scope only.
+    assert "cannot: null," in editor
+    # The rule block carries the rule and, where the face has one, the cloud
+    # line; r5-e H2: its scope is in the Details fold (scopeNote) and, after
+    # review, the kelp-only line right after it (limitNote).
     rule = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
-    assert "W.clear" not in rule and "data.rule_scope" in rule
+    assert "W.clear" not in rule and "data.rule_scope" not in rule
+    assert "classNoPeriod, scopeNote, limitNote, gradedWhy," in fold
     # One Cannot tell line where the sheet takes it; a certificate's own line.
     line = _between(editor, "  const cannotLineText = (() => {", "\n  })();")
     assert "if (takesQ) return W.cannotTellLine;" in line

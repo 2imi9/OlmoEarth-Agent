@@ -87,10 +87,10 @@ CANNOT_TELL_BARE = CANNOT_TELL.replace(" from the dates shown", "")
 #: The Check card's words of r4-h (the plan's string table).
 STEP_3 = "3. Someone who can recognise it in a satellite picture looks at each one."
 #: The line over the press: two sentences since r5-b J18 (the third, on rare
-#: classes, is in Details only).
+#: classes, is in Details only), one line at 780 px since r5-e K4.
 CANNOT = (
-    "Your rule and number are fixed once you press. You can stop and come back "
-    "later; there is no result until every square is done."
+    "Once you press, your rule and number are fixed. You get a result once every "
+    "square is answered."
 )
 RULE_ASK = (
     "First write, in one sentence, how you will decide what class a square is. It "
@@ -103,13 +103,12 @@ RULE_OWN = (
     "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
 )
 RULE_EMPTY = "Left empty, the kelp rule above is used."
-#: The second line as r4-m M4 rewords it (no pictures of points, said before
-#: the count is fixed).
+#: The two lines as r5-e K7 cuts them (no pictures of points, said before the
+#: count is fixed, r4-m M4; what the check gives is in Details).
 CLASS_MAP_LINES = (
-    "This map can be checked, on single points picked at random instead of squares.",
-    "You get how often the map is wrong over a grid of points spread across the "
-    "map, with a range, not for every pixel. Each point needs your own imagery or "
-    "records from the map's dates; the app shows no pictures of points.",
+    "This map can be checked on points picked at random, instead of squares.",
+    "The app shows no pictures of points: each needs your own imagery or records "
+    "from the map's dates.",
 )
 
 #: The request the Check card's points button sends (r4-h C6, E/check-1).
@@ -455,13 +454,15 @@ def test_r4h_the_check_cards_steps_counts_and_press_line() -> None:
     ):
         assert text in first, text
     assert "fig('steps', [firstStep(models), ...STEPS.slice(1)])" in page
-    # r5-b J03: the words by the count's place among its part's counts
-    # (tests/mcp_app/test_mcp_r5b_check.py holds them); those by width went.
-    assert "// WORDING: r5b J03\nconst COUNT_WORDS = (i, n) => " in page
+    # r5-e K1: a count is its number alone, and one line under the question
+    # says what more squares give (tests/mcp_app/test_mcp_r5e_check.py); the
+    # words by width (and r5-b J03's by the count's place) went.
+    assert "// WORDING: r5e\nconst MORE_WORK = " in page
+    assert "COUNT_WORDS" not in page
     assert "WIDTH_WORDS" not in page and "widthWords" not in page
     counts = _between(page, "  function countsBlock(m) {", "\n  }\n")
     assert "points" not in counts and "fig(" not in counts
-    assert "points" not in _after(page, "const COUNT_WORDS = ", ";\n")
+    assert "points" not in _after(page, "const MORE_WORK = ", ";\n")
     for gone in ("BAND_LABEL", "'band'", "A rough answer", "A fair", "A sharp answer"):
         assert gone not in page, gone
     assert "// WORDING: r5b J18\n// WORDING: r4h C2\nconst CANNOT = " in page
@@ -521,11 +522,11 @@ def test_r4h_the_check_cards_parts() -> None:
     """r4-h C3 (A/F06 FINAL): a part not picked under an open editor says how
     to pick it; A/F11: each part's heading carries its count of squares; V6:
     a part with no name of the server's is "Part i", never its zone; A/F08:
-    the parts figure is drawn again as parts are picked and checked, each
-    labelled so (the figure's states are figures.js's). r5-b J08: the line
-    starts "Not picked yet."; J17: a picked part says how far it is answered,
-    and a part the card cannot pick says so; J18: the parts line stands
-    right under the heading, the figure where it was."""
+    the parts figure was drawn again as parts were picked and checked. r5-b
+    J08: the line starts "Not picked yet."; J18: the parts line stands right
+    under the heading. r5-e K2 took the parts figure off the Check card (each
+    part is one card that says its state once) and K3 put the parts line in
+    a card beside the strips picture (tests/mcp_app/test_mcp_r5e_check.py)."""
     page = _read("check.html")
     assert (
         "// WORDING: r4h C3\nconst LATER = 'Not picked yet. To pick this part\\'s"
@@ -540,30 +541,13 @@ def test_r4h_the_check_cards_parts() -> None:
     assert "// WORDING: r4h V6\nconst PART_N = (i) => 'Part ' + i;" in page
     assert "const label = (m) => m.part || PART_N(m.index + 1);" in page
     assert "m.part || m.name" not in page
-    names = {"name": "East part"}
-    shown = _concat(_after(page, "const PART_OPEN = (name) => ", ";\n"), names)
-    assert shown == "East part: not picked yet"
-    shown = _concat(_after(page, "const PART_PICKED = (name) => ", ";\n"), names)
-    assert shown == "East part: picked, not checked yet"
-    parts = _between(page, "  function fillParts() {", "\n  }\n")
-    for text in (
-        "if (nParts < 2) return;",
-        ": countsRead(d) ? PART_ANSWERED(name, d.n_labelled, d.n_rows) "
-        ": PART_PICKED(name);",
-        "return { name, share: m.shareValue, state: 'picked', label: said };",
-        "const said = m.kind === 'unknown' ? name\n",
-        "? PART_CANNOT(name) : PART_OPEN(name);",
-        "return { name, share: m.shareValue, state: 'open', label: said };",
-        "}), { mode: 'plan' });",
-    ):
-        assert text in parts, text
-    for where in ("  function renderAll() {", "  async function refreshZone(m) {"):
-        assert "    fillParts();\n" in _between(page, where, "\n  }\n"), where
+    for gone in ("PART_OPEN", "PART_PICKED", "fillParts", "partsSlot"):
+        assert gone not in page, gone
     assert (
-        "if (nParts > 1) root.append(OE.el('div', { id: 'oe-check-parts-line' },"
-        " PARTS_LINE(nParts)));" in page
+        "    root.append(OE.el('div', { class: 'card oe-strips', "
+        "id: 'oe-check-parts-line' },\n" in page
     )
-    assert "  if (nParts > 1) root.append(partsSlot);\n" in page
+    assert "      OE.el('div', {}, PARTS_LINE(nParts))));\n" in page
 
 
 def test_r4h_the_check_cards_rule_follows_the_servers_reply() -> None:
@@ -605,8 +589,9 @@ def test_r4h_a_class_map_without_scores_offers_the_check_on_points() -> None:
     """r4-h C6 (E/check-2, E/check-1 FINALs): the refusal's face says the map
     can be checked on points, in two lines; one contained button sends the
     points request with the result's id (OE.JOB_TEXT.points, from the view's
-    points_request); the tool's sentence is in a closed Details fold. The
-    request names no Studio name and asks Claude to ask the two questions."""
+    points_request); the tool's sentence is in a closed Details fold, after
+    what the check gives (r5-e K7: POINTS_GRID, off the face). The request
+    names no Studio name and asks Claude to ask the two questions."""
     page = _read("check.html")
     lines = _after(page, "// WORDING: r4h C6\nconst CLASS_MAP = [\n", "\n];")
     said = tuple(_concat(s, {}) for s in lines.rstrip(",").split(",\n"))
@@ -619,7 +604,8 @@ def test_r4h_a_class_map_without_scores_offers_the_check_on_points() -> None:
         "OE.sendJob(app, OE.JOB_TEXT.points({ result_id: resultId,"
         " prediction_id: predictionId }), typed)",
         "...CLASS_MAP.map((s) => OE.el('div', {}, s)),",
-        "root.append(OE.fold(DETAILS, OE.el('div', { class: 'small' }, reason)));",
+        "root.append(OE.fold(DETAILS, OE.el('div', { class: 'small' }, POINTS_GRID),"
+        " OE.el('div', { class: 'small' }, reason)));",
     ):
         assert text in card, text
     show = _between(page, "function show(app, params) {", "\n}\n")
@@ -717,15 +703,18 @@ def test_r4h_the_result_cards_parts_are_never_averaged() -> None:
     """r4-h R3 (B/result-parts-not-averaged, A/F03 FINALs): the parts' heading
     says one result per part, never averaged; the line while a part is not
     checked is the server's SAY_OTHER (SAY_OTHERS for k parts), word for
-    word."""
+    word: since round r5-e, R4 its first sentence on the face and its second
+    (the server's SAY_SIDE_BY_SIDE) in Details (sideBySide)."""
     page = _read("result.html")
     words = _between(page, "const RESULT_WORDS = {", "\n};")
     assert "  partsHead: 'One result per part, never averaged'," in words
     assert "Which part this is" not in page
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
-    assert _concat(one, {}) == OTHER_PART == server.SAY_OTHER.strip()
-    shown = _concat(many, {"k": "3"})
+    side = _concat(_entry(words, "sideBySide: "), {})
+    assert side == server.SAY_SIDE_BY_SIDE.strip()
+    assert _concat(one, {}) + " " + side == OTHER_PART == server.SAY_OTHER.strip()
+    shown = _concat(many, {"k": "3"}) + " " + side
     assert shown == OTHER_PARTS == server.SAY_OTHERS.format(k="3").strip()
 
 
@@ -752,8 +741,10 @@ def test_r4h_a_review_sets_legend_follows_its_picture_in_the_fold() -> None:
         "const review = REVIEW_TOOLS.includes(data.tool);",
         "const reviewFigure = review && data.figure && data.figure.svg"
         " ? figureBlock(app, data) : null;",
-        "inFold.push(reviewFigure, OE.el('div', { class: 'small review-legend' },"
-        " REVIEW_LEGEND(unit)));",
+        "const legend = OE.el('div', { class: 'small review-legend' },"
+        " REVIEW_LEGEND(unit));",
+        "reviewFigure.insertBefore(legend, reviewFigure.querySelector(':scope > .row'));",
+        "inFold.push(reviewFigure);",
         "const keepFolded = plan || review;",
         "const put = (node, keep) => { (lead || (keep && keepFolded) ? inFold"
         " : onFace).push(node); };",

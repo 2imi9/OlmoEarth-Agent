@@ -87,6 +87,15 @@ BRAND = {
     "LOGO_DATA_URL": "brand/olmoearth-logo.png",
     "AGENT_TAG_DATA_URL": "brand/agent-tag.png",
     "OVERVIEW_DATA_URL": "brand/olmoearth-overview.jpg",
+    # r5-e S8: a finished Studio map from the docs, cut from inside its
+    # prediction layer (no place, base map or legend): the start card's narrow
+    # strip draws it (views/overview.js), 160 x 160.
+    "MAP_EXAMPLE_DATA_URL": "brand/studio-map-example.jpg",
+    # r5-e K3: the docs' picture of the world cut into strips, one in pink,
+    # recoloured to the views' greys, its words, numbers and state taken out
+    # (no place, no text): the Check card shows it beside the line on a map's
+    # parts (views/check.html), 720 x 328 for 360 x 164 on the face.
+    "STRIPS_DATA_URL": "brand/world-strips.jpg",
 }
 
 #: The media type of a brand image, by its file's suffix.

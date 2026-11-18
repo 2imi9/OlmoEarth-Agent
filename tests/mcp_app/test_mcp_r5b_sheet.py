@@ -33,6 +33,13 @@ missing space between two joined pieces fails here as it would on the face.
 - J28: a two-map sheet's switch, instruction and first line in plain words; the
   first line says the maps' answers are shown while the switch is unticked.
 - J29 (a, sheet.js): the line beside the finish button has its object.
+
+Round r5-e (track SHEET, tests/mcp_app/test_mcp_r5e_sheet.py) changed some of
+these words: the lead is two lines (H1: no noResult, a shorter first line and
+Cannot tell line, the hidden sentences now clauses), the rule's scope is in the
+Details fold (H2), the finish line is its second sentence alone and the graded
+notice leaves its reason to the fold (H5). The tests here pin the new words
+where they pinned the old.
 """
 
 from __future__ import annotations
@@ -41,10 +48,10 @@ import re
 
 from olmoearth_agent.mcp_app import imagery, sheet, views
 
-#: J06: the notice on a sheet already graded (W.graded).
+#: J06: the notice on a sheet already graded (W.graded); r5-e H5 moved its
+#: middle clause, the reason, to the Details fold (W.gradedWhy).
 GRADED = (
-    "This sheet already gave its result. Do not change an answer now: a change made "
-    "after seeing where the map disagrees makes the result invalid. A second "
+    "This sheet already gave its result. Do not change an answer now; a second "
     "opinion needs another person and a fresh sheet."
 )
 #: J11: the first line of a sheet with no pictures and no places (W.whatBare);
@@ -54,11 +61,10 @@ WHAT_BARE = (
     "Answer only from your own records of each {one}, without looking at the map; "
     "with none, stop and tell Claude."
 )
-#: J13: the lead's third line (W.noResult), for squares and this finish label.
-NO_RESULT = (
-    "No result until every square is answered. You can change an answer until you "
-    "press Estimate the error rate."
-)
+#: J13: the lead's third line (W.noResult); r5-e H1 removed it (the greyed
+#: finish button and the counter say it). The script joined the unit word in
+#: as a name, so the pieces around it are what must be gone.
+NO_RESULT = ("No result until every", "You can change an answer until you press")
 #: J13: in the Details fold of a sheet that can show pictures (W.reading).
 READING = "Your answers are a reading of satellite pictures, not a visit on site."
 #: J15: beside "Reopen the sheet" with no answer waiting; with some, the other
@@ -83,12 +89,14 @@ NO_RULE_PAIR = (
 )
 #: J28: what the lead's first line ends with on a one-map sheet (W.hiddenOne),
 #: and what a two-map sheet's says in its place (W.hiddenPair), or while its
-#: switch is unticked (W.shownPair).
-HIDDEN_ONE = "The map's answer is hidden: answer without looking at the map."
-HIDDEN_PAIR = "Both maps' answers are hidden: answer without looking at the maps."
-SHOWN_PAIR = "The two maps' answers are shown now."
-#: J29: beside the finish button once every answer is saved (W.everyDone).
-EVERY_DONE = "All answered and saved. After you press, do not change an answer."
+#: switch is unticked (W.shownPair); r5-e H1: clauses of the first line, no
+#: longer sentences of their own.
+HIDDEN_ONE = ", without looking at the map."
+HIDDEN_PAIR = ", without looking at the two maps."
+SHOWN_PAIR = ". The two maps' answers are shown now."
+#: J29: beside the finish button once every answer is saved (W.everyDone);
+#: r5-e H5: its second sentence alone.
+EVERY_DONE = "After you press, do not change an answer."
 
 #: One token of a JS concatenation: a single-quoted string, a plus, or a name.
 _TOKEN = re.compile(
@@ -190,12 +198,12 @@ def test_j05_the_faces_buttons_are_outlined() -> None:
     ):
         assert text in below, text
     assert "'link'" not in pager and "'link'" not in below
-    # The pictures-off line: body size and colour, in the words it had.
+    # The pictures-off line: body size and colour (r5-e H1: it starts with the
+    # press, no longer "Nothing to look at yet").
     off = "const picturesOff = picturesPossible ? OE.el('div', {}, W.picturesOff)"
     assert off + " : null;" in editor
     assert _said("picturesOff", "square") == (
-        "Nothing to look at yet. Press Pictures to see satellite pictures of this "
-        "square. You are asked first what is sent."
+        "Press Pictures to see satellite pictures; you are asked first what is sent."
     )
     # The list's row buttons stay text buttons.
     rows = _between(editor, "  function renderList(", "\n  }\n")
@@ -215,14 +223,14 @@ def test_j05_the_faces_buttons_are_outlined() -> None:
 def test_j06_a_graded_sheet_says_so_in_plain_words() -> None:
     """The notice in words that are on a button ("graded" was on none), at
     body size; while it shows, the lead keeps its first line only: no Cannot
-    tell line and no line on changing an answer."""
+    tell line (r5-e H1: and no third line on any sheet)."""
     assert _said("graded", "square") == GRADED
     editor = _editor()
     assert "{ class: 'card summary', role: 'note' }, W.graded) : null;" in editor
     assert "card summary small" not in editor
     for text in (
         "next: gradedNote ? null : cannotLineText || null,",
-        "cannot: gradedNote ? null : W.noResult(finishWords),",
+        "cannot: null,",
     ):
         assert text in editor, text
     code = _code(_script())
@@ -256,25 +264,23 @@ def test_j11_a_sheet_with_no_pictures_and_no_places_says_so() -> None:
 
 def test_j13_the_lead_is_three_lines() -> None:
     """What this is; the Cannot tell line (or a certificate's own; none on a
-    two-map sheet); no result until every answer, and an answer can change
-    until the finish press. The separate lines under the lead are gone, with
-    the words of the old second and third lines."""
-    assert _said("noResult", "square", finish="Estimate the error rate") == NO_RESULT
-    assert _said("noResult", "point", finish="Certify the zone") == (
-        "No result until every point is answered. You can change an answer until you "
-        "press Certify the zone."
-    )
+    two-map sheet). The separate lines under the lead are gone, with the words
+    of the old second and third lines. r5-e H1: the third line (no result
+    until every answer, W.noResult) is gone too: the lead is two lines."""
     words = _words()
-    for gone in ("next", "nextBare", "cannot", "cannotBare", "changeLine"):
+    for gone in ("next", "nextBare", "cannot", "cannotBare", "changeLine", "noResult"):
         assert f"\n    {gone}: " not in words, gone
+    for gone in NO_RESULT:
+        assert gone not in _code(_script()), gone
     editor = _editor()
     lead = _between(editor, "  const leadWords = {", "\n  };\n")
     for text in (
         "what: wrongFace ? null : picturesPossible ? W.what : whatBare,",
         "next: gradedNote ? null : cannotLineText || null,",
-        "cannot: gradedNote ? null : W.noResult(finishWords),",
+        "cannot: null,",
     ):
         assert text in lead, text
+    assert "W.noResult" not in editor and "finishWords" not in editor
     assert "OE.lead(leadWords)" in editor
     layout = _between(editor, "  wrap.append(", "  // One listener for the keys")
     for gone in ("cannotLine,", "changeLine,"):
@@ -321,18 +327,17 @@ def test_j13_the_reading_line_is_in_the_fold() -> None:
 
 
 def test_j14_the_rule_is_body_size_right_above_the_answers() -> None:
-    """The rule's own line has no small class and says "Rule: " in bold; its
-    scope and the line after it keep their size; the block stands after the
-    notice and directly before the answers (the face or the list)."""
+    """The rule's own line has no small class and says "Rule: " in bold; the
+    line after it keeps its size; the block stands after the notice and
+    directly before the answers (the face or the list). r5-e H2: the scope is
+    no longer in the block but in the Details fold (scopeNote)."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     assert "OE.el('div', {}, OE.el('strong', {}, 'Rule: '), pageRule)," in block
     assert "'Rule: ' + pageRule" not in editor
-    for text in (
-        "OE.el('div', { class: 'small faint' }, data.rule_scope) : null,",
-        "cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)",
-    ):
-        assert text in block, text
+    assert "cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine)" in block
+    assert "data.rule_scope" not in block
+    assert "OE.el('div', { class: 'small' }, data.rule_scope) : null;" in editor
     layout = _between(editor, "  wrap.append(", "  // One listener for the keys")
     above = "      notice,\n      ruleBlock,\n      noRuleLine,\n      area,\n"
     assert above in layout
@@ -556,9 +561,10 @@ def test_j28_a_two_map_sheet_in_plain_words() -> None:
     )
     assert _said("hiddenOne", "square") == HIDDEN_ONE
     assert _said("hiddenPair", "square") == HIDDEN_PAIR
-    # The one-map sentence is the one the lead's first lines end with.
+    # The one-map clause is the one the lead's first lines end with (r5-e H1:
+    # a clause after a comma, no longer a sentence after a space).
     for key in ("what", "whatPlaced"):
-        assert _said(key, "square").endswith(" " + HIDDEN_ONE), key
+        assert _said(key, "square").endswith(HIDDEN_ONE), key
     swap = "leadWords.what.replace(W.hiddenOne, W.hiddenPair)"
     assert "if (twoMap && leadWords.what) leadWords.what = " + swap + ";" in editor
     # The no-pictures, no-places line on a two-map sheet: the maps.
@@ -590,10 +596,12 @@ def test_j28_a_two_map_sheet_in_plain_words() -> None:
 
 def test_j29_the_finish_line_says_what_must_not_change() -> None:
     """(a), sheet.js: "Answers must not change after you press." had no
-    object; the line now says not to change an answer."""
+    object; the line now says not to change an answer (r5-e H5: that
+    sentence alone)."""
     assert _said("everyDone", "square") == EVERY_DONE
     assert "    // WORDING: r4h S2 A/F17; r5b J29\n    everyDone: " in _words()
     assert "Answers must not change after you press" not in _code(_script())
+    assert "All answered and saved." not in _code(_script())
     # r5-d R06: on a sheet that already gave its result, W.everyDoneGraded.
     line = "const everyDoneLine = OE.el('span', { class: 'small' },\n"
     assert line in _editor()
@@ -605,13 +613,13 @@ def test_j29_the_finish_line_says_what_must_not_change() -> None:
 
 def test_every_r5b_string_of_the_sheet_carries_its_wording_comment() -> None:
     """Each entry of OE.sheetWords this round added or changed has its
-    WORDING line right above it, and so has each string of the editor."""
+    WORDING line right above it, and so has each string of the editor
+    (noResult is gone since r5-e H1; r5-e's own lines stand above these)."""
     lines = _words().split("\n")
     tags = {
         "hiddenOne": "r5b J28",
         "hiddenPair": "r5b J28",
         "shownPair": "r5b J28",
-        "noResult": "r5b J13",
         "reading": "r5b J13",
         "whatBare": "r4m M6; r5b J11",
         "whatBarePair": "r5b J28",

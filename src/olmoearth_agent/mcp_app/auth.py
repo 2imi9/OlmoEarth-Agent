@@ -389,16 +389,16 @@ button:focus-visible {{ outline: 2px solid #0a3235; outline-offset: 2px; }}
 """
 
 #: The sign-in form: what to paste and where Studio makes it, where the key
-#: goes; the key field named by a label of its own, which stays in view once
-#: the key is pasted (the placeholder does not; r5-c S09).
-#: WORDING: r5c S09 (the first paragraph, the field's label and placeholder)
+#: goes, in two short paragraphs (r5-e S4: a wrong key shows its own error,
+#: so the page no longer says that Studio checks it); the key field named by
+#: a label of its own, which stays in view once the key is pasted (the
+#: placeholder does not; r5-c S09).
+#: WORDING: r5e (the two paragraphs); r5c S09 (the field's label and placeholder)
 _FORM = """<h1>Sign in to OlmoEarth Studio</h1>
-<p>Paste your Studio API key below. To make one, open your profile in Studio,
-then API Keys. This page runs on this computer: the key goes from here to the
-OlmoEarth Agent, not through Claude, and is checked with Studio before it is
-used.</p>
-<p>A read-only key is enough to check maps; to save an area or run a model,
-use a key that can write.</p>
+<p>Paste your Studio API key (in Studio: your profile, then API Keys). It goes
+from this computer to the OlmoEarth Agent, not through Claude.</p>
+<p>A read-only key can check maps; to save an area or run a model, use one
+that can write.</p>
 {error}
 <form method="post" autocomplete="off">
 <label for="api-key" class="field">Studio API key</label>

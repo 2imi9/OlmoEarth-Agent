@@ -44,8 +44,9 @@ SIGN_IN_OPENS = (
 #: J19: where the key goes, as the Check card and a result card say it.
 SIGN_IN_KEY_GOES = "The key goes to the OlmoEarth Agent here, not through Claude."
 
-#: J19: the default note's second line: where the key goes, and that Studio
-#: checks it.
+#: J19: the default note's second line until r5-e: where the key goes, and
+#: that Studio checks it (r5-e C3: SIGN_IN_KEY_GOES in its place, so this
+#: sentence is gone).
 SIGN_IN_CHECKED = (
     "The key goes to the OlmoEarth Agent here, not through Claude, and is checked "
     "with Studio before it is used."
@@ -190,10 +191,12 @@ def test_j19_the_sign_in_panels_words() -> None:
         f"// WORDING: r5b J19\nOE.SIGN_IN_BUTTON = '{SIGN_IN_BUTTON}';",
         f"// WORDING: r5b J19\nOE.SIGN_IN_OPENS = '{SIGN_IN_OPENS}';",
         f"// WORDING: r5b J19\nOE.SIGN_IN_KEY_GOES = '{SIGN_IN_KEY_GOES}';",
-        "// WORDING: r5b J19\nOE.SIGN_IN_NOTE = [\n  OE.SIGN_IN_OPENS,\n"
-        f"  '{SIGN_IN_CHECKED}',\n];",
+        # r5-e C3: the default note's second line is SIGN_IN_KEY_GOES itself.
+        "// WORDING: r5e\nOE.SIGN_IN_NOTE ="
+        " [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES];",
     ):
         assert text in common, text
+    assert SIGN_IN_CHECKED not in common
     panel = _between(common, "OE.signInPanel = ", "\n};")
     for text in (
         "const button = OE.el('button', { class: primary ? 'primary' : '' },"
@@ -212,7 +215,7 @@ def test_j19_the_sign_in_panels_words() -> None:
     assert OLD_BUTTON not in common
     assert "served on this computer" not in common
     # No line is long: the old note was one sentence of 40 words.
-    for line in (SIGN_IN_OPENS, SIGN_IN_KEY_GOES, SIGN_IN_CHECKED):
+    for line in (SIGN_IN_OPENS, SIGN_IN_KEY_GOES):
         assert max(len(s.split()) for s in line.split(". ")) <= 20, line
         assert not _OFF_FACE.search(line), line
 
@@ -222,15 +225,21 @@ def test_j19_the_check_card_and_a_result_card_say_it_in_three_lines() -> None:
     lines: the card's own, then the panel's two (what the button opens, where
     the key goes); the start card keeps its own one sentence (r5-a's)."""
     check = _between(_read("check.html"), "function signIn(app, tool) {", "\n}\n")
+    # Round r5-e, K6: the Check card's note is the panel's two lines; its own
+    # first line said the sign-in's heading again.
     assert (
-        f"    // WORDING: r5b J19\n    note: ['{CHECK_NEEDS}', OE.SIGN_IN_OPENS,"
-        " OE.SIGN_IN_KEY_GOES],\n" in check
+        "    // WORDING: r5e\n    // WORDING: r5b J19\n"
+        "    note: [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES],\n" in check
     )
+    assert CHECK_NEEDS not in check
     result = _between(_read("result.html"), "function show(app, params) {", "\n}\n")
+    # Round r5-e, R2: a result card's note is the panel's two lines; its own
+    # first line said the sign-in's heading again.
     assert (
-        f"      // WORDING: r5b J19\n      note: ['{STEP_NEEDS}', OE.SIGN_IN_OPENS,"
-        " OE.SIGN_IN_KEY_GOES],\n" in result
+        "      // WORDING: r5b J19; r5e R2\n"
+        "      note: [OE.SIGN_IN_OPENS, OE.SIGN_IN_KEY_GOES],\n" in result
     )
+    assert STEP_NEEDS not in result
     for page in (check, result):
         assert "This tool needs OlmoEarth Studio" not in page
         assert "served on this" not in page

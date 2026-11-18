@@ -7,35 +7,34 @@
 <script type="importmap">{"integrity": {"@EXT_APPS_URL@": "@EXT_APPS_SRI@"}}</script>
 <link rel="modulepreload" href="@EXT_APPS_URL@" integrity="@EXT_APPS_SRI@" crossorigin="anonymous">
 <style>
-  /* The jobs: one row each, in two columns every row shares: the buttons in
-     the first, each as wide as the widest label, and each one line in the
-     second, all from one left edge, wrapped lines staying in it; a message to
-     type spans both, under its row. On a narrow panel, one column: each
-     button full width, its line under it. (The widest label is about 310px,
-     so below 560px the second column would be too narrow to read.) */
+  /* The jobs (r5-e S2): one column of tiles, one per job, each a button
+     that holds the job's label and its one line, so the line sits inside the
+     job's own box; every tile is as wide as the column and at least 86 px
+     tall (the label, two small lines, the padding and the border), so the
+     tiles are one size at every width. A message to type sits under its
+     tile; a small heading over the other jobs. Signed out the tiles are off,
+     but each line keeps a readable colour. */
   .items { list-style: none; margin: 0; padding: 0; }
-  .items.jobs { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 12px; }
-  .items li { padding: 10px 0; border-top: 1px solid var(--rule); }
-  .jobs li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; row-gap: 4px; }
-  .items li:first-child { border-top: 0; padding-top: 0; }
-  .items li:last-child { padding-bottom: 0; }
-  .jobs li > button { grid-column: 1; width: 100%; }
-  .jobs li > .line { grid-column: 2; }
-  .jobs li > .oe-type { grid-column: 1 / -1; }
-  /* The main job's row first; then a small heading over the other jobs,
-     spanning both columns, so the buttons keep sharing one. */
-  .jobs li.main > .line { color: var(--text); }
-  .jobs li.jobs-head { padding-bottom: 0; }
-  .jobs li.jobs-head > h2 { grid-column: 1 / -1; font-size: 12px; line-height: 18px; font-weight: 600;
-    color: var(--text-2); }
-  @media (max-width: 560px) {
-    .items.jobs { grid-template-columns: minmax(0, 1fr); }
-    .jobs li > button, .jobs li > .line, .jobs li > .oe-type, .jobs li.jobs-head > h2 { grid-column: 1; }
-  }
-  /* Under the overview figure (overview.js), its one small caption, the docs
-     link in the caption's line and sized as it (r5-a V1), underlined, so more
-     than its weight tells it from the caption's words (r5-c S13). */
-  .oe-overview-cap { margin-top: 4px; }
+  .items.jobs { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .jobs li { padding: 4px 0; }
+  .jobs li > button.job { width: 100%; min-height: 86px; display: flex; flex-direction: column; justify-content: center;
+    align-items: flex-start; gap: 2px; padding: 10px 16px; text-align: left; }
+  .jobs .job-label { font-weight: 600; }
+  .jobs .job-line { font-size: 12px; line-height: 18px; font-weight: 400; }
+  .jobs button.job:disabled .job-line { color: var(--text-2); }
+  .jobs li.jobs-head > h2 { font-size: 12px; line-height: 18px; font-weight: 600; color: var(--text-2); }
+  /* The overview figure (overview.js), its one small caption and the docs
+     link in the caption's line, sized as it (r5-a V1), underlined, so more
+     than its weight tells it from the caption's words (r5-c S13); all three
+     in one white box (r5-e S3), so the caption and the link do not sit loose
+     on the canvas under the figure. The box is as wide as its figure, not
+     the panel (the strip's 440 px, the docs figure's 748 px, plus the box's
+     own 24 px of padding and 2 px of edge), so no blank white band stands
+     beside the figure on a panel wider than it. */
+  .oe-overview-wrap { background: var(--paper); border: 1px solid var(--divider); border-radius: 12px;
+    padding: 8px 12px 10px; max-width: 466px; }
+  @media (min-width: 680px) { .oe-overview-wrap { max-width: 774px; } }
+  .oe-overview-cap { margin-top: 6px; }
   .oe-overview-cap button.link { font-size: 12px; line-height: 18px; padding: 0 4px;
     text-decoration: underline; text-underline-offset: 2px; }
 </style>
@@ -60,22 +59,17 @@ const root = document.getElementById('root');
 // WORDING: r4h P1
 const KEY_NOTE = 'You need your own Studio API key: a secret code that Studio makes for you (in Studio, open your profile, then API Keys). The key goes to the OlmoEarth Agent here, not through Claude. No Studio account? Ask whoever made the map how to get one of your own. Do not use their key.';
 
-/* The card's three plain lines under its title (OE.lead): what it is, what
-   to do next (r4-h P1, D/D-start-1: a job below, or a question typed in the
-   chat), what it cannot tell. Nothing folds on this card. Under them, the
-   overview figure (overviewBlock, r5-a V1); who is signed in is in the top
-   line (OE.setAccount, r5-a V2), not on the card. Signed in, the next line
-   no longer asks to sign in (START_NEXT_IN, r5-c S03). */
-// WORDING: r4h P1
-const START_LEAD = {
-  what: 'Jobs this app can do with your Studio maps. The first checks how wrong a map is.',
-  // WORDING: r5c S03
-  next: 'Sign in below first; then press a job, or type what you want in the chat.',
-  // WORDING: r5c S03
-  cannot: 'This card knows nothing about your map yet; only your own answers can show how wrong it is.',
-};
-// WORDING: r5c S03
-const START_NEXT_IN = 'Press a job below, or type what you want in the chat.';
+/* The card's one line under its title (OE.lead): what to do next (r5-e S1,
+   the owner's note 3: the title already says what the card is, and what a
+   check cannot tell is said where labelling happens, on the Check card and
+   the sheet). Nothing folds on this card. Under it, the overview figure
+   (overviewBlock, r5-a V1); who is signed in is in the top line
+   (OE.setAccount, r5-a V2), not on the card. Signed in, the line no longer
+   asks to sign in (START_NEXT_IN, r5-c S03). */
+// WORDING: r5e
+const START_LEAD = { next: 'Sign in first, then press a job or ask Claude in the chat.' };
+// WORDING: r5e
+const START_NEXT_IN = 'Press a job, or ask Claude in the chat.';
 
 /* Each drawing of the card takes the next number; the status read on mount,
    when it answers after a later drawing, is dropped. */
@@ -86,15 +80,19 @@ const signedIn = (status) => Boolean(status && status.signed_in && !status.key_p
 
 /* One job: a button that sends its request to Claude as the user's words
    (OE.sendJob: a message the host does not take shows under the row, to
-   type), and its one line. The main job's button is the card's one contained
-   button once signed in (the sign-in holds that role while signed out);
-   the others are outlined. Off (disabled) while signed out; aria-disabled
-   while its message is being sent, so it keeps the focus. */
+   type). The button holds the job's label and its one line (r5-e S2: the
+   line inside the job's own box, not loose under it); its name is the label
+   alone and the line its description. The main job's button is the card's
+   one contained button once signed in (the sign-in holds that role while
+   signed out); the others are outlined. Off (disabled) while signed out;
+   aria-disabled while its message is being sent, so it keeps the focus. */
 function jobRow(app, job, on) {
   const slot = OE.typeSlot();
   let busy = false;
   const main = job.main === true;
-  const button = OE.el('button', { type: 'button', class: main && on ? 'primary' : null, disabled: !on }, job.label);
+  const lineId = 'job-line-' + job.key;
+  const button = OE.el('button', { type: 'button', class: 'job' + (main && on ? ' primary' : ''), disabled: !on, 'aria-label': job.label, 'aria-describedby': lineId },
+    OE.el('span', { class: 'job-label' }, job.label), OE.el('span', { class: 'job-line', id: lineId }, job.line));
   button.addEventListener('click', async () => {
     if (busy || button.disabled) return;
     busy = true;
@@ -104,12 +102,12 @@ function jobRow(app, job, on) {
       button.setAttribute('aria-disabled', 'false');
     }
   });
-  return OE.el('li', { class: main ? 'main' : null }, button, OE.el('div', { class: 'small muted line' }, job.line), slot);
+  return OE.el('li', { class: main ? 'main' : null }, button, slot);
 }
 
-/* The jobs in one grid, so the columns stay shared: the main job's row
-   first (the server marks it; the first job when none is marked), then a
-   row spanning both columns with the heading "Other jobs", then the rest. */
+/* The jobs in one column of tiles: the main job's row first (the server
+   marks it; the first job when none is marked), then a row with the
+   heading "Other jobs", then the rest. */
 function jobRows(app, jobs, on) {
   const marked = jobs.findIndex((j) => j && j.main === true);
   const at = marked >= 0 ? marked : 0;
@@ -126,7 +124,8 @@ function jobRows(app, jobs, on) {
 /* The overview figure (OE.overview.figure, a role=img element) and, under
    it and outside it, its one small caption with the docs link after the
    words (OE.docsLink: a text button, and the slot that shows the address
-   when the host does not open it). The same signed in and signed out. The
+   when the host does not open it), all three in one white box (r5-e S3:
+   .oe-overview-wrap). The same signed in and signed out. The
    caption's words are two spans, one shown at a time (r5-d R04, overview.js
    STYLE): the docs figure's (cap-wide) from 680 px up, the narrow strip's
    (cap-narrow) below, so the caption says what is shown. */
@@ -179,9 +178,10 @@ function render(app, data) {
     root.append(OE.el('div', { class: 'faint' }, 'Ask Claude what this app can do.'));
     return;
   }
+  // Why the tiles are off stands over them, inside the jobs card, not loose under the last tile's box (r5-e R2).
   root.append(OE.el('section', { class: 'card stack' },
-    OE.el('ul', { class: 'items jobs', 'aria-label': 'Jobs' }, jobRows(app, jobs, on)),
-    on ? null : OE.el('div', { class: 'small faint' }, 'Sign in to start a job.')));
+    on ? null : OE.el('div', { class: 'small faint' }, 'Sign in to start a job.'),
+    OE.el('ul', { class: 'items jobs', 'aria-label': 'Jobs' }, jobRows(app, jobs, on))));
 }
 
 /* What the top line draws for a status (OE.setAccount): null signed out;

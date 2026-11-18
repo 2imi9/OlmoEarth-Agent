@@ -470,7 +470,7 @@ def test_a_drawn_zone_carries_its_sheets_counts(
     root: Path, canned: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A drawn zone's counts go with its progress words (counts only), so the
-    card can say another part is not checked yet."""
+    card's heading can say when every square is answered."""
     (zone,) = check.offer_zones(_inner(root, (_file(32610),)))
     check.claim_draw(zone["check_key"], 20)
     _drawn(root, zone["check_key"], "counted")

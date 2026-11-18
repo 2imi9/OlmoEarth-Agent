@@ -34,8 +34,11 @@
      in [0, 1]; a value outside it is not drawn. The figure computes no
      number: it places the server's texts.
    - parts(parts, {mode}): two or more parts of a map side by side, each as
-     wide as its share (share_value or share; at least 12% wide), its label
-     (else its name) under it. mode 'plan' (the Check card, r4-h A/F08):
+     wide as its share (share_value or share; at least 12% wide, and never
+     narrower than its label's longest word, so no word is broken), its label
+     (else its name) inside its box, every box one height (r5-e R5; it stood
+     under an empty bar); on a panel of 560 px or less the parts are stacked,
+     each full width. mode 'plan' (the Check card, r4-h A/F08):
      state 'open' dashed (not picked yet), 'picked' a solid outline, neither
      filled. mode 'result': state 'this' filled, 'graded' lightly filled,
      'not' dashed.
@@ -103,15 +106,18 @@ OE.fig = (() => {
 .oe-steps .pill.on { fill: var(--selected); stroke: var(--text); }
 @media (max-width: 560px) { .oe-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .oe-rateline svg { display: block; max-width: 100%; height: auto; }
-.oe-parts { display: flex; gap: 4px; align-items: flex-start; }
-.oe-part { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.oe-part-box { height: 20px; border: 1.5px solid var(--text-2); border-radius: 2px; background: var(--paper); }
+.oe-parts { display: flex; gap: 4px; align-items: stretch; }
+.oe-part { min-width: min-content; display: flex; flex-direction: column; gap: 4px; }
+.oe-part-box { flex: 1; min-height: 28px; padding: 4px 8px; display: flex; align-items: center;
+  border: 1.5px solid var(--text-2); border-radius: 2px; background: var(--paper); }
 .oe-part.this .oe-part-box { background: var(--text); border-color: var(--text); }
+.oe-part.this .oe-part-label { color: var(--canvas); }
 .oe-part.graded .oe-part-box { background: rgba(16,82,87,.3); }
 .oe-part.not .oe-part-box { border-style: dashed; background: transparent; }
 .oe-part.open .oe-part-box { border-style: dashed; background: transparent; }
 .oe-part.picked .oe-part-box { background: transparent; }
-.oe-part-label { color: var(--text); overflow-wrap: anywhere; }
+.oe-part-label { color: var(--text); overflow-wrap: break-word; }
+@media (max-width: 560px) { .oe-parts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: 1fr; } }
 .oe-sq-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 5px; }
 .oe-sq, .oe-swatch { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 2px;
   box-shadow: inset 0 0 0 1px var(--divider); }
@@ -302,7 +308,10 @@ OE.fig = (() => {
   /* Each part's width, as a fraction of the row: by its share, at least
      FLOOR (a part under it is drawn at FLOOR and the others share the rest
      by their shares); equal widths when a share is missing, they add up to
-     nothing, or the floor cannot hold for so many parts. */
+     nothing, or the floor cannot hold for so many parts. The style sheet
+     keeps a part at least as wide as its label's longest word, and stacks
+     the parts full width on a panel of 560 px or less, where the widths
+     here are not used. */
   const FLOOR = 0.12;
   const widths = (shares) => {
     const n = shares.length;
@@ -327,7 +336,14 @@ OE.fig = (() => {
      fill, which on the result card means a result). */
   const STATES = { result: ['this', 'graded', 'not'], plan: ['open', 'picked'] };
 
-  /* A map's parts side by side (two or more; one part draws nothing). */
+  /* A map's parts side by side (two or more; one part draws nothing). Each
+     part's words sit inside its own box, and every box in the row is one
+     height (r5-e R5, the owner's note of 17 Nov 2026: no loose words under
+     an empty box); on a filled box (this result) the words are light. The
+     widths follow each part's share from 561 px up, never narrower than a
+     part's longest word (a part at the 12% floor broke its words letter by
+     letter); at 560 px or less the parts are stacked, each full width, in
+     rows of one height. */
   const parts = (list, options) => {
     const items = (Array.isArray(list) ? list : []).filter((p) => p && typeof p === 'object');
     if (items.length < 2) return null;
@@ -343,8 +359,7 @@ OE.fig = (() => {
       // A state the card does not know is drawn outlined, saying nothing.
       const state = known.includes(p.state) ? p.state : 'plan';
       return OE.el('div', { class: 'oe-part ' + state, style: 'flex: ' + round2(w[i] * 100) + ' 1 0%' },
-        OE.el('div', { class: 'oe-part-box' }),
-        OE.el('div', { class: 'oe-part-label small' }, labels[i]));
+        OE.el('div', { class: 'oe-part-box' }, OE.el('span', { class: 'oe-part-label small' }, labels[i])));
     });
     return OE.el('div', { class: 'oe-fig oe-parts', role: 'img', 'aria-label': labels.join('; ') }, pieces);
   };

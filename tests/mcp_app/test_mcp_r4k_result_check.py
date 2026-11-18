@@ -435,29 +435,32 @@ def test_k7_a_street_map_press_asks_by_key_and_rank_and_shows_no_place() -> None
 
 
 def test_k7_each_card_has_its_street_map_and_points_get_a_row() -> None:
-    """r4-k K7: each picture card sits in a cell with its Street map button
-    under it (never inside the card's own button); points without picture
-    cards whose record names their places get a row of Street map buttons,
-    each its rank, in rank order, in place of the numbers' table (round
-    r5-b, J27: each an outlined small button, not a bare digit; a card's
-    stays a text button); with no key at all, the numbers' table as
-    before."""
+    """r4-k K7: a picture card's square has a Street map button (round r5-e,
+    R1: one, in the open square's pane beside Previous and Next, outlined;
+    no longer one under every card, in a cell with it); points without
+    picture cards whose record names their places get a row of Street map
+    buttons, each its rank, in rank order, in place of the numbers' table
+    (round r5-b, J27: each an outlined small button, not a bare digit); with
+    no key at all, the numbers' table as before (r5-e R3: the block keeps it
+    for the card's Details)."""
     page = _read("result.html")
-    assert (
-        ".review-strip .window-cell { display: flex; flex-direction: column;"
-        " gap: 2px; min-width: 0; }" in page
-    )
+    assert ".window-cell" not in page and "window-cell" not in page
     block = _between(page, "function reviewBlock(app, block) {", "\n}\n")
     cards = _between(block, "  function cards() {", "\n  }\n")
     for text in (
-        "OE.el('div', { class: 'window-cell' },",
         "type: 'button', class: 'window-card', 'data-focus': 'card:' + w.rank,",
-        "OE.el('span', { class: 'caption', 'aria-hidden': 'true' }, w.caption || '')),",
-        "mapButton(w.rank, REVIEW_WORDS.streetMap))));",
+        "OE.el('span', { class: 'caption', 'aria-hidden': 'true' },"
+        " w.caption || ''))));",
     ):
         assert text in cards, text
-    # The map button follows the card's button, closed before it.
-    assert cards.index("w.caption || '')),") < cards.index("mapButton(")
+    assert "mapButton(" not in cards
+    pane = _between(block, "  function render(shown) {", "\n  }\n")
+    assert _in_order(
+        pane,
+        "button('previous', REVIEW_WORDS.previous,",
+        "button('next', REVIEW_WORDS.next,",
+        "mapButton(w.rank, REVIEW_WORDS.streetMap, 'small'),",
+    )
     row = _between(block, "    if (n && linkKey) {", "    return section;")
     for text in (
         "REVIEW_WORDS.firstShown(n, total)",
@@ -467,16 +470,15 @@ def test_k7_each_card_has_its_street_map_and_points_get_a_row() -> None:
         " REVIEW_WORDS.mapsLabel),",
         "windows.map((w) => mapButton(w.rank, String(w.rank), 'small'))),"
         " csvBlock());",
-        "    } else if (n) section.append(numbersFold(windows, unit));\n",
+        "    } else if (n) section.numbers = numbersFold(windows, unit);",
     ):
         assert text in row, text
     assert row.index("csvBlock()") < row.index("numbersFold(")
-    # The numbers' table: with no key, and under the picture cards, as before.
+    # The numbers' table: with no key, and under the picture cards, as before,
+    # kept by the block for the card's Details (r5-e R3).
     assert block.count("numbersFold(windows, unit)") == 2
-    assert (
-        "section.append(strip, more, pane, csvBlock(), numbersFold(windows, unit));"
-        in block
-    )
+    assert "section.append(strip, more, pane, csvBlock());" in block
+    assert "  section.numbers = numbersFold(windows, unit);" in block
     assert "primary" not in block
 
 

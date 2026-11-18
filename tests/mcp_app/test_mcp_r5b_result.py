@@ -753,8 +753,9 @@ def test_j27_the_csv_line_tells_the_latest_press_only() -> None:
 
 def test_j27_the_points_street_map_buttons_are_outlined() -> None:
     """J27: the Street map button takes its look as an argument, a text
-    button by default (under a picture card); the row of points' buttons
-    asks for 'small', the outlined small button."""
+    button by default; the row of points' buttons asks for 'small', the
+    outlined small button (round r5-e, R1: so does the one Street map of the
+    open square's pane, which replaced one under every picture card)."""
     page = _read("result.html")
     block = _between(page, "function reviewBlock(app, block) {", "\n}\n")
     made = (
@@ -763,7 +764,7 @@ def test_j27_the_points_street_map_buttons_are_outlined() -> None:
     )
     assert made in block
     assert block.count("mapButton(") == 2
-    assert "mapButton(w.rank, REVIEW_WORDS.streetMap))));" in block
+    assert "mapButton(w.rank, REVIEW_WORDS.streetMap, 'small')," in block
     row = _between(block, "    if (n && linkKey) {", "    return section;")
     assert "windows.map((w) => mapButton(w.rank, String(w.rank), 'small')))," in row
 

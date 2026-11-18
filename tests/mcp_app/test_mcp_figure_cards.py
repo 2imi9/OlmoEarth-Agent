@@ -1214,7 +1214,9 @@ async def test_the_estimate_card_is_figure_first(
     ]
     # One rare class at most (Present is seen in 6): no counted lines for
     # Details (F2); the button under the lines names the result and part (O3).
-    assert card["uncovered_detail"] == []
+    # Three classes of the map's own: the area sentence (AREA_DETAIL) is the
+    # Details' line (round r5-e, R4: it ended the last line).
+    assert card["uncovered_detail"] == [server.AREA_DETAIL]
     assert card["class_check"] == {
         "result_id": R,
         "part_file": FILES[0],
@@ -1289,13 +1291,16 @@ async def test_the_estimate_card_is_figure_first(
         ["95% range", "6.1% to 21.7%", server.RANGE_ROW_DETAIL],
         ["Method (the statistics package's words)", METHOD],
     ]
-    # One last line (R5); three classes of the map's own: the area sentence.
+    # One last line (R5), one sentence; three classes of the map's own: the
+    # area sentence is in Details (round r5-e, R4), above.
     assert card["last_line"] == (
         "Checked against satellite pictures, not a site visit; no verdict on "
-        "whether the map is good enough. It says nothing about the area of any one "
-        "class."
+        "whether the map is good enough."
     )
-    assert card["last_line"] == server.LAST_LINE_PICTURES + server.LAST_LINE_AREA
+    assert card["last_line"] == server.LAST_LINE_PICTURES
+    assert server.LAST_LINE_AREA.strip() == (
+        "It says nothing about the area of any one class."
+    )
     assert card["sheet_name"] == "west_to_label.csv"
     texts = _texts(result)
     assert json.loads(texts[0]) == {
@@ -1374,7 +1379,9 @@ async def test_the_other_part_graded_and_a_map_of_one_part(
     one = await app.call_agent_tool(ESTIMATE, args, views=True)
     card = _view(one)["result"]
     assert (card["title_text"], card["parts"]) == ("Result: Kelp Q2", [])
-    assert card["last_line"] == server.LAST_LINE_ANSWERS + server.LAST_LINE_AREA
+    # Round r5-e, R4: the last line one sentence, the area sentence in Details.
+    assert card["last_line"] == server.LAST_LINE_ANSWERS
+    assert card["uncovered_detail"][-1:] == [server.AREA_DETAIL]
     assert card["say"] == "The map is wrong on about 1 square in 8."
     # One part: the rate is for every square of the map, all classes (r4-m M1).
     together = "The rate above is for every square of the map, all classes together."
@@ -1512,7 +1519,9 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     assert card["uncovered"][0] == server.SAY_TOO_FEW.format(
         units="squares", names='"Kelp"'
     )
-    assert card["uncovered_detail"] == []
+    # Nothing counted for Details; three classes: the area sentence there
+    # (round r5-e, R4).
+    assert card["uncovered_detail"] == [server.AREA_DETAIL]
     assert "Only " not in json.dumps(card)
     # O2: the grid, read at the version graded, with its Cannot tell squares.
     assert calls["squares"] == [(str(sheet_path), VERSION)]
@@ -1577,7 +1586,9 @@ async def test_cannot_tell_on_another_design_draws_no_grid_and_says_the_same_lin
     args = {"design_path": str(root / "west.json"), "labels_path": str(sheet_path)}
     result = await app.call_agent_tool(ESTIMATE, args, views=True)
     card = _view(result)["result"]
-    assert card["uncovered"] == [] and card["uncovered_detail"] == []
+    # Three classes: the area sentence is the Details' one line (r5-e R4).
+    area = [server.AREA_DETAIL]
+    assert card["uncovered"] == [] and card["uncovered_detail"] == area
     assert card["squares"] is None and calls["squares"] == []
     assert card["class_check"] is None
     said = json.loads(_texts(result)[0])["say_first"]
@@ -1689,7 +1700,9 @@ async def test_a_design_other_than_random_shows_no_squares(
     result = await app.call_agent_tool(ESTIMATE, args, views=True)
     card = _view(result)["result"]
     assert card["squares"] is None and calls["squares"] == []
-    assert card["uncovered"] == [] and card["uncovered_detail"] == []
+    # Three classes: the area sentence is the Details' one line (r5-e R4).
+    area = [server.AREA_DETAIL]
+    assert card["uncovered"] == [] and card["uncovered_detail"] == area
     assert card["class_check"] is None  # O3: a random design's card only
     assert card["say"] == "The West part is wrong on about 1 square in 8."
     assert card["fold_rows"] == [["Error rate", "12.5%"], ["Design", "random"]]
@@ -1896,11 +1909,15 @@ async def test_a_grid_over_the_whole_result_is_the_whole_map_in_points(
         "map finds it. The rate above is for every point of the map's grid, all "
         "classes together."
     ]
-    # A map of three classes: the area sentence (E/est-5).
+    # A map of three classes: the area sentence (E/est-5), in Details since
+    # round r5-e, R4; the last line one sentence.
     assert card["last_line"] == (
         "Checked against your answers, not a site visit; no verdict on whether the "
-        "map is good enough. It says nothing about the area of any one class."
+        "map is good enough."
     )
+    assert card["uncovered_detail"] == [
+        "This check says nothing about the area of any one class."
+    ]
     assert card["fold_rows"][0] == [
         "95% range",
         "6.1% to 21.7%",
@@ -2200,7 +2217,9 @@ def test_many_unseen_classes_with_no_squares_drawn_are_named_in_the_fold(
         "Classes you saw in no square",
         '"Unseen 0", "Unseen 1", "Unseen 2", "Unseen 3", "Unseen 4", "Unseen 5"',
     ]
-    assert view["last_line"] == server.LAST_LINE_ANSWERS + server.LAST_LINE_AREA
+    # Round r5-e, R4: the area sentence in Details, the last line one sentence.
+    assert view["last_line"] == server.LAST_LINE_ANSWERS
+    assert view["uncovered_detail"] == [server.AREA_DETAIL]
     assert got["say_first"][3].startswith('No square you checked had: "Unseen 0", ')
 
 
@@ -2455,11 +2474,13 @@ def test_two_rare_classes_are_named_on_the_face_and_counted_in_details(
     assert view["uncovered"] == [
         'Too few squares to say how well the map finds: "A", "B".'
     ]
+    # Three classes: after the counted lines, the area sentence (r5-e R4).
     assert view["uncovered_detail"] == [
         'Only 3 of the 80 squares had "A"; the map agreed on 2 of them. Too few to '
         'say how well the map finds "A".',
         'Only 2 of the 80 squares had "B"; the map agreed on 0 of them. Too few to '
         'say how well the map finds "B".',
+        "This check says nothing about the area of any one class.",
     ]
     assert not any(line.startswith("Only ") for line in view["uncovered"])
     assert got["say_first"][3] == (
@@ -2810,8 +2831,10 @@ def test_the_headline_at_zero_one_and_near_the_top(rate: float, headline: str) -
 def test_the_last_line_says_the_area_only_for_three_classes_or_more() -> None:
     """R5: one last line, pictures or answers; the area sentence only when the
     map's own classes number more than two (the counts' own, else the
-    design's population classes); the model's third line (the limits) gets
-    it under the same condition (F7)."""
+    design's population classes), since round r5-e, R4 as the last of the
+    Details' lines (uncovered_detail), no longer at the end of the last
+    line; the model's third line (the limits) gets it under the same
+    condition (F7), as before."""
     area = " It says nothing about the area of any one class."
     inner = _estimate()["result"]
     two = {"population": {"class_names": {"0": "absent", "1": "present"}}}
@@ -2819,6 +2842,7 @@ def test_the_last_line_says_the_area_only_for_three_classes_or_more() -> None:
     plain = server._estimate_result(inner, None, None, design=two)
     assert plain is not None
     assert plain["view"]["last_line"] == server.LAST_LINE_ANSWERS
+    assert plain["view"]["uncovered_detail"] == []
     assert not plain["say_first"][2].endswith(area)
     assert plain["say_first"][2] == (
         "This compares the map with the answers given, not a visit on site; it does "
@@ -2826,9 +2850,10 @@ def test_the_last_line_says_the_area_only_for_three_classes_or_more() -> None:
     )
     many = server._estimate_result(inner, None, None, design=three)
     assert many is not None
-    assert many["view"]["last_line"] == (
-        server.LAST_LINE_ANSWERS + " It says nothing about the area of any one class."
-    )
+    assert many["view"]["last_line"] == server.LAST_LINE_ANSWERS
+    assert many["view"]["uncovered_detail"] == [
+        "This check says nothing about the area of any one class."
+    ]
     assert many["say_first"][2].endswith(area)
     assert many["say_first"][2] == plain["say_first"][2] + server.LAST_LINE_AREA
     assert server.LAST_LINE_AREA == area
@@ -2943,15 +2968,22 @@ def test_a_class_maps_range_is_matched_by_its_name_never_by_a_code_key() -> None
 
 
 def test_the_plan_lead_needs_its_sheet() -> None:
-    """A plan's three lines only beside its sheet, naming the panel's button
-    (sheet.OPEN_FIRST); a plan drawn on a grid over a Studio result (its
-    sampling) says points, not squares."""
+    """A plan's line only beside its sheet (round r5-e, R2: one line, which
+    no longer says the button's words, sheet.OPEN_FIRST, again, nor the
+    sheet's "no result" line); a plan drawn on a grid over a Studio result
+    (its sampling) says points, not squares."""
     with_sheet = server._lead(
         "olmoearth_plan_label_sample", {}, {"labels_csv_path": "x"}
     )
     assert with_sheet == server.PLAN_LEAD
     assert sheet.OPEN_FIRST == "Open the sheet here"
-    assert with_sheet["next"] == "Press Open the sheet here and answer every square."
+    assert with_sheet == {
+        "what": "The squares to check, picked before any answer: answer every one "
+        "on the sheet.",
+        "next": None,
+        "cannot": None,
+    }
+    assert sheet.OPEN_FIRST not in str(with_sheet["what"])
     assert server._lead("olmoearth_plan_label_sample", {}, {}) == {
         "what": None,
         "next": None,
@@ -2962,9 +2994,10 @@ def test_the_plan_lead_needs_its_sheet() -> None:
         "olmoearth_plan_label_sample", sampled, {"labels_csv_path": "x"}
     )
     assert points == {
-        "what": "The plan: which points to check, picked before any answer.",
-        "next": "Press Open the sheet here and answer every point.",
-        "cannot": "No result until every point is answered.",
+        "what": "The points to check, picked before any answer: answer every one "
+        "on the sheet.",
+        "next": None,
+        "cannot": None,
     }
     assert "square" not in " ".join(str(v) for v in points.values())
 

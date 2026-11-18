@@ -6,7 +6,7 @@ each string as specs/r4-j-round.md gives it; the view files are read as text
 
 - J2: after a Check-card press with no reply, a part's line says only that
   its squares may or may not be picked; the gate's RULE_LOST stays the one
-  instruction to open the card again, and the press's toast is unchanged;
+  instruction to open the card again (r5-e K8 cut the toast to what happened);
 - J3: the Details name of the classes nobody saw says what the reader saw,
   since a Cannot tell square may hold such a class (the F1 rule);
 - J5: the look-first card's overline says "Look first", never "Review set".
@@ -27,22 +27,16 @@ from olmoearth_agent.mcp_app import server, views
 _TOKEN = re.compile(r"\s*(?:'((?:[^'\\]|\\.)*)'|(\+)|([A-Za-z_][A-Za-z0-9_.]*))")
 
 #: A part's line after a press that got no reply (r4-j J2), in the words of
-#: r5-b J09: it says where the answer will be, and still asks nothing.
-NO_ANSWER = (
-    "No answer came back, so this part's squares may or may not be picked. The "
-    "Check card opened again will say."
-)
+#: r5-e K8 (r5-b J09's said where the answer will be): it still asks nothing.
+NO_ANSWER = "No answer came back: this part may or may not be picked."
 #: The gate's one line then (r4-i F6), the instruction, in r5-b J09's words.
 RULE_LOST = (
     "This card can pick no more squares. Ask Claude to open the Check card "
     "again: it shows the rule and what was picked."
 )
-#: The press's toast then, unchanged.
-PRESS_NO_ANSWER = (
-    "The press got no answer back, so this card cannot say what was picked: a "
-    "part's squares may be picked, or still being picked. Ask Claude to open the "
-    "Check card again; it shows each part."
-)
+#: The press's toast then, in r5-e K8's words: what happened (the gate's line
+#: says what to do).
+PRESS_NO_ANSWER = "The press got no answer back."
 
 #: The look-first card's overline (r4-j J5).
 LOOK_FIRST = "Look first"
@@ -100,10 +94,10 @@ def _in_order(text: str, *pieces: str) -> bool:
 def test_j2_a_parts_line_after_a_press_with_no_reply_asks_nothing() -> None:
     """r4-j J2: a part whose press got no answer says only that its squares
     may or may not be picked (marked), never to open the card again: the
-    gate's RULE_LOST, set on the same press, is the instruction; the
-    press's toast PRESS_NO_ANSWER is word for word as before. r5-b J09
-    rewords both lines: the part's says the card opened again will say (it
-    still asks nothing of Claude), the gate's what that card shows."""
+    gate's RULE_LOST, set on the same press, is the instruction. r5-b J09
+    rewords both lines: the gate's says what that card shows. r5-e K8 cuts
+    the part's line and the press's toast PRESS_NO_ANSWER to what happened:
+    the gate's line alone says what to do."""
     page = _read("check.html")
     assert "// WORDING: r5b J09\n// WORDING: r4j J2\nconst NO_ANSWER = " in page
     assert _concat(_after(page, "const NO_ANSWER = ", ";\n")) == NO_ANSWER
