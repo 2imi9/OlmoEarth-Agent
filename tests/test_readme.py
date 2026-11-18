@@ -34,14 +34,19 @@ def test_readme_skill_counts_match_the_catalog() -> None:
     """Every "N skills" / "N-skill" mention, and Usage's numbered skill headings.
 
     The README's skill badge went with the other badges; the web UI and other
-    pages link Usage's skill headings by number and name.
+    pages link Usage's skill headings by number and name. Usage states the
+    count; the README may leave it to Usage (18 November 2026: the README
+    keeps to what each app is and how to start it), and a count it gives must
+    match.
     """
     numbered = [s for s in SKILLS if s.number >= 1]
     for page in (_README, _USAGE):
         text = page.read_text(encoding="utf-8")
         mentions = re.findall(r"\b(\d+)(?:-skill\b| skills\b)", text)
-        assert mentions, f"{page.name} no longer states the skill count"
-        assert set(mentions) == {str(len(numbered))}, page.name
+        assert (
+            mentions or page is _README
+        ), f"{page.name} no longer states the skill count"
+        assert set(mentions) <= {str(len(numbered))}, page.name
     headings = re.findall(
         r"^### (\d+)\. `([a-z-]+)`$", _USAGE.read_text(encoding="utf-8"), re.M
     )
@@ -54,7 +59,8 @@ def test_readme_tool_counts_match_the_registry(
     """The default tools and those sent every turn, by count; Usage's tool table.
 
     The opt-in setting went with the last opt-in tools, so neither page names
-    it.
+    it. Usage states both counts; the README may leave them to Usage, and a
+    count it gives must match.
     """
     monkeypatch.delenv(READ_ONLY_ENV, raising=False)
     registry = build_default_registry()
@@ -63,9 +69,9 @@ def test_readme_tool_counts_match_the_registry(
     for page in (_README, _USAGE):
         text = page.read_text(encoding="utf-8")
         tools = re.findall(r"\b(\d+) tools by default\b", text)
-        assert tools == default, page.name
+        assert tools == default or (page is _README and not tools), page.name
         sent = re.findall(r"\b(\d+) are sent on every turn\b", text)
-        assert sent == every_turn, page.name
+        assert sent == every_turn or (page is _README and not sent), page.name
         assert not re.findall(r"\b\d+ opt-in tools\b", text), page.name
         assert "OLMOEARTH_OPT_IN_TOOLS" not in text, page.name
     table = re.findall(
@@ -74,7 +80,9 @@ def test_readme_tool_counts_match_the_registry(
     assert sorted(table) == sorted(registry.names())
 
 
-@pytest.mark.parametrize("page", ["README.md", "docs/Usage.md"])
+@pytest.mark.parametrize(
+    "page", ["README.md", "docs/Usage.md", "docs/Limits.md", "docs/mcp-app-setup.md"]
+)
 def test_readme_links_name_files_that_exist(page: str) -> None:
     """Every relative link and image names a file the repository holds.
 
