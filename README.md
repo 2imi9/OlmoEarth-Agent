@@ -14,12 +14,94 @@ real Studio key and no LLM. Click for the MP4.</sub>
 Drives [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from a plain-language brief, and checks the maps it gets
 back.
 
+- In Claude, with panels (MCP App): pick one of your Studio maps, look at a small random sample of its squares, and
+  get how often the map is wrong, with a range.
 - It finds a model in Studio, runs predictions and compares their results.
 - It checks a map: which windows to review first, how wrong the map is, which part you can trust, and which of two
   maps of one time is more accurate. The statistics come from
   [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX).
 - It checks each answer against the tool results before showing it.
 - It runs on a local LLM (llama.cpp) or on your own cloud API key (Claude, ChatGPT or Gemini).
+
+
+Use in Claude, with panels
+--------------------------
+
+`olmoearth-agent-mcp` (the `mcp` extra) serves the agent's tools to Claude Desktop as an MCP App. Claude is the
+model; panels beside the chat show each step.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/mcp-app/start.png" alt="Start card: the OlmoEarth overview figure and the three jobs"></td>
+<td width="50%"><img src="docs/images/mcp-app/check.png" alt="Check card: the four steps, the labelling rule, and how many squares to check in each part"></td>
+</tr>
+<tr>
+<td><img src="docs/images/mcp-app/sheet.png" alt="Label sheet: one square at a time, its answers and Cannot tell"></td>
+<td><img src="docs/images/mcp-app/result.png" alt="Result card: the error rate with its 95% range, and the squares checked"></td>
+</tr>
+</table>
+
+<sub>Screenshots from the browser test, with made-up data.</sub>
+
+The main job is **Check how wrong a map is**:
+
+1. On the start card, press **Check how wrong a map is** and find your map in the projects panel.
+2. On the Check card, write your labelling rule in one sentence and choose how many squares to check. More squares
+   mean more work and a narrower range. A map saved in several parts gets one check per part.
+3. On the label sheet, look at each square's satellite pictures (the panel asks before it fetches any) and pick what
+   you see; press **Cannot tell** when you cannot judge. By default the map's own answer is hidden while you label.
+4. The result card gives the error rate with its 95% range: one result per part, never averaged.
+
+Other jobs: **say which of two maps is more accurate** (label only where the two maps differ) and **draw an area and
+run a model** (needs a key that can write).
+
+In Claude Desktop's config (`claude_desktop_config.json`; `which uvx` gives the path):
+
+```json
+{
+  "mcpServers": {
+    "olmoearth-agent": {
+      "command": "/absolute/path/to/uvx",
+      "args": ["--python", "3.12", "--from",
+               "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent",
+               "olmoearth-agent-mcp"]
+    }
+  }
+}
+```
+
+Sign in with your own Studio API key, on a page your own computer serves in your browser; the key never passes
+through Claude. No Studio account yet? **Request access** at [olmoearth.allenai.org](https://olmoearth.allenai.org/).
+
+Where each part runs:
+
+- **OlmoEarth Studio** (Ai2's cloud) holds the models and the maps; the panels only read them, with your key.
+- **Your computer** downloads and decodes a map, runs the statistics
+  ([olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX)) and keeps the pick, the sheet and the
+  result in `~/olmoearth-agent-outputs`.
+- **Earth Search** (public) serves the Sentinel-2 pictures on the sheet, once you say yes.
+- **The panels in Claude** show the results and pass your presses on. No answer check reads Claude's reply.
+
+Words on the panels and in the tools:
+
+| On the panels | In the tools and olmoearth-inferencex | What it is |
+|---|---|---|
+| square | window | a block of N x N map pixels the map is cut into (11 x 11 pixels is about 110 m a side) |
+| point | point | the one pixel read at each point of a Studio result's grid |
+| part | UTM zone | Studio saves a map as one file per strip of the world it covers; each part is checked on its own |
+| range | interval | the error rate's 95% range |
+
+Limits of the panels:
+
+- The pictures are Sentinel-2 only (from 2015 on): a map made from other imagery, such as Landsat, is still labelled
+  on Sentinel-2 pictures.
+- A part is read up to 256 million values. A large map can take about a minute to open; Claude Desktop waits 180 s
+  for a tool call by default.
+- Each part is picked once, with a fixed seed, and never drawn again.
+- What writes to Studio (run a model, save an area) follows Studio's API spec and has not been run live.
+- The start card's overview figure is the OlmoEarth docs' own, used with Ai2's permission.
+
+Setup and every panel in detail: [In Claude, with views](docs/Usage.md#in-claude-with-views-mcp-app).
 
 
 Install
@@ -93,22 +175,6 @@ What each needs and gives: [What it checks](docs/Usage.md#what-it-checks).
 - The label plans, error estimates, certified zones, certificates and the readers of a run's or a Studio result's files
   need the `inferencex` extra (olmoearth-inferencex 1.20.3 or later, Python 3.11 to 3.13); the review set does not.
   `make setup` installs it.
-
-
-Use in Claude, with panels
---------------------------
-
-`olmoearth-agent-mcp` (the `mcp` extra) serves the agent's tools to Claude Desktop as an MCP App. Claude is the
-model, and panels beside the chat show the results:
-
-- the Studio sign-in, on a page in your browser served by your own computer (the key never passes through Claude);
-- your Studio projects;
-- a map to draw the area;
-- each determination's figure and caption;
-- a plan's label sheet, labelled as the estimate reads it (the class seen blind by default; right or wrong shows the
-  map's class) and saved into the CSV.
-
-No answer check reads Claude's reply. Setup in [In Claude, with views](docs/Usage.md#in-claude-with-views-mcp-app).
 
 
 Use from Claude Code
