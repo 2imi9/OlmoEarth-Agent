@@ -118,6 +118,13 @@ caption after the answer, and so does the replay bridge. The answer leads with t
 not restate the figure. No figure: a review set ordered boundary-first, an estimate from `window_indices` without a
 design, or a figure that could not be drawn or written (the determination stands).
 
+On olmoearth-inferencex's expert-annotated Dynamic World tile, `make verify-demo` writes
+[VERIFICATION_DEMO.md](VERIFICATION_DEMO.md). The run's figures: the [error rate](../webui/demo/figures/error_rate.svg)
+from 300 random labels, the [review set](../webui/demo/figures/review_set.svg) and
+[which part to trust](../webui/demo/figures/trust_zone.svg) (no zone was certified). There, the 791 windows (5%) the
+review set puts first, with no labels, are wrong 67% of the time (532 of 791); a random 5% would be wrong about 19% of
+the time, the tile's own rate (19.3%).
+
 ## Skills
 
 The agent ships 5 skills, by workflow stage. The first is an instruction package that `olmoearth_load_skill` loads on
@@ -295,6 +302,8 @@ measure it over its grid points with `design='random'` or `'class'` (Olofsson et
 least `min_per_class` each, 50 by default). The plan gives the package's budgets: `plan.plan_error_rate` for an
 interval no wider than `width` (0.10), and `plan.plan_class` for a `class_share`. The reviewer writes the class seen,
 blind under the class design. A `reference_class` filled on only some rows is refused.
+
+Every interval and every certified zone assumes the labels are right.
 
 #### Which of two maps is more accurate
 
@@ -490,9 +499,10 @@ chat. Forward port 8000 through the login host and run `make bridge`.
 
 Claude can play the model two ways. Natively (`AnthropicLLM`, `llm/anthropic_client.py`), Claude runs through the
 Anthropic API in the web UI, with an Anthropic key and the `claude` extra, paid per token; the model sees exactly the
-loop's request. Through the replay bridge (`olmoearth-agent-bridge`), a Claude Code session writes the model's
-responses; it needs ssh to the cluster, a checkout and the Studio key there, and the model sees the loop's request as
-text beside its own context. The bridge runs the agent's real loop, tools and checks one model call per command, and
+loop's request. Through the replay bridge (`olmoearth-agent-bridge`, not `make bridge`, which serves the web UI), a
+Claude Code session writes the model's responses; it needs ssh to the cluster, a checkout and
+the Studio key there, and the model sees the loop's request as text beside its own context. The
+bridge runs the agent's real loop, tools and checks one model call per command, and
 holds nothing between commands. Each command builds a `LeadAgent` as `olmoearth-agent` does (but with the claim check
 and the short-answer clause off), with `ScriptedLLM` returning the recorded responses in order. Tool handlers are
 wrapped, so argument checks, envelopes, retry hints, spill and provenance run as live; a cached result
@@ -535,6 +545,15 @@ once; provenance times are renewed each replay; and the check switches, `OLMOEAR
 must stay as at `begin`. Not yet tried live: a key that can write.
 
 ## In Claude, with views (MCP App)
+
+The words on the panels, and what the tools and olmoearth-inferencex call them:
+
+| On the panels | In the tools and olmoearth-inferencex | What it is |
+|---|---|---|
+| square | window | a block of N x N map pixels the map is cut into (11 x 11 pixels of 10 m is 110 m a side) |
+| point | point | the one pixel read at each point of a Studio result's grid |
+| part | UTM zone | Studio saves a map as one file per strip of the world it covers; each part is checked on its own |
+| range | interval | the error rate's 95% range |
 
 `olmoearth-agent-mcp` serves the agent's tools to Claude as an MCP App on stdio (`src/olmoearth_agent/mcp_app`, the
 `mcp` extra). Claude is the model. Every tool of the default registry is listed with its own schema and runs through
@@ -1705,6 +1724,8 @@ sign-in keeps the task's records.
 `olmoearth_start` names the jobs in its text, a review set keeps its listed rows, and `olmoearth_check_map` gives each zone's label counts with the
 planner's sentences, for Claude to ask in the chat and plan each zone itself. A plan's text keeps its list of windows
 there (`windows`, `n_windows_listed`).
+
+**Quick setup.** Step by step, for a person or a coding agent: [mcp-app-setup.md](mcp-app-setup.md).
 
 **Claude Desktop.** Settings, Developer, Edit Config, then add the server. Use uv's absolute path (`which uv`), because
 an app started from the Dock does not have the shell's PATH:
