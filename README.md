@@ -10,20 +10,58 @@ Drives [OlmoEarth Studio](https://allenai.org/blog/olmoearth) from a request in 
 gets back with the statistics of [olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX). Two ways to
 use it:
 
-- **[MCP App](#mcp-app)**: in Claude Desktop, with panels beside the chat. Claude answers.
 - **[Agent app](#agent-app)**: the project's own agent, in a web page or a terminal. A local LLM answers, or a cloud
   LLM on your own API key.
+- **[MCP App](#mcp-app)**: in Claude Desktop, with panels beside the chat. Claude answers.
+
+## Agent app
+
+<div align="center">
+
+[![The web UI answering which windows to check first, then how wrong the map is; click for the MP4](webui/demo/olmoearth-agent-demo.webp)](webui/demo/olmoearth-agent-demo.mp4)
+
+<sub>Demo mode (35 s), replaying what `make verify-demo` recorded on a Dynamic World tile, with each check's figure; no
+real Studio key and no LLM. Click for the MP4.</sub>
+
+</div>
+
+The project's own agent finds a model in Studio, runs and compares predictions, and
+[checks a map](docs/Usage.md#what-it-checks). It checks each answer against the tool results before showing it.
+
+Needs [uv](https://docs.astral.sh/uv/) and an OlmoEarth Studio API key (Studio, your profile, **API Keys**). The local
+LLM (llama.cpp) also needs Docker and an NVIDIA GPU; a cloud API key (Claude, ChatGPT or Gemini) needs neither.
+
+```bash
+git clone https://github.com/2imi9/OlmoEarth-Agent.git && cd OlmoEarth-Agent
+make setup      # uv sync --all-extras
+```
+
+- On a cloud API key: `make bridge` serves the live web UI on http://localhost:8088. In the status chip's menu (foot
+  of the sidebar), pick the provider under **Agent settings -> Model backend** and paste its key.
+- On the local LLM: `make up` starts it (the first run downloads the model), then the same web UI.
+
+Open the page, paste your Studio key and ask in plain words. Both keys stay in your browser and go with each request;
+the server does not store them.
+
+From the terminal, on the local LLM:
+
+```bash
+export OLMOEARTH_API_KEY=...
+make serve && make agent Q="How many OlmoEarth Studio projects do I have?"
+```
+
+`make help` lists the targets; without `make`, see the [quick start](docs/Usage.md#quick-start).
 
 ## MCP App
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/mcp-app/start.png" alt="Start card: the OlmoEarth overview figure and the three jobs"></td>
-<td width="50%"><img src="docs/images/mcp-app/check.png" alt="Check card: the four steps as panels, the labelling rule, and how many squares to check in each part"></td>
+<td width="50%" valign="top"><img src="docs/images/mcp-app/start.png" alt="Start card: the OlmoEarth overview figure and the three jobs"></td>
+<td width="50%" valign="top"><img src="docs/images/mcp-app/check.png" alt="Check card: the four steps as panels, the labelling rule, and how many squares to check in each part"></td>
 </tr>
 <tr>
-<td><img src="docs/images/mcp-app/sheet.png" alt="Label sheet: one square at a time, its answers and Cannot tell"></td>
-<td><img src="docs/images/mcp-app/result.png" alt="Result card: the error rate with its 95% range, and the squares checked, counted by kind"></td>
+<td valign="top"><img src="docs/images/mcp-app/sheet.png" alt="Label sheet: one square at a time, its answers and Cannot tell"></td>
+<td valign="top"><img src="docs/images/mcp-app/result.png" alt="Result card: the error rate with its 95% range, and the squares checked, counted by kind"></td>
 </tr>
 </table>
 
@@ -67,44 +105,6 @@ Studio API key; it never passes through Claude. No Studio account yet? **Request
 
 Setup, limits and troubleshooting: [docs/mcp-app-setup.md](docs/mcp-app-setup.md). Every panel and what its words
 mean: [docs/Usage.md](docs/Usage.md#in-claude-with-views-mcp-app).
-
-## Agent app
-
-<div align="center">
-
-[![The web UI answering which windows to check first, then how wrong the map is; click for the MP4](webui/demo/olmoearth-agent-demo.webp)](webui/demo/olmoearth-agent-demo.mp4)
-
-<sub>Demo mode (35 s), replaying what `make verify-demo` recorded on a Dynamic World tile, with each check's figure; no
-real Studio key and no LLM. Click for the MP4.</sub>
-
-</div>
-
-The project's own agent finds a model in Studio, runs and compares predictions, and
-[checks a map](docs/Usage.md#what-it-checks). It checks each answer against the tool results before showing it.
-
-Needs [uv](https://docs.astral.sh/uv/) and an OlmoEarth Studio API key (Studio, your profile, **API Keys**). The local
-LLM (llama.cpp) also needs Docker and an NVIDIA GPU; a cloud API key (Claude, ChatGPT or Gemini) needs neither.
-
-```bash
-git clone https://github.com/2imi9/OlmoEarth-Agent.git && cd OlmoEarth-Agent
-make setup      # uv sync --all-extras
-```
-
-- On a cloud API key: `make bridge` serves the live web UI on http://localhost:8088. In the status chip's menu (foot
-  of the sidebar), pick the provider under **Agent settings -> Model backend** and paste its key.
-- On the local LLM: `make up` starts it (the first run downloads the model), then the same web UI.
-
-Open the page, paste your Studio key and ask in plain words. Both keys stay in your browser and go with each request;
-the server does not store them.
-
-From the terminal, on the local LLM:
-
-```bash
-export OLMOEARTH_API_KEY=...
-make serve && make agent Q="How many OlmoEarth Studio projects do I have?"
-```
-
-`make help` lists the targets; without `make`, see the [quick start](docs/Usage.md#quick-start).
 
 ## More
 
