@@ -54,6 +54,11 @@
      R1), as the label sheet's face has them; Street map and Close keep
      their own. */
   .review-pane .review-pager { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+  /* A Street map press that failed (r5-k K5): its line close under the row
+     of buttons it came from (4 px, where a card's lines are 12 apart), and
+     no room at all while it is empty (kept in place, so it is heard). */
+  .stack > .review-map-said { margin-top: 4px; }
+  .stack > .review-map-said:empty { margin-top: 0; }
   .review-pane h3:focus { outline: none; }
   .review-pane h3:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .oe-numbers td { font-variant-numeric: tabular-nums; }
@@ -534,26 +539,60 @@ function reviewBlock(app, block) {
   const key = block.pictures === true ? linkKey : null;
   const section = OE.el('section', { class: 'stack review' });
   const linking = new Set();  // the ranks whose map link is being asked for
+  /* What a Street map press that failed says, right under the button
+     pressed (r5-k K5, the owner's O11 of 18 Nov 2026: it was the status
+     line at the card's foot, under Details and the CSV button, 6h): one
+     line, which the open square's pane draws right under its row of
+     buttons (render) and the points' row right under that row. In red and
+     announced at once when it says a failure (role alert, aria-live
+     assertive, as OE.toast says an error), else an empty polite status
+     that takes no room (kept in place, as the docs link's slot is, so its
+     first words are heard). Its words are those the toast had. It tells the
+     latest press only: a press empties it first; a late reply of an earlier
+     press, made before a later one (another point of the row), says
+     nothing (mapPress); and it says nothing once its button is gone (the
+     pane moved on to another square, or closed, meanwhile). The pane keeps
+     it in place while it redraws (render: an alert put back in the page is
+     read out again) and empties it when it closes. */
+  const mapSaid = OE.el('div', { class: 'small review-map-said', role: 'status', 'aria-live': 'polite' });
+  let mapFor = null;  // the rank whose press the line tells, while it says one
+  let mapPress = 0;  // the latest Street map press, whose failure alone the line says
+  const sayMap = (rank, words = '') => {
+    mapFor = words ? rank : null;
+    mapSaid.setAttribute('role', words ? 'alert' : 'status');
+    mapSaid.setAttribute('aria-live', words ? 'assertive' : 'polite');
+    mapSaid.className = words ? 'small error review-map-said' : 'small review-map-said';
+    mapSaid.textContent = words;
+  };
   /* A window's map link, asked of the server at the press (the page holds
      no place), then opened in the user's browser; only an OpenStreetMap
      link is opened, and the link is never shown, toasted or told to Claude.
-     Busy while asked (aria-disabled), so a second press asks nothing. */
+     Busy while asked (aria-disabled), so a second press asks nothing. A
+     failure, a link the host did not open included (OE.open quiet: no
+     toast), is said under the button (sayMap, r5-k K5). */
   async function openMap(rank) {
     if (linking.has(rank)) return;
+    // This press, after the busy guard: a press that asks nothing hides no reply.
+    const mine = ++mapPress;
     const mark = (busy) => {
       for (const b of section.querySelectorAll('[data-focus="map:' + rank + '"]')) {
         b.setAttribute('aria-disabled', String(busy));
       }
     };
+    // Said only for the latest press, while its button is still drawn (r5-k K5).
+    const fail = (words) => {
+      if (mine === mapPress && section.querySelector('[data-focus="map:' + rank + '"]')) sayMap(rank, words);
+    };
     linking.add(rank);
     mark(true);
+    sayMap(rank);
     try {
       const got = await OE.call(app, 'olmoearth_app_review_link', { review_key: linkKey, rank });
       const url = got && typeof got.url === 'string' ? got.url : '';
-      if (url.startsWith(OSM_LINK)) await OE.open(app, url);
-      else OE.toast(REVIEW_WORDS.noLink(rank), true);
+      if (!url.startsWith(OSM_LINK)) fail(REVIEW_WORDS.noLink(rank));
+      else if (!(await OE.open(app, url, { quiet: true }))) fail(OE.LINK_NOT_OPENED);
     } catch (err) {
-      OE.toast(REVIEW_WORDS.notOpened(bareText(err.message) || REVIEW_WORDS.linkNotMade), true);
+      fail(REVIEW_WORDS.notOpened(bareText(err.message) || REVIEW_WORDS.linkNotMade));
     } finally {
       linking.delete(rank);
       mark(false);
@@ -640,11 +679,12 @@ function reviewBlock(app, block) {
       // Points without picture cards whose places the record names (r4-k
       // K7): a row of Street map buttons, each its rank, in place of the
       // numbers' table; a line when fewer are listed; then the CSV (K8).
-      // Each is an outlined small button (r5-b J27), not a bare digit.
+      // Each is an outlined small button (r5-b J27), not a bare digit. A
+      // press that fails says so right under the row (mapSaid, r5-k K5).
       if (n < total) section.append(OE.el('div', { class: 'small muted' }, REVIEW_WORDS.firstShown(n, total)));
       section.append(OE.el('div', { class: 'row review-links', role: 'group', 'aria-label': REVIEW_WORDS.streetMap },
         OE.el('span', { class: 'small', 'aria-hidden': 'true' }, REVIEW_WORDS.mapsLabel),
-        windows.map((w) => mapButton(w.rank, String(w.rank), 'small'))), csvBlock());
+        windows.map((w) => mapButton(w.rank, String(w.rank), 'small'))), mapSaid, csvBlock());
     } else if (n) section.numbers = numbersFold(windows, unit);  // r5-e R3: drawn last in the card's Details (show)
     return section;
   }
@@ -759,9 +799,11 @@ function reviewBlock(app, block) {
   const choose = (kind) => { state.colour = kind; render(); };
   /* The pane for the open window (or the test scene). The control that had
      the focus in the pane gets it back by its data-focus key, else the
-     pane's heading does. shown overrides the kept answer (a failure). */
+     pane's heading does. shown overrides the kept answer (a failure).
+     Closed, the pane empties the Street map line (r5-k K5: its button is
+     gone, so a square opened again shows no earlier failure). */
   function render(shown) {
-    if (state.open === null) { pane.hidden = true; pane.replaceChildren(); return; }
+    if (state.open === null) { sayMap(null); pane.hidden = true; pane.replaceChildren(); return; }
     const active = document.activeElement;
     const had = active && pane.contains(active) ? (active.dataset && active.dataset.focus) || 'heading' : null;
     const i = state.open;
@@ -782,6 +824,11 @@ function reviewBlock(app, block) {
         ],
         OE.el('button', { type: 'button', class: 'link', 'data-focus': 'close', onclick: close }, REVIEW_WORDS.close)));
     const parts = [top];
+    // r5-k K5: right under this row of buttons, the line a Street map press
+    // left, while it tells this square's press; else empty, taking no room
+    // (the test scene's row has no Street map).
+    if (state.test || mapFor !== w.rank) sayMap(null);
+    parts.push(mapSaid);
     if (state.test) {
       // The server's review caption says what the scene is (no line of its own here).
       const t = state.test;
@@ -800,11 +847,14 @@ function reviewBlock(app, block) {
       const answer = shown || state.answers.get(w.rank) || (state.loading === w.rank ? { loading: true } : null);
       if (!answer || answer.loading) parts.push(OE.el('div', { class: 'faint' }, REVIEW_WORDS.loading));
       else if (answer.needs_consent) {
-        parts.push(OE.el('div', { class: 'card summary stack' },
-          OE.el('div', {}, answer.ask),
+        // r5-k K7, as the label sheet's pane (sheet.js OE.askLines, OE.askFold): the question's three short lines,
+        // "Turn on pictures", the closed fold "What is sent, in full" with the two hosts and this review set's own
+        // test question, then the test scene's button: the press comes after the fold that says what it sends.
+        parts.push(OE.el('div', { class: 'card summary stack oe-ask' },
+          OE.askLines(answer),
           OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
             OE.el('button', { type: 'button', 'data-focus': 'turn-on', onclick: () => setPictures(true) }, REVIEW_WORDS.turnOn)),
-          answer.test_ask ? OE.el('div', { class: 'small faint' }, answer.test_ask) : null,
+          OE.askFold(answer),
           answer.test_ask ? OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
             OE.el('button', { type: 'button', class: 'link', 'data-focus': 'test', onclick: loadTest }, REVIEW_WORDS.test)) : null));
       } else if (!answer.ok) {
@@ -827,7 +877,15 @@ function reviewBlock(app, block) {
       }
     }
     pane.hidden = false;
-    pane.replaceChildren(...parts);
+    if (mapSaid.parentNode === pane) {
+      // r5-k K5: the line a Street map press left stays in place across
+      // redraws (a colour picked, the pictures come); an alert put back in
+      // the page is read out again. Everything else is drawn anew around it.
+      for (const c of [...pane.childNodes]) if (c !== mapSaid) c.remove();
+      const at = parts.indexOf(mapSaid);
+      mapSaid.before(...parts.slice(0, at));
+      mapSaid.after(...parts.slice(at + 1));
+    } else pane.replaceChildren(...parts);
     if (had) {
       const again = pane.querySelector('[data-focus="' + had + '"]');
       OE.focusIfHere(again && !again.disabled ? again : heading);
@@ -892,11 +950,37 @@ const RESULT_WORDS = {
     + (k > 0 ? ', ' + k.toLocaleString('en-US') + ' Cannot tell' : ''),
   ruleUsed: (text) => 'Rule you used: “' + text + '”',
   ruleTyped: '(typed before the squares were picked)',
-  ruleOwner: '(the app owner\'s rule, 11 Nov 2026)',
-  // The server's GRADED_LINE, word for word ("graded" is on no other face).
+  // r5-l L1: the server's note comes first (rule.note: the earlier kelp rule
+  // keeps its own); this is the general rule's, for a view without one.
+  // WORDING: r5l
+  ruleOwner: '(the rule that came with the app)',
+  // The server's GRADED_LINE, word for word ("graded" is on no other face);
+  // since r5-k K1 in the Details of the withdrawn card (withdrawnCard), with
+  // the date of the first result.
   // WORDING: r5b J07
   gradedBefore: (at) => 'Answers on this sheet changed after its first result (' + at + ').'
     + ' Answers changed after seeing where the map disagrees make this result invalid.',
+  // r5-k K1 (the owner's O4 of 18 Nov 2026): a result whose sheet's answers
+  // changed after its first result is withdrawn (withdrawnCard). Its title;
+  // its one line, which names no button (the sheet's graded mark stays
+  // changed, so its finish button pressed again gives this card again; the
+  // sheet's own notice, r5-k K3, says a second opinion needs another person
+  // and a fresh sheet) and, since r5-m B4, ends with how to get a new
+  // result, "ask Claude for one" (the card has no button, and the line said
+  // no next step); and, in Details, its rate and range (the server's
+  // headline, whole) marked out of date, with the time they were computed
+  // from the changed answers when the server gives it (at). The server's
+  // RESULT_OUT_OF_DATE, WITHDRAWN_LINE, OUT_OF_DATE_RATE and
+  // OUT_OF_DATE_RATE_UNTIMED, word for word.
+  // WORDING: r5k K1
+  outOfDate: 'This result is out of date',
+  // WORDING: r5k K1; r5m B4 (K1 follow-up)
+  withdrawn: 'The answers on this sheet changed after its first result, so this result does not count.'
+    + ' A new result needs another person and a fresh sheet; ask Claude for one.',
+  // WORDING: r5k K1
+  outOfDateRate: (headline, at) => 'Out of date, do not use (computed ' + at + ' from the changed answers): ' + headline,
+  // WORDING: r5k K1
+  outOfDateRateUntimed: (headline) => 'Out of date, do not use: ' + headline,
   // "The 80 squares you checked", "The 20 points you checked"; from 1,000
   // with a thousands comma, "The 4,000 squares you checked" (r5-d R03).
   // WORDING: r5d R03 (counts)
@@ -953,9 +1037,11 @@ const RESULT_WORDS = {
    tell, "The map is wrong on 10.0% of squares, or 12.5% if the 2 Cannot
    tell were wrong; 95% range 6.1% to 21.7%.", r5-d R03), then the
    line that draws them (OE.fig.rateLine: the rate as a dot, or with Cannot
-   tell its two ends as a short dark bar, over the pale 95% band, with the
-   band's two ends as numbers under it: the server's low_text and high_text,
-   r4-k K6), then, when which part of its map the sheet is is not known, the
+   tell its two ends as a short dark bar labelled as the headline joins them,
+   "10.0% or 12.5%", the server's rate_bar_text, r5-j B1; over the pale 95%
+   band, with the band's two ends as numbers under it: the server's low_text
+   and high_text, r4-k K6), then, when which part of its map the sheet is is
+   not known, the
    server's hedge (r4-h R4), then the server's last line (p.oe-last, r5-b
    J12: what the map was checked against and that the card gives no verdict,
    the sentence every result is said with, at body size directly under the
@@ -972,7 +1058,12 @@ function rateBlock(r) {
     ? OE.fig.rateLine({
       rate, low: r.low, high: r.high,
       rateLow: finite(r.rate_low) ? r.rate_low : null, rateHigh: finite(r.rate_high) ? r.rate_high : null,
-      rateText: rate !== null ? text(r.rate_text) : text(r.rate_range_text), rangeText: text(r.range_text),
+      // With no rate, the bar's label is the server's rate_bar_text, the
+      // headline's two figures joined by its own word ("10.0% or 40.0%"), so
+      // "to" is the 95% range's alone (r5-j B1); rate_range_text if it sent none.
+      // WORDING: r5j B1
+      rateText: rate !== null ? text(r.rate_text) : (text(r.rate_bar_text) || text(r.rate_range_text)),
+      rangeText: text(r.range_text),
       // The band's two ends as numbers under it (r4-k K6): the server's texts.
       lowText: text(r.low_text), highText: text(r.high_text),
     })
@@ -998,12 +1089,65 @@ function classCheckOf(r, unit) {
   return { result_id: c.result_id, part_file: partFile, unit: unitOf(typeof c.unit === 'string' ? c.unit : unit) };
 }
 
+/* Whether a result is withdrawn (r5-k K1): the server's graded_before, when
+   it says this sheet's answers changed after its first result; else null. */
+function withdrawnOf(r) {
+  const before = r.graded_before && typeof r.graded_before === 'object' ? r.graded_before : null;
+  return before && before.changed === true ? before : null;
+}
+
+/* The card of a withdrawn result (r5-k K1, the owner's O4 of 18 Nov 2026),
+   drawn by resultCard in its place. Before, the result card said in red
+   that the result was invalid, over the full headline, its figure and the
+   tally (r5-b J07; 17d), so the old rate still read as the result. Its
+   title says it is out of date; under it what was checked (the part and
+   the map the result's title named, the server's withdrawn.of, so a map
+   of two parts or more says which part's result this is; then the period
+   and the count, the result card's line); then one line: this sheet's
+   answers changed after its first result, so this result does not count,
+   and a new result needs another person and a fresh sheet; ask Claude for
+   one (r5-m B4: it said no next step). It names no button: the sheet's
+   mark stays changed, so its finish button pressed again gives this card
+   again. Nothing else on its face: no rate, no range, no figure, tally,
+   parts or button. Its closed Details hold the rate and range, the
+   server's headline whole, marked out of date with the time they were
+   computed from the changed answers (the server's withdrawn.old_rate; else
+   outOfDateRate with withdrawn.computed_at, or outOfDateRateUntimed with
+   none: never the first result's date), then the date of the first result
+   and why the result is invalid (gradedBefore, the server's GRADED_LINE).
+   No number is computed or changed: each is the server's text. */
+function withdrawnCard(data) {
+  const r = data.result;
+  const text = (v) => (typeof v === 'string' && v ? v : '');
+  const unit = unitOf(r.unit);
+  const n = Number.isInteger(r.n_checked) ? r.n_checked : null;
+  const unjudged = Number.isInteger(r.n_unjudged) && r.n_unjudged > 0 ? r.n_unjudged : 0;
+  const before = withdrawnOf(r) || {};
+  const gone = r.withdrawn && typeof r.withdrawn === 'object' ? r.withdrawn : {};
+  const card = OE.el('section', { class: 'card stack oe-result oe-withdrawn' });
+  card.append(OE.el('h2', {}, RESULT_WORDS.outOfDate));
+  const sub = [text(gone.of), text(r.period_text), n !== null ? RESULT_WORDS.checked(n, unit, unjudged) : '']
+    .filter(Boolean).join(' · ');
+  if (sub) card.append(OE.el('p', { class: 'small muted' }, sub));
+  card.append(OE.el('p', { class: 'oe-withdrawn-line' }, RESULT_WORDS.withdrawn));
+  const folded = [];
+  // The rate and range: the server's line, else the same words built here.
+  const headline = text(r.headline);
+  const at = text(gone.computed_at);
+  const old = text(gone.old_rate) || (headline && at ? RESULT_WORDS.outOfDateRate(headline, at) : '')
+    || (headline ? RESULT_WORDS.outOfDateRateUntimed(headline) : '');
+  if (old) folded.push(OE.el('p', { class: 'small oe-out-of-date' }, old));
+  folded.push(OE.el('p', { class: 'small oe-graded-again' }, RESULT_WORDS.gradedBefore(text(before.first_at) || 'earlier')));
+  card.append(OE.fold(RESULT_WORDS.details, ...folded));
+  return card;
+}
+
 /* The estimate's result card (data.result, the server's, for an ok
    olmoearth_estimate_map_error on a label sheet), figure first, three
    lines (r4-h): the title and what was checked (with how many were Cannot
-   tell); a sheet whose answers changed after its first result, said in red
-   at body size directly under that line, above the rate (r5-b J07: it was
-   the fourth line, small, under a headline that still stated the rate);
+   tell); (a sheet whose answers changed after its first result gets
+   withdrawnCard in place of this card since r5-k K1: r5-b J07 said it in
+   red over the full headline here);
    (1) the headline with its line, the hedge and (3) the last line (the
    server's: what it was checked against, no verdict; in rateBlock since
    r5-b J12, directly under the range); (2) what
@@ -1035,6 +1179,9 @@ function classCheckOf(r, unit) {
    nothing here is computed. */
 function resultCard(app, data) {
   const r = data.result;
+  // r5-k K1: a result whose sheet's answers changed after its first result
+  // is withdrawn, a card of its own with no rate and no range on its face.
+  if (withdrawnOf(r)) return withdrawnCard(data);
   const text = (v) => (typeof v === 'string' && v ? v : '');
   const unit = unitOf(r.unit);
   const n = Number.isInteger(r.n_checked) ? r.n_checked : null;
@@ -1044,13 +1191,6 @@ function resultCard(app, data) {
   const sub = [text(r.period_text), n !== null ? RESULT_WORDS.checked(n, unit, unjudged) : '']
     .filter(Boolean).join(' · ');
   if (sub) card.append(OE.el('p', { class: 'small muted' }, sub));
-  // A sheet whose answers changed after its first result: said before the
-  // rate, in red at body size (r5-b J07), so the headline is never read
-  // without it. The headline and the figures stay as they are.
-  const before = r.graded_before && typeof r.graded_before === 'object' ? r.graded_before : null;
-  if (before && before.changed === true) {
-    card.append(OE.el('p', { class: 'error oe-graded-again' }, RESULT_WORDS.gradedBefore(text(before.first_at) || 'earlier')));
-  }
   const rate = rateBlock(r);
   if (rate) card.append(rate);
   // What the check did not cover, directly under the headline (r4-h R2).
@@ -1105,8 +1245,11 @@ function resultCard(app, data) {
   // First the rule the answers followed, then the class lines (r5-b J23:
   // off the face, which keeps the rate's range as its only range).
   if (r.rule && typeof r.rule === 'object' && text(r.rule.text)) {
-    const whose = r.rule.source === 'typed' ? RESULT_WORDS.ruleTyped
-      : r.rule.source === 'owner' ? RESULT_WORDS.ruleOwner : '';
+    // r5-l L1: the server's note (a sheet made with the earlier kelp rule keeps
+    // that rule's note), else the words for its source.
+    const whose = text(r.rule.note) ? r.rule.note
+      : r.rule.source === 'typed' ? RESULT_WORDS.ruleTyped
+        : r.rule.source === 'owner' ? RESULT_WORDS.ruleOwner : '';
     folded.push(OE.el('p', { class: 'small oe-rule-used' }, RESULT_WORDS.ruleUsed(r.rule.text) + (whose ? ' ' + whose : '')));
   }
   classLines.forEach((line) => folded.push(line));

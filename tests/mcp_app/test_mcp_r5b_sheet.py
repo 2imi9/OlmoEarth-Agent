@@ -49,10 +49,12 @@ import re
 from olmoearth_agent.mcp_app import imagery, sheet, views
 
 #: J06: the notice on a sheet already graded (W.graded); r5-e H5 moved its
-#: middle clause, the reason, to the Details fold (W.gradedWhy).
+#: middle clause, the reason, to the Details fold (W.gradedWhy); r5-k K3: the
+#: sheet's answers are locked, and its first sentence says so (it asked not
+#: to change an answer now).
 GRADED = (
-    "This sheet already gave its result. Do not change an answer now; a second "
-    "opinion needs another person and a fresh sheet."
+    "This sheet gave its result; its answers are locked. A second opinion needs "
+    "another person and a fresh sheet."
 )
 #: J11: the first line of a sheet with no pictures and no places (W.whatBare);
 #: {one} is the sheet's unit word. r5-f F12: the way out is a question of its
@@ -91,10 +93,10 @@ NO_RULE_PAIR = (
 #: J28: what the lead's first line ends with on a one-map sheet (W.hiddenOne),
 #: and what a two-map sheet's says in its place (W.hiddenPair), or while its
 #: switch is unticked (W.shownPair); r5-e H1: clauses of the first line, no
-#: longer sentences of their own.
+#: longer sentences of their own; r5-m B2: shown, the answers are locked.
 HIDDEN_ONE = ", without looking at the map."
 HIDDEN_PAIR = ", without looking at the two maps."
-SHOWN_PAIR = ". The two maps' answers are shown now."
+SHOWN_PAIR = ". The two maps' answers are shown now, so your answers are locked."
 #: J29: beside the finish button once every answer is saved (W.everyDone);
 #: r5-e H5: its second sentence alone.
 EVERY_DONE = "After you press, do not change an answer."
@@ -180,7 +182,7 @@ def test_j05_the_faces_buttons_are_outlined() -> None:
     """Previous, Next, Pictures and Street map are outlined small buttons
     (they were bare words); the line that says nothing is shown yet is at
     body size and colour, in the words it had; the list's row buttons stay
-    text buttons, and the answers stay above the pictures."""
+    text buttons; since r5-k K4 the pictures stand above the answers."""
     editor = _editor()
     pager = _between(editor, "  const prevButton = ", "  const faceExtra = ")
     below = _between(
@@ -213,9 +215,10 @@ def test_j05_the_faces_buttons_are_outlined() -> None:
         "class: 'link', 'data-focus': 'i:' + h,",
     ):
         assert text in rows, text
-    # The order on the face stays: the answers, then Pictures and Street map.
+    # r5-k K4 (tests/mcp_app/test_mcp_r5k_sheet.py): Pictures and Street map
+    # and the pictures, then the answers (they stood above the pictures).
     face = _between(editor, "    faceEl.append(", "  } else {")
-    assert face.index("faceAnswerArea,") < face.index("facePicturesButton,")
+    assert face.index("facePicturesButton,") < face.index("faceAnswerArea")
 
 
 # --------------------------------------------------------------------------- J06
@@ -546,7 +549,8 @@ def test_j26_no_rule_is_said_on_the_face_from_the_first_open() -> None:
 
 
 def test_j28_a_two_map_sheet_in_plain_words() -> None:
-    """The switch says what it hides and to keep it on; the instruction names
+    """The switch says what it hides (round r5-m B2: no longer "to keep it on",
+    tests/mcp_app/test_mcp_r5m_sheet.py); the instruction names
     the button the face has (Cannot tell) and says "there", not "on the
     ground"; the lead's first line says both maps' answers are hidden, and
     that they are shown while the switch is unticked (by extraLines' own
@@ -554,7 +558,7 @@ def test_j28_a_two_map_sheet_in_plain_words() -> None:
     script = _script()
     assert (
         "// WORDING: r4i F11; r5b J28\n  const blindText = 'Hide what the two maps "
-        "say (keep it on while you answer)';" in script
+        "say';" in script
     )
     editor = _editor()
     told = _between(editor, "  function faceInstructionText() {", "\n  }\n")
@@ -576,18 +580,20 @@ def test_j28_a_two_map_sheet_in_plain_words() -> None:
         bare = WHAT_BARE.format(one=unit)
         assert bare.count("the map.") == 1
         assert _said("whatBarePair", unit) == bare.replace("the map.", "the maps.")
-    # Unticked, the first line says the answers are shown; ticked, hidden.
+    # Unticked, the first line says the answers are shown; ticked, hidden
+    # until they were shown (round r5-m B2: ticked again, it says the answers
+    # were shown and are locked, pairSeen; tests/mcp_app/test_mcp_r5m_sheet.py).
     assert _said("shownPair", "square") == SHOWN_PAIR
     for text in (
         "  const pairWhat = twoMap && leadLines ? leadLines.querySelector('p.what')"
         " : null;\n",
-        "  const pairShown = pairHidden.replace(W.hiddenPair, W.shownPair);\n",
+        "  const pairShown = pairSwap(W.shownPair);\n",
     ):
         assert text in editor, text
     drawn = _between(editor, "  function render(focusKey) {", "\n  }\n")
     assert (
-        "    if (pairWhat) pairWhat.textContent = !state.blind && state.revealed ? "
-        "pairShown : pairHidden;\n" in drawn
+        "    if (pairWhat) pairWhat.textContent = !state.revealed ? pairHidden : "
+        "state.blind ? pairSeen : pairShown;\n" in drawn
     )
     lines = _between(editor, "  function extraLines(h) {", "\n  }\n")
     assert "const unblinded = !state.blind && state.revealed;" in lines

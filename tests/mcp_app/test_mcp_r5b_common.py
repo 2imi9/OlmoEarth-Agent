@@ -406,16 +406,16 @@ def test_j20_a_press_that_sends_nothing_leaves_no_word_of_the_last() -> None:
 def test_j24_the_pictures_strip_keeps_each_date_in_view() -> None:
     """J24 (the CSS): in the face's strip a date starts at the top (a month
     without a picture is not stretched beside the real ones) and is never
-    wider than the strip (its row then wraps Detail under Context); of
-    several, each is 40px narrower than the strip, so the edge of the next
-    shows that the strip goes on; the full screen grid is as it was, each
-    date filling its cell (its reset after the narrower rule)."""
+    wider than the strip (its row then wraps Detail under Context); the full
+    screen grid is as it was, each date filling its cell. r5-k K4
+    (tests/mcp_app/test_mcp_r5k_sheet.py): the dates wrap onto rows and
+    nothing scrolls sideways, so the rule that kept each of several dates
+    40px narrower, as a sign that the strip went on, is gone."""
     style = _style()
     strip = (
-        ".face-dates { display: flex; gap: 12px; overflow-x: auto;"
+        ".face-dates { display: flex; flex-wrap: wrap; gap: 12px;"
         " align-items: flex-start; }\n"
         ".face-dates > * { flex: none; max-width: 100%; }\n"
-        ".face-dates > :not(:only-child) { max-width: calc(100% - 40px); }\n"
     )
     assert strip in style
     grid = (
@@ -424,8 +424,8 @@ def test_j24_the_pictures_strip_keeps_each_date_in_view() -> None:
         ".face.full .face-dates > * { max-width: none; }\n"
     )
     assert grid in style
-    sliver = ".face-dates > :not(:only-child) {"
-    assert style.index(sliver) < style.index(".face.full .face-dates > * {")
+    assert ".face-dates > :not(:only-child) {" not in style
+    assert style.index(strip) < style.index(grid)
 
 
 def test_j29_the_footers_row_keeps_to_the_right_edge() -> None:
@@ -445,7 +445,8 @@ def test_j29_the_footers_row_keeps_to_the_right_edge() -> None:
     assert "const progress = OE.el('span', { class: 'row'," in sheet
     assert "const done = OE.el('div', { class: 'row' });" in sheet
     assert "OE.el('div', { class: 'sheet-footer spread' }, progress," in sheet
-    assert "OE.el('div', { class: 'row' }, done, saveButton), finishType)" in sheet
+    # r5-k K5: the line of the saves (saveSaid) under that row.
+    assert "OE.el('div', { class: 'row' }, done, saveButton), saveSaid," in sheet
 
 
 def test_j29_a_fields_grey_hint_is_darker() -> None:

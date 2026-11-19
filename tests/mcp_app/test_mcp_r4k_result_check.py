@@ -88,9 +88,18 @@ REVIEW_ENTRIES: tuple[tuple[str, str, dict[str, str], str], ...] = (
     ("K8", "downloadFailed: ", {}, "the download failed"),
 )
 
-#: The example pictures' captions and their place line (r4-k K9).
-EXAMPLE_PRESENT = "Present under this rule"
-EXAMPLE_ABSENT = "Absent under this rule"
+#: The example pictures' captions and their place line (r4-k K9). Round r5-l
+#: L2 words the captions for any map (tests/mcp_app/test_mcp_r5l_views.py),
+#: round r5-m B1 of what the map is meant to find
+#: (tests/mcp_app/test_mcp_r5m_check.py).
+EXAMPLE_PRESENT = (
+    "Present: what the map is meant to find covers more than half of the square "
+    "on a clear date."
+)
+EXAMPLE_ABSENT = (
+    "Absent: what the map is meant to find covers half of the square or less on "
+    "every clear date."
+)
 EXAMPLES_FROM = (
     "A public place, not your map. Contains modified Copernicus Sentinel data "
     "{year}."
@@ -349,9 +358,12 @@ def test_k6_the_result_card_passes_the_servers_end_texts() -> None:
     nothing."""
     page = _read("result.html")
     rate = _between(page, "function rateBlock(r) {", "\n}\n")
+    # Round r5-j B1: with no rate, the bar's label is rate_bar_text, and
+    # rangeText has a line of its own.
     passed = (
-        "      rateText: rate !== null ? text(r.rate_text) : text(r.rate_range_text),"
-        " rangeText: text(r.range_text),\n"
+        "      rateText: rate !== null ? text(r.rate_text)"
+        " : (text(r.rate_bar_text) || text(r.rate_range_text)),\n"
+        "      rangeText: text(r.range_text),\n"
         "      // The band's two ends as numbers under it (r4-k K6): the server's"
         " texts.\n"
         "      lowText: text(r.low_text), highText: text(r.high_text),\n"
@@ -393,8 +405,11 @@ def test_k7_a_street_map_press_asks_by_key_and_rank_and_shows_no_place() -> None
     """r4-k K7: the key (24 hex) names the review for the links whether or
     not its windows have pictures; a press asks olmoearth_app_review_link by
     the key and the rank, busy while asked, and opens only an OpenStreetMap
-    link (the server's) with OE.open; the link is in two lines only, never
-    in the page's text, a toast or what Claude is told."""
+    link (the server's) with OE.open; the link is in three lines only, never
+    in the page's text, a toast or what Claude is told. Round r5-k K5: a
+    failure (no OpenStreetMap link, a link the host did not open, a refusal)
+    is said under the button pressed (fail, then sayMap), no longer a toast;
+    tests/mcp_app/test_mcp_r5k_result.py has the rest."""
     page = _read("result.html")
     assert "const OSM_LINK = 'https://www.openstreetmap.org/';" in page
     # The server's links start so (sheet.window_link's, and the helper the
@@ -410,9 +425,10 @@ def test_k7_a_street_map_press_asks_by_key_and_rank_and_shows_no_place() -> None
         "if (linking.has(rank)) return;",
         "const got = await OE.call(app, 'olmoearth_app_review_link',"
         " { review_key: linkKey, rank });",
-        "else OE.toast(REVIEW_WORDS.noLink(rank), true);",
-        "OE.toast(REVIEW_WORDS.notOpened(bareText(err.message)"
-        " || REVIEW_WORDS.linkNotMade), true);",
+        # r5-k K5: under the button pressed, no longer a toast.
+        "if (!url.startsWith(OSM_LINK)) fail(REVIEW_WORDS.noLink(rank));",
+        "fail(REVIEW_WORDS.notOpened(bareText(err.message)"
+        " || REVIEW_WORDS.linkNotMade));",
         # Round r5-b, J27: the button's look is an argument, a text button
         # ('link') unless the caller says otherwise.
         "const mapButton = (rank, words, cls = 'link') => OE.el('button', {",
@@ -427,7 +443,9 @@ def test_k7_a_street_map_press_asks_by_key_and_rank_and_shows_no_place() -> None
     ]
     assert with_url == [
         "const url = got && typeof got.url === 'string' ? got.url : '';",
-        "if (url.startsWith(OSM_LINK)) await OE.open(app, url);",
+        "if (!url.startsWith(OSM_LINK)) fail(REVIEW_WORDS.noLink(rank));",
+        "else if (!(await OE.open(app, url, { quiet: true })))"
+        " fail(OE.LINK_NOT_OPENED);",
     ]
     assert "tellClaude" not in block
     for place in ("lon", "lat", "centre", "center"):
@@ -468,8 +486,9 @@ def test_k7_each_card_has_its_street_map_and_points_get_a_row() -> None:
         " 'aria-label': REVIEW_WORDS.streetMap },",
         "OE.el('span', { class: 'small', 'aria-hidden': 'true' },"
         " REVIEW_WORDS.mapsLabel),",
+        # r5-k K5: a failed press's line right under the row, then the CSV.
         "windows.map((w) => mapButton(w.rank, String(w.rank), 'small'))),"
-        " csvBlock());",
+        " mapSaid, csvBlock());",
         "    } else if (n) section.numbers = numbersFold(windows, unit);",
     ):
         assert text in row, text

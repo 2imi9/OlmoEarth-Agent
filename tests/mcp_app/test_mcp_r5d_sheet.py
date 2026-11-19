@@ -13,7 +13,8 @@ pieces fails here as it would on the face.
   it was (the rule block, and the pictures pane's fallback rule lines).
 - R06: on a sheet that already gave its result, the line beside the ready
   finish button says so ("This sheet already gave its result."), the
-  notice's own first sentence, in place of the line that says an answer may
+  notice's first fact in shorter words (its first sentence until r5-k K3
+  said the answers are locked), in place of the line that says an answer may
   change until the press.
 - R08: the class face's line with no period known is in the Details fold,
   not a fourth line on the face; with the period it stays on the face. The
@@ -158,8 +159,8 @@ def test_r02_the_cloud_line_is_drawn_where_it_was() -> None:
     lines on a face that takes Cannot tell; nowhere else."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
-    # r5-e H2, after review: the block's one line after the rule (the kelp-only
-    # line that stood in its place on other faces is in the Details fold).
+    # r5-e H2, after review: the block's one line after the rule (r5-l L1: no
+    # line on which maps the rule is for stands in its place on other faces).
     cloud = "    cloudOnFace ? OE.el('div', { class: 'small' }, W.cloudLine) : null,\n"
     assert cloud in block
     pane = _between(editor, "    let ruleLines = null;", "\n    const dated = ")
@@ -174,12 +175,15 @@ def test_r02_the_cloud_line_is_drawn_where_it_was() -> None:
 def test_r06_a_graded_sheets_footer_says_it_gave_its_result() -> None:
     """The line beside the ready finish button is W.everyDoneGraded on a
     sheet whose page copy says it was graded (the same test as the notice's),
-    W.everyDone on every other; the new words are the notice's own first
-    sentence, so the face says one thing."""
+    W.everyDone on every other; the new words are the notice's first fact in
+    shorter words (its first sentence until r5-k K3 said the answers are
+    locked), so the face says one thing."""
     assert _said("everyDoneGraded", "square") == EVERY_DONE_GRADED
     assert _said("everyDoneGraded", "point") == EVERY_DONE_GRADED
     assert _said("everyDone", "square") == EVERY_DONE
-    assert _said("graded", "square").startswith(EVERY_DONE_GRADED + " ")
+    # r5-k K3: the notice's first sentence says the answers are locked now;
+    # the footer's line keeps its shorter words, the same first fact.
+    assert _said("graded", "square").startswith("This sheet gave its result; ")
     assert _tag_above("everyDoneGraded") == ["// WORDING: r5d R06"]
     # r5-e H5 changed W.everyDone's words: its tag stands above r5-b's.
     assert _tag_above("everyDone") == [
@@ -227,10 +231,10 @@ def test_r08_the_class_line_with_no_period_is_in_the_fold() -> None:
     )
     assert editor.index("  const period = ") < editor.index("  const classNoPeriod = ")
     fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
-    # r5-e H2 and H5: the rule's scope, its kelp-only line (after review) and
-    # the graded notice's reason follow it.
+    # r5-e H2 and H5: the rule's scope and the graded notice's reason follow
+    # it (r5-l L1: no line on which maps the rule is for).
     assert (
-        "data.name),\n    classNoPeriod, scopeNote, limitNote, gradedWhy,\n"
+        "data.name),\n    classNoPeriod, scopeNote, gradedWhy,\n"
         "    instruction, hint, ...foldLines, clearNote, examplesNote, readingNote,"
         " mixNote,\n" in fold
     )

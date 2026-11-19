@@ -22,7 +22,9 @@ missing space between two joined pieces fails here as it would on the face.
   ``W.everyDone`` takes once the sheet is ready, and the button names that
   line as its description (``aria-describedby``); not while the sheet is
   stale, not while only a save is pending, never on a sheet that already
-  gave its result, and (where the build list's ``!complete()`` would say it
+  gave its result (r5-k K3 locked its answers: that place says
+  ``W.gradedBlank`` there instead), and (where the build list's
+  ``!complete()`` would say it
   untruly) not on a sheet with no square, nor on one whose every square is
   answered but which holds two sets of answers. The lead stays two lines.
   On a plan card with its sheet open the card's own line to answer every one
@@ -186,7 +188,10 @@ def test_f01_the_pictures_question_is_brought_into_view() -> None:
     that follows an answer in the list (followPictures), Previous, Next or an
     answer on the face (goTo's timer), the switch to List, Try again and
     pictures switched on pass no reveal, so they scroll nothing. Nothing else
-    in the editor scrolls, no focus moves (the pane is a polite live region,
+    in the editor scrolls but headInView (r5-k K4: after an answer that moves
+    on, or an arrow key, the new square's heading, the least scroll, and none
+    while it is in view; tests/mcp_app/test_mcp_r5k_sheet.py), no focus moves
+    (the pane is a polite live region,
     so a screen reader hears the question), and the question's button keeps
     its words."""
     editor = _editor()
@@ -266,9 +271,13 @@ def test_f01_the_pictures_question_is_brought_into_view() -> None:
     )
     assert face in view
     assert view.count("questionInView(") == 1
-    # Its three calls and itself; the two scrolls of the editor are its own.
+    # Its three calls and itself; the two scrolls of the editor are its own, and
+    # r5-k K5's focus listener scrolls a focused control above the footer.
     assert code.count("questionInView(") == 4
-    assert code.count("scrollIntoView(") == 1 and code.count("window.scrollBy(") == 2
+    assert code.count("scrollIntoView(") == 2 and code.count("window.scrollBy(") == 3
+    assert code.count("window.scrollBy(0, Math.min(over, at.top));") == 1
+    head = _between(editor, "  function headInView() {", "\n  }\n")
+    assert "top.scrollIntoView({ block: 'nearest' });" in head
     # After the check: while the next pictures load the pane keeps its height,
     # so the page does not get shorter and the face does not jump on Next.
     preview_draw = _between(editor, "  function renderPreview(shown) {", "\n  }\n")
@@ -299,12 +308,15 @@ def test_f02_the_footer_says_why_the_finish_button_is_grey() -> None:
     the new line in or takes it out: shown only while the sheet is not ready,
     not stale, has a square with no answer (count() < n: a save that is only
     pending leaves count() at n, a sheet with no square has n of 0, and a
-    sheet whose two sets of answers are in the way is complete in count) and
-    did not give its result already. While it is shown the finish button's
-    aria-describedby names it (its span has an id of its own), and otherwise
-    the button names no description, so a screen reader that reaches the grey
-    button hears why. A stale sheet's footer is drawn before updateFinish is
-    reached, with its own words. The lead is still two lines."""
+    sheet whose two sets of answers are in the way is complete in count); on
+    a sheet that already gave its result, whose answers are locked (r5-k K3),
+    the same line says W.gradedBlank instead, never to answer a square
+    (tests/mcp_app/test_mcp_r5k_sheet.py). While it is shown the finish
+    button's aria-describedby names it (its span has an id of its own), and
+    otherwise the button names no description, so a screen reader that
+    reaches the grey button hears why. A stale sheet's footer is drawn before
+    updateFinish is reached, with its own words. The lead is still two
+    lines."""
     for unit in ("square", "point"):
         assert _said("notYet", unit) == NOT_YET.format(one=unit)
     assert _said("everyDone", "square") == EVERY_DONE
@@ -316,17 +328,19 @@ def test_f02_the_footer_says_why_the_finish_button_is_grey() -> None:
     editor = _editor()
     made = (
         "  // WORDING: r5f F02\n"
+        "  // WORDING: r5k K3 (gradedBlank on a graded sheet)\n"
         "  const notYetLine = OE.el('span', { class: 'small', id: 'oe-not-yet-' "
-        "+ Math.random().toString(36).slice(2) }, W.notYet);\n"
-        "  const asksForAnswers = !(data.graded && typeof data.graded === 'object');\n"
+        "+ Math.random().toString(36).slice(2) },\n"
+        "    gaveResult ? W.gradedBlank : W.notYet);\n"
     )
     assert made in editor
     assert editor.index("  const everyDoneLine = ") < editor.index(made)
+    assert "asksForAnswers" not in editor
     finish = _between(editor, "  function updateFinish() {", "\n  }\n")
     lines = (
         "    if (ok && !done.contains(everyDoneLine)) done.prepend(everyDoneLine);\n",
         "    else if (!ok && done.contains(everyDoneLine)) everyDoneLine.remove();\n",
-        "    const waits = asksForAnswers && !ok && !state.stale && count() < n;\n",
+        "    const waits = !ok && !state.stale && count() < n;\n",
         "    if (waits && !done.contains(notYetLine)) done.prepend(notYetLine);\n",
         "    else if (!waits && done.contains(notYetLine)) notYetLine.remove();\n",
         "    if (waits) button.setAttribute('aria-describedby', notYetLine.id);\n",
@@ -334,11 +348,21 @@ def test_f02_the_footer_says_why_the_finish_button_is_grey() -> None:
     )
     assert "".join(lines) in finish
     assert _code(editor).count("W.notYet") == 1
-    # The button's description is that line's alone, set nowhere else; the
-    # one other is Reopen the sheet's, the stale footer's line (r5-i B7).
-    assert _code(_script()).count("aria-describedby") == 3
-    assert "reopenButton.setAttribute('aria-describedby', staleLine.id);" in _code(
-        _script()
+    # The finish button's description is that line's alone, set only in
+    # updateFinish (2 uses). The other 5 are on other controls: Reopen the
+    # sheet (1, the stale footer's line, r5-i B7), the answer controls
+    # lockAnswers locks (2, described by the graded notice or the stale line,
+    # r5-k K3), and the two-map switch syncPairLock locks (2, W.pairLocked,
+    # r5-k K2).
+    code = _code(_script())
+    assert _code(finish).count("aria-describedby") == 2
+    assert code.count("aria-describedby") == 7
+    assert "reopenButton.setAttribute('aria-describedby', staleLine.id);" in code
+    assert "c.setAttribute('aria-describedby', why.id);" in code
+    assert "c.removeAttribute('aria-describedby');" in code
+    assert (
+        "if (lock) blind.setAttribute('aria-describedby', pairLockLine.id); "
+        "else blind.removeAttribute('aria-describedby');" in code
     )
     # What ready and complete count, which the new line's test leans on.
     assert "const ready = () => complete() && !pending() && !state.stale;" in editor
@@ -348,7 +372,8 @@ def test_f02_the_footer_says_why_the_finish_button_is_grey() -> None:
     stale = _between(progress, "    if (state.stale) {", "\n    }\n")
     assert "done.replaceChildren(staleLine, reopenButton);" in stale
     assert stale.rstrip().endswith("return;") and "updateFinish()" not in stale
-    assert progress.rstrip().endswith("updateFinish();")
+    # r5-k K5: the footer's height is read again after the finish press is set.
+    assert progress.rstrip().endswith("updateFinish();\n    fitFoot();")
     # r5-e H1 holds: the lead has no third line, and its old words stay gone.
     lead = _between(editor, "  const leadWords = {", "\n  };\n")
     assert lead.endswith("\n    cannot: null,")

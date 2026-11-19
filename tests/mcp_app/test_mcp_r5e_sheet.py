@@ -16,9 +16,8 @@ fails here as it would on the face.
   start with what to do.
 - H2: the rule, the cloud line on a face that has one and the example
   pictures sit in one box with a border (``card stack oe-rule``); who set the
-  rule and when is in the Details fold, and so is, right after it (after
-  review), the line that any other map needs its own rule: alone under the
-  rule it had nothing to refer to.
+  rule and when is in the Details fold (round r5-l L1 took away the line
+  after it that any other map needs its own rule).
 - H3: "Other class..." is the last cell of the answers' group, a button as
   large as every answer, dashed (common.js ``.oe-other``), no longer a text
   link on a line of its own.
@@ -45,10 +44,11 @@ WHAT = (
 )
 #: H1: the clause what and whatPlaced end with (W.hiddenOne), what a two-map
 #: sheet says in its place (W.hiddenPair), and, while its switch is unticked,
-#: what ends the sentence there instead (W.shownPair).
+#: what ends the sentence there instead (W.shownPair; round r5-m B2: it says
+#: the answers are locked too, tests/mcp_app/test_mcp_r5m_sheet.py).
 HIDDEN_ONE = ", without looking at the map."
 HIDDEN_PAIR = ", without looking at the two maps."
-SHOWN_PAIR = ". The two maps' answers are shown now."
+SHOWN_PAIR = ". The two maps' answers are shown now, so your answers are locked."
 #: H1: a sheet with places and no pictures (W.whatPlaced).
 WHAT_PLACED = (
     "This sheet has no pictures. See where each {one} is, then say what was there "
@@ -77,10 +77,12 @@ PICTURES_OFF_LIST = (
 )
 #: H5: beside the ready finish button (W.everyDone).
 EVERY_DONE = "After you press, do not change an answer."
-#: H5: the graded notice (W.graded) and its reason, in the fold (W.gradedWhy).
+#: H5: the graded notice (W.graded) and its reason, in the fold (W.gradedWhy);
+#: r5-k K3: its first sentence says the answers are locked (it asked not to
+#: change an answer now).
 GRADED = (
-    "This sheet already gave its result. Do not change an answer now; a second "
-    "opinion needs another person and a fresh sheet."
+    "This sheet gave its result; its answers are locked. A second opinion needs "
+    "another person and a fresh sheet."
 )
 GRADED_WHY = (
     "A change made after seeing where the map disagrees makes the result invalid."
@@ -228,19 +230,20 @@ def test_h1_a_two_map_sheet_still_swaps_its_clause() -> None:
     """The swap of r5-b J28 works on the new words: what and whatPlaced end
     with hiddenOne (once), so a two-map sheet's line ends "without looking at
     the two maps", and with the switch unticked the sentence ends there and
-    the next says the two maps' answers are shown."""
+    the next says the two maps' answers are shown (round r5-m B2: and that
+    the answers are locked)."""
     assert _said("hiddenOne", "square") == HIDDEN_ONE
     assert _said("hiddenPair", "square") == HIDDEN_PAIR
     assert _said("shownPair", "square") == SHOWN_PAIR
     shown = {
         "what": (
             "Say what you see in each square's satellite pictures. The two maps' "
-            "answers are shown now."
+            "answers are shown now, so your answers are locked."
         ),
         "whatPlaced": (
             "This sheet has no pictures. See where each square is, then say what was "
             "there from your own imagery or records. The two maps' answers are shown "
-            "now."
+            "now, so your answers are locked."
         ),
     }
     for key, want in shown.items():
@@ -254,10 +257,17 @@ def test_h1_a_two_map_sheet_still_swaps_its_clause() -> None:
         "if (twoMap && leadWords.what) leadWords.what = "
         "leadWords.what.replace(W.hiddenOne, W.hiddenPair);" in editor
     )
-    swap = "  const pairShown = pairHidden.replace(W.hiddenPair, W.shownPair);\n"
+    # Round r5-m B2: one swap makes both locked forms (pairShown, pairSeen).
+    swap = (
+        "  const pairSwap = (s) => (pairHidden.includes(W.hiddenPair)\n"
+        "    ? pairHidden.replace(W.hiddenPair, s) : "
+        "pairHidden.replace(W.barePairTail, s));\n"
+        "  const pairShown = pairSwap(W.shownPair);\n"
+    )
     assert swap in editor
     # A two-map sheet has its own whatBarePair, which holds neither clause, so
-    # no swap touches it. whatBare (r5-f F12: its first sentence now ends with
+    # the clause swap does not touch it (round r5-m B2 swaps its tail instead,
+    # W.barePairTail). whatBare (r5-f F12: its first sentence now ends with
     # hiddenOne's words) is never a two-map sheet's line.
     for unit in ("square", "point"):
         bare_pair = _said("whatBarePair", unit)
@@ -275,9 +285,8 @@ def test_h2_the_rule_sits_in_one_box_and_its_scope_in_the_fold() -> None:
     """The rule block is a card (a box with a border) that holds the rule, the
     cloud line on a face that has one (a plain small line) and the example
     pictures; the scope is a small line in the Details fold, after the class
-    line with no period, and right after it there (after review) the
-    kelp-only line: never without the scope, which names the maps the rule is
-    for, and, as before, only where the face has no cloud line; the example
+    line with no period, and since round r5-l L1 no line follows it on which
+    maps the rule is for (the panel reads no data.rule_limit); the example
     captions, which check.html copies word for word, stay."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
@@ -293,20 +302,24 @@ def test_h2_the_rule_sits_in_one_box_and_its_scope_in_the_fold() -> None:
         "  const scopeNote = typeof data.rule_scope === 'string' && data.rule_scope ? "
         "OE.el('div', { class: 'small' }, data.rule_scope) : null;\n" in editor
     )
-    assert (
-        "  const limitNote = pageRule && scopeNote && !cloudOnFace && typeof "
-        "data.rule_limit === 'string' && data.rule_limit ? OE.el('div', { class: "
-        "'small' }, data.rule_limit) : null;\n" in editor
-    )
-    assert editor.index("  const scopeNote = ") < editor.index("  const limitNote = ")
+    assert "data.rule_limit" not in editor and "limitNote" not in editor
     fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
-    assert "    classNoPeriod, scopeNote, limitNote, gradedWhy,\n" in fold
+    assert "    classNoPeriod, scopeNote, gradedWhy,\n" in fold
     layout = _between(editor, "  wrap.append(", "  // One listener for the keys")
     assert "scopeNote" not in layout and "limitNote" not in layout
     assert "      notice,\n      ruleBlock,\n      noRuleLine,\n      area,\n" in layout
     script = _script()
-    assert "OE.EXAMPLE_PRESENT = 'Present under this rule';" in script
-    assert "OE.EXAMPLE_ABSENT = 'Absent under this rule';" in script
+    # Round r5-l L2 words the captions for any map
+    # (tests/mcp_app/test_mcp_r5l_views.py); round r5-m B1 says what the map
+    # is meant to find (tests/mcp_app/test_mcp_r5m_sheet.py).
+    assert (
+        "OE.EXAMPLE_PRESENT = 'Present: what the map is meant to find covers more "
+        "than half of the square on a clear date.';" in script
+    )
+    assert (
+        "OE.EXAMPLE_ABSENT = 'Absent: what the map is meant to find covers half of "
+        "the square or less on every clear date.';" in script
+    )
 
 
 # --------------------------------------------------------------------------- H3
@@ -319,10 +332,11 @@ def test_h3_other_class_is_a_cell_of_the_answers() -> None:
     focus key and its press are as they were."""
     editor = _editor()
     answers = _between(editor, "  function faceAnswers(w) {", "\n  }\n")
+    # r5-k K3: its press opens no field while the answers are locked.
     assert (
         "      group.append(OE.el('button', {\n"
         "        type: 'button', class: 'oe-other', 'data-focus': 'other:' + h, "
-        "onclick: () => { state.other = h; render('o:' + h); },\n"
+        "onclick: () => { if (!locked()) { state.other = h; render('o:' + h); } },\n"
         "      }, 'Other class...'));\n" in answers
     )
     assert "class: 'link', 'data-focus': 'other:'" not in editor
@@ -419,12 +433,14 @@ def test_h5_the_footer_line_and_the_graded_notice_are_shorter() -> None:
     """Beside the ready finish button, the line on not changing an answer
     alone; on a graded sheet the notice is two lines, and its reason is a
     small line in the Details fold (only on a graded sheet); r5-d R06's line
-    for a graded sheet's footer stays, the notice's own first sentence."""
+    for a graded sheet's footer stays (r5-k K3 changed the notice's first
+    sentence to say the answers are locked; the footer's shorter line says the
+    same first fact, that the sheet gave its result)."""
     assert _said("everyDone", "square") == EVERY_DONE
     assert _said("graded", "square") == GRADED
     assert _said("gradedWhy", "square") == GRADED_WHY
     assert _said("everyDoneGraded", "square") == EVERY_DONE_GRADED
-    assert GRADED.startswith(EVERY_DONE_GRADED + " ")
+    assert _said("graded", "square").startswith("This sheet gave its result; ")
     editor = _editor()
     assert (
         "  const gradedWhy = gradedNote ? OE.el('div', { class: 'small' }, "
@@ -451,7 +467,12 @@ def test_every_r5e_string_of_the_sheet_carries_its_wording_comment() -> None:
         "what": ["// WORDING: r4m M6", "// WORDING: r5e H1"],
         "hiddenOne": ["// WORDING: r5b J28", "// WORDING: r5e H1"],
         "hiddenPair": ["// WORDING: r5b J28", "// WORDING: r5e H1"],
-        "shownPair": ["// WORDING: r5b J28", "// WORDING: r5e H1"],
+        # r5-m B2 put its own mark on top (tests/mcp_app/test_mcp_r5m_sheet.py).
+        "shownPair": [
+            "// WORDING: r5b J28",
+            "// WORDING: r5e H1",
+            "// WORDING: r5m B2",
+        ],
         "whatPlaced": ["// WORDING: r4h S3 E/sheet-1; r4m M6", "// WORDING: r5e H1"],
         "picturesOff": ["// WORDING: r5e H1"],
         "picturesOffList": ["// WORDING: r5e H4"],
@@ -462,7 +483,8 @@ def test_every_r5e_string_of_the_sheet_carries_its_wording_comment() -> None:
             "// WORDING: r4h S3 E/sheet-3",
             "// WORDING: r5e H1 (with the period)",
         ],
-        "graded": ["// WORDING: r5b J06", "// WORDING: r5e H5"],
+        # r5-k K3 put its own mark on top (tests/mcp_app/test_mcp_r5k_sheet.py).
+        "graded": ["// WORDING: r5b J06", "// WORDING: r5e H5", "// WORDING: r5k K3"],
         "gradedWhy": ["// WORDING: r5e H5"],
         "everyDone": ["// WORDING: r4h S2 A/F17; r5b J29", "// WORDING: r5e H5"],
     }

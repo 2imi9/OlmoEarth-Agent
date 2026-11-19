@@ -226,9 +226,18 @@ OE.fig = (() => {
      y 24, the rate's label above it, the ends' labels under it. */
   const RL = { w: 320, h: 50, left: 16, right: 304, y: 24 };
   const xOf = (v) => RL.left + v * (RL.right - RL.left);
-  /* A label above x, run inward near an end so it stays inside the figure. */
+  /* A label above x (12 px, 600), run inward near an end so it stays inside
+     the figure: within 60 of an end, or, for a long label, within half its
+     width and 6 more, its width estimated at RATE_CH a character (a digit is
+     about 7.3 px, so a little over). So "between 16.2% and 16.4%" (23
+     characters, r5-j B1) is never centred past the figure's edge; a label
+     of 14 characters or fewer ("10.0% or 12.5%", "12.5%") is placed as
+     before. */
+  const RATE_CH = 7.5;
   const labelAt = (x, text) => {
-    const anchor = x < 60 ? 'start' : x > RL.w - 60 ? 'end' : 'middle';
+    // r5-j B1
+    const edge = Math.max(60, (text.length * RATE_CH) / 2 + 6);
+    const anchor = x < edge ? 'start' : x > RL.w - edge ? 'end' : 'middle';
     const tx = anchor === 'start' ? Math.max(0, x - 6) : anchor === 'end' ? Math.min(RL.w, x + 6) : x;
     return svg('text', { class: 'rate-label', x: round2(tx), y: 12, 'text-anchor': anchor }, text);
   };

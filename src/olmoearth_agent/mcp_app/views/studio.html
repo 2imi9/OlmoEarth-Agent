@@ -909,8 +909,10 @@ function renderProjects(app, projects, account, source = null) {
 }
 
 /* After Sign out: a key in the server's configuration may still be in effect
-   (the result says signed_in); its projects are shown, as the toast says,
-   and the old account's are never left on the page. Otherwise the sign-in
+   (the result says signed_in); its projects are shown, as the reply under
+   Sign out says (r5-k K5: in the top line, OE.accountReply, which keeps it
+   while the line shows that key and empties it once the sign-in shows), and
+   the old account's are never left on the page. Otherwise the sign-in
    (no key is in effect then, so a later sign-in in another panel counts).
    The button pressed is gone either way, so the focus goes on, as on the
    start card (the user's own press; OE.focusIfHere): to the sign-in's
@@ -932,7 +934,7 @@ async function signedOut(app, result) {
   const held = OE.setAccount(app, { signedIn: true, account: result.account, source: result.source, onSignOut: (r) => signedOut(app, r) });
   OE.focusIfHere(held);
   root.replaceChildren(OE.el('div', { class: 'muted' }, 'Reading the projects of the key still in effect...'));
-  // WORDING: r5c S01 (Claude is told the user is still signed in, as the toast says)
+  // WORDING: r5c S01 (Claude is told the user is still signed in, as the reply under Sign out says)
   listsNone(app, 'still signed in: a key stays in effect after Sign out; its projects are being read');
   // Whether the focus is still where the press left it: on the new Sign out,
   // or, with none drawn, nowhere (on the page's body).
@@ -954,7 +956,7 @@ async function signedOut(app, result) {
     }
     // With no Sign out drawn, the focus the press left goes to the error card.
     const had = !held && left();
-    // WORDING: r5c S01 (Claude is told the user is still signed in, as the toast says)
+    // WORDING: r5c S01 (Claude is told the user is still signed in, as the reply under Sign out says)
     listsNone(app, 'still signed in: a key stays in effect after Sign out; its projects could not be read');
     // WORDING: r5c S01 (no "Signed out here." beside a top line that says signed in)
     const card = OE.el('div', { class: 'card error', tabindex: '-1' },

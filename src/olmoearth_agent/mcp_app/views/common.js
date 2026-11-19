@@ -69,6 +69,13 @@ body { margin: 0; padding: 0 16px 16px; background: var(--canvas); color: var(--
 .oe-account .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--text); font-weight: 600; }
 .oe-account button.link { flex: none; font-size: 12px; line-height: 18px; padding: 0 4px; }
+/* The sign-out's reply (r5-k K5, OE.accountReply): under Sign out, in the top line, not at the page's foot. A row
+   of its own under the sentence and the account item, under where Sign out stood (OE.placeAccountReply: its words
+   end at Sign out's right edge, or start at the line's left edge when Sign out stood nearer it than the words are
+   wide), by Sign out's own box, not by a width of the panel. Empty, it is drawn but out of the line's flow (no
+   row, no gap), so its status is in the accessibility tree before its first words, as the toast's region is. */
+.oe-account-reply { flex: 1 0 100%; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+.oe-account-reply:empty { position: absolute; }
 /* The address of a link the host did not open (OE.docsLink, OE.accessLink), whole and selectable. The slot is a
    status in place before the first press (r5-i B5): empty, it is drawn but takes no height (never display none),
    so it is in the accessibility tree before its first words, as the toast's region and OE.typeSlot's line are,
@@ -219,6 +226,25 @@ details[open] > summary::after { transform: rotate(-135deg); }
 section.sheet { overflow-anchor: none; }
 .sheet-footer { position: sticky; bottom: 0; margin: 16px -16px -16px; padding: 12px 16px;
   border-top: 1px solid var(--divider); background: var(--paper); border-radius: 0 0 4px 4px; }
+/* r5-j B8: a sheet's control that takes the focus (Tab, or the sheet's own focus after an answer) near the panel's
+   foot ends above the sticky footer, so the footer does not hide it (WCAG 2.4.11). It takes no layout, so no control
+   moves; the list's table frame, a scroller itself, keeps the focused row as far above its foot too. The footer's own
+   controls get no margin: the footer cannot hide them, and a margin there would only scroll the sheet each time one
+   takes the focus. r5-k K5: the margin is the footer's own height (--oe-foot, which the sheet sets from it each time
+   the footer changes, and when its width does: sheet.js fitFoot) and 8 px, as the pictures' question keeps
+   (bringQuestionUp); a fixed margin was smaller than the footer on a narrow panel once it held Save labels, a line of
+   its saves of two rows or the finish press's line. Until the sheet sets it, 170 px. */
+section.sheet :is(button, select, input, textarea, summary, [tabindex]):not(.sheet-footer *) { scroll-margin-bottom: calc(var(--oe-foot, 162px) + 8px); }
+/* r5-k K5 (the owner's O11): the statuses of a label sheet's saves sit in its footer, by what they are about, no
+   longer in the status line at the page's foot (sheet.js footerSay, counterSay). A save that went through, "Saved to
+   ...", stands beside the counter in the place of "Saved automatically", while nothing waits. .oe-save-said, what Save
+   labels causes while it is shown ("Not saved: ...", "Every change is saved to ..."): a line of its own under the row
+   with the finish button and Save labels, at its right end, under Save labels. .oe-count-said, a save made elsewhere
+   taken in: beside the counter it changed. Empty, each is drawn but out of the flow (no row, no gap), so its status
+   is in the accessibility tree before its first words, as OE.typeSlot's line is. */
+.oe-save-said { flex-basis: 100%; text-align: right; overflow-wrap: anywhere; }
+.oe-save-said:empty, .oe-count-said:empty { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden;
+  clip-path: inset(50%); }
 /* The footer's row with the finish button keeps to the right edge, also when
    the line beside the button makes it wrap under the counter (r5-b J29), and
    when that line and the button wrap inside it on a narrow panel. div.row:
@@ -240,17 +266,19 @@ section.sheet { overflow-anchor: none; }
   .sheet-work.pane td > .toggle { grid-auto-columns: auto; }
 }
 /* The label sheet's face: one window at a time. Inline it is a pager, the
-   heading, Previous and Next and the answers on top and the dates in a strip
-   that scrolls sideways; in the host's full screen (.full) the dates are a
-   grid. An answer given shows pressed; none is the contained button. The
-   face takes the focus after each answer: a ring when the keyboard brought
-   it there, as the list's group of answers has. In the strip (r5-b J24) each
-   date starts at the top, so a month without a picture is not stretched
-   beside the real ones, and none is wider than the strip, so a date's row
-   wraps Detail under Context on a narrow panel. A strip of several dates
-   keeps each 40px narrower than itself, so the edge of the next one stays in
-   view as a sign that the strip goes on; a lone date, and each cell of the
-   full screen grid, keep the whole width. Everything about the one square
+   heading with Previous and Next on top, then the pictures, then the answers
+   (r5-k K4), the dates side by side and wrapped onto as many rows as they
+   need; in the host's full screen (.full) the dates are a grid. An answer
+   given shows pressed; none is the contained button. The face takes the
+   focus after each answer: a ring when the keyboard brought it there, as the
+   list's group of answers has. Each date starts at the top of its row (r5-b
+   J24), so a month without a picture is not stretched beside the real ones,
+   and none is wider than the face, so a date's row wraps Detail under
+   Context on a narrow panel. r5-k K4 (the owner's O8): the dates wrap at
+   every width, each date at its own size (no longer a strip that scrolled
+   sideways, its next date cut at the panel's edge as a sign that it went
+   on), the look-first pane's too; each cell of the full screen grid keeps
+   its whole width. Everything about the one square
    sits in the face's own box (r5-e: a hairline edge, before only a focus
    ring, which touched the text), the ring 2px outside it; on a panel of
    420px or less its sides keep 6px inside, not 12px (the rule after it). */
@@ -262,16 +290,15 @@ section.sheet { overflow-anchor: none; }
    (.card.oe-rule beats .card). */
 .card.oe-rule { padding: 12px; }
 /* r5-e C4: on a narrow panel the face keeps 6px at its sides (and the rule's
-   box with it, so the two still start at one edge), so a date of the strip
-   still holds a 240px picture (imagery._SCREEN): 380 - 32 - 34 - 2 - 12 =
-   300, less 40 and the date's 18 = 242. */
+   box with it, so the two still start at one edge), so a date still holds a
+   240px picture (imagery._SCREEN): 380 - 32 - 34 - 2 - 12 = 300, less the
+   date's 18 = 282 (242 while the strip kept each date 40px narrower). */
 @media (max-width: 420px) { .face, .card.oe-rule { padding: 12px 6px; } }
-.face-dates:focus { outline: none; }
-.face-dates:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
 .face-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.face-dates { display: flex; gap: 12px; overflow-x: auto; align-items: flex-start; }
+/* r5-k K4: the dates wrap (flex-wrap), each at its own size (flex none), never wider than the face (max-width), and
+   nothing scrolls sideways. */
+.face-dates { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 .face-dates > * { flex: none; max-width: 100%; }
-.face-dates > :not(:only-child) { max-width: calc(100% - 40px); }
 .face.full .face-dates { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); overflow: visible; }
 .face.full .face-dates > * { max-width: none; }
 .face .answers > select { grid-column: span 2; }
@@ -298,6 +325,22 @@ section.sheet { overflow-anchor: none; }
 .face .answers button[aria-pressed="true"] { background: var(--selected); color: var(--text); border-color: var(--text);
   box-shadow: inset 0 0 0 1px var(--text); font-weight: 700; }
 .face .answers button[aria-pressed="true"]::before { content: "\\2713\\00a0"; content: "\\2713\\00a0" / ""; }
+/* r5-k K3 (the owner's O19): a label sheet's answers locked (a sheet that gave its result, or one not saving:
+   aria-disabled) have the busy look of every busy button: no fill, faint words, a pale edge, no hover. The answer
+   given keeps its tick and its bold words in grey with a grey line, so a locked sheet still shows it; a locked menu
+   or field of the list is greyed the same way. The rules come after the chosen look, which they beat. */
+.face .answers button[aria-disabled="true"], .toggle button[aria-disabled="true"],
+.face .answers button[aria-disabled="true"]:hover, .toggle button[aria-disabled="true"]:hover {
+  cursor: default; background: transparent; color: rgba(0,0,0,.26); border-color: var(--divider); box-shadow: none; }
+.face .answers button[aria-pressed="true"][aria-disabled="true"], .toggle button[aria-pressed="true"][aria-disabled="true"] {
+  background: var(--wash); color: var(--grey); border-color: var(--disabled); box-shadow: inset 0 0 0 1px var(--disabled); }
+select[aria-disabled="true"], input[type=text][aria-disabled="true"] { cursor: default; color: var(--grey);
+  background: var(--wash); }
+/* r5-k K2 (the owner's O2): a two-map sheet's switch locked until every answer is in and sent (aria-disabled): the
+   box and its words greyed as a busy button's; the line under its words, which says when it opens, keeps the body's
+   colour. */
+input[type=checkbox][aria-disabled="true"] { cursor: default; opacity: .38; }
+label.oe-locked { cursor: default; color: rgba(0,0,0,.26); }
 `;
 
 /* HTML-escape any value. */
@@ -803,12 +846,15 @@ OE.SUB = 'This panel is the OlmoEarth Agent, an app inside Claude. It works with
    of the sentence, the account item (#oe-account, r5-a V2): empty, and not
    drawn, until a card that shows the account sets it (OE.setAccount: the
    start card and the projects card; the other views leave it empty). The
-   tag's alt is empty, since the sentence names the agent. */
+   tag's alt is empty, since the sentence names the agent. Under them, the
+   sign-out's reply (#oe-account-reply, r5-k K5: OE.accountReply), a status
+   in place and empty until Sign out is pressed. */
 OE.line = () => OE.el('header', { class: 'oe-line' },
   OE.el('img', { src: OE.TAG, alt: '' }),
   OE.el('div', { class: 'oe-line-text' },
     OE.el('span', { class: 'oe-said' }, OE.SUB),
-    OE.el('span', { id: 'oe-account', class: 'oe-account' })));
+    OE.el('span', { id: 'oe-account', class: 'oe-account' }),
+    OE.el('div', { id: 'oe-account-reply', class: 'oe-account-reply muted', role: 'status', 'aria-live': 'polite' })));
 
 /* A short status line at the bottom of the page: a live region that OE.start
    puts in place before any message, so a screen reader announces the first.
@@ -1227,7 +1273,9 @@ OE.signInPanel = (app, { onDone, note, primary = true, acceptCurrent = false } =
     status.textContent = OE.accountLine(now.account);
     link.replaceChildren();
     setBusy(false);
-    OE.toast(OE.accountLine(now.account));
+    // Kept, so a later Sign out empties the status line while it still says this (OE.accountReply, r5-k K5).
+    signInSaid = OE.accountLine(now.account);
+    OE.toast(signInSaid);
     if (onDone) onDone(now);
   };
   const poll = async (mine, since) => {
@@ -1283,24 +1331,123 @@ OE.signInPanel = (app, { onDone, note, primary = true, acceptCurrent = false } =
     OE.el('div', { class: 'row', style: 'justify-content:flex-end' }, button));
 };
 
+/* What the top line shows (r5-k K5): 'out' (signed out), 'own' (the key the
+   app was installed with, which has no Sign out, r5-c S01) or, with any
+   other key and its Sign out, 'in|' and the name the line shows
+   (OE.accountShort), so another account is another state. */
+OE.accountState = (signedIn, source = null, account = null) => (!signedIn ? 'out'
+  : (source === 'environment' ? 'own' : 'in|' + OE.accountShort(account)));
+
+/* The sign-out's reply, under Sign out (r5-k K5, O11; the owner's choice of
+   18 Nov 2026): the top line's own status (#oe-account-reply, OE.line), no
+   longer the status line at the page's foot, far from the press. A plain
+   message is polite (role status), an error an alert (assertive, in the
+   error colour), as OE.toast's. state is what the top line shows once the
+   press is answered (OE.accountState); at is where Sign out stood at the
+   press (OE.signOutAt, OE.placeAccountReply). OE.setAccount empties a plain
+   reply when it draws something else (a later sign-in, another key or
+   account), so the reply never stays beside an account it does not
+   describe, and an error at the card's next drawing. A plain reply also
+   empties the status line at the page's foot while that still says the
+   sign-in made in the panel (OE.signInPanel): a sign-in's line never
+   outlasts its sign-in. A page with no top line says it in the status
+   line. */
+let replyFor = null;  // the top line's state the reply's words are about
+let replyIsError = false;  // whether they are an error, which goes at the card's next drawing
+let replyAt = null;  // where Sign out stood at the press they answer (OE.signOutAt)
+let drawnState = null;  // what the top line shows now (OE.setAccount)
+let signInSaid = null;  // the sign-in line OE.signInPanel last wrote in the status line
+OE.accountReply = (text, isError = false, state = null, at = null) => {
+  const reply = document.getElementById('oe-account-reply');
+  if (!reply) { if (text) OE.toast(text, isError); return; }
+  if (text && !isError) {
+    const bar = document.getElementById('oe-toast');
+    if (bar && signInSaid && bar.textContent === signInSaid) OE.toast('');
+    signInSaid = null;
+  }
+  replyFor = text ? state : null;
+  replyIsError = Boolean(text) && isError;
+  replyAt = text ? at : null;
+  reply.setAttribute('role', isError ? 'alert' : 'status');
+  reply.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+  reply.className = 'oe-account-reply ' + (isError ? 'error' : 'muted');
+  reply.textContent = text;
+  OE.placeAccountReply();
+};
+
+/* Where a Sign out of the top line stands (r5-k K5): its box against the
+   line's words (.oe-line-text): fromRight, its gap to their right end;
+   right, its right edge from their left end; item, the account item's
+   width. */
+OE.signOutAt = (out) => {
+  const t = out.closest('.oe-line-text').getBoundingClientRect(), b = out.getBoundingClientRect();
+  return { fromRight: Math.max(0, t.right - b.right), right: b.right - t.left,
+    item: out.closest('.oe-account').getBoundingClientRect().width };
+};
+
+/* The reply under where Sign out stood (r5-k K5), by Sign out's own box,
+   taken at the press while it is drawn (replyAt): its words end at Sign
+   out's right edge (aligned right, Sign out's gap to the line's end kept at
+   their right), or start at the line's left edge when Sign out stood nearer
+   it than the words are wide, so they reach across it. When the panel's
+   width changes (resized), a Sign out still drawn (beside an error) is
+   measured again; one that is gone (signed out, the app's own key) is put
+   where it would stand now, by the item's width and the line's wrap (the
+   sentence's flex-basis and the gap): beside the sentence, at the line's
+   right end, or under it, from its left edge. Emptied, it keeps no
+   alignment of its own. */
+OE.placeAccountReply = (resized = false) => {
+  const reply = document.getElementById('oe-account-reply');
+  const line = reply && reply.closest('.oe-line-text');
+  if (!line) return;
+  reply.style.textAlign = reply.style.paddingRight = '';
+  if (!reply.textContent || !replyAt) return;
+  const out = resized ? line.querySelector('#oe-account button') : null;
+  let at = out ? OE.signOutAt(out) : replyAt;
+  if (resized && !out) {
+    const width = line.getBoundingClientRect().width, item = Math.min(replyAt.item, width);
+    const px = (node, name) => parseFloat(getComputedStyle(node)[name]) || 0;
+    at = px(line.querySelector('.oe-said'), 'flexBasis') + px(line, 'columnGap') + item <= width
+      ? { fromRight: 0, right: width } : { fromRight: width - item, right: item };
+  }
+  const range = document.createRange();
+  range.selectNodeContents(reply);
+  const rects = [...range.getClientRects()].filter((r) => r.width > 0.5);
+  const wide = rects.length ? Math.max(...rects.map((r) => r.right)) - Math.min(...rects.map((r) => r.left)) : 0;
+  if (at.right >= wide) {
+    reply.style.textAlign = 'right';
+    reply.style.paddingRight = at.fromRight + 'px';
+  } else reply.style.textAlign = 'left';
+};
+// The panel's width changed: the reply follows where Sign out stands, or would stand.
+window.addEventListener('resize', () => OE.placeAccountReply(true));
+
 /* A Sign out button: a text button in the top line's account item ('link',
-   OE.setAccount), small outlined on the account card ('small'). */
+   OE.setAccount), small outlined on the account card ('small'). Its reply
+   (r5-k K5): under it in the top line (OE.accountReply); the account card's
+   (sign_in.html) keeps the status line. */
 OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
   const out = OE.el('button', {
     class: cls,
     onclick: async () => {
+      const inLine = Boolean(out.closest('.oe-line'));
+      // Where it stands, taken now, while it is drawn: its reply goes under it (OE.placeAccountReply).
+      const at = inLine ? OE.signOutAt(out) : null;
+      const reply = (text, isError, state) => (inLine ? OE.accountReply(text, isError, state, at) : OE.toast(text, isError));
       out.disabled = true;
       try {
         const result = await OE.call(app, 'olmoearth_app_sign_out');
         // WORDING: r5c S01 (the first; the second: r4p2). By the key in effect,
         // not environment_key_remains: an OLMOEARTH_API_KEY that is no key
         // (the placeholder) leaves the user signed out.
-        OE.toast(result.signed_in && result.source === 'environment'
+        const words = result.signed_in && result.source === 'environment'
           ? 'Still signed in: this app was installed with its own key. Only whoever installed it can remove it.'
-          : 'Signed out; the saved key was removed.');
+          : 'Signed out; the saved key was removed.';
+        reply(words, false, OE.accountState(result.signed_in, result.source, result.account));
         if (onSignOut) onSignOut(result);
       } catch (err) {
-        OE.toast(err.message, true);
+        // The press changed nothing: the reply is about what the line shows now, with this Sign out.
+        reply(err.message, true, drawnState);
       } finally { out.disabled = false; }
     },
   }, 'Sign out');
@@ -1315,11 +1462,18 @@ OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
    onSignOut(result). With the key the app was installed with (source
    'environment', r5-c S01) no Sign out: its press cannot remove that key, so
    the item says only that this key is in use. Signed out: empty, which the
-   style does not draw, so a name never outlasts its sign-in. The pointer and
-   the keyboard stay where they are. Returns the Sign out button, or null. */
+   style does not draw, so a name never outlasts its sign-in. The sign-out's
+   reply under it (r5-k K5): a plain one stays while the line shows what it
+   is about (the same state, and the same name: OE.accountState) and goes
+   when the line shows something else; an error goes at the card's next
+   drawing. The pointer and the keyboard stay where they are. Returns the
+   Sign out button, or null. */
 OE.setAccount = (app, { signedIn = false, account = null, source = null, onSignOut } = {}) => {
   const item = document.getElementById('oe-account');
   if (!item) return null;
+  const state = OE.accountState(signedIn, source, account);
+  if (replyIsError || replyFor !== state) OE.accountReply('');
+  drawnState = state;
   if (!signedIn) {
     item.replaceChildren();
     item.removeAttribute('role');

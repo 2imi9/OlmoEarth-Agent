@@ -116,13 +116,15 @@ def test_j2_a_parts_line_after_a_press_with_no_reply_asks_nothing() -> None:
     )
     assert unknown in zone
     # The press that makes its parts 'unknown' sets ruleLost, so the gate's
-    # line shows beside each such part's line.
+    # line shows beside each such part's line. Round r5-m B3, after review:
+    # PRESS_NO_ANSWER is said in the page's hidden status, no longer a toast
+    # (tests/mcp_app/test_mcp_r5m_check.py).
     press = _between(page, "  async function drawPicked() {", "\n  }\n")
     assert _in_order(
         press,
         "m.kind = 'unknown';",
         "ruleLost = true;",
-        "OE.toast(PRESS_NO_ANSWER, true);",
+        "if (heard) heard.textContent = PRESS_NO_ANSWER;",
     )
     assert _OFF_FACE.search(NO_ANSWER) is None
 

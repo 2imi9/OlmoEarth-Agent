@@ -57,8 +57,12 @@ STAGES = (
 )
 
 #: The card's line once it stopped waiting, and when the view names no result.
+#: Round r5-j B5: the line once it stopped waiting says, as the failed card
+#: does, that what was picked or saved before is kept
+#: (tests/mcp_app/test_mcp_r5j_check.py).
 PREP_TOO_LONG = (
-    "Preparing this map took too long. Ask Claude to open the Check card again."
+    "Preparing this map took too long. Anything picked or saved before is kept. "
+    "Ask Claude to open the Check card again."
 )
 PREP_NO_ID = (
     "This card cannot tell when the map is ready. Ask Claude to open the Check "
@@ -210,12 +214,14 @@ def test_h1_the_preparing_card_draws_the_steps_and_one_line() -> None:
     step panels with the steps as written (no part's square is known yet:
     step 1 unsized), then one line, a status, the mark before the words; the
     mark is an empty span hidden from a screen reader. No press, count,
-    rule, box, fold, toast or focus in it."""
+    rule, box, fold, toast or focus in it. Round r5-j B5: the line that the
+    card fills in by itself follows the status, outside it
+    (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     card = _card(page)
     line = (
-        "  root.append(OE.el('div', { class: 'oe-preparing', "
-        "id: 'oe-check-preparing', role: 'status' }, mark, words));\n"
+        "  const row = OE.el('div', { class: 'oe-preparing', "
+        "id: 'oe-check-preparing', role: 'status' }, mark, words);\n"
     )
     assert _in_order(
         card,
@@ -228,6 +234,7 @@ def test_h1_the_preparing_card_draws_the_steps_and_one_line() -> None:
         "  const mark = OE.el('span', { class: 'oe-prep-mark', "
         "'aria-hidden': 'true' });\n",
         line,
+        "  root.append(row, fills);\n",
     )
     assert card.count("root.append(") == 4
     for gone in (
@@ -252,14 +259,16 @@ def test_h1_the_mark_is_quiet_and_holds_no_number() -> None:
     the card's own style; it stands still for a reader who asks for less
     motion; nothing on the line, whichever of the server's stages it says
     (server.CHECK_STAGE_*), is a number pretending to be a percentage or a
-    word kept off the face."""
+    word kept off the face. Round r5-j B5: the mark sits by the line's first
+    row (4 px down) with its turning edge in the text's colour
+    (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     style = _between(page, "<style>", "</style>")
     for rule in (
-        "  .oe-preparing { display: flex; align-items: center; gap: 8px; }\n",
+        "  .oe-preparing { display: flex; align-items: flex-start; gap: 8px; }\n",
         "  .oe-prep-mark { flex: none; width: 12px; height: 12px; "
         "border-radius: 50%; border: 2px solid var(--divider);\n"
-        "    border-top-color: var(--text-2); "
+        "    border-top-color: var(--text); margin-top: 4px; "
         "animation: oe-prep-turn 1.6s linear infinite; }\n",
         "  @keyframes oe-prep-turn { to { transform: rotate(360deg); } }\n",
         "  @media (prefers-reduced-motion: reduce) "
@@ -289,7 +298,10 @@ def test_h1_the_line_says_the_servers_stage_in_plain_words() -> None:
     words change (a status is heard each time it is written, and the card
     asks every 2 s); once the card stops waiting it says the map took too
     long and to ask Claude to open the Check card again, and a view with no
-    result id says so at once. Each string is marked r5h."""
+    result id says so at once. Each string is marked r5h. Round r5-j B5: the
+    line once it stopped waiting, in two pieces, says that what was picked
+    or saved before is kept; the view with no result id drops the line that
+    the card fills in by itself (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     expr = (
         "const PREPARING = (stage) => 'Preparing this map' + "
@@ -299,7 +311,8 @@ def test_h1_the_line_says_the_servers_stage_in_plain_words() -> None:
     bare = "const bare = (text) => String(text ?? '').trim().replace(/\\.+$/, '');\n"
     assert bare in page
     for name, said in (("PREP_TOO_LONG", PREP_TOO_LONG), ("PREP_NO_ID", PREP_NO_ID)):
-        assert f"// WORDING: r5h\nconst {name} = '{said}';\n" in page, name
+        assert f"// WORDING: r5h\nconst {name} = '" in page, name
+        assert _concat(_after(page, f"const {name} = ", ";\n")) == said, name
         assert said.endswith(" Ask Claude to open the Check card again."), name
         assert _OFF_FACE.search(said) is None, name
     card = _card(page)
@@ -312,7 +325,7 @@ def test_h1_the_line_says_the_servers_stage_in_plain_words() -> None:
     # Its three writes: no result id, a new stage, too long.
     assert card.count("words.textContent = ") == 3
     no_id = (
-        "  if (!resultId) {\n    mark.remove();\n"
+        "  if (!resultId) {\n    mark.remove();\n    fills.remove();\n"
         "    words.textContent = PREP_NO_ID;\n"
     )
     assert no_id in card
@@ -428,7 +441,9 @@ def test_h1_ten_minutes_after_it_was_drawn_the_card_stops_waiting() -> None:
     """H1: before each ask and after each answer the card compares the time
     since it was drawn with 10 minutes; from then it asks no more, its mark
     goes, its line says PREP_TOO_LONG (still the status, so a screen reader
-    hears it) and Claude is told that it stopped waiting."""
+    hears it) and Claude is told that it stopped waiting. Round r5-j B5: the
+    line that the card fills in by itself goes too, and the line is the
+    failed card's red card (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     card = _card(page)
     gone = _between(card, "  const tooLong = () => {\n", "\n  };\n")
@@ -436,6 +451,10 @@ def test_h1_ten_minutes_after_it_was_drawn_the_card_stops_waiting() -> None:
         "  const tooLong = () => {\n"
         "    stop();\n"
         "    mark.remove();\n"
+        "    fills.remove();\n"
+        "    // r5-j B5: the red card of the card that could not start (show's "
+        "failed card), still the status.\n"
+        "    row.className = 'card error';\n"
         "    words.textContent = PREP_TOO_LONG;\n"
         "    OE.tellClaude(app, PREP_TOLD_LONG(resultId));"
     )
@@ -595,7 +614,10 @@ def test_h1_a_screen_reader_hears_the_card_fill_in_or_end() -> None:
         assert f"// WORDING: r5h\nconst {name} = '{words}';\n" in page, name
         assert "%" not in words and _OFF_FACE.search(words) is None, name
     code = _code(page)
-    assert code.count("heard.textContent = ") == 2
+    # Round r5-m B3, after review: a third, the card of parts' press with no
+    # reply (PRESS_NO_ANSWER; tests/mcp_app/test_mcp_r5m_check.py).
+    assert code.count("heard.textContent = ") == 3
+    assert code.count("heard.textContent = PRESS_NO_ANSWER;") == 1
     assert code.count("PREP_SAID_READY") == 2 and code.count("PREP_SAID_ENDED") == 2
 
 

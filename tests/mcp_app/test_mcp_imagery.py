@@ -374,15 +374,22 @@ def test_pictures_are_off_until_the_user_says_yes(root: Path) -> None:
         "ok": True,
         "needs_consent": True,
         "ask": imagery.CONSENT_ASK,
+        "ask_full": imagery.CONSENT_FULL,
         "test_ask": imagery.TEST_ASK,
     }
-    # The question names both hosts and what each receives; so does the test's.
-    for text in (imagery.CONSENT_ASK, imagery.TEST_ASK):
-        assert imagery.CATALOGUE_HOST in text and imagery.BUCKET_HOST in text
-    # The reader test's A/sheet-7: "internet address (IP)".
+    # The question's fold names both hosts and what each receives (round r5-k
+    # K7: no longer its face); the test's, drawn after it in the fold, calls
+    # them the same catalogue and the same file store.
+    assert imagery.CATALOGUE_HOST in imagery.CONSENT_FULL
+    assert imagery.BUCKET_HOST in imagery.CONSENT_FULL
+    assert imagery.CATALOGUE_HOST not in imagery.TEST_ASK
+    assert imagery.BUCKET_HOST not in imagery.TEST_ASK
+    # The reader test's A/sheet-7 named the IP address; since round r5-k K7
+    # the face's line says it in one row.
     assert "Studio" in imagery.CONSENT_ASK
-    assert "internet address (IP)" in imagery.CONSENT_ASK
-    assert "Nothing of this sheet is sent" in imagery.TEST_ASK
+    assert "both see your IP address." in imagery.CONSENT_ASK
+    assert "Nothing about your map is sent." in imagery.TEST_ASK
+    assert "the same file store" in imagery.TEST_ASK
     assert imagery.set_on(True)["on"] is True
     assert imagery.consent_path().is_file() and imagery.consent_path().parent == root
     assert imagery.set_on(False)["on"] is False
@@ -715,6 +722,7 @@ def test_pictures_switched_off_while_waiting_send_nothing(root: Path, sky: Sky) 
         "ok": True,
         "needs_consent": True,
         "ask": imagery.CONSENT_ASK,
+        "ask_full": imagery.CONSENT_FULL,
         "test_ask": imagery.TEST_ASK,
     }
     assert sky.requests == []
@@ -816,7 +824,9 @@ def test_the_sheet_record_path_is_unchanged() -> None:
 def test_review_pictures_are_off_until_the_user_says_yes(root: Path, sky: Sky) -> None:
     """While pictures are off a review set's window answers the question, with
     the review set's own test-scene question; nothing reaches Earth Search.
-    The question now names sheets and review sets, so it is asked once more."""
+    Since round r5-k K7 the question's fold says the box and the months go
+    once for all the squares, and the review set's test question, drawn
+    after it, calls the hosts the same catalogue and the same file store."""
     key, _ = _review(root)
     assert re.fullmatch(r"[0-9a-f]{24}", key)
     out = imagery.review_image(key, 1, on=imagery.is_on())
@@ -824,12 +834,16 @@ def test_review_pictures_are_off_until_the_user_says_yes(root: Path, sky: Sky) -
         "ok": True,
         "needs_consent": True,
         "ask": imagery.CONSENT_ASK,
+        "ask_full": imagery.CONSENT_FULL,
         "test_ask": imagery.REVIEW_TEST_ASK,
     }
-    assert "once per sheet or review set" in _words(imagery.CONSENT_ASK)
-    assert "Nothing of this review set is sent" in _words(imagery.REVIEW_TEST_ASK)
+    # Round r5-k K7: in the question's fold, no longer its face.
+    assert "once for all the squares" in _words(imagery.CONSENT_FULL)
+    assert "unrelated to this review set" in _words(imagery.REVIEW_TEST_ASK)
     for host in (imagery.CATALOGUE_HOST, imagery.BUCKET_HOST):
-        assert host in imagery.REVIEW_TEST_ASK
+        assert host in imagery.CONSENT_FULL
+        assert host not in imagery.REVIEW_TEST_ASK
+    assert "the same catalogue" in _words(imagery.REVIEW_TEST_ASK)
     assert sky.requests == []
 
 

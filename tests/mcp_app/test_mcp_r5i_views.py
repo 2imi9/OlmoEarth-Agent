@@ -228,8 +228,11 @@ def test_b5_only_those_two_links_are_quiet_and_every_other_keeps_its_toast() -> 
     """B5: OE.open takes quiet (false unless given); a decline writes
     LINK_NOT_OPENED in the status line unless quiet, both ways it can fail;
     a link opened still clears that line. Only the docs and Request access
-    links pass quiet: the sign-in page's open, the result's and the sheet's
-    street map links (no slot of their own) call OE.open as before."""
+    links pass quiet: the sign-in page's open and the sheet's street map
+    links (no slot of their own) call OE.open as before. Round r5-k K5: the
+    look-first card's Street map passes quiet too, since it now says its
+    failures right under the button pressed (tests/mcp_app/
+    test_mcp_r5k_result.py), so the result view holds one more."""
     common = _read("common.js")
     head = "OE.open = async (app, url, { quiet = false } = {}) => {"
     assert common.count(head) == 1
@@ -247,13 +250,15 @@ def test_b5_only_those_two_links_are_quiet_and_every_other_keeps_its_toast() -> 
         "OE.open(app, OE.ACCESS_URL, { quiet: true })",
         "OE.open(app, page.url)",
     ]
-    assert calls["result.html"] == ["OE.open(app, url)"]
+    # r5-k K5: the look-first Street map's own line says a decline.
+    assert calls["result.html"] == ["OE.open(app, url, { quiet: true })"]
     assert calls["sheet.js"] == ["OE.open(app, url)"]
     assert calls["start.html"] == []
     for name in views.VIEWS:
         html = views.view_html(name)
-        assert html.count("{ quiet: true })") <= 2, name
-        assert "OE.open(app, url, { quiet" not in html, name
+        mine = 1 if name == "result" else 0  # r5-k K5
+        assert html.count("{ quiet: true })") <= 2 + mine, name
+        assert html.count("OE.open(app, url, { quiet") == mine, name
 
 
 # --------------------------------------------------------------------------- B6

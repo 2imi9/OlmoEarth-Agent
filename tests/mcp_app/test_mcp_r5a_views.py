@@ -138,7 +138,8 @@ def test_v1_only_the_start_view_inlines_the_overview() -> None:
     """V1: overview.js is inlined into the start view, after common.js, and
     into no other view; the card draws the figure under its line (r5-e S1:
     one line, where it had three), before the sign-in and the jobs, with no
-    fold."""
+    fold (r5-k K8: placeOverview then moves it after the jobs on a wide
+    panel, test_mcp_r5k_start.py)."""
     assert views.VIEWS["start"]["scripts"] == ("common.js", "overview.js")
     for name, spec in views.VIEWS.items():
         held = "OE.overview = (() => {" in views.view_html(name)
@@ -170,7 +171,10 @@ def test_v1_the_overview_lives_inside_one_name_and_never_updates() -> None:
     assert script.rstrip().endswith("})();")
     top = re.compile(r"^(?:const|let|var|function|async function|class)\b", re.M)
     assert top.search(script) is None
-    assert "  return { STYLE, style, figure, CAPTION, CAPTION_NARROW };\n" in script
+    # r5-k K8: and WIDE, the width from which the docs figure shows.
+    assert (
+        "  return { STYLE, style, figure, CAPTION, CAPTION_NARROW, WIDE };\n" in script
+    )
     for banned in (
         "OE.call(",
         "callServerTool",

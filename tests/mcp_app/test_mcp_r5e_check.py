@@ -260,11 +260,15 @@ def test_k2_each_part_is_one_card_and_the_parts_figure_is_gone() -> None:
     size over its counts, or its picked line and open button, or its state);
     a map in one part keeps a plain section. The parts figure, its captions
     and the line under an open sheet are gone, with their code; the result
-    card keeps its own parts figure (figures.js, mode 'result')."""
+    card keeps its own parts figure (figures.js, mode 'result'). Round r5-j
+    B9: on a map in parts the section is named by its heading
+    (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     section = (
-        "    root.append(OE.el('section', { class: nParts > 1 ? 'part card stack' "
-        ": 'part stack' }, m.heading, m.body));\n"
+        "    root.append(OE.el('section', {\n"
+        "      class: nParts > 1 ? 'part card stack' : 'part stack',\n"
+        "      'aria-labelledby': nParts > 1 ? 'oe-part-' + m.index : null,\n"
+        "    }, m.heading, m.body));\n"
     )
     assert section in page
     assert "  root.append(action, OE.fold(DETAILS, foldBody));\n" in page
@@ -628,7 +632,9 @@ def test_k8_after_a_press_with_no_reply_the_gate_alone_says_what_to_do() -> None
     press = _between(page, "  async function drawPicked() {", "\n  }\n")
     assert _in_order(
         press,
-        "        OE.toast(PRESS_NO_ANSWER, true);\n      }\n      renderAll();\n",
+        # Round r5-m B3, after review: in the page's hidden status, no toast.
+        "        if (heard) heard.textContent = PRESS_NO_ANSWER;\n      }\n"
+        "      renderAll();\n",
         "      if (hadFocus && !press.isConnected) {\n"
         "        if (ruleLost) { gate.setAttribute('tabindex', '-1'); "
         "OE.focusIfHere(gate); } else focusFallback();\n"

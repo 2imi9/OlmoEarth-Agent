@@ -37,20 +37,20 @@
    every window word the user sees is the sheet's unit word, "square" or
    "point", from OE.sheetWords):
    - One square, the default: the face (a section with tabindex -1). Its
-     heading "Square k of n" is a live region; under it, what the window
-     shows beside its answer (the map's class on the right-or-wrong face, and
-     a two-map sheet's pair once its blind switch is unticked), the face's
-     answers as buttons, each with its key ("Present (P)"; with more than nine, the
+     heading "Square k of n" is a live region, with Previous and Next; under
+     it the window's Pictures and Street map and its pictures, then what the
+     window shows beside its answer (the map's class on the right-or-wrong
+     face, and a two-map sheet's pair once its blind switch is unticked) and
+     the face's answers as buttons (r5-k K4: the pictures come before the
+     answers), each with its key ("Present (P)"; with more than nine, the
      first nine, Cannot tell where it is taken, and a list of the rest; on a
      face that takes any class, "Other class..." to type one, the group's
-     last cell, r5-e H3), Previous and
-     Next, the window's Pictures and Street map, and its pictures. One key
+     last cell, r5-e H3). One key
      listener on the face: an
      answer's key sets the answer (never clears it) and the next window not
      yet labelled shows, in the order of the handles, wrapping round; the
      left and right arrow keys move between windows, except inside a control
-     that scrolls sideways (the dates strip inline, which takes the focus
-     itself), where they scroll it; modified, held and composing keys and
+     that scrolls sideways, where they scroll it; modified, held and composing keys and
      keys typed into a field are left alone (a class typed with an IME
      commits its text on Enter, nothing more). A press on
      an answer sets it, or clears it when it is the answer given, as in the
@@ -58,7 +58,8 @@
      also focuses it), with a ring when the keyboard brought it there; with
      every window labelled, the finish button takes
      the focus once it is ready. Nothing focuses the face on load. Inline, the
-     face is a pager with the dates in a horizontal strip; in the host's full
+     face is a pager with the dates side by side, wrapped onto as many rows
+     as they need (r5-k K4; a horizontal strip before); in the host's full
      screen (.face.full, OE.sheetMode) the dates are a grid. Full screen is
      the header action the page passes (OE.fullscreenButton, shown only
      where the host offers full screen, and in full screen "Back to the
@@ -117,7 +118,12 @@
    asks the server for the two maps' classes at that press
    (olmoearth_app_sheet with unblind; each row's list then leads with its
    pair, and the face says it). Ticked again, they are hidden; the reviewer
-   has seen them. Right or wrong needs the map's class in view, so it cannot
+   has seen them. The switch is locked (r5-k K2, the owner's O2: ticked,
+   aria-disabled, the line under its words says when it opens) until every
+   window is answered and saved and the sheet's result was asked for (the
+   finish press Claude took); an answer changed after that press, here or
+   taken in from elsewhere, locks it again until a new press Claude takes.
+   Right or wrong needs the map's class in view, so it cannot
    be blind and has no switch; nor has a seen sheet or a class map's sheet,
    which never show the map's answer.
 
@@ -163,7 +169,10 @@
    finish button sends its message (after any save, read or check under
    way): a sheet saved elsewhere is read and taken in, and a finish press
    that found a change, or could not read the sheet again, sends nothing, so
-   the user sees it and presses again. A save whose answer says the server
+   the user sees it and presses again; a sheet that gave its result since
+   this editor was drawn (Claude graded it after the finish press: the
+   counts' graded) is read and drawn again, its answers locked (r5-k K3),
+   once nothing here waits to be saved. A save whose answer says the server
    worked out more windows than were sent (rederived) is followed by a read,
    taken in with every change made here winning. Taking a sheet in keeps the
    window shown, the list's order, the focus where it was (OE.focusIfHere)
@@ -195,7 +204,16 @@
    button shows: beside the counter, how many answers given here are not
    saved ("2 answers not saved", or "Not saving"), and beside "Reopen the
    sheet", at body size, that the sheet was changed somewhere else, whether
-   answers were lost and what to do.
+   answers were lost and what to do; its answers are locked then (r5-k K3),
+   as are a sheet's that already gave its result. The statuses of the
+   sheet's saves are in the footer too (r5-k K5, the owner's O11), no
+   longer in the status line at the page's foot: a save that went through
+   ("Saved to ...") beside the counter in the place of "Saved automatically",
+   which shows only while nothing waits; what Save labels causes while it is
+   shown (a save that failed, "Not saved: ...", and its press with nothing
+   waiting, "Every change is saved to ...") on a line under the row with
+   Save labels; and a save made elsewhere taken in beside the counter it
+   changed.
 
    The labelling step in the list. After an answer (a press or a key that
    sets one, a class picked from the list, a typed class accepted), the focus
@@ -231,8 +249,9 @@
    r5-b's J13 and J14 (the user-side audit: five paragraphs stood before the
    first answer, and the rule was the smallest text). Under "Label sheet",
    the part of the map it is for (data.part.heading, the server's); a graded
-   sheet (data.graded) says, at body size, that its answers should not
-   change now (r5-e H5: in two lines, its reason in the fold), and its lead
+   sheet (data.graded) says, at body size, that its answers are locked
+   (r5-k K3; it said they should not change now; r5-e H5: in two lines, its
+   reason in the fold), and its lead
    keeps its first line only (J06); then the lead, two lines (r5-e H1; it
    was three): what this is (its plain form, with no Pictures button
    anywhere, on a sheet whose page copy says pictures_possible false; on a
@@ -251,9 +270,7 @@
    a face that takes Cannot tell and can show pictures, the cloud line under
    it, r4-m M8), in one box with a border with that line and the example
    pictures (r5-e H2; who set the rule and when, data.rule_scope, is in the
-   fold, and right after it there, where the face has no cloud line, that
-   the owner's rule is for kelp canopy maps only: data.rule_limit, the last
-   round's F9), from the
+   fold; since r5-l L1 no line after it says which maps the rule is for), from the
    first open; with no rule on the page copy, on a sheet that can show
    pictures, one line in its place says none was set and what to do (J26),
    and the pane no longer says it (a page copy with no rule and pictures
@@ -261,7 +278,7 @@
    tell, the cloud line, r4-m M8, and the face's line goes). ONE closed
    "Details" fold under the answers holds the sheet's file name, a class
    face's line when the map's period is not known (r5-d R08), the rule's
-   scope (r5-e H2) and its kelp-only line, why a graded sheet's answers must not change (r5-e H5), a seen
+   scope (r5-e H2), why a graded sheet's answers must not change (r5-e H5), a seen
    sheet's first sentence and what Cannot tell does to the result, the keys,
    what never reaches this panel (the blind, code or right-or-wrong line),
    the Street map line, the note that no date is marked clear, that the
@@ -372,10 +389,25 @@ OE.sheetWords = (unit) => {
     hiddenPair: ', without looking at the two maps.',
     // In hiddenPair's place while the reviewer has unticked the switch and
     // the face shows what the two maps say (r5-b J28): the sentence ends, and
-    // this one says the answers are shown (r5-e H1).
+    // this one says the answers are shown (r5-e H1), and, since the answers
+    // lock once they are shown (r5-m B2), that the answers are locked; it is
+    // the locked answers' description then (lockAnswers).
+    // WORDING: r5m B2
     // WORDING: r5e H1
     // WORDING: r5b J28
-    shownPair: '. The two maps\' answers are shown now.',
+    shownPair: '. The two maps\' answers are shown now, so your answers are locked.',
+    // In hiddenPair's place once the maps' answers were shown and the switch
+    // is ticked again, or locked again by an answer taken in from elsewhere
+    // (r5-m B2): the answers stay locked (state.revealed), and the line is
+    // still their description (lockAnswers), so it says so; the hidden form
+    // asked for answers the lock refuses.
+    // WORDING: r5m B2
+    seenPair: '. The two maps\' answers were shown, so your answers are locked.',
+    // The tail whatBarePair ends with, word for word (it holds no hiddenPair
+    // clause): shownPair or seenPair takes its place once the maps' answers
+    // were shown (r5-m B2), since the answers are locked then and nothing is
+    // left to answer from records.
+    barePairTail: ', without looking at the maps. No records? Stop and tell Claude.',
     // In the Details fold of a sheet that can show pictures (r5-b J13;
     // before, on the lead's third line).
     // WORDING: r5b J13
@@ -459,10 +491,28 @@ OE.sheetWords = (unit) => {
     // The notice on a sheet already graded (the owner's extra 2), in words
     // that are on a button (r5-b J06: "graded" was on none); its reason is
     // in the Details fold (gradedWhy, r5-e H5), so the notice is two lines.
+    // r5-k K3: the sheet's answers are locked now (lockAnswers), so its first
+    // sentence says so, and it is the locked answers' description; it said
+    // "Do not change an answer now", which the panel no longer allows. The
+    // footer's line beside the finish button keeps its shorter words
+    // (everyDoneGraded, r5-d R06), which say the same first fact.
+    // WORDING: r5k K3
     // WORDING: r5e H5
     // WORDING: r5b J06
-    graded: 'This sheet already gave its result. Do not change an answer now; a second opinion needs another person'
-      + ' and a fresh sheet.',
+    graded: 'This sheet gave its result; its answers are locked. A second opinion needs another person and a fresh'
+      + ' sheet.',
+    // r5-k K2: under the words of a two-map sheet's switch while it is
+    // locked: it shows what the two maps say only once every square is
+    // answered and saved and the sheet's result was asked for (the finish
+    // press Claude took).
+    // WORDING: r5k K2
+    pairLocked: 'Shown once every ' + one + ' is answered and the result is sent.',
+    // In pairLocked's place once the finish press's message was shown to copy
+    // (the host did not take it), so the result may have been sent by hand:
+    // the switch opens once the sheet gave its result, and a sheet that gave
+    // its result opened again is unlocked.
+    // WORDING: r5k K2
+    pairLockedNotSent: 'Shown when you open this sheet again after Claude grades it.',
     // In the Details fold of a sheet already graded: why an answer must not
     // change now (r5-e H5; before, the middle clause of the notice).
     // WORDING: r5e H5
@@ -545,9 +595,33 @@ OE.sheetWords = (unit) => {
     notYet: 'Answer every ' + one + ' first.',
     // In everyDone's place on a sheet that already gave its result (r5-d
     // R06): its notice says not to change an answer now, so the footer does
-    // not say an answer may change until the press.
+    // not say an answer may change until the press (r5-k K3 left it as it
+    // was: the notice's longer first sentence would not fit the footer's one
+    // row at 780 px beside the finish button, r5-e H5).
     // WORDING: r5d R06
     everyDoneGraded: 'This sheet already gave its result.',
+    // The finish button's words on a sheet that already gave its result,
+    // once it is ready (r5-m B5, finishLabel): its answers are locked (r5-k
+    // K3) and its press gives the same result again, so the button no longer
+    // invites a new one (it read the job's own label, "Estimate the error
+    // rate"). The message it sends is unchanged; a sheet not graded, and a
+    // graded one not ready (grey: a blank square, two sets of answers),
+    // keeps its job's label.
+    // WORDING: r5m B5
+    gradedFinish: 'Show the result again',
+    // In gradedFinish's place where the answers changed since that first
+    // result (the page copy's graded changed_since_first): the press then
+    // gives the withdrawn card, "This result is out of date ... so this
+    // result does not count", not the result again (r5-m B5, after review).
+    // WORDING: r5m B5
+    gradedChanged: 'See why the result does not count',
+    // In notYet's place on a sheet that already gave its result while a
+    // square has no answer (one blanked elsewhere after the grading): its
+    // answers are locked here (r5-k K3), so notYet would ask for an answer
+    // the panel no longer takes; this says what is missing and what a new
+    // result needs, as the graded notice says of a second opinion.
+    // WORDING: r5k K3
+    gradedBlank: 'A ' + one + ' has no answer; a new result needs a fresh sheet.',
     // In the Details fold, where the sheet has a blind switch (C/sheet-3).
     // WORDING: r4h S1 C/sheet-3
     codeLine: 'While you label, this panel is not sent a ' + one + '\'s number, place or order.',
@@ -609,21 +683,41 @@ OE.ruleExamples = (data) => {
   return { present: ex.present, absent: ex.absent, year: ex.year };
 };
 /* The pictures' captions, and the line in the Details fold that says
-   where they come from (r4-k K9). */
+   where they come from (r4-k K9). r5-l L2 (the owner, 19 Nov 2026: the
+   instructions are general): each caption says what Present or Absent means
+   in general words, never "under this rule" of one kind of map; one small
+   line under the pictures says where they come from (OE.EXAMPLES_SOURCE, the
+   only words of the sheet's own that name kelp: the pictures' source, never
+   the question asked). The Check card's words, word for word. r5-m B1: each
+   says what the map is meant to find, as the app's rule does (r5-l said
+   "what the map shows", read as the map's own answer, which a blind sheet
+   hides). */
+// WORDING: r5m B1
+// WORDING: r5l L2
 // WORDING: r4k K9
-OE.EXAMPLE_PRESENT = 'Present under this rule';
+OE.EXAMPLE_PRESENT = 'Present: what the map is meant to find covers more than half of the square on a clear date.';
+// WORDING: r5m B1
+// WORDING: r5l L2
 // WORDING: r4k K9
-OE.EXAMPLE_ABSENT = 'Absent under this rule';
+OE.EXAMPLE_ABSENT = 'Absent: what the map is meant to find covers half of the square or less on every clear date.';
 // WORDING: r4k K9
 OE.EXAMPLES_NOTE = (year) => 'A public place, not your map. Contains modified Copernicus Sentinel data ' + year + '.';
+// WORDING: r5l L2
+OE.EXAMPLES_SOURCE = 'Example pictures from a kelp canopy map.';
 /* The two pictures side by side, small, each with its caption (also its
    alt text; the caption itself is not read a second time). 120 px wide, as
    the Check card's own pair (check.html .oe-examples), so on that card the
-   editor's pair fits the same figure box. */
-OE.examplePictures = (ex) => OE.el('div', { class: 'row oe-examples', style: 'gap:12px;align-items:flex-start' },
-  [[ex.present, OE.EXAMPLE_PRESENT], [ex.absent, OE.EXAMPLE_ABSENT]].map(([src, caption]) => OE.el('figure', { style: 'margin:0' },
-    OE.el('img', { src, alt: caption, style: 'display:block;width:120px;max-width:100%;height:auto;border:1px solid var(--rule);border-radius:4px' }),
-    OE.el('figcaption', { class: 'small', 'aria-hidden': 'true' }, caption))));
+   editor's pair fits the same figure box; r5-l L2: each figure 120 px wide
+   too, so a caption of a sentence wraps under its picture, not wider. Under
+   the pair, in the same block (class oe-examples-set, as on the Check card),
+   the one small line on where they come from, in grey as on the Check card,
+   4 px under the captions. */
+OE.examplePictures = (ex) => OE.el('div', { class: 'oe-examples-set' },
+  OE.el('div', { class: 'row oe-examples', style: 'gap:12px;align-items:flex-start' },
+    [[ex.present, OE.EXAMPLE_PRESENT], [ex.absent, OE.EXAMPLE_ABSENT]].map(([src, caption]) => OE.el('figure', { style: 'margin:0;width:120px;max-width:100%' },
+      OE.el('img', { src, alt: caption, style: 'display:block;width:120px;max-width:100%;height:auto;border:1px solid var(--rule);border-radius:4px' }),
+      OE.el('figcaption', { class: 'small', 'aria-hidden': 'true' }, caption)))),
+  OE.el('div', { class: 'small muted oe-examples-from', style: 'margin-top:4px' }, OE.EXAMPLES_SOURCE));
 
 /* The pictures' parts, shared by the label editor's pane and a review set's
    window pane (result.html): pure functions of what they are given, so the
@@ -661,6 +755,33 @@ OE.NO_IMAGE = (unit) => 'No satellite image was found for this ' + (unit === 'po
 // WORDING: r5a L2
 OE.NO_IMAGE_PRESS = ' Press Cannot tell.';
 
+/* The question before pictures (r5-k K7, the owner's choice N1 of 18 Nov
+   2026), drawn alike by the label editor's pane and a review set's pane
+   (result.html). Its face: the server's three short lines (its ask,
+   imagery.CONSENT_ASK, one line each between its line breaks: what is sent,
+   to whom, and that nothing goes to Studio or Claude), then "Turn on
+   pictures", then one closed fold, OE.ASK_FOLD, then "Try the public test
+   scene" (each pane draws the two buttons itself). The fold stands where
+   the test scene's grey paragraph stood: it holds the two hosts by name and
+   what each gets (ask_full, imagery.CONSENT_FULL), then the test scene's
+   question (test_ask), word for word, at the small size in the text's
+   colour (on the face they were about 11 lines, then a grey paragraph), so
+   the test scene's button comes after the fold that says what it sends. A
+   fold with nothing to hold is not drawn. */
+// WORDING: r5k K7
+OE.ASK_FOLD = 'What is sent, in full';
+OE.askLines = (answer) => OE.el('div', { class: 'oe-ask-lines' },
+  String((answer && answer.ask) || '').split('\n').filter((line) => line.trim())
+    .map((line, i) => OE.el('div', { class: 'oe-ask-line', style: i ? 'margin-top:4px' : null }, line)));
+OE.askFold = (answer) => {
+  const said = [answer && answer.ask_full, answer && answer.test_ask]
+    .filter((s) => typeof s === 'string' && s.trim());
+  return said.length
+    ? OE.el('details', { class: 'oe-ask-full' }, OE.el('summary', {}, OE.ASK_FOLD),
+      said.map((s) => OE.el('div', { class: 'small', style: 'margin-top:8px' }, s)))
+    : null;
+};
+
 /* A picture the server sent: a data URL and whole-number sizes. */
 OE.goodPicture = (p) => Boolean(p && typeof p.src === 'string' && p.src.startsWith('data:image/')
   && Number.isFinite(Number(p.width)) && Number.isFinite(Number(p.height)));
@@ -668,14 +789,19 @@ OE.goodPicture = (p) => Boolean(p && typeof p.src === 'string' && p.src.startsWi
 /* One picture, the outlined square drawn over it (never into its pixels),
    with its caption ("Context, square outlined", "Context, point outlined"
    by unit, or "Detail", unless caption is given: the owner's ruling 6, no
-   "window" on a face). date and what name it for a screen reader. */
+   "window" on a face). date and what name it for a screen reader. The
+   outline is 2 px of yellow with a 1 px black edge outside and inside it
+   (r5-j B2: the yellow alone was lost on cloud, sand or snow); the edge is
+   a box-shadow, and the box sits 3 px outside the square (it sat 2 px out),
+   so the inner black line lies between the yellow and the square and covers
+   none of the square's own pixels. */
 OE.picture = (p, date, what, caption = null, unit = 'square') => {
   const s = Number(p.scale) || 1;
   const b = p.box && typeof p.box === 'object' ? p.box : null;
   const w = Number(p.width), h = Number(p.height);
   const outline = b && [b.x, b.y, b.w, b.h].every((v) => Number.isFinite(Number(v)))
-    ? OE.el('div', { 'aria-hidden': 'true', style: 'position:absolute;box-sizing:border-box;pointer-events:none;border:2px solid #ffd600;'
-        + 'left:' + (Number(b.x) * s - 2) + 'px;top:' + (Number(b.y) * s - 2) + 'px;width:' + (Number(b.w) * s + 4) + 'px;height:' + (Number(b.h) * s + 4) + 'px' })
+    ? OE.el('div', { 'aria-hidden': 'true', style: 'position:absolute;box-sizing:border-box;pointer-events:none;border:2px solid #ffd600;box-shadow:0 0 0 1px #000,inset 0 0 0 1px #000;'
+        + 'left:' + (Number(b.x) * s - 3) + 'px;top:' + (Number(b.y) * s - 3) + 'px;width:' + (Number(b.w) * s + 6) + 'px;height:' + (Number(b.h) * s + 6) + 'px' })
     : null;
   return OE.el('figure', { style: 'margin:0' },
     OE.el('div', { style: 'position:relative;outline:1px solid var(--rule);border-radius:4px;width:' + w + 'px;height:' + h + 'px' },
@@ -688,9 +814,13 @@ OE.picture = (p, date, what, caption = null, unit = 'square') => {
 
 /* One block per date (a month with no scene says so), the chosen rendering
    only (colour: 'nir' or 'true'), with the switch between near-infrared and
-   true colour, whose press calls choose(kind). strip: the dates in a strip
-   that scrolls sideways and takes the focus itself (a named region, so the
-   keyboard reaches it), else one under another. unit: the unit word the
+   true colour, whose press calls choose(kind). strip: the dates side by
+   side in a named region (the face's and the look-first pane's), else one
+   under another. r5-k K4 (the owner's O8): the strip wraps its dates onto
+   as many rows as it needs, each date at its own size (common.js
+   .face-dates); it scrolled sideways, cut at the panel's edge, and took the
+   focus itself so the keyboard could scroll it, which it no longer needs
+   (no tabindex: a stop that scrolls nothing). unit: the unit word the
    pictures' captions name the outlined window by ('square' or 'point').
    The switch is the joined toggle the sheet's views use, the chosen one
    filled (reader test 2's A/F23), each button keeping its data-focus key;
@@ -711,7 +841,7 @@ OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, he
   return OE.el('div', { class: 'stack', style: 'gap:10px' },
     OE.el('div', {}, colours),
     OE.el('div', strip
-      ? { class: 'face-dates', tabindex: '0', role: 'region', 'aria-label': 'Dates, ' + what }
+      ? { class: 'face-dates', role: 'region', 'aria-label': 'Dates, ' + what }
       : { class: 'stack' }, dates.map((d) => {
       const shown = (Array.isArray(d.pictures) ? d.pictures : []).filter((p) => OE.goodPicture(p) && p.kind === colour);
       const label = String(d.label || d.month || '');
@@ -821,7 +951,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   let lastCheck = Date.now();
   const CHECK_EVERY_MS = 3000;
   // What the last take-in said about windows whose label saved elsewhere won,
-  // carried into the next save's toast so it is not lost under "Saved".
+  // carried into the next save's words ("Saved to ...", beside the counter,
+  // r5-k K5), which clear the counter's line that said it first, so it is
+  // not lost under "Saved".
   let keptNote = '';
   const wrap = OE.el('section', { class: 'card sheet' });
   // Studio's counter: "12/200" in 600 20px, then the word, then what is not saved yet.
@@ -830,8 +962,28 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // "Saved automatically" as plain text beside the counter while nothing
   // waits to be saved (reader test 2's B/sheet-finish-button): no button.
   const savedNote = OE.el('span', { class: 'small muted' }, W.saved);
+  // r5-k K5 (the owner's O11): each status of this sheet's saves sits by what
+  // it is about, no longer in the status line at the page's foot. savedNote,
+  // a polite status: a save that went through ("Saved to ...", counterSay)
+  // in the place of "Saved automatically", shown only while nothing waits
+  // (updateProgress), so it never stands under Save labels or the finish
+  // button, nor beside "1 change not saved yet". countSaid, beside the
+  // counter: why the counter changed, a save made elsewhere taken in ("This
+  // sheet was saved elsewhere; it shows those labels now.", 3g). saveSaid, a
+  // line of its own in the footer under the row of the finish button and
+  // Save labels, at its right end, for what Save labels causes while it is
+  // shown: a save that failed ("Not saved: ...", 3f; Save labels stays shown
+  // then) and its press with nothing waiting ("Every change is saved to
+  // ..."); a change that waits or a save under way empties a line that is no
+  // error (updateProgress). Each is a status in place before its first words
+  // (saveSaid and countSaid empty, drawn but out of the flow: common.js),
+  // polite, or an alert for an error, as the status line's are (footerSay).
+  savedNote.setAttribute('role', 'status');
+  savedNote.setAttribute('aria-live', 'polite');
+  const countSaid = OE.el('span', { class: 'small muted oe-count-said', role: 'status', 'aria-live': 'polite' });
+  const saveSaid = OE.el('div', { class: 'small muted oe-save-said', role: 'status', 'aria-live': 'polite' });
   const progress = OE.el('span', { class: 'row', style: 'gap:6px;align-items:baseline' },
-    counterNum, OE.el('span', {}, 'labelled'), counterNote, savedNote);
+    counterNum, OE.el('span', {}, 'labelled'), counterNote, savedNote, countSaid);
   // A press of Save starts the re-sends after a stale refusal afresh (save()).
   // Shown only while a change waits, a save runs or one failed (updateProgress).
   const saveButton = OE.el('button', { class: 'primary', onclick: () => { staleResends = 0; save(); } }, 'Save labels');
@@ -865,8 +1017,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const previewId = 'oe-pictures-' + Math.random().toString(36).slice(2);
   const preview = OE.el('div', { class: 'stack', id: previewId, 'aria-live': 'polite' });
   // The labelling rule of the page copy (the owner's, or one the user typed
-  // before the draw): shown right above the answers from the first open
-  // (ruleBlock, A/sheet-2), so the pane does not repeat it.
+  // before the draw): shown right above the face from the first open
+  // (ruleBlock, A/sheet-2; the face holds the square's heading, its pictures,
+  // then its answers since r5-k K4), so the pane does not repeat it.
   const pageRule = typeof data.reading_rule === 'string' && data.reading_rule ? data.reading_rule : '';
   // In the pane's place while pictures are off and no pane is open (A/sheet-1);
   // never on a sheet that can show no pictures. At body size and colour
@@ -901,11 +1054,18 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   }, W.streetMap) : null;
   const facePictures = OE.el('div', {});
   if (n) {
+    // r5-k K4 (the owner's O8): the square's pictures come before its
+    // answers: the heading with Previous and Next, then Pictures and Street
+    // map with the pictures pane (or the line in its place while pictures are
+    // off), then what the square shows beside its answer (the map's class on
+    // right or wrong, a two-map sheet's pair) and the answers with Cannot
+    // tell. The answers stood above the pictures, so a square could be
+    // answered before its pictures were looked at.
     faceEl.append(
       OE.el('div', { class: 'face-top' }, faceLive, OE.el('div', { class: 'row', style: 'gap:8px' }, prevButton, nextButton)),
-      faceExtra, faceAnswerArea,
       OE.el('div', { class: 'row', style: 'gap:8px' }, facePicturesButton, faceMapButton),
-      facePictures);
+      facePictures,
+      faceExtra, faceAnswerArea);
   } else {
     faceEl.append(OE.el('div', { class: 'faint' }, W.none));
   }
@@ -938,8 +1098,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   /* What the editor tells Claude (OE.tellClaude, its 'sheet' part): the
      sheet's name and paths and how far it is labelled, k as the counter
      counts it, with how many say Cannot tell; whether every change is saved;
-     once complete, the finish button's words. Never a window, a place, a
-     class, a label or a count of any other answer. */
+     once complete, the finish button's words, as the button says them (r5-m
+     B5: finishLabel, ready then, so W.gradedFinish or W.gradedChanged on a
+     sheet that already gave its result). Never a window, a place, a class, a
+     label or a count of any other answer. */
   function contextText() {
     const unjudged = takesQ ? [...state.labels.values()].filter((v) => v === OE.UNJUDGED).length : 0;
     const left = pending();
@@ -949,8 +1111,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       + (left ? OE.counted(left, 'change') + ' not saved yet' : 'all saved') + '.';
     if (state.stale) text += ' This panel stopped saving: the sheet changed since it opened it.';
     else if (complete() && !left) {
-      text += ' Every window is labelled and saved; its finish button reads "'
-        + (data.finish_label || 'Ask Claude to grade it') + '".';
+      text += ' Every window is labelled and saved; its finish button reads "' + finishLabel(true) + '".';
     }
     return text;
   }
@@ -1019,6 +1180,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      the class line is a third only with the period. */
   // WORDING: r4h S1 S3; r5b J28 (the two-map sheet's)
   function faceInstructionText() {
+    // r5-k K3 (r5-b J06): a sheet that gave its result takes no answer, so nothing under its notice asks for one.
+    if (gaveResult) return '';
+    // r5-m B2: a two-map sheet whose maps' answers were shown takes no answer (locked), so nothing asks for one.
+    if (state.revealed) return '';
     const one = W.one;
     if (twoMap) return 'For each ' + one + ', pick the class you see there; press Cannot tell when you cannot judge it.';
     if (wrongFace) return 'For each ' + one + ', say whether the map is right there (the map\'s class is shown).';
@@ -1031,6 +1196,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     const left = pending();
     counterNum.textContent = count() + '/' + n;
     counterNote.textContent = left ? left + ' change' + (left === 1 ? '' : 's') + ' not saved yet' : '';
+    // r5-k K3: the answers drawn now, locked or not, in place; K2: the
+    // two-map sheet's switch, locked or not. A switch locked again while the
+    // maps' answers show (an answer changed after the result was sent) hides
+    // them again: the editor is drawn again then, once.
+    lockAnswers();
+    if (syncPairLock()) { render(); return; }
     if (state.stale) {
       // Nothing saves any more (r5-b J15): no Save button (before, a greyed
       // button that read "Not saved": a status dressed as a dead button).
@@ -1052,10 +1223,15 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       // WORDING: r5b J15
       savedNote.textContent = left ? OE.counted(left, 'answer') + ' not saved' : 'Not saving';
       counterNote.textContent = '';
+      // r5-k K5: the counter's and the save's own lines go; the line beside
+      // "Reopen the sheet" says what happened.
+      countSaid.textContent = '';
+      saveSaid.textContent = '';
       notice.replaceChildren();
       mixNote.hidden = true;
       staleLine.textContent = state.staleWhy === 'read' ? W.notReadAgain : W.changedElsewhere(left);
       if (!done.contains(reopenButton)) done.replaceChildren(staleLine, reopenButton);
+      fitFoot();
       if (hadFocus && !quietSave) OE.focusIfHere(reopenButton);
       return;
     }
@@ -1073,25 +1249,38 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     saveButton.textContent = state.saving ? 'Saving...' : 'Save labels';
     // Busy while saving: aria-disabled (save() ignores a press then), so the button keeps the focus.
     saveButton.setAttribute('aria-disabled', String(state.saving));
+    // r5-k K5: a change that waits or a save under way empties the save's own line unless it says a failure (Save
+    // labels stays shown with it), so no earlier "Every change is saved to ..." stays under Save labels.
+    if ((left || state.saving) && !saveSaid.classList.contains('error')) saveSaid.textContent = '';
     // Two sets of answers on one sheet (state.mix: the server's word that
     // the estimate would refuse it). The notice says so plainly, with a
     // button that removes the set in the way, each set named by what it
     // holds (answersOf; r5-b J21: "Clear the wrong column" read as "the
     // incorrect one", and did not say which answers go). The server's own
-    // sentence is in the Details fold (mixNote).
+    // sentence is in the Details fold (mixNote). A sheet whose answers are
+    // locked (r5-k K3: one that gave its result, the only one locked here)
+    // keeps the notice and its fold line but offers no Remove button, whose
+    // press would clear a whole set of its answers. r5-m B6: on a sheet that
+    // gave its result the notice only says what the sheet now holds ("so no
+    // result can come from it" read, under the graded notice, as if the
+    // result given did not exist); the graded notice and the footer say that
+    // a new result needs a fresh sheet.
     notice.replaceChildren();
     mixNote.hidden = !state.mix;
     mixNote.textContent = state.mix ? 'The estimate would refuse this sheet: ' + state.mix.problem + '.' : '';
     if (state.mix) {
       const mix = state.mix;
       const kept = mix.column === 'wrong' ? 'reference_class' : 'wrong';
+      // WORDING: r5m B6
       // WORDING: r5b J21
-      notice.append(OE.el('div', {}, OE.el('span', { class: 'error' },
-        'This sheet holds two sets of answers, so no result can come from it. '),
-      mix.column ? OE.el('button', { class: 'small', onclick: () => clearAndOpen(mix.column, face) },
+      notice.append(OE.el('div', {}, OE.el('span', { class: 'error' }, gaveResult
+        ? 'This sheet now holds two sets of answers. '
+        : 'This sheet holds two sets of answers, so no result can come from it. '),
+      mix.column && !locked() ? OE.el('button', { class: 'small', onclick: () => clearAndOpen(mix.column, face) },
         'Remove the ' + answersOf(mix.column) + ', keep the ' + answersOf(kept)) : null));
     }
     updateFinish();
+    fitFoot();
   }
 
   /* The classes a window's list offers, in order: the face's classes; on a
@@ -1105,10 +1294,60 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     return takesQ ? [...options, OE.UNJUDGED] : options;
   }
 
+  /* r5-k K3 (the owner's O19): a sheet that already gave its result
+     (data.graded) takes no answer, and neither does one that says it is not
+     saving (state.stale: a save was refused because the sheet changed under
+     the page; its footer says why and what to do, and an answer given then
+     would only be lost). Locked, every answer control of the face and of the
+     list is aria-disabled with the greyed busy look and keeps the focus
+     (lockAnswers), no press, key or menu sets or clears an answer (blocked,
+     and each control's own guard), and Previous, Next, Pictures, Street map,
+     the list and the finish button work as before. A class being typed when
+     the lock comes keeps its text, read only. It unlocks once neither holds
+     (an editor drawn again from a fresh read starts unlocked). r5-m B2: nor
+     does a two-map sheet once the reviewer has seen what the two maps say
+     (state.revealed, set by the switch's first untick after the finish
+     press), so no answer changes after the maps' answers were shown; it
+     stays locked when the switch is ticked again (the answers were seen).
+     A lock in the view only: an editor drawn again from a fresh read starts
+     unlocked, as above. */
+  const gaveResult = Boolean(data.graded && typeof data.graded === 'object');
+  const locked = () => gaveResult || state.stale || state.revealed;
   /* While a column is cleared, the editor is about to be drawn again from
      the file: no answer is taken (the area is inert and aria-busy
-     meanwhile, busyArea), so none is dropped unsaved. */
-  const blocked = () => state.clearing;
+     meanwhile, busyArea), so none is dropped unsaved; nor while the answers
+     are locked (r5-k K3). */
+  const blocked = () => state.clearing || locked();
+  /* The answer controls as drawn now (the face's answers, its list of more
+     classes, Other class and a typed class with its OK; each list row's
+     answer cell), marked locked or not in place, so nothing is drawn again
+     and a typed class keeps its text: aria-disabled (the busy look of
+     common.js), described by the line that says why (the graded notice; on
+     a two-map sheet whose maps' answers were shown, r5-m B2, the lead's
+     first line, which then always says the answers are locked, the switch
+     unticked (pairShown) or ticked again (pairSeen), and on a sheet with no
+     pictures and no places too (render); or the footer's line beside
+     "Reopen the sheet"), a field read only. Run by
+     updateProgress, so after every render and when the sheet stops saving. */
+  function lockAnswers() {
+    const lock = locked();
+    const why = gaveResult && gradedNote ? gradedNote : state.revealed && pairWhat ? pairWhat : staleLine;
+    const controls = [...faceAnswerArea.querySelectorAll('button, select, input'),
+      ...body.querySelectorAll('td:last-child button, td:last-child select, td:last-child input')];
+    for (const c of controls) {
+      if (lock) {
+        c.setAttribute('aria-disabled', 'true');
+        c.setAttribute('aria-describedby', why.id);
+        c.setAttribute('data-oe-locked', '');
+        if (c.tagName === 'INPUT') c.readOnly = true;
+      } else if (c.hasAttribute('data-oe-locked')) {
+        c.removeAttribute('aria-disabled');
+        c.removeAttribute('aria-describedby');
+        c.removeAttribute('data-oe-locked');
+        if (c.tagName === 'INPUT') c.readOnly = false;
+      }
+    }
+  }
   function busyArea(on) {
     area.inert = on;
     if (on) area.setAttribute('aria-busy', 'true'); else area.removeAttribute('aria-busy');
@@ -1117,6 +1356,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   function setLabel(h, value) {
     if (blocked()) return;
     if (state.labels.get(h) === value) return;
+    // r5-k K2: a real change undoes the finish press: a two-map sheet's switch stays locked until a new press
+    // Claude takes (pairLocked), and its line asks for that press again (a message shown to copy is out of date).
+    resultSent = false;
+    resultShown = false;
     state.labels.set(h, value);
     state.dirty.add(h);
     updateProgress();
@@ -1154,6 +1397,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         placeholder: 'class seen', value: current, 'data-focus': 'o:' + h,
       });
       const accept = () => {
+        if (locked()) return;  // r5-k K3: locked, the field and its text stay as they are
         state.other = null;
         const typed = input.value.replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
         if (typed && typed !== OE.UNJUDGED) {
@@ -1163,6 +1407,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       };
       input.addEventListener('keydown', (e) => {
         if (e.isComposing || e.keyCode === 229) return;  // an IME's Enter commits its text, nothing more
+        // r5-k K3: locked, Enter and Escape do nothing, so what was typed is not lost.
+        if (locked()) { if (e.key === 'Enter' || e.key === 'Escape') e.preventDefault(); return; }
         if (e.key === 'Enter') accept();
         if (e.key === 'Escape') { state.other = null; render('s:' + h); }
       });
@@ -1173,7 +1419,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     const select = OE.el('select', {
       'aria-label': W.seenIn(k), 'data-focus': 's:' + h,
       'aria-keyshortcuts': answerKeys(w).map((a) => a.keys[0]).join(' ') || null,
+      // r5-k K3: locked, a press does not open the menu (onKey keeps its keys
+      // from changing it), and a change that still gets through goes back.
+      onmousedown: (e) => { if (locked()) e.preventDefault(); },
       onchange: () => {
+        if (locked()) { select.value = state.labels.get(h) || ''; return; }
         if (select.value === OE.OTHER) { state.other = h; render('o:' + h); return; }
         // Browsing the list with the keyboard changes it too: only a pick moves on.
         const browsing = Boolean(lastSelectKey && lastSelectKey.focus === 's:' + h && lastSelectKey.browse);
@@ -1181,7 +1431,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         setLabel(h, select.value);
         if (select.value && !browsing) advance(h, 's:' + h);
       },
-    }, OE.el('option', { value: '' }, '(class seen)'),
+    },
+    // A row with no answer says so, in the word of the Unlabelled filter and
+    // the counter (r5-j B7: "(class seen)" read like an answer given).
+    // WORDING: r5j B7
+    OE.el('option', { value: '' }, '(not labelled yet)'),
     // Cannot tell in the words of the face's button (r5-d R13: it read
     // "? (cannot tell)"); its value stays OE.UNJUDGED.
     // WORDING: r5d R13
@@ -1322,6 +1576,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     if (t && t.tagName === 'SELECT') {
       lastSelectKey = { focus: t.dataset.focus, browse: BROWSE.has(k) || (k.length === 1 && k !== ' ') };
     }
+    // r5-k K3: locked, no key changes or opens a row's menu (Tab still moves on).
+    if (locked() && t && t.tagName === 'SELECT' && !e.ctrlKey && !e.metaKey
+        && (BROWSE.has(k) || k.length === 1 || k === 'Enter' || k === 'F4')) {
+      e.preventDefault();
+      return;
+    }
     const typing = !t || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable;
     const onGroup = Boolean(t && t.dataset && String(t.dataset.focus || '').startsWith('g:'));
     if (!typing && (k === 'Enter' || k === ' ') && (e.repeat || onGroup)) {
@@ -1362,8 +1622,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.isComposing) return;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
-      // Inside a control that scrolls sideways (the dates strip inline), the
-      // arrow keys scroll it; elsewhere on the face they page.
+      // Inside a control that scrolls sideways, the arrow keys scroll it;
+      // elsewhere on the face they page (r5-k K4: the dates wrap now, so they
+      // no longer scroll sideways and their arrow keys page too). Paging is
+      // not answering: it works on a locked sheet (K3).
       if (scrollsSideways(t)) return;
       e.preventDefault();
       pageBy(k === 'ArrowLeft' ? -1 : 1);
@@ -1393,11 +1655,20 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   /* The instructions (on the face, and in the fold) and the keys, then the
      view shown: the face (renderFace) or the list's rows (renderList). A
      two-map sheet's first line says whether the maps' answers are hidden or
-     shown, by extraLines' own test (r5-b J28). */
+     shown, by extraLines' own test (r5-b J28); once they were shown it
+     says the answers are locked, the switch ticked again or not (r5-m B2:
+     pairSeen when ticked), and no line on the face asks for an answer. A
+     two-map sheet's switch locked again first hides what it showed (r5-k
+     K2, syncPairLock). */
   function render(focusKey) {
-    if (pairWhat) pairWhat.textContent = !state.blind && state.revealed ? pairShown : pairHidden;
+    syncPairLock();
+    if (pairWhat) pairWhat.textContent = !state.revealed ? pairHidden : state.blind ? pairSeen : pairShown;
     faceInstruction.textContent = faceInstructionText();
     faceInstruction.hidden = !faceInstruction.textContent;
+    // r5-m B2 (r5-b J06): the line that asks for a rule before the first
+    // answer goes once the maps' answers were shown (the answers are locked
+    // then, for good in this panel), as on a graded sheet.
+    if (noRuleLine && state.revealed) noRuleLine.hidden = true;
     instruction.textContent = instructionText();
     instruction.hidden = !instruction.textContent;
     hint.textContent = state.view === 'face' ? faceHintText() : listHintText();
@@ -1453,6 +1724,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       const list = OE.el('select', {
         'aria-label': W.moreIn(k), 'data-focus': 'r:' + h,
         onchange: () => {
+          // r5-k K3: locked, a change that gets through goes back to the answer given.
+          if (locked()) { list.value = rest.some((a) => a.value === current) ? current : ''; return; }
           const browsing = faceListKey;
           faceListKey = false;
           if (!list.value) { render('r:' + h); return; }
@@ -1464,9 +1737,17 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       }, OE.el('option', { value: '' }, '(more classes)'), rest.map((a) => OE.el('option', { value: a.value }, a.label)));
       list.addEventListener('keydown', (e) => {
         const key = typeof e.key === 'string' ? e.key : '';
+        // r5-k K3: locked, no key changes or opens the list (Tab still moves on).
+        if (locked() && !e.ctrlKey && !e.metaKey
+            && (BROWSE.has(key) || key.length === 1 || key === 'Enter' || key === 'F4')) {
+          e.preventDefault();
+          return;
+        }
         faceListKey = BROWSE.has(key) || (key.length === 1 && key !== ' ');
       });
       list.addEventListener('pointerdown', () => { faceListKey = false; });
+      // r5-k K3: locked, a press does not open the list.
+      list.addEventListener('mousedown', (e) => { if (locked()) e.preventDefault(); });
       list.value = rest.some((a) => a.value === current) ? current : '';
       group.append(list);
     }
@@ -1477,6 +1758,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
         placeholder: 'class seen', value: own ? current : '', 'data-focus': 'o:' + h,
       });
       const accept = () => {
+        if (locked()) return;  // r5-k K3: locked, the field and its text stay as they are
         state.other = null;
         const typed = input.value.replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
         if (typed && typed !== OE.UNJUDGED) {
@@ -1486,6 +1768,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       };
       input.addEventListener('keydown', (e) => {
         if (e.isComposing || e.keyCode === 229) return;  // an IME's Enter commits its text, nothing more
+        // r5-k K3: locked, Enter and Escape do nothing, so what was typed is not lost.
+        if (locked()) { if (e.key === 'Enter' || e.key === 'Escape') e.preventDefault(); return; }
         if (e.key === 'Enter') { e.preventDefault(); accept(); }
         if (e.key === 'Escape') { e.preventDefault(); state.other = null; render('other:' + h); }
       });
@@ -1495,15 +1779,17 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       // The last cell of the answers' group, as large as every answer, with
       // a dashed border (common.js .oe-other; r5-e H3: before, a small text
       // link on a line of its own under the answers).
+      // r5-k K3: locked, its press opens no field.
       group.append(OE.el('button', {
-        type: 'button', class: 'oe-other', 'data-focus': 'other:' + h, onclick: () => { state.other = h; render('o:' + h); },
+        type: 'button', class: 'oe-other', 'data-focus': 'other:' + h, onclick: () => { if (!locked()) { state.other = h; render('o:' + h); } },
       }, 'Other class...'));
     }
     return parts;
   }
 
-  /* The face for the window it shows (state.at): its heading, what it shows
-     beside its answer, its answers, the pager and its pictures. focusKey,
+  /* The face for the window it shows (state.at): its heading and the pager,
+     its pictures, then what it shows beside its answer and its answers
+     (r5-k K4). focusKey,
      after the user's action: the control (its data-focus key), else the face
      itself ('face'). Without one, a focus lost with a rebuilt control goes to
      the face. Never on load, and only while the panel has the focus
@@ -1565,12 +1851,27 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
 
   /* Previous or Next, and the left and right arrow keys: the window before
      or after the one shown, in the order of the handles; nothing past
-     either end. */
+     either end. The new square's heading is then brought into view
+     (headInView: an arrow key pressed down at its answers); a press of
+     Previous or Next, which sit in that heading's row, moves nothing. */
   function pageBy(step) {
     const at = windows.findIndex((w) => w.handle === state.at);
     const to = at + step;
     if (at < 0 || to < 0 || to >= n) return;
     goTo(windows[to].handle);
+    headInView();
+  }
+
+  /* r5-k K4 (the owner's O8): the pictures stand above the answers and the
+     dates wrap, so the face is taller than the view; after an answer that
+     moves on, or a move by the arrow keys, the new square's heading (and the
+     pictures under it) is brought into view, the least scroll that shows it
+     ('nearest': none while it is in view), so its answers are not reached
+     with its pictures out of view above. Inline the host grows the frame to
+     its content, so the scroll may be the host's page's. */
+  function headInView() {
+    const top = faceEl.querySelector('.face-top');
+    if (top && typeof top.scrollIntoView === 'function') top.scrollIntoView({ block: 'nearest' });
   }
 
   /* An answer pressed on the face: a press on the answer given clears it and
@@ -1586,8 +1887,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
 
   /* After an answer on the face: the next window not yet labelled, in the
      order of the handles and wrapping round, shows, and the focus stays on
-     the face; with every window labelled the face stays where it is, and
-     the finish button takes the focus once it is ready. */
+     the face, its heading brought into view (headInView, r5-k K4); with
+     every window labelled the face stays where it is, and the finish button
+     takes the focus once it is ready. */
   function faceAdvance() {
     state.finishFrom = null;
     const next = nextUnanswered(state.at);
@@ -1598,6 +1900,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       return;
     }
     goTo(next.handle, 'face');
+    headInView();
   }
 
   /* One window or List, at the user's press, or a list row's number (at),
@@ -1759,7 +2062,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      list: reveal), an answer that is the question is brought into view
      (questionInView, r5-f F01), also when it was kept from an earlier press;
      a pane that follows an answer, Previous or Next leaves the scroll as it
-     is. */
+     is (r5-k K4: an answer that moves on and an arrow key bring the new
+     square's heading into view first, headInView; a press of Next or
+     Previous, in that heading's row, moves nothing). */
   async function loadPictures(h, reveal = false) {
     state.shown = h;
     state.test = null;
@@ -1790,7 +2095,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
 
   /* The question that needs a yes, brought into view (r5-f F01) after a
      press of Pictures (Show in the list), and of One square while its pane
-     is open with the question kept (setView). It is drawn under the answers;
+     is open with the question kept (setView). It was drawn under the answers
+     (above them on the face since r5-k K4; under the table in the list);
      on a panel of fixed height (full screen, a host that caps the inline
      height) only its first line showed above the pinned footer and "Turn on
      pictures" was out of view, so a square could be answered with nothing
@@ -1799,7 +2105,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      a pane taller than the panel shows its top, and then the least that
      brings the row of "Turn on pictures" (data-ask-yes) into view above the
      footer. A pane already in view does not move; a pane that follows an
-     answer, Previous or Next scrolls nothing. The focus stays where it is:
+     answer, Previous or Next scrolls nothing (r5-k K4: the answer that moves
+     on, or an arrow key, has already brought the new square's heading into
+     view, headInView; a press of Next or Previous, in that heading's row,
+     moves nothing). The focus stays where it is:
      the pane is a polite live region, so a screen reader hears the
      question. No word changes. The scroll waits two frames for the layout
      to settle (after the check): run at once, it could land while the face
@@ -1906,12 +2215,15 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }
     preview.style.minHeight = '';
     if (answer.needs_consent) {
-      preview.replaceChildren(head, OE.el('div', { class: 'card summary stack' },
-        OE.el('div', {}, answer.ask),
+      // r5-k K7: the question's three short lines (OE.askLines), "Turn on pictures", the closed fold "What is
+      // sent, in full" with the two hosts and the test scene's question (OE.askFold), then the test scene's button:
+      // the press comes after the fold that says what it sends.
+      preview.replaceChildren(head, OE.el('div', { class: 'card summary stack oe-ask' },
+        OE.askLines(answer),
         // The row questionInView keeps in view on a short panel (r5-f F01).
         OE.el('div', { class: 'row', style: 'justify-content:flex-end', 'data-ask-yes': '' },
           OE.el('button', { onclick: () => setPictures(true) }, 'Turn on pictures')),
-        answer.test_ask ? OE.el('div', { class: 'small faint' }, answer.test_ask) : null,
+        OE.askFold(answer),
         answer.test_ask ? OE.el('div', { class: 'row', style: 'justify-content:flex-end' },
           OE.el('button', { class: 'link', onclick: () => loadTest() }, 'Try the public test scene')) : null));
       return;
@@ -1948,8 +2260,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     // by cloud is not pressed Absent by the rule's own words). Both rules
     // come from imagery.rule_for, so this is the fallback for a page copy
     // whose rule could not be read; the rule block says the cloud line
-    // otherwise. Its scope and the kelp-only line are not repeated here: the
-    // Check card and the result show them. That no rule was set is said on
+    // otherwise. Its scope is not repeated here: the Check card and the
+    // result show it. That no rule was set is said on
     // the face, in the rule's place, from the first open (noRuleLine, r5-b
     // J26), and no longer here; a rule these pictures bring takes that
     // line's place.
@@ -1984,10 +2296,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   }
 
   /* One block per date, the chosen rendering only, with the colour switch
-     (OE.datesBlock). On the face the dates are a strip inline and a grid in
-     full screen (.face-dates in common.js), and the strip takes the focus
-     itself, so the keyboard reaches it and its arrow keys scroll it
-     (scrollsSideways); in the list, one under another. Each date is headed
+     (OE.datesBlock). On the face the dates sit side by side inline, wrapped
+     onto as many rows as they need (r5-k K4: no longer a strip that scrolls
+     sideways), and are a grid in full screen (.face-dates in common.js); in
+     the list, one under another. Each date is headed
      by its day alone (dateHead): its scene cloud is in the pane's fold
      (cloudFold, r4-m M8). */
   function datesBlock(dates, what) {
@@ -2037,8 +2349,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     return at > 0 ? [text.slice(0, at).trim(), text.slice(at).trim()] : [text, null];
   }
 
-  /* The public test scene: the user's press, after the card says what it
-     sends. Shown in the pane in place of the window; nothing is labelled. */
+  /* The public test scene: the user's press, on the button after the fold
+     that holds its question, what it sends (r5-k K7). Shown in the pane in
+     place of the window; nothing is labelled. */
   async function loadTest() {
     const from = state.shown;
     state.test = { from, answer: { loading: true } };
@@ -2137,6 +2450,53 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     OE.toast(text, isError);
   }
 
+  /* r5-k K5: a status of this sheet's saves, in its own place in the footer
+     (slot: saveSaid under the row of the finish button and Save labels, or
+     countSaid beside the counter), in its words, no longer in the status
+     line at the page's foot: a plain message polite (role status), an error
+     at once (role alert, assertive, in the error colour), as OE.toast says
+     them. Once this editor is off the page (another sheet opened in its
+     place), it has no footer to show it: the status line says it, as before. */
+  function footerSay(slot, text, isError = false) {
+    if (!wrap.isConnected) { OE.toast(text, isError); return; }
+    slot.setAttribute('role', isError ? 'alert' : 'status');
+    slot.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+    slot.classList.toggle('error', isError);
+    slot.classList.toggle('muted', !isError);
+    slot.textContent = text;
+    fitFoot();
+  }
+
+  /* r5-k K5: a save that went through, said beside the counter in the place
+     of "Saved automatically" (savedNote, a polite status shown only while
+     nothing waits: updateProgress), never under Save labels or the finish
+     button, and "Saved automatically" is not said a second time; the save's
+     own line under Save labels is emptied, so an earlier "Not saved: ..."
+     goes. Once this editor is off the page, the status line says it, as
+     before. */
+  function counterSay(text) {
+    if (!wrap.isConnected) { OE.toast(text); return; }
+    saveSaid.textContent = '';
+    savedNote.textContent = text;
+    fitFoot();
+  }
+
+  /* r5-k K5 (r5-j B8, WCAG 2.4.11): the sticky footer's height, kept on the
+     sheet as --oe-foot, from which each of its controls takes its scroll
+     margin (common.js: that height and 8 px, as bringQuestionUp keeps the
+     pictures' question), so a control the focus brings into view ends above
+     the footer whatever the footer holds now (its row wrapped on a narrow
+     panel, Save labels, a line of the saves, the finish press's slot). Run
+     where the footer changes before a focus move in the same task
+     (updateProgress, footerSay, counterSay, the finish press) and by a
+     ResizeObserver for a width that changes (below); a footer not drawn
+     (offsetHeight 0: the editor not on the page yet) changes nothing. */
+  function fitFoot() {
+    const foot = wrap.querySelector(':scope > .sheet-footer');
+    const tall = foot ? foot.offsetHeight : 0;
+    if (tall) wrap.style.setProperty('--oe-foot', tall + 'px');
+  }
+
   /* "Square 4", "Squares 4 and 9", "Squares 2, 4 and 9" (the sheet's unit
      word, W.places): windows by their place. */
   function windowsWord(places) {
@@ -2219,6 +2579,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       }
       state.base.set(h, there);
     }
+    // r5-k K2: an answer changed elsewhere and taken in undoes the finish press too (setLabel's rule), before the
+    // redraw below locks a two-map sheet's switch again.
+    if (differed && !mine) {
+      resultSent = false;
+      resultShown = false;
+    }
     if (typeof fresh.version === 'string') data.version = fresh.version;
     state.mix = fresh.mix_problem
       ? { problem: String(fresh.mix_problem), column: String(fresh.clear_column || '') } : null;
@@ -2239,8 +2605,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       try { again.setSelectionRange(draft.start, draft.end); } catch (_) { /* a field with no caret */ }
     }
     if (differed) {
-      OE.toast(mine ? W.rereadMine(data.name)
-        : 'This sheet was saved elsewhere; it shows those labels now.' + (keptNote ? ' ' + keptNote : ''));
+      // r5-k K5: after this page's own save, beside the counter as the save's
+      // own words ("Saved to ...", counterSay); a save made elsewhere, beside
+      // the counter it changed (3g: the count that dropped had its reason far
+      // below it).
+      if (mine) counterSay(W.rereadMine(data.name));
+      else footerSay(countSaid, 'This sheet was saved elsewhere; it shows those labels now.' + (keptNote ? ' ' + keptNote : ''));
       changes += 1;
     }
     tellClaude();
@@ -2262,7 +2632,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     if (!fresh || state.stale) { updateProgress(); return; }
     if (!pending()) { keptNote = ''; updateProgress(); return; }
     if (staleResends >= STALE_RESENDS) {
-      OE.toast('Not saved: the sheet keeps changing elsewhere. ' + tryAgain(), true);
+      // r5-k K5: beside Save labels, in the footer (3f: it was under the card).
+      footerSay(saveSaid, 'Not saved: the sheet keeps changing elsewhere. ' + tryAgain(), true);
       updateProgress();
       return;
     }
@@ -2278,7 +2649,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      shown, or it stopped saving; a check already under way is waited for.
      True when the page now shows a change, or when the version moved on and
      the sheet could not be read again (the page has not seen how it
-     changed: a finish press then sends nothing). */
+     changed: a finish press then sends nothing). r5-k K3: the counts also
+     say whether the sheet gave its result (graded); one that did since this
+     editor was drawn (Claude graded it after the finish press, the version
+     unchanged) is read and drawn again (replaceEditor), its answers locked,
+     once nothing here waits to be saved (else it is taken in, and the next
+     check, after the save, draws it again). */
   let checking = null;
   function check({ force = false } = {}) {
     if (checking) return checking;
@@ -2293,11 +2669,16 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       } catch (_) {
         return false;  // no word from the server: nothing to take in
       }
-      if (!got || typeof got.version !== 'string' || got.version === data.version) return false;
+      const graded = Boolean(got && got.graded && typeof got.graded === 'object') && !gaveResult;
+      if (!got || typeof got.version !== 'string' || (got.version === data.version && !graded)) return false;
       if (state.saving || state.syncing || state.stale) return false;
       state.syncing = true;
       try {
         const fresh = await readFresh();
+        if (graded && fresh && fresh.graded && typeof fresh.graded === 'object' && !pending() && wrap.isConnected) {
+          replaceEditor(fresh);
+          return true;
+        }
         const changed = fresh ? adopt(fresh) : true;
         if (!pending()) keptNote = '';  // said by adopt's toast; no save to carry it
         return changed;
@@ -2357,9 +2738,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      sheet then cannot be read says the answers were removed, and the page
      offers to reopen the sheet (markStale: this copy is no longer the
      file's). The toasts name the set by what it holds (answersOf), never by
-     its column. */
+     its column. Nothing is cleared while the answers are locked (r5-k K3: a
+     sheet that gave its result, or one not saving). */
   async function clearAndOpen(column, to) {
-    if (state.clearing || state.stale) return;
+    if (state.clearing || locked()) return;
     state.clearing = true;
     busyArea(true);
     let stale = false;
@@ -2417,8 +2799,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
 
   /* The two-map sheet's blind switch, at the reviewer's press: unticked, it
      asks the server for the two maps' classes once, and shows them; ticked,
-     it hides them. */
+     it hides them. Locked (r5-k K2: pairLocked), it stays ticked and asks
+     nothing. */
   async function setBlind(on) {
+    if (!on && pairLocked()) { blind.checked = true; state.blind = true; return; }
     if (on || state.revealed) { state.blind = on; render(); return; }
     if (state.revealing) return;
     state.revealing = true;
@@ -2484,12 +2868,14 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }
     if (state.syncing) { schedule(); return; }
     if (!pending()) {
-      if (!auto && !quiet) OE.toast('Every change is saved to ' + data.name + '.');
+      // r5-k K5: a press of Save labels with nothing waiting is said under Save labels (footerSay).
+      if (!auto && !quiet) footerSay(saveSaid, 'Every change is saved to ' + data.name + '.');
       return;
     }
     let failed = false;
     let stale = false;
     let rederived = false;
+    let savedWords = '';  // r5-k K5: "Saved to ...", said beside the counter once updateProgress has shown its place
     const sent = new Map([...state.dirty].map((h) => [h, state.labels.get(h) || '']));
     firstUnsaved = 0;
     state.saving = true;
@@ -2518,7 +2904,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       staleResends = 0;
       state.saveFailed = false;
       if (!quiet) {
-        OE.toast('Saved to ' + data.name + '.' + (keptNote ? ' ' + keptNote : ''));
+        // r5-k K5: beside the counter, in the place of "Saved automatically"
+        // (counterSay, in finally: words written while that place is hidden,
+        // as it is during the save, may go unsaid); the counter's line about
+        // a save made elsewhere goes (its note on the squares kept rides on
+        // these words).
+        savedWords = 'Saved to ' + data.name + '.' + (keptNote ? ' ' + keptNote : '');
+        countSaid.textContent = '';
         keptNote = '';
         if (onSaved) onSaved();
       }
@@ -2539,11 +2931,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
             + '; the changes not saved here are not kept.', true);
         }
       } else if (!quiet) {
-        OE.toast('Not saved' + (wrap.isConnected ? '' : ' to ' + data.name) + ': ' + said + '. ' + tryAgain(), true);
+        footerSay(saveSaid, 'Not saved' + (wrap.isConnected ? '' : ' to ' + data.name) + ': ' + said + '. ' + tryAgain(), true);
       }
     } finally {
       state.saving = false;
       updateProgress();
+      if (savedWords) counterSay(savedWords);
       quietSave = false;
       // Answers changed during the save go in the next one; a failed save waits
       // for the next change or a press of Save rather than retrying on its own.
@@ -2568,9 +2961,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      has no answer the same place says why the button is grey (W.notYet, r5-f
      F02; r5-e H1 took the lead's sentence on it away, and a grey button and
      a counter say it in no words): not while the sheet is stale (its own
-     footer words), not while only a save is pending, and never on a sheet
-     that already gave its result (its notice says not to change an answer
-     now, r5-b J06, so nothing there asks for one). A
+     footer words), not while only a save is pending; on a sheet that already
+     gave its result, whose answers are locked (r5-k K3), it says instead
+     that a square has no answer and a new result needs a fresh sheet
+     (W.gradedBlank: a square blanked elsewhere after the grading), never to
+     answer one (r5-b J06: nothing under its notice asks for one). A
      server without the finish fields gets the old words. The button is made
      once and kept in place, so it keeps the focus when the progress is drawn
      again; once ready after the last answer it takes the focus, if the user
@@ -2588,13 +2983,15 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // WORDING: r5d R06
   const everyDoneLine = OE.el('span', { class: 'small' },
     data.graded && typeof data.graded === 'object' ? W.everyDoneGraded : W.everyDone);
-  // In its place while a window has no answer yet (r5-f F02); a sheet
-  // already graded has none (asksForAnswers). The finish button names it
-  // as its description meanwhile (updateFinish), so a screen reader that
-  // reaches the grey button hears why.
+  // In its place while a window has no answer yet (r5-f F02); on a sheet
+  // already graded, whose answers are locked (r5-k K3), what is missing and
+  // what a new result needs (W.gradedBlank), never to answer it. The finish
+  // button names it as its description meanwhile (updateFinish), so a
+  // screen reader that reaches the grey button hears why.
   // WORDING: r5f F02
-  const notYetLine = OE.el('span', { class: 'small', id: 'oe-not-yet-' + Math.random().toString(36).slice(2) }, W.notYet);
-  const asksForAnswers = !(data.graded && typeof data.graded === 'object');
+  // WORDING: r5k K3 (gradedBlank on a graded sheet)
+  const notYetLine = OE.el('span', { class: 'small', id: 'oe-not-yet-' + Math.random().toString(36).slice(2) },
+    gaveResult ? W.gradedBlank : W.notYet);
   /* Whether the sheet can be sent for grading now: complete and saved. */
   const ready = () => complete() && !pending() && !state.stale;
   async function finishPress(message) {
@@ -2612,7 +3009,27 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       finishButton.setAttribute('aria-disabled', String(!ready()));
     }
     if (changed || state.stale || pending() || !complete()) return;
-    OE.sendJob(app, message, finishType);
+    // r5-k K2: the result was asked for once Claude took the message; a
+    // two-map sheet's switch may then show what the two maps say. A message
+    // the host did not take is shown to copy (resultShown): the switch stays
+    // locked, its line saying when it opens then (W.pairLockedNotSent).
+    // updateProgress also fits the scroll margin to the footer, which now
+    // holds the press's line (r5-k K5, fitFoot).
+    const sent = await OE.sendJob(app, message, finishType);
+    if (sent) resultSent = true; else resultShown = true;
+    updateProgress();
+  }
+  /* The finish button's words (r5-m B5), ok: whether the sheet is ready
+     now. The job's label (the server's finish_label); on a sheet that
+     already gave its result, while it is ready, what its press shows: the
+     result again (W.gradedFinish), or, its answers changed since that
+     result (the page copy's graded changed_since_first), the withdrawn card
+     (W.gradedChanged). A graded sheet that is not ready (a blank square,
+     two sets of answers: nothing in the panel can make it ready, r5-k K3)
+     keeps the job's label, grey, beside the line that says what is missing. */
+  function finishLabel(ok) {
+    if (!gaveResult || !ok) return data.finish_label || 'Ask Claude to grade it';
+    return data.graded.changed_since_first === true ? W.gradedChanged : W.gradedFinish;
   }
   /* The finish button, made once (the server's message, sheet.finish_message;
      an older page copy without one gets the panel's own words). */
@@ -2624,6 +3041,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       // WORDING: squares
       const message = data.finish_message || ('I have labelled every ' + W.one + ' of the sheet ' + data.name
         + '. Estimate the map error from it: labels_path ' + data.path + design + '.');
+      // The job's label (the server's finish_label); updateFinish gives a
+      // sheet that already gave its result its own words once it is ready
+      // (r5-m B5, finishLabel).
       finishButton = OE.el('button', {
         class: 'primary',
         'aria-disabled': 'true',
@@ -2638,7 +3058,9 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      place, so it keeps the focus); once ready after the last answer, it
      takes the focus if the user has not moved it since. While a window has
      no answer, the line in that place says to answer every one first (r5-f
-     F02): counted as the counter counts (count() < n), so it is not said on
+     F02; on a sheet that already gave its result, that one has no answer
+     and a new result needs a fresh sheet: r5-k K3, W.gradedBlank): counted
+     as the counter counts (count() < n), so it is not said on
      a sheet with no window, nor on one whose every window is answered but
      which holds two sets of answers (its notice says what is in the way).
      While it is said, the button's aria-describedby names it; else the
@@ -2646,11 +3068,14 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   function updateFinish() {
     const button = finishControl();
     const ok = ready();
+    // WORDING: r5m B5 (the button's words as the sheet stands, finishLabel; the node stays, so it keeps the focus)
+    const label = finishLabel(ok);
+    if (button.textContent !== label) button.textContent = label;
     if (!finishing) button.setAttribute('aria-disabled', String(!ok));
     if (!done.contains(button)) done.replaceChildren(button);
     if (ok && !done.contains(everyDoneLine)) done.prepend(everyDoneLine);
     else if (!ok && done.contains(everyDoneLine)) everyDoneLine.remove();
-    const waits = asksForAnswers && !ok && !state.stale && count() < n;
+    const waits = !ok && !state.stale && count() < n;
     if (waits && !done.contains(notYetLine)) done.prepend(notYetLine);
     else if (!waits && done.contains(notYetLine)) notYetLine.remove();
     if (waits) button.setAttribute('aria-describedby', notYetLine.id);
@@ -2671,6 +3096,53 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     type: 'checkbox', id: 'oe-blind', checked: true,
     onchange: () => setBlind(blind.checked),
   }) : null;
+  /* r5-k K2 (the owner's O2): the switch stays locked until every square is
+     answered and saved and the sheet's result was asked for: the finish
+     press whose message Claude took (resultSent), or a sheet that already
+     gave its result. Locked, it is ticked, aria-disabled with the greyed
+     busy look (common.js), and described by the line under its words
+     (W.pairLocked), which shows only then; a press or a key on it (or on
+     its label) changes nothing and asks the server for nothing. Unlocked, it
+     works as before. A real change of an answer after the press, made here
+     (setLabel) or taken in from elsewhere (adopt), undoes the press: the
+     switch is locked again, and hides what it showed (syncPairLock), until
+     a new press Claude takes. A press whose message the host did not take
+     shows it to copy (resultShown): the switch stays locked, its line then
+     W.pairLockedNotSent (a sheet that gave its result opened again, or drawn
+     again once Claude graded it, check, is unlocked). Blind labelling is
+     otherwise as it was. */
+  let resultSent = false;
+  let resultShown = false;
+  const pairLocked = () => !(ready() && (resultSent || gaveResult));
+  if (blind) blind.addEventListener('click', (e) => { if (pairLocked()) e.preventDefault(); });
+  // Under the switch's words (r5-k K2, after review: beside them it wrapped to
+  // a loose line 16 px below at 780 and 380 px): a row of its own (flex-basis
+  // 100%), 4 px under the label (the row's gap, switchRow), its words from
+  // the label's words' left edge (31 px: the box's 16 px, its 4 and 3 px
+  // margins and the label's 8 px gap). Outside the label, so it keeps the
+  // body's colour and the label's text stays the switch's words.
+  const pairLockLine = blind ? OE.el('span', {
+    class: 'small', id: 'oe-pair-lock-' + Math.random().toString(36).slice(2), style: 'flex-basis:100%;padding-left:31px',
+  }, W.pairLocked) : null;
+  /* The switch as the counts stand (run by render and updateProgress): its
+     lock, look and line (W.pairLockedNotSent once a press's message was
+     shown to copy, every answer still in and saved); true when it was
+     unticked and is ticked again here, so the caller draws the editor again
+     with the maps' answers hidden. */
+  function syncPairLock() {
+    if (!blind) return false;
+    const lock = pairLocked();
+    blind.setAttribute('aria-disabled', String(lock));
+    if (lock) blind.setAttribute('aria-describedby', pairLockLine.id); else blind.removeAttribute('aria-describedby');
+    const said = lock && ready() && resultShown && !resultSent ? W.pairLockedNotSent : W.pairLocked;
+    if (pairLockLine.textContent !== said) pairLockLine.textContent = said;
+    pairLockLine.hidden = !lock;
+    switchLabel.classList.toggle('oe-locked', lock);
+    if (!lock || state.blind) return false;
+    blind.checked = true;
+    state.blind = true;
+    return true;
+  }
 
   // One window or the list, a joined toggle at Studio's full size.
   const viewToggle = OE.toggle([['face', W.oneView], ['list', 'List']], state.view,
@@ -2684,14 +3156,19 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
 
   // What the two-map sheet's blind switch hides: what the two maps say for a
   // square; never a stratum, which no page is sent (the last round's F11).
-  // In plain words, with why it stays ticked (r5-b J28; whether it may be
-  // unticked before the last answer is the owner's to rule).
+  // In plain words (r5-b J28; the owner ruled on 18 Nov 2026 that it is
+  // locked until every answer is in and sent, r5-k K2). r5-m B2: its
+  // "(keep it on while you answer)" asked nothing once the lock came, and
+  // the answers lock once the maps' answers are shown, so it is gone.
+  // WORDING: r5m B2
   // WORDING: r4i F11; r5b J28
-  const blindText = 'Hide what the two maps say (keep it on while you answer)';
+  const blindText = 'Hide what the two maps say';
   // The row of switches, only where one exists: the two-map sheet's blind
-  // switch (the owner's O1 took the class sheet's switches away).
-  const switchRow = blind ? OE.el('div', { class: 'row', style: 'gap:16px' },
-    OE.el('label', { class: 'row', style: 'gap:8px', for: 'oe-blind' }, blind, blindText)) : null;
+  // switch (the owner's O1 took the class sheet's switches away), and under
+  // its words, while it is locked, the line that says when it opens (r5-k
+  // K2): rows 4 px apart, columns 16 px.
+  const switchLabel = blind ? OE.el('label', { class: 'row', style: 'gap:8px', for: 'oe-blind' }, blind, blindText) : null;
+  const switchRow = blind ? OE.el('div', { class: 'row', style: 'gap:4px 16px' }, switchLabel, pairLockLine) : null;
   // In the Details fold (the last round's S1): what never reaches this panel.
   // The blind line of a sheet labelled with the class seen (a seen sheet's,
   // and a class map's, which has no switch: the owner's O1), the
@@ -2707,11 +3184,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // "West part of this map (1 of 2)"), when the server names one.
   const partLine = data.part && typeof data.part === 'object' && typeof data.part.heading === 'string'
     && data.part.heading ? OE.el('div', { class: 'small' }, data.part.heading) : null;
-  // A sheet already graded: its answers should not change now (the owner's
-  // extra 2), at body size (r5-b J06: it was the smallest text over the
-  // largest invitation to answer).
+  // A sheet already graded: its answers are locked (the owner's extra 2;
+  // r5-k K3, which locks them), at body size (r5-b J06: it was the smallest
+  // text over the largest invitation to answer).
   const gradedNote = data.graded && typeof data.graded === 'object'
     ? OE.el('div', { class: 'card summary', role: 'note' }, W.graded) : null;
+  // r5-k K3: it says the answers are locked, and is their description (lockAnswers).
+  if (gradedNote) gradedNote.id = 'oe-graded-' + Math.random().toString(36).slice(2);
   // Why, in the Details fold (r5-e H5: the notice's middle clause, a reason
   // the user does not need in order to stop).
   const gradedWhy = gradedNote ? OE.el('div', { class: 'small' }, W.gradedWhy) : null;
@@ -2737,12 +3216,20 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   if (twoMap && leadWords.what) leadWords.what = leadWords.what.replace(W.hiddenOne, W.hiddenPair);
   const leadLines = typeof OE.lead === 'function' ? OE.lead(leadWords) : null;
   // While the reviewer has unticked the switch and the face shows what the
-  // two maps say, the first line says they are shown (W.shownPair), and the
-  // hidden form comes back with the switch (render; r5-b J28). Only the
-  // hidden sentence is swapped (whatBarePair has none, so it stays).
+  // two maps say, the first line says they are shown (W.shownPair; r5-b
+  // J28). r5-m B2: the answers lock then, and the hidden form no longer
+  // comes back with the switch: ticked again the line says the answers were
+  // shown and are locked (W.seenPair; render). Only the hidden clause is
+  // swapped; whatBarePair has none, so its tail (W.barePairTail) is.
   const pairWhat = twoMap && leadLines ? leadLines.querySelector('p.what') : null;
+  // r5-m B2: once the maps' answers were shown it says the answers are
+  // locked (pairShown, pairSeen), and is their description (lockAnswers).
+  if (pairWhat) pairWhat.id = 'oe-pair-what-' + Math.random().toString(36).slice(2);
   const pairHidden = pairWhat ? pairWhat.textContent : '';
-  const pairShown = pairHidden.replace(W.hiddenPair, W.shownPair);
+  const pairSwap = (s) => (pairHidden.includes(W.hiddenPair)
+    ? pairHidden.replace(W.hiddenPair, s) : pairHidden.replace(W.barePairTail, s));
+  const pairShown = pairSwap(W.shownPair);
+  const pairSeen = pairSwap(W.seenPair);
   // Two example pictures under the owner's rule (r4-k K9), each captioned,
   // and the line on where they come from in the Details fold; only with the
   // server's examples (the owner's rule, both pictures on disk), else none.
@@ -2757,10 +3244,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // the example pictures. They sit in one box with a border (r5-e H2: no
   // small line hangs loose under the rule; before, the scope was a line of
   // the block). Who set the rule and when (data.rule_scope) is history, in
-  // the Details fold (scopeNote), and so is, right after it, that the
-  // owner's rule is for kelp canopy maps only (data.rule_limit, the
-  // server's; the last round's F9), where no cloud line takes its place
-  // (limitNote: r5-e H2, after review); that no date is marked clear
+  // the Details fold (scopeNote; since r5-l L1 no line after it says which
+  // maps the rule is for); that no date is marked clear
   // (A/sheet-3) is in the fold too, only on a sheet that can show pictures:
   // one that cannot shows no date to mark. The rule itself is at body size,
   // "Rule: " in bold (r5-b J14: the one text needed at every answer was the
@@ -2775,11 +3260,6 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // The rule's scope, in the Details fold after the class line with no
   // period (r5-e H2; before, a small faint line in the rule block).
   const scopeNote = typeof data.rule_scope === 'string' && data.rule_scope ? OE.el('div', { class: 'small' }, data.rule_scope) : null;
-  // That any other map needs its own rule (data.rule_limit): right after the
-  // scope, which names the maps the rule is for, and never without it (r5-e
-  // H2, after review: alone in the rule's box it read as "any map but this
-  // one"); as before, only where the face has no cloud line.
-  const limitNote = pageRule && scopeNote && !cloudOnFace && typeof data.rule_limit === 'string' && data.rule_limit ? OE.el('div', { class: 'small' }, data.rule_limit) : null;
   // No rule on the page copy, on a sheet that can show pictures (r5-b J26):
   // one line in the rule's place, at body size, from the first open (before,
   // the pictures pane said it, small and red, only once pictures were on). It
@@ -2800,8 +3280,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const classNoPeriod = face === 'class' && !period ? OE.el('div', { class: 'small' }, W.classWhat(null)) : null;
   // ONE closed fold under the answers (the last round's S1): the sheet's file
   // name (it may be long: it wraps anywhere), the class face's line with no
-  // period known (r5-d R08), who set the rule and when (scopeNote, r5-e H2)
-  // and, after it, that any other map needs its own rule (limitNote),
+  // period known (r5-d R08), who set the rule and when (scopeNote, r5-e H2),
   // why a graded sheet's answers must not change (gradedWhy, r5-e H5), the
   // instruction's rest and what
   // Cannot tell does, the keys, what never reaches this panel, the Street map
@@ -2813,7 +3292,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const foldLabel = 'Details';
   const foldParts = [
     OE.el('div', { class: 'mono', style: 'overflow-wrap:anywhere' }, data.name),
-    classNoPeriod, scopeNote, limitNote, gradedWhy,
+    classNoPeriod, scopeNote, gradedWhy,
     instruction, hint, ...foldLines, clearNote, examplesNote, readingNote, mixNote,
   ].filter(Boolean);
   const details = typeof OE.fold === 'function' ? OE.fold(foldLabel, ...foldParts)
@@ -2841,18 +3320,46 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       noRuleLine,
       area,
       details),
-    OE.el('div', { class: 'sheet-footer spread' }, progress, OE.el('div', { class: 'row' }, done, saveButton), finishType));
+    // r5-k K5: the save's own line (saveSaid) under the row with Save labels.
+    OE.el('div', { class: 'sheet-footer spread' }, progress, OE.el('div', { class: 'row' }, done, saveButton), saveSaid,
+      finishType));
   // One listener for the keys of every row; a pointer on a list is a pick, not browsing.
   body.addEventListener('keydown', onKey);
   body.addEventListener('pointerdown', () => { lastSelectKey = null; });
-  // The face's keys, and a click inside it, which gives it the focus.
+  // The face's keys, and a click inside it, which gives it the focus. A fold's summary keeps it (r5-k K7: Enter on
+  // "What is sent, in full" opened the fold and sent the focus to the face; the face's keys still reach it there).
   faceEl.addEventListener('keydown', onFaceKey);
   faceEl.addEventListener('click', (e) => {
     const t = e.target;
-    if (t && t.closest && !t.closest('button, select, input, textarea, a, label')) OE.focusIfHere(faceEl);
+    if (t && t.closest && !t.closest('button, select, input, textarea, a, label, summary')) OE.focusIfHere(faceEl);
   });
   // The page-wide listeners, removed together when the editor is replaced (oeDispose).
   const life = new AbortController();
+  // r5-k K5: the footer's height follows the panel's width, the fonts and the host's full screen too: the scroll
+  // margin follows it (fitFoot), until the editor is replaced.
+  if (typeof ResizeObserver === 'function') {
+    const footWatch = new ResizeObserver(() => fitFoot());
+    footWatch.observe(wrap.querySelector(':scope > .sheet-footer'));
+    life.signal.addEventListener('abort', () => footWatch.disconnect());
+  }
+  /* r5-k K5, after the check: a control the focus lands on ends above the
+     footer. The browser scrolls a focused control into view only when it is
+     out of view, so one already in view under the pinned footer stays hidden
+     whatever its scroll margin: the next frame, it is measured and the page
+     scrolled by what the footer covers and 8 px, never past the control's top
+     (the footer's own controls are left alone). */
+  wrap.addEventListener('focusin', (event) => {
+    const target = event.target;
+    const foot = wrap.querySelector(':scope > .sheet-footer');
+    if (!foot || !(target instanceof Element) || foot.contains(target)) return;
+    const next = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    next(() => {
+      if (document.activeElement !== target || !foot.getClientRects().length) return;
+      const at = target.getBoundingClientRect();
+      const over = at.bottom + 8 - foot.getBoundingClientRect().top;
+      if (over > 0 && at.top > 0) window.scrollBy(0, Math.min(over, at.top));
+    });
+  }, { signal: life.signal });
   // Shown again, or the panel gets the focus: was the sheet saved elsewhere?
   // (check: at most once every 3 s; an editor no longer on the page asks nothing.)
   const onShown = () => {
@@ -2885,6 +3392,18 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     if (state.stale) return true;
     const ok = await settle();
     return ok || state.stale;
+  };
+  /* For that page, when its swap stopped because oeSettle gave false
+     (r5-m B3, after review: the Check card's NOT_SWAPPED, a toast until
+     then, said again under the footer's own "Press Save labels to try
+     again."): its words, said once, in the footer's line under Save labels,
+     as an error; after the failed save's reason that line keeps, in place
+     of tryAgain's words, else alone. It goes as that line does: a save
+     taken empties it (counterSay). */
+  wrap.oeSay = (text) => {
+    const tail = tryAgain();
+    const was = saveSaid.classList.contains('error') ? saveSaid.textContent : '';
+    footerSay(saveSaid, was.endsWith(tail) ? was.slice(0, -tail.length) + text : text, true);
   };
   /* For the page's teardown (r4-k K1: OE.start's onteardown, which gives
      the editors at most 3 s in all): after any save or read in flight,

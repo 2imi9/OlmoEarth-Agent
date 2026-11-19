@@ -10,7 +10,9 @@
    strip of three boxes drawn in code says the same in plain words: Studio
    makes a map, you check random squares, you get how often it is wrong.
 
-   One of the two shows at a time (the rules below). The figure's text name
+   One of the two shows at a time (the rules below; WIDE, the width from
+   which the docs figure shows, is the start card's too: from it the card
+   puts the figure after its jobs, r5-k K8). The figure's text name
    is its wrapper's (role=img, the title and the description as its
    aria-label; the picture and the drawing are aria-hidden). The caption and
    the docs link sit outside that wrapper (the start card puts them there):
@@ -80,6 +82,12 @@ OE.overview = (() => {
     narrowCheck: ['You check', 'random squares'],
     narrowGet: ['You get', 'how often it is', 'wrong, with a', 'range'],
   };
+
+  /* The panel width from which the docs figure shows in place of the strip,
+     as a media query: the media rule in STYLE says the same width. The start
+     card places the figure by it (r5-k K8, the owner's choice of 18 Nov
+     2026): from this width after the jobs, below it under the card's line. */
+  const WIDE = '(min-width: 680px)';
 
   /* r5-e S3: the docs picture has no box of its own: it sits, with its
      caption and the docs link, in the start card's one white box
@@ -194,5 +202,5 @@ OE.overview = (() => {
     return OE.el('div', { class: 'oe-overview', role: 'img', 'aria-label': TITLE + ' ' + DESC }, wide(), narrow());
   };
 
-  return { STYLE, style, figure, CAPTION, CAPTION_NARROW };
+  return { STYLE, style, figure, CAPTION, CAPTION_NARROW, WIDE };
 })();

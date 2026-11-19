@@ -59,9 +59,17 @@ FULL_SCREEN = "Full screen"
 BACK_TO_CHAT = "Back to the chat"
 
 #: The example pictures' captions and the line on where they come from (r4-k
-#: K9; {year} the examples' year).
-EXAMPLE_PRESENT = "Present under this rule"
-EXAMPLE_ABSENT = "Absent under this rule"
+#: K9; {year} the examples' year). Round r5-l L2 words the captions for any
+#: map (tests/mcp_app/test_mcp_r5l_views.py); round r5-m B1 says what the map
+#: is meant to find (tests/mcp_app/test_mcp_r5m_sheet.py).
+EXAMPLE_PRESENT = (
+    "Present: what the map is meant to find covers more than half of the square "
+    "on a clear date."
+)
+EXAMPLE_ABSENT = (
+    "Absent: what the map is meant to find covers half of the square or less on "
+    "every clear date."
+)
 EXAMPLES_NOTE = (
     "A public place, not your map. Contains modified Copernicus Sentinel data "
     "{year}."
@@ -221,15 +229,19 @@ def test_k1_the_editors_flush_is_quiet_and_bounded() -> None:
         # r4-l L3: through reopenToast (OE.toast, as an error), which keeps it.
         "if (!quiet) reopenToast('Not saved: this sheet changed since the panel"
         " opened it. Reopen the sheet to go on.');",
-        "if (!auto && !quiet) OE.toast('Every change is saved to ' + data.name"
-        " + '.');",
-        "      } else if (!quiet) {\n        OE.toast('Not saved' + ",
+        # r5-k K5: a save's own statuses are the footer's line (footerSay),
+        # still never on a quiet save.
+        "if (!auto && !quiet) footerSay(saveSaid, 'Every change is saved to ' "
+        "+ data.name + '.');",
+        "      } else if (!quiet) {\n        footerSay(saveSaid, 'Not saved' + ",
         "        if (!quiet) {\n          OE.toast('Not saved: this sheet changed",
     ):
         assert guarded in save, guarded
-    saved = _between(
-        save, "      if (!quiet) {\n        OE.toast('Saved to '", "\n      }\n"
-    )
+    saved = _between(save, "      if (!quiet) {\n        // r5-k K5", "\n      }\n")
+    # r5-k K5 (after review): said beside the counter (counterSay), once the
+    # save is over; still never on a quiet save.
+    assert "savedWords = 'Saved to ' + data.name + '.'" in saved
+    assert "      if (savedWords) counterSay(savedWords);\n" in save
     assert "keptNote = '';" in saved and "if (onSaved) onSaved();" in saved
     assert save.count("onSaved") == 2
     assert _in_order(
@@ -534,7 +546,7 @@ def test_k9_example_pictures_beside_the_owners_rule_only() -> None:
     )
     rule = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     # r5-e H2, after review: the line before the examples is the cloud line
-    # alone (the kelp-only line follows the scope in the Details fold).
+    # alone (the scope is in the Details fold).
     assert rule.endswith("W.cloudLine) : null,\n    ruleExamples) : null;")
     fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
     assert "instruction, hint, ...foldLines, clearNote, examplesNote," in fold

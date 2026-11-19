@@ -13,7 +13,9 @@ From specs/r4-i-plan.md (sections 1, 2 and 4):
 - F11: no stratum on any face; the two-map switch's label.
 - F5 and O2: the face's Cannot tell line and the fold's cost sentence.
 - F9: ``imagery.RULE_KELP_ONLY`` as ``rule_limit`` on the page copy and the
-  counts beside the owner's rule, shown after the rule's scope.
+  counts beside the owner's rule, shown after the rule's scope; round r5-l
+  L1 took both away (the Python side and the panel's script are held here as
+  that round left them).
 - O2: ``graded_squares`` with Cannot tell: the judged squares, then one
   empty cell per Cannot tell square (contract B2 to B1).
 - F4: ``graded_state`` says whether the sheet holds an answer (contract B2
@@ -368,7 +370,8 @@ def test_the_panel_draws_no_switch_on_a_class_sheet() -> None:
         "const sentLine = seen || face === 'class' ? W.blindSeen : wrongFace ? "
         "W.wrongLine : blind ? W.codeLine : '';" in editor
     )
-    assert "const blocked = () => state.clearing;" in editor
+    # r5-k K3: no answer either while the answers are locked (graded, or not saving).
+    assert "const blocked = () => state.clearing || locked();" in editor
     extra = _between(editor, "  function extraLines(h) {", "\n  }\n")
     assert "if (wrongFace && extra.mapClass !== null) {" in extra
     assert "face === 'class'" not in extra and "stratum" not in extra
@@ -383,13 +386,13 @@ def test_the_panel_draws_no_switch_on_a_class_sheet() -> None:
 
 def test_no_face_string_of_the_panel_names_a_stratum() -> None:
     """F11: the two-map switch's label, with its WORDING line (in r5-b J28's
-    plain words, which name no stratum either); past the comments and the
-    right-or-wrong fold line (in Details, not reworded), no code of sheet.js
-    says "stratum"."""
+    plain words, which name no stratum either; round r5-m B2 shortened them);
+    past the comments and the right-or-wrong fold line (in Details, not
+    reworded), no code of sheet.js says "stratum"."""
     script = _script()
     assert (
         "// WORDING: r4i F11; r5b J28\n  const blindText = 'Hide what the two maps "
-        "say (keep it on while you answer)';" in script
+        "say';" in script
     )
     wrong_line = _entry(_words(), "    wrongLine: ")
     assert "stratum" in wrong_line
@@ -439,26 +442,25 @@ def test_the_sheets_cannot_tell_words_are_the_string_tables() -> None:
 
 
 def test_the_kelp_only_line_is_the_string_tables() -> None:
-    """F9 (section 1), shortened by r4-j J6 (it always follows the scope,
-    which names kelp canopy maps already), with its WORDING line; the Check
-    card's scope (C5) stays word for word."""
-    assert imagery.RULE_KELP_ONLY == "Any other map needs its own rule."
+    """F9 (section 1), shortened by r4-j J6, taken away by round r5-l L1 (the
+    app's rule is general, and the rule and its scope are all that is said):
+    no RULE_KELP_ONLY; the Check card's scope of the kelp rule (C5) stays word
+    for word as KELP_RULE_SCOPE, for the records made with that rule."""
+    assert not hasattr(imagery, "RULE_KELP_ONLY")
     source = Path(imagery.__file__).read_text(encoding="utf-8")
-    assert "# WORDING: r4j J6\nRULE_KELP_ONLY = " in source
-    assert imagery.RULE_SCOPE == (
+    assert "RULE_KELP_ONLY = " not in source
+    assert imagery.KELP_RULE_SCOPE == (
         "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
     )
-    # Said after the scope: "kelp canopy maps" once.
-    both = imagery.RULE_SCOPE + " " + imagery.RULE_KELP_ONLY
-    assert both.count("kelp canopy maps") == 1
+    assert "kelp" not in imagery.RULE_SCOPE
 
 
-def test_the_page_copy_and_the_counts_say_the_owners_rule_is_for_kelp(
+def test_the_page_copy_and_the_counts_carry_no_rule_limit(
     root: Path,
 ) -> None:
-    """F9: rule_limit is RULE_KELP_ONLY beside the owner's rule, in
-    _rule_fields, the page copy and the counts; None beside a typed rule and
-    with no rule at all."""
+    """F9 as round r5-l L1 leaves it: _rule_fields, the page copy and the
+    counts carry the rule, its scope and its source, and no rule_limit,
+    beside the app's rule, a typed rule and no rule at all."""
     kelp = _seen(root)
     real = sheet.resolve_sheet(str(kelp))
     design = sheet.design_of(real)[1]
@@ -466,43 +468,33 @@ def test_the_page_copy_and_the_counts_say_the_owners_rule_is_for_kelp(
         "reading_rule": imagery.READING_RULE,
         "rule_scope": imagery.RULE_SCOPE,
         "rule_source": "owner",
-        "rule_limit": imagery.RULE_KELP_ONLY,
     }
     for said in (sheet.read_sheet(str(kelp)), sheet.sheet_progress(str(kelp))):
-        assert said["rule_source"] == "owner"
-        assert said["rule_limit"] == imagery.RULE_KELP_ONLY
+        assert said["rule_source"] == "owner" and "rule_limit" not in said
     sheet.set_typed_rule(str(kelp), TYPED, typed_at=TYPED_AT)
     for said in (sheet.read_sheet(str(kelp)), sheet.sheet_progress(str(kelp))):
-        assert said["rule_source"] == "typed" and said["rule_limit"] is None
+        assert said["rule_source"] == "typed" and "rule_limit" not in said
     land = _class_map(root)
     for said in (sheet.read_sheet(str(land)), sheet.sheet_progress(str(land))):
-        assert said["reading_rule"] is None and said["rule_limit"] is None
+        assert said["reading_rule"] is None and "rule_limit" not in said
 
 
-def test_the_panel_shows_the_kelp_only_line_after_the_scope() -> None:
-    """F9 in sheet.js: the panel shows data.rule_limit right after
-    data.rule_scope, which names kelp canopy maps before it. r5-e H2 moved
-    the scope from the rule block to the Details fold (scopeNote), and, after
-    review, the kelp-only line with it (limitNote: alone under the rule,
-    "any other map" had nothing to refer to); it is drawn only with the
-    scope and, as before, only where the face has no cloud line. The
-    pictures pane (a page copy with no rule, an answer with one) no longer
-    repeats the scope and the kelp-only line: r4-m M8 puts the rule's Absent
-    half and the cloud line there instead
-    (tests/mcp_app/test_mcp_r4m_round.py)."""
+def test_the_panel_reads_no_rule_limit_after_the_scope() -> None:
+    """F9 in sheet.js as round r5-l L1 leaves it: the server sends no
+    rule_limit (the line that any other map needs its own rule), so the
+    panel reads none and draws no line after data.rule_scope. r5-e H2 moved
+    the scope from the rule block to the Details fold (scopeNote), where it
+    stays. The pictures pane (a page copy with no rule, an answer with one)
+    does not repeat the scope: r4-m M8 puts the rule's Absent half and the
+    cloud line there instead (tests/mcp_app/test_mcp_r4m_round.py)."""
     editor = _editor()
     block = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     assert "OE.el('strong', {}, 'Rule: '), pageRule)," in block
     assert "data.rule_scope" not in block and "data.rule_limit" not in block
-    scope = editor.index("  const scopeNote = typeof data.rule_scope === 'string'")
-    limit = editor.index(
-        "  const limitNote = pageRule && scopeNote && !cloudOnFace && typeof "
-        "data.rule_limit === 'string' && data.rule_limit ? OE.el('div', "
-        "{ class: 'small' }, data.rule_limit) : null;\n"
-    )
-    assert scope < limit
+    assert "  const scopeNote = typeof data.rule_scope === 'string'" in editor
+    assert "data.rule_limit" not in editor and "limitNote" not in editor
     fold = _between(editor, "  const foldLabel = 'Details';", "\n\n")
-    assert "    classNoPeriod, scopeNote, limitNote, gradedWhy,\n" in fold
+    assert "    classNoPeriod, scopeNote, gradedWhy,\n" in fold
     pane = _between(editor, "    let ruleLines = null;", "\n    const dated = ")
     assert "answer.rule_scope" not in pane and "answer.rule_limit" not in pane
 

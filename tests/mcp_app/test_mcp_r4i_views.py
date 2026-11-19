@@ -146,7 +146,10 @@ def test_f6_a_press_with_no_reply_holds_the_press_and_says_one_line() -> None:
     press, so no press is left to hold: the guard stays first in the press.
     r5-b J08: a press with nothing chosen fills the line under the press
     (updatePress) and no longer toasts; a press held by 1 to 9 characters in
-    the box beside the kelp rule toasts BOX_SHORT, not RULE_FIRST."""
+    the box beside the kelp rule toasts BOX_SHORT, not RULE_FIRST. Round
+    r5-m B3, after review: a press held by the rule or the box toasts
+    neither; the line under the press says it, and the focus goes to the box
+    (tests/mcp_app/test_mcp_r5m_check.py)."""
     page = _read("check.html")
     assert "// WORDING: r5b J09\n// WORDING: r4i F6\nconst RULE_LOST = " in page
     assert _concat(_after(page, "const RULE_LOST = ", ";\n"), {}) == RULE_LOST
@@ -175,8 +178,7 @@ def test_f6_a_press_with_no_reply_holds_the_press_and_says_one_line() -> None:
         "if (busy) return;",
         line,
         "if (!picked.length) { updatePress(); return; }",
-        "if (gateHeld()) { OE.toast(gateMode === 'replace' ? BOX_SHORT : RULE_FIRST);"
-        " OE.focusIfHere(ruleInput); return; }",
+        "if (gateHeld()) { updatePress(); OE.focusIfHere(ruleInput); return; }",
         "OE.call(app, 'olmoearth_app_check_draw'",
     )
     assert "ruleLost = false;\n      gateMode = '';" in press

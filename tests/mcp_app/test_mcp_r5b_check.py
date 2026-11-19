@@ -79,7 +79,11 @@ MODEL_HINT = (
 #: J08: the lines under the press.
 RULE_AND_NUMBER = "Write your rule and choose a number of squares first."
 CHOOSE = "Choose a number of squares above."
-BOX_SHORT = "Write at least 10 characters in the box, or empty it to use the kelp rule."
+#: Round r5-l L2: "the rule above", no map named
+#: (tests/mcp_app/test_mcp_r5l_views.py).
+BOX_SHORT = (
+    "Write at least 10 characters in the box, or empty it to use the rule above."
+)
 LATER = (
     "Not picked yet. To pick this part's squares, ask Claude to open the Check "
     "card again."
@@ -99,13 +103,14 @@ PRESS_NO_ANSWER = "The press got no answer back."
 #: on a map in one part (it said "a sheet" on a map with one), "a part's
 #: sheet" on a map in parts (tests/mcp_app/test_mcp_r5f_check.py). Round r5-i
 #: B2: "each part's sheet in turn" on a map in parts
-#: (tests/mcp_app/test_mcp_r5i_check.py).
+#: (tests/mcp_app/test_mcp_r5i_check.py). Round r5-j B3: the press in each
+#: part's sheet, one result per part (tests/mcp_app/test_mcp_r5j_check.py).
 ALL_ANSWERED = (
     "Every square is answered. Open the sheet, then press Estimate the error rate."
 )
 ALL_ANSWERED_PARTS = (
-    "Every square is answered. Open each part's sheet in turn, then press "
-    "Estimate the error rate."
+    "Every square is answered. In each part's sheet, press Estimate the error "
+    "rate: one result per part."
 )
 YOUR_SQUARES = "Your squares"
 
@@ -115,10 +120,13 @@ CANNOT = (
     "Once you press, your rule and number are fixed. You get a result once every "
     "square is answered."
 )
+#: Round r5-l L2 words the box's label and the line under it for any map (no map
+#: named: tests/mcp_app/test_mcp_r5l_views.py).
 RULE_OWN = (
-    "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
+    "Did the map maker mean something else? Write their meaning of Present and "
+    "Absent (optional)."
 )
-RULE_EMPTY = "Left empty, the kelp rule above is used."
+RULE_EMPTY = "Left empty, the rule above is used."
 RULE_HINT = "For example: the class that fills most of the outlined square"
 
 #: J25: the parts' dead ends.
@@ -382,9 +390,13 @@ def test_j08_the_line_under_the_press_says_why_it_is_off() -> None:
     press = _between(page, "  async function drawPicked() {", "\n  }\n")
     assert "    if (!picked.length) { updatePress(); return; }" in press
     assert "Pick how many squares to check first." not in page
-    # A press held by the box toasts the line's own words.
-    held = "OE.toast(gateMode === 'replace' ? BOX_SHORT : RULE_FIRST);"
+    # A press held by the box toasted the line's own words; round r5-m B3,
+    # after review: the line alone says them (the toast sat right under it),
+    # the press moves the focus to the box (tests/mcp_app/test_mcp_r5m_check.py).
+    held = "if (gateHeld()) { updatePress(); OE.focusIfHere(ruleInput); return; }"
     assert held in press
+    for toast in ("OE.toast(gateMode", "OE.toast(RULE_FIRST", "OE.toast(BOX_SHORT"):
+        assert toast not in press, toast
     for said in (RULE_AND_NUMBER, CHOOSE, BOX_SHORT, "no number chosen: this press"):
         assert _OFF_FACE.search(said) is None, said
 
@@ -432,7 +444,8 @@ def test_j09_after_a_press_with_no_reply_no_part_keeps_its_numbers() -> None:
         "          if (o.kind === 'pick' || o.kind === 'retry') "
         "{ o.kind = 'later'; o.pick = null; o.line = null; }\n"
         "        });",
-        "OE.toast(PRESS_NO_ANSWER, true);",
+        # Round r5-m B3, after review: in the page's hidden status, no toast.
+        "if (heard) heard.textContent = PRESS_NO_ANSWER;",
         "renderAll();",
     )
     # With no part left to pick, the press goes (updatePress) and the focus
@@ -512,15 +525,20 @@ def test_j17_the_heading_follows_what_the_card_holds() -> None:
     # (its function takes several; round r5-i B2, after review: whether more
     # than one part has a sheet, drawn.length > 1).
     assert "// WORDING: r5b J17\nconst ALL_ANSWERED = (several) => " in page
-    # Round r5-i B2: "each part's sheet in turn" on a map in parts.
-    which = "(several ? 'each part\\'s sheet in turn' : 'the sheet')"
+    # Round r5-i B2: "each part's sheet in turn" on a map in parts; round r5-j
+    # B3: the press in each part's sheet, one result per part.
+    which = (
+        "(several ? 'In each part\\'s sheet, press Estimate the error rate: one "
+        "result per part.'\n    : 'Open the sheet, then press Estimate the error "
+        "rate.')"
+    )
     answered = _after(page, "const ALL_ANSWERED = (several) => ", ";\n")
     assert answered.count(which) == 1
-    for sheet, said in (
-        ("the sheet", ALL_ANSWERED),
-        ("each part's sheet in turn", ALL_ANSWERED_PARTS),
-    ):
-        assert _concat(answered.replace(which, "WHICH"), {"WHICH": sheet}) == said
+    head = "Every square is answered. "
+    for said in (ALL_ANSWERED, ALL_ANSWERED_PARTS):
+        tail = said.removeprefix(head)
+        assert "'" + tail.replace("'", "\\'") + "'" in which, tail
+        assert _concat(answered.replace(which, "WHICH"), {"WHICH": tail}) == said
     assert "  const ask = OE.el('p', { class: 'ask' }, ASK);\n" in page
     assert "  root.append(gate);\n  root.append(ask);\n" in page
     fill = _between(page, "  function fillAsk() {", "\n  }\n")
@@ -658,7 +676,9 @@ def test_j18_the_rule_boxes_say_less_and_keep_their_example_in_view() -> None:
     # The rule sent is the box's value, as before.
     sent = _after(page, "  const ruleText = () => ", ";\n")
     assert "ruleInput.value" in sent
-    assert len(RULE_OWN.split()) < 15
+    # Short still (it held 37 words): round r5-l L2's label, in the spec's words
+    # for any map, is 15 (it was 14 while it named kelp).
+    assert len(RULE_OWN.split()) <= 15
 
 
 # --------------------------------------------------------------------------- J25

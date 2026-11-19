@@ -498,6 +498,8 @@ def test_k6_with_cannot_tell_the_ends_are_given_and_the_rates_range_stays() -> N
     assert got is not None
     view = got["view"]
     assert view["rate"] is None and view["rate_range_text"] == "10.0% to 15.0%"
+    # Round r5-j B1: the bar's label, the same two figures joined by "or".
+    assert view["rate_bar_text"] == "10.0% or 15.0%"
     assert (view["low_text"], view["high_text"]) == ("8.0%", "24.0%")
     source = Path(server.__file__).read_text(encoding="utf-8")
     for key, end in (("low_text", "low"), ("high_text", "high")):

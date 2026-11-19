@@ -564,7 +564,7 @@ def test_l2_a_search_cut_short_stays_in_the_record_only(
         "reading_rule",
         "rule_scope",
         "rule_source",
-        "rule_limit",
+        # No rule_limit since r5-l L1.
         "label_is",
         "caption",
         "dates",

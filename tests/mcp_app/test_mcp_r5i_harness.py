@@ -31,12 +31,15 @@ mcp = pytest.importorskip("mcp")
 
 from olmoearth_agent.mcp_app import check, imagery, review, server, views  # noqa: E402
 
-#: The harness's owner's rule and its scope (OWNER_RULE, OWNER_SCOPE).
+#: The harness's owner's rule and its scope (OWNER_RULE, OWNER_SCOPE): the
+#: app's general rule since round r5-l (L1), worded by round r5-m B1 (what the
+#: map is meant to find).
 OWNER_RULE = (
-    "Present: on at least one clear date shown, canopy fills more than half of "
-    "the outlined square. Absent: on every clear date shown it fills half or less."
+    "Present: on at least one clear date shown, what the map is meant to find "
+    "covers more than half of the outlined square. Absent: on every clear date "
+    "shown, it covers half or less."
 )
-OWNER_SCOPE = "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
+OWNER_SCOPE = "This rule came with the app, for any map of present and absent."
 #: check_card's rule by default with no zone drawn (RULE_OWNER_VIEW).
 RULE_OWNER_VIEW = {
     "set": True,
@@ -55,38 +58,44 @@ RULE_NONE_VIEW = {
 }
 
 #: The harness's pictures question: its first sentence (ASK, still used where
-#: the question is not shot) and the whole (ASK_WHOLE).
+#: the question is not shot) and the whole (ASK_WHOLE). Since round r5-k K7
+#: the whole is its three lines joined by line breaks (ASK_LINES in the
+#: harness), and the hosts are in its fold (ASK_FULL, the answer's ask_full).
 ASK_FIRST = "Show satellite (Sentinel-2) pictures of each square?"
-ASK_WHOLE = (
-    "Show satellite (Sentinel-2) pictures of each square? They come from Earth "
-    "Search, a public image archive. To fetch them, this computer sends two "
-    "things. To the archive's catalogue (earth-search.aws.element84.com): the map's "
-    "rough outline and its months, once per sheet or review set. To its file store "
-    "(e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com): requests for "
-    "parts of image files. No key and no account are used. Both can see this "
-    "computer's internet address (IP). Nothing is sent to Studio or to Claude."
+ASK_WHAT = (
+    "Show satellite (Sentinel-2) pictures of each square? To fetch them, this "
+    "computer sends the box around the map, rounded out to 0.1 degree, and the "
+    "map's months."
 )
-#: A sheet's test question whole (TEST_ASK_WHOLE).
+ASK_TO = (
+    "They go to Earth Search, a public catalogue, and its file store; both see "
+    "your IP address."
+)
+ASK_NOT = "Nothing is sent to Studio or to Claude."
+ASK_WHOLE = "\n".join((ASK_WHAT, ASK_TO, ASK_NOT))
+ASK_FULL = (
+    "Earth Search's catalogue is earth-search.aws.element84.com: it gets the box "
+    "and the months, once for all the squares. Its file store is "
+    "e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com: it gets the "
+    "requests for parts of image files. No key and no account are used."
+)
+#: A sheet's test question whole (TEST_ASK_WHOLE). Since round r5-k K7 it
+#: follows ASK_FULL in the fold and names neither host again: "the same
+#: catalogue", "the same file store".
 SHEET_TEST_ASK_WHOLE = (
     "Not sure yet? See how the pictures look on a public test place first. "
     "Nothing about your map is sent. It is a public place unrelated to this "
     "sheet (the Cape Peninsula's Atlantic shore, January to March 2024): that "
-    "place's extent, rounded, goes to Earth Search's catalogue "
-    "(earth-search.aws.element84.com) and requests for parts of image files to "
-    "its bucket (e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com). "
-    "Nothing of this sheet is sent, and pictures stay off for the sheet. Both "
-    "hosts see this computer's IP address."
+    "place's box, rounded, goes to the same catalogue, and requests for parts "
+    "of image files to the same file store. Pictures stay off for the sheet."
 )
 #: A review set's test question whole (REVIEW_TEST_ASK_WHOLE, new in B9).
 REVIEW_TEST_ASK_WHOLE = (
     "Not sure yet? See how the pictures look on a public test place first. "
     "Nothing about your map is sent. It is a public place unrelated to this "
     "review set (the Cape Peninsula's Atlantic shore, January to March 2024): "
-    "that place's extent, rounded, goes to Earth Search's catalogue "
-    "(earth-search.aws.element84.com) and requests for parts of image files to "
-    "its bucket (e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com). "
-    "Nothing of this review set is sent, and pictures stay off for it. Both "
-    "hosts see this computer's IP address."
+    "that place's box, rounded, goes to the same catalogue, and requests for "
+    "parts of image files to the same file store. Pictures stay off for it."
 )
 #: What a sheet's pane and a review set's pane are answered while pictures
 #: are off (CONSENT_WHOLE, REVIEW_CONSENT_WHOLE).
@@ -94,12 +103,14 @@ CONSENT_WHOLE = {
     "ok": True,
     "needs_consent": True,
     "ask": ASK_WHOLE,
+    "ask_full": ASK_FULL,
     "test_ask": SHEET_TEST_ASK_WHOLE,
 }
 REVIEW_CONSENT_WHOLE = {
     "ok": True,
     "needs_consent": True,
     "ask": ASK_WHOLE,
+    "ask_full": ASK_FULL,
     "test_ask": REVIEW_TEST_ASK_WHOLE,
 }
 
@@ -120,6 +131,10 @@ def test_b9a_the_rule_the_server_sends(monkeypatch: pytest.MonkeyPatch) -> None:
     scenario passes RULE_NONE_VIEW (12e)."""
     settled = {"now": False}
     monkeypatch.setattr(check, "map_rule", lambda result_id: None)
+    # r5-l L1: no part drawn before the round (no draw record names a rule),
+    # and no sheet of the map labelled under the earlier rule.
+    monkeypatch.setattr(check, "map_app_rule", lambda result_id: None)
+    monkeypatch.setattr(check, "result_app_rule", lambda result_id: None)
     monkeypatch.setattr(server, "_rule_settled", lambda result_id: settled["now"])
     assert server._check_rule(False, "r1") == RULE_OWNER_VIEW
     settled["now"] = True

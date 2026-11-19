@@ -94,8 +94,10 @@ function accessLine(app) {
 /* The card's one line under its title (OE.lead): what to do next (r5-e S1,
    the owner's note 3: the title already says what the card is, and what a
    check cannot tell is said where labelling happens, on the Check card and
-   the sheet). Nothing folds on this card. Under it, the overview figure
-   (overviewBlock, r5-a V1); who is signed in is in the top line
+   the sheet). Nothing folds on this card. Under it, on a narrow panel, the
+   overview figure (overviewBlock, r5-a V1); on a wide one the jobs come
+   first and the figure after them (placeOverview, r5-k K8); who is signed
+   in is in the top line
    (OE.setAccount, r5-a V2), not on the card. Signed in, the line no longer
    asks to sign in (START_NEXT_IN, r5-c S03). */
 // WORDING: r5e
@@ -170,6 +172,36 @@ function overviewBlock(app) {
       OE.el('span', { class: 'cap-narrow' }, OE.overview.CAPTION_NARROW), ' ', docs, address));
 }
 
+/* Where the overview figure's box stands (r5-k K8, O17; the owner's choice
+   of 18 Nov 2026). From the width at which it is the docs figure
+   (OE.overview.WIDE), after the jobs: the title, the line, the sign-in while
+   signed out (it stays first), the jobs (the main job, then "Other jobs"),
+   then the docs figure with its caption and docs link, so the jobs are no
+   longer pushed down by a picture. Below that width, where it is the strip
+   of three boxes, under the card's line, before the sign-in and the jobs, as
+   before. The box itself moves in the page (no CSS order), so what a screen
+   reader reads and where Tab goes follow what is seen: at each drawing
+   (render) and when the panel's width crosses that width (the listener
+   below, one for the page's life). A focus inside the box (the docs link),
+   which the move drops, is given back, only while this panel's frame has
+   it. */
+const wideMedia = window.matchMedia(OE.overview.WIDE);
+function placeOverview() {
+  const wrap = root.querySelector(':scope > .oe-overview-wrap');
+  if (!wrap) return;
+  const had = wrap.contains(document.activeElement) ? document.activeElement : null;
+  if (wideMedia.matches) {
+    if (root.lastElementChild !== wrap) root.append(wrap);
+  } else {
+    const line = root.querySelector(':scope > .oe-lead') || root.querySelector(':scope > h1');
+    if (line && line.nextElementSibling !== wrap) line.after(wrap);
+  }
+  if (had && document.activeElement !== had) OE.focusIfHere(had);
+}
+wideMedia.addEventListener('change', placeOverview);
+// When Claude closes the card, the listener goes too (r4-k K1: OE.start's teardown runs OE.cleanups).
+OE.cleanups.add(() => wideMedia.removeEventListener('change', placeOverview));
+
 /* After Sign out (the top line's button, the user's own press): the card is
    drawn again from the sign-out's result. The button pressed is gone, so
    the focus goes to the card's one contained button: the sign-in's; or,
@@ -209,6 +241,7 @@ function render(app, data) {
   }
   if (!jobs.length) {
     root.append(OE.el('div', { class: 'faint' }, 'Ask Claude what this app can do.'));
+    placeOverview();
     return;
   }
   // Why the tiles are off stands over them, inside the jobs card, not loose under the last tile's box (r5-e R2),
@@ -216,6 +249,8 @@ function render(app, data) {
   root.append(OE.el('section', { class: 'card stack' },
     on ? null : OE.el('div', {}, 'Sign in to start a job.'),
     OE.el('ul', { class: 'items jobs', 'aria-label': 'Jobs' }, jobRows(app, jobs, on))));
+  // r5-k K8: on a wide panel the docs figure goes after the jobs; on a narrow one the strip stays under the line.
+  placeOverview();
 }
 
 /* What the top line draws for a status (OE.setAccount): null signed out;

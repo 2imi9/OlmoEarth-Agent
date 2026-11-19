@@ -77,10 +77,12 @@ SHEET_UNREAD_WEST = (
 )
 
 #: B2: the heading with every square answered and no sheet open, on a map in
-#: parts and in one part (unchanged).
+#: parts and in one part (unchanged). Round r5-j B3: on a map in parts the
+#: press is in each part's sheet, one result per part
+#: (tests/mcp_app/test_mcp_r5j_check.py).
 ALL_ANSWERED_PARTS = (
-    "Every square is answered. Open each part's sheet in turn, then press "
-    "Estimate the error rate."
+    "Every square is answered. In each part's sheet, press Estimate the error "
+    "rate: one result per part."
 )
 ALL_ANSWERED_ONE = (
     "Every square is answered. Open the sheet, then press Estimate the error rate."
@@ -399,7 +401,9 @@ def test_b1_a_part_drawn_again_mid_open_keeps_its_button_off() -> None:
         "      m.opening = false;\n",
         "      if (m.openButton) m.openButton.setAttribute('aria-disabled', "
         "String(busy));\n",
-        "      OE.toast(NOT_SWAPPED, true);\n",
+        # Round r5-m B3, after review: said in the sheet's footer (oeSay),
+        # a toast only for an editor with no such hook.
+        "      else OE.toast(NOT_SWAPPED, true);\n",
     )
     assert "button.setAttribute('aria-disabled', 'false')" not in swap
 
@@ -414,21 +418,28 @@ def test_b2_every_part_answered_says_each_parts_sheet_in_turn() -> None:
     line on a map in one part is unchanged. After review: "each part's sheet
     in turn" only where more than one part has a sheet (drawn), so a map in
     parts whose other parts cannot be checked or failed for good says "the
-    sheet" (harness 13f)."""
+    sheet" (harness 13f). Round r5-j B3: on a map in parts the line says to
+    press Estimate the error rate in each part's sheet, one result per part
+    (tests/mcp_app/test_mcp_r5j_check.py); the rule on which line shows is
+    unchanged."""
     page = _read("check.html")
     tags = (
         "// WORDING: r5i B2\n// WORDING: r5f F11\n// WORDING: r5b J17\n"
         "const ALL_ANSWERED = (several) => "
     )
     assert tags in page
-    which = "(several ? 'each part\\'s sheet in turn' : 'the sheet')"
+    which = (
+        "(several ? 'In each part\\'s sheet, press Estimate the error rate: one "
+        "result per part.'\n    : 'Open the sheet, then press Estimate the error "
+        "rate.')"
+    )
     answered = _after(page, "const ALL_ANSWERED = (several) => ", ";\n")
     assert answered.count(which) == 1
-    for sheet, said in (
-        ("each part's sheet in turn", ALL_ANSWERED_PARTS),
-        ("the sheet", ALL_ANSWERED_ONE),
-    ):
-        assert _concat(answered.replace(which, "WHICH"), {"WHICH": sheet}) == said
+    head = "Every square is answered. "
+    for said in (ALL_ANSWERED_PARTS, ALL_ANSWERED_ONE):
+        tail = said.removeprefix(head)
+        assert "'" + tail.replace("'", "\\'") + "'" in which, tail
+        assert _concat(answered.replace(which, "WHICH"), {"WHICH": tail}) == said
         assert _OFF_FACE.search(said) is None, said
     assert "a part\\'s sheet" not in page
     fill = _between(page, "  function fillAsk() {", "\n  }\n")
