@@ -190,8 +190,7 @@ def test_s01_the_start_card_passes_the_source_and_moves_the_focus_on() -> None:
     render = _between(start, "function render(app, data) {", "\n}\n")
     assert (
         "OE.setAccount(app, { signedIn: on, account: status.account, "
-        "source: status.source, onSignOut: (s) => signedOut(app, data, s) });"
-        in render
+        "source: status.source, onSignOut: (s) => signedOut(app, data, s) });" in render
     )
     out = _between(start, "function signedOut(app, data, result) {", "\n}\n")
     assert _in_order(

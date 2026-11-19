@@ -54,9 +54,14 @@ SHEET_UNREAD_ONE = (
     "Its sheet cannot be opened now. Tell Claude that the sheet cannot be opened."
 )
 #: F04: the face's line when a sheet did not open on a press of its button.
+#: Round r5-i B1: it names the button by its label, in double quotes ("Open
+#: the sheet" here; tests/mcp_app/test_mcp_r5i_check.py), where it said "the
+#: button"; before any press, a sheet that could not be read when the card
+#: opened says to press it (SHEET_TRY), and this round's red SHEET_UNREAD
+#: comes only after a press failed.
 SHEET_NOT_OPENED = (
-    "The sheet could not be opened. Press the button to try again; if it fails "
-    "again, tell Claude."
+    'The sheet could not be opened. Press "Open the sheet" to try again; if it '
+    "fails again, tell Claude."
 )
 #: F04: the words the face said before, now the start of each line in Details
 #: (the server's reason follows).
@@ -78,17 +83,18 @@ STEP_3_OLD = "recognise it in a satellite picture"
 PRESS = "Pick the squares"
 RETRY_80 = "Press Pick the squares to try again with 80 squares."
 RETRY_LATER_80 = (
-    "Not in this press: it waits for a later press of Pick the squares "
-    "(80 squares)."
+    "Not in this press: it waits for a later press of Pick the squares " "(80 squares)."
 )
 #: F11: the heading with every square answered and no sheet open, on a map in
 #: one part and on a map in parts.
 ALL_ANSWERED_ONE = (
     "Every square is answered. Open the sheet, then press Estimate the error rate."
 )
+#: Round r5-i B2: "each part's sheet in turn" on a map in parts (it said "a
+#: part's sheet", which suggested one press gives the map's result).
 ALL_ANSWERED_PARTS = (
-    "Every square is answered. Open a part's sheet, then press Estimate the error "
-    "rate."
+    "Every square is answered. Open each part's sheet in turn, then press "
+    "Estimate the error rate."
 )
 
 
@@ -156,11 +162,16 @@ def test_f04_a_part_whose_sheet_cannot_be_read_says_what_to_do() -> None:
         assert _concat(unread.replace(named, "OF"), {"OF": of}) == said
         assert _OFF_FACE.search(said) is None, said
     zone = _between(page, "  function fillZone(m) {", "\n  }\n")
+    # Round r5-i B1: before any press the line says to press the button
+    # (SHEET_TRY, tests/mcp_app/test_mcp_r5i_check.py); this line, red, only
+    # once a press failed too.
     line = (
         "      const unread = Boolean(d.sheet_error) && !d.progress;\n"
         "      if (unread) {\n"
-        "        parts.push(OE.el('div', m.sheetError ? { class: 'error' } : {}, "
-        "SHEET_UNREAD(nParts > 1 ? label(m) : null)));\n"
+        "        parts.push(m.sheetError ? OE.el('div', { class: 'error' }, "
+        "SHEET_UNREAD(nParts > 1 ? label(m) : null))\n"
+        "          : OE.el('div', {}, SHEET_TRY(nParts > 1 ? label(m) : null, "
+        "button)));\n"
         "      }\n"
     )
     assert line in zone
@@ -178,10 +189,13 @@ def test_f04_a_sheet_that_did_not_open_says_to_press_again() -> None:
     words are kept for Details (sheetWhy), and both go once the sheet opens,
     and so does the reason its sheet could not be read when the card opened
     (else the part would say its sheet cannot be opened beside "Its sheet is
-    open below."). The open button stays."""
+    open below."). The open button stays. Round r5-i B1: the line names the
+    button by the label it shows (SHEET_NOT_OPENED of the button's label,
+    worded when the part is drawn: m.sheetError is a flag now)."""
     page = _read("check.html")
-    assert "// WORDING: r5f F04\nconst SHEET_NOT_OPENED = " in page
-    said = _concat(_after(page, "const SHEET_NOT_OPENED = ", ";\n"))
+    assert "// WORDING: r5f F04\nconst SHEET_NOT_OPENED = (button) => " in page
+    expr = _after(page, "const SHEET_NOT_OPENED = (button) => ", ";\n")
+    said = _concat(expr, {"button": "Open the sheet"})
     assert said == SHEET_NOT_OPENED
     assert _OFF_FACE.search(said) is None
     model = _between(page, "function zoneModel(z, index) {", "\n}\n")
@@ -192,7 +206,7 @@ def test_f04_a_sheet_that_did_not_open_says_to_press_again() -> None:
     assert _in_order(
         swap,
         "    } catch (err) {\n",
-        "      m.sheetError = SHEET_NOT_OPENED;\n"
+        "      m.sheetError = true;\n"
         "      m.sheetWhy = bare(err.message || 'it could not be read');\n"
         "      renderAll();\n"
         "      if (had) OE.focusIfHere(m.openButton);\n      return;\n    }\n",
@@ -204,7 +218,7 @@ def test_f04_a_sheet_that_did_not_open_says_to_press_again() -> None:
     assert _in_order(
         zone,
         "      if (m.sheetError && !unread) parts.push(OE.el('div', "
-        "{ class: 'error' }, m.sheetError));\n",
+        "{ class: 'error' }, SHEET_NOT_OPENED(button)));\n",
         "        m.openButton = OE.el('button', {",
     )
     assert "sheetWhy" not in zone and "err.message" not in zone
@@ -264,13 +278,14 @@ def test_f04_a_failed_press_on_a_sheet_that_could_not_be_read_says_one_line() ->
     assert _in_order(
         zone,
         "      const unread = Boolean(d.sheet_error) && !d.progress;\n",
-        "m.sheetError ? { class: 'error' } : {}, SHEET_UNREAD(",
+        "m.sheetError ? OE.el('div', { class: 'error' }, SHEET_UNREAD(",
         "      if (m.changed) parts.push(",
         "      if (m.sheetError && !unread) parts.push(",
     )
-    # The face draws m.sheetError in one place only, and only when the line
-    # on a sheet that could not be read is not shown.
-    assert zone.count("m.sheetError));") == 1
+    # The face draws the press's red line in one place only, and only when
+    # the line on a sheet that could not be read is not shown (round r5-i
+    # B1: worded there, SHEET_NOT_OPENED of the button's label).
+    assert zone.count("SHEET_NOT_OPENED(button)));") == 1
     fold = _between(page, "  function fillFold() {", "\n  }\n")
     assert fold.count("bare(m.draw.sheet_error)") == 1
     assert "m.sheetWhy !== unreadWhy" in fold
@@ -411,26 +426,29 @@ def test_f11_the_heading_names_the_sheet_by_the_maps_parts() -> None:
     """F11: with every square answered and no sheet open the heading says
     "Open the sheet" on a map in one part (it said "a sheet" on a map with
     one) and "Open a part's sheet" on a map in parts: fillAsk passes whether
-    the map has more than one part."""
+    the map has more than one part. Round r5-i B2: "Open each part's sheet in
+    turn" on a map in parts, and after review only where more than one part
+    has a sheet: fillAsk passes whether more than one part is drawn
+    (tests/mcp_app/test_mcp_r5i_check.py)."""
     page = _read("check.html")
     tags = (
         "// WORDING: r5f F11\n// WORDING: r5b J17\n"
         "const ALL_ANSWERED = (several) => "
     )
     assert tags in page
-    which = "(several ? 'a part\\'s sheet' : 'the sheet')"
+    which = "(several ? 'each part\\'s sheet in turn' : 'the sheet')"
     answered = _after(page, "const ALL_ANSWERED = (several) => ", ";\n")
     assert answered.count(which) == 1
     for sheet, said in (
         ("the sheet", ALL_ANSWERED_ONE),
-        ("a part's sheet", ALL_ANSWERED_PARTS),
+        ("each part's sheet in turn", ALL_ANSWERED_PARTS),
     ):
         assert _concat(answered.replace(which, "WHICH"), {"WHICH": sheet}) == said
         assert _OFF_FACE.search(said) is None, said
     fill = _between(page, "  function fillAsk() {", "\n  }\n")
     line = (
         "    ask.textContent = drawable().length ? ASK "
-        ": done ? ALL_ANSWERED(nParts > 1) : YOUR_SQUARES;\n"
+        ": done ? ALL_ANSWERED(drawn.length > 1) : YOUR_SQUARES;\n"
     )
     assert line in fill
     assert "  const nParts = models.length;\n" in page

@@ -501,11 +501,15 @@ def test_l3_a_stale_editor_swapped_away_clears_its_toast_to_reopen() -> None:
     changes not kept is not one (an unsaved change: it stays)."""
     editor = _between(_read("sheet.js"), "OE.sheetEditor = (app, data,", "\n};")
     assert "    reopenSaid: '',\n" in editor
-    helper = _between(editor, "  function reopenToast(text) {", "\n  }\n")
+    # An error, but for the clear's whose sheet could not be read again
+    # (r5-i B7: isError false, a plain message; the record is the same).
+    helper = _between(
+        editor, "  function reopenToast(text, isError = true) {", "\n  }\n"
+    )
     assert helper == (
-        "  function reopenToast(text) {\n"
+        "  function reopenToast(text, isError = true) {\n"
         "    state.reopenSaid = text;\n"
-        "    OE.toast(text, true);"
+        "    OE.toast(text, isError);"
     )
     code = _code(editor)
     assert code.count("state.reopenSaid = ") == 1
@@ -516,8 +520,9 @@ def test_l3_a_stale_editor_swapped_away_clears_its_toast_to_reopen() -> None:
     for line in (
         "      const text = 'The map was not opened: ' + said + '.';\n",
         "          const text = 'Not cleared: ' + said + '.';\n",
-        "          reopenToast('The ' + answersOf(column) + ' were removed, but the"
-        " sheet could not be read again: '\n",
+        # r5-i B7: the clear's toast says only which answers went, plainly.
+        "          reopenToast('The ' + answersOf(column) + ' were removed.',"
+        " false);\n",
         "      if (state.stale && err.message === OE.CHANGED_UNDER_PAGE)"
         " reopenToast(text); else OE.toast(text, true);\n",
     ):

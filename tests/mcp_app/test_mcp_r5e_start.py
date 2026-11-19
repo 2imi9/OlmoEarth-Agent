@@ -289,14 +289,14 @@ def test_s2_why_the_tiles_are_off_stands_over_them() -> None:
     """S2 (R2, after review): signed out, 'Sign in to start a job.' is the
     jobs card's first block, over the tiles, not a loose line under the last
     tile's box; signed in it is not drawn and the card holds the list alone.
-    Its words are as they were."""
+    Its words are as they were; since r5-i B8 it is at body size in the body
+    colour (no class)."""
     page = _read("start.html")
     render = _between(page, "function render(app, data) {", "\n}\n")
     assert _in_order(
         render,
         "root.append(OE.el('section', { class: 'card stack' },",
-        "on ? null : OE.el('div', { class: 'small faint' }, "
-        "'Sign in to start a job.'),",
+        "on ? null : OE.el('div', {}, 'Sign in to start a job.'),",
         "OE.el('ul', { class: 'items jobs', 'aria-label': 'Jobs' }, "
         "jobRows(app, jobs, on))));",
     )
@@ -441,8 +441,10 @@ def test_s6_closed_cards_end_on_one_line_and_jobs_start_at_one_edge() -> None:
     buttons on one line; an open card keeps block layout; in the column the
     ring gives up its own top margin (margins do not collapse there), so it
     sits as far under the description closed as open and does not move when
-    a card opens; the Outputs text button is as wide as "Hide outputs", so
-    the job buttons after it start at one left edge. No word changes."""
+    a card opens; the outputs text button is as wide as the wider of its
+    labels (r5-i B6: "Show outputs", 100 px; it was 92 px for "Hide
+    outputs"), so the job buttons after it start at one left edge. No word
+    changes."""
     style = _style("studio.html")
     assert _in_order(
         style,
@@ -458,7 +460,7 @@ def test_s6_closed_cards_end_on_one_line_and_jobs_start_at_one_edge() -> None:
     assert _in_order(
         style,
         ".items .pred-acts { margin-top: 4px; }",
-        ".items .pred-acts > button.link { min-width: 92px; text-align: left; }",
+        ".items .pred-acts > button.link { min-width: 100px; text-align: left; }",
         "@media (max-width: 480px) {",
     )
     card = _between(_read("studio.html"), "function projectCard(app, p) {", "\n}\n")

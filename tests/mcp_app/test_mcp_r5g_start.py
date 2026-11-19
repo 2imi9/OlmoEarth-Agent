@@ -158,7 +158,9 @@ def test_g2_the_access_link_opens_the_site_through_the_host() -> None:
     does not open it, and is emptied by a later press that opens it: the
     shape of OE.docsLink, body for body, but for its label and address.
     OE.open's line that the link was not opened is cleared by a later link
-    opened, and only that line (as OE.say clears its own, r5-b J20)."""
+    opened, and only that line (as OE.say clears its own, r5-b J20). Since
+    r5-i B5 the slot says itself that the link was not opened (role status)
+    and OE.open writes no toast for it (quiet)."""
     common = _read("common.js")
     assert f"OE.ACCESS_URL = '{ACCESS_URL}';\n" in common
     assert f"// WORDING: r5g\nOE.ACCESS_LABEL = '{ACCESS_LABEL}';\n" in common
@@ -166,13 +168,14 @@ def test_g2_the_access_link_opens_the_site_through_the_host() -> None:
     link = _between(common, head, "\n};")
     assert _in_order(
         link,
-        "const slot = OE.el('div', { class: 'oe-link-slot small' });",
+        "const slot = OE.el('div', { class: 'oe-link-slot small', role: 'status' });",
         "const button = OE.el('button', { type: 'button', class: 'link' }, "
         "OE.ACCESS_LABEL);",
         "if (busy) return;",
         "button.setAttribute('aria-disabled', 'true');",
-        "const opened = await OE.open(app, OE.ACCESS_URL);",
-        "slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.DOCS_BY_HAND), "
+        "const opened = await OE.open(app, OE.ACCESS_URL, { quiet: true });",
+        "slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, "
+        "OE.LINK_NOT_OPENED + ' ' + OE.DOCS_BY_HAND), "
         "OE.el('code', {}, OE.ACCESS_URL)]));",
         "button.setAttribute('aria-disabled', 'false');",
         "return [button, slot];",
@@ -192,31 +195,34 @@ def test_g2_the_access_link_opens_the_site_through_the_host() -> None:
     same = docs.replace("OE.DOCS_LABEL", "OE.ACCESS_LABEL")
     assert same.replace("OE.DOCS_URL", "OE.ACCESS_URL") == link[len(head) :]
     # OE.open asks the host and answers false when the host declined.
-    opener = _between(common, "OE.open = async (app, url) => {", "\n};")
+    opener_head = "OE.open = async (app, url, { quiet = false } = {}) => {"
+    opener = _between(common, opener_head, "\n};")
     assert "await app.openLink({ url });" in opener
     assert opener.count("return false;") == 2 and "return true;" in opener
-    # Both failures write LINK_NOT_OPENED, said once, under r4-k K7's mark; a
-    # link opened clears the status line only while it still says that, so
-    # a later press that opens the site never leaves it there; any other
-    # line stays.
+    # Both failures write LINK_NOT_OPENED, said once, under r4-k K7's mark,
+    # unless quiet (r5-i B5); a link opened clears the status line only
+    # while it still says that, so a later press that opens the site never
+    # leaves it there; any other line stays.
     named = f"// WORDING: r4k K7\nOE.LINK_NOT_OPENED = '{LINK_NOT_OPENED}';\n"
-    assert named + "OE.open = async (app, url) => {" in common
+    assert named + opener_head in common
     assert common.count(f"'{LINK_NOT_OPENED}'") == 1
     assert LINK_NOT_OPENED not in _code(opener)
     assert _in_order(
         opener,
-        "if (answer && answer.isError) { OE.toast(OE.LINK_NOT_OPENED, true); "
-        "return false; }",
+        "if (answer && answer.isError) { if (!quiet) OE.toast(OE.LINK_NOT_OPENED, "
+        "true); return false; }",
         "const bar = document.getElementById('oe-toast');",
         "if (bar && bar.textContent === OE.LINK_NOT_OPENED) OE.toast('');",
         "return true;",
-        "} catch (_) {\n    OE.toast(OE.LINK_NOT_OPENED, true);\n    return false;",
+        "} catch (_) {\n    if (!quiet) OE.toast(OE.LINK_NOT_OPENED, true);\n"
+        "    return false;",
     )
     assert opener.count("OE.toast(") == 3 and opener.count("OE.toast('')") == 1
     # The address is public and fixed: no id, query or place in it.
     assert re.fullmatch(r"https://olmoearth\.allenai\.org/", ACCESS_URL)
-    # The slot is drawn only when it holds the address, which selects whole.
-    assert ".oe-link-slot:empty { display: none; }" in common
+    # The address selects whole. Since r5-i B5 the empty slot is not hidden: a
+    # status, it stays in the accessibility tree before its first words.
+    assert ".oe-link-slot:empty" not in common
     assert ".oe-link-slot code { user-select: all; overflow-wrap: anywhere; }" in common
 
 

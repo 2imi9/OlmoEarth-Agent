@@ -86,9 +86,10 @@
      on its first line, the name, the model and the status at full width on
      the next (the dates' slot then keeps no width of its own). */
   .items .pred-acts { margin-top: 4px; }
-  /* r5-e S6: the Outputs text button as wide as "Hide outputs", so a row's
-     job buttons start at one left edge whether its outputs are open or not. */
-  .items .pred-acts > button.link { min-width: 92px; text-align: left; }
+  /* r5-e S6: the outputs text button as wide as the wider of its two labels
+     ("Show outputs", r5-i B6, and "Hide outputs", at 13 px), so a row's job
+     buttons start at one left edge whether its outputs are open or not. */
+  .items .pred-acts > button.link { min-width: 100px; text-align: left; }
   @media (max-width: 480px) {
     .items .lead.pred { flex-wrap: wrap; }
     .items .lead.pred > .lead-text { flex-basis: 100%; }
@@ -311,10 +312,13 @@ const PREDICTIONS_NOTE = 'Each prediction is a model run over an area and a peri
    that Studio names the maps only by the ids in the rows under it, and whom
    to ask (it said "Use the buttons on the one you mean.", over rows the
    user had nothing to tell apart by); a result carries only its id and the
-   names of what it holds, so the face cannot say more. */
+   names of what it holds, so the face cannot say more. r5-i B6: the closed
+   toggle says "Show outputs" (it said "Outputs", which read as a label, not
+   as a button that shows the run's maps); its aria-label follows. */
 // WORDING: r4p2 (label, none, noneYet); r5c S05 (first)
 const OUTPUTS = {
-  label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),
+  // WORDING: r5i B6
+  label: (shown) => (shown ? 'Hide outputs' : 'Show outputs'),
   // WORDING: r5f F13
   first: 'This run made more than one map; Studio names them only by the ids below. Not sure which is yours? Ask whoever made the run.',
   none: 'No outputs',

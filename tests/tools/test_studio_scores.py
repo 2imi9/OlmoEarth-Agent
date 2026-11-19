@@ -780,10 +780,17 @@ async def test_the_download_token_never_reaches_a_result_a_file_an_error_or_a_lo
     missing = dict(entries)
     del missing[f"{FOLDER}/README.md"]
     _mock(httpx_mock, _topk_record(), _zip(missing))
-    refused = await _call("olmoearth_scores_from_studio", {"result_id": RID})
+    # r5-h H2: the first zip, kept on this computer, would be read again within
+    # a day; fresh downloads the changed one.
+    refused = await _call(
+        "olmoearth_scores_from_studio", {"result_id": RID, "fresh": True}
+    )
     assert refused["ok"] is False
     written = [p.read_text(encoding="utf-8") for p in _scores_root.rglob("*.json")]
-    assert len(written) == 2  # the zone's manifest and its scores file
+    # The zone's manifest and its scores file: the changed download the decode
+    # refused also removed the kept copy and its record (r5-h H2).
+    assert len(written) == 2
+    assert not list(_scores_root.rglob(studio_scores.KEPT_RECORD))
     assert not list(_scores_root.rglob("*.part"))
     assert "download_token=<redacted>" in caplog.text
     for text in (json.dumps(got), json.dumps(refused), caplog.text, *written):
@@ -1652,6 +1659,8 @@ async def _decoded_both_ways(
     zone's several (read from the file written, so another GDAL default
     shows here), which is where ``studio_scores._strips`` rounds a strip.
     """
+    # r5-h H2: no kept copy, so the second read downloads and decodes again.
+    monkeypatch.setenv(studio_scores.KEEP_HOURS_ENV, "0")
     record, zipped, args = _wide_zone(tmp_path, kind)
     _mock(httpx_mock, record, zipped, reusable=True)
     whole = await _ok("olmoearth_scores_from_studio", args)

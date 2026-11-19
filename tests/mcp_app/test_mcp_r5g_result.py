@@ -331,8 +331,7 @@ def test_g1_the_80_squares_of_the_first_card() -> None:
     ]
     squares = _squares_script()
     assert (
-        "legend.find((e) => !e.wrong && !e.unjudged && key(e.code) === code)"
-        in squares
+        "legend.find((e) => !e.wrong && !e.unjudged && key(e.code) === code)" in squares
     )
     assert "legend.find((e) => e.unjudged === true && words(e.text))" in squares
     assert squares.count("legend.find(") == 2

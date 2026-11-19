@@ -261,8 +261,7 @@ def test_c2_the_lead_draws_at_most_two_lines_in_the_body_colour() -> None:
     assert re.search(r"\.oe-lead[^{]*\{[^}]*\bcolor:", style) is None
     assert (
         "/* A card's plain lines under its heading (OE.lead): at most two, in the"
-        " body\n   colour; the rest goes in the card's Details fold (r5-e). */"
-        in style
+        " body\n   colour; the rest goes in the card's Details fold (r5-e). */" in style
     )
     assert "three plain lines" not in style
     assert "one block of at most two lines" in common
