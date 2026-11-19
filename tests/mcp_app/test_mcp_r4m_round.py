@@ -98,10 +98,12 @@ NOTE_TELL = (
     "shows no pictures of points."
 )
 
-#: M5: the box's label beside the kelp rule, as r5-b J18 shortens it (the map
-#: maker's meaning kept; what an empty box does is a small line under the box).
+#: M5: the box's label beside the app's rule, as r5-b J18 shortens it (the map
+#: maker's meaning kept; what an empty box does is a small line under the box),
+#: worded for any map by round r5-l L2 (tests/mcp_app/test_mcp_r5l_views.py).
 RULE_OWN = (
-    "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
+    "Did the map maker mean something else? Write their meaning of Present and "
+    "Absent (optional)."
 )
 
 #: M6: what every sheet face says after its instruction; r5-e H1: a clause of
@@ -218,8 +220,9 @@ def test_m1_the_unseen_line_says_what_the_rate_covers() -> None:
         "every {unit} of the map they were picked from, all classes together"
     )
     names = ['"Snow"']
-    start = 'You saw "Snow" in no {unit}, so this check says nothing about how well '
-    end = "the map finds it. The rate above is for {whole}."
+    # Round r5-j B4: "You did not see ... in any {unit}".
+    start = 'You did not see "Snow" in any {unit}, so this check says nothing about '
+    end = "how well the map finds it. The rate above is for {whole}."
     picked = "every square of the map they were picked from, all classes together"
     for unit, kw, whole in (
         ("square", {}, "every square of the map, all classes together"),
@@ -240,9 +243,9 @@ def test_m1_the_unseen_line_says_what_the_rate_covers() -> None:
     many = [f'"C{i}"' for i in range(6)]
     line, detail = server._unseen_lines(many, "square", m=8, known=False)
     assert line == (
-        "You saw 6 of the map's 8 classes in no square, so this check says nothing "
-        "about how well the map finds them. The rate above is for every square of "
-        "the map they were picked from, all classes together. Names under Details."
+        "You did not see 6 of the map's 8 classes in any square, so this check says "
+        "nothing about how well the map finds them. The rate above is for every square "
+        "of the map they were picked from, all classes together. Names under Details."
     )
     assert str(detail).startswith("Classes you saw in no square: ")
     # No word of the old "all squares together" anywhere in the server.
@@ -601,22 +604,24 @@ def test_m8_the_pane_shows_the_rules_absent_half_and_the_cloud_line() -> None:
         " : [text, null];" in halves
     )
     assert "const takesQ = answers.some((a) => a.value === OE.UNJUDGED);" in editor
-    # The owner's rule has both halves, so the pane's split finds its Absent.
+    # The app's rule has both halves, so the pane's split finds its Absent
+    # (round r5-l L1: the general rule, and the kelp rule a record keeps).
     rule = imagery.READING_RULE
     at = rule.index("Absent:")
-    assert rule[at:] == "Absent: on every clear date shown it fills half or less."
+    assert rule[at:] == "Absent: on every clear date shown, it covers half or less."
+    kelp = imagery.KELP_READING_RULE
+    at = kelp.index("Absent:")
+    assert kelp[at:] == "Absent: on every clear date shown it fills half or less."
 
 
 def test_m8_the_rule_block_says_the_cloud_line_on_a_face_with_cannot_tell() -> None:
     """Review of r4-m: the page copy has the rule the pictures have (both
     imagery.rule_for), so the pane's own rule lines are a fallback. The
-    sheet's rule block says the cloud line, after the rule, in the kelp-only
-    line's place, on a face that takes Cannot tell and can show pictures; the
-    kelp-only line is drawn only where there is no cloud line (a certificate
-    plan's face, a sheet with no pictures). r5-e H2: the scope is in the
-    Details fold now, and after review the kelp-only line follows it there
-    (limitNote), so the block (a box) holds the rule and, on such a face, the
-    cloud line."""
+    sheet's rule block says the cloud line, after the rule, on a face that
+    takes Cannot tell and can show pictures. r5-e H2: the scope is in the
+    Details fold now, so the block (a box) holds the rule and, on such a face,
+    the cloud line; r5-l L1: no line follows the scope there on which maps
+    the rule is for (the panel reads no data.rule_limit)."""
     editor = _editor()
     assert _in_order(
         editor,
@@ -635,10 +640,9 @@ def test_m8_the_rule_block_says_the_cloud_line_on_a_face_with_cannot_tell() -> N
     assert _in_order(
         editor,
         "  const scopeNote = typeof data.rule_scope === 'string'",
-        "  const limitNote = pageRule && scopeNote && !cloudOnFace && typeof "
-        "data.rule_limit === 'string' && data.rule_limit ? ",
-        "    classNoPeriod, scopeNote, limitNote, gradedWhy,\n",
+        "    classNoPeriod, scopeNote, gradedWhy,\n",
     )
+    assert "data.rule_limit" not in editor and "limitNote" not in editor
 
 
 def test_m8_a_dates_heading_leaves_its_scene_cloud_to_the_panes_fold() -> None:

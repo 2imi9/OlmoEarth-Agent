@@ -161,15 +161,18 @@ def test_s01_the_sign_out_message_says_the_user_is_still_signed_in() -> None:
     said signed in. The message is chosen by the key in effect (the result's
     signed_in and source), not by environment_key_remains, which an
     OLMOEARTH_API_KEY that is no key also sets
-    (test_s01_an_own_key_that_is_no_key_leaves_the_user_signed_out)."""
+    (test_s01_an_own_key_that_is_no_key_leaves_the_user_signed_out).
+    r5-k K5: the message is said under Sign out (OE.accountReply), its words
+    as they were (test_mcp_r5k_start.py)."""
     button = _between(_read("common.js"), "OE.signOutButton = ", "\n};")
-    assert "OE.toast(result.environment_key_remains" not in button
+    assert "result.environment_key_remains" not in button
     assert _in_order(
         button,
         "// WORDING: r5c S01 (the first; the second: r4p2)",
-        "OE.toast(result.signed_in && result.source === 'environment'",
+        "const words = result.signed_in && result.source === 'environment'",
         "? " + _js(STILL_SIGNED_IN),
-        ": 'Signed out; the saved key was removed.');",
+        ": 'Signed out; the saved key was removed.';",
+        "reply(words, false, OE.accountState(result.signed_in, result.source",
     )
     for name in views.VIEWS:
         page = views.view_html(name)

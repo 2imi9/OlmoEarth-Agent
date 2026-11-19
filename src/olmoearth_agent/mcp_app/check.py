@@ -23,8 +23,11 @@ every file 0600, each written whole: a new file beside it, moved over it):
   (``rule_owner``, a map of presence and absence; missing: no);
 - ``<key>.draw.json``: the draw (:data:`DRAW_FORMAT`), its settings pinned at
   the first press (:func:`claim_draw`; the user's labelling rule among them
-  for a map with none), then ``drawn`` (:func:`finish_draw`) or ``failed``
-  (:func:`fail_draw`);
+  for a map with none, and since round r5-l the app's rule the part is drawn
+  with, ``app_rule``, ``None`` on a map with no rule of the owner's: a record
+  written before has none, and a part drawn then was drawn with the earlier
+  kelp rule, :func:`map_app_rule`; a press that drew nothing keeps no rule),
+  then ``drawn`` (:func:`finish_draw`) or ``failed`` (:func:`fail_draw`);
 - ``<key>.lock``: held, with this process's lock, around each read and
   rewrite of the draw, so a second server process waits its turn;
 - ``log.jsonl``: one line per zone of each press (:func:`append_log`),
@@ -822,12 +825,21 @@ def _sheet_words(path: Any) -> dict[str, Any]:
         error = SHEET_NOT_CSV.format(name=Path(str(path)).name, error=exc)
         return {"progress": None, "open_label": None, "sheet_error": error}
     # The counts too (never a row): the card's heading says every square is
-    # answered once each drawn sheet is labelled whole.
+    # answered once each drawn sheet is labelled whole. Round r5-m, after
+    # review: and whether the sheet gave its result (a graded mark, as the
+    # sheet's view reads it) and whether its answers changed since (its
+    # changed_since_first), never the mark itself nor any grade: the heading
+    # then names the sheet's finish button by its words, which differ then.
+    mark = progress.get("graded")
+    graded = isinstance(mark, dict)
     return {
         "progress": progress["progress"],
         "open_label": progress["open_label"],
         "n_rows": _whole(progress.get("n_rows")),
         "n_labelled": _whole(progress.get("n_labelled")),
+        "graded": graded,
+        "graded_changed": isinstance(mark, dict)
+        and mark.get("changed_since_first") is True,
     }
 
 
@@ -1076,7 +1088,16 @@ def claim_draw(
     an earlier part's for its pinned rule, so every part of the map keeps
     the day it was typed: pass-3 finding Q7; else this press's time, for a
     rule sent with this press), and a retry of a draw that pinned none pins
-    it then the same way; a draw that pinned one keeps it.
+    it then the same way; a draw that pinned one keeps it. A first press also
+    pins the app's rule the part is drawn with (``app_rule``, round r5-l:
+    :func:`_app_rule_for`, the one an earlier part of the map was drawn
+    with, or the kelp rule a sheet of the map holds answers under, else
+    ``imagery.READING_RULE``; read before the lock, since it reads other
+    records and sheets), which a rule the user typed replaces while it is
+    pinned, and ``None`` for a map with no rule of the owner's
+    (``rule_needed``); a retry of a draw that pinned none pins it then the
+    same way (that draw drew nothing). A draw recorded before the round has
+    none and was drawn with the earlier kelp rule (:func:`_draw_app_rule`).
 
     ``ValueError`` for a key that is not a check's (before any file is
     touched) or a check with no offer here (:data:`UNKNOWN_CHECK`); then the
@@ -1110,6 +1131,13 @@ def claim_draw(
     key = _valid_key(key)
     count = _whole(budget)
     folder = checks_dir()
+    # The app's rule a part of this map is drawn with (round r5-l), read
+    # before the lock: it reads the map's other draw records and its sheets.
+    # The key fixes its result, so the offer is read here quietly, then
+    # again under the lock.
+    early = _record_quiet(folder, key, ".json", CHECK_FORMAT)
+    owner = early is not None and not early.get("rule_needed")
+    app_rule = _app_rule_for(early.get("result_id") if early and owner else None)
     with _draw_lock(folder, key):
         offer = read_offer(key)
         offered = _offered(offer)
@@ -1140,6 +1168,9 @@ def claim_draw(
                     "budget": count,
                     "seed": SEED,
                 },
+                # The app's rule this part is drawn with (round r5-l); none
+                # for a map with no rule of the owner's.
+                "app_rule": None if offer.get("rule_needed") else app_rule,
             }
             if isinstance(reading_rule, str) and reading_rule:
                 draw["reading_rule"] = reading_rule
@@ -1177,6 +1208,12 @@ def claim_draw(
         if isinstance(reading_rule, str) and reading_rule and not pinned_rule:
             draw["reading_rule"] = reading_rule
             draw["rule_typed_at"] = _typed_at(rule_typed_at, pressed_at or _stamp(now))
+        # A draw retried drew nothing: one that pinned no app's rule (written
+        # before round r5-l) pins it now, as a first press would.
+        if offer.get("rule_needed"):
+            draw.setdefault("app_rule", None)
+        elif not (isinstance(draw.get("app_rule"), str) and draw["app_rule"]):
+            draw["app_rule"] = app_rule
         _write_json(path, draw)
         return {"outcome": "retry", "draw": draw}
 
@@ -1548,12 +1585,142 @@ def map_rule(result_id: Any) -> dict[str, str] | None:
     return {"text": text, "typed_at": typed_at}
 
 
+def _draw_app_rule(draw: dict[str, Any]) -> str | None:
+    """The app's rule a draw record was drawn with (round r5-l: records
+    already written keep their words): the text it pinned at its first press
+    (``app_rule``, :func:`claim_draw`; ``None`` there for a map with no rule
+    of the owner's, and then ``None`` here), else, for a record written before
+    the round, which has no ``app_rule`` at all, the app's earlier rule, set
+    11 Nov 2026 for kelp canopy maps (``imagery.KELP_READING_RULE``). A rule
+    the user typed (``reading_rule``, :func:`map_rule`) comes before either
+    where pinned."""
+    # imagery imports more than this module needs; imported here, when asked.
+    from olmoearth_agent.mcp_app import imagery
+
+    if "app_rule" not in draw:
+        return imagery.KELP_READING_RULE
+    text = draw["app_rule"]
+    return text if isinstance(text, str) and text else None
+
+
+def _settles(draw: dict[str, Any], now: float) -> bool:
+    """Whether a draw record settles its map's rule: ``drawn``, or ``drawing``
+    and not stale (being drawn now; the card shows it busy). A press that
+    failed, or a draw left ``drawing`` too long, drew nothing. The one test
+    :func:`result_settled` and :func:`map_app_rule` share."""
+    state = draw.get("state")
+    return state == "drawn" or (state == "drawing" and not _stale(draw, now))
+
+
+def map_app_rule(result_id: Any) -> str | None:
+    """The app's rule this result's map was first drawn with: its earliest
+    draw record's by press time (:func:`_draw_app_rule`) among those drawn
+    or being drawn (:func:`_settles`), or ``None`` when no part of it is.
+    So a map drawn, or being drawn, before round r5-l keeps the earlier kelp
+    rule on its card, and a part pressed since takes the same
+    (:func:`_app_rule_for`); a press that failed draws nothing and does not
+    count, so the kelp rule is never shown while the card's box is open.
+    Read from the draw records (at most :data:`SCAN_MAX`); never raises."""
+    rid = str(result_id or "").strip()
+    folder = _existing_checks_dir()
+    if not rid or folder is None:
+        return None
+    now = _now()
+    found = [
+        (str(draw.get("pressed_at") or ""), text)
+        for draw in _draw_records(folder)
+        if str(draw.get("result_id") or "").strip() == rid and _settles(draw, now)
+        if (text := _draw_app_rule(draw)) is not None
+    ]
+    if not found:
+        return None
+    return min(found)[1]
+
+
+def result_app_rule(result_id: Any) -> str | None:
+    """The app's rule this result's map takes (round r5-l): the one a part of
+    it was drawn with (:func:`map_app_rule`); with none, the earlier kelp
+    rule when a sheet of the result planned another way (in the chat) holds
+    answers made under it (``sheet.answered_sheets`` with no rule typed
+    beside it, ``imagery.app_rule_of``: its pictures' record or its graded
+    mark from before the round), so one map keeps one rule; else ``None``.
+    Round r5-m B1: r5-l's words (``imagery.R5L_READING_RULE``) the same way,
+    for a sheet whose records hold them, only when no such sheet of the
+    result holds the kelp rule: the kelp rule comes first, wherever its sheet
+    sits in the list (newest first), as it is the earlier rule. A sheet of
+    the map planned in the chat since the round takes the general rule
+    whatever this says (``imagery.app_rule_of``). Blocking: it reads at most
+    :data:`SCAN_MAX` draw records and as many sheets with their records;
+    never raises (a read that fails is logged)."""
+    drawn = map_app_rule(result_id)
+    if drawn is not None:
+        return drawn
+    rid = str(result_id or "").strip()
+    if not rid:
+        return None
+    try:
+        # imagery imports more than this module needs; imported here, when asked.
+        from olmoearth_agent.mcp_app import imagery
+
+        r5l = False
+        for real in sheet.answered_sheets(rid):
+            if sheet._typed_rule_of(real) is not None:
+                continue  # labelled under the rule typed beside it
+            kept = imagery.app_rule_of(real)
+            if kept == imagery.KELP_READING_RULE:
+                return kept  # the earlier rule: one map keeps its first rule
+            r5l = r5l or kept == imagery.R5L_READING_RULE
+        if r5l:
+            return imagery.R5L_READING_RULE
+    except Exception:  # noqa: BLE001 - the card and the press stand without it
+        logger.warning("a result's sheets were not read for their rule", exc_info=True)
+    return None
+
+
+def _app_rule_for(result_id: Any) -> str:
+    """The app's rule a new part of this result's map is drawn with (round
+    r5-l): the map's own (:func:`result_app_rule`: the one an earlier part
+    was drawn with, or the kelp rule a sheet of it holds answers under), so
+    one map keeps one rule over its parts, else the general rule
+    (``imagery.READING_RULE``). Blocking (it reads records and sheets)."""
+    # imagery imports more than this module needs; imported here, when asked.
+    from olmoearth_agent.mcp_app import imagery
+
+    return result_app_rule(result_id) or imagery.READING_RULE
+
+
+def sheet_app_rule(labels_path: Any) -> str | None:
+    """The app's rule the Check card's draw of this sheet was drawn with
+    (:func:`_draw_app_rule`), the drawn record found by the sheet's real path
+    as :func:`sheet_context` finds it (at most :data:`SCAN_MAX` read), or
+    ``None`` for a sheet no Check card drew here (or one drawn for a map with
+    no rule of the owner's). ``imagery.app_rule_of`` asks it for a sheet with
+    no rule typed beside it, after the pictures' record and the graded mark.
+    Never raises."""
+    if not isinstance(labels_path, str) or not labels_path or "\x00" in labels_path:
+        return None
+    folder = _existing_checks_dir()
+    if folder is None:
+        return None
+    try:
+        real = os.path.realpath(labels_path)
+    except (OSError, ValueError):
+        return None
+    for draw in _draw_records(folder):
+        if draw.get("state") == "drawn" and _same_file(
+            draw.get("labels_csv_path"), real
+        ):
+            return _draw_app_rule(draw)
+    return None
+
+
 def result_settled(result_id: Any) -> bool:
     """Whether a part of this result is drawn, so its labelling rule is
     settled (the owner's ruling of 13 Nov 2026, option A: no rule replaces
     the owner's after that): a draw record of the result ``drawn``, or
-    ``drawing`` and not stale (being drawn now; the card shows it busy).
-    Read from the draw records (at most :data:`SCAN_MAX`); never raises."""
+    ``drawing`` and not stale (being drawn now; the card shows it busy:
+    :func:`_settles`). Read from the draw records (at most
+    :data:`SCAN_MAX`); never raises."""
     rid = str(result_id or "").strip()
     folder = _existing_checks_dir()
     if not rid or folder is None:
@@ -1562,8 +1729,7 @@ def result_settled(result_id: Any) -> bool:
     for draw in _draw_records(folder):
         if str(draw.get("result_id") or "").strip() != rid:
             continue
-        state = draw.get("state")
-        if state == "drawn" or (state == "drawing" and not _stale(draw, now)):
+        if _settles(draw, now):
             return True
     return False
 

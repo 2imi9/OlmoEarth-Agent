@@ -8,7 +8,7 @@ F04, F09 and F11).
   says on its face what to do, in plain words; the server's reason (a file's
   name, a step no button of the card does) is in the part's lines in Details;
 - F09: step 3 says what the one who looks must recognise: what the map
-  shows;
+  shows (since round r5-m B1, what the map is meant to find);
 - F11: a failed pick's line names the press by its button, or says the pick
   is not in this press and waits for a later one; with every square
   answered the heading says "the sheet" on a map in one part and "a part's
@@ -69,9 +69,11 @@ SHEET_UNREAD_WHY = "Its sheet cannot be read now: "
 SHEET_NOT_OPENED_WHY = "The sheet could not be opened: "
 
 #: F09: step 3, and the words it had ("it" pointed at nothing on the face).
+#: Round r5-m B1: what the map is meant to find (it said "what the map
+#: shows"; tests/mcp_app/test_mcp_r5m_check.py).
 STEP_3 = (
-    "3. Someone who can recognise what the map shows looks at each one in a "
-    "satellite picture."
+    "3. Someone who can recognise what the map is meant to find looks at each one "
+    "in a satellite picture."
 )
 STEP_3_OLD = "recognise it in a satellite picture"
 
@@ -91,10 +93,12 @@ ALL_ANSWERED_ONE = (
     "Every square is answered. Open the sheet, then press Estimate the error rate."
 )
 #: Round r5-i B2: "each part's sheet in turn" on a map in parts (it said "a
-#: part's sheet", which suggested one press gives the map's result).
+#: part's sheet", which suggested one press gives the map's result). Round
+#: r5-j B3: the press in each part's sheet, one result per part ("in turn,
+#: then press" still read as one press).
 ALL_ANSWERED_PARTS = (
-    "Every square is answered. Open each part's sheet in turn, then press "
-    "Estimate the error rate."
+    "Every square is answered. In each part's sheet, press Estimate the error "
+    "rate: one result per part."
 )
 
 
@@ -353,10 +357,12 @@ def test_f04_the_servers_words_on_a_missing_sheet_name_its_file(
 
 
 def test_f09_step_3_says_what_the_reader_must_recognise() -> None:
-    """F09: step 3 reads "Someone who can recognise what the map shows looks
-    at each one in a satellite picture." (it said "recognise it"; steps 1 and
-    2 speak of the map and the squares, so "it" pointed at nothing); the
-    other steps are as they were, and the four go to the steps figure."""
+    """F09: step 3 reads "Someone who can recognise what the map is meant to
+    find looks at each one in a satellite picture." (it said "recognise it";
+    steps 1 and 2 speak of the map and the squares, so "it" pointed at
+    nothing; round r5-m B1 put "what the map is meant to find" for F09's
+    "what the map shows"); the other steps are as they were, and the four go
+    to the steps figure."""
     page = _read("check.html")
     marks = (
         "// WORDING: r5f F09 (step 3)\n"
@@ -429,21 +435,28 @@ def test_f11_the_heading_names_the_sheet_by_the_maps_parts() -> None:
     the map has more than one part. Round r5-i B2: "Open each part's sheet in
     turn" on a map in parts, and after review only where more than one part
     has a sheet: fillAsk passes whether more than one part is drawn
-    (tests/mcp_app/test_mcp_r5i_check.py)."""
+    (tests/mcp_app/test_mcp_r5i_check.py). Round r5-j B3: "In each part's
+    sheet, press Estimate the error rate: one result per part." on a map in
+    parts; the line on one part keeps its words
+    (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     tags = (
         "// WORDING: r5f F11\n// WORDING: r5b J17\n"
         "const ALL_ANSWERED = (several) => "
     )
     assert tags in page
-    which = "(several ? 'each part\\'s sheet in turn' : 'the sheet')"
+    which = (
+        "(several ? 'In each part\\'s sheet, press Estimate the error rate: one "
+        "result per part.'\n    : 'Open the sheet, then press Estimate the error "
+        "rate.')"
+    )
     answered = _after(page, "const ALL_ANSWERED = (several) => ", ";\n")
     assert answered.count(which) == 1
-    for sheet, said in (
-        ("the sheet", ALL_ANSWERED_ONE),
-        ("each part's sheet in turn", ALL_ANSWERED_PARTS),
-    ):
-        assert _concat(answered.replace(which, "WHICH"), {"WHICH": sheet}) == said
+    head = "Every square is answered. "
+    for said in (ALL_ANSWERED_ONE, ALL_ANSWERED_PARTS):
+        tail = said.removeprefix(head)
+        assert "'" + tail.replace("'", "\\'") + "'" in which, tail
+        assert _concat(answered.replace(which, "WHICH"), {"WHICH": tail}) == said
         assert _OFF_FACE.search(said) is None, said
     fill = _between(page, "  function fillAsk() {", "\n  }\n")
     line = (

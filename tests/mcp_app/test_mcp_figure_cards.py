@@ -387,14 +387,16 @@ async def test_the_check_card_names_the_map_its_parts_and_its_squares(
     told = json.loads(_texts(plain)[-1])["note"]
     assert told.startswith(server.CHECK_TEXT_NOTE)
     assert server.CHECK_OWNER_RULE_NOTE not in told  # no card, no box
-    # Without panels, a map of presence and absence: the model asks whether
-    # the map is of kelp before any plan, and for its own rule if not (Q5).
+    # Without panels, a map of presence and absence: the model gives the app's
+    # rule before any plan and asks whether the map maker meant something else,
+    # then for that meaning (Q5; r5-l L1: it asked whether the map is of kelp).
     assert server.CHECK_TEXT_OWNER_RULE_NOTE in told
     assert server.CHECK_TEXT_OWNER_RULE_NOTE == (
-        "The app owner's labelling rule is for kelp canopy maps. Before any plan, "
-        "ask the user whether this map is of kelp; if it is not, ask for the map's "
-        "own rule in one sentence and repeat that rule with the result instead of "
-        "the kelp rule."
+        "This map takes the labelling rule that came with the app (labelling_rule, "
+        "with its scope). Before any plan, give the user that rule and ask whether "
+        "the map maker meant something else by Present and Absent; if so, ask for "
+        "their meaning in one sentence and repeat it with the result instead of the "
+        "app's rule."
     )
     assert json.loads(_texts(plain)[-1])["labelling_rule"] == model["labelling_rule"]
     assert server.SHARE_SIZE_NOTE in told
@@ -1207,10 +1209,11 @@ async def test_the_estimate_card_is_figure_first(
         0,
     )
     assert card["hedge"] is None
+    # Round r5-j B4: "You did not see ... in any square".
     assert card["uncovered"] == [
-        'You saw "Cloud" in no square, so this check says nothing about how well '
-        "the map finds it. The rate above is for every square of this part, all "
-        "classes together."
+        'You did not see "Cloud" in any square, so this check says nothing about '
+        "how well the map finds it. The rate above is for every square of this "
+        "part, all classes together."
     ]
     # One rare class at most (Present is seen in 6): no counted lines for
     # Details (F2); the button under the lines names the result and part (O3).
@@ -1228,6 +1231,8 @@ async def test_the_estimate_card_is_figure_first(
         "6.1% to 21.7%",
         None,
     )
+    # Round r5-j B1: a rate of its own has no bar, so no bar's label.
+    assert card["rate_bar_text"] is None
     assert card["rule"] == {
         "text": TYPED,
         "source": "typed",
@@ -1503,18 +1508,21 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     card = _view(result)["result"]
     assert (card["say"], card["rate"], card["rate_text"]) == (None, None, None)
     assert card["rate_range_text"] == "10.0% to 12.5%"
+    # Round r5-j B1: the bar's label joins the headline's two figures by "or".
+    assert card["rate_bar_text"] == "10.0% or 12.5%"
     assert card["headline"] == (
         "The West part is wrong on 10.0% of squares, or 12.5% if the 2 Cannot tell "
         "were wrong; 95% range 5.0% to 25.0%."
     )
     assert (card["rate_low"], card["rate_high"]) == (0.1, 0.125)
     assert card["n_unjudged"] == 2
-    # F1: the rare class by name only, then the unseen line, as without.
+    # F1: the rare class by name only, then the unseen line, as without
+    # (round r5-j B4: "You did not see ... in any square").
     assert card["uncovered"] == [
         'Too few squares to say how well the map finds: "Kelp".',
-        'You saw "Cloud" in no square, so this check says nothing about how well '
-        "the map finds it. The rate above is for every square of this part, all "
-        "classes together.",
+        'You did not see "Cloud" in any square, so this check says nothing about '
+        "how well the map finds it. The rate above is for every square of this "
+        "part, all classes together.",
     ]
     assert card["uncovered"][0] == server.SAY_TOO_FEW.format(
         units="squares", names='"Kelp"'
@@ -1904,10 +1912,11 @@ async def test_a_grid_over_the_whole_result_is_the_whole_map_in_points(
         "agreement range: 50.0% to 90.0%."
     )
     assert card["squares"]["unseen_line"] is None
+    # Round r5-j B4: "You did not see ... in any point".
     assert card["uncovered"] == [
-        'You saw "Cloud" in no point, so this check says nothing about how well the '
-        "map finds it. The rate above is for every point of the map's grid, all "
-        "classes together."
+        'You did not see "Cloud" in any point, so this check says nothing about how '
+        "well the map finds it. The rate above is for every point of the map's "
+        "grid, all classes together."
     ]
     # A map of three classes: the area sentence (E/est-5), in Details since
     # round r5-e, R4; the last line one sentence.
@@ -2128,13 +2137,16 @@ async def test_inline_labels_get_no_picture_must_state(
 
 def test_the_result_card_says_the_rule_the_labels_followed(root: Path) -> None:
     """Option A on the result card, with the sheet's own functions: a map of
-    presence and absence with nothing typed keeps the owner's kelp rule and
-    its scope; the model's note says the sheet records the owner's rule,
-    with its scope and that it is for kelp maps only, and to give the map's
-    own rule instead when the user gave one in the chat (F13, F9); a rule
-    typed before its first answer replaces it, with its typed scope (never
-    the owner's), and the model's note gives it as the user's words, with
-    no day and no scope (RULE_USED_NOTE as in r4-h)."""
+    presence and absence with nothing typed keeps the app's rule and its scope
+    (general since round r5-l L1, with its own note); the model's note says
+    the sheet records the app's rule, with its scope and nothing more (r5-l:
+    no line that it is for kelp maps only), and to give the map maker's
+    meaning instead when the user gave it in the chat (F13); a sheet whose
+    pictures' record printed the earlier kelp rule keeps that rule, its old
+    scope and its old note (r5-l: records keep their words); a rule typed
+    before its first answer replaces it, with its typed scope (never the
+    app's), and the model's note gives it as the user's words, with no day
+    and no scope (RULE_USED_NOTE as in r4-h)."""
     path = root / "kelp_to_label.csv"
     path.write_text("order,window_index,wrong,reference_class\n", encoding="utf-8")
     _design_file(
@@ -2150,18 +2162,41 @@ def test_the_result_card_says_the_rule_the_labels_followed(root: Path) -> None:
         "note": server.RULE_OWNER_NOTE,
     }
     assert kelp["notes"][-1] == (
-        "The sheet records the app owner's rule: "
-        f"{server.imagery.READING_RULE!r}. This rule came with the app (set 11 Nov "
-        "2026 for kelp canopy maps). Any other map needs its own rule. Give it with "
-        "the rate; if the user gave the map's own rule in the chat, give that rule "
-        "instead and say the sheet records the kelp rule."
+        "The sheet records the app's rule: "
+        f"{server.imagery.READING_RULE!r}. This rule came with the app, for any map "
+        "of present and absent. Give it with the rate; if the user gave the map "
+        "maker's meaning of Present and Absent in the chat, give that instead and "
+        "say the sheet records the app's rule."
     )
     assert kelp["notes"][-1] == server.RULE_USED_OWNER_NOTE.format(
         rule=server.imagery.READING_RULE,
         scope=server.imagery.RULE_SCOPE,
-        only=server.imagery.RULE_KELP_ONLY,
     )
     assert not any(n.startswith("The labels followed this rule") for n in kelp["notes"])
+    # r5-l L1: the sheet's pictures' record printed the earlier kelp rule (the
+    # sheet was pictured and answered before the round): its result repeats
+    # that rule. (Beside a blank sheet the record can be an earlier sheet's of
+    # its name, and is not read.)
+    blank = path.read_text(encoding="utf-8")
+    path.write_text(blank + "1,4,,present\n", encoding="utf-8")
+    record = server.imagery.record_path(sheet.resolve_sheet(str(path)))
+    line = {"context": {"reading_rule": server.imagery.KELP_READING_RULE}}
+    record.write_text(json.dumps(line) + "\n", encoding="utf-8")
+    old = server._estimate_result(inner, str(path), None)
+    assert old is not None
+    assert old["view"]["rule"] == {
+        "text": server.imagery.KELP_READING_RULE,
+        "source": "owner",
+        "scope": server.imagery.KELP_RULE_SCOPE,
+        "note": server.RULE_OWNER_NOTE_KELP,
+    }
+    assert old["notes"][-1] == server.RULE_USED_OWNER_NOTE.format(
+        rule=server.imagery.KELP_READING_RULE,
+        scope=server.imagery.KELP_RULE_SCOPE,
+    )
+    assert "Any other map needs its own rule." not in old["notes"][-1]
+    record.unlink()
+    path.write_text(blank, encoding="utf-8")
     at = "2026-11-13T09:00:00Z"
     sheet.set_typed_rule(str(path), TYPED, typed_at=at)
     typed = server._estimate_result(inner, str(path), None)
@@ -2207,11 +2242,13 @@ def test_many_unseen_classes_with_no_squares_drawn_are_named_in_the_fold(
     view = got["view"]
     assert view["squares"] is None
     # No Check card's record (sheet_context None): the part is not known, so
-    # the rate is for the map the squares were picked from (r4-m M1).
+    # the rate is for the map the squares were picked from (r4-m M1). Round
+    # r5-j B4: "You did not see ... in any square".
     assert view["uncovered"] == [
-        "You saw 6 of the map's 10 classes in no square, so this check says nothing "
-        "about how well the map finds them. The rate above is for every square of "
-        "the map they were picked from, all classes together. Names under Details."
+        "You did not see 6 of the map's 10 classes in any square, so this check "
+        "says nothing about how well the map finds them. The rate above is for "
+        "every square of the map they were picked from, all classes together. "
+        "Names under Details."
     ]
     assert view["fold_rows"][-1] == [
         "Classes you saw in no square",
@@ -2676,23 +2713,24 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
         return server._uncovered(counts, unit, 7, **options)
 
     # The C/result-1 line, directly under the headline (R2): up to five
-    # names on the face, the too-few line first.
+    # names on the face, the too-few line first. Round r5-j B4: "You did not
+    # see ... in any square", in each line below.
     five = uncovered(5)
     assert five["lines"] == [
         'Only 1 of the 7 squares had "trees"; the map agreed on 1 of them. Too few '
         'to say how well the map finds "trees".',
-        'You saw "Class 0", "Class 1", "Class 2", "Class 3", "Class 4" in no square, '
-        "so this check says nothing about how well the map finds them. The rate "
-        "above is for every square of the map, all classes together.",
+        'You did not see "Class 0", "Class 1", "Class 2", "Class 3", "Class 4" in any '
+        "square, so this check says nothing about how well the map finds them. The "
+        "rate above is for every square of the map, all classes together.",
     ]
     assert (five["detail"], five["names"]) == (None, None)
     assert five["few_detail"] == []  # one rare class: its counts on the face
     # More than five: how many of the map's own classes, the names in Details.
     six = uncovered(6)
     assert six["lines"][-1] == (
-        "You saw 6 of the map's 8 classes in no square, so this check says nothing "
-        "about how well the map finds them. The rate above is for every square of "
-        "the map, all classes together. Names under Details."
+        "You did not see 6 of the map's 8 classes in any square, so this check says "
+        "nothing about how well the map finds them. The rate above is for every square "
+        "of the map, all classes together. Names under Details."
     )
     assert six["detail"] == (
         'Classes you saw in no square: "Class 0", "Class 1", "Class 2", '
@@ -2707,16 +2745,16 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
     assert points["lines"] == [
         'Only 1 of the 7 points had "trees"; the map agreed on 1 of them. Too few '
         'to say how well the map finds "trees".',
-        "You saw 6 of the map's 8 classes in no point, so this check says nothing "
-        "about how well the map finds them. The rate above is for every point of "
-        "this part, all classes together. Names under Details.",
+        "You did not see 6 of the map's 8 classes in any point, so this check says "
+        "nothing about how well the map finds them. The rate above is for every point "
+        "of this part, all classes together. Names under Details.",
     ]
     assert str(points["detail"]).startswith("Classes you saw in no point: ")
     one = uncovered(1, "point")
     assert one["lines"][-1] == (
-        'You saw "Class 0" in no point, so this check says nothing about how well '
-        "the map finds it. The rate above is for every point of the map's grid, all "
-        "classes together."
+        'You did not see "Class 0" in any point, so this check says nothing about how '
+        "well the map finds it. The rate above is for every point of the map's grid, "
+        "all classes together."
     )
     # A class typed outside the map's classes is not one of the map's own:
     # not counted among them, and no too-few line (the map never finds it).
@@ -2732,8 +2770,8 @@ def test_classes_nobody_saw_share_one_line_and_many_go_under_details() -> None:
     told = server._uncovered(marked, "square", 8, several=False)
     assert told["lines"] == [
         'Too few squares to say how well the map finds: "trees".',
-        'You saw "Class 0" in no square, so this check says nothing about how well '
-        "the map finds it. The rate above is for every square of the map, all "
+        'You did not see "Class 0" in any square, so this check says nothing about '
+        "how well the map finds it. The rate above is for every square of the map, all "
         "classes together.",
     ]
     assert told["few_detail"] == []
@@ -2763,8 +2801,9 @@ def test_the_fourth_line_names_the_classes_seen_too_rarely_or_not_at_all() -> No
     """r4-h M1 (E/said-est-1): names only, the classes no square had, then
     those seen in one to four squares (of the map's own: a class typed
     outside them is in neither); either alone; none with no counts or when
-    both are empty. With Cannot tell (F1): the classes no square had in the
-    card's own words ("You saw ... in no square."), the rare ones still
+    both are empty. With Cannot tell (F1): the classes no square had as what
+    the reader saw ("You saw ... in no square.", the Details row's words;
+    the face's line opens "You did not see", r5-j B4), the rare ones still
     named."""
     counts = {
         "n": 80,
@@ -2910,9 +2949,10 @@ def test_a_class_named_by_a_code_reads_class_n() -> None:
     assert under["lines"] == [
         'Only 2 of the 14 squares had class "1"; the map agreed on 1 of them. Too '
         'few to say how well the map finds class "1".',
-        'You saw class "0", class "2" in no square, so this check says nothing '
-        "about how well the map finds them. The rate above is for every square of "
-        "the map, all classes together.",
+        # Round r5-j B4: "You did not see ... in any square".
+        'You did not see class "0", class "2" in any square, so this check says '
+        "nothing about how well the map finds them. The rate above is for every square "
+        "of the map, all classes together.",
     ]
     assert [c["name"] for c in shown["classes"]] == [
         'class "0"',

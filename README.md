@@ -56,7 +56,7 @@ make serve && make agent Q="How many OlmoEarth Studio projects do I have?"
 
 <table>
 <tr>
-<td width="50%" valign="top"><img src="docs/images/mcp-app/start.png" alt="Start card: the OlmoEarth overview figure and the three jobs"></td>
+<td width="50%" valign="top"><img src="docs/images/mcp-app/start.png" alt="Start card: the three jobs, then the OlmoEarth overview figure"></td>
 <td width="50%" valign="top"><img src="docs/images/mcp-app/check.png" alt="Check card: the four steps as panels, the labelling rule, and how many squares to check in each part"></td>
 </tr>
 <tr>

@@ -403,8 +403,10 @@ async def test_r01_a_map_that_is_not_a_score_keeps_its_sentence_on_the_face(
 def test_r05_the_toast_on_answers_not_saved_goes_when_the_parts_sheet_opens() -> None:
     """R05: once the part's sheet is read again, its own line goes, and the
     toast goes with it while the toast still says the line's words (OE.say's
-    test: any other toast stays); it is cleared before the editor swap writes
-    a toast of its own for the part swapped away, so that one stays."""
+    test: any other toast stays, but for round r5-m B3's NOT_SWAPPED, which
+    goes too, as tests/mcp_app/test_mcp_r5m_check.py pins); it is cleared
+    before the editor swap writes a toast of its own for the part swapped
+    away, so that one stays."""
     page = _read("check.html")
     swap = _between(
         page, "  async function openZone(m, { hadFocus = null } = {}) {", "\n  }\n"
@@ -414,12 +416,15 @@ def test_r05_the_toast_on_answers_not_saved_goes_when_the_parts_sheet_opens() ->
         "    // Its sheet opens again: the line on answers not saved goes "
         "(r5-b J10),\n"
         "    // and so does the toast that said it in the same words (r5-d R05; the\n"
-        "    // same test as OE.say's clear: any other toast stays).\n"
+    )
+    test = (
         "    const bar = document.getElementById('oe-toast');\n"
-        "    if (m.line && bar && bar.textContent === m.line) OE.toast('');\n"
+        "    if (bar && ((m.line && bar.textContent === m.line)"
+        " || bar.textContent === NOT_SWAPPED)) OE.toast('');\n"
         "    m.line = null;\n"
     )
-    assert clear in swap
+    assert clear in swap and test in swap
+    assert _in_order(swap, clear, test)
     assert _in_order(
         swap,
         "sheet = await OE.call(app, 'olmoearth_app_sheet', "

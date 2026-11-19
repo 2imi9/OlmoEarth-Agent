@@ -358,6 +358,11 @@ def test_r03_no_figure_changes(
     assert _FIGURE.findall(view["headline"]) == figures
     assert (view["rate_low"], view["rate_high"]) == (lo, hi)
     assert view["rate_range_text"] == rate_range
+    # Round r5-j B1: the bar's label, the same two figures by the headline's
+    # "or", and both in the headline, in this order.
+    bar = f"{rules.percent(lo)} or {rules.percent(hi)}"
+    assert view["rate_bar_text"] == bar
+    assert _FIGURE.findall(bar) == _FIGURE.findall(view["headline"])[:2]
     assert (view["low"], view["high"], view["range_text"]) == (low, high, range_text)
     assert (view["low_text"], view["high_text"]) == (
         rules.percent(low),

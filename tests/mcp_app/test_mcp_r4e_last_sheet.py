@@ -710,14 +710,16 @@ def test_a_scores_file_outside_the_roots_is_not_read_for_its_period(
 
 
 def test_the_rule_scope_and_the_pictures_refusal_are_the_string_tables() -> None:
-    """C5 and A/F21 (section 1), each with its WORDING comment."""
-    assert imagery.RULE_SCOPE == (
+    """C5 and A/F21 (section 1), each with its WORDING comment. Round r5-l:
+    C5's scope is kept word for word as the kelp rule's (KELP_RULE_SCOPE);
+    the app's scope is general (test_mcp_r5l_core.py)."""
+    assert imagery.KELP_RULE_SCOPE == (
         "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
     )
     assert imagery.NO_FOOTPRINT.endswith(" Street map still works.")
     assert "Open map" not in imagery.NO_FOOTPRINT
     source = Path(imagery.__file__).read_text(encoding="utf-8")
-    assert "# WORDING: r4h C5\nRULE_SCOPE = " in source
+    assert "# WORDING: r4h C5\nKELP_RULE_SCOPE = " in source
     assert "# WORDING: r4h A/F21\nNO_FOOTPRINT = (" in source
     own = Path(sheet.__file__).read_text(encoding="utf-8")
     assert "# WORDING: r4h S4 (model-facing)\nUNJUDGED_NOT_HERE = (" in own
@@ -906,8 +908,8 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
     "Open map". r5-b J13, J14: the Cannot tell line and the S2 line are the
     lead's second and third lines, and the rule stands right above the
     answers (with no rule, the line that none was set: J26). r5-e H1, H2: the
-    lead is two lines (no S2 line), and the rule's scope is in the fold, the
-    kelp-only line after it."""
+    lead is two lines (no S2 line), and the rule's scope is in the fold (r5-l
+    L1: with no line after it on which maps the rule is for)."""
     script = _script()
     editor = _between(script, "OE.sheetEditor = (app, data,", "\n};")
     assert "sampling group" not in script and "Open map" not in script
@@ -926,7 +928,9 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
         "noRuleLine,",
         "area,",
         "details),",
-        "progress, OE.el('div', { class: 'row' }, done, saveButton), finishType)",
+        # r5-k K5: the line of the saves (saveSaid) under the row, then the slot.
+        "progress, OE.el('div', { class: 'row' }, done, saveButton), saveSaid,",
+        "finishType));",
     ]
     places = [layout.index(text) for text in order]
     assert places == sorted(places)
@@ -954,11 +958,11 @@ def test_the_face_holds_three_lines_and_one_fold() -> None:
     assert "next: gradedNote ? null : cannotLineText || null," in editor
     assert "cannot: null," in editor
     # The rule block carries the rule and, where the face has one, the cloud
-    # line; r5-e H2: its scope is in the Details fold (scopeNote) and, after
-    # review, the kelp-only line right after it (limitNote).
+    # line; r5-e H2: its scope is in the Details fold (scopeNote; r5-l L1:
+    # with no line after it on which maps the rule is for).
     rule = _between(editor, "  const ruleBlock = pageRule ?", "\n  const clearNote")
     assert "W.clear" not in rule and "data.rule_scope" not in rule
-    assert "classNoPeriod, scopeNote, limitNote, gradedWhy," in fold
+    assert "classNoPeriod, scopeNote, gradedWhy," in fold
     # One Cannot tell line where the sheet takes it; a certificate's own line.
     line = _between(editor, "  const cannotLineText = (() => {", "\n  })();")
     assert "if (takesQ) return W.cannotTellLine;" in line
@@ -987,8 +991,10 @@ def test_the_footer_shows_the_finish_button_from_the_first_open() -> None:
     assert (
         "const savedNote = OE.el('span', { class: 'small muted' }, W.saved);" in editor
     )
+    # r5-k K5: the counter's row ends with the line of a save made elsewhere.
     assert (
-        "counterNum, OE.el('span', {}, 'labelled'), counterNote, savedNote);" in editor
+        "counterNum, OE.el('span', {}, 'labelled'), counterNote, savedNote, "
+        "countSaid);" in editor
     )
     progress = _between(editor, "  function updateProgress() {", "\n  }\n")
     for text in (

@@ -1033,8 +1033,7 @@ PROGRESS_KEYS = {
     "reading_rule",
     "rule_scope",
     "rule_source",
-    # The owner's rule is for kelp canopy maps only (r4i F9), else None.
-    "rule_limit",
+    # No rule_limit since r5-l L1: the rule and its scope only.
     "graded",
 }
 

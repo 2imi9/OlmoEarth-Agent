@@ -86,10 +86,11 @@ CANNOT_TELL_BARE = CANNOT_TELL.replace(" from the dates shown", "")
 
 #: The Check card's words of r4-h (the plan's string table). Step 3 in round
 #: r5-f F09's words: it said "recognise it", and nothing on the face is "it"
-#: (tests/mcp_app/test_mcp_r5f_check.py).
+#: (tests/mcp_app/test_mcp_r5f_check.py); round r5-m B1: what the map is
+#: meant to find (tests/mcp_app/test_mcp_r5m_check.py).
 STEP_3 = (
-    "3. Someone who can recognise what the map shows looks at each one in a "
-    "satellite picture."
+    "3. Someone who can recognise what the map is meant to find looks at each one "
+    "in a satellite picture."
 )
 #: The line over the press: two sentences since r5-b J18 (the third, on rare
 #: classes, is in Details only), one line at 780 px since r5-e K4.
@@ -103,11 +104,14 @@ RULE_ASK = (
 )
 RULE_HINT = "For example: the class that fills most of the outlined square"
 #: The box's label, as r5-b J18 shortens it (r4-m M5's meaning kept: the map
-#: maker's meaning of Present and Absent), and the small line under the box.
+#: maker's meaning of Present and Absent), and the small line under the box;
+#: round r5-l L2 words both for any map (no map named:
+#: tests/mcp_app/test_mcp_r5l_views.py).
 RULE_OWN = (
-    "Not a kelp map? Write the map maker's meaning of Present and Absent (optional)."
+    "Did the map maker mean something else? Write their meaning of Present and "
+    "Absent (optional)."
 )
-RULE_EMPTY = "Left empty, the kelp rule above is used."
+RULE_EMPTY = "Left empty, the rule above is used."
 #: The two lines as r5-e K7 cuts them (no pictures of points, said before the
 #: count is fixed, r4-m M4; what the check gives is in Details).
 CLASS_MAP_LINES = (
@@ -531,7 +535,10 @@ def test_r4h_the_check_cards_parts() -> None:
     J08: the line starts "Not picked yet."; J18: the parts line stands right
     under the heading. r5-e K2 took the parts figure off the Check card (each
     part is one card that says its state once) and K3 put the parts line in
-    a card beside the strips picture (tests/mcp_app/test_mcp_r5e_check.py)."""
+    a card beside the strips picture (tests/mcp_app/test_mcp_r5e_check.py).
+    r5-j B6: the count is "in all" ("West part (300 squares in all)"); B9:
+    the heading has an id that names its part's section
+    (tests/mcp_app/test_mcp_r5j_check.py)."""
     page = _read("check.html")
     assert (
         "// WORDING: r4h C3\nconst LATER = 'Not picked yet. To pick this part\\'s"
@@ -539,10 +546,13 @@ def test_r4h_the_check_cards_parts() -> None:
     )
     assert (
         "const PART_HEAD = (name, n) => name + (Number.isInteger(n) && n >= 0\n"
-        "  ? ' (' + n.toLocaleString('en-US') + (n === 1 ? ' square)' : ' squares)')"
-        " : '');" in page
+        "  ? ' (' + n.toLocaleString('en-US') + (n === 1 ? ' square in all)' "
+        ": ' squares in all)') : '');" in page
     )
-    assert "OE.el('h3', {}, PART_HEAD(label(m), m.windows))" in page
+    assert (
+        "OE.el('h3', { id: 'oe-part-' + m.index }, PART_HEAD(label(m), m.windows))"
+        in page
+    )
     assert "// WORDING: r4h V6\nconst PART_N = (i) => 'Part ' + i;" in page
     assert "const label = (m) => m.part || PART_N(m.index + 1);" in page
     assert "m.part || m.name" not in page
@@ -666,8 +676,10 @@ def test_r4h_the_result_cards_headline_and_line() -> None:
         "OE.el('p', { class: 'big' }, r.headline),",
         "rateLow: finite(r.rate_low) ? r.rate_low : null,"
         " rateHigh: finite(r.rate_high) ? r.rate_high : null,",
-        "rateText: rate !== null ? text(r.rate_text) : text(r.rate_range_text),"
-        " rangeText: text(r.range_text),",
+        # Round r5-j B1: with no rate, the bar's label is rate_bar_text.
+        "rateText: rate !== null ? text(r.rate_text)"
+        " : (text(r.rate_bar_text) || text(r.rate_range_text)),",
+        "rangeText: text(r.range_text),",
         "text(r.hedge) ? OE.el('p', { class: 'oe-hedge' }, r.hedge) : null,",
         "text(r.last_line) ? OE.el('p', { class: 'oe-last' }, r.last_line) : null);",
     ):

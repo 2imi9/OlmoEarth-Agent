@@ -1249,8 +1249,7 @@ async def test_label_sheet_rows_and_places_stay_out_of_the_models_text(
         "reading_rule",
         "rule_scope",
         "rule_source",
-        # The owner's rule is for kelp canopy maps only (r4i F9).
-        "rule_limit",
+        # No rule_limit since r5-l L1: the rule and its scope only.
         "graded",
     }
     assert view["progress"] == "0 of 1 labelled"
@@ -2695,8 +2694,9 @@ async def test_without_panels_the_model_asks_for_a_count_per_zone(
     result = await _call(srv, server.CHECK_TOOL, {"result_id": R})
     assert result.isError is False
     model = _model(result)
-    # A map of presence and absence: the owner's rule, with the note that asks
-    # whether the map is of kelp (no box without panels; pass-3 finding Q5).
+    # A map of presence and absence: the app's rule, with the note that gives
+    # it and asks whether the map maker meant something else (no box without
+    # panels; pass-3 finding Q5, r5-l L1).
     assert model["note"] == (
         server.CHECK_TEXT_NOTE + " " + server.CHECK_TEXT_OWNER_RULE_NOTE
     )
@@ -2936,7 +2936,11 @@ def test_panels_tell_claude_ids_and_counts_only_where_the_host_takes_them() -> N
     assert "toast" not in body and "focus" not in body
     script = (views.VIEW_DIR / "sheet.js").read_text(encoding="utf-8")
     told = _between(script, "  function contextText() {", "\n  }\n")
-    assert "count()" in told and "OE.UNJUDGED" in told and "finish_label" in told
+    # r5-m B5: the finish button's words come through finishLabel, which reads
+    # the server's finish_label (or the graded sheet's own words).
+    assert "count()" in told and "OE.UNJUDGED" in told and "finishLabel(" in told
+    label = _between(script, "  function finishLabel(ok) {", "\n  }\n")
+    assert "data.finish_label" in label
     for left_out in ("map_class", "stratum", "handle", "answer"):
         assert left_out not in told, left_out
     assert "OE.tellClaude(app, contextText(), 'sheet')" in script
@@ -3304,6 +3308,7 @@ async def test_the_review_image_tool_tells_the_model_nothing(
         "ok": True,
         "needs_consent": True,
         "ask": server.imagery.CONSENT_ASK,
+        "ask_full": server.imagery.CONSENT_FULL,
         "test_ask": server.imagery.REVIEW_TEST_ASK,
     }
     # The scores file rewritten since (another ranking writes the same name).

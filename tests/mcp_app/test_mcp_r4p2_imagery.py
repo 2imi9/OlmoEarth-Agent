@@ -188,30 +188,43 @@ def _context(path: Path) -> dict[str, Any]:
 def test_the_question_in_the_reader_tests_words_is_asked_once_more() -> None:
     """A/sheet-7 with D2: both hosts and what each gets, once per sheet or
     review set, no key or account, the IP address, nothing to Studio or
-    Claude; its words changed, so its hash did and the old answer lapses."""
+    Claude; its words changed, so its hash did and the old answer lapses.
+    Since round r5-k K7 the face says the IP address and nothing to Studio or
+    Claude, and the fold the hosts, what each gets (once for all the squares)
+    and no key or account; the hash covers both (test_mcp_r5k_consent.py)."""
     ask = imagery.CONSENT_ASK
+    full = imagery.CONSENT_FULL
     assert ask.startswith("Show satellite (Sentinel-2) pictures of each square?")
     for words in (
-        f"To the archive's catalogue ({imagery.CATALOGUE_HOST}): the map's rough "
-        "outline and its months, once per sheet or review set.",
-        f"To its file store ({imagery.BUCKET_HOST}): requests for parts of image "
-        "files.",
+        f"Earth Search's catalogue is {imagery.CATALOGUE_HOST}: it gets the box and "
+        "the months, once for all the squares.",
+        f"Its file store is {imagery.BUCKET_HOST}: it gets the requests for parts "
+        "of image files.",
         "No key and no account are used.",
-        "Both can see this computer's internet address (IP).",
+    ):
+        assert words in full, words
+    for words in (
+        "both see your IP address.",
         "Nothing is sent to Studio or to Claude.",
     ):
         assert words in ask, words
     old = hashlib.sha256(OLD_CONSENT_ASK.encode("utf-8")).hexdigest()[:16]
     assert imagery.consent_version() != f"{old}-fetch"
+    asked = ask + "\n\n" + full
     assert imagery.consent_version().startswith(
-        hashlib.sha256(ask.encode("utf-8")).hexdigest()[:16]
+        hashlib.sha256(asked.encode("utf-8")).hexdigest()[:16]
     )
 
 
 def test_the_rule_scope_and_the_test_scenes_opening_are_the_reader_tests() -> None:
-    # The last round's C5 (reader test 2's A/F12): shorter, the same facts.
-    assert imagery.RULE_SCOPE == (
+    # The last round's C5 (reader test 2's A/F12): shorter, the same facts;
+    # kept for the kelp rule's records since round r5-l L1, whose general
+    # scope names no map and no date.
+    assert imagery.KELP_RULE_SCOPE == (
         "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
+    )
+    assert imagery.RULE_SCOPE == (
+        "This rule came with the app, for any map of present and absent."
     )
     assert "trial" not in imagery.RULE_SCOPE
     opening = (
@@ -220,7 +233,8 @@ def test_the_rule_scope_and_the_test_scenes_opening_are_the_reader_tests() -> No
     )
     for ask in (imagery.TEST_ASK, imagery.REVIEW_TEST_ASK):
         assert ask.startswith(opening)
-        assert imagery.CATALOGUE_HOST in ask and imagery.BUCKET_HOST in ask
+        # Since round r5-k K7 drawn after the hosts in the question's fold.
+        assert "the same catalogue" in ask and "the same file store" in ask
     assert "unrelated to this sheet" in imagery.TEST_ASK
     assert "unrelated to this review set" in imagery.REVIEW_TEST_ASK
 
@@ -373,10 +387,11 @@ def test_a_sheets_pictures_caption_says_how_big_a_square_is(
 
 
 def test_the_sheets_test_scene_says_square() -> None:
-    """The lead's ruling W: the sheet face's word, in the test scene's caption."""
+    """The lead's ruling W: the sheet face's word, in the test scene's caption
+    (round r5-l L1: no "as on the kelp map")."""
     words = (
         "A public test scene, not a square of this sheet: nothing here is "
-        "labelled. The outlined square is 11 pixels, as on the kelp map. "
+        "labelled. The outlined square is 11 pixels. "
     )
     assert imagery.TEST_CAPTION == words + imagery.CAPTION
     assert "window" not in imagery.TEST_CAPTION
@@ -459,8 +474,9 @@ def test_a_typed_rule_reaches_the_pictures_and_their_record(
 
 def test_the_owners_rule_says_whose_it_is(root: Path, no_scenes: None) -> None:
     """A map of presence and absence with nothing typed in the box beside the
-    owner's rule (the box left empty): the owner's kelp rule, its scope and
-    its source, in the pane's answer and the record's context line."""
+    app's rule (the box left empty): the app's rule (general since round r5-l
+    L1), its scope and its source, in the pane's answer and the record's
+    context line."""
     path = _sheet(root, {"0": "absent", "1": "present"})
     out = _pictures(path, 25)
     assert out["ok"] is True, out
@@ -479,7 +495,8 @@ def test_a_rule_typed_in_the_box_replaces_the_owners_in_the_pictures(
     root: Path, no_scenes: None
 ) -> None:
     """The owner's option A (13 Nov 2026): on a map of presence and absence
-    that is not of kelp, the rule typed in the box beside the owner's and
+    whose maker meant something else, the rule typed in the box beside the
+    app's and
     pinned beside the sheet at the press replaces the owner's rule in the
     pane's answer and the record's context line, with the typed scope, never
     RULE_SCOPE."""
@@ -538,34 +555,35 @@ def test_no_rule_says_none(root: Path, no_scenes: None) -> None:
     assert imagery.rule_for(path, ["water", "trees"]) == (None, None, None)
 
 
-# ------------------------------------------ r4i F9: the owner's rule is for kelp
+# ------------------------- r4i F9, as round r5-l L1 leaves it: no rule_limit
 
 
 @pytest.mark.parametrize(
-    ("names", "typed", "limit"),
+    ("names", "typed", "source"),
     [
-        ({"0": "absent", "1": "present"}, False, imagery.RULE_KELP_ONLY),
-        ({"0": "absent", "1": "present"}, True, None),
+        ({"0": "absent", "1": "present"}, False, "owner"),
+        ({"0": "absent", "1": "present"}, True, "typed"),
         ({"0": "water", "1": "trees"}, False, None),
     ],
 )
-def test_r4i_the_pictures_say_the_owners_rule_is_for_kelp_maps(
+def test_r4i_the_pictures_say_the_rule_and_its_scope_only(
     root: Path,
     no_scenes: None,
     names: dict[str, str],
     typed: bool,
-    limit: str | None,
+    source: str | None,
 ) -> None:
-    """r4i F9: the pane's answer carries rule_limit, imagery.RULE_KELP_ONLY
-    beside the owner's rule only (a rule typed before the draw, and no rule:
-    None); the record's context line is as it was (no rule_limit)."""
+    """r4i F9 gave the pane's answer rule_limit beside the owner's rule;
+    round r5-l L1 took it away: beside the app's rule, a rule typed before
+    the draw and no rule, the answer carries the rule, its scope and its
+    source only, and the record's context line no rule_limit either."""
     path = _sheet(root, names)
     if typed:
         sheet.set_typed_rule(str(path), TYPED, typed_at=TYPED_AT)
     out = _pictures(path, 14)
     assert out["ok"] is True, out
-    assert out["rule_limit"] == limit
-    assert out["rule_source"] == ("typed" if typed else "owner" if limit else None)
+    assert "rule_limit" not in out
+    assert out["rule_source"] == source
     assert "rule_limit" not in _context(path)
 
 
@@ -573,7 +591,8 @@ def test_r4i_a_review_sets_pictures_and_the_test_scene_carry_no_rule_limit(
     root: Path, no_scenes: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """r4i F9: nothing is labelled from a review set's pictures or from the
-    public test scene, so their answers carry no rule and rule_limit None.
+    public test scene, so their answers carry no rule (and, since round r5-l
+    L1, no rule_limit key at all).
     The review's window is placed from its scores file's centre, as
     olmoearth_scores_from_file writes it; the review's own record is stood
     in for (review.review_row)."""
@@ -590,13 +609,10 @@ def test_r4i_a_review_sets_pictures_and_the_test_scene_carry_no_rule_limit(
     monkeypatch.setattr(imagery.review, "review_row", lambda _key, _rank: placed)
     out = imagery.review_image(key, 1, on=True)
     assert out["ok"] is True, out
-    assert (out["reading_rule"], out["rule_scope"], out["rule_limit"]) == (
-        None,
-        None,
-        None,
-    )
+    assert (out["reading_rule"], out["rule_scope"]) == (None, None)
+    assert "rule_limit" not in out
     for beside_a_review in (True, False):
         imagery._test_cache.clear()
         scene = imagery.public_test_scene(review=beside_a_review)
         assert scene["ok"] is True, scene
-        assert (scene["reading_rule"], scene["rule_limit"]) == (None, None)
+        assert scene["reading_rule"] is None and "rule_limit" not in scene

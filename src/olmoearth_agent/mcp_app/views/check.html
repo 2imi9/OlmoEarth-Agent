@@ -29,7 +29,19 @@
     min-width: 132px; padding: 8px 12px; text-align: left; font-weight: 400; }
   .pick-group button.pick[aria-pressed="true"] { background: var(--selected); border-color: var(--text);
     box-shadow: inset 0 0 0 1px var(--text); }
-  .pick-count { font-size: 14px; line-height: 21px; }
+  /* r5-m B7: a chosen number carries a tick before it, as a chosen answer
+     on the label sheet does (common.js .face .answers), so the two chosen
+     looks are one. The tick has empty alt text, so each button's name stays
+     its number; it sits inside the count's line and sets no size of its own,
+     so the grid keeps every count one size (R1). After review: the count's
+     line never breaks (nowrap), so a chosen count is one line like the
+     others; at the narrowest columns (132 px from 481 px, about 107 px of
+     text) a four-digit count with its tick runs into the button's right
+     padding, inside its border. The browser check measures a chosen count
+     of three digits at 780, 520, 490, 481 and 380 px, and of four digits on
+     a map in two parts at the same widths (one line, inside its button). */
+  .pick-group button.pick[aria-pressed="true"] .pick-count::before { content: "\2713\00a0"; content: "\2713\00a0" / ""; }
+  .pick-count { font-size: 14px; line-height: 21px; white-space: nowrap; }
   .pick-count strong { font-size: 16px; font-weight: 700; }
   @media (max-width: 480px) {
     .pick-group button.pick { flex: 1 1 100%; min-width: 0; flex-direction: row; align-items: baseline;
@@ -70,13 +82,20 @@
   .oe-examples { display: flex; flex-wrap: wrap; gap: 12px; }
   .oe-examples figure { margin: 0; width: 120px; max-width: 100%; display: flex; flex-direction: column; gap: 4px; }
   .oe-examples img { display: block; width: 100%; height: auto; border: 1px solid var(--divider); border-radius: 4px; }
+  /* r5-l L2: the one small line under the two example pictures that says
+     where they come from (EXAMPLES_SOURCE), close under their captions, in
+     the same white card (examplesBlock). */
+  .oe-examples-from { margin-top: 4px; }
   /* A card whose map is being prepared (r5-h H1): one line, a quiet mark
      that turns beside its words. The mark holds no number (nothing says how
      much is done), is hidden from a screen reader, and stands still for a
-     reader who asks for less motion. */
-  .oe-preparing { display: flex; align-items: center; gap: 8px; }
+     reader who asks for less motion. r5-j B5: the mark sits by the line's
+     first row, not halfway down a line that wraps (380 px), and its turning
+     edge is in the text's colour, var(--text) (it was var(--text-2), a
+     slightly lighter dark teal; the pale ring, var(--divider), is unchanged). */
+  .oe-preparing { display: flex; align-items: flex-start; gap: 8px; }
   .oe-prep-mark { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--divider);
-    border-top-color: var(--text-2); animation: oe-prep-turn 1.6s linear infinite; }
+    border-top-color: var(--text); margin-top: 4px; animation: oe-prep-turn 1.6s linear infinite; }
   @keyframes oe-prep-turn { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .oe-prep-mark { animation: none; } }
   /* What a screen reader hears when a preparing card fills in or ends (r5-h
@@ -84,6 +103,13 @@
      speaks for, and on no face (as .oe-type's empty slot). */
   .oe-said-hidden { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%);
     white-space: nowrap; }
+  /* r5-k K6: the closed fold "How this check works" (#oe-check-how,
+     foldHow) that holds the four step panels and the strips card once a
+     part is drawn, spaced as Details is (common.js .oe-more): 8 px under
+     its summary, 12 px between what it holds. Its own class, so Details
+     stays the card's one .oe-more fold. */
+  .oe-how > summary + * { margin-top: 8px; }
+  .oe-how > * + * { margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -103,12 +129,14 @@ import { App } from "@EXT_APPS_URL@";
    (OE.fig.steps: a schematic, never this map's data; step 1 names the
    square's size when every part has the same), the labelling rule (the
    gate for a map with no rule of the owner's, its box with an example in
-   a small line under it; for a map of presence and absence the owner's kelp
-   rule and its scope, with a box for the map's own rule while no part of
-   it is drawn: the owner's ruling of 13 Nov 2026, option A; a rule typed
-   for this map, read only; beside the owner's rule, when the server sends
-   them, two example pictures, captioned "Present under this rule" and
-   "Absent under this rule", whose place line is in Details: r4-k K9),
+   a small line under it; for a map of presence and absence the rule that
+   came with the app and its scope, with a box for the map maker's meaning
+   while no part of it is drawn: the owner's ruling of 13 Nov 2026, option
+   A, worded for any map since r5-l L2; a rule typed for this map, read
+   only; beside the owner's rule, when the server sends them, two example
+   pictures, captioned with what Present and Absent mean in general words,
+   with one small line under them on where they come from (r5-l L2), and
+   whose place line is in Details: r4-k K9),
    "How many squares do you want to check?" (once no part offers a number:
    "Your squares", or that every square is answered: r5-b J17), one line
    under it on what more squares give (r5-e K1, while a part offers more
@@ -120,7 +148,10 @@ import { App } from "@EXT_APPS_URL@";
    on this card), its name and size over its group of counts (each count
    alone, no words, no drawing) or its state, said once; then the line on
    what the press fixes, the press, and under it one line that says why it
-   is off or which parts it leaves out (r5-b J08).
+   is off or which parts it leaves out (r5-b J08). Once a part is drawn the
+   four step pictures and the strips card go into a closed fold, "How this
+   check works", after the press or the open sheet and before Details, so
+   the parts and their sheets come first (r5-k K6: foldHow).
    Everything else (the planner's sentences and rate notes, each part's
    size and file and zone, the square's size, design and seed, the
    pictures' limit, must_state) is in one closed Details fold. A map that is
@@ -191,7 +222,13 @@ import { App } from "@EXT_APPS_URL@";
    the user to Claude to open it again, and leaves every other part for
    that card too (r5-b J09).
    While a press is answered no sheet opens; opening another part's sheet
-   first saves the one open here, and keeps it open when that save fails. An
+   first saves the one open here, and keeps it open when that save fails; the
+   line that says so (NOT_SWAPPED) is the sheet's own, in its footer under
+   Save labels, in place of that line's "Press Save labels to try again.",
+   and it goes once a save is taken (r5-m B3, after review: a toast, it stayed
+   under the other sheet, asking to press a Save labels no longer drawn), and
+   on a card of parts the status line sits right under the press or the
+   sheet, before the fold on how the check works and Details. An
    editor that stopped saving (its sheet changed under the panel) gives way
    at once, and its part's own red line, and one toast, say how many answers
    for which part were not saved and what to do (r5-b J10); when none were,
@@ -205,14 +242,17 @@ const root = document.getElementById('root');
    sentences are shown whole, in Details. */
 // WORDING: squares
 const TITLE = 'Check how wrong this map is';
-/* Step 3 says what the one who looks must recognise, what the map shows
-   (r5-f F09: it said "recognise it", and nothing on the face is "it"). */
+/* Step 3 says what the one who looks must recognise (r5-f F09: it said
+   "recognise it", and nothing on the face is "it"). r5-m B1: what the map is
+   meant to find (it said "what the map shows", read as the map's own answer
+   at the square, which the blind sheet hides), the words of the rule. */
+// WORDING: r5m B1 (step 3)
 // WORDING: r5f F09 (step 3)
 // WORDING: squares; r4h critic gap 2 (step 3)
 const STEPS = [
   '1. The map is cut into small squares.',
   '2. The app picks some at random.',
-  '3. Someone who can recognise what the map shows looks at each one in a satellite picture.',
+  '3. Someone who can recognise what the map is meant to find looks at each one in a satellite picture.',
   '4. You get how often the map is wrong, with a range.',
 ];
 /* Step 1 with the square's size (r4-h A/F13), when every part's is known
@@ -229,12 +269,33 @@ const ASK = 'How many squares do you want to check?';
    when more than one part has a sheet (several: fillAsk), since one press
    gives one part's result, never the map's; "the sheet" when one part has
    one, on a map in parts too whose other parts cannot be checked or failed
-   for good. */
+   for good. r5-j B3: on a map in parts the press is in each part's sheet,
+   and the line says that each gives one result ("Open each part's sheet in
+   turn, then press" still read as one press for the map); the line on one
+   part keeps its words. */
+// WORDING: r5j B3
 // WORDING: r5i B2
 // WORDING: r5f F11
 // WORDING: r5b J17
-const ALL_ANSWERED = (several) => 'Every square is answered. Open '
-  + (several ? 'each part\'s sheet in turn' : 'the sheet') + ', then press Estimate the error rate.';
+const ALL_ANSWERED = (several) => 'Every square is answered. '
+  + (several ? 'In each part\'s sheet, press Estimate the error rate: one result per part.'
+    : 'Open the sheet, then press Estimate the error rate.');
+/* The same heading once a drawn sheet already gave its result (r5-m, after
+   review: since the sheet track's B5 such a sheet's finish button reads
+   GRADED_FINISH, sheet.js W.gradedFinish, so "press Estimate the error
+   rate" named a button the sheet no longer has): every drawn part's sheet
+   gave one and none changed since (named), the button by those words; else
+   (only some did, or one changed since, whose button reads otherwise,
+   W.gradedChanged) no button by its words, since each sheet names its own.
+   The owner or the leads may pick other words. */
+// WORDING: r5m (after review: the sheet's B5 words, sheet.js W.gradedFinish)
+const GRADED_FINISH = 'Show the result again';
+// WORDING: r5m (after review: a graded sheet's heading)
+const ALL_GRADED = (several, named) => 'Every square is answered. '
+  + (named ? (several ? 'In each part\'s sheet, press ' + GRADED_FINISH + ': one result per part.'
+    : 'Open the sheet, then press ' + GRADED_FINISH + '.')
+    : several ? 'Open each part\'s sheet to get its result: one result per part.'
+      : 'Open the sheet to get its result.');
 // WORDING: r5b J17
 const YOUR_SQUARES = 'Your squares';
 /* One line under the question (r5-e K1), while a part offers more than one
@@ -283,6 +344,11 @@ const STRIPS = '@STRIPS_DATA_URL@';
 // WORDING: r5e
 // WORDING: squares
 const PARTS_PLAIN = (n) => 'This map is saved in ' + n + ' parts. Each part gets its own check.';
+/* The closed fold that holds the four step panels and the strips card once
+   a part is drawn (r5-k K6, the owner's choice of 18 Nov 2026 on O22:
+   foldHow), so the parts and their sheets come first. */
+// WORDING: r5k K6
+const HOW = 'How this check works';
 // WORDING: squares
 const PICKED = (n, day) => OE.counted(n, 'square') + ' picked on ' + day + '.';
 /* A press on a part picked before (in another window): what stays, and that
@@ -300,11 +366,14 @@ const NOT_SAVED_PART = (k, name) => OE.counted(k, 'answer') + ' for ' + name + (
   + (k === 1 ? 'that square' : 'those squares') + ' again.';
 // WORDING: squares
 const SQUARES_GROUP = (name) => 'Squares to check' + (name ? ' in ' + name : '');
-/* A part's heading with its size (r4-h A/F11): "West part (1,234 squares)",
-   the name alone when its count of squares is not known. */
+/* A part's heading with its size (r4-h A/F11): "West part (1,234 squares
+   in all)", the name alone when its count of squares is not known. r5-j B6:
+   "in all", since "(300 squares)" right over the count buttons ("20
+   squares", "80 squares") read as a fourth count or as the work to do. */
+// WORDING: r5j B6
 // WORDING: r4h A/F11
 const PART_HEAD = (name, n) => name + (Number.isInteger(n) && n >= 0
-  ? ' (' + n.toLocaleString('en-US') + (n === 1 ? ' square)' : ' squares)') : '');
+  ? ' (' + n.toLocaleString('en-US') + (n === 1 ? ' square in all)' : ' squares in all)') : '');
 /* A part with no name of the server's (V6: never the zone's name on a face). */
 // WORDING: r4h V6
 const PART_N = (i) => 'Part ' + i;
@@ -340,11 +409,13 @@ const LEFT_OUT = (names) => (names.length > 3 ? names.length + ' parts have'
   : names.length === 1 ? names[0] + ' has'
     : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + ' have')
   + ' no number chosen: this press leaves ' + (names.length === 1 ? 'it' : 'them') + ' out.';
-// 1 to 9 characters in the optional box beside the kelp rule (the line under
+// 1 to 9 characters in the optional box beside the app's rule (the line under
 // the press, and the toast of a press then): RULE_FIRST would ask for a rule
-// the card already has.
+// the card already has. r5-l L2 (the owner, 19 Nov 2026: the instructions are
+// general): "the rule above", no map named.
+// WORDING: r5l L2
 // WORDING: r5b J08
-const BOX_SHORT = 'Write at least 10 characters in the box, or empty it to use the kelp rule.';
+const BOX_SHORT = 'Write at least 10 characters in the box, or empty it to use the rule above.';
 // The gate's one line after a press that got no reply (ruleLost): the card
 // cannot say the rule, so it picks nothing more (r4-i F6; r5-b J09: the line
 // says so, and what the card opened again shows; no part offers a number
@@ -353,27 +424,46 @@ const BOX_SHORT = 'Write at least 10 characters in the box, or empty it to use t
 // WORDING: r4i F6
 const RULE_LOST = 'This card can pick no more squares. Ask Claude to open the Check card again: it shows the rule and'
   + ' what was picked.';
-// The box beside the owner's kelp rule (a map of presence and absence, no part
-// drawn yet: the owner's ruling of 13 Nov 2026, option A), its label in body
-// type, saying what to write (the map maker's meaning of Present and Absent:
-// a rule unlike the map's own counts the difference in definitions as map
-// errors, r4-m M5, reader test 3's B/F1) and that it is optional; what an
-// empty box does (r4-h C5, B/check-own-rule-box FINAL) is a small line under
-// the box. r5-b J18: the label held 37 words. The box shows no grey hint.
+// The box beside the app's rule (a map of presence and absence, no part drawn
+// yet: the owner's ruling of 13 Nov 2026, option A), its label in body type,
+// saying what to write (the map maker's meaning of Present and Absent: a rule
+// unlike the map's own counts the difference in definitions as map errors,
+// r4-m M5, reader test 3's B/F1) and that it is optional; what an empty box
+// does (r4-h C5, B/check-own-rule-box FINAL) is a small line under the box.
+// r5-b J18: the label held 37 words. The box shows no grey hint. r5-l L2 (the
+// owner, 19 Nov 2026: the instructions are general): the label asks whether
+// the map maker meant something else, and the line says "the rule above"; no
+// map is named in either.
+// WORDING: r5l L2
 // WORDING: r5b J18
 // WORDING: r4m M5
 // WORDING: r4h C5
-const RULE_OWN = 'Not a kelp map? Write the map maker\'s meaning of Present and Absent (optional).';
+const RULE_OWN = 'Did the map maker mean something else? Write their meaning of Present and Absent (optional).';
+// WORDING: r5l L2
 // WORDING: r5b J18
-const RULE_EMPTY = 'Left empty, the kelp rule above is used.';
+const RULE_EMPTY = 'Left empty, the rule above is used.';
 // The two example pictures beside the owner's rule (r4-k K9), the label
-// sheet's captions word for word, and their place line, in Details.
+// sheet's captions word for word, and their place line, in Details. r5-l L2:
+// each caption says what Present or Absent means in general words (more than
+// half of the square on a clear date, or half or less on every clear date),
+// never "under this rule" of one kind of map. r5-m B1: of what the map is
+// meant to find (they said "what the map shows", read as the map's own answer
+// at the square, which the blind sheet hides), as the rule says it.
+// WORDING: r5m B1
+// WORDING: r5l L2
 // WORDING: r4k K9
-const EXAMPLE_PRESENT = 'Present under this rule';
+const EXAMPLE_PRESENT = 'Present: what the map is meant to find covers more than half of the square on a clear date.';
+// WORDING: r5m B1
+// WORDING: r5l L2
 // WORDING: r4k K9
-const EXAMPLE_ABSENT = 'Absent under this rule';
+const EXAMPLE_ABSENT = 'Absent: what the map is meant to find covers half of the square or less on every clear date.';
 // WORDING: r4k K9
 const EXAMPLES_FROM = (year) => 'A public place, not your map. Contains modified Copernicus Sentinel data ' + year + '.';
+// r5-l L2: the one small line under the two pictures, on where they come from
+// (the only line of the card's own words that names kelp: the pictures'
+// source, never the question asked), the label sheet's word for word.
+// WORDING: r5l L2
+const EXAMPLES_SOURCE = 'Example pictures from a kelp canopy map.';
 // The fold (Details): the words a non-expert does not need first.
 // WORDING: r4p2
 const DETAILS = 'Details';
@@ -487,7 +577,8 @@ const OPEN_HERE = 'Its sheet is open below.';
 // A part's line after a press with no reply; the instruction to reopen the
 // card is the gate's line (r4-j J2). r5-b J09: it said where the answer will
 // be, the card opened again; r5-e K8: the gate's RULE_LOST says that once,
-// so the part's line, and the press's toast, say only what happened.
+// so the part's line, and the press's toast, say only what happened (r5-m
+// B3, after review: PRESS_NO_ANSWER is said in the hidden status, heard).
 // WORDING: r5e
 // WORDING: r5b J09
 // WORDING: r4j J2
@@ -556,11 +647,21 @@ const CHECK_FAILED = 'The check could not start. Anything picked or saved before
    the server's stage (a few fixed plain lines the preparation sets as it
    goes) after PREPARING's words, "Preparing this map." while it has none;
    past PREP_LIMIT_MS, PREP_TOO_LONG in its place; PREP_NO_ID when the view
-   names no result to ask about (the server always names one). */
+   names no result to ask about (the server always names one). r5-j B5:
+   PREP_TOO_LONG says, as the failed card does (CHECK_FAILED's middle
+   sentence), that what was picked or saved before is kept. */
 // WORDING: r5h
 const PREPARING = (stage) => 'Preparing this map' + (stage ? ': ' + bare(stage) : '') + '.';
+// WORDING: r5j B5
 // WORDING: r5h
-const PREP_TOO_LONG = 'Preparing this map took too long. Ask Claude to open the Check card again.';
+const PREP_TOO_LONG = 'Preparing this map took too long. Anything picked or saved before is kept. Ask Claude to'
+  + ' open the Check card again.';
+/* The line under the preparing line, outside its status (r5-j B5), so a new
+   stage is heard without it: that the card fills in by itself and the user
+   can go on in the chat (Claude's note said so, the card did not). It goes
+   when the card stops waiting (PREP_TOO_LONG) or cannot ask (PREP_NO_ID). */
+// WORDING: r5j B5
+const PREP_FILLS = 'This card fills in by itself when the map is ready; you can keep chatting.';
 // WORDING: r5h
 const PREP_NO_ID = 'This card cannot tell when the map is ready. Ask Claude to open the Check card again.';
 /* What a screen reader hears (#oe-check-said) once a preparing card's map is
@@ -631,7 +732,8 @@ const cardWords = (view) => {
 /* A map's line, its name and period as the view data's map gives them ('' when it gives neither). */
 const mapLineOf = (map) => (map && typeof map === 'object'
   ? [map.name, map.period_text].filter((s) => typeof s === 'string' && s).join(', ') : '');
-/* The status a screen reader hears when a preparing card fills in or ends (PREP_SAID_READY, PREP_SAID_ENDED):
+/* The status a screen reader hears when a preparing card fills in or ends (PREP_SAID_READY, PREP_SAID_ENDED),
+   and, on the card of parts, after a press with no reply (PRESS_NO_ANSWER, r5-m B3, after review: drawPicked):
    kept in the page outside #root, emptied by show before it draws any card. */
 const heard = document.getElementById('oe-check-said');
 
@@ -804,12 +906,17 @@ function examplesOf(e) {
 }
 
 /* The two example pictures side by side, each over its caption (the
-   caption is the picture's alt text, so a screen reader says it once). */
+   caption is the picture's alt text, so a screen reader says it once).
+   r5-l L2: under them, in the same block, one small line on where they come
+   from (EXAMPLES_SOURCE), so it is read with the pictures and goes with
+   them. */
 function examplesBlock(ex) {
   const one = (src, caption) => OE.el('figure', {},
     OE.el('img', { src, alt: caption }),
     OE.el('figcaption', { class: 'small', 'aria-hidden': 'true' }, caption));
-  return OE.el('div', { class: 'oe-examples' }, one(ex.present, EXAMPLE_PRESENT), one(ex.absent, EXAMPLE_ABSENT));
+  return OE.el('div', { class: 'oe-examples-set' },
+    OE.el('div', { class: 'oe-examples' }, one(ex.present, EXAMPLE_PRESENT), one(ex.absent, EXAMPLE_ABSENT)),
+    OE.el('div', { class: 'small muted oe-examples-from' }, EXAMPLES_SOURCE));
 }
 
 /* The card for the zones of one result: the title and the steps, the gate,
@@ -1051,7 +1158,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
 
   /* Under the press, within the most parts one press draws (r5-b J08): why
      the press is off (the gate asks for a rule and neither it nor a number
-     is there; the box beside the kelp rule holds too few characters, which
+     is there; the box beside the app's rule holds too few characters, which
      BOX_SHORT says, or the gate's rule does; no number is chosen),
      or, on a map in parts, which parts that still offer numbers this press
      leaves out (LEFT_OUT). Empty when the press takes every such part. */
@@ -1188,9 +1295,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      answered and how to get the result, when no sheet is open here, a part
      is picked, every picked part's counts say it is answered whole and no
      part may still be picked elsewhere (pressed with no reply, being picked,
-     or left for a later card); any other way, "Your squares". "Each part's
-     sheet in turn" (ALL_ANSWERED, r5-i B2) when more than one part has a
-     sheet, "the sheet" when one does, on a map in parts too whose other
+     or left for a later card); any other way, "Your squares". The press in
+     each part's sheet, one result per part (ALL_ANSWERED, r5-i B2, r5-j
+     B3), when more than one part has a sheet, "Open the sheet" when one
+     does, on a map in parts too whose other
      parts cannot be checked or failed for good (no sheet, no button). The
      line under it on what more squares give (r5-e K1) shows only while a
      part offers more than one number. */
@@ -1199,6 +1307,12 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     const pending = models.some((m) => m.kind === 'unknown' || m.kind === 'busy' || m.kind === 'later');
     const done = opened === null && drawn.length > 0 && !pending && drawn.every((m) => complete(m.draw));
     ask.textContent = drawable().length ? ASK : done ? ALL_ANSWERED(drawn.length > 1) : YOUR_SQUARES;
+    // r5-m, after review: a drawn sheet that already gave its result (its counts' graded mark, draw.graded) has no
+    // button "Estimate the error rate" (the sheet track's B5): the heading names the one it has, when every drawn
+    // sheet gave one and none changed since (draw.graded_changed), or none (ALL_GRADED).
+    const graded = drawn.filter((m) => m.draw && m.draw.graded === true);
+    const named = graded.length === drawn.length && !graded.some((m) => m.draw.graded_changed === true);
+    if (!drawable().length && done && graded.length) ask.textContent = ALL_GRADED(drawn.length > 1, named);
     moreLine.hidden = !models.some((m) => m.kind === 'pick' && m.offer.length > 1);
   }
 
@@ -1274,13 +1388,15 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   }
 
   /* Every part, the gate, the press and the heading, after a press was
-     answered or an editor opened. */
+     answered or an editor opened; once a part is drawn, the steps and the
+     strips card in their fold (r5-k K6, foldHow). */
   function renderAll() {
     primary = opened === null && !drawable().length ? (models.find((m) => m.kind === 'drawn') || null) : null;
     models.forEach(fillZone);
     fillGate();
     updatePress();
     fillAsk();
+    foldHow();
     fillFold();
     tellCard();
   }
@@ -1322,6 +1438,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     if (typeof got.name === 'string' && got.name) m.draw.name = got.name;
     if (Number.isInteger(got.n_rows)) m.draw.n_rows = got.n_rows;
     if (Number.isInteger(got.n_labelled)) m.draw.n_labelled = got.n_labelled;
+    // r5-m, after review: whether the sheet gave its result (a graded mark, as sheet.js gaveResult reads it), and
+    // whether its answers changed since, for the heading (fillAsk), as check._sheet_words sends them.
+    m.draw.graded = Boolean(got.graded && typeof got.graded === 'object');
+    m.draw.graded_changed = m.draw.graded && got.graded.changed_since_first === true;
     if (m.progressEl) m.progressEl.textContent = m.draw.progress ? ' ' + bare(m.draw.progress) + '.' : '';
     if (m.openButton) m.openButton.textContent = m.draw.open_label || 'Open the sheet';
     if (unread && typeof got.progress === 'string' && got.progress) {
@@ -1389,7 +1509,10 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      grey press stay (r5-b J09; before, the press was held with the gate's
      line as its toast, r4-i F6: that guard stays first in the press). A
      press with nothing chosen, or held by the rule, says why in the line
-     under the press (updatePress, r5-b J08). Every
+     under the press (updatePress, r5-b J08); one held by the rule only
+     moves the focus to the box (r5-m B3, after review: its toast, right
+     under that line since B3, said the same words again, and stayed once
+     the rule was fixed). Every
      reply carries the map's rule as the server holds it after
      the press (r4-h Q4, Q11: a rule another card pinned, a claim that
      failed, a typed rule settled), which the card shows from then on; a
@@ -1402,7 +1525,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     const picked = plan.send;
     if (!picked.length) { updatePress(); return; }  // the line under the press says what to choose (r5-b J08)
     if (plan.over > 0) { updatePress(); return; }  // the line under the press says how many to unpick
-    if (gateHeld()) { OE.toast(gateMode === 'replace' ? BOX_SHORT : RULE_FIRST); OE.focusIfHere(ruleInput); return; }
+    // The line under the press says what the rule or the box needs (r5-b J08); r5-m B3: no toast repeats it there.
+    if (gateHeld()) { updatePress(); OE.focusIfHere(ruleInput); return; }
     const hadFocus = document.activeElement === press;
     const openedAtPress = opened;
     const typed = ruleSent();
@@ -1428,7 +1552,11 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
         models.forEach((o) => {
           if (o.kind === 'pick' || o.kind === 'retry') { o.kind = 'later'; o.pick = null; o.line = null; }
         });
-        OE.toast(PRESS_NO_ANSWER, true);
+        // r5-m B3, after review: no press and no sheet is left under which the status line would sit (it hung
+        // under the last part's card, read as that part's line), and the part's line and the gate say it on the
+        // face: "Picking the squares..." goes, and a screen reader hears the press's end in the page's hidden status.
+        OE.toast('');
+        if (heard) heard.textContent = PRESS_NO_ANSWER;
       }
       renderAll();
       // After a press with no reply the gate's line is the one place that says what to do, and it stands
@@ -1500,7 +1628,12 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       // The button on the card now (a read of the counts may have drawn the part again meanwhile, r5-i B1), still
       // off while a press that started meanwhile is answered.
       if (m.openButton) m.openButton.setAttribute('aria-disabled', String(busy));
-      OE.toast(NOT_SWAPPED, true);
+      // r5-m B3, after review: said once, by the sheet in its footer under Save labels, in place of the generic
+      // "Press Save labels to try again." after the save's reason (oeSay); that line goes once a save is taken.
+      // The status line, which this toast took over before (it held, say, "The squares are picked."), is emptied;
+      // it says NOT_SWAPPED only for an editor with no such hook.
+      if (typeof current.oeSay === 'function') { OE.toast(''); current.oeSay(NOT_SWAPPED); }
+      else OE.toast(NOT_SWAPPED, true);
       return;
     }
     const dropped = current && typeof current.oeUnsaved === 'function' ? current.oeUnsaved() : 0;
@@ -1525,9 +1658,12 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     m.sheetError = null;
     // Its sheet opens again: the line on answers not saved goes (r5-b J10),
     // and so does the toast that said it in the same words (r5-d R05; the
-    // same test as OE.say's clear: any other toast stays).
+    // same test as OE.say's clear: any other toast stays). r5-m B3: a sheet
+    // opens, so the toast that said the one open before stays open
+    // (NOT_SWAPPED, the status line's only for an editor with no oeSay) goes
+    // too: it asked to press a Save labels no longer here.
     const bar = document.getElementById('oe-toast');
-    if (m.line && bar && bar.textContent === m.line) OE.toast('');
+    if (bar && ((m.line && bar.textContent === m.line) || bar.textContent === NOT_SWAPPED)) OE.toast('');
     m.line = null;
     // Each save the server takes reads this zone's counts again; Full screen
     // (where the host offers it) lays the editor's face out for the mode.
@@ -1560,7 +1696,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   // docs' picture of the world in strips with the line that says so, in one
   // card, right under it, before the numbers it explains (r5-b J18, r5-e K3),
   // the parts (each in a card of its own on a map in parts, r5-e K2), the
-  // press (or the editor), then Details.
+  // press (or the editor), the status line (r5-m B3), then Details.
   const title = OE.el('h2', {}, TITLE);
   root.append(title);
   const map = data.map && typeof data.map === 'object' ? data.map : {};
@@ -1582,11 +1718,45 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     root.append(OE.el('div', { class: 'card', id: 'oe-check-parts-line' }, OE.el('div', {}, PARTS_PLAIN(nParts))));
   }
   for (const m of models) {
-    m.heading = nParts > 1 ? OE.el('h3', {}, PART_HEAD(label(m), m.windows)) : null;
+    m.heading = nParts > 1 ? OE.el('h3', { id: 'oe-part-' + m.index }, PART_HEAD(label(m), m.windows)) : null;
     m.body = OE.el('div', { class: 'stack' });
-    root.append(OE.el('section', { class: nParts > 1 ? 'part card stack' : 'part stack' }, m.heading, m.body));
+    // r5-j B9: on a map in parts each part's section is named by its heading, so a screen reader tells two parts'
+    // "Open the sheet" (or "Continue labelling") apart by their part, not only by their place.
+    root.append(OE.el('section', {
+      class: nParts > 1 ? 'part card stack' : 'part stack',
+      'aria-labelledby': nParts > 1 ? 'oe-part-' + m.index : null,
+    }, m.heading, m.body));
   }
   root.append(action, OE.fold(DETAILS, foldBody));
+  /* r5-m B3 (r5-k K5's rule on this card: a status sits under what caused
+     it): the page's one status line (OE.toastRegion, #oe-toast) goes right
+     under the press or the sheet open here, before HOW and Details, so a
+     line about the press or a swap is read where the press or the sheet is,
+     not at the page's foot under two folds. */
+  action.after(OE.toastRegion());
+  /* r5-k K6 (O22, the owner's choice of 18 Nov 2026): once a part is drawn
+     (its squares picked, by a press here or before the card opened), the
+     four step panels and the strips card (the docs' picture with its line)
+     go, the same nodes, into one closed fold, HOW, right after the status
+     line under the press or the sheet open here, and before Details: the
+     parts and their sheets come first, and the fold opens to show the same
+     panels and picture. Before
+     any part is drawn the face is as before. A drawn part stays drawn, so
+     nothing comes back out, and the fold is made once, so it stays open
+     when the user opened it. A map in one part folds its steps alone; the
+     plain parts line (parts that are not one per strip) holds no picture
+     and stays on the face. A preparing card (preparingCard) keeps its
+     steps. */
+  const how = OE.el('details', { class: 'oe-how', id: 'oe-check-how' }, OE.el('summary', {}, HOW));
+  function foldHow() {
+    // r5-m B3, after review: a card that show() replaced (its action is off the page, a reply of its press came late)
+    // neither places its fold nor takes the new card's strips card.
+    if (how.isConnected || !action.isConnected || !models.some((m) => m.kind === 'drawn')) return;
+    const moved = [steps, root.querySelector(':scope > .card.oe-strips')].filter(Boolean);
+    if (!moved.length) return;
+    how.append(...moved);
+    OE.toastRegion().after(how);
+  }
   renderAll();
   // Shown again (the user comes back from labelling elsewhere): each drawn
   // zone's counts are read again.
@@ -1644,8 +1814,10 @@ function numberMapCard(data, next) {
    the four step panels (step 1 as written: no part's square is known yet)
    and one line (PREPARING with the server's stage, a status that a screen
    reader hears change, written only when its words change) beside a quiet
-   mark that turns. No press, no counts, no rule and no box, so nothing can
-   be picked or typed before the card fills in. Every PREP_ASK_MS after an
+   mark that turns, then, outside that status, PREP_FILLS (r5-j B5: the card
+   fills in by itself; it goes with the mark). No press, no counts, no rule
+   and no box, so nothing can be picked or typed before the card fills in.
+   Every PREP_ASK_MS after an
    answer the card asks olmoearth_app_check_status about its result (an ask
    that fails, or whose answer it cannot read, is asked again): preparing,
    its line takes the new stage; ready, show draws the status's view, the
@@ -1662,7 +1834,8 @@ function numberMapCard(data, next) {
    check. Either way a screen reader hears it (#oe-check-said:
    PREP_SAID_READY for a card of parts, else PREP_SAID_ENDED); the focus
    stays where it is. From PREP_LIMIT_MS after it was drawn the card asks
-   no more and says the map took too long (PREP_TOO_LONG). The asks stop
+   no more and says the map took too long (PREP_TOO_LONG), its line the red
+   card of the failed card (r5-j B5), still the status. The asks stop
    when another card is drawn in its place (stopAsking, run by show) and
    when Claude closes the panel (OE.cleanups). */
 function preparingCard(app, data) {
@@ -1676,10 +1849,14 @@ function preparingCard(app, data) {
   const stageOf = (s) => (typeof s === 'string' && s.trim() ? s.trim() : null);
   const words = OE.el('span', {}, PREPARING(stageOf(data.stage)));
   const mark = OE.el('span', { class: 'oe-prep-mark', 'aria-hidden': 'true' });
-  root.append(OE.el('div', { class: 'oe-preparing', id: 'oe-check-preparing', role: 'status' }, mark, words));
+  const row = OE.el('div', { class: 'oe-preparing', id: 'oe-check-preparing', role: 'status' }, mark, words);
+  // r5-j B5: under the status, outside it, so a new stage is heard without it: the card fills in by itself.
+  const fills = OE.el('div', { id: 'oe-check-fills' }, PREP_FILLS);
+  root.append(row, fills);
   const resultId = typeof data.result_id === 'string' && data.result_id ? data.result_id : null;
   if (!resultId) {
     mark.remove();
+    fills.remove();
     words.textContent = PREP_NO_ID;
     return;
   }
@@ -1697,6 +1874,9 @@ function preparingCard(app, data) {
   const tooLong = () => {
     stop();
     mark.remove();
+    fills.remove();
+    // r5-j B5: the red card of the card that could not start (show's failed card), still the status.
+    row.className = 'card error';
     words.textContent = PREP_TOO_LONG;
     OE.tellClaude(app, PREP_TOLD_LONG(resultId));
   };
@@ -1790,6 +1970,11 @@ function show(app, params) {
   const data = OE.viewData(params);
   OE.disposeEditors(root);
   OE.tellClaude(app, '', 'check');
+  // r5-m B3, after review: the page's one status line, which checkCard moved under its press, goes back to the
+  // page's foot before #root is drawn again (made there if it is missing), so every card starts with the region
+  // OE.start put in place, as before this round, and checkCard's action.after(OE.toastRegion()) moves it again.
+  const bar = OE.toastRegion();
+  if (root.contains(bar)) document.body.append(bar);
   root.replaceChildren(OE.el('div', { class: 'overline' }, 'Accuracy check'));
   if (data.needs_sign_in) {
     root.append(signIn(app, data.tool || 'olmoearth_check_map'));

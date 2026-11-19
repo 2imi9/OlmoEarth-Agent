@@ -57,11 +57,13 @@ Two more hidden files beside a sheet (the owner's extras of 13 Nov 2026),
 each mode 0600, written whole, never through a link: ``.<sheet>.rule``, the
 labelling rule the user typed on the Check card before its squares were
 picked (:func:`set_typed_rule`, refused once any answer is saved): for a map
-the owner's rule does not cover, and, by the owner's option A, for a map of
-presence and absence that is not of kelp, whose typed rule replaces the
-owner's (the page copy and the pictures print it, :func:`labelling_rule`);
-and ``.<sheet>.graded``, the version first and last graded
-(:func:`record_grading`), bound to the design's content (a digest of its
+the app's rule does not cover, and, by the owner's option A, for a map of
+presence and absence whose maker meant something else by Present and
+Absent, whose typed rule replaces the app's (the page copy and the pictures
+print it, :func:`labelling_rule`); and ``.<sheet>.graded``, the version first
+and last graded (:func:`record_grading`; since round r5-l with the app's rule
+the first grading followed, :func:`graded_app_rule`), bound to the design's
+content (a digest of its
 ``to_label``) and read as no mark while the sheet holds no answer, so a fresh
 sheet planned again under the same name does not inherit it, so a reopened
 sheet says its answers should not change and the estimate says when they did
@@ -1537,9 +1539,8 @@ def sheet_progress(path: str) -> dict[str, Any]:
     ``version`` (:func:`_version`, read with the rows), which a panel
     compares with the version it holds to find a sheet saved elsewhere;
     ``reading_rule``, ``rule_scope`` and ``rule_source``, the labelling rule
-    (:func:`labelling_rule`; ``None`` each without one), and ``rule_limit``
-    (``imagery.RULE_KELP_ONLY`` for the owner's rule, else ``None``:
-    :func:`_rule_fields`), and ``graded``
+    (:func:`labelling_rule`; ``None`` each without one: :func:`_rule_fields`;
+    no ``rule_limit`` since round r5-l), and ``graded``
     (``{first_at, changed_since_first}`` once the sheet was graded, else
     ``None``: :func:`record_grading`).
     Never a row, a place, a class or a label: the view reads the rows from
@@ -1783,7 +1784,7 @@ def read_sheet(
     of their handles. No ``face_choices`` and no ``has_stratum``: the panel
     has no face switch and shows no stratum (the owner's O1 and the last
     round's F11, 14 Nov 2026). ``reading_rule``, ``rule_scope``,
-    ``rule_source``, ``rule_limit`` and ``graded`` as :func:`sheet_progress`
+    ``rule_source`` and ``graded`` as :func:`sheet_progress`
     gives them (the panel prints the rule under its instruction from the first
     open, and says a graded sheet's answers should not change). ``unit``, the
     word the face says for one window (:func:`window_unit`: ``"square"`` or
@@ -2543,10 +2544,11 @@ def set_typed_rule(path: str, text: Any, *, typed_at: Any) -> dict[str, str]:
     written whole, no link followed). Returns ``{"text", "typed_at"}``.
 
     The server pins every typed rule here, the same way: the gate's, for a map
-    with no owner's rule, and, by the owner's option A of 13 Nov 2026, the
-    one typed in the box beside the owner's kelp rule on a map of presence
-    and absence that is not of kelp, which then replaces the owner's rule for
-    this sheet (:func:`labelling_rule`, ``imagery.rule_for``). The text is
+    with no app's rule, and, by the owner's option A of 13 Nov 2026, the
+    meaning of Present and Absent typed in the box beside the app's rule on a
+    map of presence and absence whose maker meant something else, which then
+    replaces the app's rule for this sheet (:func:`labelling_rule`,
+    ``imagery.rule_for``). The text is
     checked by :func:`clean_rule` (``ValueError``
     :data:`RULE_TEXT`), ``typed_at`` by :func:`_clean_moment`. Refused
     (:data:`RULE_AFTER_ANSWER`) once the sheet holds any answer (a label
@@ -2620,11 +2622,13 @@ def labelling_rule(path: str) -> dict[str, str] | None:
     ``"typed"``, the one the user typed before the draw and the server pinned
     beside the sheet (:func:`typed_rule`, with :func:`typed_rule_scope`, never
     ``imagery.RULE_SCOPE``), on any map, so on a map of presence and absence
-    it replaces the owner's; else ``"owner"``, the app owner's rule for a map
-    of presence and absence (``imagery.READING_RULE`` and
-    ``imagery.RULE_SCOPE``), kept when the box was left empty; else ``None``
-    (a map of other classes with no rule typed: the Check card's gate). The
-    same rule the pictures print (``imagery.rule_for``).
+    it replaces the app's; else ``"owner"``, the app's rule for a map of
+    presence and absence (``imagery.READING_RULE`` and ``imagery.RULE_SCOPE``;
+    for a sheet made with the earlier kelp rule, that rule and its scope, as
+    its records hold them: ``imagery.app_rule_of``, round r5-l), kept when
+    the box was left empty; else ``None`` (a map of other classes with no rule
+    typed: the Check card's gate). The same rule the pictures print
+    (``imagery.rule_for``).
     """
     real = resolve_sheet(path)
     with _sheet_lock(real):
@@ -2639,30 +2643,25 @@ def _rule_fields(
     rows: list[dict[str, str]],
     kind: str,
 ) -> dict[str, str | None]:
-    """``reading_rule``, ``rule_scope``, ``rule_source`` and ``rule_limit`` of
-    the page copy and the counts (:func:`labelling_rule`); each ``None`` with
-    no rule, or when the rule cannot be read.
+    """``reading_rule``, ``rule_scope`` and ``rule_source`` of the page copy
+    and the counts (:func:`labelling_rule`); each ``None`` with no rule, or
+    when the rule cannot be read.
 
-    ``rule_limit`` is ``imagery.RULE_KELP_ONLY`` for the owner's rule (source
-    ``"owner"``), else ``None``: the sheet's Details fold says it after the
-    scope (r5-e H2), where no box says the rest (the last round's F9), but
-    not on a face that takes Cannot tell and can show pictures, whose rule
-    box has the cloud line (r4-m M8). ``rule_note`` is another field's name
-    (a scores map's right-or-wrong note).
+    The rule and its scope, nothing more: round r5-l took away
+    ``rule_limit`` (that any other map needs its own rule, said after the
+    owner's rule's scope since the last round's F9), also for a sheet made
+    with the earlier kelp rule, which keeps its rule and its scope.
+    ``rule_note`` is another field's name (a scores map's right-or-wrong
+    note).
     """
-    # imagery imports this module, so it is imported here, when first asked.
-    from olmoearth_agent.mcp_app import imagery
-
     try:
         rule = _labelling_rule(real, design, rows, kind)
     except (OSError, ValueError):
         rule = None
-    source = rule["source"] if rule else None
     return {
         "reading_rule": rule["text"] if rule else None,
         "rule_scope": rule["scope"] if rule else None,
-        "rule_source": source,
-        "rule_limit": imagery.RULE_KELP_ONLY if source == "owner" else None,
+        "rule_source": rule["source"] if rule else None,
     }
 
 
@@ -2898,18 +2897,26 @@ def record_grading(
     path: str, version: str, *, design_path: str | None = None
 ) -> dict[str, Any]:
     """Mark the sheet graded at ``version`` (:func:`sheet_version`, read right
-    after the estimate): ``{first_at, changed, gradings}``.
+    after the estimate): ``{first_at, last_at, changed, gradings}``
+    (``last_at``: this grading's own time, the mark's ``last.at``; round r5-k
+    K1, the time a withdrawn result's rate was computed).
 
     The mark is a hidden file beside the sheet (``.<sheet>.graded``, mode
     0600, written whole under the sheet's lock, no link followed):
     ``{"format": GRADED_FORMAT, "first": {version, at, design_path,
-    design_digest, answers}, "last": {version, at}, "gradings", "changed"}``,
-    and ``blanked`` once a save emptied the graded sheet
+    design_digest, answers, app_rule}, "last": {version, at}, "gradings",
+    "changed"}``, and ``blanked`` once a save emptied the graded sheet
     (:func:`_write_keeping_mark`). The first grading sets ``first``, with the
     digest of the design's content (:func:`_design_digest`), which binds the
-    mark to this sheet, and the digest of the answers graded
+    mark to this sheet, the digest of the answers graded
     (:func:`_answers_digest`, read from the sheet when its version now is
-    ``version``; else ``None``); each one sets ``last`` and counts.
+    ``version``; else ``None``) and, since round r5-l, the app's rule the
+    sheet takes then (``app_rule``: ``imagery.app_rule_of``, read before the
+    sheet's lock; ``None`` for a sheet that takes no app's rule, one with a
+    rule typed beside it or of a map with the gate, told under the lock;
+    :func:`graded_app_rule` reads it back, and a mark written before the
+    round, which has none, was graded with the earlier kelp rule); each one
+    sets ``last`` and counts.
     ``changed`` turns true once a grading's answers differ from the first's
     (:func:`_changed_since_first`: by the answers' digest, the lead's ruling
     Q2 of 13 Nov 2026, else by the version), and stays true. A mark that does
@@ -2918,6 +2925,9 @@ def record_grading(
     blank), is started again. ``ValueError`` (:data:`BAD_VERSION`) for a
     version that is not one; ``ValueError`` or ``OSError`` only.
     """
+    # imagery imports this module, so it is imported here, when first asked.
+    from olmoearth_agent.mcp_app import imagery
+
     real = resolve_sheet(path)
     if not isinstance(version, str) or not _VERSION_RE.fullmatch(version):
         raise ValueError(BAD_VERSION)
@@ -2925,7 +2935,11 @@ def record_grading(
         raise ValueError("design_path is the design file's path, or None")
     at = _now_text()
     place = _hidden_path(real, GRADED_SUFFIX)
-    digest = _design_digest(_design_of(real)[1])
+    design = _design_of(real)[1]
+    digest = _design_digest(design)
+    # The app's rule the sheet takes now (round r5-l), kept with a first
+    # grading; read here, before the sheet's lock, which it takes itself.
+    app_rule = imagery.app_rule_of(real)
     with _sheet_lock(real):
         header, body, now = _read_stamped(real, _sheet_secret(real))
         # The answers graded, when the sheet is still the version graded.
@@ -2937,6 +2951,12 @@ def record_grading(
         if not holds:
             mark = None
         if mark is None:
+            # Kept only where the sheet takes the app's rule (round r5-l): no
+            # rule typed beside it, and a map of presence and absence.
+            rows = [dict(zip(header, row)) for row in body]
+            names = _rule_names(design, rows, _kind(header))
+            typed = _typed_rule_of(real)
+            owner = typed is None and imagery.reading_rule(names) is not None
             mark = {
                 "format": GRADED_FORMAT,
                 "first": {
@@ -2945,6 +2965,7 @@ def record_grading(
                     "design_path": design_path,
                     "design_digest": digest,
                     "answers": answers,
+                    "app_rule": app_rule if owner else None,
                 },
                 "last": {"version": version, "at": at},
                 "gradings": 1,
@@ -2963,6 +2984,7 @@ def record_grading(
         _write_hidden(real, place, json.dumps(mark, sort_keys=True))
     return {
         "first_at": str(mark["first"]["at"]),
+        "last_at": at,
         "changed": bool(mark["changed"]),
         "gradings": int(mark["gradings"]),
     }
@@ -3011,6 +3033,42 @@ def graded_state(path: str) -> dict[str, Any] | None:
         "changed": bool(mark["changed"]),
         "answered": answered,
     }
+
+
+def graded_app_rule(path: str) -> str | None:
+    """The app's labelling rule this sheet's graded mark kept (round r5-l:
+    records already written keep their words): the mark's ``first.app_rule``
+    (:func:`record_grading` keeps it since that round; ``None`` there for a
+    sheet that took no app's rule, a typed rule's or a map's with the gate),
+    or, for a mark written before the round, which has no ``app_rule`` at
+    all, the app's earlier rule, set 11 Nov 2026 for kelp canopy maps
+    (``imagery.KELP_READING_RULE``); ``None`` before a first grading, or for
+    a mark that is not this sheet's (:func:`_mark_holds`, read as
+    :func:`graded_state` reads it). ``imagery.app_rule_of`` asks it after the
+    pictures' record, before the Check card's draw. Read only: nothing is
+    written. ``ValueError`` or ``OSError`` only.
+    """
+    # imagery imports this module, so it is imported here, when first asked.
+    from olmoearth_agent.mcp_app import imagery
+
+    real = resolve_sheet(path)
+    digest = _design_digest(_design_of(real)[1])
+    with _sheet_lock(real):
+        mark = _read_mark(real)
+        if mark is None:
+            return None
+        raw = real.read_bytes()
+        version = _version(_sheet_secret(real), raw)
+    header, body = _parse(real, raw)
+    answered = _holds_answers(header, body)
+    holds = _mark_holds(mark, answered=answered, digest=digest, version=version)
+    if not holds:
+        return None
+    first = mark["first"]
+    if "app_rule" not in first:
+        return imagery.KELP_READING_RULE
+    kept = first["app_rule"]
+    return kept if isinstance(kept, str) and kept else None
 
 
 def _graded_field(
@@ -3273,43 +3331,61 @@ def class_counts(path: str, version: str) -> dict[str, Any] | None:
     return {"n": n, "n_unjudged": unjudged, "classes": _class_rows(squares, order)}
 
 
+def _answered_sheets(result_id: Any) -> Iterator[Path]:
+    """:func:`answered_sheets`, one at a time, so :func:`result_holds_answers`
+    stops at the first; it may raise on anything unexpected, its callers
+    never do."""
+    # check imports this module, so it is imported here, when first asked.
+    from olmoearth_agent.mcp_app import check
+
+    if not isinstance(result_id, str) or not result_id.strip():
+        return
+    wanted = result_id.strip()
+    prefix = "design_" + slug(wanted, 12) + "_"
+    files = [path for path, _mtime in _sheet_files()]
+    named = [p for p in files if os.path.basename(p).startswith(prefix)]
+    limit = check.SCAN_MAX
+    for path in named[:limit]:
+        try:
+            real = resolve_sheet(path)
+            header, body = _read(real)
+            if not _counts(header, body)["n_labelled"]:
+                continue
+            named_id = _population_source(_design_of(real)[1]).get("result_id")
+        except (OSError, ValueError, csv.Error):
+            continue
+        if isinstance(named_id, str) and named_id.strip() == wanted:
+            yield real
+
+
+def answered_sheets(result_id: Any) -> list[Path]:
+    """The real paths of the plans' sheets of this Studio result that already
+    hold an answer, however they were planned (in the chat included).
+
+    Among :func:`_sheet_files` (the tops of the two roots, newest first), the
+    sheets whose names start with ``design_`` and the result's slug as the
+    plan tool names them (``tools.review_set.slug(result_id, 12)``, then
+    ``_``), told by name alone; at most ``check.SCAN_MAX`` of those are read,
+    without the lock (a save replaces a sheet whole). Each that holds a label
+    cell (:func:`_counts`, Cannot tell included) and whose design file beside
+    it names this result (``population.source.result_id``): a slug cut to 12
+    characters can be another result's. A sheet or design that cannot be
+    read is skipped. Never raises: anything unexpected is none.
+    """
+    try:
+        return list(_answered_sheets(result_id))
+    except Exception:  # noqa: BLE001 - never raises: unknown is none
+        return []
+
+
 def result_holds_answers(result_id: Any) -> bool:
     """Whether any plan's sheet of this Studio result already holds an answer
     (the Check card's settled rule, the last round's Q6 and Q9: a rule typed
-    on the card must not stand beside a sheet labelled under another).
-
-    Among :func:`_sheet_files` (the tops of the two roots), the sheets whose
-    names start with ``design_`` and the result's slug as the plan tool names
-    them (``tools.review_set.slug(result_id, 12)``, then ``_``), told by name
-    alone; at most ``check.SCAN_MAX`` of those are read, without the lock (a
-    save replaces a sheet whole). True for the first that holds a label cell
-    (:func:`_counts`, Cannot tell included) and whose design file beside it
-    names this result (``population.source.result_id``): a slug cut to 12
-    characters can be another result's. A sheet or design that cannot be
-    read is skipped. Never raises: anything unexpected is no answer.
+    on the card must not stand beside a sheet labelled under another): the
+    first of :func:`answered_sheets`, found as they are. Never raises:
+    anything unexpected is no answer.
     """
     try:
-        # check imports this module, so it is imported here, when first asked.
-        from olmoearth_agent.mcp_app import check
-
-        if not isinstance(result_id, str) or not result_id.strip():
-            return False
-        wanted = result_id.strip()
-        prefix = "design_" + slug(wanted, 12) + "_"
-        files = [path for path, _mtime in _sheet_files()]
-        named = [p for p in files if os.path.basename(p).startswith(prefix)]
-        limit = check.SCAN_MAX
-        for path in named[:limit]:
-            try:
-                real = resolve_sheet(path)
-                header, body = _read(real)
-                if not _counts(header, body)["n_labelled"]:
-                    continue
-                named_id = _population_source(_design_of(real)[1]).get("result_id")
-            except (OSError, ValueError, csv.Error):
-                continue
-            if isinstance(named_id, str) and named_id.strip() == wanted:
-                return True
+        return next(_answered_sheets(result_id), None) is not None
     except Exception:  # noqa: BLE001 - never raises: unknown is no answer
         return False
-    return False

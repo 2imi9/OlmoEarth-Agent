@@ -133,7 +133,10 @@ def test_r04_the_caption_has_a_narrow_form_of_its_own() -> None:
         f"  // WORDING: r5d R04\n  const CAPTION_NARROW = '{CAPTION_NARROW}';\n"
         in script
     )
-    assert "  return { STYLE, style, figure, CAPTION, CAPTION_NARROW };\n" in script
+    # r5-k K8: it returns WIDE too, the width the start card places the figure by.
+    assert (
+        "  return { STYLE, style, figure, CAPTION, CAPTION_NARROW, WIDE };\n" in script
+    )
     for text in (CAPTION, CAPTION_NARROW):
         assert re.search(r"[0-9%]", text) is None, text
         assert not _OFF_FACE.search(text), text

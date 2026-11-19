@@ -11,9 +11,10 @@ The owner agreed on 11 Nov 2026 (docs/Usage.md, "In Claude, with views"):
   (:data:`BUCKET_HOST`) receives byte-range requests for parts of the image
   files. Both see this computer's IP address. This is the one exception to
   "no STAC or Earth Engine fetches". It is off until the user switches it on
-  in the panel, after reading :data:`CONSENT_ASK`; the answer is kept in the
-  output root (:func:`consent_path`) with what it was given to
-  (:func:`consent_version`), so a changed question asks again.
+  in the panel, after reading :data:`CONSENT_ASK` (three short lines since
+  round r5-k K7; the hosts by name in its fold, :data:`CONSENT_FULL`); the
+  answer is kept in the output root (:func:`consent_path`) with what it was
+  given to (:func:`consent_version`), so a changed question asks again.
 - Where the window is comes from files on disk, never from the page, which
   names the window by its handle alone (``sheet.window_row``): the sheet,
   its design (``population.source.scores_path``), the scores file
@@ -31,9 +32,13 @@ The owner agreed on 11 Nov 2026 (docs/Usage.md, "In Claude, with views"):
   (:func:`rule_for`; the record names whose rule it is, ``rule_source``): the
   rule the user typed on the Check card before its squares were picked
   (``sheet.typed_rule``, the owner's rulings of 13 Nov 2026), on any map, so
-  on a map of presence and absence that is not of kelp it replaces the
-  owner's (option A); else the owner's (:data:`READING_RULE`) for a map of
-  presence and absence; else none, and the pane says one must be agreed.
+  on a map of presence and absence whose maker meant something else by
+  Present and Absent it replaces the app's (option A); else the app's
+  (:data:`READING_RULE`, general for any map of presence and absence since
+  round r5-l, what the map is meant to find since round r5-m; a sheet made
+  with the earlier kelp rule or r5-l's words keeps those words,
+  :func:`app_rule_of`) for a map of presence and absence; else none, and the
+  pane says one must be agreed.
 - What a label then is (:data:`LABEL_IS`): a visual reading of Sentinel-2,
   the map's own sensor; the estimate's ``must_state`` says so
   (:data:`LABEL_MUST_STATE`, added by the server when the sheet's record
@@ -56,7 +61,8 @@ round r4-k K7).
 
 :func:`example_scene` (round r4-k K9) renders a fixed public place the way
 a sheet's square is rendered, for a cluster run that makes the two example
-pictures beside the owner's kelp rule; the app never calls it.
+pictures beside the app's rule (from a kelp canopy map); the app never calls
+it.
 
 What the view gets travels in the tool's ``structuredContent`` only; the
 model reads ``{"ok": true}``, a failure included. Errors are a closed set of
@@ -103,20 +109,51 @@ logger = logging.getLogger(__name__)
 CATALOGUE_HOST = s2_fetch.CATALOGUE_HOST
 BUCKET_HOST = s2_fetch.BUCKET_HOST
 
-#: The question the panel asks once, before any fetch: who receives what. It
-#: names label sheets and review sets (round 4, the owner's D2), in the reader
-#: test's words (A/sheet-7, 13 Nov 2026, window -> square): its words changed,
-#: so its hash (:func:`consent_version`) did, and everyone is asked once more,
-#: once for both changes.
-# WORDING: squares
-CONSENT_ASK = (
-    "Show satellite (Sentinel-2) pictures of each square? They come from Earth "
-    "Search, a public image archive. To fetch them, this computer sends two "
-    f"things. To the archive's catalogue ({CATALOGUE_HOST}): the map's rough "
-    "outline and its months, once per sheet or review set. To its file store "
-    f"({BUCKET_HOST}): requests for parts of image files. No key and no account "
-    "are used. Both can see this computer's internet address (IP). Nothing is "
-    "sent to Studio or to Claude."
+#: The question the panel asks once, before any fetch: who receives what.
+#: Round r5-k K7 (the owner's choice N1, accepted 18 Nov 2026): its face is
+#: three short lines, what is sent (:data:`CONSENT_WHAT`: the map's extent,
+#: rounded outward to 0.1 degree by :func:`s2_fetch.rounded`, and its months,
+#: one search per month), to whom (:data:`CONSENT_TO`: the catalogue, and the
+#: file store that gets the byte-range requests; both see the IP address)
+#: and that nothing goes to Studio or Claude (:data:`CONSENT_NOT`). The first
+#: line, the question and what is sent, takes two rows of the panel at 780
+#: px; the other two, at most 90 characters, one row each (the round's
+#: review, D1). The two hosts by name and what each gets are in the
+#: question's fold (:data:`CONSENT_FULL`, "What is sent, in full" in the
+#: panel), with the test scene's question, which calls them the same
+#: catalogue and the same file store (review D3). Before, one paragraph of
+#: about 11 lines named both hosts (the reader test's A/sheet-7, 13 Nov 2026;
+#: round 4's D2 named sheets and review sets). The words changed, so the hash
+#: (:func:`consent_version`) did, and everyone is asked once more.
+# WORDING: r5k K7
+CONSENT_WHAT = (
+    "Show satellite (Sentinel-2) pictures of each square? To fetch them, this "
+    "computer sends the box around the map, rounded out to 0.1 degree, and the "
+    "map's months."
+)
+# WORDING: r5k K7
+CONSENT_TO = (
+    "They go to Earth Search, a public catalogue, and its file store; both see "
+    "your IP address."
+)
+# WORDING: r5k K7
+CONSENT_NOT = "Nothing is sent to Studio or to Claude."
+#: The face's three lines, in order, and the question as the panel gets it
+#: (``ask``): the three lines joined by line breaks, drawn one line each.
+CONSENT_LINES = (CONSENT_WHAT, CONSENT_TO, CONSENT_NOT)
+CONSENT_ASK = "\n".join(CONSENT_LINES)
+#: The question's fold (``ask_full``): each host by name and what it gets
+#: (:mod:`s2_fetch`: the catalogue, the extent and the month of each search,
+#: kept in the record, so the squares of a sheet or a review set are searched
+#: once; the file store, byte-range requests for parts of four band files),
+#: and that no credential is sent. The test scene's question
+#: (:data:`TEST_ASK`, :data:`REVIEW_TEST_ASK`) follows it in the fold.
+# WORDING: r5k K7
+CONSENT_FULL = (
+    f"Earth Search's catalogue is {CATALOGUE_HOST}: it gets the box and the "
+    "months, once for all the squares. Its file store is "
+    f"{BUCKET_HOST}: it gets the requests for parts of image files. No key and "
+    "no account are used."
 )
 
 #: Whether this build fetches pictures. True since the fetch landed; an answer
@@ -125,18 +162,57 @@ FETCHES = True
 
 
 def consent_version() -> str:
-    """What an answer was given to: the question's own words (a hash) and
-    whether the build fetches, so a changed question, or the first build that
-    fetches, asks again."""
-    digest = hashlib.sha256(CONSENT_ASK.encode("utf-8")).hexdigest()[:16]
+    """What an answer was given to: the question's own words, its face
+    (:data:`CONSENT_ASK`) and its fold (:data:`CONSENT_FULL`), as a hash,
+    and whether the build fetches, so a changed question, or the first build
+    that fetches, asks again. A yes is kept with this version
+    (:func:`set_on`) and counts while the version is the same
+    (:func:`is_on`): round r5-k K7 changed the words, so a yes given before
+    lapses once, and a yes given to these words counts."""
+    asked = CONSENT_ASK + "\n\n" + CONSENT_FULL
+    digest = hashlib.sha256(asked.encode("utf-8")).hexdigest()[:16]
     return f"{digest}-{'fetch' if FETCHES else 'stub'}"
 
 
-#: The labelling rule, agreed by the owner on 11 Nov 2026 for a map of
-#: presence and absence (the kelp trial), printed above the pictures.
+#: The app's labelling rule for a map of presence and absence, printed above
+#: the pictures. Round r5-l (the owner, 19 Nov 2026: the instructions are
+#: general, no kelp in what people are asked): it reads for any map of present
+#: and absent. Round r5-m B1: it says what the map is meant to find, which
+#: cannot be read as the map's own answer at the square (r5-l said "what the
+#: map shows", read as that answer, which the blind sheet hides). The rule the
+#: owner agreed on 11 Nov 2026 for the kelp trial (:data:`KELP_READING_RULE`)
+#: and r5-l's words (:data:`R5L_READING_RULE`) are kept word for word for the
+#: records made with them.
+# WORDING: r5m B1
+# WORDING: r5l
 READING_RULE = (
+    "Present: on at least one clear date shown, what the map is meant to find "
+    "covers more than half of the outlined square. Absent: on every clear date "
+    "shown, it covers half or less."
+)
+
+#: The app's rule before round r5-l, agreed by the owner on 11 Nov 2026 for a
+#: map of presence and absence (the kelp trial), word for word. Records
+#: already written keep their words: a draw, a sheet or a result made with
+#: this rule still shows and repeats it (:func:`app_rule_of`,
+#: ``check.result_app_rule``); a new part of a map already drawn with it, or
+#: with a sheet labelled under it, takes it; nothing else drawn since is
+#: given it, and a press that drew nothing keeps it for no map.
+KELP_READING_RULE = (
     "Present: on at least one clear date shown, canopy fills more than half of "
     "the outlined square. Absent: on every clear date shown it fills half or less."
+)
+
+#: The app's rule of round r5-l, word for word, kept for the records made with
+#: it (round r5-m B1: the owner's trial runs of staging): a draw, a sheet or a
+#: result that holds these words keeps them and the general scope
+#: (:data:`RULE_SCOPE`, :func:`app_rule_scope`), read as r5-l reads the kelp
+#: rule's records (:data:`APP_RULES`, :func:`app_rule_of`); nothing new is
+#: given them.
+R5L_READING_RULE = (
+    "Present: on at least one clear date shown, what the map shows covers more "
+    "than half of the outlined square. Absent: on every clear date shown, it "
+    "covers half or less."
 )
 
 #: What a label read from these pictures is (the pane and the record). Word
@@ -157,24 +233,30 @@ LABEL_MUST_STATE = (
     "period: the result is agreement with that reading, not ground truth."
 )
 
-#: Said with the rule: who set it, when and for what (the reader test's
-#: A/sheet-6, 13 Nov 2026; shortened by the last round's C5, reader test 2's
-#: A/F12): the Check card, the sheet, the pictures and the model say it. A
-#: rule the user typed before the draw has its own (``sheet.TYPED_RULE_SCOPE``).
-# WORDING: r4h C5
-RULE_SCOPE = "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
+#: Said with the app's rule: who set it and for what (the reader test's
+#: A/sheet-6, 13 Nov 2026; shortened by round r4-h C5; round r5-l: for any
+#: map of present and absent, no date, no kelp): the Check card, the sheet,
+#: the pictures and the model say it, and nothing after it (round r5-l took
+#: away the line that any other map needs its own rule). A rule the user
+#: typed before the draw has its own (``sheet.TYPED_RULE_SCOPE``), the kelp
+#: rule its own (:data:`KELP_RULE_SCOPE`, :func:`app_rule_scope`).
+# WORDING: r5l
+RULE_SCOPE = "This rule came with the app, for any map of present and absent."
 
-#: Said after :data:`RULE_SCOPE` where no box carries the rest (the last
-#: round's F9, 14 Nov 2026): the sheet's Details fold (as ``rule_limit`` with
-#: the owner's rule, ``sheet._rule_fields``, right after the scope there since
-#: r5-e H2; not on a face that takes Cannot tell and can show pictures, whose
-#: rule box has the cloud line, r4-m M8) and the
-#: estimate's note to the model. The pictures' answer carries it too
-#: (:func:`_window_image`), which the pane no longer draws (r4-m M8). The Check card
-#: keeps C5's words, since its box says the rest. It always follows the scope,
-#: which names kelp canopy maps already, so it does not say it twice (r4-j J6).
-# WORDING: r4j J6
-RULE_KELP_ONLY = "Any other map needs its own rule."
+#: The scope said with :data:`KELP_READING_RULE`, word for word as round
+#: r4-h C5 left it, for the records made with that rule (:func:`app_rule_scope`).
+# WORDING: r4h C5
+KELP_RULE_SCOPE = "This rule came with the app (set 11 Nov 2026 for kelp canopy maps)."
+
+#: The app's rules by their words, each with the scope said with it: the
+#: general rule, the kelp rule a record made before round r5-l holds, and
+#: r5-l's words, which a record made before round r5-m holds, with the
+#: general scope (round r5-m B1).
+APP_RULES: dict[str, str] = {
+    READING_RULE: RULE_SCOPE,
+    KELP_READING_RULE: KELP_RULE_SCOPE,
+    R5L_READING_RULE: RULE_SCOPE,
+}
 
 #: How the dates are chosen (the record; the caption says it shorter).
 PICK_RULE = (
@@ -228,31 +310,36 @@ TEST_WHY = (
     "Not sure yet? See how the pictures look on a public test place first. "
     "Nothing about your map is sent."
 )
+#: The test scene's question beside a sheet. Since round r5-k K7 the panel
+#: draws it in the question's fold, right after :data:`CONSENT_FULL`, so it
+#: calls the two hosts "the same catalogue" and "the same file store" (the
+#: round's review D3: each host is named once, by one name; the face says
+#: both see the IP address, and :data:`TEST_WHY` that nothing of the map is
+#: sent); the test scene's button follows the fold.
+# WORDING: r5k K7
 TEST_ASK = (
     f"{TEST_WHY} It is a public place unrelated to this sheet (the Cape "
-    "Peninsula's Atlantic shore, January to March 2024): that place's extent, "
-    f"rounded, goes to Earth Search's catalogue ({CATALOGUE_HOST}) and requests "
-    f"for parts of image files to its bucket ({BUCKET_HOST}). Nothing of this "
-    "sheet is sent, and pictures stay off for the sheet. Both hosts see this "
-    "computer's IP address."
+    "Peninsula's Atlantic shore, January to March 2024): that place's box, "
+    "rounded, goes to the same catalogue, and requests for parts of image files "
+    "to the same file store. Pictures stay off for the sheet."
 )
 #: The test scene's caption beside a sheet: "square", the sheet face's word
 #: (round 4 pass 2, the lead's ruling W; a sheet that can have pictures is
-#: one of squares, ``sheet.window_unit``).
-# WORDING: squares
+#: one of squares, ``sheet.window_unit``). Round r5-l: no "as on the kelp
+#: map" (the sheet beside it may be of any map).
+# WORDING: squares; r5l
 TEST_CAPTION = (
     "A public test scene, not a square of this sheet: nothing here is labelled. "
-    "The outlined square is 11 pixels, as on the kelp map. " + CAPTION
+    "The outlined square is 11 pixels. " + CAPTION
 )
-#: The test scene's question, asked beside a review set's window.
-# WORDING: r4p2
+#: The test scene's question, asked beside a review set's window (in the
+#: question's fold, as :data:`TEST_ASK`).
+# WORDING: r4p2; r5k K7
 REVIEW_TEST_ASK = (
     f"{TEST_WHY} It is a public place unrelated to this review set (the Cape "
-    "Peninsula's Atlantic shore, January to March 2024): that place's extent, "
-    f"rounded, goes to Earth Search's catalogue ({CATALOGUE_HOST}) and requests "
-    f"for parts of image files to its bucket ({BUCKET_HOST}). Nothing of this "
-    "review set is sent, and pictures stay off for it. Both hosts see this "
-    "computer's IP address."
+    "Peninsula's Atlantic shore, January to March 2024): that place's box, "
+    "rounded, goes to the same catalogue, and requests for parts of image files "
+    "to the same file store. Pictures stay off for it."
 )
 #: The test scene's caption beside a review set's window (round 4's low
 #: findings 1, 6 and 9): no sheet, no label and no kelp map, which a review
@@ -378,9 +465,18 @@ class _Refused(Exception):
 
 
 def _ask_answer(test_ask: str = TEST_ASK) -> dict[str, Any]:
-    """The answer while pictures are off: the question, and the test scene's
-    (a sheet's, or a review set's :data:`REVIEW_TEST_ASK`)."""
-    return {"ok": True, "needs_consent": True, "ask": CONSENT_ASK, "test_ask": test_ask}
+    """The answer while pictures are off: the question's face (``ask``, its
+    three lines, :data:`CONSENT_ASK`), its fold (``ask_full``,
+    :data:`CONSENT_FULL`), and the test scene's (a sheet's, or a review
+    set's :data:`REVIEW_TEST_ASK`), which the panel draws in the fold too
+    (round r5-k K7)."""
+    return {
+        "ok": True,
+        "needs_consent": True,
+        "ask": CONSENT_ASK,
+        "ask_full": CONSENT_FULL,
+        "test_ask": test_ask,
+    }
 
 
 def _failed(said: str) -> dict[str, Any]:
@@ -450,8 +546,10 @@ def status() -> dict[str, Any]:
 
 def reading_rule(names: Iterable[Any]) -> str | None:
     """The rule for a map of presence and absence (its class names include a
-    present and an absent), else ``None``: the owner's rule is for such a map,
-    and another map's rule has to be agreed before the first label. The names
+    present and an absent), else ``None``: the app's rule is for such a map
+    (:data:`READING_RULE`, general since round r5-l; which of the app's rules
+    a sheet shows, :func:`app_rule_of` says), and another map's rule has to
+    be agreed before the first label. The names
     are a scores map's ``class_names`` or a class map's ``classes``; which
     are present and absent is the sheet's (``sheet.PRESENT_NAMES``,
     ``sheet.ABSENT_NAMES``), whose seen answers put them first."""
@@ -469,9 +567,12 @@ def rule_for(
     typed on the Check card before its squares were picked, pinned beside the
     sheet at the press (``sheet.typed_rule``: ``sheet.typed_rule_scope``,
     never :data:`RULE_SCOPE`, ``"typed"``), on any map, so on a map of
-    presence and absence that is not of kelp it replaces the owner's; else
-    the owner's rule (:func:`reading_rule`, :data:`RULE_SCOPE`, ``"owner"``)
-    for a map of presence and absence, kept when nothing was typed; else
+    presence and absence whose maker meant something else it replaces the
+    app's; else the app's rule for a map of presence and absence
+    (:func:`reading_rule`), kept when nothing was typed: the one the sheet's
+    records hold (:func:`app_rule_of`: :data:`READING_RULE`, or
+    :data:`KELP_READING_RULE` for a sheet made with it before round r5-l)
+    with its own scope (:func:`app_rule_scope`), ``"owner"``; else
     ``(None, None, None)`` (a map of other classes with no rule typed: the
     Check card's gate). ``names`` as :func:`reading_rule` takes them. The
     pictures' pane and record, and the page copy of the sheet
@@ -483,10 +584,90 @@ def rule_for(
         typed = None
     if typed is not None:
         return typed["text"], sheet.typed_rule_scope(typed["typed_at"]), "typed"
-    owner = reading_rule(names)
-    if owner is not None:
-        return owner, RULE_SCOPE, "owner"
+    if reading_rule(names) is not None:
+        text = app_rule_of(real)
+        return text, app_rule_scope(text), "owner"
     return None, None, None
+
+
+def app_rule_scope(text: Any) -> str:
+    """The scope said with one of the app's rules, chosen by its words (round
+    r5-l): :data:`KELP_RULE_SCOPE` with :data:`KELP_READING_RULE`, which a
+    record made before the round holds; :data:`RULE_SCOPE` with any other."""
+    return KELP_RULE_SCOPE if text == KELP_READING_RULE else RULE_SCOPE
+
+
+def _recorded_app_rule(real: Path) -> str | None:
+    """The last of the app's rules (:data:`APP_RULES`) the sheet's pictures'
+    record printed (its context lines in order, :func:`_header`), or ``None``
+    when it printed none: the rule beside the sheet's latest pictures. A sheet
+    that holds answers prints its own rule again at each open, so its last
+    line stays its own; a fresh sheet planned again under an earlier sheet's
+    name appends its rule after the earlier sheet's lines. Never raises."""
+    found: str | None = None
+    for entry in _read_record(record_path(real)):
+        context = entry.get("context")
+        text = context.get("reading_rule") if isinstance(context, dict) else None
+        if isinstance(text, str) and text in APP_RULES:
+            found = text
+    return found
+
+
+def _answered(real: Path) -> bool:
+    """Whether a resolved sheet holds an answer (``sheet._holds_answers``),
+    read without the sheet's lock, parsed as ``sheet.graded_app_rule`` parses
+    it (a save replaces a sheet whole); a sheet that cannot be read or parsed
+    counts as holding one. Never raises."""
+    try:
+        found = sheet.resolve_sheet(str(real))
+        header, body = sheet._parse(found, found.read_bytes())
+        return sheet._holds_answers(header, body)
+    except Exception:  # noqa: BLE001 - unread, the pictures' record is kept
+        return True
+
+
+def app_rule_of(real: Path) -> str:
+    """The app's rule for a resolved sheet whose rule is the app's (a map of
+    presence and absence, no rule typed), as what its records hold says
+    (round r5-l: records already written keep their words, and none is
+    written again): :data:`KELP_READING_RULE` for a sheet made with that
+    earlier rule, :data:`R5L_READING_RULE` for one made with r5-l's words
+    (round r5-m B1: any rule of :data:`APP_RULES` its records hold), else
+    :data:`READING_RULE`.
+
+    In this order: while the sheet holds an answer (:func:`_answered`), the
+    last of the app's rules its pictures' record printed
+    (:func:`_recorded_app_rule`; beside a blank sheet the record can be an
+    earlier sheet's of the same name); the one its graded mark kept
+    (``sheet.graded_app_rule``: the rule the sheet took at its first grading,
+    the draw's among them, or the kelp rule for a mark written before the
+    round); the one the Check card's draw of the sheet was drawn with
+    (``check.sheet_app_rule``: the rule the draw pinned, or the kelp rule for
+    a draw recorded before the round). A sheet none of these speaks for (a
+    sheet planned in the chat and never pictured or graded, one planned
+    since, or a blank one no draw or mark from before the round speaks for)
+    takes :data:`READING_RULE`. Never raises.
+    """
+    # check imports more than this module needs; imported here, when asked.
+    from olmoearth_agent.mcp_app import check
+
+    recorded = _recorded_app_rule(real)
+    if recorded is not None and _answered(real):
+        return recorded
+    try:
+        graded = sheet.graded_app_rule(str(real))
+    except Exception:  # noqa: BLE001 - the rule stands without the mark's word
+        graded = None
+    if isinstance(graded, str) and graded in APP_RULES:
+        return graded
+    try:
+        drawn = check.sheet_app_rule(str(real))
+    except Exception:  # noqa: BLE001 - the rule stands without the draw's word
+        logger.warning("a sheet's draw record was not read", exc_info=True)
+        drawn = None
+    if isinstance(drawn, str) and drawn in APP_RULES:
+        return drawn
+    return READING_RULE
 
 
 # ------------------------------------------------------------ the map's grid
@@ -773,11 +954,11 @@ def _header(
     source: str | None = None,
 ) -> dict[str, Any]:
     """A sheet's record's context line: the rule printed (``rule``), what it
-    says of it (``scope``: :data:`RULE_SCOPE` for the owner's rule when not
-    given) and whose it is (``rule_source``: ``"owner"``, ``"typed"``, or
+    says of it (``scope``: the app's rule's own, :func:`app_rule_scope`, when
+    not given) and whose it is (``rule_source``: ``"owner"``, ``"typed"``, or
     ``None`` with no rule)."""
     if rule and scope is None and source in (None, "owner"):
-        scope, source = RULE_SCOPE, "owner"
+        scope, source = app_rule_scope(rule), "owner"
     return {
         "context": {
             "record": "olmoearth-agent label-sheet pictures",
@@ -973,8 +1154,8 @@ def window_image(
     (``on`` false): the question to ask (:data:`CONSENT_ASK`), and the test
     scene's (:data:`TEST_ASK`). On: the window, checked against the sheet
     (:data:`CHANGED`, :data:`NOT_ON_SHEET`) and the map raster before any
-    fetch, with the labelling rule (``rule_limit``: :data:`RULE_KELP_ONLY`
-    for the owner's rule, else ``None``), what a label is, and the dated pictures
+    fetch, with the labelling rule and its scope (:func:`rule_for`; nothing
+    after the scope since round r5-l), what a label is, and the dated pictures
     under :data:`CAPTION`, led by how big the outlined square is
     (:func:`square_size_text`, left out when its scores file gives no size);
     the answer names the window by its handle. A failure is ``{"ok": false,
@@ -1088,8 +1269,6 @@ def _window_image(
         "reading_rule": rule,
         "rule_scope": scope,
         "rule_source": source,
-        # The owner's rule is for kelp canopy maps only (the last round's F9).
-        "rule_limit": RULE_KELP_ONLY if source == "owner" else None,
         "label_is": LABEL_IS,
         "caption": square_size_text(size) + CAPTION,
         "dates": dates,
@@ -1255,7 +1434,6 @@ def _review_image(
         "synthetic": False,
         "reading_rule": None,
         "rule_scope": None,
-        "rule_limit": None,
         "label_is": None,
         "caption": CAPTION,
         "dates": dates,
@@ -1271,9 +1449,10 @@ _test_cache: dict[str, Any] = {}
 
 def public_test_scene(*, review: bool = False) -> dict[str, Any]:
     """The public test scene's pictures, for the panel; never raises. Pressed
-    by the user after reading :data:`TEST_ASK`; nothing of a sheet is used or
-    sent, and no record is written (there is no sheet). ``review``: pressed
-    beside a review set's window (after :data:`REVIEW_TEST_ASK`): its caption
+    by the user on the button after the question's fold, which holds
+    :data:`TEST_ASK` (round r5-k K7); nothing of a sheet is used or sent, and
+    no record is written (there is no sheet). ``review``: pressed beside a
+    review set's window (after the fold with :data:`REVIEW_TEST_ASK`): its caption
     is :data:`REVIEW_TEST_CAPTION` and a fetch that fails says
     :data:`REVIEW_FETCH_FAILED`, with no sheet or label in either."""
     try:
@@ -1344,7 +1523,6 @@ def _public_test_scene(*, review: bool = False) -> dict[str, Any]:
         "synthetic": False,
         "reading_rule": None,
         "rule_scope": None,
-        "rule_limit": None,
         "label_is": None,
         "caption": REVIEW_TEST_CAPTION if review else TEST_CAPTION,
         "dates": dates,
@@ -1371,7 +1549,7 @@ def example_scene(
 ) -> dict[str, Any]:
     """The pictures of one fixed public place, rendered as a sheet's square
     is (r4-k K9): for a later cluster run that makes the two example
-    pictures beside the owner's kelp rule (``views/examples``, which the
+    pictures beside the app's rule (``views/examples``, which the
     owner picks and checks before any ships). Never called by the app;
     nothing of a sheet, a map or a review is read or sent, and no record is
     written. Never raises: a failure is ``{"ok": False, "error": <a fixed

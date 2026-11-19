@@ -20,7 +20,8 @@ scripts).
   carries beside the headline is as before, and so is the model's line.
 - J07: a sheet whose answers changed after its first result says so directly
   under the title's line, above the rate, in red at body size; "graded" is
-  gone from the line, in the server's copy and the page's.
+  gone from the line, in the server's copy and the page's. Since round r5-k
+  K1 the result is withdrawn and the line is in the withdrawn card's Details.
 - J12: the server's last line is the rate block's last child, at body size.
 - J23: the rule used and the class lines are in Details, off the face.
 - J27: the look-first CSV's line tells the latest press only, a failure
@@ -503,6 +504,8 @@ def test_j02_changes_the_words_only() -> None:
     assert (view["say"], view["rate"], view["rate_text"]) == (None, None, None)
     assert (view["rate_low"], view["rate_high"]) == (0.1, 0.125)
     assert view["rate_range_text"] == "10.0% to 12.5%"
+    # Round r5-j B1: the bar's label, the headline's two figures by its "or".
+    assert view["rate_bar_text"] == "10.0% or 12.5%"
     assert (view["low"], view["high"]) == (0.061, 0.217)
     assert view["range_text"] == RANGE
     assert (view["low_text"], view["high_text"]) == ("6.1%", "21.7%")
@@ -517,6 +520,9 @@ def test_j02_changes_the_words_only() -> None:
         "The map is wrong on between 10.0% and 12.5% of squares; 95% range 6.1% to "
         "21.7%."
     )
+    # Round r5-j B1: with no Cannot tell, the bar's label is "between ... and".
+    assert bare["rate_range_text"] == "10.0% to 12.5%"
+    assert bare["rate_bar_text"] == "between 10.0% and 12.5%"
     # A rate too small for a sentence (say_rate gives none): the plain form.
     tiny = _result(_inner(5e-324), None, None)["view"]
     assert tiny["say"] is None and tiny["rate_text"]
@@ -604,30 +610,32 @@ def test_j07_the_changed_answers_line_in_both_copies(
     assert got["view"]["graded_before"]["line"] == GRADED
     note = server.GRADED_AGAIN_NOTE.format(first_at="2026-11-13T10:04:00Z")
     assert note in got["notes"]
-    # The headline and the figures are not withdrawn (the owner's call).
+    # Round r5-k K1 (the owner's O4 of 18 Nov 2026): the result is withdrawn
+    # (view["withdrawn"]), yet the view keeps every number for the card's
+    # Details: no number changes.
+    assert got["view"]["withdrawn"] is not None
     assert got["view"]["headline"].startswith("The West part is wrong on about 1 ")
 
 
 def test_j07_the_line_stands_above_the_rate_at_body_size() -> None:
-    """J07: the card draws the line right after the title's line and before
-    the rate block, as p.error (no 'small'), where it was the fourth line."""
-    card = _between(_read("result.html"), "function resultCard(", "\n}\n")
+    """J07 drew the line right after the title's line and before the rate
+    block, as p.error (no 'small'). Since round r5-k K1 the result is
+    withdrawn: resultCard draws withdrawnCard in its place, whose closed
+    Details hold the line, small, after the old rate marked out of date
+    (tests/mcp_app/test_mcp_r5k_result.py); resultCard holds no such line."""
+    page = _read("result.html")
+    card = _between(page, "function resultCard(", "\n}\n")
+    assert "RESULT_WORDS.gradedBefore(" not in card
+    assert "oe-graded-again" not in card
+    assert "if (withdrawnOf(r)) return withdrawnCard(data);" in card
+    gone = _between(page, "function withdrawnCard(data) {", "\n}\n")
     line = (
-        "card.append(OE.el('p', { class: 'error oe-graded-again' },"
+        "folded.push(OE.el('p', { class: 'small oe-graded-again' },"
         " RESULT_WORDS.gradedBefore(text(before.first_at) || 'earlier')));"
     )
-    assert line in card
+    assert line in gone
+    assert gone.count("RESULT_WORDS.gradedBefore(") == 1
     assert "small error" not in card
-    assert _in_order(
-        card,
-        "RESULT_WORDS.checked(n, unit, unjudged)",
-        "if (before && before.changed === true) {",
-        line,
-        "const rate = rateBlock(r);",
-        "oe-uncovered",
-        "RESULT_WORDS.squaresHead(",
-    )
-    assert card.count("RESULT_WORDS.gradedBefore(") == 1
 
 
 # --------------------------------------------------------------------------- J12

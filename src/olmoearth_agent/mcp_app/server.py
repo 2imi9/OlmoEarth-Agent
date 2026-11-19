@@ -54,8 +54,11 @@ Views (``views.py``) show beside the chat, for an allow-list of tools only
   through the plan tool, its design, seed and count fixed and logged there;
   a map with no labelling rule of the owner's is drawn only with the rule
   the user types (pinned with the draw, written beside its sheet), and a map
-  of presence and absence with the owner's kelp rule unless the user types
-  the map's own before its first part is drawn, pinned the same way.
+  of presence and absence with the app's general rule (round r5-l; a map
+  drawn before, or with a sheet labelled under it, keeps the earlier kelp
+  rule, ``check.result_app_rule``) unless
+  the user types the map maker's meaning before its first part is drawn,
+  pinned the same way.
 
 An estimate graded from a sheet (its labels read off the sheet, as the
 estimate reads them) marks the sheet graded (``sheet``'s graded mark, with
@@ -65,8 +68,10 @@ read after it), and its result card gets the figure-first ``result``
 range, the squares checked by class (counts and the tool's own ranges, for
 a random design only), which part of the map it is (or a neutral title when
 that is not known; a grid over a whole Studio result is the whole map), and
-whether the answers changed after a first grading; in squares, or in points
-for a sheet of points (``sheet.window_unit``).
+whether the answers changed after a first grading (then the result is
+withdrawn, round r5-k K1: no rate or range on the card's face, and Claude
+states none); in squares, or in points for a sheet of points
+(``sheet.window_unit``).
 
 Where the host takes them, the panels tell Claude silently what they show
 (context updates, ``OE.tellClaude`` in ``views/common.js``): a label
@@ -459,7 +464,8 @@ LEAD: dict[str, dict[str, str | None]] = {
 
 #: Said to the model with the lines it says first (``say_first``: the first
 #: text block of the Check card's result where panels show and of an ok
-#: estimate; :func:`_check_say_first`, :func:`_estimate_result`). Unit-free:
+#: estimate; :func:`_check_say_first`, :func:`_estimate_result`; a withdrawn
+#: estimate's is :data:`SAY_WITHDRAWN_NOTE`, round r5-k K1). Unit-free:
 #: the lines name what was checked (squares, or points) themselves.
 # WORDING: squares
 SAY_FIRST_NOTE = (
@@ -869,26 +875,29 @@ CHECK_TEXT_NO_RULE_NOTE = (
 
 #: Added to :data:`CHECK_CARD_NOTE` for a map of presence and absence while
 #: no part of it is drawn (the owner's ruling of 13 Nov 2026, option A: the
-#: view's rule ``replaceable``): the card shows the owner's kelp rule with a
-#: box for the map's own rule, which then replaces it for this map.
-# WORDING: squares
+#: view's rule ``replaceable``): the card shows the app's general rule with a
+#: box for the map maker's meaning, which then replaces it for this map
+#: (round r5-l: no note asks whether a map is of kelp).
+# WORDING: r5l
 CHECK_OWNER_RULE_NOTE = (
-    "The card shows the app owner's kelp rule with a box beside it: if this map "
-    "is not of kelp, the user writes its own rule there before the first press, "
-    "and that rule replaces the kelp rule for this map. Do not write it for them "
-    "unless they ask."
+    "The card shows the app's general labelling rule with a box beside it: if "
+    "the map maker meant something else by Present and Absent, the user writes "
+    "that meaning there before the first press, and it then replaces the app's "
+    "rule for this map. Do not write it for them unless they ask."
 )
 
-#: Added to :data:`CHECK_TEXT_NOTE` for a map whose rule is the app owner's
-#: (pass-3 finding Q5): without panels there is no box, so the model asks
-#: whether the map is of kelp before any plan, and for the map's own rule if
-#: it is not.
-# WORDING: r4h Q5
+#: Added to :data:`CHECK_TEXT_NOTE` for a map whose rule is the app's (pass-3
+#: finding Q5): without panels there is no box, so the model gives the user
+#: that rule before any plan and asks whether the map maker meant something
+#: else by Present and Absent, then for that meaning in one sentence (round
+#: r5-l: it asked whether the map is of kelp).
+# WORDING: r5l
 CHECK_TEXT_OWNER_RULE_NOTE = (
-    "The app owner's labelling rule is for kelp canopy maps. Before any plan, ask "
-    "the user whether this map is of kelp; if it is not, ask for the map's own "
-    "rule in one sentence and repeat that rule with the result instead of the "
-    "kelp rule."
+    "This map takes the labelling rule that came with the app (labelling_rule, "
+    "with its scope). Before any plan, give the user that rule and ask whether "
+    "the map maker meant something else by Present and Absent; if so, ask for "
+    "their meaning in one sentence and repeat it with the result instead of the "
+    "app's rule."
 )
 
 #: The Check card's say-first lines (where panels show): the card is open,
@@ -958,7 +967,9 @@ CHECK_PREPARE_SECONDS = 540.0
 
 #: The failed card's plain line for a preparation past
 #: :data:`CHECK_PREPARE_SECONDS`, on the card's face (the card's own words
-#: when it stops asking).
+#: when it stops asking, but for the middle sentence round r5-j B5 gave the
+#: card: here the failed card's line under it says that what was picked or
+#: saved before is kept).
 # WORDING: r5h
 CHECK_PREPARE_TOO_LONG = (
     "Preparing this map took too long. Ask Claude to open the Check card again."
@@ -1922,6 +1933,15 @@ def _of_part(part: str | None) -> str:
     return f" of the {part}" if part.lower().endswith(" part") else f" of {part}"
 
 
+def _for_part(part: str | None) -> str:
+    """:data:`SAY_WITHDRAWN`'s part (round r5-k K1): ``" for the West
+    part"``, ``" for Part 2"``, or ``""`` for none (a map of one part, or a
+    part not known)."""
+    if not part:
+        return ""
+    return f" for the {part}" if part.lower().endswith(" part") else f" for {part}"
+
+
 def say_rate(
     rate: Any,
     unit: str = sheet.UNIT_SQUARE,
@@ -2142,20 +2162,23 @@ CLASS_FEW = (
 #: is drawn for a random design only (:func:`_estimate_result`): a simple
 #: random sample of every valid square of the map or part (of every point of
 #: the grid), so its rate is that whole's; no other design reaches it.
-# WORDING: r4h R2, C/result-1
+#: Each opens "You did not see ... in any ...", since "You saw 6 of the
+#: map's 8 classes in no square" was read, at a glance, as the 6 seen (round
+#: r5-j, B4); still what the reader saw, not what the squares hold (r4-j J3).
+# WORDING: r4h R2, C/result-1; r5j B4
 CLASS_UNSEEN_ONE = (
-    "You saw {names} in no {unit}, so this check says nothing about how well the "
-    "map finds it. The rate above is for {all}."
+    "You did not see {names} in any {unit}, so this check says nothing about how "
+    "well the map finds it. The rate above is for {all}."
 )
-# WORDING: r4h R2, C/result-1
+# WORDING: r4h R2, C/result-1; r5j B4
 CLASS_UNSEEN = (
-    "You saw {names} in no {unit}, so this check says nothing about how well the "
-    "map finds them. The rate above is for {all}."
+    "You did not see {names} in any {unit}, so this check says nothing about how "
+    "well the map finds them. The rate above is for {all}."
 )
-# WORDING: r4h R2, C/result-1
+# WORDING: r4h R2, C/result-1; r5j B4
 CLASS_UNSEEN_MANY = (
-    "You saw {k} of the map's {m} classes in no {unit}, so this check says "
-    "nothing about how well the map finds them. The rate above is for {all}. "
+    "You did not see {k} of the map's {m} classes in any {unit}, so this check "
+    "says nothing about how well the map finds them. The rate above is for {all}. "
     "Names under Details."
 )
 # WORDING: r4h R2, C/result-1; r4m M1
@@ -2248,17 +2271,55 @@ PART_GRADED = "{part}: checked"
 PART_NOT = "{part}: not checked yet"
 #: The result card's line for a sheet whose answers changed after its first
 #: result (round r5-b, J07: "graded" is on no other face; result.html's
-#: RESULT_WORDS.gradedBefore says the same words, and draws them directly
-#: under the title's line, above the rate).
+#: RESULT_WORDS.gradedBefore says the same words). Since round r5-k K1 the
+#: result is withdrawn and this line, with the first result's date, is in the
+#: withdrawn card's Details (it stood in red over the full headline).
 # WORDING: r4p2; r5b J07
 GRADED_LINE = (
     "Answers on this sheet changed after its first result ({first_at}). "
     "Answers changed after seeing where the map disagrees make this result invalid."
 )
+#: Round r5-k K1 (the owner's O4 of 18 Nov 2026): a result whose sheet's
+#: answers changed after its first result is withdrawn. The view's
+#: ``withdrawn`` (:func:`_estimate_result`): the card's title; its one line,
+#: which names no button (the graded mark keeps ``changed`` true for good,
+#: so the sheet's finish button pressed again gives this card again; the
+#: sheet's own notice, r5-k K3, says a second opinion needs another person
+#: and a fresh sheet) and, since round r5-m B4, ends with how to get a new
+#: result, "ask Claude for one" (the card has no button, and the line said
+#: no next step); ``of``, what was checked (:data:`WITHDRAWN_OF`, the
+#: part and the map the title named); and the rate and range, the headline
+#: whole, marked out of date with the time they were computed from the
+#: changed answers, for its Details. result.html's RESULT_WORDS.outOfDate,
+#: withdrawn, outOfDateRate and outOfDateRateUntimed say the same words. No
+#: number changes.
+# WORDING: r5k K1
+RESULT_OUT_OF_DATE = "This result is out of date"
+# WORDING: r5k K1; r5m B4 (K1 follow-up)
+WITHDRAWN_LINE = (
+    "The answers on this sheet changed after its first result, so this result "
+    "does not count. A new result needs another person and a fresh sheet; ask "
+    "Claude for one."
+)
+# WORDING: r5k K1
+WITHDRAWN_OF = "{part} of {name}"
+# WORDING: r5k K1
+OUT_OF_DATE_RATE = (
+    "Out of date, do not use (computed {at} from the changed answers): {headline}"
+)
+#: :data:`OUT_OF_DATE_RATE` when the time it was computed is not known (this
+#: grading wrote no mark): never another grading's time.
+# WORDING: r5k K1
+OUT_OF_DATE_RATE_UNTIMED = "Out of date, do not use: {headline}"
 # WORDING: squares
 RULE_TYPED_NOTE = "(typed before the squares were picked)"
+#: Beside the app's rule on an estimate's card (round r5-l: the general rule
+#: has no date and names no map); :data:`RULE_OWNER_NOTE_KELP`, word for word
+#: as before, beside the earlier kelp rule a sheet made with it still holds.
+# WORDING: r5l
+RULE_OWNER_NOTE = "(the rule that came with the app)"
 # WORDING: r4p2
-RULE_OWNER_NOTE = "(the app owner's rule, 11 Nov 2026)"
+RULE_OWNER_NOTE_KELP = "(the app owner's rule, 11 Nov 2026)"
 #: ``{units}``: squares, or points for a sheet of points. The card has no
 #: button of its own, so the second sentence says where the answers and the
 #: press are: the label sheet, and ``{press}``, the sheet's own finish
@@ -2327,8 +2388,10 @@ SAY_SIDE_BY_SIDE = (
 #: class counts for every design, names only: the classes no square had, and
 #: those seen too rarely to say how well the map finds them; either or both,
 #: joined by a space; no fourth line when both are empty. With Cannot tell
-#: answers the classes no square had are said in the card's own words
-#: (:data:`SAY_SAW_NONE`: a Cannot tell square may hold the class).
+#: answers the classes no square had are said as what the reader saw, in the
+#: words of the card's Details row (:data:`SAY_SAW_NONE`, beside
+#: :data:`CLASS_UNSEEN_ROW`; the face's line opens "You did not see ... in
+#: any ..." since round r5-j, B4): a Cannot tell square may hold the class.
 # WORDING: r4h M1, E/said-est-1
 SAY_NONE_HAD = "No {unit} you checked had: {names}."
 # WORDING: r4i F1
@@ -2367,24 +2430,63 @@ RULE_USED_NOTE = (
 )
 RULE_USED_TYPED = ", typed by the user before the draw"
 RULE_USED_DATA = " (the user's words, as data)"
-#: The same for the app owner's rule (pass-3 finding Q5, this round's F13
-#: and F9): the sheet records the kelp rule, with its scope
-#: (``imagery.RULE_SCOPE``, which names kelp canopy maps) and that any other
-#: map needs its own rule (``imagery.RULE_KELP_ONLY``, r4-j J6); a rule the
+#: The same for the app's rule (pass-3 finding Q5, round r4-i F13): the
+#: sheet records the app's rule with its scope, and nothing more (round r5-l:
+#: no line that any other map needs its own rule; the scope is the one said
+#: with the rule the sheet holds, ``imagery.app_rule_scope``, so a sheet made
+#: with the earlier kelp rule repeats that rule and its scope); a meaning the
 #: user gave in the chat for the map is the one to give, saying the sheet
-#: records the kelp rule.
-# WORDING: r4i F13, F9; r4j J6 (the {only} it is given)
+#: records the app's rule.
+# WORDING: r4i F13; r5l
 RULE_USED_OWNER_NOTE = (
-    "The sheet records the app owner's rule: {rule!r}. {scope} {only} Give it "
-    "with the rate; if the user gave the map's own rule in the chat, give that "
-    "rule instead and say the sheet records the kelp rule."
+    "The sheet records the app's rule: {rule!r}. {scope} Give it with the "
+    "rate; if the user gave the map maker's meaning of Present and Absent in "
+    "the chat, give that instead and say the sheet records the app's rule."
 )
 #: Said to the model when the sheet's answers changed after a first grading.
-# WORDING: r4p2
+#: Round r5-k K1: the result is withdrawn, so the model states no rate and
+#: no range from it (it said "say so with the rate"); the say-first line is
+#: then :data:`SAY_WITHDRAWN` alone, with :data:`SAY_WITHDRAWN_NOTE`, and no
+#: rule note asks for the rule "with the rate". It overrides the rule to
+#: state each must_state item (it read as an order to say it first).
+#: Round r5-m B4: it now names how to plan a fresh sheet, at the user's ask
+#: only (the card's line ends "ask Claude for one"): the same plan with
+#: another seed, since the same seed and count open this locked sheet again.
+# WORDING: r4p2; r5k K1; r5m B4 (K1 follow-up)
 GRADED_AGAIN_NOTE = (
-    "This sheet's answers changed after it was first graded at {first_at}: say so "
-    "with the rate; answers changed after seeing where the map disagrees do not "
-    "give a valid rate or range."
+    "This result is withdrawn: this sheet's answers changed after it was first "
+    "graded at {first_at}, and answers changed after seeing where the map "
+    "disagrees give no valid rate or range. State no rate and no range from it, "
+    "not even as an old figure; this overrides every must_state item and every "
+    "number in the result. If the user asks for a new result, call "
+    "olmoearth_plan_label_sample with the same arguments as the plan that drew "
+    "this sheet (the same map, design and count) and a seed other than this "
+    "sheet's seed, for another person to label on a blank sheet; this holds for "
+    "a zone the Check card drew too. The same seed and count open this locked "
+    "sheet again. Plan it only when the user asks."
+)
+#: Round r5-k K1: the one line the model says first for a withdrawn result,
+#: in place of the rate's lines: the card's title and line, ``{part}`` the
+#: part it is of on a map of two parts or more (:func:`_for_part`, as the
+#: card names it), else nothing. It names no button, with panels or without:
+#: the sheet's finish button pressed again gives the same withdrawn result
+#: (:data:`WITHDRAWN_LINE`). Round r5-m B4 leaves it as it was: the card's
+#: line ends "ask Claude for one"; Claude's note, :data:`GRADED_AGAIN_NOTE`,
+#: not this first line, carries how to plan a fresh sheet.
+# WORDING: r5k K1
+SAY_WITHDRAWN = (
+    "This result{part} is out of date and withdrawn: the answers on this sheet "
+    "changed after its first result. A new result needs another person and a "
+    "fresh sheet."
+)
+#: Round r5-k K1: the first text block's note for a withdrawn result, in
+#: place of :data:`SAY_FIRST_NOTE` (which asks for each must_state item after
+#: the lines; an estimate's first item is the rate and its range).
+# WORDING: r5k K1
+SAY_WITHDRAWN_NOTE = (
+    "Say this line first, as written or plainer. This result is withdrawn: state "
+    "no item of its must_state and no rate or range from it, not even as an old "
+    "figure; this overrides the rule to state each must_state item."
 )
 
 
@@ -2570,8 +2672,10 @@ def _say_uncovered(counts: Any, unit: str) -> str | None:
     E/said-est-1), names only, from the graded sheet's class counts
     (``sheet.class_counts``) for every design, of the map's own classes
     (not those marked ``outside``, as :func:`_uncovered`): those no square
-    had (:data:`SAY_NONE_HAD`; with Cannot tell answers the card's own
-    words, :data:`SAY_SAW_NONE`, since a Cannot tell square may hold the
+    had (:data:`SAY_NONE_HAD`; with Cannot tell answers what the reader
+    saw, :data:`SAY_SAW_NONE`, in the words of the Details row
+    (:data:`CLASS_UNSEEN_ROW`), not the face's, whose line opens "You did
+    not see" since round r5-j B4, since a Cannot tell square may hold the
     class) and those seen in 1 to :data:`CLASS_FEW_MAX` squares
     (:data:`SAY_TOO_FEW`, with or without Cannot tell); either or both,
     joined by a space, the classes no square had first; ``None`` when both
@@ -2915,7 +3019,9 @@ def _finish_label(path: str | None) -> str | None:
     more accurate" on a two-map sheet, "Ask Claude to grade it" with no
     design file beside it), which an unfinished card names (round r5-d
     R10); ``None`` for no sheet or one that cannot be read (never raises;
-    blocking)."""
+    blocking). A sheet that already gave its result names its button
+    otherwise only once it is ready (round r5-m B5, sheet.js finishLabel), so
+    an unfinished one, the only kind this card is for, draws this label too."""
     if path is None:
         return None
     try:
@@ -2981,7 +3087,7 @@ def _estimate_result(
 ) -> dict[str, Any] | None:
     """An ok estimate's figure-first result card and the model's first lines.
 
-    ``{"view", "say_first", "notes"}``, or ``None`` for a result without the
+    ``{"view", "say_first", "notes", "note"}``, or ``None`` for a result without the
     interval valid at every sample size (a two-map grading, a test double).
     ``path`` is the sheet the estimate graded (:func:`_graded_sheet`;
     ``None`` for inline labels); ``unit`` what the windows of the design
@@ -3011,7 +3117,11 @@ def _estimate_result(
     estimate's);
     ``low_text`` and ``high_text``, the 95% range's two ends formatted as
     ``range_text`` is, which the rate line labels under its band (r4-k K6,
-    the owner's choice of 16 Nov 2026); the
+    the owner's choice of 16 Nov 2026); ``rate_bar_text``, the label of the
+    rate's own bar when there is no single rate: its two figures joined by
+    the headline's word, "or" with Cannot tell, else "between ... and ..."
+    (round r5-j, B1; ``rate_range_text``, "a to b", stays for Claude's
+    line); the
     ``hedge`` (:data:`SAY_PART_HEDGE`) when the part is not known;
     ``uncovered``, what the check did not cover (:func:`_uncovered`, from
     the graded sheet's class counts, for a random design only; the classes
@@ -3047,6 +3157,23 @@ def _estimate_result(
     names); ``notes`` :data:`GRADED_AGAIN_NOTE` and :data:`RULE_USED_NOTE`
     (:data:`RULE_USED_OWNER_NOTE` for the app owner's rule) where they
     apply. Blocking (it reads files).
+
+    Round r5-k K1: when the answers changed since a first grading the result
+    is withdrawn. ``view`` then carries ``withdrawn``
+    (:data:`RESULT_OUT_OF_DATE`; :data:`WITHDRAWN_LINE`, which names no
+    button; ``of``, what was checked, :data:`WITHDRAWN_OF` of the part and
+    the map's name, the map's name alone, or ``None`` when the part is not
+    known; ``computed_at``, this grading's time, ``sheet.record_grading``'s
+    ``last_at``, or ``None`` when this grading wrote no mark; and
+    :data:`OUT_OF_DATE_RATE` with that time and the headline,
+    :data:`OUT_OF_DATE_RATE_UNTIMED` without a time), else ``None``; every
+    other field and number is as before, for the card's Details.
+    ``say_first`` is :data:`SAY_WITHDRAWN` alone (the part named on a map of
+    two parts or more), ``notes`` :data:`GRADED_AGAIN_NOTE` alone (no rule
+    note) and ``note``, the first text block's, :data:`SAY_WITHDRAWN_NOTE`
+    (else :data:`SAY_FIRST_NOTE`). Since round r5-m B4
+    :data:`GRADED_AGAIN_NOTE` also names how to plan a fresh sheet, only at
+    the user's ask.
     """
     valid = inner.get("valid_interval")
     n = _count(inner.get("n_labelled"))
@@ -3082,6 +3209,12 @@ def _estimate_result(
     ranged = rate is None or bool(n_unjudged)
     span = valid.get("estimate_range")
     rate_range_text: str | None = None
+    # The figure's label of the rate's own bar: the same two figures joined
+    # by the headline's own word, "or" with Cannot tell
+    # (:data:`HEADLINE_OR_CANNOT`), else "between ... and ..."
+    # (:data:`HEADLINE_BETWEEN`), so "to" stays the 95% range's alone there
+    # too (round r5-j, B1). rate_range_text, Claude's text, is unchanged.
+    rate_bar_text: str | None = None
     rate_low: float | None = None
     rate_high: float | None = None
     if ranged and isinstance(span, list) and len(span) == 2:
@@ -3089,6 +3222,12 @@ def _estimate_result(
         if first is not None and last is not None:
             rate_low, rate_high = first, last
             rate_range_text = f"{rules.percent(first)} to {rules.percent(last)}"
+            # WORDING: r5j B1
+            rate_bar_text = (
+                f"{rules.percent(first)} or {rules.percent(last)}"
+                if n_unjudged
+                else f"between {rules.percent(first)} and {rules.percent(last)}"
+            )
     if ranged:
         rate = None
     rate_text = rules.percent(rate) if rate is not None else None
@@ -3160,6 +3299,13 @@ def _estimate_result(
                 rule.get("source") if rule.get("source") in ("owner", "typed") else None
             )
             scope = rule.get("scope")
+            # The earlier kelp rule, which a sheet made with it still holds,
+            # keeps its own note (round r5-l).
+            owner_note = (
+                RULE_OWNER_NOTE_KELP
+                if rule["text"] == imagery.KELP_READING_RULE
+                else RULE_OWNER_NOTE
+            )
             rule_view = {
                 "text": rule["text"],
                 "source": source,
@@ -3167,13 +3313,16 @@ def _estimate_result(
                 "note": (
                     RULE_TYPED_NOTE
                     if source == "typed"
-                    else RULE_OWNER_NOTE if source == "owner" else None
+                    else owner_note if source == "owner" else None
                 ),
             }
     # Graded before: the answers changed since the first grading.
     version, grading = graded if graded is not None else (None, None)
     graded_before: dict[str, Any] | None = None
     first_raw: str | None = None
+    # This grading's own time (r5-k K1): when a withdrawn result's rate was
+    # computed, from the changed answers; none when this grading wrote no mark.
+    last_raw: str | None = None
     if isinstance(grading, dict):
         changed = grading.get("changed") is True
         first_raw = (
@@ -3181,6 +3330,8 @@ def _estimate_result(
             if isinstance(grading.get("first_at"), str)
             else None
         )
+        stamp = grading.get("last_at")
+        last_raw = stamp if isinstance(stamp, str) and stamp else None
         first_at = _when_text(first_raw)
         graded_before = {
             "changed": changed,
@@ -3205,6 +3356,31 @@ def _estimate_result(
                 "gradings": None,
                 "line": GRADED_LINE.format(first_at=first_at or "earlier"),
             }
+    # Round r5-k K1: a result whose sheet's answers changed after its first
+    # result is withdrawn: the card's title, what was checked (the part and
+    # the map the title names), its one line, which names no button (the
+    # mark stays changed, so a new press gives this card again), and the
+    # rate and range (the headline whole) marked out of date with the time
+    # this grading computed them, for its Details. No number changes.
+    withdrawn: dict[str, Any] | None = None
+    if graded_before is not None and graded_before["changed"]:
+        computed_at = _when_text(last_raw)
+        checked_of: str | None = None
+        if known and part:
+            checked_of = WITHDRAWN_OF.format(part=part, name=shown)
+        elif known and isinstance(map_name, str) and map_name:
+            checked_of = map_name
+        withdrawn = {
+            "title": RESULT_OUT_OF_DATE,
+            "line": WITHDRAWN_LINE,
+            "of": checked_of,
+            "computed_at": computed_at,
+            "old_rate": (
+                OUT_OF_DATE_RATE.format(at=computed_at, headline=headline)
+                if computed_at
+                else OUT_OF_DATE_RATE_UNTIMED.format(headline=headline)
+            ),
+        }
     # The graded sheet's class counts, at the version graded (a mark
     # written): names only for the model's fourth line, every design.
     counts = _class_counts(path, version)
@@ -3355,6 +3531,11 @@ def _estimate_result(
         # WORDING: r4k K6
         "high_text": rules.percent(high),
         "rate_range_text": rate_range_text,
+        # The label of the rate's own bar in the figure: the headline's two
+        # figures joined by its own word, "or" or "between ... and ..."
+        # (round r5-j, B1).
+        # WORDING: r5j B1
+        "rate_bar_text": rate_bar_text,
         # Directly under the headline when the part is not known.
         "hedge": None if known else SAY_PART_HEDGE,
         # What the check did not cover, directly under the headline (R2), and
@@ -3373,6 +3554,8 @@ def _estimate_result(
         ),
         "rule": rule_view,
         "graded_before": graded_before,
+        # A withdrawn result (r5-k K1): the card draws it in place of the rate.
+        "withdrawn": withdrawn,
         "squares": squares,
         "parts": parts,
         "fold_rows": fold_rows,
@@ -3430,14 +3613,18 @@ def _estimate_result(
     notes: list[str] = []
     if graded_before is not None and graded_before["changed"]:
         notes.append(GRADED_AGAIN_NOTE.format(first_at=first_raw or "an earlier time"))
-    if rule_view is not None and rule_view["source"] == "owner":
-        # The sheet records the kelp rule; the map's own, given in the chat,
-        # is the one to give (F13), and the rule is for kelp maps only (F9).
+    if withdrawn is not None:
+        # Withdrawn (r5-k K1): the model says that alone, no rate's line, the
+        # part named as the card names it, and no rule note asks it to give
+        # the rule "with the rate".
+        say_first = [SAY_WITHDRAWN.format(part=_for_part(part))]
+    elif rule_view is not None and rule_view["source"] == "owner":
+        # The sheet records the app's rule with its own scope and nothing
+        # more (round r5-l); a meaning given in the chat is the one to give.
         notes.append(
             RULE_USED_OWNER_NOTE.format(
                 rule=rule_view["text"],
-                scope=imagery.RULE_SCOPE,
-                only=imagery.RULE_KELP_ONLY,
+                scope=imagery.app_rule_scope(rule_view["text"]),
             )
         )
     elif rule_view is not None:
@@ -3450,7 +3637,10 @@ def _estimate_result(
                 scope="",
             )
         )
-    return {"view": view, "say_first": say_first, "notes": notes}
+    # The first text block's note (r5-k K1): a withdrawn result's asks for no
+    # must_state item (SAY_FIRST_NOTE asks for each, the rate's first).
+    note = SAY_WITHDRAWN_NOTE if withdrawn is not None else SAY_FIRST_NOTE
+    return {"view": view, "say_first": say_first, "notes": notes, "note": note}
 
 
 def _class_check(
@@ -3560,13 +3750,16 @@ def _check_rule(rule_needed: bool, result_id: str) -> dict[str, Any]:
     (option A): a rule a part of this map pinned at its press, typed by the
     user (:func:`check.map_rule`), shown read only with its typed scope
     (``sheet.typed_rule_scope``); else, for a map of presence and absence,
-    the owner's (``imagery.READING_RULE``, ``imagery.RULE_SCOPE``),
-    ``replaceable`` (the card's box for the map's own rule) while the rule
-    is not settled (:func:`_rule_settled`: no part of the map drawn and no
-    sheet of it holding answers); else not set, and the card asks for it
-    before any draw. ``replaceable`` is false but for the owner's rule then.
-    The same after every press (the press's reply carries it). Blocking (it
-    reads the records)."""
+    the app's (``imagery.READING_RULE``, ``imagery.RULE_SCOPE``; round r5-l:
+    for a map a part of which was drawn before the round, or a sheet of which
+    holds answers made under it, the earlier kelp rule and that rule's scope,
+    ``check.result_app_rule``, ``imagery.app_rule_scope``, shown only once
+    the rule is settled), ``replaceable`` (the card's box for the map
+    maker's meaning) while the rule is not settled (:func:`_rule_settled`:
+    no part of the map drawn and no sheet of it holding answers); else not
+    set, and the card asks for it before any draw. ``replaceable`` is false
+    but for the app's rule then. The same after every press (the press's
+    reply carries it). Blocking (it reads the records)."""
     pinned = check.map_rule(result_id)
     if pinned is not None:
         typed_at = pinned.get("typed_at")
@@ -3583,11 +3776,12 @@ def _check_rule(rule_needed: bool, result_id: str) -> dict[str, Any]:
             "replaceable": False,
         }
     if not rule_needed:
+        text = check.result_app_rule(result_id) or imagery.READING_RULE
         return {
             "set": True,
-            "text": imagery.READING_RULE,
+            "text": text,
             "source": "owner",
-            "scope": imagery.RULE_SCOPE,
+            "scope": imagery.app_rule_scope(text),
             "replaceable": not _rule_settled(result_id),
         }
     return {
@@ -3644,8 +3838,9 @@ def _press_rules(
     needs one: the user's sentence, checked by ``sheet.clean_rule``, else
     the one an earlier part pinned (:func:`check.map_rule`). A zone of a map
     of presence and absence (``rule_owner``, the owner's ruling of 13 Nov
-    2026, option A) is drawn with the owner's kelp rule (no entry here)
-    unless a rule replaces it: the user's sentence sent with the press,
+    2026, option A) is drawn with the app's rule (no entry here; the draw
+    pins which, ``check.claim_draw``) unless a rule replaces it: the user's
+    sentence sent with the press,
     checked by ``sheet.clean_rule`` and pinned as the gate's is, while the
     map's rule is not settled (:func:`_rule_settled`: no part drawn, no
     sheet of it holding answers) and no part pinned a rule; else the one an
@@ -4308,8 +4503,10 @@ class AppServer:
         sheet's count, which names the sheet's own finish button
         (:func:`_finish_label`, round r5-d R10); its first text block is
         ``{"say_first", "note"}``
-        (:data:`SAY_FIRST_NOTE`), then :data:`GRADED_AGAIN_NOTE` and
-        :data:`RULE_USED_NOTE` where they apply, with panels or without."""
+        (:data:`SAY_FIRST_NOTE`; for a withdrawn result, round r5-k K1,
+        :data:`SAY_WITHDRAWN_NOTE`, which asks for no must_state item), then
+        :data:`GRADED_AGAIN_NOTE` and :data:`RULE_USED_NOTE` where they apply,
+        with panels or without."""
         from mcp import types
 
         # The sheet an estimate grades, and its version before the estimate
@@ -4423,8 +4620,10 @@ class AppServer:
             notes.append(note)
         if estimate is not None:
             # The estimate's lines first, then its notes; REVIEW_UNSUPPORTED_NOTE
-            # (a review set only) would stay the first block.
-            first = _json({"say_first": estimate["say_first"], "note": SAY_FIRST_NOTE})
+            # (a review set only) would stay the first block. A withdrawn
+            # result's note asks for no must_state item (r5-k K1).
+            note_first = estimate.get("note") or SAY_FIRST_NOTE
+            first = _json({"say_first": estimate["say_first"], "note": note_first})
             at = 1 if unsupported else 0
             notes[at:at] = [first, *estimate["notes"]]
         content = [types.TextContent(type="text", text=n) for n in notes] + content
@@ -4756,9 +4955,11 @@ class AppServer:
         (``views.examples_for``, r4-k K9; else no such key), ``n_parts``
         and, per zone,
         its ``part``, ``share_value`` and ``square`` (:func:`_window_square`).
-        Without panels, a map whose rule is the app owner's gets
+        Without panels, a map whose rule is the app's gets
         :data:`CHECK_TEXT_OWNER_RULE_NOTE`, and the model's ``labelling_rule``
-        carries the owner's scope (``imagery.RULE_SCOPE``; pass-3 finding Q5).
+        carries the app's rule's scope (``imagery.app_rule_scope``: the
+        general rule's, or the earlier kelp rule's for a map drawn with it;
+        pass-3 finding Q5, round r5-l).
         A result that cannot be checked offers no press (:meth:`_check_failed`);
         a class map's refusal gets the map's name and period for its card,
         read at best (:meth:`_refusal_map`).
@@ -5080,13 +5281,13 @@ class AppServer:
             for z in inner.get("zones") or []
             if isinstance(z, dict)
         }
-        # The rule's words are the owner's or the user's own: data; the
-        # owner's comes with its scope (Q5), a typed one with no day.
+        # The rule's words are the app's or the user's own: data; the app's
+        # comes with its own scope (Q5, r5-l), a typed one with no day.
         labelling_rule: dict[str, Any] | None = None
         if rule["set"]:
             labelling_rule = {"source": rule["source"], "text": rule["text"]}
             if rule["source"] == "owner":
-                labelling_rule["scope"] = imagery.RULE_SCOPE
+                labelling_rule["scope"] = imagery.app_rule_scope(rule["text"])
         view = {
             "tool": CHECK_TOOL,
             "ok": True,
@@ -5167,7 +5368,8 @@ class AppServer:
         elif views and rule.get("replaceable") is True:
             notes.append(CHECK_OWNER_RULE_NOTE)
         elif not views and rule.get("source") == "owner":
-            # No box without panels: ask whether the map is of kelp (Q5).
+            # No box without panels: give the rule and ask whether the map
+            # maker meant something else (Q5, r5-l).
             notes.append(CHECK_TEXT_OWNER_RULE_NOTE)
         model = {
             "ok": True,
