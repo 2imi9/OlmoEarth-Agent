@@ -79,9 +79,7 @@ MODEL_HINT = (
 #: J08: the lines under the press.
 RULE_AND_NUMBER = "Write your rule and choose a number of squares first."
 CHOOSE = "Choose a number of squares above."
-BOX_SHORT = (
-    "Write at least 10 characters in the box, or empty it to use the kelp rule."
-)
+BOX_SHORT = "Write at least 10 characters in the box, or empty it to use the kelp rule."
 LATER = (
     "Not picked yet. To pick this part's squares, ask Claude to open the Check "
     "card again."
@@ -99,13 +97,15 @@ PRESS_NO_ANSWER = "The press got no answer back."
 
 #: J17: the heading once no part offers a number. Round r5-f F11: "the sheet"
 #: on a map in one part (it said "a sheet" on a map with one), "a part's
-#: sheet" on a map in parts (tests/mcp_app/test_mcp_r5f_check.py).
+#: sheet" on a map in parts (tests/mcp_app/test_mcp_r5f_check.py). Round r5-i
+#: B2: "each part's sheet in turn" on a map in parts
+#: (tests/mcp_app/test_mcp_r5i_check.py).
 ALL_ANSWERED = (
     "Every square is answered. Open the sheet, then press Estimate the error rate."
 )
 ALL_ANSWERED_PARTS = (
-    "Every square is answered. Open a part's sheet, then press Estimate the error "
-    "rate."
+    "Every square is answered. Open each part's sheet in turn, then press "
+    "Estimate the error rate."
 )
 YOUR_SQUARES = "Your squares"
 
@@ -509,14 +509,16 @@ def test_j17_the_heading_follows_what_the_card_holds() -> None:
     page = _read("check.html")
     assert f"// WORDING: r5b J17\nconst YOUR_SQUARES = '{YOUR_SQUARES}';\n" in page
     # Round r5-f F11: the line names the sheet by whether the map is in parts
-    # (its function takes several: nParts > 1).
+    # (its function takes several; round r5-i B2, after review: whether more
+    # than one part has a sheet, drawn.length > 1).
     assert "// WORDING: r5b J17\nconst ALL_ANSWERED = (several) => " in page
-    which = "(several ? 'a part\\'s sheet' : 'the sheet')"
+    # Round r5-i B2: "each part's sheet in turn" on a map in parts.
+    which = "(several ? 'each part\\'s sheet in turn' : 'the sheet')"
     answered = _after(page, "const ALL_ANSWERED = (several) => ", ";\n")
     assert answered.count(which) == 1
     for sheet, said in (
         ("the sheet", ALL_ANSWERED),
-        ("a part's sheet", ALL_ANSWERED_PARTS),
+        ("each part's sheet in turn", ALL_ANSWERED_PARTS),
     ):
         assert _concat(answered.replace(which, "WHICH"), {"WHICH": sheet}) == said
     assert "  const ask = OE.el('p', { class: 'ask' }, ASK);\n" in page
@@ -530,7 +532,7 @@ def test_j17_the_heading_follows_what_the_card_holds() -> None:
         "const done = opened === null && drawn.length > 0 && !pending "
         "&& drawn.every((m) => complete(m.draw));",
         "ask.textContent = drawable().length ? ASK "
-        ": done ? ALL_ANSWERED(nParts > 1) : YOUR_SQUARES;",
+        ": done ? ALL_ANSWERED(drawn.length > 1) : YOUR_SQUARES;",
     )
     for where in ("  function renderAll() {", "  async function refreshZone(m) {"):
         assert "    fillAsk();\n" in _between(page, where, "\n  }\n"), where
@@ -612,8 +614,7 @@ def test_j18_two_sentences_over_the_press_and_the_parts_line_first() -> None:
     )
     assert line in page
     strips = (
-        "      OE.el('div', {}, PARTS_LINE(nParts))));\n"
-        "  } else if (nParts > 1) {\n"
+        "      OE.el('div', {}, PARTS_LINE(nParts))));\n" "  } else if (nParts > 1) {\n"
     )
     assert strips in page
     assert "  root.append(action, OE.fold(DETAILS, foldBody));\n" in page

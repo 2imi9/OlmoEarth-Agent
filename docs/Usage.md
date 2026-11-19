@@ -265,7 +265,20 @@ embeddings probe, any exported softmax), or:
   in strips takes no certificate plan: `seed_from_map` has the package read the raster whole, so the plan is refused
   in plain words, and the result's next step names the zone; a random plan with a seed still gives its error rate
   and, with `olmoearth_certify_zone`, a certified zone, with no certificate file. Assumed, not verified: the
-  README's layout for k above 2, and the result's model as its prediction's `model_id`.
+  README's layout for k above 2, and the result's model as its prediction's `model_id`. The zip as downloaded is
+  kept once it was read (round r5-h H2): `<scores root>/studio_downloads/<result id>/files.zip`, mode 600, beside
+  `kept.json` (when it was downloaded, its size and sha256; never the token). A later read of the same result within
+  24 hours (`OLMOEARTH_STUDIO_KEEP_HOURS`; 0 keeps nothing) reads that copy and downloads nothing; its result's
+  `read_from_copy` says when the copy was downloaded. Such a read saves the download alone: it still asks Studio
+  for the result's record, each part is still read from the kept zip, decoded (so a refusal is the same as on a
+  download) and pooled, and a part already written from the same file is not written again, as before. An older
+  copy, or one that is not the zip its record names, is downloaded again; a download that differs from the kept zip
+  removes it before the decode and is kept in its place once it read, so a changed zip the decode refuses leaves no
+  copy (a refused download of the same zip keeps it); a zip the decode refuses is never kept; keeping a zip removes
+  the other results' copies past the limit. `fresh: true` downloads whatever is kept. Two reads of one result in one
+  server never download it twice at once: the second reads the copy the first kept. Within the limit a result
+  changed in Studio is not seen until `fresh: true` (a drawn part's own check that its files changed still compares
+  what was read).
 - **A direct model run**: `olmoearth_scores_from_file` reads, under the scores root, what
   `oe-inferencex from-olmoearth DATASET --out RUN` writes (`scores_<EPSG>.tif` and `olmoearth_output.json`, which
   names no model or classes, so classes are `class_0` and on) or what the research record's
@@ -605,7 +618,12 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   to check, picked before any answer: answer every one on the sheet.", which did not say whose answer, that the pick
   is random, or when the result comes; r5-e R2: before that it said "Press Open the sheet here and answer every
   square." over that very button, and "No result until every square is answered.", which the sheet's greyed finish
-  button and counter show; the sheet's own sentence is gone too: H1). Once the sheet opens in the card, the second
+  button and counter show; the sheet's own sentence is gone too: H1). Once the card reads that every square (or
+  point) is answered, while the sheet is not open in it, the second line reads 'Every one is answered. Press "Open
+  the sheet" to get the result.' (r5-i B4: the next step, getting the result, was never named; the button is named by
+  its label in double quotes, never repeated bare), and a later read below the whole sheet puts the first words back.
+  A read of the counts that answers only after another card was drawn in its place changes nothing on the new card.
+  Once the sheet opens in the card, the second
   line goes with the button: the sheet's footer then says "Answer every square first." beside its grey finish button,
   so the card says it once (r5-f F10 with F02). Its button, the card's
   one contained button, comes right under those lines and before the closed "Details" fold, the card's last block
@@ -685,9 +703,11 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   maps" button ("Hide its maps" once open): it opens the project, as a press on the project's name does. A project
   opens into its predictions, then its areas, newest first (five, then "See all", with "Recent" over them only then:
   r5-e S5), its models (in a closed "Make a
-  new map" fold), and a prediction into its outputs ("Outputs", each with its property names). A prediction's
-  "Outputs" and job buttons are a line of their own under its row, Outputs at the row's left edge and as wide as
-  "Hide outputs", so the job buttons start at one left edge whether a row's outputs are open or not (r5-e S6); on a
+  new map" fold), and a prediction into its outputs ("Show outputs", each with its property names; r5-i B6: it said
+  "Outputs", which read as a label, not as a button). A prediction's
+  "Show outputs" and job buttons are a line of their own under its row, that toggle at the row's left edge and 100 px
+  wide, the wider of "Show outputs" and "Hide outputs", so the job buttons start at one left edge whether a row's
+  outputs are open or not (r5-e S6); on a
   panel of 480
   px or less the box, the ring and the dates are the row's first line and the name, the model and the status the
   next, at full width (r5-c S07). Under each completed
@@ -738,7 +758,7 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     its id and the names of what it holds), the one line that says so (r5-d R09: "This run made 2 maps. Pick one
     in the list under it." is no longer said, in the status line or under the row), and moves the focus to the first
     output's Check; each result row has its own buttons. While a run's list of several outputs is open (by a press
-    or by "Outputs"), the row's own job buttons are away, since their press only opens it; "Hide outputs" brings
+    or by "Show outputs"), the row's own job buttons are away, since their press only opens it; "Hide outputs" brings
     them back (r5-d R09). A lone output has no buttons of its own: the row's use it (r5-c S05). A failed or running
     prediction has no job;
   - two completed predictions, ticked (the boxes show when the project has two or more, and only then the note under
@@ -832,6 +852,66 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   offers, for each zone, the label counts the package plans before any label (`plan.plan_error_rate` for intervals no
   wider than 20%, 10% and 5% from their low end to their high end, at its 50% planning rate; the planner's sentence
   says a width that way, never in "points", which name a Studio grid's points), none picked:
+  - all of that, the read, the refusals, the offers, the rule, the squares' size, the cut and the clipped counts, is
+    the map's preparation, which runs in the background on the server, one per result id as given (round r5-h H1).
+    The call waits for it up to 20 s (`CHECK_WAIT_SECONDS`; `OLMOEARTH_CHECK_WAIT_SECONDS` changes it), so a small
+    map's card is as before. A large map's first read took 53 s on an idle Mac and 147 s on a busy one, while Claude
+    Desktop waits 180 s for a tool call: such a call answers at once with a card that is preparing (view data
+    `preparing`, the `result_id` as given, the `stage`, and `map` once the map's name and period are read; no parts)
+    and tells Claude that the card fills in by itself, so not to call `olmoearth_check_map` again for that result
+    while it reads. Where the host takes the card's silent updates, the card, once it fills in, tells Claude its
+    parts and then hands it a part that starts "Its map is read. What olmoearth_check_map answers for it": the text
+    a call in time gives (the say-first lines first), or as much of it as the card can hand on (held within the
+    panel's update of facts, 800 characters, only its start would go: a two-part map's say-first lines alone pass
+    that room, and the card's note, `must_state` and `forbidden_claims` never fit). The card hands it on whole, so
+    not within those facts: as a text block of its own after them, never cut, in every later update of the card
+    too; over 12,000 characters it says instead, under the same opening words, that the text is too long to hand on
+    and to call `olmoearth_check_map` once for that result before stating any result of it. The note calls that part the
+    tool's answer, the one exception to the rule that what panels tell Claude is facts, not requests, and keeps one
+    more call: once the card told Claude its parts without handing it the map's `must_state` and `forbidden_claims`,
+    or when no line of the card reached Claude by the user's next message (a host that takes no context updates),
+    Claude calls `olmoearth_check_map` again for that result before it states anything of the map, answers a
+    question about it or plans a part the card does not draw; otherwise not unless the user asks for its card again
+    (round r5-i B10: r5-h asked for that call in every case; in Claude Desktop each call draws a card, so the user
+    sees a second Check card of the same map wherever the card did not hand Claude the whole text). The preparing
+    answer carries the rules that hold for any map (no count picked
+    and no plan for a part the card draws, the blind rule, each part its own map, no grade before every window is
+    labelled); without panels it says to call the tool again in about a minute, which answers from the finished
+    preparation, and not to grade. A second call while it runs joins it (never two downloads of one result), with
+    the same key in effect only: after a sign-out or with another account a call stops that read and starts its
+    own. A call after it ended answers once from that outcome, ready or failed (unless it asks `fresh` and that read
+    was not fresh); one answered from already is started again, so a card opened again shows what was picked since.
+    A call that answers a ready card from a read that ended before it writes the offers and reads the rule again
+    from that read, so a part drawn since shows as drawn; nothing is read from Studio again. A preparation stops
+    after 540 s (`CHECK_PREPARE_SECONDS`, under the card's 10 minutes) and ends failed: "Preparing this map took too
+    long. Ask Claude to open the Check card again." (stopping it stops the download, not a decode already running).
+    The panel-only `olmoearth_app_check_status` (`{"result_id"}`) answers `{"state": "preparing", "stage"}` (with
+    `map` once known), `{"state": "ready", "view", "model_text"}` for a card of parts, with the view data a call in
+    time gets and, as `model_text`, the text that call gives Claude, word for word, one text block per line (r5-i
+    B10), and `{"state": "ready", "view"}` for a result whose files gave nothing to read (the card tells Claude its
+    reason; neither is marked answered from, so a later call answers from it at once), or
+    `{"state": "failed", "view"}` with the failed card's (also for
+    a preparation made with another key than the one in effect now). The stage is one of a few fixed plain lines,
+    set as the read goes: "Asking Studio about the map", "Downloading the map from Studio", "Reading this computer's
+    copy of the map", "Reading part 1 of 2" (or "Reading the map"), "Cutting part 1 of 2 into squares" (or "Cutting
+    the map into squares"), "Planning how many squares to offer";
+  - the result's files read once are kept on this computer for a day (round r5-h H2, below under the Studio files):
+    a card opened again reads them from there with no download (each part is still decoded and pooled, so a large
+    map's card can still open preparing), and says "Read from this computer's copy of 18 Nov 2026, 10:04 UTC." once,
+    in its Details (Claude's text says it too, as `read_from_copy`). `fresh: true` downloads Studio's files again; the
+    card has no button for it;
+  - the counts planned for a part are kept on this computer too (round r5-i B11: planning them took 44 s of a 67 s
+    reopen of a two-part map in a new server, since they were kept only in the server's memory):
+    `checks/planned/<sha256>.json` in the output root, mode 600, written whole (a new file beside it, moved over it),
+    one per number of squares, widths, olmoearth-inferencex version and digest of the app's modules that word the
+    counts' sentences (`check.py`, `tools/estimation.py`, `tools/statistical_rules.py`), with the planner's answer as
+    its JSON text whole. It is read before planning, and a card opened again in a new server offers the same counts
+    and sentences, word for word, without planning; a file that does not parse, names other inputs or holds another
+    shape is planned again and replaced, a link there is never followed, and with no package version known nothing
+    is kept. Each time one is written, the files there named as kept answers and last written more than 30 days ago
+    (`PLANNED_KEEP_DAYS`) are removed, so an app update's older files go; a link, a folder or another name is never
+    removed, and a removal that fails is logged by its kind and leaves the file. The package is still loaded first,
+    so without it the counts are refused as before;
   - a picked count shows the planner's own sentence for it, whole, with its `rate_note`; a second press on it clears it.
     On a panel under 480 px wide each count is a row of its own, its number alone (r5-e K1: no words at its right
     any more; r5-b J29 c: before, three counts broke two and one), so the card never scrolls sideways;
@@ -886,15 +966,21 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
     sheet's "Details".
     When it held none, the old editor's last toast about that change is cleared
     (r4-l L3). A sheet that cannot be opened after a good draw keeps that button, and its part says in plain words
-    what to do ("The sheet could not be opened. Press the button to try again; if it fails again, tell Claude."); a
-    part picked earlier whose sheet cannot be read when the card opens says "Its sheet cannot be opened now. Tell
-    Claude that the sheet of West part cannot be opened." (no part's name on a map in one part) over its button, until
-    a press of that button opens the sheet, or its counts read when the panel is shown again; a press that fails too
-    turns that line red and adds no second line, and Details say the reason once. The reason, in the server's words,
+    what to do, naming the button by the label it shows, in double quotes ("The sheet could not be opened. Press
+    "Open the sheet here" to try again; if it fails again, tell Claude.", r5-i B1; it said "Press the button"); a
+    part picked earlier whose sheet cannot be read when the card opens says, before any press, "The sheet of West
+    part could not be read when this card opened. Press "Open the sheet" to try again; if it does not open, tell
+    Claude." (no part's name on a map in one part) over its button, until a press of that button opens the sheet, or
+    its counts read when the panel is shown again; a press that fails too puts in its place, red, "Its sheet cannot
+    be opened now. Tell Claude that the sheet of West part cannot be opened." and adds no second line, and Details say
+    the reason once (r5-i B1: that red line stood there from the start, over the button whose press opened the
+    sheet). The reason, in the server's words,
     is in the part's lines in "Details" (r5-f F04; it stood on the face, with the
     sheet's file name): "NAME does not exist; plan the sample again", or, for a sheet that cannot be read as CSV,
     "NAME cannot be read as CSV (...); save it again as CSV UTF-8, comma-separated";
-  - a zone not read as a map, or with no count planned, says so; a class map without top-k scores is sent to
+  - a zone not read as a map, or with no count planned, says so (a zone not read as a map in plain words, "This part
+    cannot be checked: the app could not cut its map into squares.", the server's reason in its lines in "Details",
+    r5-i B3); a class map without top-k scores is sent to
     `olmoearth_plan_label_sample`, since its grid spans every zone, and Claude is told to say first that each point
     needs the user's own imagery or records from the map's dates and that the app shows no pictures of points (the
     card's own line, r4-m M4, for a client with no card), then to ask the user for the budget
@@ -993,7 +1079,10 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   Reopen the sheet, then answer that square again."; r5-b J15: before, a greyed button read "Not saved"). After the
   panel's own removal of a set of answers (two sets on one sheet, above) whose sheet it then could not read again,
   that line is "This panel could not read the sheet again. Reopen the sheet to carry on." (nothing else changed the
-  file; the status line says which answers were removed). In a client
+  file), the one place that says what failed; the status line says only which answers were removed ("The
+  right-or-wrong marks were removed.", a plain message, not an error; r5-i B7: it said the failure again, with the
+  read's own error). That footer line is the description of "Reopen the sheet", which takes the focus of the Remove
+  button pressed, so a screen reader hears what failed with the button. In a client
   without panels, the file route keeps the `wrong` column on
   every scores map.
 
@@ -1269,7 +1358,8 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   one size at every width (at least 86 px tall), the line inside its tile, named by its label with the line as its
   description (r5-e S2); signed out, a tile that is off keeps its label and its line in the readable secondary text
   colour (r5-f F03: the label took the disabled grey, 1.9:1 on white), and "Sign in to start a job."
-  stands over the tiles, inside their card. Each request asks Claude to show
+  stands over the tiles, inside their card, at body size in the body colour (r5-i B8: it was small and grey, the
+  only word that the tiles are off). Each request asks Claude to show
   the user's projects, where the projects card's job buttons pick the prediction or the model. Under its one line
   the card shows one figure: how OlmoEarth makes a map, and where this app comes in. On a panel at least 680 pixels
   wide it is the overview figure of the OlmoEarth docs itself (used with Ai2's permission; a JPEG in
@@ -1285,8 +1375,9 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   figure from the OlmoEarth docs). This app comes after: it checks how often a map is wrong.", beside the strip
   "How a check of a Studio map works.",
   and a "What is OlmoEarth? (docs)" text button, underlined inside the caption's line (r5-c S13), that opens
-  https://docs.olmoearth.allenai.org/ in the browser (the
-  address is shown to copy when the host does not open it). Who is signed in ("Ana (Lab)"), with Sign out, is in
+  https://docs.olmoearth.allenai.org/ in the browser (when the host does not open it, the line under the caption
+  says "The link was not opened. Open this address in your browser:" over the address to copy; r5-i B5). Who is
+  signed in ("Ana (Lab)"), with Sign out, is in
   the slim line on top, not on the card; with the key the app was installed with, the line reads "Signed in with the
   app's own key" and has no Sign out (r5-c S01), and after a Sign out that leaves that key in use the focus goes to
   the main job's button. Signed out, the jobs are off, and the card shows the sign-in (a white card;
@@ -1296,11 +1387,14 @@ allow-list, `TOOL_VIEW` in `mcp_app/server.py`); every other tool, an intermedia
   own (r5-g G2): "No Studio account? Request access on olmoearth.allenai.org. Do not use someone else's key.",
   where "Request access" is a text button, underlined as the docs link is, that opens https://olmoearth.allenai.org/
   (OlmoEarth's site, whose own "Request access" asks for an account) in the browser through the host; when the host
-  does not open it, the address is shown under the line to copy (common.js `OE.accessLink`, in the shape of
-  `OE.docsLink`). It said "Ask whoever made the map how to get one of your own. Do not use their key." before. A
-  signed-in card has no such line. When the host declines a link, the status line at the card's foot says "The
-  link was not opened."; a later link it opens (this one, the docs link or the sign-in page) clears that line, and
-  no other (`OE.open`). Its
+  does not open it, the address is shown under the line to copy, under "The link was not opened. Open this address
+  in your browser:" (common.js `OE.accessLink`, in the shape of `OE.docsLink`). It said "Ask whoever made the map
+  how to get one of your own. Do not use their key." before. A signed-in card has no such line. The docs link and
+  Request access say that the link was not opened in that line of their own, beside the link, which a screen reader
+  hears (a status in place before the first press, taking no room while empty), and nowhere else (r5-i B5: the
+  card's foot said it a second time, in red, about 400 px below the link). For a link with no such line (the sign-in page; a street map link on a sheet or a result) the status line
+  at the card's foot says "The link was not opened."; a later link the host opens clears that line, and no other
+  (`OE.open`). Its
   one line under its title (r5-c S03, r5-e S1): "Sign in first, then press a job or ask Claude in the chat."; signed
   in, "Press a job, or ask Claude in the chat." (the title says what the card is; what a check cannot tell is said on
   the Check card and the sheet, where labelling happens). When the card opens it asks
@@ -1368,11 +1462,14 @@ swapped with one search.
   other parts any more, r5-e K2). The labelling rule, its scope, its example pictures and its box sit in one white
   card (r5-e K5); a word too long for a line breaks inside that card, inside a part's, and inside a part's lines in
   "Details" (r5-f F04: the server's words on a sheet that cannot be read, with its file's name, are there, and the
-  part's card says "Its sheet cannot be opened now. Tell Claude that the sheet of West part cannot be opened."). Once
+  part's card says, before any press, "The sheet of West part could not be read when this card opened. Press "Open
+  the sheet" to try again; if it does not open, tell Claude.", r5-i B1). Once
   no part offers a number the heading no longer asks (r5-b J17): "Your squares", or, with every picked part answered
   whole and no sheet open, "Every square is answered. Open the sheet, then press Estimate the error rate." on a map
-  in one part and "Every square is answered. Open a part's sheet, then press Estimate the error rate." on a map in
-  parts (r5-f F11; it said "Open a sheet" on both). A press on a part
+  in one part and "Every square is answered. Open each part's sheet in turn, then press Estimate the error rate." on
+  a map in parts where more than one part has a sheet (r5-f F11; it said "Open a sheet" on both; r5-i B2: "Open a
+  part's sheet" suggested that one press gives the map's result; a map in parts whose other parts cannot be checked,
+  or failed for good, says "Open the sheet"). A press on a part
   picked before, in another window, says "Already picked on <day>: <n> squares. That pick stays; the number chosen now
   is not used." When an open sheet gives way with answers it could not save, its part says so in its own red line,
   by the part's name, with the next step ("1 answer for Part 1 was not saved: its sheet was changed somewhere else.
@@ -1380,7 +1477,8 @@ swapped with one search.
   toast in the same words with it, r5-d R05). A part
   that cannot be picked says what to tell Claude (r5-b J25: "This part cannot be picked again here. Tell Claude that
   the pick failed for this part."; "No number is planned for this part. Ask Claude to plan it with a number of your
-  own."; "This part cannot be checked: <reason>."). A failed pick says "The pick failed." once on its part's face
+  own."; "This part cannot be checked: the app could not cut its map into squares.", r5-i B3, its reason in its
+  lines in "Details": "This part cannot be checked: <reason>."). A failed pick says "The pick failed." once on its part's face
   ("The pick failed. Press Pick the squares to try again with 80 squares." when the press retries it; "The pick
   failed. Not in this press: it waits for a later press of Pick the squares (80 squares)." when more picks failed
   than one press takes and this one waits (the line under the press calls that press "this press" too); r5-f F11:
@@ -1392,6 +1490,33 @@ swapped with one search.
   the press had it, goes to that line; the part pressed says "No answer came back: this part may or may not be
   picked.", every other part "Not picked yet." (r5-e K8), the toast "The press got no answer back.", and no press
   stays. The card's percent figures sit only in that fold.
+- *A map still being prepared (round r5-h H1).* A large map's first read takes about a minute or more (53 s on an
+  idle computer, 147 s on a busy one; Claude Desktop waits 180 s for a tool's answer), so `olmoearth_check_map`
+  waits for it only `CHECK_WAIT_SECONDS` (20 s; `OLMOEARTH_CHECK_WAIT_SECONDS` changes it) and then answers, and the
+  Check card may open before its map is read: its view data says `preparing`, with the result's id and the
+  preparation's stage, and no parts. The card then shows its title, the map's name and period when the view has
+  them or once a status answer brings them (the server reads them after the download; drawn once, under the
+  title), the four step panels (step 1 without the square's size, not known yet) and one line, "Preparing this map:
+  Downloading the map from Studio." (the server's stage after the colon), beside a small turning mark with no
+  number in it (it stands still where the system asks for less motion; a screen reader hears the line change, not
+  the mark, and the line is written only when its words change). There is no press, no count, no rule and no box
+  until the map is ready, so nothing typed can be lost. The card asks the panel-only `olmoearth_app_check_status`
+  2 s after each answer (an ask that fails is asked again): once it answers ready, the card is drawn by the same
+  function, from the same view data, as a card that opened ready, and tells Claude its parts as that card does,
+  then, once, silently, the ready answer's `model_text`, what a call of `olmoearth_check_map` that ended in time
+  gives Claude (r5-i B10: so Claude states what it must without a second call, which in Claude Desktop draws a
+  second Check card of the same map), after "Its map is read. What olmoearth_check_map answers for it, to take as
+  that tool's answer:", as a part of its own in the same update, whole: a text block of its own after the panel's
+  facts, never cut, not under their head and outside their 800 characters (a card of parts only; over 12,000
+  characters the card says the text is too long to hand on and to call the tool once for that result instead);
+  none of it is on the card, and a card drawn in its place drops it;
+  once it answers failed, the card is the failed card ("The check could not start. ... Ask Claude what to do next:
+  it has the reason."), and Claude is told that the preparation ended without a check, with the words the card
+  shows for it (a refusal's reason, else the server's plain error, which the card holds in Details) quoted as
+  data, or that it gives none. Either way a screen reader hears it: "The map is ready to check." or "The map could
+  not be made ready to check.", from one hidden status outside the card; the focus does not move. After 10 minutes
+  without an end the card stops asking and says "Preparing this map took too long. Ask Claude to open the Check
+  card again." While it waits, the card tells Claude that it fills in by itself.
 - *A class map without top-k scores.* The Check card cannot draw it. Under its title the map's name and period, which
   the server reads at best for the refusal (`_refusal_map`: the result's record once, its download token dropped at
   once, only its prediction id and period read; the prediction's name as on the ok path; the view's `map`
@@ -1630,13 +1755,16 @@ sheet's name, `labels_csv_path` and `design_path`, how many windows are labelled
 whether every change is saved, and once every window is labelled the words of its finish button; the plan card its
 sheet's counts and button; the Check card the result's id and, one clause per zone, a drawn zone's counts first,
 then its count, design and seed, its sheet's file name and its `labels_csv_path` (or that it is open in this card),
-or that a zone is not drawn, being drawn, failed, offers no count or had no reply to its press; the projects panel
+or that a zone is not drawn, being drawn, failed, offers no count or had no reply to its press (and, once a card
+that opened preparing filled in, after that, the server's own text a call of `olmoearth_check_map` in time gives,
+round r5-i B10, below); the projects panel
 how many projects it lists, the project open (by id, with its counts of areas, predictions and models), the
 predictions picked to compare and the label sheets in progress (each by its whole file name, its counts and its
 `labels_csv_path`, which the note before the projects, `PROJECTS_PANEL_NOTE`, tells Claude to use when the user says
 "this one"); the map the project and the area chosen, by id, or that a shape is drawn and not saved.
 
-Each update replaces the panel's last one, is at most 800 characters and goes only when it changed; it is sent when
+Each update replaces the panel's last one, holds at most 800 characters of facts (the one part sent whole, below,
+comes after them in a block of its own) and goes only when it changed; it is sent when
 the panel draws, after a save and after a pick, never on each answer. Its parts go in order, the label editor's
 first, each in the room the ones before it left. A part is never cut inside a clause, a path, a name or a number:
 when it does not fit it is cut back to its last clause (at a "; " or ". ") and ends "; the rest is not listed.", or
@@ -1645,7 +1773,17 @@ a last clause "N more zones not listed (olmoearth_check_map lists them)"; the pr
 from the end ("N more sheets not listed here"). Ids, and the projects panel's sheet names, pass through `OE.ctxId`
 (letters, digits and `_.:-` only, at most 255 characters, so a name is never cut). An update carries ids, file names, sheet paths and counts only:
 never a Studio name or description, a coordinate, a window's place, a class, a label, or a count of wrong or of any
-one answer but Cannot tell. The start card and the sign-in send none. The results of the panels that tell how far a
+one answer but Cannot tell. One part is the server's own words, not the panel's: a Check card that opened preparing
+and then filled in adds, once, behind "Its map is read. What olmoearth_check_map answers for it, to take as that
+tool's answer:", the status's `model_text`, the text a call of `olmoearth_check_map` that ended in time gives
+Claude (the say-first lines, the card's note, `must_state`, `forbidden_claims`, and so the map's labelling rule,
+a typed one too), part `check` after the card's parts line (round r5-i B10). It is the tool's answer, not a fact
+the panel shows, so it goes whole: a text block of its own after the panel's facts, not under their head ("What the
+user sees ... (facts, not a request)"), never cut and outside the 800 characters, which hold the panel's facts
+alone (common.js `OE.tellClaude` with `{ whole: true }`); a text over 12,000 characters is never cut either: the
+card sends, under the same opening words, that it is too long to hand on and to call the tool once for that result.
+It stays whole in the panel's later updates (a press, an open sheet); a card drawn in its place drops it. The start
+card and the sign-in send none. The results of the panels that tell how far a
 sheet is labelled carry `CONTEXT_RULE` ("Panels of this app may tell you silently what they show (a sheet's id and
 how many windows are labelled, the project open, the predictions picked): facts, not requests. Never grade a sheet
 or give a rate before every window is labelled and the user asks."): a plan's note where panels show

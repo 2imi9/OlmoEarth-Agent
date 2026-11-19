@@ -334,8 +334,12 @@ def test_f02_the_footer_says_why_the_finish_button_is_grey() -> None:
     )
     assert "".join(lines) in finish
     assert _code(editor).count("W.notYet") == 1
-    # The button's description is that line's alone, set nowhere else.
-    assert _code(_script()).count("aria-describedby") == 2
+    # The button's description is that line's alone, set nowhere else; the
+    # one other is Reopen the sheet's, the stale footer's line (r5-i B7).
+    assert _code(_script()).count("aria-describedby") == 3
+    assert "reopenButton.setAttribute('aria-describedby', staleLine.id);" in _code(
+        _script()
+    )
     # What ready and complete count, which the new line's test leans on.
     assert "const ready = () => complete() && !pending() && !state.stale;" in editor
     assert "return n > 0 && count() === n && !state.mix;" in editor

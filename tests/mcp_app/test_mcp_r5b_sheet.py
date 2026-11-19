@@ -371,7 +371,8 @@ def test_j15_a_sheet_changed_elsewhere_shows_no_dead_button() -> None:
         assert text in stale, text
     assert "'Not saved'" not in progress
     assert "saveButton.textContent = 'Not saved'" not in script
-    assert "const staleLine = OE.el('span', { class: 'error' });" in editor
+    # Body size; since r5-i B7 with an id, as Reopen the sheet's description.
+    assert "const staleLine = OE.el('span', { class: 'error', id: " in editor
     assert "{ class: 'small error' }" not in progress
     words = _words()
     for text in (
@@ -436,8 +437,9 @@ def test_j21_two_sets_of_answers_are_named_by_what_they_hold() -> None:
     )
     for text in (
         "replaceEditor(fresh, 'Removed: the ' + answersOf(column) + '.');",
-        "reopenToast('The ' + answersOf(column) + ' were removed, but the sheet "
-        "could not be read again: '",
+        # r5-i B7: the toast says only which answers went, a plain message;
+        # the footer says that the read failed.
+        "reopenToast('The ' + answersOf(column) + ' were removed.', false);",
         "'Press the button again to remove the ' + answersOf(column) + '.', true);",
     ):
         assert text in clear, text
@@ -642,7 +644,8 @@ def test_every_r5b_string_of_the_sheet_carries_its_wording_comment() -> None:
         "// WORDING: r5b J15\n      savedNote.textContent = ",
         "// WORDING: r5b J21\n      notice.append(",
         "// WORDING: r5b J21\n          replaceEditor(fresh, 'Removed: ",
-        "// WORDING: r5b J21\n          reopenToast('The ' + answersOf(column)",
+        # r5-i B7 changed this toast (its mark with it).
+        "// WORDING: r5i B7\n          reopenToast('The ' + answersOf(column)",
         "// WORDING: r5b J21\n      OE.toast('Not cleared: the sheet was saved",
         "// WORDING: r4h S1 S3; r5b J28 (the two-map sheet's)\n  function face",
     ):

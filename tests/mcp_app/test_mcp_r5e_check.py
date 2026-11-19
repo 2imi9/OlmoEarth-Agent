@@ -86,8 +86,7 @@ POINTS_GRID = (
 FAILED_SHORT = "The pick failed."
 RETRY_80 = "Press Pick the squares to try again with 80 squares."
 RETRY_LATER_80 = (
-    "Not in this press: it waits for a later press of Pick the squares "
-    "(80 squares)."
+    "Not in this press: it waits for a later press of Pick the squares " "(80 squares)."
 )
 #: K8: the press's toast when a part was not picked (it promises no reason on
 #: a part's face: a failed pick's reason is in Details).

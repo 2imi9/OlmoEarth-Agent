@@ -69,8 +69,10 @@ body { margin: 0; padding: 0 16px 16px; background: var(--canvas); color: var(--
 .oe-account .who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--text); font-weight: 600; }
 .oe-account button.link { flex: none; font-size: 12px; line-height: 18px; padding: 0 4px; }
-/* The address of a link the host did not open (OE.docsLink, OE.accessLink), whole and selectable. */
-.oe-link-slot:empty { display: none; }
+/* The address of a link the host did not open (OE.docsLink, OE.accessLink), whole and selectable. The slot is a
+   status in place before the first press (r5-i B5): empty, it is drawn but takes no height (never display none),
+   so it is in the accessibility tree before its first words, as the toast's region and OE.typeSlot's line are,
+   and a screen reader hears them. */
 .oe-link-slot code { user-select: all; overflow-wrap: anywhere; }
 h1, h2, h3 { margin: 0; }
 h1 { font-size: 20px; line-height: 28px; font-weight: 600; color: var(--text-2); }
@@ -457,18 +459,21 @@ OE.sendJob = async (app, text, slot) => {
    street map link holds a place. A declined link writes LINK_NOT_OPENED in
    the status line; a later link opened clears that line while it still
    shows it (r5-g G2, as OE.say does, r5-b J20), so a card never says a link
-   was not opened after one was; any other line stays. */
+   was not opened after one was; any other line stays. With quiet (r5-i B5:
+   the docs and Request access links, whose own slot says it beside the
+   link) a declined link writes no toast; a street map link, which has no
+   slot, keeps it. */
 // WORDING: r4k K7
 OE.LINK_NOT_OPENED = 'The link was not opened.';
-OE.open = async (app, url) => {
+OE.open = async (app, url, { quiet = false } = {}) => {
   try {
     const answer = await app.openLink({ url });
-    if (answer && answer.isError) { OE.toast(OE.LINK_NOT_OPENED, true); return false; }
+    if (answer && answer.isError) { if (!quiet) OE.toast(OE.LINK_NOT_OPENED, true); return false; }
     const bar = document.getElementById('oe-toast');
     if (bar && bar.textContent === OE.LINK_NOT_OPENED) OE.toast('');
     return true;
   } catch (_) {
-    OE.toast(OE.LINK_NOT_OPENED, true);
+    if (!quiet) OE.toast(OE.LINK_NOT_OPENED, true);
     return false;
   }
 };
@@ -488,11 +493,14 @@ OE.DOCS_BY_HAND = 'Open this address in your browser:';
    (OE.open), and its slot: [button, slot]. A button, as every link of a
    view is: the host opens the address, the page never does. aria-disabled
    while the host is asked, so it keeps the focus. When the host does not
-   open it (OE.open's toast says so) the slot shows the address, whole and
-   selectable: it is public and fixed, no id and no place in it. A later
-   press that opens it empties the slot and clears OE.open's toast. */
+   open it, the slot says so itself (r5-i B5: OE.LINK_NOT_OPENED, then
+   OE.DOCS_BY_HAND, one line) and shows the address, whole and selectable:
+   it is public and fixed, no id and no place in it. OE.open writes no toast
+   for it (quiet), so the panel's foot does not say it a second time, far
+   from the link; the slot is a status, so a screen reader hears it. A later
+   press that opens it empties the slot. */
 OE.docsLink = (app) => {
-  const slot = OE.el('div', { class: 'oe-link-slot small' });
+  const slot = OE.el('div', { class: 'oe-link-slot small', role: 'status' });
   let busy = false;
   const button = OE.el('button', { type: 'button', class: 'link' }, OE.DOCS_LABEL);
   button.addEventListener('click', async () => {
@@ -500,8 +508,9 @@ OE.docsLink = (app) => {
     busy = true;
     button.setAttribute('aria-disabled', 'true');
     try {
-      const opened = await OE.open(app, OE.DOCS_URL);
-      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.DOCS_BY_HAND), OE.el('code', {}, OE.DOCS_URL)]));
+      const opened = await OE.open(app, OE.DOCS_URL, { quiet: true });
+      // WORDING: r5i B5
+      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.LINK_NOT_OPENED + ' ' + OE.DOCS_BY_HAND), OE.el('code', {}, OE.DOCS_URL)]));
     } finally {
       busy = false;
       button.setAttribute('aria-disabled', 'false');
@@ -522,13 +531,14 @@ OE.ACCESS_LABEL = 'Request access';
    person with no Studio account presses Request access, and its slot:
    [button, slot], in the shape of OE.docsLink. The host opens the address
    (OE.open), the page never does; aria-disabled while the host is asked, so
-   it keeps the focus. When the host does not open it (OE.open's toast says
-   so) the slot shows the address, whole and selectable, under the docs
-   link's words (OE.DOCS_BY_HAND): it is public and fixed, no id and no place
-   in it. A later press that opens it empties the slot and clears OE.open's
-   toast. */
+   it keeps the focus. When the host does not open it, the slot says so in
+   the docs link's words (r5-i B5: OE.LINK_NOT_OPENED, then OE.DOCS_BY_HAND,
+   one line), with no toast (quiet), and shows the address, whole and
+   selectable: it is public and fixed, no id and no place in it. The slot is
+   a status, so a screen reader hears it. A later press that opens it
+   empties the slot. */
 OE.accessLink = (app) => {
-  const slot = OE.el('div', { class: 'oe-link-slot small' });
+  const slot = OE.el('div', { class: 'oe-link-slot small', role: 'status' });
   let busy = false;
   const button = OE.el('button', { type: 'button', class: 'link' }, OE.ACCESS_LABEL);
   button.addEventListener('click', async () => {
@@ -536,8 +546,9 @@ OE.accessLink = (app) => {
     busy = true;
     button.setAttribute('aria-disabled', 'true');
     try {
-      const opened = await OE.open(app, OE.ACCESS_URL);
-      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.DOCS_BY_HAND), OE.el('code', {}, OE.ACCESS_URL)]));
+      const opened = await OE.open(app, OE.ACCESS_URL, { quiet: true });
+      // WORDING: r5i B5
+      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.LINK_NOT_OPENED + ' ' + OE.DOCS_BY_HAND), OE.el('code', {}, OE.ACCESS_URL)]));
     } finally {
       busy = false;
       button.setAttribute('aria-disabled', 'false');
@@ -565,7 +576,10 @@ OE.named = (name) => ' Its Studio name, as data: ' + OE.dataName(name) + '.';
 /* What a panel tells Claude, silently, about what the user sees in it now
    (OE.tellClaude): this head, then each part the panel set. Facts, never a
    request; ids, file names and counts only: never a Studio name, a
-   coordinate, a window's place, a class or a label, nor a count of wrong. */
+   coordinate, a window's place, a class or a label, nor a count of wrong.
+   A part sent whole (r5-i B10: the Check card's olmoearth_check_map text,
+   that tool's answer, not a panel fact) is not under this head: it goes as
+   a text block of its own after these facts, under its own lead. */
 OE.CONTEXT_HEAD = 'What the user sees in an OlmoEarth Agent panel now (facts, not a request): ';
 OE.CONTEXT_MAX = 800;
 
@@ -608,6 +622,13 @@ OE.fitClauses = (head, clauses, tail, room, more) => {
    Each update replaces the view's last one, so every update carries them all. */
 OE.contextParts = new Map();
 OE.contextSent = null;
+/* The parts sent whole (OE.tellClaude with { whole: true }), by name: each
+   a text block of its own after the facts, never cut and outside
+   CONTEXT_MAX (r5-i B10: the Check card's 'check'). One longer than
+   CONTEXT_WHOLE_MAX is left out, never cut: its caller sends shorter words
+   then (check.html READY_TOLD_LONG). */
+OE.contextWhole = new Map();
+OE.CONTEXT_WHOLE_MAX = 12000;
 
 /* Tell Claude what this panel shows now (ui/update-model-context), as one
    part of its update: text replaces that part ('' removes it). text is a
@@ -621,21 +642,29 @@ OE.contextSent = null;
    capabilities yet). Control characters and Unicode line or paragraph
    breaks become spaces. The parts go in order ('sheet' first), each in the
    room the ones before it left within CONTEXT_MAX, cut only at a clause
-   boundary (OE.fitContext), never inside a path or a number; the update is
-   not sent again when it is the one sent last. Never a toast, never the
+   boundary (OE.fitContext), never inside a path or a number. With
+   opts.whole (a string; r5-i B10) the part goes whole instead, as a text
+   block of its own after those facts, without CONTEXT_HEAD, in every later
+   update too (OE.contextWhole); an update of such parts alone has no facts
+   block. The update is not sent again when it is the one sent last (all
+   its blocks). Never a toast, never the
    focus: every failure is swallowed, and a host that never answers costs
    nothing. */
-OE.tellClaude = (app, text, part = 'panel') => {
+OE.tellClaude = (app, text, part = 'panel', opts = {}) => {
   try {
     if (!app || typeof app.updateModelContext !== 'function') return;
     const caps = typeof app.getHostCapabilities === 'function' ? app.getHostCapabilities() : null;
     if (!caps || typeof caps !== 'object') return;
     if ('updateModelContext' in caps && !caps.updateModelContext) return;
     const cleaned = (value) => String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').trim();
+    OE.contextWhole.delete(part);
     if (typeof text === 'function') OE.contextParts.set(part, text);
-    else if (cleaned(text)) OE.contextParts.set(part, cleaned(text));
+    else if (cleaned(text) && opts && opts.whole === true) {
+      OE.contextParts.delete(part);
+      OE.contextWhole.set(part, cleaned(text));
+    } else if (cleaned(text)) OE.contextParts.set(part, cleaned(text));
     else OE.contextParts.delete(part);
-    if (!OE.contextParts.size) return;
+    if (!OE.contextParts.size && !OE.contextWhole.size) return;
     const order = [...OE.contextParts.keys()].sort((a, b) => Number(b === 'sheet') - Number(a === 'sheet'));
     let room = OE.CONTEXT_MAX - OE.CONTEXT_HEAD.length;
     const said = [];
@@ -647,11 +676,14 @@ OE.tellClaude = (app, text, part = 'panel') => {
       said.push(one);
       room -= space + one.length;
     }
-    if (!said.length) return;
-    const whole = OE.CONTEXT_HEAD + said.join(' ');
+    const blocks = [...OE.contextWhole.values()].filter((value) => value.length <= OE.CONTEXT_WHOLE_MAX);
+    if (!said.length && !blocks.length) return;
+    const content = [...(said.length ? [OE.CONTEXT_HEAD + said.join(' ')] : []), ...blocks]
+      .map((value) => ({ type: 'text', text: value }));
+    const whole = JSON.stringify(content);
     if (whole === OE.contextSent) return;
     OE.contextSent = whole;
-    Promise.resolve(app.updateModelContext({ content: [{ type: 'text', text: whole }] })).catch(() => {});
+    Promise.resolve(app.updateModelContext({ content })).catch(() => {});
   } catch (_) { /* nothing on screen changes */ }
 };
 

@@ -78,19 +78,43 @@ The download token is a credential: it goes to the client alone, never into a
 result, a manifest, an error or a log, and neither does a person's id. No
 coordinates in the result (rule 1): zones by file name, windows by grid row
 and column.
+
+The zip as downloaded is kept on this computer once it was read (round r5-h
+H2): ``<scores root>/studio_downloads/<result id>/files.zip``, mode 600, with
+a record of when it was downloaded, its size and its sha256 beside it. A
+later read of the same result within :data:`STUDIO_KEEP_HOURS` hours (24;
+``OLMOEARTH_STUDIO_KEEP_HOURS`` changes it, 0 keeps nothing) reads that copy
+and downloads nothing, and says so in its result (``read_from_copy``); an
+older copy, or one that is not the zip its record names, is downloaded again,
+and a download that differs from the kept zip replaces it, or removes it when
+the decode refuses it. ``fresh: true`` downloads whatever is kept. Such a read
+saves the download alone: it still asks Studio for the result's record, and
+each part is still read from the kept zip, hashed and decoded (so a refusal
+is the same as on a download), then pooled; a part already written from the
+same native file (its sha256), decoded the same way, is not written again, as
+before. Two reads
+of one result in one process never download it twice at once: the second
+waits, then reads the copy the first kept. A caller may follow a read as it
+goes (:data:`PROGRESS`, the MCP App's Check card): its steps and part
+numbers only, never a name, a path or the token.
 """
 
 from __future__ import annotations
 
 import asyncio
+import calendar
+import contextvars
 import hashlib
 import importlib
 import io
 import json
+import logging
 import math
 import os
 import re
+import time
 import uuid
+import weakref
 import zipfile
 import zlib
 from collections.abc import Callable, Iterator
@@ -110,8 +134,65 @@ from olmoearth_agent.tools.result_ids import resolving
 from olmoearth_agent.tools.review_set import slug, write_root
 from olmoearth_agent.tools.sampling import model_summary, prediction_meta
 
+logger = logging.getLogger(__name__)
+
 #: The folder under the scores root that holds the zones' run directories.
 STUDIO_DIR = "studio_results"
+
+#: The folder under the scores root that keeps each result's files zip as it
+#: was downloaded (round r5-h H2): ``<folder>/<result id>/`` holds
+#: :data:`KEPT_ZIP` and :data:`KEPT_RECORD`, each mode 600. It sits beside
+#: :data:`STUDIO_DIR`, whose folders hold the zones' run directories alone.
+KEPT_DIR = "studio_downloads"
+
+#: A kept zip's file name, and its record's (the result id, when the zip was
+#: downloaded, its size and its sha256), the record written after the zip.
+KEPT_ZIP, KEPT_RECORD = "files.zip", "kept.json"
+
+#: The kept record's format.
+KEPT_FORMAT = 1
+
+#: Hours a kept zip is read in place of a download (round r5-h H2): a read of
+#: the same result within them downloads nothing; an older copy is downloaded
+#: again (and removed when another result is kept). :data:`KEEP_HOURS_ENV`
+#: changes it; 0 keeps and reads no copy.
+STUDIO_KEEP_HOURS = 24.0
+
+#: The environment variable that sets :data:`STUDIO_KEEP_HOURS`.
+KEEP_HOURS_ENV = "OLMOEARTH_STUDIO_KEEP_HOURS"
+
+#: A kept record's ``downloaded_at``: UTC, to the second.
+KEPT_TIME = "%Y-%m-%dT%H:%M:%SZ"
+
+#: Said in a result read from the kept copy (its ``read_from_copy``).
+KEPT_NOTE = (
+    "These files were read from this computer's copy of the download of {when}; "
+    "nothing was downloaded now. fresh: true downloads them again."
+)
+
+#: A caller's hook for how far a read got (:data:`PROGRESS`): a step, and for
+#: a part its number from 1 and the number of parts (else 0 and 0).
+Progress = Callable[[str, int, int], None]
+
+#: How far a read got, for a caller that shows it (round r5-h H1: the MCP
+#: App's Check card sets it in its own task around its call). It is told
+#: :data:`STEP_DOWNLOAD` or :data:`STEP_COPY`, then :data:`STEP_READ` and
+#: :data:`STEP_POOL` per part (:func:`report_progress`); never a name, a
+#: path, a place or the token.
+PROGRESS: contextvars.ContextVar[Progress | None] = contextvars.ContextVar(
+    "studio_scores_progress", default=None
+)
+
+#: The steps of a read (:data:`PROGRESS`): the download, the kept copy read
+#: instead, a part decoded, a part pooled into windows.
+STEP_DOWNLOAD, STEP_COPY, STEP_READ, STEP_POOL = "download", "copy", "read", "pool"
+
+#: One lock per result read in this process, by its event loop and its id
+#: (round r5-h H2): two reads of one result never download it twice at once;
+#: the second waits, then reads the copy the first kept. Weak: a lock no read
+#: holds is dropped.
+_READ_LOCKS: weakref.WeakValueDictionary[tuple[int, str], asyncio.Lock]
+_READ_LOCKS = weakref.WeakValueDictionary()
 
 #: A zone's native GeoTIFF in the zip, the only entries read as rasters: one
 #: folder, a plain name (:func:`_plain`), and the file name Studio gives it.
@@ -1465,7 +1546,9 @@ def read_zones(
         folder = f"{slug(info.name, 40).rstrip('-')}-{slug(info.result_id, 8)}"
         names = plan.labels if plan.kind == TOPK else (plan.property_name,)
         zones: list[Zone] = []
-        for entry in entries.tifs:
+        for number, entry in enumerate(entries.tifs, 1):
+            # How far the read got, for a caller that shows it (round r5-h H1).
+            report_progress(STEP_READ, number, len(entries.tifs))
             raw = _read_entry(zf, entry.info, entry.file)
             if not raw.startswith(TIFF_MAGIC):
                 raise ValueError(
@@ -1759,12 +1842,243 @@ def _next_step(plan: FilesPlan, zones: list[Zone]) -> str:
     )
 
 
+# --------------------------------------------------------------------------- the kept copy
+
+
+def report_progress(step: str, number: int = 0, parts: int = 0) -> None:
+    """Tell the caller's hook (:data:`PROGRESS`), when one is set, how far a
+    read got; a hook that fails is logged and never fails the read."""
+    hook = PROGRESS.get()
+    if hook is None:
+        return
+    try:
+        hook(step, number, parts)
+    except Exception:  # noqa: BLE001 - a report never fails the read
+        logger.debug("a read's progress was not reported", exc_info=True)
+
+
+def _read_lock(result_id: str) -> asyncio.Lock:
+    """The lock of ``result_id``'s read in the running loop (:data:`_READ_LOCKS`)."""
+    key = (id(asyncio.get_running_loop()), result_id)
+    lock = _READ_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _READ_LOCKS[key] = lock
+    return lock
+
+
+def keep_hours() -> float:
+    """Hours a kept zip is read in place of a download: :data:`KEEP_HOURS_ENV`
+    when it holds a number, else :data:`STUDIO_KEEP_HOURS`; 0, no copy kept
+    or read, for a number that is not finite or not above 0."""
+    raw = os.environ.get(KEEP_HOURS_ENV, "").strip()
+    if not raw:
+        return STUDIO_KEEP_HOURS
+    try:
+        hours = float(raw)
+    except ValueError:
+        return STUDIO_KEEP_HOURS
+    return hours if math.isfinite(hours) and hours > 0 else 0.0
+
+
+def _now() -> float:
+    """The time now, in seconds since the epoch."""
+    return time.time()
+
+
+def _kept_folder(result_id: str) -> Path:
+    """The folder that keeps ``result_id``'s zip, under the scores root."""
+    return safe_path(f"{KEPT_DIR}/{result_id}", root=write_root())
+
+
+def _kept_record(folder: Path) -> dict[str, Any] | None:
+    """A kept folder's record, or ``None`` when it cannot be read as one."""
+    try:
+        loaded: Any = json.loads((folder / KEPT_RECORD).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if isinstance(loaded, dict) and loaded.get("format") == KEPT_FORMAT:
+        return loaded
+    return None
+
+
+def _downloaded_at(record: dict[str, Any] | None) -> float | None:
+    """A kept record's ``downloaded_at`` in seconds since the epoch, or ``None``."""
+    stamp = record.get("downloaded_at") if record is not None else None
+    if not isinstance(stamp, str):
+        return None
+    try:
+        return float(calendar.timegm(time.strptime(stamp, KEPT_TIME)))
+    except ValueError:
+        return None
+
+
+def read_kept(result_id: str, max_bytes: int) -> tuple[bytes, str] | None:
+    """``result_id``'s kept zip and when it was downloaded (its record's
+    ``downloaded_at``), or ``None`` when it is not to be read: none kept,
+    kept :func:`keep_hours` ago or longer (or after now), over ``max_bytes``,
+    or not the zip its record names (its size and sha256). Never raises for
+    a file that cannot be read. Blocking: the handler calls it in a worker
+    thread."""
+    hours = keep_hours()
+    if hours <= 0:
+        return None
+    try:
+        folder = _kept_folder(result_id)
+    except ValueError:
+        return None
+    record = _kept_record(folder)
+    moment = _downloaded_at(record)
+    if record is None or moment is None or record.get("result_id") != result_id:
+        return None
+    size, digest = record.get("bytes"), record.get("sha256")
+    age = _now() - moment
+    if not 0 <= age < hours * 3600 or not isinstance(size, int) or size > max_bytes:
+        return None
+    try:
+        data = (folder / KEPT_ZIP).read_bytes()
+    except OSError:
+        return None
+    if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
+        return None
+    return data, str(record["downloaded_at"])
+
+
+def _write_private(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` by an atomic rename, mode 600, leaving no
+    part file on failure."""
+    part = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}.part")
+    try:
+        fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.replace(part, path)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+
+
+def _prune_kept(hours: float, kept_id: str) -> None:
+    """Remove the copies kept ``hours`` ago or longer, but ``kept_id``'s: only
+    their zip and then their record, then the folder when it is empty. A
+    folder whose record cannot be read is left as it is."""
+    base = safe_path(KEPT_DIR, root=write_root())
+    if not base.is_dir():
+        return
+    limit = _now() - hours * 3600
+    for folder in base.iterdir():
+        if folder.name == kept_id or folder.is_symlink() or not folder.is_dir():
+            continue
+        moment = _downloaded_at(_kept_record(folder))
+        if moment is None or moment > limit:
+            continue
+        for name in (KEPT_ZIP, KEPT_RECORD):
+            (folder / name).unlink(missing_ok=True)
+        try:
+            folder.rmdir()
+        except OSError:
+            logger.debug("a kept copy's folder holds other files and stays")
+
+
+def forget_kept(result_id: str) -> None:
+    """Remove ``result_id``'s kept copy (round r5-h H2): its record first, so
+    no read takes the zip once it goes, then the zip, then the folder when it
+    is empty. A failure is logged by its kind alone and never fails the read.
+    Blocking."""
+    try:
+        folder = _kept_folder(result_id)
+        for name in (KEPT_RECORD, KEPT_ZIP):
+            (folder / name).unlink(missing_ok=True)
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "a result's kept copy on this computer was not removed (%s)",
+            type(exc).__name__,
+        )
+
+
+def _forget_other_copy(result_id: str, data: bytes) -> str:
+    """The sha256 of ``result_id``'s zip just downloaded, its kept copy
+    removed first (:func:`forget_kept`) when that copy's record names
+    another zip (round r5-h H2): before the decode, so a download the decode
+    refuses, or a decode stopped part way, leaves no older copy a later read
+    would take for Studio's files. A kept copy of the same zip stays: a
+    refusal then comes from the call, not from Studio's files. Blocking."""
+    digest = hashlib.sha256(data).hexdigest()
+    try:
+        old = _kept_record(_kept_folder(result_id))
+    except ValueError:
+        old = None
+    if old is not None and old.get("sha256") != digest:
+        forget_kept(result_id)
+    return digest
+
+
+def keep(result_id: str, data: bytes, digest: str | None = None) -> None:
+    """Keep ``result_id``'s zip as downloaded (round r5-h H2): mode 600 under
+    :data:`KEPT_DIR`, then its record, with the time now as when it was
+    downloaded. A zip the kept one already is (the record's sha256, the
+    file's size and its own sha256) is not written again; its record is. The
+    copies kept :func:`keep_hours` ago or longer are removed first
+    (:func:`_prune_kept`); with 0 hours nothing is kept. ``digest``: the
+    zip's sha256 when the caller has it already. Blocking: the handler calls
+    it in a worker thread."""
+    hours = keep_hours()
+    if hours <= 0:
+        return
+    _prune_kept(hours, result_id)
+    folder = _kept_folder(result_id)
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if digest is None:
+        digest = hashlib.sha256(data).hexdigest()
+    path = folder / KEPT_ZIP
+    old = _kept_record(folder)
+    same = (
+        old is not None
+        and old.get("sha256") == digest
+        and path.is_file()
+        and path.stat().st_size == len(data)
+        and scores_file._sha256(path) == digest
+    )
+    if not same:
+        _write_private(path, data)
+    record = {
+        "format": KEPT_FORMAT,
+        "result_id": result_id,
+        "downloaded_at": time.strftime(KEPT_TIME, time.gmtime(_now())),
+        "bytes": len(data),
+        "sha256": digest,
+    }
+    _write_private(folder / KEPT_RECORD, json.dumps(record, indent=2).encode("utf-8"))
+
+
+def _keep_quietly(result_id: str, data: bytes, digest: str | None = None) -> None:
+    """:func:`keep`, whose failure (a full disk, say) is logged by its kind
+    alone and never fails the read: the next read downloads again."""
+    try:
+        keep(result_id, data, digest)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "a result's files were read but not kept on this computer (%s)",
+            type(exc).__name__,
+        )
+
+
 async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_scores_from_studio``.
 
     The result's record first (its metadata decides the kind, or refuses it),
     then the extra, then the model, then the download, so nothing is
     downloaded that cannot be read; the token goes to the client alone.
+    Round r5-h H2: the zip this computer kept of the same result within
+    :func:`keep_hours` is read instead of a download (:func:`read_kept`)
+    unless ``fresh`` is true, and the result then says so in
+    ``read_from_copy``; a zip downloaded is kept once it read
+    (:func:`keep`), and a kept copy of another zip is removed before its
+    decode (:func:`_forget_other_copy`). Both under the result's lock
+    (:func:`_read_lock`), and each step told to :data:`PROGRESS`
+    (:func:`report_progress`).
     """
     try:
         # The API's own format for it, so no path or query reaches Studio.
@@ -1787,6 +2101,7 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
     if max_mb < 1:
         raise ValueError(f"max_mb must be 1 or more, got {max_mb}")
     clip = bool(args.get("clip_out_of_range", False))
+    fresh = bool(args.get("fresh", False))
 
     record = await ctx.studio.get_prediction_result(result_id)
     # A credential: out of the record at once, to the client alone.
@@ -1828,19 +2143,41 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         date_window=_period(record),
     )
     max_bytes = min(max_mb, MAX_MB) * 2**20
-    data = await ctx.studio.prediction_result_files(token, max_bytes=max_bytes)
-    del token
-    # Unzipping, decoding and writing run in a worker thread, as the
-    # certificate route's package calls do: the event loop keeps serving.
-    zones, ignored, unused = await asyncio.to_thread(
-        read_zones, data, plan, info, clip, np, rasterio
-    )
-    del data
+    # One read of this result at a time in this process (round r5-h H2): a
+    # second waits, then reads the copy the first kept.
+    async with _read_lock(result_id):
+        copied: str | None = None
+        kept: tuple[bytes, str] | None = None
+        digest: str | None = None
+        if not fresh:
+            kept = await asyncio.to_thread(read_kept, result_id, max_bytes)
+        if kept is None:
+            report_progress(STEP_DOWNLOAD)
+            data = await ctx.studio.prediction_result_files(token, max_bytes=max_bytes)
+            # A download that differs from the kept zip: the copy goes before
+            # the decode, so a zip the decode refuses leaves no older copy to
+            # be read in its place (round r5-h H2).
+            digest = await asyncio.to_thread(_forget_other_copy, result_id, data)
+        else:
+            report_progress(STEP_COPY)
+            data, copied = kept
+        del token, kept
+        # Unzipping, decoding and writing run in a worker thread, as the
+        # certificate route's package calls do: the event loop keeps serving.
+        zones, ignored, unused = await asyncio.to_thread(
+            read_zones, data, plan, info, clip, np, rasterio
+        )
+        if copied is None:
+            # The zip as downloaded, kept once it read: a zip that is refused
+            # is never kept (round r5-h H2).
+            await asyncio.to_thread(_keep_quietly, result_id, data, digest)
+        del data
 
     facts: list[dict[str, Any]] = []
     listed: list[dict[str, Any]] = []
     refused: list[str] = []
-    for zone in zones:
+    for number, zone in enumerate(zones, 1):
+        report_progress(STEP_POOL, number, len(zones))
         entry: dict[str, Any] = {
             "file": zone.file,
             "run_dir": str(zone.run_dir),
@@ -1917,6 +2254,13 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         "model_name": info.model_name,
         "assumption": _assumption(plan),
     }
+    if copied is not None:
+        # Read from the zip this computer kept, not downloaded (round r5-h
+        # H2): when it was downloaded, and how to download it again.
+        out["read_from_copy"] = {
+            "downloaded_at": copied,
+            "note": KEPT_NOTE.format(when=copied),
+        }
     if plan.kind == TOPK:
         out["k"] = plan.k
         out["decode"] = TOPK_DECODE
@@ -1974,6 +2318,11 @@ def build_studio_scores_tools() -> list[RegisteredTool]:
                             "default": False,
                             "description": "Clip a [0, 1] score's values outside "
                             "[0, 1] instead of refusing.",
+                        },
+                        "fresh": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Download again, not the kept copy.",
                         },
                         "max_mb": {
                             "type": "integer",

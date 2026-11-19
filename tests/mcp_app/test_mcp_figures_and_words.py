@@ -216,7 +216,8 @@ def test_the_projects_card_words() -> None:
         "OE.el('h1', {}, 'Projects in this Studio account')",
         "label: (kind) => 'Tell Claude: this ' + kind,",
         "title: 'Tells Claude which one you mean. Starts no job.',",
-        "label: (shown) => (shown ? 'Hide outputs' : 'Outputs'),",
+        # r5-i B6: the closed toggle says what it does.
+        "label: (shown) => (shown ? 'Hide outputs' : 'Show outputs'),",
         # r5-c S05: the outputs list's first line, only where there are several
         # (r5-f F13: its words).
         "first: 'This run made more than one map; Studio names them only by the "

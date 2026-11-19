@@ -327,7 +327,8 @@ def test_v1_the_strips_boxes_are_kept() -> None:
 def test_v1_the_caption_and_the_docs_link_sit_outside_the_figure() -> None:
     """V1: one small caption under the figure, then a text button that opens
     the OlmoEarth docs through OE.open (the host opens it, never the page);
-    when the host does not, the address shows to copy."""
+    when the host does not, the address shows to copy (r5-i B5: under its
+    own line that the link was not opened, with no toast: quiet)."""
     script = _read("overview.js")
     assert f"  // WORDING: r5c docs figure\n  const CAPTION = '{CAPTION}';\n" in script
     common = _read("common.js")
@@ -337,7 +338,7 @@ def test_v1_the_caption_and_the_docs_link_sit_outside_the_figure() -> None:
     for text in (
         "OE.el('button', { type: 'button', class: 'link' }, OE.DOCS_LABEL);",
         "button.setAttribute('aria-disabled', 'true');",
-        "const opened = await OE.open(app, OE.DOCS_URL);",
+        "const opened = await OE.open(app, OE.DOCS_URL, { quiet: true });",
         "OE.el('code', {}, OE.DOCS_URL)",
         "return [button, slot];",
     ):

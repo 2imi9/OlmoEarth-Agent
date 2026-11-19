@@ -31,7 +31,12 @@ every file 0600, each written whole: a new file beside it, moved over it):
   stamped with the press's time. A press the server refuses whole (no list
   of draws, or too many) draws nothing and writes no line, and a line that
   cannot be written does not stop the draw: the draw record, not the log,
-  holds the settings pinned at the press.
+  holds the settings pinned at the press;
+- ``planned/<sha256>.json``: the label counts planned for a number of
+  windows (:func:`_planned`, round r5-i B11: :data:`PLANNED_FORMAT`, the
+  inputs and the answer's JSON text whole), read before planning, so a
+  card opened again in a new server does not plan them again; one older
+  than :data:`PLANNED_KEEP_DAYS` days is removed when another is written.
 
 The planner runs outside the lock, with the draw in state ``drawing`` and
 the process id and start time written in it; a draw left ``drawing`` for
@@ -54,8 +59,10 @@ import csv
 import functools
 import hashlib
 import json
+import logging
 import os
 import re
+import stat
 import tempfile
 import threading
 import time
@@ -74,6 +81,8 @@ from olmoearth_agent.tools import estimation, inferencex
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.review_set import write_root
 
+logger = logging.getLogger(__name__)
+
 #: The format of a check's offer record (``<key>.json``).
 CHECK_FORMAT = "olmoearth-agent/check@1"
 
@@ -85,6 +94,21 @@ CHECKS_DIR = "checks"
 
 #: The log of presses, one JSON line each, in :data:`CHECKS_DIR`.
 LOG_NAME = "log.jsonl"
+
+#: The folder in :data:`CHECKS_DIR` that keeps the planned label counts
+#: (:func:`_planned`, round r5-i B11): one file per inputs, named by their
+#: sha256 (:func:`_planned_place`).
+PLANNED_DIR = "planned"
+
+#: The format of a kept planned answer (``planned/<sha256>.json``).
+PLANNED_FORMAT = "olmoearth-agent/check-planned@1"
+
+#: Days a kept planned answer stays in :data:`PLANNED_DIR` after it was last
+#: written (:func:`_prune_planned`, round r5-i B11): its inputs hold a digest
+#: of the app's modules, so each app update keeps new files and an older
+#: release's would stay for ever; one of this release older than this is
+#: planned again once.
+PLANNED_KEEP_DAYS = 30
 
 #: The interval widths (high minus low) the card's counts are planned for:
 #: widths of 20%, 10% and 5%, each at the package's planning rate.
@@ -448,15 +472,213 @@ def _whole(value: Any) -> int | None:
     return None
 
 
+#: The app's own modules that word :func:`_planned`'s answer beside the
+#: package's numbers (the counts' sentences, the offer's order): a kept
+#: answer names their digest, so a release that words it otherwise plans
+#: again (round r5-i B11).
+_PLANNED_SOURCES = (__file__, estimation.__file__, rules.__file__)
+
+#: The keys of each count of a planned answer (:func:`_plan_counts`).
+_OFFER_KEYS = frozenset({"labels", "width", "sentence", "rate_note"})
+
+#: The name of a kept planned answer (:func:`_planned_place`): the sha256 of
+#: its inputs; nothing else in :data:`PLANNED_DIR` is ever removed.
+_PLANNED_NAME = re.compile(r"[0-9a-f]{64}\.json")
+
+
+@functools.lru_cache(maxsize=1)
+def _planned_words() -> str | None:
+    """The sha256 of the app's modules that word a planned answer
+    (:data:`_PLANNED_SOURCES`), read once per process; ``None`` when one
+    cannot be read, and then nothing is kept on disk."""
+    digest = hashlib.sha256()
+    try:
+        for source in _PLANNED_SOURCES:
+            digest.update(Path(str(source)).read_bytes())
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _planned_inputs(n_valid: int, widths: tuple[float, ...]) -> dict[str, Any] | None:
+    """What a planned answer depends on, as its kept file names it (round
+    r5-i B11): the windows (``n_valid``), the ``widths``, the
+    olmoearth-inferencex version installed (``inferencex``) and the digest
+    of the app's modules that word it (``words``, :func:`_planned_words`);
+    ``None`` when the version or the digest is not known: nothing is kept."""
+    version = inferencex.version()
+    words = _planned_words()
+    if version is None or words is None:
+        return None
+    return {
+        "n_valid": n_valid,
+        "widths": list(widths),
+        "inferencex": version,
+        "words": words,
+    }
+
+
+def _planned_place(
+    n_valid: int, widths: tuple[float, ...]
+) -> tuple[Path, dict[str, Any]] | None:
+    """Where a planned answer is kept, with its inputs
+    (:func:`_planned_inputs`): ``<checks>/planned/<sha256 of the
+    inputs>.json``, the folder made (0700) when missing; ``None`` when
+    nothing is kept (the inputs not known, or the folder cannot be made or
+    is a link: logged by the error's kind)."""
+    inputs = _planned_inputs(n_valid, widths)
+    if inputs is None:
+        return None
+    text = json.dumps(inputs, sort_keys=True)
+    name = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    try:
+        folder = checks_dir() / PLANNED_DIR
+        folder.mkdir(mode=0o700, exist_ok=True)
+        if folder.is_symlink() or not folder.is_dir():
+            raise ValueError(UNREADABLE)
+        os.chmod(folder, 0o700)
+    except (OSError, ValueError) as exc:
+        logger.info("planned counts are not kept on disk (%s)", type(exc).__name__)
+        return None
+    return folder / f"{name}.json", inputs
+
+
+def _planned_shape(text: str, inputs: dict[str, Any]) -> bool:
+    """Whether ``text`` is an answer of the shape planning gives for
+    ``inputs`` (:func:`_plan_counts`): ``{"offer", "refused"}``; each count
+    :data:`_OFFER_KEYS`, its ``labels`` a whole number from 1 to the
+    windows, ascending and each once, its ``width`` one of the widths, its
+    ``sentence`` text and its ``rate_note`` text or ``None``; ``refused``
+    ``None`` beside a count, else text or ``None``."""
+    try:
+        answer = json.loads(text)
+    except (ValueError, RecursionError):
+        return False
+    if not isinstance(answer, dict) or set(answer) != {"offer", "refused"}:
+        return False
+    offer, refused = answer["offer"], answer["refused"]
+    if not isinstance(offer, list) or (offer and refused is not None):
+        return False
+    if refused is not None and not isinstance(refused, str):
+        return False
+    counts: list[int] = []
+    for item in offer:
+        if not isinstance(item, dict) or set(item) != _OFFER_KEYS:
+            return False
+        labels, note = item["labels"], item["rate_note"]
+        if isinstance(labels, bool) or not isinstance(labels, int):
+            return False
+        if not 1 <= labels <= inputs["n_valid"]:
+            return False
+        if item["width"] not in inputs["widths"]:
+            return False
+        if not isinstance(item["sentence"], str):
+            return False
+        if note is not None and not isinstance(note, str):
+            return False
+        counts.append(labels)
+    return counts == sorted(set(counts))
+
+
+def _kept_planned(path: Path, inputs: dict[str, Any]) -> str | None:
+    """The JSON text of the planned answer kept at ``path``, when it is one
+    for exactly ``inputs`` (:data:`PLANNED_FORMAT`) of the shape planning
+    gives (:func:`_planned_shape`); ``None`` when there is none, or it does
+    not parse, names other inputs or holds another shape (it is then planned
+    again and replaced)."""
+    try:
+        record = _read_json(path)
+    except ValueError:
+        return None
+    if record is None:
+        return None
+    if record.get("format") != PLANNED_FORMAT or record.get("inputs") != inputs:
+        return None
+    answer = record.get("answer")
+    if not isinstance(answer, str) or not _planned_shape(answer, inputs):
+        return None
+    return answer
+
+
+def _keep_planned(path: Path, inputs: dict[str, Any], text: str) -> None:
+    """Keep a planned answer at ``path`` (:data:`PLANNED_FORMAT`, its inputs
+    and its JSON text whole), written as every record is
+    (:func:`_write_json`: a new 0600 file beside it, moved over it, so no
+    reader sees half of it); one that cannot be written is logged by the
+    error's kind, and the answer stands. Once it is written, the kept
+    answers older than :data:`PLANNED_KEEP_DAYS` days are removed
+    (:func:`_prune_planned`)."""
+    record = {"format": PLANNED_FORMAT, "inputs": inputs, "answer": text}
+    try:
+        _write_json(path, record)
+    except (OSError, ValueError) as exc:
+        logger.info("planned counts were not kept on disk (%s)", type(exc).__name__)
+        return
+    _prune_planned(path)
+
+
+def _prune_planned(keep: Path) -> None:
+    """Remove the kept planned answers beside ``keep`` (the one just written)
+    last written more than :data:`PLANNED_KEEP_DAYS` days ago (round r5-i
+    B11): only regular files named as :func:`_planned_place` names them
+    (:data:`_PLANNED_NAME`), never ``keep``, a link, a folder, a staged file
+    or any other name, so two releases in use never remove each other's
+    fresh answers. A file that cannot be read or removed is logged by the
+    error's kind alone and stays; nothing here fails the answer."""
+    limit = time.time() - PLANNED_KEEP_DAYS * 86400
+    try:
+        entries = list(keep.parent.iterdir())
+    except OSError as exc:
+        logger.info("old planned counts were not looked at (%s)", type(exc).__name__)
+        return
+    for entry in entries:
+        if entry.name == keep.name or not _PLANNED_NAME.fullmatch(entry.name):
+            continue
+        try:
+            info = entry.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_mtime >= limit:
+                continue
+            entry.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.info("old planned counts were not removed (%s)", type(exc).__name__)
+
+
 @functools.lru_cache(maxsize=128)
 def _planned(n_valid: int, widths: tuple[float, ...]) -> str:
-    """:func:`offers`'s answer as JSON text, cached per ``(n_valid, widths)``.
+    """:func:`offers`'s answer as JSON text, cached per ``(n_valid, widths)``
+    in this process and, round r5-i B11, on this computer.
+
+    The package is loaded first, as before (``InferencexMissingError``
+    without it). Then the answer kept under the checks folder for the same
+    inputs (:func:`_planned_place`: the windows, the widths, the package's
+    version and the app's wording) is read and given as kept, the same JSON
+    text planning gave (:func:`_plan_counts`), so a card opened again in a
+    new server does not plan its counts again (44 s of a 67 s reopen,
+    measured on a two-part map). One that does not parse, names other
+    inputs or holds another shape is planned again and replaced; with
+    nothing kept (no version known, a folder that cannot be made) it plans
+    as before.
+    """
+    plan_pkg = inferencex.load("plan")
+    place = _planned_place(n_valid, widths)
+    if place is not None:
+        kept = _kept_planned(*place)
+        if kept is not None:
+            return kept
+    text = _plan_counts(plan_pkg, n_valid, widths)
+    if place is not None:
+        _keep_planned(*place, text)
+    return text
+
+
+def _plan_counts(plan_pkg: Any, n_valid: int, widths: tuple[float, ...]) -> str:
+    """The planned answer's JSON text (:func:`_planned`), as before round
+    r5-i.
 
     Each width is planned as the plan tool plans it
     (``estimation._label_budget_advice``): ``plan.plan_error_rate`` at the
     package's planning rate, kept under ``estimation._ADVICE_KEYS``.
     """
-    plan_pkg = inferencex.load("plan")
     by_count: dict[int, dict[str, Any]] = {}
     refused: str | None = None
     for width in sorted(widths, reverse=True):
@@ -501,7 +723,8 @@ def offers(n_valid: int, widths: Sequence[float] = CHECK_WIDTHS) -> dict[str, An
     widths plan one count), in ascending order: ``{"labels", "width",
     "sentence", "rate_note"}``. When no count survives, ``offer`` is empty
     and ``refused`` is the planner's sentence saying why. Cached per
-    ``(n_valid, widths)``; ``InferencexMissingError`` without the package.
+    ``(n_valid, widths)``, in this process and on disk (:func:`_planned`,
+    round r5-i B11); ``InferencexMissingError`` without the package.
     """
     count = _whole(n_valid)
     if count is None:

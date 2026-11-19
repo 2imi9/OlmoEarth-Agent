@@ -838,8 +838,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // Shown only once a save was refused because the sheet changed under the page.
   const reopenButton = OE.el('button', { class: 'primary', onclick: () => reopen() }, 'Reopen the sheet');
   // Beside it, what happened and what to do, at body size (r5-b J15): its
-  // words are W.changedElsewhere, set in updateProgress.
-  const staleLine = OE.el('span', { class: 'error' });
+  // words are W.changedElsewhere, set in updateProgress. It is the button's
+  // description (r5-i B7), so a screen reader that reaches the button, or is
+  // handed the focus there, hears what failed and what to do.
+  const staleLine = OE.el('span', { class: 'error', id: 'oe-stale-' + Math.random().toString(36).slice(2) });
+  reopenButton.setAttribute('aria-describedby', staleLine.id);
   // Where the finish press says what became of its message (OE.sendJob, r5-b J20): the sent line, or the text to type.
   const finishType = OE.typeSlot();
   const notice = OE.el('div', { class: 'small' });
@@ -1037,8 +1040,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       // size (W.changedElsewhere; W.notReadAgain where this panel's own
       // removal of a set of answers left a sheet it could not read again,
       // with everything saved before it). A Save button that had the focus as
-      // it goes hands it to "Reopen the sheet".
-      const hadFocus = !saveButton.hidden && saveButton.contains(document.activeElement);
+      // it goes hands it to "Reopen the sheet", and so does the notice's
+      // Remove button, which goes here too (r5-i B7: the focus fell to the
+      // page after a removal whose sheet could not be read again).
+      const hadFocus = (!saveButton.hidden && saveButton.contains(document.activeElement))
+        || notice.contains(document.activeElement);
       saveButton.hidden = true;
       // Hidden, it is no contained button either: the page keeps one.
       saveButton.className = '';
@@ -2122,10 +2128,13 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      markStale, and save's on a press of Save then): the last one is kept,
      so that oeLeave clears it while it is still the one shown (r4-l L3).
      Save's toast that the changes not saved here are not kept is not one:
-     it is about an unsaved change, and stays. */
-  function reopenToast(text) {
+     it is about an unsaved change, and stays. Each is an error but the
+     clear's whose sheet could not be read again (isError false, r5-i B7):
+     that the answers went is no error, so it is said politely; the footer
+     says what failed, as Reopen the sheet's description. */
+  function reopenToast(text, isError = true) {
     state.reopenSaid = text;
-    OE.toast(text, true);
+    OE.toast(text, isError);
   }
 
   /* "Square 4", "Squares 4 and 9", "Squares 2, 4 and 9" (the sheet's unit
@@ -2376,13 +2385,16 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
           const fresh = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.path, face: to });
           // WORDING: r5b J21
           replaceEditor(fresh, 'Removed: the ' + answersOf(column) + '.');
-        } catch (err) {
+        } catch (_) {
           // Nothing changed the file but this panel: the footer says the read
-          // failed (W.notReadAgain), not that it changed elsewhere.
+          // failed (W.notReadAgain), not that it changed elsewhere, beside
+          // its Reopen button, which markStale hands the pressed button's
+          // focus and which that line describes; the toast says only which
+          // answers went, a plain message (r5-i B7: it said the failure a
+          // second time, with the raw error, as an error).
           markStale('read');
-          // WORDING: r5b J21
-          reopenToast('The ' + answersOf(column) + ' were removed, but the sheet could not be read again: '
-            + bare(err.message || 'it could not be read') + '. Reopen it to go on.');
+          // WORDING: r5i B7
+          reopenToast('The ' + answersOf(column) + ' were removed.', false);
         }
       }
     } finally {

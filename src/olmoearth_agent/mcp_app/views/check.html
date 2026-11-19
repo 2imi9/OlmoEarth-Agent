@@ -70,10 +70,25 @@
   .oe-examples { display: flex; flex-wrap: wrap; gap: 12px; }
   .oe-examples figure { margin: 0; width: 120px; max-width: 100%; display: flex; flex-direction: column; gap: 4px; }
   .oe-examples img { display: block; width: 100%; height: auto; border: 1px solid var(--divider); border-radius: 4px; }
+  /* A card whose map is being prepared (r5-h H1): one line, a quiet mark
+     that turns beside its words. The mark holds no number (nothing says how
+     much is done), is hidden from a screen reader, and stands still for a
+     reader who asks for less motion. */
+  .oe-preparing { display: flex; align-items: center; gap: 8px; }
+  .oe-prep-mark { flex: none; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--divider);
+    border-top-color: var(--text-2); animation: oe-prep-turn 1.6s linear infinite; }
+  @keyframes oe-prep-turn { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .oe-prep-mark { animation: none; } }
+  /* What a screen reader hears when a preparing card fills in or ends (r5-h
+     H1, #oe-check-said): a status outside #root, so it outlives the card it
+     speaks for, and on no face (as .oe-type's empty slot). */
+  .oe-said-hidden { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%);
+    white-space: nowrap; }
 </style>
 </head>
 <body>
 <main id="root" class="stack"><div class="muted">Waiting for the result...</div></main>
+<div id="oe-check-said" class="oe-said-hidden" role="status" aria-live="polite"></div>
 <script>
 // WORDING: r4k K2
 setTimeout(function(){if(!window.OE_STARTED){var r=document.getElementById('root');if(r)r.textContent='This card could not start here. Carry on in the chat.';}},10000);
@@ -116,7 +131,13 @@ import { App } from "@EXT_APPS_URL@";
    without scores gets the refusal's face: two lines, a button that sends
    Claude the check on points (OE.JOB_TEXT.points) and the tool's sentence
    in Details. A map of numbers that is not a score from 0 to 1 gets the
-   server's two plain lines and nothing else (r5-b X1).
+   server's two plain lines and nothing else (r5-b X1). A map still being
+   prepared on the server (r5-h H1: a large map's first read runs past the
+   server's own wait, CHECK_WAIT_SECONDS, 20 s, which keeps the answer well
+   inside the host's limit) gets the title, its map's line when known, the
+   four steps and one line on how far the preparation is, and asks
+   olmoearth_app_check_status until the map is ready, then draws the card
+   above with the same function (preparingCard, show).
 
    Nothing is picked for the user (a second press on a count unpicks it). One
    press (olmoearth_app_check_draw) picks the parts' squares, each once, with
@@ -143,7 +164,14 @@ import { App } from "@EXT_APPS_URL@";
    Claude silently (OE.tellClaude) the result's id and, by zone name, which
    zones are drawn, with each sheet's counts, name and path: ids and counts
    only, each zone a clause of its own, cut only between clauses
-   (OE.fitClauses). Never the map's Studio name, nor the typed rule.
+   (OE.fitClauses). Never the map's Studio name, nor the typed rule. A card
+   of parts that became ready (preparingCard) adds, once, in a block of its
+   own after those facts and under its own lead (READY_TOLD, never the
+   facts' head), the server's own text for Claude (r5-i B10: model_text,
+   olmoearth_check_map's answer in time word for word, the server's notes
+   included, and so the map's pinned rule, labelling_rule, a typed one too,
+   as that answer holds it), never anything the card read or the user typed
+   here.
 
    One press is one call, of at most draws_max parts (the server's limit,
    in the view data): the failed picks it retries first, at most draws_max
@@ -197,11 +225,16 @@ const ASK = 'How many squares do you want to check?';
    with nothing to choose): every picked part answered whole and no sheet
    open here, or, any other way, the squares picked. r5-f F11: "the sheet"
    on a map in one part (it said "a sheet" on a map with one), "a part's
-   sheet" on a map in parts (several). */
+   sheet" on a map in parts (several). r5-i B2: "each part's sheet in turn"
+   when more than one part has a sheet (several: fillAsk), since one press
+   gives one part's result, never the map's; "the sheet" when one part has
+   one, on a map in parts too whose other parts cannot be checked or failed
+   for good. */
+// WORDING: r5i B2
 // WORDING: r5f F11
 // WORDING: r5b J17
-const ALL_ANSWERED = (several) => 'Every square is answered. Open ' + (several ? 'a part\'s sheet' : 'the sheet')
-  + ', then press Estimate the error rate.';
+const ALL_ANSWERED = (several) => 'Every square is answered. Open '
+  + (several ? 'each part\'s sheet in turn' : 'the sheet') + ', then press Estimate the error rate.';
 // WORDING: r5b J17
 const YOUR_SQUARES = 'Your squares';
 /* One line under the question (r5-e K1), while a part offers more than one
@@ -409,13 +442,22 @@ const FINAL = 'This part cannot be picked again here. Tell Claude that the pick 
    do, in plain words. The server's reason, which may name the sheet's file
    and a step no button here does ("plan the sample again"), is in the
    part's lines in Details, after the words the face said before
-   (SHEET_UNREAD_WHY, SHEET_NOT_OPENED_WHY). */
+   (SHEET_UNREAD_WHY, SHEET_NOT_OPENED_WHY). r5-i B1: before any press, a
+   sheet that could not be read when the card opened says to press the
+   button, by its own label in double quotes (SHEET_TRY: one press often
+   opens it); SHEET_UNREAD, red, which sends the user to Claude, comes only
+   once a press failed too. SHEET_NOT_OPENED names the button the same way
+   (button: the open button's label as the part draws it). */
 // WORDING: r5f F04
 const SHEET_UNREAD = (name) => 'Its sheet cannot be opened now. Tell Claude that the sheet'
   + (name ? ' of ' + name : '') + ' cannot be opened.';
+// WORDING: r5i B1
+const SHEET_TRY = (name, button) => 'The sheet' + (name ? ' of ' + name : '') + ' could not be read when this card'
+  + ' opened. Press "' + button + '" to try again; if it does not open, tell Claude.';
+// WORDING: r5i B1
 // WORDING: r5f F04
-const SHEET_NOT_OPENED = 'The sheet could not be opened. Press the button to try again; if it fails again, tell'
-  + ' Claude.';
+const SHEET_NOT_OPENED = (button) => 'The sheet could not be opened. Press "' + button + '" to try again; if it'
+  + ' fails again, tell Claude.';
 // WORDING: r5f F04 (in Details since r5-f)
 const SHEET_UNREAD_WHY = 'Its sheet cannot be read now: ';
 // WORDING: r5f F04 (in Details since r5-f)
@@ -492,6 +534,13 @@ const RETRY_LATER = (n) => 'Not in this press: it waits for a later press of Pic
 // WORDING: r5b J25
 // WORDING: squares
 const NOT_READ = 'This part cannot be checked: ';
+/* A part that cannot be read as a map, on its face (r5-i B3): plain words.
+   The server's reason ("patch 11 px is larger than the 6 x 9 map", or a
+   read refusal that names a zone) is in the part's lines in Details, after
+   NOT_READ, which now serves Details only. */
+// WORDING: r5i B3
+// WORDING: squares
+const NOT_READ_FACE = 'This part cannot be checked: the app could not cut its map into squares.';
 // WORDING: squares
 const NO_PART = 'No part of this map can be checked here.';
 // The card when the check could not start (r5-d R01: it was one red line in
@@ -503,6 +552,88 @@ const NO_PART = 'No part of this map can be checked here.';
 // WORDING: r5d R01
 const CHECK_FAILED = 'The check could not start. Anything picked or saved before is kept. Ask Claude what to do next:'
   + ' it has the reason.';
+/* A card that opened while its map is being prepared (r5-h H1): one line,
+   the server's stage (a few fixed plain lines the preparation sets as it
+   goes) after PREPARING's words, "Preparing this map." while it has none;
+   past PREP_LIMIT_MS, PREP_TOO_LONG in its place; PREP_NO_ID when the view
+   names no result to ask about (the server always names one). */
+// WORDING: r5h
+const PREPARING = (stage) => 'Preparing this map' + (stage ? ': ' + bare(stage) : '') + '.';
+// WORDING: r5h
+const PREP_TOO_LONG = 'Preparing this map took too long. Ask Claude to open the Check card again.';
+// WORDING: r5h
+const PREP_NO_ID = 'This card cannot tell when the map is ready. Ask Claude to open the Check card again.';
+/* What a screen reader hears (#oe-check-said) once a preparing card's map is
+   ready and the card of parts is drawn, or once it ended with any other card
+   (the failed card, a sign-in, a refusal, no part to check): the preparing
+   line, the card's one status, goes with the card it was on. */
+// WORDING: r5h
+const PREP_SAID_READY = 'The map is ready to check.';
+// WORDING: r5h
+const PREP_SAID_ENDED = 'The map could not be made ready to check.';
+/* What a preparing card tells Claude (OE.tellClaude, facts and ids; the
+   card's own words only as quoted data): that the card fills in by itself;
+   that it stopped waiting; that the preparation ended without a check, with
+   the words the card shows for it (cardWords), which Claude's own text never
+   had (it said only that the map was being read), so the failed card's "it
+   has the reason" holds; "the card gives no reason" when it shows none. A
+   card that becomes ready tells its parts as a card that opened ready does
+   (tellCard). */
+// WORDING: r5h (to Claude)
+const PREP_TOLD = (id) => 'Check card of Studio result_id ' + OE.ctxId(id)
+  + ': its map is still being prepared; the card fills in by itself.';
+// WORDING: r5h (to Claude)
+const PREP_TOLD_LONG = (id) => 'Check card of Studio result_id ' + OE.ctxId(id)
+  + ': the card stopped waiting for its map after 10 minutes; it asks the user to have Claude open the Check card'
+  + ' again (olmoearth_check_map).';
+// WORDING: r5h (to Claude)
+const PREP_TOLD_FAILED = (id, why) => 'Check card of Studio result_id ' + OE.ctxId(id)
+  + ': its map\'s preparation ended without a check to offer'
+  + (why ? '; the card\'s words, as data: ' + why : '; the card gives no reason') + '.';
+/* r5-i B10: a ready status carries model_text, the text Claude would have
+   read from an olmoearth_check_map call that ended in time (the server's
+   ready text: the card's note, the say-first lines, must_state). The card
+   passes it to Claude once, silently, as a part of its own ('check') after
+   the parts line (tellCard), so Claude states what it must without a second
+   call, which in Claude Desktop would draw a second Check card of the same
+   map. None of it is on the card. It is that tool's answer, not a panel's
+   fact, so it goes whole (OE.tellClaude's whole: never cut, outside
+   CONTEXT_MAX, so must_state and forbidden_claims always reach Claude) as a
+   text block of its own after the facts, under its own lead, READY_TOLD,
+   never under CONTEXT_HEAD; every later update of the card (a press, an
+   open sheet) carries it too. Only a card of parts passes it: a ready card
+   with nothing to check tells Claude it ended without a check
+   (PREP_TOLD_FAILED), which "Its map is read" would contradict. Over
+   OE.CONTEXT_WHOLE_MAX the card passes READY_TOLD_LONG instead, never a cut
+   text. show drops the part before it draws any card: it is one result's. */
+// WORDING: r5i B10 (to Claude)
+const READY_TOLD = 'Its map is read. What olmoearth_check_map answers for it, to take as that tool\'s answer: ';
+// WORDING: r5i B10 (to Claude)
+const READY_TOLD_LONG = (id) => 'Its map is read. What olmoearth_check_map answers for it is too long for this card'
+  + ' to hand on: call olmoearth_check_map once for Studio result_id ' + OE.ctxId(id)
+  + ' before you state any result of it.';
+/* A status answer's model_text when it holds text (B10), else null. */
+const modelTextOf = (got) => (got && typeof got.model_text === 'string' && got.model_text.trim()
+  ? got.model_text : null);
+/* The words a card drawn from a status shows for why it holds no check (a
+   refusal's reason, else the server's plain error, in the failed card's
+   Details or on its face), for Claude: quoted as data on one line (much as
+   OE.dataName: each run of control characters and white space, line and
+   paragraph breaks included, one space; at most 300 characters, so the
+   update stays within CONTEXT_MAX with the longest id), or null when the
+   card shows none. */
+const cardWords = (view) => {
+  const said = [view.reason, view.error].find((s) => typeof s === 'string' && s.trim());
+  return said
+    ? JSON.stringify(said.replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, ' ').trim().slice(0, 300))
+    : null;
+};
+/* A map's line, its name and period as the view data's map gives them ('' when it gives neither). */
+const mapLineOf = (map) => (map && typeof map === 'object'
+  ? [map.name, map.period_text].filter((s) => typeof s === 'string' && s).join(', ') : '');
+/* The status a screen reader hears when a preparing card fills in or ends (PREP_SAID_READY, PREP_SAID_ENDED):
+   kept in the page outside #root, emptied by show before it draws any card. */
+const heard = document.getElementById('oe-check-said');
 
 /* How long one press may take to answer (ms): the server's own limit for a
    draw under way (check.STALE_SECONDS, 600 s), past which a draw is shown as
@@ -514,6 +645,18 @@ const DRAWS_MAX = 16;
 /* The gate's rule: at least this many characters (the server checks 10 to 300). */
 const RULE_MIN = 10;
 const RULE_MAX = 300;
+/* A preparing card (r5-h H1): how long after each answer it asks
+   olmoearth_app_check_status again (ms), how long one ask may wait for its
+   answer before it counts as failed and is asked again, and how long the
+   card waits in all, from when it was drawn, before it says the map took
+   too long (PREP_TOO_LONG). */
+const PREP_ASK_MS = 2000;
+const PREP_ASK_WAIT_MS = 15000;
+const PREP_LIMIT_MS = 600000;
+/* Stops the asks of the preparing card drawn last (preparingCard): show
+   runs it before it draws any card, so a card drawn again in its place
+   (Claude opened the Check card again) never gets an older card's answer. */
+let stopAsking = () => {};
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -593,9 +736,12 @@ function zoneModel(z, index) {
     refused: z.refused, refusedAt: z.refused_at, changed: Boolean(z.raster_changed), changedText: null,
     // The server's line on pixels set into 0 to 1 (a score map, r5-a K2), for Details; else null.
     clipped: typeof z.clipped === 'string' && z.clipped ? z.clipped : null,
-    // sheetError: the face's line when its sheet did not open on a press; sheetWhy: the reason, for Details (F04).
+    // sheetError: true once its sheet did not open on a press (the face's red line: fillZone, r5-i B1); sheetWhy:
+    // the reason, for Details (F04).
     line: null, fresh: false, repeat: false, sheetError: null, sheetWhy: null, opening: false, reads: 0,
     body: null, heading: null, openButton: null, progressEl: null, group: null,
+    // named: the open button's label a line of the part names (r5-i B1: SHEET_TRY, SHEET_NOT_OPENED), else null.
+    named: null,
   };
   if (z.state === 'drawn' && z.draw && typeof z.draw.labels_csv_path === 'string' && z.draw.labels_csv_path) {
     m.kind = 'drawn';
@@ -690,6 +836,11 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   const label = (m) => m.part || PART_N(m.index + 1);
   const cardNotes = new Set(must.filter((s) => typeof s === 'string'));
   const resolved = typeof data.resolved === 'string' && data.resolved ? data.resolved : null;
+  /* r5-h H2: the server's one line when the map was read from this
+     computer's copy of Studio's files (server.CHECK_COPY_LINE), said once,
+     in Details; null when the files were downloaded now. */
+  // WORDING: r5h (the server's words, shown whole)
+  const copyLine = typeof data.read_from_copy === 'string' && data.read_from_copy ? data.read_from_copy : null;
   /* A score map's cut (r5-a K3): the server's one line (server.CHECK_CUT_LINE),
      read only, right over the gate whatever the gate shows; null for any other map. */
   // WORDING: r5a K3 (the server's words, shown whole)
@@ -966,6 +1117,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     m.openButton = null;
     m.progressEl = null;
     m.group = null;
+    m.named = null;
     if (m.kind === 'pick') {
       parts.push(countsBlock(m));
     } else if (m.kind === 'retry') {
@@ -985,18 +1137,28 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       // parts; the server's reason (it may name the sheet's file) is in Details (fillFold). When a press of its
       // button failed too, that one line turns red, so the press visibly got its answer, and SHEET_NOT_OPENED is
       // not drawn beside it: the sheet failed twice (the card's read, the press), so the line stays the one that
-      // says to tell Claude, not one that says to press again.
+      // says to tell Claude, not one that says to press again. r5-i B1: before any press the line says to press
+      // the button, by the label drawn on it below (SHEET_TRY), in body type; SHEET_UNREAD, red, only after a
+      // press failed. The red line of a press that failed names the button by that same label (SHEET_NOT_OPENED);
+      // a read of the counts that changes the label draws the part again (refreshZone, m.named).
+      const button = d.open_label || 'Open the sheet';
       const unread = Boolean(d.sheet_error) && !d.progress;
       if (unread) {
-        parts.push(OE.el('div', m.sheetError ? { class: 'error' } : {}, SHEET_UNREAD(nParts > 1 ? label(m) : null)));
+        parts.push(m.sheetError ? OE.el('div', { class: 'error' }, SHEET_UNREAD(nParts > 1 ? label(m) : null))
+          : OE.el('div', {}, SHEET_TRY(nParts > 1 ? label(m) : null, button)));
       }
       if (m.changed) parts.push(OE.el('div', { class: 'error' }, m.changedText || CHANGED));
-      if (m.sheetError && !unread) parts.push(OE.el('div', { class: 'error' }, m.sheetError));
+      if (m.sheetError && !unread) parts.push(OE.el('div', { class: 'error' }, SHEET_NOT_OPENED(button)));
+      // The label one of those two lines names (SHEET_TRY or SHEET_NOT_OPENED), for refreshZone (r5-i B1).
+      m.named = (unread && !m.sheetError) || (!unread && m.sheetError) ? button : null;
       if (opened === m) {
         parts.push(OE.el('div', { class: 'small muted' }, OPEN_HERE));
       } else {
         m.openButton = OE.el('button', { class: primary === m ? 'primary' : '', onclick: () => openZone(m) },
-          d.open_label || 'Open the sheet');
+          button);
+        // r5-i B1, after review: a part drawn again while a press is answered or its sheet opens (a read of the
+        // counts, refreshZone) keeps its button off, as the press and openZone set it; both clear before renderAll.
+        if (busy || m.opening) m.openButton.setAttribute('aria-disabled', 'true');
         parts.push(OE.el('div', { class: 'row' }, m.openButton));
       }
     } else if (m.kind === 'busy') {
@@ -1012,7 +1174,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     } else if (m.refusedAt === 'plan') {
       parts.push(OE.el('div', {}, NO_COUNT));
     } else if (m.refusedAt === 'read') {
-      parts.push(OE.el('div', {}, NOT_READ + bare(m.refused || 'no reason was given') + '.'));
+      // r5-i B3: plain words on the face; the server's reason is in Details (fillFold).
+      parts.push(OE.el('div', {}, NOT_READ_FACE));
     } else {
       parts.push(OE.el('div', {}, NO_COUNT));
     }
@@ -1025,14 +1188,17 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      answered and how to get the result, when no sheet is open here, a part
      is picked, every picked part's counts say it is answered whole and no
      part may still be picked elsewhere (pressed with no reply, being picked,
-     or left for a later card); any other way, "Your squares". The line
-     under it on what more squares give (r5-e K1) shows only while a part
-     offers more than one number. */
+     or left for a later card); any other way, "Your squares". "Each part's
+     sheet in turn" (ALL_ANSWERED, r5-i B2) when more than one part has a
+     sheet, "the sheet" when one does, on a map in parts too whose other
+     parts cannot be checked or failed for good (no sheet, no button). The
+     line under it on what more squares give (r5-e K1) shows only while a
+     part offers more than one number. */
   function fillAsk() {
     const drawn = models.filter((m) => m.kind === 'drawn');
     const pending = models.some((m) => m.kind === 'unknown' || m.kind === 'busy' || m.kind === 'later');
     const done = opened === null && drawn.length > 0 && !pending && drawn.every((m) => complete(m.draw));
-    ask.textContent = drawable().length ? ASK : done ? ALL_ANSWERED(nParts > 1) : YOUR_SQUARES;
+    ask.textContent = drawable().length ? ASK : done ? ALL_ANSWERED(drawn.length > 1) : YOUR_SQUARES;
     moreLine.hidden = !models.some((m) => m.kind === 'pick' && m.offer.length > 1);
   }
 
@@ -1078,6 +1244,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
           .forEach((n) => lines.push(OE.el('div', { class: 'small muted' }, n)));
       }
       if (m.refusedAt === 'plan' && m.refused) lines.push(OE.el('div', { class: 'small muted' }, String(m.refused)));
+      // r5-i B3: why a part cannot be read as a map, in the server's words (its face says NOT_READ_FACE).
+      if (m.refusedAt === 'read' && m.refused) lines.push(OE.el('div', { class: 'small muted' }, NOT_READ + bare(m.refused) + '.'));
       if (m.kind === 'drawn' && m.draw) {
         lines.push(OE.el('div', {}, 'Drawn ' + m.draw.pressed_at + ': ' + settings(m.draw) + '.'));
         const planNotes = (Array.isArray(m.draw.must_state) ? m.draw.must_state : [])
@@ -1099,6 +1267,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     // Studio's raw scores: a class map's top-k scores (a [0, 1] score map is its score).
     if (data.kind !== 'unit_score') nodes.push(OE.el('p', {}, RAW_SCORES));
     if (resolved) nodes.push(OE.el('div', { class: 'small muted' }, resolved));
+    // r5-h H2: read from this computer's copy, with when it was downloaded (the server's line).
+    if (copyLine) nodes.push(OE.el('div', { class: 'small muted', id: 'oe-check-copy' }, copyLine));
     if (cardNotes.size) nodes.push(notesBlock([...cardNotes]));
     foldBody.replaceChildren(...nodes);
   }
@@ -1135,7 +1305,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      (the user comes back, say, from saving it again as the reason in Details
      says) no longer says it cannot be opened (r5-f F04): its part and Details
      are drawn again, the focus kept on its open button. A press of that
-     button that failed is another read, so its line stays. */
+     button that failed is another read, so its line stays. r5-i B1: a line
+     that names the open button follows a label these counts changed (the
+     part drawn again, the focus kept on the button). */
   async function refreshZone(m) {
     if (!m.draw || !m.draw.labels_csv_path) return;
     const mine = ++m.reads;
@@ -1157,6 +1329,13 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       m.draw.sheet_error = null;
       fillZone(m);
       fillFold();
+      if (had) OE.focusIfHere(m.openButton);
+    }
+    // r5-i B1: a line of the part that names its open button (m.named) follows a label these counts changed: the
+    // part is drawn again, the focus kept on that button.
+    if (m.named && m.named !== (m.draw.open_label || 'Open the sheet')) {
+      const had = Boolean(m.openButton) && document.activeElement === m.openButton;
+      fillZone(m);
       if (had) OE.focusIfHere(m.openButton);
     }
     fillAsk();
@@ -1298,8 +1477,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      press is answered. A sheet that cannot be read keeps the open button and
      says to press it again, and to tell Claude if it fails again; why is in
      Details (r5-f F04). When its sheet could not be read when the card opened
-     either, its line that says to tell Claude turns red instead (fillZone),
-     and Details says the reason once. An editor that stopped saving (its sheet changed under the
+     either, its line that said to press (SHEET_TRY, r5-i B1) gives way to the
+     red one that says to tell Claude (SHEET_UNREAD; fillZone), and Details
+     says the reason once. An editor that stopped saving (its sheet changed under the
      panel) gives way without a save, and once the other sheet is open its
      part says in its own red line, and one toast in the same words, how
      many of its answers were not saved and what to do (NOT_SAVED_PART, r5-b
@@ -1317,7 +1497,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     const current = opened !== null ? action.querySelector('section.sheet') : null;
     if (current && typeof current.oeSettle === 'function' && !(await current.oeSettle())) {
       m.opening = false;
-      if (button) button.setAttribute('aria-disabled', 'false');
+      // The button on the card now (a read of the counts may have drawn the part again meanwhile, r5-i B1), still
+      // off while a press that started meanwhile is answered.
+      if (m.openButton) m.openButton.setAttribute('aria-disabled', String(busy));
       OE.toast(NOT_SWAPPED, true);
       return;
     }
@@ -1327,8 +1509,9 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
       sheet = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: m.draw.labels_csv_path });
     } catch (err) {
       m.opening = false;
-      // The face says what to do; the reason, in the server's words, goes to Details (r5-f F04, fillFold).
-      m.sheetError = SHEET_NOT_OPENED;
+      // The face says what to do; the reason, in the server's words, goes to Details (r5-f F04, fillFold). r5-i
+      // B1: fillZone words the red line, naming the open button by the label it draws (SHEET_NOT_OPENED).
+      m.sheetError = true;
       m.sheetWhy = bare(err.message || 'it could not be read');
       renderAll();
       if (had) OE.focusIfHere(m.openButton);
@@ -1454,6 +1637,121 @@ function numberMapCard(data, next) {
     OE.el('div', {}, data.error), OE.el('div', {}, next)));
 }
 
+/* A card whose map is still being prepared (r5-h H1: the view data says
+   preparing, with no zones, when the server's read of a large map runs
+   past its wait for a tool call): the title, the map's line when the view
+   has it, or once a status answer gives it (under the title, drawn once),
+   the four step panels (step 1 as written: no part's square is known yet)
+   and one line (PREPARING with the server's stage, a status that a screen
+   reader hears change, written only when its words change) beside a quiet
+   mark that turns. No press, no counts, no rule and no box, so nothing can
+   be picked or typed before the card fills in. Every PREP_ASK_MS after an
+   answer the card asks olmoearth_app_check_status about its result (an ask
+   that fails, or whose answer it cannot read, is asked again): preparing,
+   its line takes the new stage; ready, show draws the status's view, the
+   same view data a map read in time gives, so the card is the one a card
+   that opened ready is, and it tells Claude its parts as that card does
+   (tellCard), then, once, for a card of parts, what olmoearth_check_map
+   would have answered in time (the status's model_text after READY_TOLD,
+   part 'check', sent whole as a block of its own after the facts, r5-i B10:
+   so Claude needs no second call, which would draw a second card; none of
+   it on the card); failed, show draws the failed card from the status's view
+   (r5-a K4, r5-d R01), and Claude is told that the preparation ended
+   without a check, with the words that card shows for it
+   (PREP_TOLD_FAILED, cardWords), as for a ready card with no part to
+   check. Either way a screen reader hears it (#oe-check-said:
+   PREP_SAID_READY for a card of parts, else PREP_SAID_ENDED); the focus
+   stays where it is. From PREP_LIMIT_MS after it was drawn the card asks
+   no more and says the map took too long (PREP_TOO_LONG). The asks stop
+   when another card is drawn in its place (stopAsking, run by show) and
+   when Claude closes the panel (OE.cleanups). */
+function preparingCard(app, data) {
+  const title = OE.el('h2', {}, TITLE);
+  root.append(title);
+  const mapLine = mapLineOf(data.map);
+  let lined = Boolean(mapLine);
+  if (lined) root.append(OE.el('div', { class: 'small muted' }, mapLine));
+  const steps = fig('steps', [...STEPS]);
+  if (steps) root.append(steps);
+  const stageOf = (s) => (typeof s === 'string' && s.trim() ? s.trim() : null);
+  const words = OE.el('span', {}, PREPARING(stageOf(data.stage)));
+  const mark = OE.el('span', { class: 'oe-prep-mark', 'aria-hidden': 'true' });
+  root.append(OE.el('div', { class: 'oe-preparing', id: 'oe-check-preparing', role: 'status' }, mark, words));
+  const resultId = typeof data.result_id === 'string' && data.result_id ? data.result_id : null;
+  if (!resultId) {
+    mark.remove();
+    words.textContent = PREP_NO_ID;
+    return;
+  }
+  OE.tellClaude(app, PREP_TOLD(resultId));
+  const since = Date.now();
+  let stopped = false;
+  let timer = null;
+  const stop = () => {
+    stopped = true;
+    clearTimeout(timer);
+    OE.cleanups.delete(stop);
+  };
+  stopAsking = stop;
+  OE.cleanups.add(stop);
+  const tooLong = () => {
+    stop();
+    mark.remove();
+    words.textContent = PREP_TOO_LONG;
+    OE.tellClaude(app, PREP_TOLD_LONG(resultId));
+  };
+  const ask = async () => {
+    if (stopped) return;
+    if (Date.now() - since >= PREP_LIMIT_MS) { tooLong(); return; }
+    let got = null;
+    try {
+      got = await OE.call(app, 'olmoearth_app_check_status', { result_id: resultId }, { timeout: PREP_ASK_WAIT_MS });
+    } catch (_) { got = null; }
+    if (stopped) return;
+    const state = got && typeof got.state === 'string' ? got.state : null;
+    // The status's view, as show reads a tool result's (OE.viewData: an app tool's structuredContent); never a
+    // preparing one again, which would draw this card anew.
+    const view = got && got.view && typeof got.view === 'object' && got.view.preparing !== true ? got.view : null;
+    if ((state === 'ready' && view) || state === 'failed') {
+      stop();
+      const drawn = view || { tool: 'olmoearth_check_map', ok: false };
+      show(app, { structuredContent: drawn });
+      // A card of parts tells Claude its own parts (tellCard); any other card (the failed card, a sign-in, a card
+      // with no part to check) tells nothing, so Claude is told that the preparation ended without a check, with
+      // the words that card shows for it (cardWords).
+      const parts = drawn.ok === true && Array.isArray(drawn.zones)
+        && drawn.zones.some((z) => z && typeof z === 'object');
+      // The preparing line, the card's status, went with it: a screen reader hears the card fill in or end here.
+      if (heard) heard.textContent = parts ? PREP_SAID_READY : PREP_SAID_ENDED;
+      if (!parts) OE.tellClaude(app, PREP_TOLD_FAILED(resultId, cardWords(drawn)));
+      // r5-i B10: what olmoearth_check_map would have answered in time, once, after the card's own line (tellCard);
+      // never on the card. Only a ready answer of a card of parts carries it (none says "Its map is read" beside
+      // PREP_TOLD_FAILED). Whole, in a block of its own: never cut, and never under the facts' head.
+      const told = state === 'ready' && parts ? modelTextOf(got) : null;
+      if (told) {
+        const said = READY_TOLD + told;
+        OE.tellClaude(app, said.length <= OE.CONTEXT_WHOLE_MAX ? said : READY_TOLD_LONG(resultId), 'check',
+          { whole: true });
+      }
+      return;
+    }
+    if (state === 'preparing') {
+      // A status says its line once per stage, not on every answer (a write would be heard again).
+      const next = PREPARING(stageOf(got.stage));
+      if (words.textContent !== next) words.textContent = next;
+      // The map's line once the server knows it (after the download), under the title, once.
+      const later = lined ? '' : mapLineOf(got.map);
+      if (later) {
+        title.after(OE.el('div', { class: 'small muted' }, later));
+        lined = true;
+      }
+    }
+    if (Date.now() - since >= PREP_LIMIT_MS) { tooLong(); return; }
+    timer = setTimeout(ask, PREP_ASK_MS);
+  };
+  timer = setTimeout(ask, PREP_ASK_MS);
+}
+
 /* The Studio sign-in, as the result card offers it; once signed in, one
    contained button asks Claude to run the check again. */
 function signIn(app, tool) {
@@ -1478,9 +1776,20 @@ function signIn(app, tool) {
   return panel;
 }
 
+/* The card for a tool result's view data, or for the view a preparing
+   card's status gave (preparingCard: one function for a card that opened
+   ready and for one that became ready, r5-h H1). Any preparing card drawn
+   before stops asking first, and what a screen reader last heard of one
+   (#oe-check-said) is emptied, so each card starts silent. r5-i B10: what a
+   card that became ready passed on to Claude for its result (part 'check')
+   is dropped, so a card drawn in its place, for its own tool result, never
+   carries an older result's text. */
 function show(app, params) {
+  stopAsking();
+  if (heard) heard.textContent = '';
   const data = OE.viewData(params);
   OE.disposeEditors(root);
+  OE.tellClaude(app, '', 'check');
   root.replaceChildren(OE.el('div', { class: 'overline' }, 'Accuracy check'));
   if (data.needs_sign_in) {
     root.append(signIn(app, data.tool || 'olmoearth_check_map'));
@@ -1514,6 +1823,11 @@ function show(app, params) {
   }
   const zones = (Array.isArray(data.zones) ? data.zones : []).filter((z) => z && typeof z === 'object');
   const must = Array.isArray(data.must_state) ? data.must_state : [];
+  // The map is still being prepared on the server (r5-h H1): its card fills in by itself.
+  if (data.preparing === true) {
+    preparingCard(app, data);
+    return;
+  }
   if (zones.length) {
     const most = Number.isInteger(data.draws_max) && data.draws_max > 0 ? data.draws_max : DRAWS_MAX;
     checkCard(app, data, zones, must, typeof data.result_id === 'string' ? data.result_id : null, most);

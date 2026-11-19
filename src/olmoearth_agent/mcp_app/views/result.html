@@ -198,6 +198,18 @@ const FIGURE_LATER = "The plan's figure shades the map by its confidence, so it 
    finding 13: the same words for a sheet of squares or of points). */
 // WORDING: r4p2
 const OPEN_FIRST = 'Open the sheet here';
+/* The lead's second line while every square (or point) of the sheet is
+   answered and the sheet is not open here (r5-i B4): the server's "Answer
+   every one on the sheet to get the result." no longer names the next step
+   then. It names the open button by its label, in double quotes (a pointer
+   to the button, as the Check card's lines do, r5-i B1), never bare (design
+   rule R4: a lead line holds no button's own words): at a whole sheet that
+   label is always the server's sheet.OPEN_DONE. It names no unit and no
+   finish button, so it holds for a sheet of points and for a certificate's
+   finish label; a read whose count drops below the whole sheet puts the
+   server's words back. */
+// WORDING: r5i B4
+const PLAN_ALL_ANSWERED = 'Every one is answered. Press "Open the sheet" to get the result.';
 function sheetButton(app, data, figureSlot) {
   const slot = OE.el('div', { class: 'stack' });
   const count = OE.el('span', { class: 'small', id: 'oe-sheet-progress' });
@@ -237,6 +249,9 @@ function sheetButton(app, data, figureSlot) {
       button.setAttribute('aria-disabled', 'true');
       try {
         const sheet = await OE.call(app, 'olmoearth_app_sheet', { labels_csv_path: data.labels_csv_path });
+        // A card drawn in this one's place meanwhile (a new tool result): its sheet is no longer the page's, so
+        // no editor is drawn and the new card's lead keeps its line.
+        if (!slot.isConnected) return;
         // Each save the server takes reads the counts again: the figure shows once the sheet is complete.
         // Full screen (where the host offers it) lays the editor's face out for the mode.
         const editor = OE.sheetEditor(app, sheet, {
@@ -289,6 +304,7 @@ function sheetButton(app, data, figureSlot) {
       if (typeof got.progress === 'string') line = got.progress;
     } catch (_) { got = null; /* no count: the button keeps its first words */ }
     if (mine !== reads) return;
+    if (!slot.isConnected) return;  // a card drawn in this one's place: this read is no longer the page's
     if (!opened) {
       button.textContent = words;
       count.textContent = line;
@@ -298,12 +314,20 @@ function sheetButton(app, data, figureSlot) {
     // The figure: once the sheet is not blind, or every window is labelled.
     const rows = got ? Number(got.n_rows) : NaN, labelled = got ? Number(got.n_labelled) : NaN;
     const complete = rows > 0 && labelled >= rows;
+    // The lead's second line (r5-i B4): PLAN_ALL_ANSWERED once every one is
+    // answered, the server's words (kept on the line) at any other count;
+    // gone once the sheet is open here (the editor's footer says it).
+    const nextLine = root.querySelector(':scope > .oe-lead > p.next');
+    if (nextLine && !opened) {
+      nextLine.dataset.lead = nextLine.dataset.lead || nextLine.textContent;
+      nextLine.textContent = complete ? PLAN_ALL_ANSWERED : nextLine.dataset.lead;
+    }
     const allowed = Boolean(got) && (got.blind === false || complete);
     let why = null;
     if (allowed && !svg && figureSlot) {
       // Held by the server until now: asked for, then drawn.
       try { await askFigure(); } catch (err) { why = err.message; }
-      if (mine !== reads) return;
+      if (mine !== reads || !slot.isConnected) return;
       if (!svg && !why) why = 'The plan\'s figure could not be read.';
     }
     showFigure(allowed && Boolean(svg), why);

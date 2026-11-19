@@ -19,7 +19,8 @@
      tall (the label, two small lines, the padding and the border), so the
      tiles are one size at every width. A message to copy sits under its
      tile; a small heading over the other jobs. Signed out the tiles are off
-     (a flat edge, no dark fill, "Sign in to start a job." over them), but
+     (a flat edge, no dark fill, "Sign in to start a job." over them at body
+     size in the body colour, r5-i B8), but
      each label and each line keeps a readable colour (r5-f F03: the label
      took the disabled grey, 1.9:1 on white, under its own readable line). */
   .items { list-style: none; margin: 0; padding: 0; }
@@ -210,9 +211,10 @@ function render(app, data) {
     root.append(OE.el('div', { class: 'faint' }, 'Ask Claude what this app can do.'));
     return;
   }
-  // Why the tiles are off stands over them, inside the jobs card, not loose under the last tile's box (r5-e R2).
+  // Why the tiles are off stands over them, inside the jobs card, not loose under the last tile's box (r5-e R2),
+  // at body size in the body colour (r5-i B8: small and grey, it was the only word that the tiles are off).
   root.append(OE.el('section', { class: 'card stack' },
-    on ? null : OE.el('div', { class: 'small faint' }, 'Sign in to start a job.'),
+    on ? null : OE.el('div', {}, 'Sign in to start a job.'),
     OE.el('ul', { class: 'items jobs', 'aria-label': 'Jobs' }, jobRows(app, jobs, on))));
 }
 
