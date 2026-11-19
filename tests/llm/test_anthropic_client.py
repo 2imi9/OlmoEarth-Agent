@@ -17,11 +17,10 @@ from olmoearth_agent.llm.anthropic_client import (
     AnthropicLLM,
     _messages_to_anthropic,
     _parse_anthropic_payload,
-    _sampling_for_anthropic,
     _split_system,
     _tools_to_anthropic,
 )
-from olmoearth_agent.llm.presets import DEFAULT_AGENT_MODE
+from olmoearth_agent.llm.presets import DEFAULT_AGENT_MODE, PRESETS
 from olmoearth_agent.llm.types import Message, ToolCall, ToolSpec
 from olmoearth_agent.security import egress
 
@@ -144,10 +143,20 @@ def test_tools_to_anthropic_uses_input_schema() -> None:
     ]
 
 
-def test_sampling_drops_unsupported_keys() -> None:
-    s = _sampling_for_anthropic(DEFAULT_AGENT_MODE)
-    assert set(s).issubset({"temperature", "top_p", "top_k"})
-    assert "presence_penalty" not in s and "frequency_penalty" not in s
+@pytest.mark.asyncio
+async def test_no_sampling_parameter_is_sent_whatever_the_mode() -> None:
+    """r5-n agent/F1: anthropic 1.8.0 takes no temperature, top_p or top_k (a
+    TypeError before any request), and newer models refuse them: none is sent,
+    whichever preset the harness names."""
+    llm = AnthropicLLM(model="claude-x", api_key="sk-test")
+    sampling = {"temperature", "top_p", "top_k", "presence_penalty"}
+    sampling.add("frequency_penalty")
+    assert DEFAULT_AGENT_MODE in PRESETS
+    for mode in PRESETS:
+        captured: dict[str, Any] = {}
+        llm._client = _FakeClient(captured)  # type: ignore[assignment]
+        await llm.chat([Message(role="user", content="hi")], mode=mode)
+        assert captured["max_tokens"] and not sampling & set(captured), mode
 
 
 def test_parse_payload_text_tool_thinking_usage() -> None:

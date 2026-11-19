@@ -130,7 +130,9 @@ def test_k8_the_start_card_places_the_figure_after_the_jobs_when_wide() -> None:
     assert ".focus(" not in place
     code = _code(page)
     assert code.count("wideMedia.addEventListener('change', placeOverview);") == 1
-    assert code.count("addEventListener(") == 2  # the job tile's press, and this
+    # The job tile's press, this, and (r5-n S3, after review) the two that read
+    # the Settings switch again when the panel is shown or takes the focus.
+    assert code.count("addEventListener(") == 4
     # When Claude closes the card, the listener goes (r4-k K1: OE.cleanups).
     assert (
         "OE.cleanups.add(() => wideMedia.removeEventListener('change', "
@@ -195,8 +197,13 @@ def test_k8_the_figure_keeps_its_caption_and_link_and_one_dark_button() -> None:
     assert _in_order(
         rows,
         "jobRow(app, main, on),",
-        "OE.el('h2', {}, 'Other jobs')",
+        "otherJobsHead()",
         "...others.map((job) => jobRow(app, job, on)),",
+    )
+    # r5-n (after review): the heading's words in one helper, which
+    # OE.onSettings also draws when the Asta tile comes with no other job.
+    assert "OE.el('h2', {}, 'Other jobs')" in _between(
+        page, "const otherJobsHead = () => ", ";\n"
     )
 
 
@@ -376,7 +383,9 @@ def test_k5_sign_out_in_the_top_line_replies_under_itself() -> None:
         "const inLine = Boolean(out.closest('.oe-line'));",
         "const reply = (text, isError, state) => (inLine "
         "? OE.accountReply(text, isError, state, at) : OE.toast(text, isError));",
-        "out.disabled = true;",
+        # Round r5-n JS-5: aria-disabled, so the button keeps the focus
+        # (tests/mcp_app/test_r5n_views.py).
+        "out.setAttribute('aria-disabled', 'true');",
         "const result = await OE.call(app, 'olmoearth_app_sign_out');",
         "const words = result.signed_in && result.source === 'environment'",
         "? " + _js(STILL_SIGNED_IN),

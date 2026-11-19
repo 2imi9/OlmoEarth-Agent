@@ -26,7 +26,7 @@ from olmoearth_agent.tools.registry import ToolRegistry
 _ROOT = Path(__file__).resolve().parents[2]
 
 #: The reference page: the skill catalog, the tools and the rules.
-_USAGE_MD = _ROOT / "docs" / "Usage.md"
+_USAGE_MD = _ROOT / "spec" / "Usage.md"
 
 #: The opt-in tools removed on 31 October 2026 with their code (outside
 #: inference examination, and not used: the five skills that were opt-in

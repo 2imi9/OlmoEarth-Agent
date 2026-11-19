@@ -29,7 +29,6 @@ env/
 ENV/
 env.bak/
 venv.bak/
-.python-version
 
 # --- Package managers ---
 uv.lock.bak

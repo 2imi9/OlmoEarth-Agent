@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from olmoearth_agent.llm.config import ServingConfig
-from olmoearth_agent.llm.presets import DEFAULT_AGENT_MODE, PRESETS, SamplingMode
+from olmoearth_agent.llm.presets import DEFAULT_AGENT_MODE, SamplingMode
 from olmoearth_agent.llm.types import (
     ChatResponse,
     FinishReason,
@@ -43,9 +43,12 @@ DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
 #: far above the local model's, but a moderate default keeps runs cheap.
 DEFAULT_MAX_OUTPUT_TOKENS = 8192
 
-#: Sampling keys the Messages API accepts (the OpenAI client also sends
-#: ``presence_penalty``/``frequency_penalty``, which Anthropic does not take).
-_ANTHROPIC_SAMPLING = frozenset({"temperature", "top_p", "top_k"})
+# No sampling parameter goes to the Messages API (round r5-n, agent/F1): the
+# locked SDK, anthropic 1.8.0, takes no ``temperature``, ``top_p`` or
+# ``top_k`` (every call raised TypeError before any request was sent), and
+# Opus 4.7 and later models refuse them with HTTP 400 through an older SDK
+# too. Claude's own defaults apply; a preset's ``mode`` is accepted for
+# interface parity with :class:`~olmoearth_agent.llm.client.OlmoEarthLLM`.
 
 #: Anthropic ``stop_reason`` -> our :data:`FinishReason`.
 _STOP_REASON_MAP: dict[str, FinishReason] = {
@@ -153,11 +156,6 @@ def _tools_to_anthropic(tools: Iterable[ToolSpec]) -> list[dict[str, Any]]:
     ]
 
 
-def _sampling_for_anthropic(mode: SamplingMode) -> dict[str, Any]:
-    """Subset of a sampling preset that Anthropic's Messages API accepts."""
-    return {k: v for k, v in PRESETS[mode].items() if k in _ANTHROPIC_SAMPLING}
-
-
 def _parse_anthropic_payload(
     content_blocks: list[dict[str, Any]],
     stop_reason: str | None,
@@ -209,8 +207,10 @@ class AnthropicLLM:
     Pass an Anthropic ``api_key`` (pay-per-token) or an ``auth_token``
     (OAuth bearer). The Qwen-specific knobs (``preserve_thinking``,
     ``top_k`` via ``extra_body``, ``<think>`` parsing) don't apply here;
-    ``preserve_thinking`` is accepted for interface parity but ignored, and
-    extended thinking is left off (Claude reasons inline for tool loops).
+    ``preserve_thinking`` and the sampling ``mode`` are accepted for
+    interface parity but ignored (no sampling parameter is sent, round r5-n
+    agent/F1), and extended thinking is left off (Claude reasons inline for
+    tool loops).
     """
 
     def __init__(
@@ -279,18 +279,22 @@ class AnthropicLLM:
         messages: Iterable[Message],
         *,
         tools: Iterable[ToolSpec] | None = None,
-        mode: SamplingMode = DEFAULT_AGENT_MODE,
+        mode: SamplingMode = DEFAULT_AGENT_MODE,  # noqa: ARG002 - interface parity
         max_tokens: int | None = None,
         preserve_thinking: bool = True,  # noqa: ARG002 - interface parity
     ) -> ChatResponse:
-        """Send a Messages request and return a parsed :class:`ChatResponse`."""
+        """Send a Messages request and return a parsed :class:`ChatResponse`.
+
+        No sampling parameter is sent, whatever ``mode`` names (round r5-n
+        agent/F1): the SDK locked here takes none, and newer models refuse
+        them.
+        """
         system, rest = _split_system(list(messages))
         tool_list = _tools_to_anthropic(tools) if tools is not None else []
         payload: dict[str, Any] = {
             "model": self.config.model,
             "max_tokens": max_tokens or self.config.max_output_tokens,
             "messages": _messages_to_anthropic(rest, tool_blocks=bool(tool_list)),
-            **_sampling_for_anthropic(mode),
         }
         if system:
             payload["system"] = system

@@ -11,7 +11,7 @@ fresh agent that replays the run from its start: the recorded responses
 through :class:`~olmoearth_agent.bridge.scripted.ScriptedLLM`, the tool
 calls from the run's cache (:mod:`olmoearth_agent.bridge.replay`), then the
 response just given, and stops at the next model call or at the answer
-(:mod:`olmoearth_agent.bridge.session`). See ``docs/Usage.md``, Claude
+(:mod:`olmoearth_agent.bridge.session`). See ``spec/Usage.md``, Claude
 Code as the model.
 
 This is not the web UI's bridge (``serve.py``, ``make bridge``), which

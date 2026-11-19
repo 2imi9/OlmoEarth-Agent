@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """Pictures of a label sheet's window, for the reviewer (the sheet panel).
 
-The owner agreed on 11 Nov 2026 (docs/Usage.md, "In Claude, with views"):
+The owner agreed on 11 Nov 2026 (spec/Usage.md, "In Claude, with views"):
 
 - The MCP server fetches small dated Sentinel-2 pictures of a window from a
   public source (:mod:`s2_fetch`): Earth Search's catalogue

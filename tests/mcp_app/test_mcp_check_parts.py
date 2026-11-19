@@ -391,18 +391,21 @@ def test_sheet_context_names_the_part_and_the_other_parts(
     assert got["parts_known"] is True
     assert got["map_name"] == "Kelp Q2"
     assert got["period"]["start"] == "2024-04-01T00:00:00Z"
+    # Round r5-n (numbers/F2): each part says whether it was read as a map.
     assert got["parts"] == [
         {
             "part": "West part",
             "share_value": 0.467,
             "labels_csv_path": str(sheet),
             "this": True,
+            "readable": True,
         },
         {
             "part": "East part",
             "share_value": 0.533,
             "labels_csv_path": None,
             "this": False,
+            "readable": True,
         },
     ]
     # Once the other part is drawn, its sheet is named for the server.

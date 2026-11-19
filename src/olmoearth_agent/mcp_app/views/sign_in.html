@@ -52,12 +52,16 @@ function accountCard(app, status, { signedInNow = false } = {}) {
     slot.replaceChildren(OE.signInPanel(app, { primary: !signedInNow, onDone: (s) => render(app, s, { signedInNow: true }) }));
     another.setAttribute('aria-expanded', 'true');
   });
-  // No Sign out for the key the app was installed with: its press cannot remove it (r5-c S01).
+  // No Sign out for the key the app was installed with: its press cannot remove it (r5-c S01). A Sign out that went
+  // through draws the card again and puts the focus on its main button (r5-n JS-5: the button pressed was gone, the
+  // focus left nowhere): the sign-in's once signed out; with the app's own key still in effect, which leaves no main
+  // button, "Use another key".
   const actions = OE.el('div', { class: 'row' }, status.source === 'environment' ? null
-    : OE.signOutButton(app, { cls: 'small', onSignOut: (s) => render(app, s) }));
+    : OE.signOutButton(app, { cls: 'small', onSignOut: (s) => { render(app, s); OE.focusIfHere(root.querySelector('button.primary') || root.querySelector('button')); } }));
   if (signedInNow) {
+    // One message per press (OE.oncePerPress, r5-n JS-1): a double-click tells Claude once.
     actions.append(OE.el('button', {
-      class: 'primary', onclick: () => OE.say(app, 'I have signed in to OlmoEarth Studio. Continue.'),
+      class: 'primary', onclick: OE.oncePerPress(() => OE.say(app, 'I have signed in to OlmoEarth Studio. Continue.')),
     }, 'Continue in the chat'));
   }
   return [
@@ -78,6 +82,8 @@ function accountCard(app, status, { signedInNow = false } = {}) {
 function render(app, status, { signedInNow = false } = {}) {
   root.replaceChildren();
   if (status && status.signed_in && !status.key_problem) {
+    // r5-n B3: a key held that Studio could not be asked about: one line over the card, no sign-in.
+    if (status.studio_unreachable) root.append(OE.el('div', { class: 'card error small' }, OE.STUDIO_UNREACHABLE));
     root.append(...accountCard(app, status, { signedInNow }));
     // Just signed in with the panel's button (the focus was in it): on to the next step.
     if (signedInNow) {

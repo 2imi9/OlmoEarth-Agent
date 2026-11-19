@@ -24,7 +24,8 @@ the Check card's items of the build list of the audit after r5-l
   sits right under the press or the sheet open here, before "How this check
   works" and Details (r5-k K5's rule: a status sits under what caused it);
   it was at the page's foot under both folds. After review: show() puts it
-  back at the page's foot before it draws another card; it no longer says
+  back under #root, before Settings (r5-n S1), before it draws another card;
+  it no longer says
   the line under the press again (a press held by the rule or the box toasts
   nothing), and a press with no reply, which leaves no press and no sheet,
   is said in the page's hidden status; a card that show() replaced places
@@ -105,10 +106,11 @@ OE_SAY = (
 )
 #: B3, after review: a press held by the rule or the box.
 HELD = "    if (gateHeld()) { updatePress(); OE.focusIfHere(ruleInput); return; }\n"
-#: B3, after review: show() puts the page's one status line back at its foot.
+#: B3, after review: show() puts the page's one status line back under
+#: #root, before Settings (r5-n S1).
 BACK = (
     "  const bar = OE.toastRegion();\n"
-    "  if (root.contains(bar)) document.body.append(bar);\n"
+    "  if (root.contains(bar)) root.after(bar);\n"
     "  root.replaceChildren(OE.el('div', { class: 'overline' }, 'Accuracy check'));\n"
 )
 
@@ -384,9 +386,10 @@ def test_b3_the_status_line_sits_under_the_press_or_the_sheet() -> None:
     that line: parts, press or sheet, status line, the fold, Details. The
     line is the node OE.toastRegion keeps (the one #oe-toast, made in the
     body when none is in the page), so moving it keeps one. After review:
-    show() puts that line back at the page's foot (made there if missing)
-    before it draws #root again, so every card starts with the region OE.start
-    put in place, and checkCard moves the same node again."""
+    show() puts that line back under #root, before Settings (r5-n S1; made at
+    the page's foot if missing) before it draws #root again, so every card
+    starts with the region where OE.start put it, and checkCard moves the same
+    node again."""
     page = _read("check.html")
     card = _check_card(page)
     assert _in_order(
@@ -649,13 +652,14 @@ def test_a_drawn_sheets_words_say_whether_it_gave_its_result(
 
 
 def test_the_changelog_and_the_usage_say_this_tracks_items() -> None:
-    """The CHANGELOG's marker of this track is replaced by one line per item
+    """The 1.5.0 detail file's marker (spec/changes/1.5.0.md) of this track is
+    replaced by one line per item
     (B1, B3, B7, and after review B5 on this card), found by their openings
-    in the round's own list and by their words; docs/Usage.md gives step 3's
+    in the round's own list and by their words; spec/Usage.md gives step 3's
     new words, says where the status line goes and when, shows the chosen
     count's tick and gives the graded heading."""
     stage = Path(__file__).resolve().parents[2]
-    changelog = (stage / "CHANGELOG.md").read_text(encoding="utf-8")
+    changelog = (stage / "spec" / "changes" / "1.5.0.md").read_text(encoding="utf-8")
     assert "@@R5M-CHECK@@" not in changelog
     head = "The build list of the audit after r5-l (round 5, m, 19 Nov 2026):\n"
     section = changelog.split(head, 1)[1].split("\n- ", 1)[0]
@@ -671,9 +675,15 @@ def test_the_changelog_and_the_usage_say_this_tracks_items() -> None:
         assert section.count(line) == 1, line
     for said in ('"' + STEP_3 + '"', '"' + ALL_GRADED_ONE + '"', "12u_check_"):
         assert said in section, said
-    usage = " ".join((stage / "docs" / "Usage.md").read_text(encoding="utf-8").split())
+    usage = " ".join((stage / "spec" / "Usage.md").read_text(encoding="utf-8").split())
     assert STEP_3[len("3. ") :] in usage
-    assert "(r5-m B3" in usage and "✓ 20 squares" in usage
+    # Where the status line goes and when: Usage.md carries no round ids, so
+    # its sentence is pinned instead of the B3 marker.
+    assert (
+        "On a card of parts the status line sits right under the press or the "
+        "sheet open in the card" in usage
+    )
+    assert "✓ 20 squares" in usage
     for said in (ALL_GRADED_ONE, ALL_GRADED_SOME, "graded_changed"):
         assert said in usage, said
     assert "(a press then says the same;" not in usage

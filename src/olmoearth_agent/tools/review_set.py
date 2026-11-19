@@ -42,12 +42,15 @@ from __future__ import annotations
 import asyncio
 import calendar
 import csv
+import glob
 import hashlib
 import io
 import json
 import logging
 import os
 import re
+import tempfile
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -122,6 +125,14 @@ logger = logging.getLogger(__name__)
 
 #: Env var naming the directory scores files are read from and written to.
 SCORES_ROOT_ENV = "OLMOEARTH_SCORES_ROOT"
+
+#: Seconds after which a part file (``.<name>.<random>.part``) left by a
+#: write that was killed is removed (round r5-n, files/F4): a write's
+#: ``except`` removes its own part, but a SIGTERM or SIGKILL runs no handler.
+#: A part younger than this may be a live write, in this process or in a
+#: second server sharing the scores root (a write's part changes its mtime as
+#: it grows), so it is left alone.
+PART_AGE_SECONDS = 3600.0
 
 #: The file, under the write root, that holds the full evidence text a result's
 #: one-sentence ``evidence_scope`` stands for (named by ``evidence_detail_path``).
@@ -223,12 +234,59 @@ def load_json_file(path: str, what: str = "scores_path") -> Any:
         return json.load(fh)
 
 
+def drop_stale_parts(folder: Path, names: tuple[str, ...]) -> int:
+    """Remove the part files (``.<name>.<random>.part``) of ``names`` in
+    ``folder`` that were last written :data:`PART_AGE_SECONDS` ago or more:
+    the leftovers of a write that was killed (round r5-n, files/F4). A name
+    is matched as written (``glob.escape``: a ``[`` in a file name the user
+    gave is no pattern). A link is not followed, and a file that cannot be
+    removed is left. Their mtime is the file system's clock, so this compares
+    it with the time now. Returns how many were removed."""
+    cutoff = time.time() - PART_AGE_SECONDS
+    removed = 0
+    for name in names:
+        for part in folder.glob(f".{glob.escape(name)}.*.part"):
+            try:
+                if part.is_symlink() or not part.is_file():
+                    continue
+                if part.stat().st_mtime < cutoff:
+                    part.unlink()
+                    removed += 1
+            except OSError:
+                logger.debug("a stale part file was not removed")
+    return removed
+
+
 def write_json_file(name: str, payload: dict[str, Any]) -> str:
-    """Write ``payload`` as ``name`` under :func:`write_root`; return the absolute path."""
+    """Write ``payload`` as ``name`` under :func:`write_root`; return the absolute path.
+
+    Round r5-n (files/F3, F6; concurrency/F1): the file is written whole
+    beside its target under a staged name (``.<name>.<random>.part``: a
+    leading dot, not ending in ``.json``, so no reader or ``scores_*.json``
+    lookup takes it), made mode 600 (a scores file holds each window's
+    place), then moved over the target in one step: a reader sees the old
+    file or the new one, never a cut one, and a write that fails, or two
+    that run at once, leave no half file and no staged one. A write killed
+    part way (SIGTERM, SIGKILL) runs no clean-up and leaves its staged part;
+    a later write of the same name removes it once it is an hour old
+    (:func:`drop_stale_parts`, files/F4).
+    """
     root = write_root()
     target = safe_path(name, root=root)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload), encoding="utf-8")
+    text = json.dumps(payload)
+    drop_stale_parts(target.parent, (target.name,))
+    fd, staged = tempfile.mkstemp(
+        prefix="." + target.name + ".", suffix=".part", dir=target.parent
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(staged, 0o600)
+        os.replace(staged, target)
+    except BaseException:
+        Path(staged).unlink(missing_ok=True)
+        raise
     return str(target)
 
 

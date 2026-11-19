@@ -3,7 +3,7 @@
 """Async OpenAI-compatible client for the agent's LLM backbone.
 
 The local default is llama.cpp serving Qwen3.6 (4-bit GGUF); vLLM on a GPU
-cluster also works (``docs/Usage.md``, LLM backends and serving).
+cluster also works (``spec/Usage.md``, LLM backends and serving).
 
 The client is intentionally small: build a payload, dispatch via the
 ``openai`` SDK, parse the completion. Everything agent-specific
@@ -18,6 +18,7 @@ import json
 import re
 from collections.abc import Iterable
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
@@ -29,6 +30,7 @@ from olmoearth_agent.llm.presets import (
     SamplingMode,
 )
 from olmoearth_agent.llm.types import (
+    RAW_ARGUMENTS,
     ChatResponse,
     FinishReason,
     Message,
@@ -36,6 +38,15 @@ from olmoearth_agent.llm.types import (
     ToolSpec,
 )
 from olmoearth_agent.security import egress
+
+#: OpenAI's reasoning models (the o-series and gpt-5), by the start of their
+#: id: they refuse ``max_tokens`` and every sampling parameter but their own
+#: defaults (round r5-n agent/F2).
+_REASONING_MODEL_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+#: The host whose Chat Completions takes the output cap as
+#: ``max_completion_tokens`` (``max_tokens`` is refused by its reasoning
+#: models); Gemini's compatible endpoint and local servers take ``max_tokens``.
+_OPENAI_HOST = "api.openai.com"
 
 # OpenAI Chat Completions exposes a fixed set of top-level sampling
 # parameters; everything else (top_k, chat_template_kwargs, custom vLLM
@@ -57,7 +68,7 @@ _THINK_RE = re.compile(r"<think>(.*?)</think>\s*", re.DOTALL)
 # Fallback parsers for when the server emits a tool call as *text* in the
 # message content instead of via the structured ``tool_calls`` field. The
 # llama.cpp server does this when it is launched without ``--jinja`` (vLLM
-# without a matching ``--tool-call-parser``; see docs/Usage.md), and even
+# without a matching ``--tool-call-parser``; see spec/Usage.md), and even
 # with it it can fall back intermittently. We recover the call so the agent loop does not
 # silently treat an intended tool call as a final answer.
 #
@@ -79,13 +90,14 @@ def decode_tool_arguments(arguments_text: str) -> dict[str, Any]:
     decode yields a *string*; a dict is expected downstream, and a string
     there used to escape as ``AttributeError`` and end the turn. Decode a
     second time when that happens. Anything that still is not an object is
-    surfaced under ``__raw_arguments`` so the caller can see what the model
-    sent rather than have the call silently dropped.
+    surfaced under ``__raw_arguments`` (:data:`RAW_ARGUMENTS`) so the caller
+    can see what the model sent rather than have the call silently dropped;
+    the registry refuses such a call before its handler runs.
     """
     try:
         arguments: Any = json.loads(arguments_text)
     except json.JSONDecodeError:
-        return {"__raw_arguments": arguments_text}
+        return {RAW_ARGUMENTS: arguments_text}
     if isinstance(arguments, str):
         try:
             again: Any = json.loads(arguments)
@@ -93,9 +105,9 @@ def decode_tool_arguments(arguments_text: str) -> dict[str, Any]:
             again = None
         if isinstance(again, dict):
             return again
-        return {"__raw_arguments": arguments}
+        return {RAW_ARGUMENTS: arguments}
     if not isinstance(arguments, dict):
-        return {"__raw_arguments": arguments_text}
+        return {RAW_ARGUMENTS: arguments_text}
     return arguments
 
 
@@ -253,6 +265,33 @@ def _tool_to_openai(tool: ToolSpec) -> dict[str, Any]:
     }
 
 
+def _is_reasoning_model(model: str) -> bool:
+    """Whether ``model`` names one of OpenAI's reasoning models (o1, o3, gpt-5 ...).
+
+    Examples
+    --------
+    >>> _is_reasoning_model("o3-mini"), _is_reasoning_model("gpt-4o")
+    (True, False)
+    """
+    return model.strip().lower().startswith(_REASONING_MODEL_PREFIXES)
+
+
+def _cap_key(endpoint: str) -> str:
+    """The name the endpoint takes its output cap under.
+
+    ``max_completion_tokens`` on OpenAI's own API (its reasoning models refuse
+    ``max_tokens``), ``max_tokens`` anywhere else (Gemini's compatible
+    endpoint, a local server).
+
+    Examples
+    --------
+    >>> _cap_key("https://api.openai.com/v1"), _cap_key("http://localhost:8000/v1")
+    ('max_completion_tokens', 'max_tokens')
+    """
+    host = (urlsplit(endpoint).hostname or "").lower()
+    return "max_completion_tokens" if host == _OPENAI_HOST else "max_tokens"
+
+
 class OlmoEarthLLM:
     """Async client for the OlmoEarth Agent's OpenAI-compatible LLM backbone.
 
@@ -282,8 +321,9 @@ class OlmoEarthLLM:
         self._tracer: Tracer = tracer or _NullTracer()
         # When True, send only standard OpenAI params: drop the Qwen/vLLM
         # extras (top_k via extra_body, chat_template_kwargs.preserve_thinking)
-        # that hosted providers like OpenAI and Gemini reject. Used by the
-        # bridge for the ChatGPT/Gemini backends.
+        # that hosted providers like OpenAI and Gemini reject, and the local
+        # model's output cap (see _build_payload). Used by the bridge for the
+        # ChatGPT/Gemini backends.
         self._openai_compat = openai_compat
         # Guard the (env-overridable) LLM endpoint before the API key is bound to
         # a client: a malicious LLM_ENDPOINT must not exfiltrate the conversation
@@ -331,7 +371,9 @@ class OlmoEarthLLM:
             Default is ``thinking_general``.
         max_tokens
             Override the server's max output budget. Defaults to
-            :attr:`ServingConfig.max_output_tokens`.
+            :attr:`ServingConfig.max_output_tokens`; a hosted backend
+            (``openai_compat``) gets a cap only when one is given, as
+            ``max_completion_tokens`` on OpenAI's own API.
         preserve_thinking
             When True (default for agent runs), forwards
             ``chat_template_kwargs.preserve_thinking=True`` so the
@@ -366,17 +408,32 @@ class OlmoEarthLLM:
         max_tokens: int | None,
         preserve_thinking: bool,
     ) -> dict[str, Any]:
-        """Assemble the OpenAI Chat Completions payload."""
+        """Assemble the OpenAI Chat Completions payload.
+
+        A hosted backend (``openai_compat``: ChatGPT, Gemini) gets no output
+        cap unless the caller gives one (round r5-n agent/F2): the local
+        model's 32,768 is more than OpenAI's and Gemini's default models
+        allow, and either answered HTTP 400. The cap goes under
+        :func:`_cap_key`'s name, and an OpenAI reasoning model
+        (:func:`_is_reasoning_model`) gets none of the preset's sampling
+        parameters, which it refuses.
+        """
         sampling = PRESETS[mode]
         extra_body: dict[str, Any] = {}
         payload: dict[str, Any] = {
             "model": self.config.model,
             "messages": [_message_to_openai(m) for m in messages],
-            "max_tokens": max_tokens or self.config.max_output_tokens,
         }
+        cap = max_tokens
+        if not self._openai_compat:
+            cap = max_tokens or self.config.max_output_tokens
+        if cap:
+            payload[_cap_key(self.config.endpoint)] = cap
+        reasoning = self._openai_compat and _is_reasoning_model(self.config.model)
         for key, value in sampling.items():
             if key in _OPENAI_TOP_LEVEL_SAMPLING:
-                payload[key] = value
+                if not reasoning:
+                    payload[key] = value
             elif not self._openai_compat:
                 extra_body[key] = value
         if preserve_thinking and not self._openai_compat:

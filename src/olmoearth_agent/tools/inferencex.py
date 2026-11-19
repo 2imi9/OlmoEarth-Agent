@@ -40,6 +40,34 @@ INSTALL_HINT = "pip install 'olmoearth-agent[inferencex]'"
 #: The install line when an older companion package is installed.
 UPGRADE_HINT = "pip install -U 'olmoearth-agent[inferencex]'"
 
+#: Round r5-n (errors/B6): the clause and the line when the package is
+#: installed (its version is known) but does not import, a numpy or rasterio
+#: build that does not match, say: pip would only say "already satisfied".
+# WORDING: r5n
+INSTALLED_UNUSABLE = "which is installed here but cannot be imported"
+# WORDING: r5n
+REINSTALL_HINT = "pip install --force-reinstall 'olmoearth-agent[inferencex]'"
+
+#: Round r5-n (errors/B6, packaging/PKG-3): the extra carries
+#: ``python_version < '3.14'``, so on Python 3.14 or later it installs
+#: nothing, and a pip line cannot help. ``{version}`` is the running Python's.
+# WORDING: r5n
+NEWER_PYTHON = (
+    "which does not install on Python {version} (it supports Python 3.11 to 3.13)"
+)
+#: The line that fixes it: the agent run on Python 3.12, as the setup page's
+#: host entry runs the MCP App, or a clone synced on it.
+# WORDING: r5n
+PYTHON_HINT = (
+    "run the agent on Python 3.12: put uvx --python 3.12 --from "
+    '"olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" '
+    "olmoearth-agent-mcp in the host's entry and restart it, or in a clone run "
+    "uv sync --python 3.12 --all-extras"
+)
+
+#: The first Python on which the extra installs nothing.
+NO_EXTRA_PYTHON = (3, 14)
+
 #: The companion package's distribution name on PyPI.
 DISTRIBUTION = "olmoearth-inferencex"
 
@@ -129,6 +157,11 @@ def older_version() -> str | None:
     return installed
 
 
+def python_version() -> tuple[int, int]:
+    """The running Python's major and minor version, e.g. ``(3, 12)``."""
+    return int(sys.version_info[0]), int(sys.version_info[1])
+
+
 def unavailable() -> tuple[str, str]:
     """Why the package cannot be used here, as a clause, and the line that fixes it.
 
@@ -136,11 +169,23 @@ def unavailable() -> tuple[str, str]:
     (before 1.19.0), so its import fails as an absent package's does, or
     :func:`load` refuses it (1.19.0 to 1.20.2); the clause then names the
     installed version and the line upgrades it, instead of saying the package
-    is not installed.
+    is not installed. Round r5-n (errors/B6, packaging/PKG-3): a current
+    release that is installed but does not import is said so
+    (:data:`INSTALLED_UNUSABLE`, with :data:`REINSTALL_HINT`); with no
+    release installed on Python 3.14 or later, where the extra installs
+    nothing, the clause names the Python (:data:`NEWER_PYTHON`) and the line
+    runs the agent on Python 3.12 (:data:`PYTHON_HINT`); only otherwise is
+    it "not installed", with :data:`INSTALL_HINT`.
     """
     old = older_version()
     if old is not None:
         return f"and this environment has version {old}, which is older", UPGRADE_HINT
+    if version() is not None:
+        return INSTALLED_UNUSABLE, REINSTALL_HINT
+    running = python_version()
+    if running >= NO_EXTRA_PYTHON:
+        said = NEWER_PYTHON.format(version=f"{running[0]}.{running[1]}")
+        return said, PYTHON_HINT
     return "which is not installed in this environment", INSTALL_HINT
 
 
@@ -237,10 +282,14 @@ async def run_cli_async(
     return await asyncio.to_thread(run_cli, args, cwd=cwd, timeout=timeout)
 
 
-def missing_extra(what: str) -> dict[str, Any]:
-    """The answer a tool gives when the extra is not installed, or is too old."""
+def missing_extra(what: str, detail: str | None = None) -> dict[str, Any]:
+    """The answer a tool gives when the extra is not installed, or is too old.
+
+    ``detail``, the import's own error (round r5-n, errors/B6), is kept as
+    ``missing`` when given, as ``olmoearth_scores_from_file``'s answer keeps
+    it."""
     status, install = unavailable()
-    return {
+    out: dict[str, Any] = {
         "available": False,
         "reason": (
             f"{what} needs the optional package olmoearth-inferencex "
@@ -250,3 +299,6 @@ def missing_extra(what: str) -> dict[str, Any]:
         ),
         "install": install,
     }
+    if detail:
+        out["missing"] = detail
+    return out

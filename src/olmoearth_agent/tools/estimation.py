@@ -2639,8 +2639,8 @@ async def _plan_label_sample(args: dict[str, Any], ctx: ToolContext) -> dict[str
     """Handler for ``olmoearth_plan_label_sample``."""
     try:
         estimate = inferencex.load("estimate")
-    except inferencex.InferencexMissingError:
-        return inferencex.missing_extra("Planning a labelled sample")
+    except inferencex.InferencexMissingError as exc:
+        return inferencex.missing_extra("Planning a labelled sample", str(exc))
     design = str(args.get("design", "confidence"))
     if design not in DESIGNS:
         raise ValueError(f"design must be one of {list(DESIGNS)}, got {design!r}")
@@ -3075,7 +3075,19 @@ def _margin(values: list[Any]) -> list[float]:
 
 
 def _read_labels_csv(path: str) -> dict[int, tuple[str, str]]:
-    """``window_index -> (wrong, reference_class)`` from a filled-in CSV."""
+    """``window_index -> (wrong, reference_class)`` from a filled-in CSV.
+
+    Every grading route reads the sheet through here. Round r5-n (errors/B4):
+    a sheet a spreadsheet saved is refused with the label sheet's save-again
+    step (the not-UTF-8 sentence is ``sheet._parse``'s own), never with a raw
+    ``KeyError``, ``UnicodeDecodeError`` or ``int()`` message: one with no
+    ``window_index`` column (saved with ``;`` or a tab), one not in UTF-8, and
+    a row whose ``window_index`` is not a whole number, by its row. A UTF-8
+    byte-order mark (what a spreadsheet's "CSV UTF-8" writes first) is read
+    past, a harmless extra (a plan's sheet starts with ``order``, so the mark
+    never hid ``window_index``), and a row a spreadsheet left with every cell
+    blank is skipped.
+    """
     real = os.path.realpath(path)
     roots = read_roots()
     if not real.endswith(".csv") or not any(
@@ -3084,13 +3096,44 @@ def _read_labels_csv(path: str) -> dict[int, tuple[str, str]]:
         raise ValueError(
             f"labels_path must name a .csv file under {' or '.join(roots)}"
         )
+    name = os.path.basename(real)
     out: dict[int, tuple[str, str]] = {}
-    with open(real, encoding="utf-8", newline="") as fh:
-        for line in csv.DictReader(fh):
-            out[int(line["window_index"])] = (
-                (line.get("wrong") or "").strip(),
-                (line.get("reference_class") or "").strip(),
-            )
+    try:
+        with open(real, encoding="utf-8-sig", newline="") as fh:
+            reader = csv.DictReader(fh)
+            if "window_index" not in (reader.fieldnames or []):
+                # WORDING: r5n (sheet._parse's save-again step)
+                raise ValueError(
+                    f"{name} has no window_index column; a spreadsheet may have "
+                    "saved it with ';' or a tab. Save it again as CSV UTF-8, "
+                    "comma-separated"
+                )
+            for line in reader:
+                n = reader.line_num  # the row's line in the file, the header 1
+                cell = (line.get("window_index") or "").strip()
+                if not cell and not any(
+                    isinstance(v, str) and v.strip() for v in line.values()
+                ):
+                    continue  # a blank row a spreadsheet left
+                try:
+                    index = int(cell)
+                except ValueError:
+                    # WORDING: r5n
+                    raise ValueError(
+                        f"row {n} of {name}: window_index is {cell!r}, not a whole "
+                        "number; keep the plan's window_index column as it was "
+                        "written"
+                    ) from None
+                out[index] = (
+                    (line.get("wrong") or "").strip(),
+                    (line.get("reference_class") or "").strip(),
+                )
+    except UnicodeDecodeError as exc:
+        # WORDING: r5n (sheet._parse's words)
+        raise ValueError(
+            f"{name} is not UTF-8; a spreadsheet saved it in another encoding. "
+            "Save it again as CSV UTF-8, comma-separated"
+        ) from exc
     return out
 
 
@@ -3919,8 +3962,8 @@ async def _estimate_map_error(
     """Handler for ``olmoearth_estimate_map_error``."""
     try:
         estimate = inferencex.load("estimate")
-    except inferencex.InferencexMissingError:
-        return inferencex.missing_extra("Estimating a map's error rate")
+    except inferencex.InferencexMissingError as exc:
+        return inferencex.missing_extra("Estimating a map's error rate", str(exc))
     if args.get("design_path"):
         design = _load_design(str(args["design_path"]))
         if design.get("design") == TWO_MAP_DESIGN:
@@ -4175,8 +4218,8 @@ async def _certify_zone(args: dict[str, Any], _ctx: ToolContext) -> dict[str, An
     try:
         estimate = inferencex.load("estimate")
         zone_module = inferencex.load("certify.zone")
-    except inferencex.InferencexMissingError:
-        return inferencex.missing_extra("Certifying a trusted zone")
+    except inferencex.InferencexMissingError as exc:
+        return inferencex.missing_extra("Certifying a trusted zone", str(exc))
     design = _load_design(str(args["design_path"]))
     if _has_no_confidence(design):
         return _certify_refused_for_a_class_map(design)
@@ -5075,8 +5118,10 @@ async def _plan_two_maps(
     """Handler for ``olmoearth_plan_label_sample`` with ``design='disagreement'``."""
     try:
         plan_pkg = inferencex.load("plan")
-    except inferencex.InferencexMissingError:
-        return inferencex.missing_extra("Planning a labelled sample of two maps")
+    except inferencex.InferencexMissingError as exc:
+        return inferencex.missing_extra(
+            "Planning a labelled sample of two maps", str(exc)
+        )
     budget = int(args["budget"])
     if budget < 1:
         raise ValueError(f"budget {budget} must be at least 1")

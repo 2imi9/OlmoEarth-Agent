@@ -416,18 +416,19 @@ async def test_b4_claude_states_no_rate_with_panels_or_without(
 
 
 def test_b4_the_changelog_and_the_usage_say_the_line() -> None:
-    """B4: the CHANGELOG's marker is replaced by the round's line, which
-    gives the new words; docs/Usage.md gives them as the withdrawn card's
+    """B4: the 1.5.0 detail file's marker (spec/changes/1.5.0.md) is replaced
+    by the round's line, which
+    gives the new words; spec/Usage.md gives them as the withdrawn card's
     line, and no longer K1's line that ended at "a fresh sheet."; both say
     Claude plans a new sample with another seed, since the same seed and
     count open the locked sheet again."""
     stage = Path(__file__).resolve().parents[2]
-    changelog = (stage / "CHANGELOG.md").read_text(encoding="utf-8")
+    changelog = (stage / "spec" / "changes" / "1.5.0.md").read_text(encoding="utf-8")
     assert "@@R5M-RESULT@@" not in changelog
     line = "\n    - B4: a withdrawn result's line ends with how to get a new result: "
     assert line in changelog
     assert '"' + LINE + '"' in changelog
-    usage = (stage / "docs" / "Usage.md").read_text(encoding="utf-8")
+    usage = (stage / "spec" / "Usage.md").read_text(encoding="utf-8")
     flat = " ".join(usage.split())
     assert '"' + LINE + '"' in flat
     assert '"' + K1_LINE + '"' not in flat

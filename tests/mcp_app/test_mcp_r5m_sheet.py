@@ -735,7 +735,11 @@ def test_b5_a_graded_sheets_finish_button_shows_the_result_again() -> None:
     assert "      }, data.finish_label || 'Ask Claude to grade it');\n" in control
     assert "gaveResult" not in control and "W.graded" not in control
     assert "const message = data.finish_message || (" in control
-    assert "onclick: () => finishPress(message)," in control
+    # Round r5-n JS-1 (sheet finish): the second click of a double-click does nothing.
+    assert (
+        "onclick: (e) => { if (e.detail > 1) return; "
+        "finishPress(message); }," in control
+    )
     update = _between(editor, "  function updateFinish() {", "\n  }\n")
     assert (
         "    const ok = ready();\n"
@@ -813,11 +817,12 @@ def test_b6_a_graded_sheet_with_two_sets_says_only_what_it_holds() -> None:
 
 
 def test_r5m_sheet_the_changelog_and_the_usage_say_so() -> None:
-    """The CHANGELOG's marker is replaced by one line per item, this round's
+    """The 1.5.0 detail file's marker (spec/changes/1.5.0.md) is replaced by
+    one line per item, this round's
     own (an earlier round's "    - B1: " to "    - B9: " lines are there too),
-    with the words quoted, and docs/Usage.md gives the new words."""
+    with the words quoted, and spec/Usage.md gives the new words."""
     stage = Path(__file__).resolve().parents[2]
-    changelog = (stage / "CHANGELOG.md").read_text(encoding="utf-8")
+    changelog = (stage / "spec" / "changes" / "1.5.0.md").read_text(encoding="utf-8")
     assert "@@R5M-SHEET@@" not in changelog
     for line in (
         "\n    - B1: the app's labelling rule for a map of presence and absence says "
@@ -841,7 +846,7 @@ def test_r5m_sheet_the_changelog_and_the_usage_say_so() -> None:
         "`imagery.R5L_READING_RULE`",
     ):
         assert quoted in changelog, quoted
-    usage = " ".join((stage / "docs" / "Usage.md").read_text(encoding="utf-8").split())
+    usage = " ".join((stage / "spec" / "Usage.md").read_text(encoding="utf-8").split())
     for said in (
         NEW_RULE,
         EXAMPLE_PRESENT,

@@ -5,7 +5,7 @@
 
 import { escapeHtml, typeText } from './util.js';
 import { renderMarkdown } from './markdown.js';
-import { apiRunStream, apiSkills } from './api.js';
+import { apiRunStream, apiSkills, invalidateApi } from './api.js';
 import { drawAndAttach } from './aoi.js';
 import { renderResultViz } from './viz.js';
 
@@ -291,6 +291,10 @@ export function handleRunEvent(body, ev, staticRender) {
     viz.className = 'result-viz run-step';
     if (renderResultViz(viz, ev)) body.appendChild(viz);
     if (ev.ok === false) workflowOnFail(body, ev.name);
+    // A project the agent created, or a prediction it submitted: the Projects
+    // tree's cached reads go, as the bridge drops its own (r5-n agent/F9).
+    if (ev.ok && ev.name === 'olmoearth_create_project') invalidateApi('/api/projects');
+    if (ev.ok && ev.name === 'olmoearth_submit_prediction') invalidateApi('/predictions');
     // request_aoi with needs_aoi pauses the turn for the user to draw — flag it
     // so the upcoming `final` doesn't mark the whole pipeline complete.
     const aoiInner = ev.result && ev.result.result;

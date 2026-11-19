@@ -6,7 +6,7 @@
 2026-05-28 (``{"records": [...], "meta": {...}, "errors": ...}``, not bare
 objects); ``ProjectRef`` and ``StudioContext`` carry ``load_context``;
 ``ProvenanceManifest`` is one provenance entry per tool call
-(``docs/Usage.md``, rule 13).
+(``spec/Usage.md``, rule 13).
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class StudioContext:
 
 @dataclass
 class ProvenanceManifest:
-    """One provenance entry per tool call (``docs/Usage.md``, rule 13).
+    """One provenance entry per tool call (``spec/Usage.md``, rule 13).
 
     ``response_summary`` holds only ids / status / counts: never raw
     geometry (rule 1). See

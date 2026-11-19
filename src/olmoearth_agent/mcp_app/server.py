@@ -109,7 +109,7 @@ chat; the run's state (the provenance log, the failure counts) starts afresh
 when the server leaves a Studio key (for another, or on sign-out) and when
 Claude calls ``olmoearth_new_task``.
 
-Run it with ``olmoearth-agent-mcp`` (stdio); ``docs/Usage.md`` has the Claude
+Run it with ``olmoearth-agent-mcp`` (stdio); ``spec/Usage.md`` has the Claude
 Desktop configuration. Requires the ``mcp`` extra.
 """
 
@@ -131,17 +131,21 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import anyio
+
+from olmoearth_agent import __version__
 from olmoearth_agent.analysis.aoi import geometry_bbox, validate_polygon_geometry
 from olmoearth_agent.analysis.review_set import NOT_COVERED
 from olmoearth_agent.harness import ThreadState
 from olmoearth_agent.harness.soul import load_soul, with_capability_card
 from olmoearth_agent.harness.spill import SPILL_BYTES_ENV, compact_result_for_llm
 from olmoearth_agent.llm.types import ToolCall
-from olmoearth_agent.mcp_app import auth, check, glyph, imagery, review, sheet
+from olmoearth_agent.mcp_app import auth, check, glyph, imagery, review, settings, sheet
 from olmoearth_agent.mcp_app.views import (
     UI_EXTENSION,
     VIEW_MIME,
     VIEWS,
+    app_icon_data_url,
     brand_html,
     examples_for,
     uri,
@@ -154,9 +158,11 @@ from olmoearth_agent.security.paths import OUTPUT_ROOT_ENV
 from olmoearth_agent.skills import build_default_registry
 from olmoearth_agent.studio.client import (
     DEFAULT_BASE_URL,
+    OUTCOME_UNKNOWN_HINT,
     StudioAccessError,
     StudioClient,
     StudioConfig,
+    StudioOutcomeUnknown,
 )
 from olmoearth_agent.tools import estimation, studio_scores
 from olmoearth_agent.tools import statistical_rules as rules
@@ -714,8 +720,50 @@ START_SIGNED_OUT_TEXT = (
     "They are not signed in: call olmoearth_sign_in before any Studio tool."
 )
 
+#: Said to the model, by ``olmoearth_start`` and ``olmoearth_sign_in``, when
+#: a key is held but Studio could not be reached to check it (the status's
+#: ``studio_unreachable``, round r5-n B3): the key is kept, so no sign-in
+#: page is opened and the user is not told they are signed out.
+# WORDING: r5n
+STUDIO_UNREACHABLE_NOTE = (
+    "Studio cannot be reached right now (the network or Studio is down). The "
+    "key is kept, so no sign-in is needed. Try again shortly."
+)
+
+#: In place of :data:`STUDIO_UNREACHABLE_NOTE` when Studio's address answered
+#: with a page that is not Studio's (``studio_unreachable`` is
+#: ``auth.STUDIO_NOT_JSON``, round r5-n B8): Studio's host did answer, so it
+#: says neither that the network is down nor to try again shortly.
+# WORDING: r5n
+STUDIO_NOT_JSON_NOTE = (
+    "Studio's address answered with a web page instead of Studio, so the key "
+    "could not be checked. The key is kept, so no sign-in is needed. Tell the "
+    "user that Studio may be under maintenance, or that the app's Studio "
+    "address (OLMOEARTH_BASE_URL) may be set wrong; if it lasts, whoever "
+    "installed the app should check that setting and restart the app."
+)
+
+#: A view's save whose answer from Studio was lost (``StudioOutcomeUnknown``,
+#: round r5-n B1: the area map's Save): it may have been saved, so the panel
+#: reads its list of saved areas again and is told to look there before
+#: saving again. The failure's body carries ``outcome_unknown: true`` beside
+#: it.
+# WORDING: r5n
+OUTCOME_UNKNOWN_PANEL = (
+    "Studio's answer was lost, so the area may be saved after all. The list of "
+    "saved areas is read again: look for it there before you save it again."
+)
+
 #: The sign-in status the start card gets: never the key, nor the key file.
-START_STATUS_KEYS = ("signed_in", "source", "account", "key_problem")
+#: ``studio_unreachable`` (round r5-n B3) is set only when a key is held and
+#: Studio could not be reached; ``key_problem`` is then unset.
+START_STATUS_KEYS = (
+    "signed_in",
+    "source",
+    "account",
+    "key_problem",
+    "studio_unreachable",
+)
 
 #: The view tools of window pictures (:mod:`imagery`): the model reads
 #: ``{"ok": true}`` from them on every path, a failure included.
@@ -734,10 +782,17 @@ HOST_REPORT_TOOL = "olmoearth_app_host_report"
 #: map goes while the map is read in the background (round r5-h H1).
 CHECK_STATUS_TOOL = "olmoearth_app_check_status"
 
+#: The Settings box's tools (round r5-n S2, :mod:`settings`): its three rows
+#: read, and one change at the user's press.
+SETTINGS_TOOLS = frozenset({"olmoearth_app_settings", "olmoearth_app_setting"})
+
 #: The view tools whose failure, too, tells the model nothing (``{"ok":
 #: true}``): the pictures', the host report, which is for the log alone,
-#: and the Check card's status, which it asks every 2 s (round r5-h H1).
-QUIET_APP_TOOLS = IMAGERY_TOOLS | frozenset({HOST_REPORT_TOOL, CHECK_STATUS_TOOL})
+#: the Check card's status, which it asks every 2 s (round r5-h H1), and the
+#: Settings box's, whose changes tell Claude nothing (round r5-n S2).
+QUIET_APP_TOOLS = (
+    IMAGERY_TOOLS | frozenset({HOST_REPORT_TOOL, CHECK_STATUS_TOOL}) | SETTINGS_TOOLS
+)
 
 #: A host report's events: a panel started, or its host tore it down.
 HOST_EVENTS = ("start", "teardown")
@@ -1599,8 +1654,10 @@ def _lines(value: Any) -> list[str]:
 
 
 #: An exception's name at the start of an error, as the registry writes a
-#: tool's failure (``"ValueError: ..."``, ``f"{type(exc).__name__}: {exc}"``).
-_ERROR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception): ")
+#: tool's failure (``"ValueError: ..."``, ``f"{type(exc).__name__}: {exc}"``);
+#: also an httpx timeout's (``"ReadTimeout: Studio did not answer in time"``,
+#: round r5-n errors/B2), so a card says the words alone.
+_ERROR_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception|Timeout): ")
 
 #: An ``OSError``'s number (``"[Errno 28] No space left on device"``; a name
 #: lookup's is negative, ``"[Errno -2] ..."``; or, on Windows, a Win32
@@ -1651,11 +1708,23 @@ def _refusal_words(error: str) -> str:
     return words[:1].upper() + words[1:]
 
 
-def _check_cut(inner: dict[str, Any]) -> str | None:
+def _in_quotes(name: str) -> str:
+    """``name`` made safe inside straight double quotes, as JSON escapes a
+    string (round r5-n SEC-4): a ``"`` or ``\\`` in a Studio name, which the
+    result's owner wrote, gets its backslash, so the name stays one quoted
+    string in the lines Claude says word for word and never reads as the
+    app's own words. A name with neither is unchanged."""
+    return json.dumps(name, ensure_ascii=False)[1:-1]
+
+
+def _check_cut(inner: dict[str, Any], *, for_model: bool = True) -> str | None:
     """The cut line of a 0-to-1 score result (:data:`CHECK_CUT_LINE`, round
     r5-a K3), naming the score's class as ``olmoearth_scores_from_studio``
-    lists it (class 1 of its ``classes``, else its ``property_name``);
-    ``None`` for any other kind of result, or one that names neither."""
+    lists it (class 1 of its ``classes``, else its ``property_name``); for
+    the model the name is escaped inside its quotes (:func:`_in_quotes`,
+    round r5-n SEC-4), for the card (``for_model`` false, drawn as text) it
+    is as Studio wrote it. ``None`` for any other kind of result, or one
+    that names neither."""
     if inner.get("kind") != CHECK_UNIT_KIND:
         return None
     name: Any = None
@@ -1666,7 +1735,7 @@ def _check_cut(inner: dict[str, Any]) -> str | None:
         name = inner.get("property_name")
     if not isinstance(name, str) or not name:
         return None
-    return CHECK_CUT_LINE.format(name=name)
+    return CHECK_CUT_LINE.format(name=_in_quotes(name) if for_model else name)
 
 
 def _clipped_pixels(entry: Any) -> int:
@@ -2269,6 +2338,13 @@ PART_THIS = "{part}: this result"
 PART_GRADED = "{part}: checked"
 # WORDING: squares
 PART_NOT = "{part}: not checked yet"
+#: Round r5-n (numbers/F2): the parts figure's label of a part that was not
+#: read as a map (``check.sheet_context``'s ``readable`` false), in the Check
+#: card's words for it ("This part cannot be checked"): no square of it can
+#: be picked, so it is no part left to check, and the model is not told to
+#: check it.
+# WORDING: r5n
+PART_UNREADABLE = "{part}: cannot be checked"
 #: The result card's line for a sheet whose answers changed after its first
 #: result (round r5-b, J07: "graded" is on no other face; result.html's
 #: RESULT_WORDS.gradedBefore says the same words). Since round r5-k K1 the
@@ -2535,18 +2611,22 @@ def _raw_class_name(row: dict[str, Any]) -> str | None:
     return None
 
 
-def _class_name(row: dict[str, Any]) -> str:
+def _class_name(row: dict[str, Any], *, for_model: bool = True) -> str:
     """A class's name for a line or the legend, in straight double quotes as
     the sheet gave it (:func:`_raw_class_name`, :data:`CLASS_QUOTED`: no case
     changed); a bare code written ``class "3"`` (:data:`CLASS_CODE_NAME`, so
-    it never reads as a count); no name, ``class "<code>"``. The ranges are
-    still matched on the raw name or the code (:func:`_class_range`)."""
+    it never reads as a count); no name, ``class "<code>"``. In a line Claude
+    says (the say-first line, :func:`_say_uncovered`) a ``"`` or ``\\`` in
+    the name is escaped inside its quotes (:func:`_in_quotes`, round r5-n
+    SEC-4); on the card (``for_model`` false: its lines and legend, drawn as
+    text) the name is as the sheet gave it. The ranges are still matched on
+    the raw name or the code (:func:`_class_range`)."""
     raw = _raw_class_name(row)
     if raw is None:
         return CLASS_CODE_NAME.format(code=row.get("code"))
     if raw.isdecimal():
         return CLASS_CODE_NAME.format(code=raw)
-    return CLASS_QUOTED.format(name=raw)
+    return CLASS_QUOTED.format(name=_in_quotes(raw) if for_model else raw)
 
 
 def _unseen_lines(
@@ -2643,7 +2723,7 @@ def _uncovered(
             k=f"{_count(c.get('seen')) or 0:,}",
             n=f"{n:,}",
             units=_units(unit, n),
-            name=_class_name(c),
+            name=_class_name(c, for_model=False),
             j=f"{_count(c.get('agreed')) or 0:,}",
         )
         for c in rare
@@ -2652,11 +2732,11 @@ def _uncovered(
     if len(rare) == 1 and not cannot:
         lines.append(counted[0])
     elif rare:
-        names = ", ".join(_class_name(c) for c in rare)
+        names = ", ".join(_class_name(c, for_model=False) for c in rare)
         lines.append(SAY_TOO_FEW.format(units=_units(unit), names=names))
         if not cannot:
             out["few_detail"] = counted
-    unseen = [_class_name(c) for c in own if not _count(c.get("seen"))]
+    unseen = [_class_name(c, for_model=False) for c in own if not _count(c.get("seen"))]
     line, detail = _unseen_lines(unseen, unit, m=len(own), several=several, known=known)
     if line is not None:
         lines.append(line)
@@ -2794,7 +2874,8 @@ def _squares(
     rows: list[dict[str, Any]] = []
     unseen: list[str] = []
     for c in classes:
-        name = _class_name(c)
+        # The card's words: the name as the sheet gave it (round r5-n SEC-4).
+        name = _class_name(c, for_model=False)
         k = _count(c.get("seen")) or 0
         j = _count(c.get("agreed")) or 0
         matched = _raw_class_name(c) or name
@@ -2844,7 +2925,10 @@ def _squares(
     # The legend as OE.fig.squares names its fills, the dashed square of a
     # Cannot tell answer and the outline.
     legend: list[dict[str, Any]] = [
-        {"code": c.get("code"), "text": LEGEND_SAW.format(name=_class_name(c))}
+        {
+            "code": c.get("code"),
+            "text": LEGEND_SAW.format(name=_class_name(c, for_model=False)),
+        }
         for c in used
     ]
     no_split: str | None = None
@@ -3143,7 +3227,9 @@ def _estimate_result(
     chances), with Cannot tell the grid with its dashed squares and no
     class line; the parts of the map and whether each has its own result
     (``sheet.graded_state``; a graded sheet that holds no answer, its
-    ``answered`` false, counts as not checked yet); the fold's rows (for a
+    ``answered`` false, counts as not checked yet; a part not read as a map,
+    ``readable`` false, is :data:`PART_UNREADABLE`, state ``unreadable``,
+    and is no part left to check, round r5-n numbers/F2); the fold's rows (for a
     random design one range row and the package's method, unreworded; else
     the tool's card rows; the unseen classes' names when the face says only
     how many and no squares are drawn); the last line by whether pictures
@@ -3449,6 +3535,9 @@ def _estimate_result(
                 # A graded sheet cleared since holds no answer: not checked (F4).
                 if isinstance(done, dict) and done.get("answered") is not False:
                     state, label = "graded", PART_GRADED.format(part=name)
+                elif item.get("readable") is False:
+                    # Not read as a map (r5-n numbers/F2): never a part to check.
+                    state, label = "unreadable", PART_UNREADABLE.format(part=name)
                 else:
                     state, label = "not", PART_NOT.format(part=name)
                     other_open += 1
@@ -3709,6 +3798,29 @@ def _estimate_result_safe(
     except Exception:  # noqa: BLE001 - the plain result stands
         logger.warning("an estimate's result card was not built", exc_info=True)
         return None
+
+
+def _record_held(held: dict[str, Any]) -> None:
+    """Record the estimate :data:`_HELD_ESTIMATE` held, into the run state it
+    ran with.
+
+    The card and the say-first lines state no rate from a withdrawn result
+    (round r5-k K1), and the stakeholder report rebuilds its accuracy
+    section from the run's provenance: a withdrawn result is recorded as a
+    copy marked ``withdrawn`` (round r5-n numbers/F1), so the report states
+    no rate from it either; the result the model and the view read is left
+    as it is. Any other estimate (failed, unavailable, cancelled, or whose
+    card was not built) is recorded as it was. Bookkeeping never fails the
+    call.
+    """
+    for state, arguments, envelope in held["calls"]:
+        inner = envelope.get("result")
+        if held["withdrawn"] and isinstance(inner, dict):
+            envelope = {**envelope, "result": {**inner, "withdrawn": True}}
+        try:
+            state.provenance.record_tool_call(ESTIMATE_TOOL, arguments, envelope)
+        except Exception:  # noqa: BLE001 - bookkeeping must not fail the call
+            logger.debug("provenance record failed", exc_info=True)
 
 
 def _check_say_first(n_parts: int, *, views: bool = True) -> list[str]:
@@ -4247,6 +4359,24 @@ class _CheckOutcome:
 _PREPARATION_READ: contextvars.ContextVar[tuple[StudioClient, ThreadState] | None]
 _PREPARATION_READ = contextvars.ContextVar("check_preparation_read", default=None)
 
+#: An estimate's record, held while :meth:`AppServer.call_agent_tool` builds
+#: its card (:meth:`AppServer._estimate_recorded`, round r5-n numbers/F1):
+#: ``{"calls": [(state, arguments, envelope)], "withdrawn": bool}``. The real
+#: :meth:`AppServer.run_agent_tool` hands an estimate's record here instead of
+#: making it, so it is made once whether the result is withdrawn is known and
+#: an olmoearth_case_narrative run meanwhile never reads its rate unmarked;
+#: ``None`` anywhere else, where the record is made at once.
+_HELD_ESTIMATE: contextvars.ContextVar[dict[str, Any] | None]
+_HELD_ESTIMATE = contextvars.ContextVar("held_estimate_record", default=None)
+
+#: The Studio client :meth:`AppServer.studio` last gave in this context (round
+#: r5-n SEC-2): a panel's call (the call_tool task) awaits it directly, so a
+#: refusal its client met is recorded for that client's key only while that
+#: client is still the one in effect (``app_error``), as a tool's answer is
+#: (:meth:`AppServer.run_agent_tool`). Never read in a task the call started.
+_CALL_STUDIO: contextvars.ContextVar[StudioClient | None]
+_CALL_STUDIO = contextvars.ContextVar("call_studio", default=None)
+
 
 class _CheckPreparation:
     """One preparation of a Check card's map in the background (round r5-h
@@ -4303,8 +4433,12 @@ class AppServer:
         )
         egress.validate_endpoint(self.base_url, "studio")
         self.state = ThreadState()
+        # A sign-in on the page clears an earlier refusal (round r5-n SEC-2).
         self.sign_in_page = auth.BrowserSignIn(
-            self.keys, self.base_url, brand_html=brand_html()
+            self.keys,
+            self.base_url,
+            on_signed_in=self._signed_in,
+            brand_html=brand_html(),
         )
         self._studio: StudioClient | None = None
         self._studio_key: str | None = None
@@ -4329,7 +4463,8 @@ class AppServer:
         old one open for the calls that hold it (closed at shutdown). Leaving
         a key (another key, or signed out) starts a new run state, so one
         account's records never reach another; a first sign-in keeps the
-        task's records, which hold no account's data.
+        task's records, which hold no account's data. The client given is
+        noted in this context (:data:`_CALL_STUDIO`, round r5-n SEC-2).
         """
         async with self._studio_lock:
             held = self.keys.current()
@@ -4345,6 +4480,7 @@ class AppServer:
                     else auth.SignedOutStudio(self.base_url)
                 )
                 self._studio_key = key
+            _CALL_STUDIO.set(self._studio)
             return self._studio
 
     async def aclose(self) -> None:
@@ -4365,35 +4501,59 @@ class AppServer:
             except Exception:  # noqa: BLE001 - closing must not fail shutdown
                 logger.debug("closing a Studio client failed", exc_info=True)
 
-    def key_refused(self, problem: str = auth.NOT_SIGNED_IN_MARK) -> None:
-        """Studio refused the key in effect: forget its account, remember the refusal."""
+    def key_refused(
+        self, problem: str = auth.NOT_SIGNED_IN_MARK, *, key: str | None
+    ) -> None:
+        """Studio refused ``key``, the key the failing call's client used:
+        while it is the key in effect, forget its account and remember the
+        refusal. A refusal of another key (a call still running on the key
+        in effect before a sign-in), or of a key not known (``None``),
+        changes nothing (round r5-n SEC-2)."""
         held = self.keys.current()
-        self.keys.account = None
-        if held:
-            self._refused = (held[0], problem)
+        if not held or key is None or key != held[0]:
+            return
+        self.keys.forget_account()
+        self._refused = (held[0], problem)
+
+    async def _signed_in(self) -> None:
+        """A sign-in on the sign-in page (``BrowserSignIn.on_signed_in``):
+        Studio has just accepted its key, so an earlier refusal, of this key
+        too, no longer holds (round r5-n SEC-2)."""
+        self._refused = None
 
     async def account(self) -> dict[str, Any]:
         """The sign-in status, with the account read from Studio once per key.
 
         A key Studio refused is not asked about again (the panel polls this);
-        its refusal is the status's ``key_problem`` until the key changes.
-        ``sign_ins`` counts the sign-ins made on the sign-in page.
+        its refusal is the status's ``key_problem`` until the key changes or
+        a sign-in on the page (:meth:`_signed_in`). The account is read again
+        when the key in effect is another than the one it was read for (a key
+        file another server rewrote; round r5-n SEC-6). When Studio cannot be
+        reached, the status's ``studio_unreachable`` says so and the key is
+        kept: it is no ``key_problem``, so nobody is told to sign in (round
+        r5-n B3). ``sign_ins`` counts the sign-ins made on the sign-in page.
         """
         status = self.keys.status()
         held = self.keys.current()
         if held and self._refused and self._refused[0] == held[0]:
             status["key_problem"] = self._refused[1]
-        elif held and self.keys.account is None:
+        elif held and self.keys.account_of(held[0]) is None:
             try:
-                self.keys.account = await auth.check_key(held[0], self.base_url)
+                account = await auth.check_key(held[0], self.base_url)
             except ValueError as exc:
                 status["key_problem"] = str(exc)
                 self._refused = (held[0], str(exc))
+            except auth.StudioNotJson as exc:
+                # Studio's address answered with a page (round r5-n B8): its
+                # own words, the key kept and checked again next time.
+                status["studio_unreachable"] = str(exc)
             except Exception as exc:  # noqa: BLE001 - offline: say so, keep the key
-                status["key_problem"] = (
+                status["studio_unreachable"] = (
                     f"Studio could not be reached ({type(exc).__name__})"
                 )
-            status = {**status, **self.keys.status()} if self.keys.account else status
+            else:
+                self.keys.note_account(held[0], account)
+                status = {**status, **self.keys.status()}
         status["sign_in_page_open"] = self.sign_in_page.url is not None
         status["sign_ins"] = self.sign_in_page.sign_ins
         return status
@@ -4410,7 +4570,9 @@ class AppServer:
         the panel's pictures given :data:`imagery.LABEL_MUST_STATE` (for an
         estimate, only when it graded the sheet, :func:`_graded_sheet`, as
         its card's last line says), and the call recorded in the run's
-        provenance. No text for the model and no
+        provenance (an estimate's, under :meth:`call_agent_tool`, once it is
+        known whether it is withdrawn: :data:`_HELD_ESTIMATE`). No text for
+        the model and no
         view data: the caller builds those. In a Check card's preparation
         (round r5-h H1) the Studio client and run state are the
         preparation's (:data:`_PREPARATION_READ`), and a key Studio refused
@@ -4440,13 +4602,24 @@ class AppServer:
             envelope["hint"] = (
                 f"{KEY_REFUSED} (it may be expired or revoked). {SIGN_IN_AGAIN}"
             )
-            if held is None or self._studio is None or studio is self._studio:
-                self.key_refused(KEY_REFUSED + " (it may be expired or revoked).")
+            if studio is self._studio:
+                # The key that client was made for (round r5-n SEC-2); a
+                # client replaced since (another key) records nothing.
+                self.key_refused(
+                    KEY_REFUSED + " (it may be expired or revoked).",
+                    key=self._studio_key,
+                )
         elif caught == "none":
             # A tool that catches its errors (the pixel value) answered ok with
             # the sign-in text as its reason: still a missing key.
             envelope["needs_sign_in"] = True
             envelope["hint"] = auth.NOT_SIGNED_IN
+        if error.startswith(StudioOutcomeUnknown.__name__ + ":"):
+            # A create whose answer was lost (round r5-n B1): it may have been
+            # made, so the hint says to look before any new write, in place of
+            # the registry's, which blames the ids.
+            envelope["outcome_unknown"] = True
+            envelope["hint"] = OUTCOME_UNKNOWN_HINT
         if name in PICTURE_LABEL_TOOLS and isinstance(envelope.get("result"), dict):
             # Labels read off the panel's pictures: the result says what such a
             # label is (the sheet's record shows pictures were served). For an
@@ -4468,11 +4641,40 @@ class AppServer:
             stated = [stated] if isinstance(stated, str) else list(stated)
             if served and imagery.LABEL_MUST_STATE not in stated:
                 inner["must_state"] = [*stated, imagery.LABEL_MUST_STATE]
+        held_record = _HELD_ESTIMATE.get() if name == ESTIMATE_TOOL else None
+        if held_record is not None:
+            # Recorded once it is known whether the result is withdrawn
+            # (:meth:`_estimate_recorded`, round r5-n numbers/F1).
+            held_record["calls"].append((state, arguments, envelope))
+            return envelope
         try:
             state.provenance.record_tool_call(name, arguments, envelope)
         except Exception:  # noqa: BLE001 - bookkeeping must not fail the call
             logger.debug("provenance record failed", exc_info=True)
         return envelope
+
+    async def _estimate_recorded(
+        self, arguments: dict[str, Any], *, views: bool
+    ) -> Any:
+        """:meth:`call_agent_tool` of an estimate, recorded in the run's
+        provenance only once it is known whether its result is withdrawn.
+
+        The record was made when the tool returned, and marked withdrawn
+        after the card's worker threads had run: an olmoearth_case_narrative
+        call in between read the withdrawn rate as a valid one (round r5-n
+        numbers/F1). Now :meth:`run_agent_tool` hands the record to
+        :data:`_HELD_ESTIMATE` and it is made here, after the call, with no
+        await (:func:`_record_held`): marked withdrawn when the card found the
+        result withdrawn, and as it was for any other estimate, a failed or
+        cancelled one included.
+        """
+        held: dict[str, Any] = {"calls": [], "withdrawn": False}
+        token = _HELD_ESTIMATE.set(held)
+        try:
+            return await self.call_agent_tool(ESTIMATE_TOOL, arguments, views=views)
+        finally:
+            _HELD_ESTIMATE.reset(token)
+            _record_held(held)
 
     async def call_agent_tool(
         self, name: str, arguments: dict[str, Any], *, views: bool = False
@@ -4506,9 +4708,14 @@ class AppServer:
         (:data:`SAY_FIRST_NOTE`; for a withdrawn result, round r5-k K1,
         :data:`SAY_WITHDRAWN_NOTE`, which asks for no must_state item), then
         :data:`GRADED_AGAIN_NOTE` and :data:`RULE_USED_NOTE` where they apply,
-        with panels or without."""
+        with panels or without. An estimate is recorded in the run's
+        provenance only once it is known whether it is withdrawn
+        (:meth:`_estimate_recorded`, round r5-n numbers/F1)."""
         from mcp import types
 
+        if name == ESTIMATE_TOOL and _HELD_ESTIMATE.get() is None:
+            # This call again, with its record held until the card is built.
+            return await self._estimate_recorded(arguments, views=views)
         # The sheet an estimate grades, and its version before the estimate
         # reads it (the mark and the grid need the same version after).
         graded_path = (
@@ -4578,6 +4785,16 @@ class AppServer:
                 design=design,
                 inline_reference=arguments.get("reference"),
             )
+            held_record = _HELD_ESTIMATE.get()
+            if (
+                held_record is not None
+                and estimate is not None
+                and (estimate.get("view") or {}).get("withdrawn")
+            ):
+                # The report reads the run's record: recorded withdrawn there
+                # too (_record_held), so it states no rate from this result
+                # (round r5-n numbers/F1).
+                held_record["withdrawn"] = True
         view = await asyncio.to_thread(
             self._view_data,
             name,
@@ -4758,15 +4975,29 @@ class AppServer:
     # --- the app's own tools ---
 
     async def sign_in_tool(self, *, views: bool) -> Any:
-        """``olmoearth_sign_in``: the sign-in, as a panel or as a link."""
+        """``olmoearth_sign_in``: the sign-in, as a panel or as a link.
+
+        A key held that could not be checked because Studio could not be
+        reached (``studio_unreachable``) opens no sign-in page: the note says
+        so and that the key is kept (:data:`STUDIO_UNREACHABLE_NOTE`, round
+        r5-n B3; :data:`STUDIO_NOT_JSON_NOTE` when Studio's address answered
+        with a page, B8)."""
         from mcp import types
 
         status = await self.account()
         signed_in = bool(status.get("signed_in")) and not status.get("key_problem")
+        unreachable = status.get("studio_unreachable")
         model: dict[str, Any] = {
             k: status.get(k) for k in ("signed_in", "source", "key_problem")
         }
-        if signed_in:
+        if unreachable:
+            model["studio_unreachable"] = unreachable
+            model["note"] = (
+                STUDIO_NOT_JSON_NOTE
+                if unreachable == auth.STUDIO_NOT_JSON
+                else STUDIO_UNREACHABLE_NOTE
+            )
+        elif signed_in:
             tail = ""
             if views and status.get("source") == "environment":
                 # WORDING: r5c S01 (sign_in.html draws no Sign out for this key)
@@ -4812,7 +5043,11 @@ class AppServer:
         (:func:`start_jobs`). The model reads each job's label, what it needs
         and what it gives (its line), and ``main`` on the main job; the card
         (``_meta``) gets the jobs' lines, messages and ``main``, and the
-        sign-in status without the key file's path.
+        sign-in status without the key file's path. A key held that Studio
+        could not be checked against (``studio_unreachable``, round r5-n B3)
+        is still signed in: the note adds :data:`STUDIO_UNREACHABLE_NOTE`
+        (:data:`STUDIO_NOT_JSON_NOTE` when Studio's address answered with a
+        page, B8), never the signed-out note.
         """
         from mcp import types
 
@@ -4822,6 +5057,11 @@ class AppServer:
             note = START_CARD_NOTE + ("" if signed_in else " " + START_SIGNED_OUT_CARD)
         else:
             note = START_TEXT_NOTE + ("" if signed_in else " " + START_SIGNED_OUT_TEXT)
+        unreachable = status.get("studio_unreachable")
+        if unreachable == auth.STUDIO_NOT_JSON:
+            note += " " + STUDIO_NOT_JSON_NOTE
+        elif unreachable:
+            note += " " + STUDIO_UNREACHABLE_NOTE
         jobs = start_jobs()
         model = {
             "ok": True,
@@ -4847,7 +5087,13 @@ class AppServer:
                 for j in jobs
             ],
         }
-        return types.CallToolResult(content=_text(model), _meta={VIEW_DATA_KEY: view})
+        # r5-n S3: the card's research skills tile, only while the Settings
+        # switch is on (the key is left out while it is off); the model's
+        # text never says it.
+        shown: dict[str, Any] = dict(view)
+        if await asyncio.to_thread(settings.asta_on):
+            shown["asta"] = True
+        return types.CallToolResult(content=_text(model), _meta={VIEW_DATA_KEY: shown})
 
     async def label_sheet_tool(self, arguments: dict[str, Any], *, views: bool) -> Any:
         """``olmoearth_label_sheet``: a plan's sheet, in the label view or as a file.
@@ -5064,10 +5310,13 @@ class AppServer:
         :data:`CHECK_PREPARE_SECONDS` is stopped and ends with the failed
         card of :data:`CHECK_PREPARE_TOO_LONG`, on its face; the status says
         failed then, and a call after answers that once. Stopping it stops
-        the download, but not a decode already running in a worker thread:
-        the result's read lock is let go, so a read that follows may run
-        while that thread still writes the same run folder (as before round
-        r5-h, when a call the host gave up on left its read running)."""
+        the download, but not work already running in a worker thread: a
+        decode, and the keep of its zip that follows it (round r5-n,
+        concurrency/F2: a read that follows waits for that decode under the
+        result's read lock, then reads the copy it kept), or a part's
+        pooling (concurrency/F1). The read lock is let go, so a read that
+        follows may pool a part while that thread still writes the same
+        scores file, which is written whole (round r5-n J02)."""
         studio_scores.PROGRESS.set(prep.progress)
         _PREPARATION_READ.set((prep.studio, prep.state))
         limit = asyncio.timeout(CHECK_PREPARE_SECONDS)
@@ -5271,11 +5520,14 @@ class AppServer:
         )
         # A 0-to-1 score map: its cut, first among what the model must state
         # and among the card's notes (round r5-a K3), and per part how many
-        # pixels outside 0 to 1 were set to the nearest end (K2).
+        # pixels outside 0 to 1 were set to the nearest end (K2). The model's
+        # line escapes the name inside its quotes; the card's shows it as
+        # Studio wrote it, drawn as text (round r5-n SEC-4).
         cut = _check_cut(inner)
+        shown = _check_cut(inner, for_model=False) or ""
         if cut is not None:
             stated = [cut, *must]
-            must = [cut, *must]
+            must = [shown, *must]
         clipped = {
             str(z.get("file") or "").strip(): _clipped_pixels(z)
             for z in inner.get("zones") or []
@@ -5317,7 +5569,7 @@ class AppServer:
         }
         if cut is not None:
             # A score map's cut, read only, on the card's face (r5-a K3).
-            view["cut"] = cut
+            view["cut"] = shown
         # Beside the owner's rule only, when the example pictures exist
         # (r4-k K9); otherwise the key is left out.
         examples = await asyncio.to_thread(examples_for, "check", rule.get("source"))
@@ -5984,6 +6236,19 @@ class AppServer:
             raise ValueError("on must be true or false")
         return await asyncio.to_thread(imagery.set_on, on)
 
+    async def _app_settings(self, _args: dict[str, Any]) -> dict[str, Any]:
+        """``olmoearth_app_settings``: the Settings box's three rows (round
+        r5-n S2, :func:`settings.state`): the research skills switch, the
+        pictures' yes with its day, and the maps kept on this computer. Quiet
+        (:data:`QUIET_APP_TOOLS`): the model reads ``{"ok": true}``."""
+        return await asyncio.to_thread(settings.state)
+
+    async def _app_setting(self, args: dict[str, Any]) -> dict[str, Any]:
+        """``olmoearth_app_setting``: one change at the user's press in the
+        Settings box (round r5-n S2, :func:`settings.change`), then the three
+        rows again. Quiet: the change tells Claude nothing."""
+        return await asyncio.to_thread(settings.change, dict(args))
+
     async def _app_check_status(self, args: dict[str, Any]) -> dict[str, Any]:
         """``olmoearth_app_check_status``: how the preparation of a Check
         card's map goes (round r5-h H1), by the ``result_id`` its preparing
@@ -6123,9 +6388,11 @@ class AppServer:
         and an OSError's number (round r5-d R11; :func:`_draw_for_view`,
         round r5-a K4); its record keeps both.
         A press cancelled after its claim (the page's call timed out or was
-        dropped) records the draw stopped, which a press retries with its
-        pinned settings, and logs it ``"cancelled"`` (:func:`_stop_draw`,
-        shielded from the cancel); the cancel then goes on. One log line per
+        dropped), or while its claim runs (the claim's outcome is awaited,
+        shielded; round r5-n F3), records a draw it claimed stopped, which a
+        press retries with its pinned settings, and logs it ``"cancelled"``
+        (:func:`_stop_draw`, shielded from the cancel); the cancel then goes
+        on. One log line per
         zone (:func:`check.append_log`); its ``pressed_at``, and a first
         draw's record's, is ``pressed``, the press's time, taken once for the
         whole press before its lock (:meth:`_app_check_draw`). ``rules_for``
@@ -6142,8 +6409,8 @@ class AppServer:
             key if isinstance(key, str) and check.KEY_PATTERN.fullmatch(key) else None
         )
         rule = (rules_for or {}).get(shown) if shown is not None else None
-        try:
-            claim = await asyncio.to_thread(
+        claiming = asyncio.ensure_future(
+            asyncio.to_thread(
                 check.claim_draw,
                 key,
                 budget,
@@ -6151,6 +6418,26 @@ class AppServer:
                 reading_rule=rule.get("text") if rule else None,
                 rule_typed_at=rule.get("typed_at") if rule else None,
             )
+        )
+        try:
+            claim = await asyncio.shield(claiming)
+        except asyncio.CancelledError:
+            # Cancelled while the claim runs in its thread (round r5-n F3):
+            # its outcome is still awaited, and a draw it claimed is recorded
+            # stopped and logged "cancelled", as after the claim, so no record
+            # is left "drawing" to show the part busy. The cancel then goes on.
+            # The SDK cancels through an anyio CancelScope, which cancels the
+            # task again on every loop turn: the wait and the stop are shielded
+            # from it too, so the lock is held until the stop is written.
+            with contextlib.suppress(BaseException), anyio.CancelScope(shield=True):
+                late = await asyncio.shield(claiming)
+                if late.get("outcome") in ("first", "retry"):
+                    await asyncio.shield(
+                        asyncio.to_thread(
+                            _stop_draw, str(key), shown, budget, late["draw"], pressed
+                        )
+                    )
+            raise
         except (ValueError, OSError) as exc:
             error = str(exc) if isinstance(exc, ValueError) else check.UNREADABLE
             offer = await asyncio.to_thread(_offer_or_none, shown)
@@ -6166,13 +6453,15 @@ class AppServer:
                 record = await self._check_plan(str(key), record)
             except asyncio.CancelledError:
                 # Shielded: the stopped draw and its log line are written
-                # whole whatever the cancel does to this call.
+                # whole whatever the cancel does to this call (from the SDK's
+                # anyio CancelScope's repeated cancels too, round r5-n F3).
                 with contextlib.suppress(asyncio.CancelledError):
-                    await asyncio.shield(
-                        asyncio.to_thread(
-                            _stop_draw, str(key), shown, budget, record, pressed
+                    with anyio.CancelScope(shield=True):
+                        await asyncio.shield(
+                            asyncio.to_thread(
+                                _stop_draw, str(key), shown, budget, record, pressed
+                            )
                         )
-                    )
                 raise
             if record.get("state") == "drawn" and isinstance(
                 record.get("reading_rule"), str
@@ -6473,6 +6762,27 @@ APP_TOOLS: dict[str, tuple[str, dict[str, Any]]] = {
             "properties": {"on": {"type": "boolean"}},
         },
     ),
+    # WORDING: r5n
+    "olmoearth_app_settings": (
+        "The Settings box's three rows: the research skills switch, whether "
+        "pictures are allowed and since when, and how many maps are kept on "
+        "this computer.",
+        _NO_ARGS,
+    ),
+    # WORDING: r5n
+    "olmoearth_app_setting": (
+        "One change in the Settings box, at the user's press: the research "
+        "skills switch (with on), forget the pictures' yes, or remove the kept "
+        "copies; then the three rows again.",
+        {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "enum": list(settings.NAMES)},
+                "on": {"type": "boolean"},
+            },
+            "required": ["name"],
+        },
+    ),
     "olmoearth_app_check_draw": (
         "Draw the samples of a Check card for the zones the user picked (the "
         "user's press): design, seed and count fixed and logged here, once per "
@@ -6738,21 +7048,44 @@ def build_server(app: AppServer | None = None) -> Any:
     from pydantic import AnyUrl
 
     app = app or AppServer()
-    server: Any = Server(SERVER_NAME, instructions=server_instructions(app.registry))
+    # The handshake's serverInfo names this package's version, not the mcp
+    # SDK's, which the SDK gives when none is set (round r5-n PKG-5).
+    # The app's icon (views.APP_ICON), inline: the one entry Claude reads (round r5-n S5).
+    server: Any = Server(
+        SERVER_NAME,
+        version=__version__,
+        instructions=server_instructions(app.registry),
+        icons=[
+            types.Icon(src=app_icon_data_url(), mimeType="image/png"),
+        ],
+    )
 
     def app_error(exc: BaseException, message: str | None = None) -> Any:
         """A view tool's failure, with whether the view should offer the sign-in.
 
         ``stale`` (true) on a save refused because the sheet was saved
         elsewhere since the panel read it (``sheet.StaleSheet``): the panel
-        reads the sheet again and sends its changes anew.
+        reads the sheet again and sends its changes anew. ``outcome_unknown``
+        (true) on a write whose answer from Studio was lost
+        (``StudioOutcomeUnknown``, round r5-n B1): it may have been made. A
+        refusal is recorded for the key of the client the call used
+        (:data:`_CALL_STUDIO`), only while that client is still the one in
+        effect: a client replaced since (a sign-in with another key) records
+        nothing (round r5-n SEC-2).
         """
         needs = _needs_sign_in(exc)
         if needs and isinstance(exc, StudioAccessError):
-            app.key_refused(KEY_REFUSED + " (it may be expired or revoked).")
+            used = _CALL_STUDIO.get()
+            if used is not None and used is app._studio:
+                app.key_refused(
+                    KEY_REFUSED + " (it may be expired or revoked).",
+                    key=app._studio_key,
+                )
         body = {"ok": False, "error": message or str(exc), "needs_sign_in": needs}
         if isinstance(exc, sheet.StaleSheet):
             body["stale"] = True
+        if isinstance(exc, StudioOutcomeUnknown):
+            body["outcome_unknown"] = True
         return types.CallToolResult(
             content=_text(body), structuredContent=body, isError=True
         )
@@ -6825,6 +7158,9 @@ def build_server(app: AppServer | None = None) -> Any:
                 result = await app.app_tool(name, arguments)
             except (ValueError, auth.NotSignedIn, StudioAccessError) as exc:
                 failed = app_error(exc)
+            except StudioOutcomeUnknown as exc:
+                # A save whose answer was lost (round r5-n B1): in plain words.
+                failed = app_error(exc, OUTCOME_UNKNOWN_PANEL)
             except Exception as exc:  # noqa: BLE001 - the view shows the error's kind
                 logger.warning("app tool %s failed", name, exc_info=True)
                 failed = app_error(exc, f"{type(exc).__name__}: the call failed")

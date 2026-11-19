@@ -2,7 +2,7 @@
 # Copyright (c) 2026 OlmoEarth Agent contributors
 """A thin HTTP bridge that puts the live agent behind the ``webui/`` shell.
 
-This is the bridge ``docs/Usage.md`` (Web UI) describes: a small FastAPI app that
+This is the bridge ``spec/Usage.md`` (Web UI) describes: a small FastAPI app that
 serves the static front-end *and* exposes two JSON/SSE endpoints so a
 browser brief runs the real :class:`~olmoearth_agent.harness.LeadAgent`
 instead of the canned demo.
@@ -15,8 +15,10 @@ Endpoints
 
 The caller's Studio API key rides in the ``X-Olmoearth-Key`` header (or
 ``Authorization: Bearer``); it is forwarded to Studio per request and
-never stored or logged. The LLM backbone is the env-configured
-(``LLM_*``) endpoint from ``docs/Usage.md``; bring it up with
+never stored or logged. Only a request addressed to 127.0.0.1, localhost
+or [::1] is answered (``OLMOEARTH_SERVE_ALLOWED_HOSTS`` adds names); any
+other ``Host`` gets HTTP 403. The LLM backbone is the env-configured
+(``LLM_*``) endpoint from ``spec/Usage.md``; bring it up with
 ``scripts/serve-llm.sh`` first.
 
 Run it::
@@ -35,6 +37,7 @@ import importlib.util
 import json
 import os
 import re
+import sys
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -63,6 +66,7 @@ from olmoearth_agent.studio.client import (
     DEFAULT_BASE_URL,
     StudioAccessError,
     StudioConfig,
+    StudioOutcomeUnknown,
 )
 from olmoearth_agent.tools.sampling import band_value
 
@@ -148,6 +152,32 @@ def _read_cache_put(k: str, payload: dict[str, Any], ttl: float) -> None:
 def _read_cache_invalidate(substr: str) -> None:
     for k in [key for key in _READ_CACHE if substr in key]:
         _READ_CACHE.pop(k, None)
+
+
+#: The agent's Studio writes whose success makes a cached read stale, and the
+#: read cache keys each drops for the caller's key (``{key}``, its hash):
+#: a project the agent created, or a prediction it submitted, in a run.
+_WRITE_DROPS = {
+    "olmoearth_create_project": "projects|{key}",
+    "olmoearth_submit_prediction": "preds|{key}|",
+}
+
+
+def _drop_stale_reads(event: dict[str, Any], key: str) -> None:
+    """Drop the cached reads a run's successful Studio write made stale.
+
+    Only an area drawn on the map dropped its cached read; a project the
+    agent created, or a prediction it submitted, stayed out of the Projects
+    tree until the cache expired, up to 300 s and 30 s (round r5-n
+    agent/F9). ``event`` is one of the run's events; only an ok
+    ``tool_result`` of a tool in :data:`_WRITE_DROPS` drops anything. The
+    browser drops its own copy on the same event (``webui/js/run.js``).
+    """
+    if event.get("type") != "tool_result" or not event.get("ok"):
+        return
+    drop = _WRITE_DROPS.get(str(event.get("name")))
+    if drop is not None:
+        _read_cache_invalidate(drop.format(key=_key_hash(key)))
 
 
 def _webui_dir() -> Path:
@@ -377,6 +407,82 @@ async def _revalidate_static(request: Request, call_next: Any) -> Any:
     if not request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-cache")
     return response
+
+
+#: The ``Host`` names the bridge answers: loopback only (round r5-n
+#: security/SEC-5). A page that rebinds its own name to 127.0.0.1 (DNS
+#: rebinding) sends its own name, so it is refused before any route runs and
+#: cannot drive the agent or read its replies.
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "[::1]"})
+#: More names the bridge answers, comma-separated: a LAN name when it is run
+#: with ``--host 0.0.0.0``.
+ALLOWED_HOSTS_ENV = "OLMOEARTH_SERVE_ALLOWED_HOSTS"
+#: The body of the refusal of a request to another name.
+# WORDING: r5n security/SEC-5 (it named 127.0.0.1 or localhost only)
+FOREIGN_HOST = (
+    "Forbidden: this bridge answers only requests to 127.0.0.1, localhost or "
+    f"[::1] (more names go in {ALLOWED_HOSTS_ENV})."
+)
+
+
+def _host_name(host: str) -> str:
+    """A ``Host`` header's name, without its port, lower case.
+
+    Examples
+    --------
+    >>> _host_name("LOCALHOST:8088"), _host_name("[::1]:8088"), _host_name("[::1]")
+    ('localhost', '[::1]', '[::1]')
+    """
+    host = host.strip().lower()
+    if host.endswith("]") or ":" not in host:
+        return host
+    return host.rsplit(":", 1)[0]
+
+
+def _entry_name(entry: str) -> str:
+    """A name of :data:`ALLOWED_HOSTS_ENV` as :func:`_host_name` gives a ``Host``.
+
+    Lower case and without a port, so an entry written with one still
+    matches; a bare IPv6 address gets its brackets first, as a ``Host``
+    header carries it (``_host_name("fe80::1")`` alone would cut it).
+
+    Examples
+    --------
+    >>> _entry_name("fe80::1"), _entry_name(" LAN-box:9000 "), _entry_name("[::1]:80")
+    ('[fe80::1]', 'lan-box', '[::1]')
+    """
+    name = entry.strip().lower()
+    if name.count(":") > 1 and not name.startswith("["):
+        name = f"[{name}]"  # a bare IPv6 address
+    return _host_name(name)
+
+
+def _allowed_hosts() -> frozenset[str]:
+    """:data:`LOOPBACK_HOSTS` and the names :data:`ALLOWED_HOSTS_ENV` adds.
+
+    Read on each request, so a test, or an operator restarting with another
+    list, needs no new import. Each name is read as :func:`_entry_name`
+    gives it (round r5-n security/SEC-5: one written with a port, or a bare
+    IPv6 address, never matched).
+    """
+    extra = os.environ.get(ALLOWED_HOSTS_ENV, "")
+    return LOOPBACK_HOSTS | {_entry_name(h) for h in extra.split(",") if h.strip()}
+
+
+@app.middleware("http")
+async def _loopback_only(request: Request, call_next: Any) -> Any:
+    """Refuse a request whose ``Host`` is not a name the bridge answers.
+
+    The bridge listens on 127.0.0.1 and accepts any non-empty Studio key, so
+    a website that rebinds its own name to 127.0.0.1 could run the agent on
+    the user's model and tools and read the replies (round r5-n
+    security/SEC-5). Such a request carries the website's name in ``Host``:
+    anything but :func:`_allowed_hosts` gets HTTP 403 before any route runs,
+    the static page included.
+    """
+    if _host_name(request.headers.get("host", "")) not in _allowed_hosts():
+        return Response(FOREIGN_HOST, status_code=403, media_type="text/plain")
+    return await call_next(request)
 
 
 def _claude_available() -> bool:
@@ -698,15 +804,20 @@ async def api_run(request: Request) -> StreamingResponse:
     # a simple read-only lookup is demoted from the hosted backend to the free
     # local model. Demotion only — a complex brief never gains a hosted client
     # it has no key for, and a wrong "simple" verdict costs quality on one
-    # lookup, not money.
+    # lookup, not money. The local model is probed only when a run would
+    # move, and a run stays on the hosted backend when it does not answer: a
+    # cloud-only user got a connection error on every simple question
+    # (round r5-n agent/F4).
     route = request.headers.get("x-llm-route", "").strip().lower()
+    local = app.state.llm
     if (
         route == "auto"
-        and llm is not app.state.llm
+        and llm is not local
         and classify_brief(brief, forced_skill=forced_skill) == "simple"
+        and await _local_llm_up(local.config.endpoint, local.config.api_key)
     ):
         await llm.aclose()  # release the unused hosted client
-        llm = app.state.llm
+        llm = local
     skill_index: str = app.state.skill_index
 
     async def event_stream() -> AsyncIterator[str]:
@@ -733,6 +844,9 @@ async def api_run(request: Request) -> StreamingResponse:
                     async for event in agent.run_stream(
                         brief, max_turns=max_turns, history=history
                     ):
+                        # A project created or a prediction submitted: the
+                        # tree's cached reads go (round r5-n agent/F9).
+                        _drop_stale_reads(event, key)
                         # The figure is read off the event loop, so a slow
                         # disk does not stall the other sessions' streams.
                         yield _sse(await asyncio.to_thread(_for_browser, event))
@@ -769,7 +883,11 @@ async def api_create_area(request: Request) -> dict[str, Any]:
     web UI, which shows it and puts it in the brief with the ``area_id`` (no
     skill takes a bbox). Returns ``{ok, area: {id, name, project_id, bbox}}``.
     When Studio refuses the key (HTTP 401/403, e.g. a read-only key), the
-    answer is a 403 whose detail says so and that nothing was created.
+    answer is a 403 whose detail says so and that nothing was created. When
+    Studio's answer was lost after the create went out
+    (``StudioOutcomeUnknown``, round r5-n B1), the area may have been saved:
+    the project's cached area list is dropped, so a reload shows it, and the
+    answer is a 502 whose detail says Studio may have created it.
     """
     key = _studio_key(request)
     if not key:
@@ -803,6 +921,13 @@ async def api_create_area(request: Request) -> dict[str, Any]:
         # Studio refused the key (e.g. a read-only one): its words, as a 403,
         # say that no area was saved, where a 502 would read as an outage.
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except StudioOutcomeUnknown as exc:
+        # The answer was lost after the create went out: it may have been
+        # made, so the list is read anew; its words name the method, the
+        # path and the failure's kind, never the geometry or the key.
+        _read_cache_invalidate(f"areas|{_key_hash(key)}|{project_id}")
+        # WORDING: r5n errors/B1 (the detail the web UI shows)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     # The project's area list changed -> drop its cached read (server + clients).
@@ -1013,7 +1138,8 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
     The web UI samples both results on a grid through here to paint a live
     difference map. ``result_id``, ``lon``, ``lat`` (and optional
     ``property``) are query params. A point off the raster (Studio 404) is
-    returned as ``value: null`` so the scan just skips that cell.
+    returned as ``value: null`` so the scan just skips that cell. A refused
+    key keeps its status, 401 or 403; any other failure is a 502.
     """
     key = _studio_key(request)
     if not key:
@@ -1041,6 +1167,13 @@ async def api_pixel_value(request: Request) -> dict[str, Any]:
             _cache_put(_PV_CACHE, ckey, out)
             return out
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
+    except StudioAccessError as exc:
+        # Studio refused the key (HTTP 401/403): its own status, so the page
+        # says the key was refused and does not retry, where a 502 read as
+        # Studio not answering (round r5-n errors/B10). Nothing is cached.
+        raise HTTPException(
+            status_code=exc.status_code, detail=_studio_detail(exc)
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=_studio_detail(exc)) from exc
     bands = rec.get("bands") or []
@@ -1120,11 +1253,24 @@ if _WEBUI.is_dir():
     app.mount("/", StaticFiles(directory=str(_WEBUI), html=True), name="webui")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint: run the bridge with uvicorn. Returns an exit code."""
-    import argparse
+#: Said when the web UI is not where the bridge looks (round r5-n
+#: packaging/PKG-4): a wheel install (pip, uvx) ships no ``webui/``, and the
+#: bridge then answered every page with a bare 404. ``{path}`` is where it
+#: looked.
+WEBUI_MISSING = (
+    "olmoearth-agent-serve: the web UI is not at {path}. Run it from a clone of "
+    "the repository (uv sync, then make bridge), or set OLMOEARTH_WEBUI_DIR to "
+    "the repository's webui/ folder."
+)
 
-    import uvicorn
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint: run the bridge with uvicorn. Returns an exit code.
+
+    2, with :data:`WEBUI_MISSING` on stderr, when the web UI is not found
+    (``_webui_dir``), in place of a bridge that answers 404 to every page.
+    """
+    import argparse
 
     parser = argparse.ArgumentParser(
         prog="olmoearth-agent-serve",
@@ -1133,6 +1279,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1", help="bind host")
     parser.add_argument("--port", type=int, default=8088, help="bind port")
     args = parser.parse_args(argv)
+    if not _WEBUI.is_dir():
+        print(WEBUI_MISSING.format(path=_WEBUI), file=sys.stderr)
+        return 2
+
+    import uvicorn
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
     return 0

@@ -227,15 +227,18 @@ def claim_check_messages(answer: str, run: RunEvidence, card: str) -> list[Messa
     """The verifier's messages: :data:`VERIFIER_PROMPT`, then the record and answer.
 
     The record is the user's messages (the brief and the user's turns), on
-    the ``"web"`` surface the earlier answers (checked when they were shown,
-    as the number check reads them), the capability ``card``, and each tool
+    the ``"web"`` surface the earlier answers as far as they passed the
+    checks when they were shown (as the number check reads them, without a
+    sentence left marked ``[unverified: ...]``:
+    :attr:`~olmoearth_agent.harness.checks.RunEvidence.checked_earlier`, round
+    r5-n agent/F3), the capability ``card``, and each tool
     call with its arguments and its result as the model read it
     (:func:`~olmoearth_agent.harness.spill.llm_view`).
     """
     parts = [
         f"<user_messages>\n{_numbered(run.user_messages) or '(none)'}\n</user_messages>"
     ]
-    earlier = run.assistant_messages if run.surface == "web" else []
+    earlier = [m for m in run.checked_earlier if m.strip()]
     if earlier:
         parts.append(
             '<earlier_answers note="shown to the user and checked when shown">\n'

@@ -21,6 +21,7 @@ from olmoearth_agent.analysis.raster_compare import (
     declared_range,
 )
 from olmoearth_agent.llm.types import ToolSpec
+from olmoearth_agent.studio.client import StudioAccessError
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.result_ids import resolving
@@ -205,7 +206,10 @@ async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
     The user supplies the point, so echoing it back with the value is rule
     1 compliant (no agent-derived geometry is leaked). Off-raster / nodata
     / a transient failure resolve to ``available: False`` with a reason rather
-    than an exception, so the model gets a clean "no value there" answer.
+    than an exception, so the model gets a clean "no value there" answer. A
+    refused key (HTTP 401 or 403, :class:`StudioAccessError`) is raised, so
+    the registry gives its own hint and the sentence the model must state
+    (round r5-n agent/F8): it is no "no data at this point".
     """
     result_id = args["result_id"]
     lon = float(args["lon"])
@@ -214,6 +218,8 @@ async def _pixel_value(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]
     point = {"lon": round(lon, 6), "lat": round(lat, 6)}
     try:
         record = await ctx.studio.pixel_value(result_id, lon, lat)
+    except StudioAccessError:
+        raise  # Studio refused the key: the registry adds its hint and must_state
     except Exception as exc:  # off-raster / nodata / transient -> clean answer
         return {
             "result_id": result_id,

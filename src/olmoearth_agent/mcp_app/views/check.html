@@ -404,6 +404,10 @@ const RULE_FIRST = 'Write the labelling rule first, in one sentence of at least 
 const RULE_AND_NUMBER = 'Write your rule and choose a number of squares first.';
 // WORDING: r5b J08
 const CHOOSE = 'Choose a number of squares above.';
+// While a part's sheet is being opened (r5-n JS-2: the press is off then,
+// and nothing said why).
+// WORDING: r5n
+const SHEET_OPENING = 'A sheet is opening. Wait for it.';
 // WORDING: r5b J08
 const LEFT_OUT = (names) => (names.length > 3 ? names.length + ' parts have'
   : names.length === 1 ? names[0] + ' has'
@@ -1157,13 +1161,15 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
   }
 
   /* Under the press, within the most parts one press draws (r5-b J08): why
-     the press is off (the gate asks for a rule and neither it nor a number
+     the press is off (a part's sheet is being opened, SHEET_OPENING, r5-n
+     JS-2; the gate asks for a rule and neither it nor a number
      is there; the box beside the app's rule holds too few characters, which
      BOX_SHORT says, or the gate's rule does; no number is chosen),
      or, on a map in parts, which parts that still offer numbers this press
      leaves out (LEFT_OUT). Empty when the press takes every such part. */
   function pressWhy(plan) {
     if (ruleLost) return '';
+    if (models.some((x) => x.opening)) return SHEET_OPENING;
     const chosen = plan.send.length > 0;
     if (gateMode === 'ask' && ruleLength() < RULE_MIN && !chosen) return RULE_AND_NUMBER;
     if (gateMode === 'replace' && gateHeld()) return BOX_SHORT;
@@ -1178,7 +1184,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      while picks are past the room); within it, pressWhy, in body type (r5-b
      J08), which clears itself, since every choice and every key in the box
      runs this. The press is off while picks are past the room, nothing is
-     chosen or the gate's rule is too short; on when only failed picks wait. */
+     chosen or the gate's rule is too short, and while a part's sheet is
+     being opened (r5-n JS-2: openZone); on when only failed picks wait. */
   function updatePress() {
     const can = drawable();
     if (opened !== null || !can.length) {
@@ -1191,7 +1198,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     limitLine.hidden = !words && !why;
     limitLine.className = words ? 'small ' + (plan.over > 0 ? 'error' : 'muted') : '';
     limitLine.textContent = words || why;
-    press.setAttribute('aria-disabled', String(busy || !plan.send.length || plan.over > 0 || gateHeld()));
+    press.setAttribute('aria-disabled', String(busy || models.some((x) => x.opening) || !plan.send.length || plan.over > 0 || gateHeld()));
     if (!pressArea.isConnected) action.replaceChildren(pressArea);
   }
 
@@ -1517,9 +1524,13 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      the press (r4-h Q4, Q11: a rule another card pinned, a claim that
      failed, a typed rule settled), which the card shows from then on; a
      reply that refused a typed rule (a rule already set: refused) picked
-     nothing and keeps the picks. */
+     nothing and keeps the picks. No press starts while a part's sheet is
+     being opened (r5-n JS-2; openZone and updatePress keep the press
+     aria-disabled then): the sheet would open over the press's answer, and
+     every part still offering numbers would go to LATER with no press left
+     to pick it. */
   async function drawPicked() {
-    if (busy) return;
+    if (busy || models.some((x) => x.opening)) return;
     if (gateHeld() && ruleLost) { OE.toast(RULE_LOST); return; }
     const plan = sendPlan();
     const picked = plan.send;
@@ -1602,7 +1613,11 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
      the editor open before, which first saves what it holds (oeSettle) and
      stays, with its own Save, when that save fails; the heading takes the
      focus if the press or the open button had it. Nothing opens while a
-     press is answered. A sheet that cannot be read keeps the open button and
+     press is answered, and no press starts while a sheet opens: the press is
+     aria-disabled from the start, the line under it saying why
+     (SHEET_OPENING; r5-n JS-2: updatePress; drawPicked ignores it then, and
+     renderAll, at every end that leaves it on the card, draws it again as
+     the counts stand). A sheet that cannot be read keeps the open button and
      says to press it again, and to tell Claude if it fails again; why is in
      Details (r5-f F04). When its sheet could not be read when the card opened
      either, its line that said to press (SHEET_TRY, r5-i B1) gives way to the
@@ -1621,6 +1636,7 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
     const had = hadFocus !== null ? hadFocus : Boolean(button) && document.activeElement === button;
     m.opening = true;
     if (button) button.setAttribute('aria-disabled', 'true');
+    updatePress();
     const before = opened;
     const current = opened !== null ? action.querySelector('section.sheet') : null;
     if (current && typeof current.oeSettle === 'function' && !(await current.oeSettle())) {
@@ -1773,7 +1789,8 @@ function checkCard(app, data, zones, must, resultId = null, drawsMax = DRAWS_MAX
    request with the result's id (OE.JOB_TEXT.points, the view's
    points_request; no button without a valid id), a message the host does
    not take shown to type (OE.sendJob), and in a closed Details fold what the
-   check gives (POINTS_GRID, r5-e K7) and the tool's own sentence. */
+   check gives (POINTS_GRID, r5-e K7) and the tool's own sentence. One
+   message per press (OE.oncePerPress, r5-n JS-1). */
 function classMapCard(app, data, reason) {
   const id = /^[A-Za-z0-9_.:-]{1,200}$/;
   const ask = data.points_request && typeof data.points_request === 'object' ? data.points_request : {};
@@ -1786,7 +1803,7 @@ function classMapCard(app, data, reason) {
   const typed = OE.typeSlot();
   const button = resultId ? OE.el('button', {
     class: 'primary',
-    onclick: () => OE.sendJob(app, OE.JOB_TEXT.points({ result_id: resultId, prediction_id: predictionId }), typed),
+    onclick: OE.oncePerPress(() => OE.sendJob(app, OE.JOB_TEXT.points({ result_id: resultId, prediction_id: predictionId }), typed)),
   }, ON_POINTS) : null;
   root.append(OE.el('div', { class: 'card stack' },
     ...CLASS_MAP.map((s) => OE.el('div', {}, s)),
@@ -1933,7 +1950,8 @@ function preparingCard(app, data) {
 }
 
 /* The Studio sign-in, as the result card offers it; once signed in, one
-   contained button asks Claude to run the check again. */
+   contained button asks Claude to run the check again, once per press
+   (OE.oncePerPress, r5-n JS-1). */
 function signIn(app, tool) {
   const panel = OE.signInPanel(app, {
     acceptCurrent: true,  // signed in since, in another panel: no page needed
@@ -1945,7 +1963,7 @@ function signIn(app, tool) {
     onDone: (status) => {
       const typed = OE.typeSlot();
       const again = OE.el('button', {
-        class: 'primary', onclick: () => OE.sendJob(app, 'I have signed in to OlmoEarth Studio. Run ' + tool + ' again.', typed),
+        class: 'primary', onclick: OE.oncePerPress(() => OE.sendJob(app, 'I have signed in to OlmoEarth Studio. Run ' + tool + ' again.', typed)),
       }, 'Run it again');
       panel.replaceWith(OE.el('div', { class: 'card stack' },
         OE.el('div', {}, OE.accountLine(status.account)),
@@ -1970,11 +1988,12 @@ function show(app, params) {
   const data = OE.viewData(params);
   OE.disposeEditors(root);
   OE.tellClaude(app, '', 'check');
-  // r5-m B3, after review: the page's one status line, which checkCard moved under its press, goes back to the
-  // page's foot before #root is drawn again (made there if it is missing), so every card starts with the region
-  // OE.start put in place, as before this round, and checkCard's action.after(OE.toastRegion()) moves it again.
+  // r5-m B3, after review: the page's one status line, which checkCard moved under its press, goes back under
+  // #root, before Settings (r5-n S1), before #root is drawn again (made at the page's foot if it is missing), so
+  // every card starts with the region where OE.start put it, and checkCard's action.after(OE.toastRegion()) moves it
+  // again.
   const bar = OE.toastRegion();
-  if (root.contains(bar)) document.body.append(bar);
+  if (root.contains(bar)) root.after(bar);
   root.replaceChildren(OE.el('div', { class: 'overline' }, 'Accuracy check'));
   if (data.needs_sign_in) {
     root.append(signIn(app, data.tool || 'olmoearth_check_map'));

@@ -6,7 +6,7 @@ A skill contributes a *bundle* of :class:`RegisteredTool` objects to the
 registry. The lead agent exposes ``registry.active_specs(loaded)`` to the LLM
 on every turn and routes each emitted ``ToolCall`` back through
 :meth:`ToolRegistry.dispatch`. This is the seam every skill plugs into
-(``docs/Usage.md``, Skills).
+(``spec/Usage.md``, Skills).
 
 Deferred loading. A bundle registered with a ``group`` (a catalog skill's
 name) is *deferred*: its specs are not sent on every turn, only once the run
@@ -22,11 +22,17 @@ Studio (``skills.registry.STUDIO_WRITE_TOOLS``): unlike a deferred tool, a
 left-out tool cannot be called or loaded by the model, and
 :attr:`ToolRegistry.cannot` puts the reason on the capability card.
 
-A handler's exception becomes a failed envelope with a generic hint; a
+A handler's exception becomes a failed envelope with a generic hint; Studio
+itself failing (a timeout, a dropped connection, HTTP 429 or a 5xx:
+:func:`studio_busy`) gets :data:`STUDIO_BUSY_HINT`, and a timeout's empty
+text reads :data:`TIMEOUT_TEXT` (:func:`error_text`); a
 :class:`~olmoearth_agent.studio.client.StudioAccessError` (Studio refused the
-key), or the bridge's replay of one, brings its own hint instead
-(:func:`own_hint`), and any exception's ``contract`` keys are put beside the
-error.
+key), a :class:`~olmoearth_agent.studio.client.StudioOutcomeUnknown` (a
+create whose answer was lost, so it may have been made: look before any new
+write; round r5-n B1), or the bridge's replay of either, brings its own hint
+instead (:func:`own_hint`), and any exception's ``contract`` keys are put
+beside the error. Arguments that did not decode as one JSON object
+(``__raw_arguments``) are refused before the handler runs.
 """
 
 from __future__ import annotations
@@ -37,8 +43,14 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from olmoearth_agent.llm.types import ToolCall, ToolSpec
-from olmoearth_agent.studio.client import StudioAccessError, StudioClient
+import httpx
+
+from olmoearth_agent.llm.types import RAW_ARGUMENTS, ToolCall, ToolSpec
+from olmoearth_agent.studio.client import (
+    StudioAccessError,
+    StudioClient,
+    StudioOutcomeUnknown,
+)
 from olmoearth_agent.tools.validate import schema_summary, validate_arguments
 
 if TYPE_CHECKING:
@@ -58,6 +70,21 @@ STOP_RETRYING_HINT = (
     "This tool has now failed {count} times in this run with this same error "
     "(numbers aside). Stop retrying it: tell the user what the error says the "
     "limit or problem is, and answer with what you have."
+)
+
+#: A Studio timeout's text: httpx leaves its timeouts' text empty, so the
+#: error was only "ReadTimeout: " (round r5-n errors/B2).
+TIMEOUT_TEXT = "Studio did not answer in time"
+#: The hint on a failure of Studio itself (a timeout, a dropped connection, a
+#: rate limit or a 5xx), in place of the generic one, which blamed the ids and
+#: ruled out the one step that works: the same call again after a pause. The
+#: two writes may have been applied (round r5-n errors/B2).
+STUDIO_BUSY_HINT = (
+    "Studio was slow, busy or unreachable; the ids and arguments are not the "
+    "cause. For a read, wait a minute and make the same call once more. For "
+    "olmoearth_create_project or olmoearth_submit_prediction, the request may "
+    "have been applied: check with a list or search tool before trying again. "
+    "If it fails again, tell the user Studio is not answering."
 )
 
 _NUMBER = re.compile(r"\d+(?:\.\d+)?")
@@ -114,6 +141,54 @@ def note_failure(envelope: dict[str, Any], name: str, thread_state: Any) -> None
         envelope["hint"] = STOP_RETRYING_HINT.format(count=count)
 
 
+def error_message(exc: BaseException) -> str:
+    """A handler's exception's text, as its failed envelope gives it.
+
+    Its own text; an httpx timeout, whose text is empty, says
+    :data:`TIMEOUT_TEXT` (round r5-n errors/B2). The bridge's cache records
+    this text, so a replayed timeout says it too (``bridge.replay``).
+
+    Examples
+    --------
+    >>> error_message(httpx.ReadTimeout(""))
+    'Studio did not answer in time'
+    """
+    text = str(exc)
+    if not text and isinstance(exc, httpx.TimeoutException):
+        return TIMEOUT_TEXT
+    return text
+
+
+def error_text(exc: BaseException) -> str:
+    """A handler's exception as its failed envelope's ``error`` says it.
+
+    Its name, then its text (:func:`error_message`); an httpx timeout, whose
+    text is empty, says :data:`TIMEOUT_TEXT` (round r5-n errors/B2). The name
+    stays first: ``check.FINAL_ERRORS`` and :func:`note_failure` key on it.
+
+    Examples
+    --------
+    >>> error_text(httpx.ReadTimeout(""))
+    'ReadTimeout: Studio did not answer in time'
+    """
+    return f"{type(exc).__name__}: {error_message(exc)}"
+
+
+def studio_busy(exc: BaseException) -> bool:
+    """Whether ``exc`` is Studio itself failing, not the call's ids or arguments.
+
+    A transport failure (a timeout, a dropped or refused connection), a rate
+    limit (HTTP 429) or a server error (5xx), each after the client's own
+    retries of a read (round r5-n errors/B2).
+    """
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status == 429 or status >= 500
+    return False
+
+
 #: A tool handler: receives parsed arguments + context, returns any
 #: JSON-serializable result.
 Handler = Callable[[dict[str, Any], ToolContext], Awaitable[Any]]
@@ -127,14 +202,19 @@ def own_hint(exc: BaseException) -> str | None:
     """The hint a handler's exception brings in place of the generic one, if any.
 
     A :class:`~olmoearth_agent.studio.client.StudioAccessError` brings one
-    (Studio refused the request: no id is wrong and a retry cannot help), and
-    so does the bridge's replay of one, which carries the recorded hint and
-    marks its class ``replays_hint`` (``bridge.replay.ReplayedToolError``;
-    the bridge imports this module, so its class is not imported here). No
-    other exception's ``hint`` attribute is read.
+    (Studio refused the request: no id is wrong and a retry cannot help), so
+    does a :class:`~olmoearth_agent.studio.client.StudioOutcomeUnknown` (a
+    create whose answer was lost, so it may have been made: look before any
+    new write, ``OUTCOME_UNKNOWN_HINT``; round r5-n B1), and so does the
+    bridge's replay of either, or of Studio failing (:func:`studio_busy`,
+    whose record keeps :data:`STUDIO_BUSY_HINT`, round r5-n errors/B2), which
+    carries the recorded hint and marks its
+    class ``replays_hint`` (``bridge.replay.ReplayedToolError``; the bridge
+    imports this module, so its class is not imported here). No other
+    exception's ``hint`` attribute is read.
     """
     if not (
-        isinstance(exc, StudioAccessError)
+        isinstance(exc, (StudioAccessError, StudioOutcomeUnknown))
         or getattr(type(exc), "replays_hint", False) is True
     ):
         return None
@@ -228,6 +308,26 @@ class ToolRegistry:
         """Add (or replace) a bundle of tools, deferred under ``group`` if given."""
         for tool in tools:
             self.register(tool, group=group)
+
+    def leave_out(self, name: str, *, reason: str, line: str) -> bool:
+        """Remove the tool called ``name`` and put ``line`` on the card for it.
+
+        For a tool a surface cannot serve (the draw tool where no map shows,
+        :func:`olmoearth_agent.harness.capabilities.without_map`): it can no
+        longer be called or loaded, and :attr:`cannot` holds ``line`` under
+        ``reason``, as for a read-only key. A registry without the tool is
+        left as it is, its card unchanged.
+
+        Returns
+        -------
+        bool
+            Whether the tool was there and is now left out.
+        """
+        if self._tools.pop(name, None) is None:
+            return False
+        self._group_of.pop(name, None)
+        self.cannot[reason] = line
+        return True
 
     def names(self) -> list[str]:
         """Registered tool names (core and deferred), in insertion order."""
@@ -323,7 +423,18 @@ class ToolRegistry:
             # remembered from an earlier conversation): run it, and send its
             # group's specs from the next turn on.
             loaded.add(group)
-        problems = validate_arguments(call.arguments, tool.spec.parameters)
+        if RAW_ARGUMENTS in call.arguments:
+            # The client could not decode the model's arguments as one JSON
+            # object (llm.client.decode_tool_arguments): run on its defaults,
+            # the handler would drop what the model asked for, a project's
+            # search becoming the whole account's (round r5-n agent/F7).
+            raw = str(call.arguments[RAW_ARGUMENTS])
+            problems = [
+                f"the arguments were not one JSON object (received {raw[:200]!r}); "
+                "resend them as a complete JSON object"
+            ]
+        else:
+            problems = validate_arguments(call.arguments, tool.spec.parameters)
         if problems:
             return {
                 "ok": False,
@@ -337,18 +448,25 @@ class ToolRegistry:
         except Exception as exc:  # noqa: BLE001 - surfaced to the model, not swallowed
             failed: dict[str, Any] = {
                 "ok": False,
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": error_text(exc),
                 "tool": call.name,
                 "hint": "The tool ran but failed. Check that referenced ids "
                 "exist (discover them with search/list tools) and that "
                 "argument values are valid; do not retry with identical "
                 "arguments.",
             }
+            if studio_busy(exc):
+                # Studio timed out, dropped the connection, rate-limited or
+                # failed (round r5-n errors/B2): not the ids, and the same call
+                # later may work.
+                failed["hint"] = STUDIO_BUSY_HINT
             hint = own_hint(exc)
             if hint is not None:
-                # Studio refused the key (HTTP 401/403), live or replayed by
-                # the bridge: no id is wrong and a retry cannot help, so the
-                # error's own hint replaces the above.
+                # Studio refused the key (HTTP 401/403), or a create's answer
+                # was lost so it may have been made (round r5-n B1), live or
+                # replayed by the bridge: no id is wrong and the same call must
+                # not simply be sent again, so the error's own hint replaces
+                # the above.
                 failed["hint"] = hint
             # A refusal can carry the output contract's keys (e.g. the labels
             # a budget leaves over; statistical_rules.refusal): stated beside

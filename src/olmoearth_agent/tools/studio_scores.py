@@ -131,7 +131,7 @@ from olmoearth_agent.tools import inferencex, scores_file
 from olmoearth_agent.tools import statistical_rules as rules
 from olmoearth_agent.tools.registry import Capability, RegisteredTool, ToolContext
 from olmoearth_agent.tools.result_ids import resolving
-from olmoearth_agent.tools.review_set import slug, write_root
+from olmoearth_agent.tools.review_set import drop_stale_parts, slug, write_root
 from olmoearth_agent.tools.sampling import model_summary, prediction_meta
 
 logger = logging.getLogger(__name__)
@@ -155,7 +155,8 @@ KEPT_FORMAT = 1
 #: Hours a kept zip is read in place of a download (round r5-h H2): a read of
 #: the same result within them downloads nothing; an older copy is downloaded
 #: again (and removed when another result is kept). :data:`KEEP_HOURS_ENV`
-#: changes it; 0 keeps and reads no copy.
+#: changes it; 0 keeps and reads no copy, and the next download removes the
+#: copies kept before (round r5-n, files/F5).
 STUDIO_KEEP_HOURS = 24.0
 
 #: The environment variable that sets :data:`STUDIO_KEEP_HOURS`.
@@ -194,6 +195,14 @@ STEP_DOWNLOAD, STEP_COPY, STEP_READ, STEP_POOL = "download", "copy", "read", "po
 _READ_LOCKS: weakref.WeakValueDictionary[tuple[int, str], asyncio.Lock]
 _READ_LOCKS = weakref.WeakValueDictionary()
 
+#: The decode of each result read in this process while it runs, by its
+#: event loop and its id (round r5-n, concurrency/F2): a read stopped while
+#: it decodes (the Check card's preparation past its time) lets the result's
+#: lock go, but its worker thread runs on, so the read that follows waits for
+#: it here, then reads the copy it kept, instead of downloading and decoding
+#: the zip a second time beside it. Removed once it ended (:func:`_decode_ended`).
+_DECODES: dict[tuple[int, str], asyncio.Task[Any]] = {}
+
 #: A zone's native GeoTIFF in the zip, the only entries read as rasters: one
 #: folder, a plain name (:func:`_plain`), and the file name Studio gives it.
 NATIVE_TIF = re.compile(
@@ -215,8 +224,9 @@ TOPK_NODATA = 255
 #: must start with one, and is opened with the GeoTIFF driver alone, since
 #: GDAL would otherwise choose a driver by the content and follow the paths
 #: inside a VRT (to local rasters or URLs), as ``tools/certificate.py``
-#: refuses for a map it checks.
-TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
+#: refuses for a map it checks. The same four as a direct run's raster must
+#: start with (``scores_file.TIFF_MAGIC``, round r5-n files/F2).
+TIFF_MAGIC = scores_file.TIFF_MAGIC
 
 #: Most bytes, uncompressed, of the entries read from one zip, checked against
 #: the sizes the zip declares before any entry is read (a zip bomb). zipfile
@@ -1363,6 +1373,17 @@ def _reusable(
     return manifest
 
 
+def _private_studio_dir() -> None:
+    """Make :data:`STUDIO_DIR` under the scores root, and keep it mode 700
+    (round r5-n, files/F6): the zones' rasters and scores files under it hold
+    the whole map and each window's place, and a root made with the default
+    umask, or one that already existed, is readable by other accounts. As
+    ``mcp_app/check.py`` keeps its checks folder."""
+    top = safe_path(STUDIO_DIR, root=write_root())
+    top.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(top, 0o700)
+
+
 def _write_manifest(zone_dir: Path, manifest: dict[str, Any]) -> None:
     """Write a zone's manifest by an atomic rename, leaving no part file on failure."""
     part = zone_dir / f".{scores_file.MANIFEST}.{uuid.uuid4().hex[:8]}.part"
@@ -1389,9 +1410,14 @@ def _write_zone(
     no-data, deflate-compressed; the manifest records its sha256 and shape.
     A write that fails leaves no part file behind. ``strips`` is a zone over
     ``scores_file.MAX_VALUES`` (``array`` is then ``None``): the same file,
-    written strip by strip (:class:`StripWrite`).
+    written strip by strip (:class:`StripWrite`). Round r5-n: the folder of
+    every zone is made mode 700 first (:func:`_private_studio_dir`, files/F6),
+    and the parts a killed write left in the zone's folder an hour ago or
+    more are removed (:func:`drop_stale_parts`, files/F4).
     """
+    _private_studio_dir()
     zone_dir.mkdir(parents=True, exist_ok=True)
+    drop_stale_parts(zone_dir, (RASTER, scores_file.MANIFEST))
     if strips is None:
         channels, height, width = (int(s) for s in array.shape)
     else:
@@ -1517,7 +1543,11 @@ def read_zones(
     zone whose probability raster holds more than ``scores_file.MAX_VALUES``
     values (:func:`_in_strips`) is counted and then written strip by strip
     (:func:`scan_topk`, :func:`scan_unit`), with the same counts, refusals,
-    manifest and raster values as a whole decode gives.
+    manifest and raster values as a whole decode gives. Round r5-n
+    (files/F6): once a zone is decoded, before it is written or reused,
+    ``studio_results`` is made and kept mode 700 (:func:`_private_studio_dir`),
+    so a read whose zones were all written before (a map read before this
+    release) closes a folder left open too.
 
     Returns
     -------
@@ -1592,6 +1622,11 @@ def read_zones(
                     else:
                         height, width = strips.shape[1], strips.shape[2]
                     fresh = _manifest(info, plan, entry.file, digest, counts)
+                    # Before the zone is written or reused, so a read whose
+                    # zones are all on disk still closes a studio_results
+                    # left open (round r5-n, files/F6); a zone refused above
+                    # makes no folder.
+                    _private_studio_dir()
                     stored = _reusable(zone_dir, digest, fresh)
                     updated = False
                     if stored is None:
@@ -1769,7 +1804,12 @@ def _zone_patch(zone: Zone, asked: int | None) -> tuple[int, dict[str, Any] | No
 
 
 def _zones_fact(zones: list[Zone]) -> dict[str, Any]:
-    """The fact that several UTM zones are several maps, with each one's share."""
+    """The fact that several UTM zones are several maps, with each one's share.
+
+    The sentence writes each share from its unrounded fraction
+    (``rules.share_percent``, round r5-n numbers/F3): a zone holding all
+    but a sliver reads ">99.9%", never "100.0%" beside the sliver's own
+    share; the fact's ``share`` stays rounded to 6 decimals."""
     total = sum(int(zone.counts["valid_pixels"]) for zone in zones)
     shares: list[dict[str, Any]] = [
         {
@@ -1779,7 +1819,9 @@ def _zones_fact(zones: list[Zone]) -> dict[str, Any]:
         }
         for zone in zones
     ]
-    listing = ", ".join(f"{s['file']} {rules.percent(s['share'])}" for s in shares)
+    listing = ", ".join(
+        f"{s['file']} {rules.share_percent(s['valid_pixels'] / total)}" for s in shares
+    )
     return rules.fact(
         "studio_zones",
         f"The result's valid pixels lie in {len(zones)} UTM zones ({listing}), "
@@ -1865,6 +1907,17 @@ def _read_lock(result_id: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _READ_LOCKS[key] = lock
     return lock
+
+
+def _decode_ended(key: tuple[int, str], work: asyncio.Task[Any]) -> None:
+    """Drop a decode that ended from :data:`_DECODES` (round r5-n,
+    concurrency/F2), and take its error, if it raised, as seen: the read that
+    started it may have been stopped, and a read that waited for it does not
+    take its error as its own, so nothing else retrieves it."""
+    if _DECODES.get(key) is work:
+        del _DECODES[key]
+    if not work.cancelled():
+        work.exception()
 
 
 def keep_hours() -> float:
@@ -1961,7 +2014,11 @@ def _write_private(path: Path, data: bytes) -> None:
 def _prune_kept(hours: float, kept_id: str) -> None:
     """Remove the copies kept ``hours`` ago or longer, but ``kept_id``'s: only
     their zip and then their record, then the folder when it is empty. A
-    folder whose record cannot be read is left as it is."""
+    folder whose record cannot be read is left as it is. Round r5-n
+    (files/F4): in every folder but ``kept_id``'s the parts a killed keep
+    left an hour ago or more are removed first (:func:`drop_stale_parts`),
+    and a folder with no record that this leaves empty (a first keep that
+    was killed) is removed too."""
     base = safe_path(KEPT_DIR, root=write_root())
     if not base.is_dir():
         return
@@ -1969,26 +2026,43 @@ def _prune_kept(hours: float, kept_id: str) -> None:
     for folder in base.iterdir():
         if folder.name == kept_id or folder.is_symlink() or not folder.is_dir():
             continue
+        dropped = drop_stale_parts(folder, (KEPT_ZIP, KEPT_RECORD))
         moment = _downloaded_at(_kept_record(folder))
-        if moment is None or moment > limit:
+        if moment is None:
+            # Only a folder that held a stale part: an empty one may be a
+            # keep that has just made it and not yet written.
+            if dropped and not any(folder.iterdir()):
+                _remove_folder(folder)
+            continue
+        if moment > limit:
             continue
         for name in (KEPT_ZIP, KEPT_RECORD):
             (folder / name).unlink(missing_ok=True)
-        try:
-            folder.rmdir()
-        except OSError:
-            logger.debug("a kept copy's folder holds other files and stays")
+        _remove_folder(folder)
+
+
+def _remove_folder(folder: Path) -> None:
+    """Remove a kept copy's folder when it is empty; one that holds another
+    file stays, logged at debug level."""
+    try:
+        folder.rmdir()
+    except OSError:
+        logger.debug("a kept copy's folder holds other files and stays")
 
 
 def forget_kept(result_id: str) -> None:
     """Remove ``result_id``'s kept copy (round r5-h H2): its record first, so
     no read takes the zip once it goes, then the zip, then the folder when it
     is empty. A failure is logged by its kind alone and never fails the read.
+    Round r5-n (files/F4): the parts a killed keep left an hour ago or more
+    go first (:func:`drop_stale_parts`), so they do not keep the folder.
     Blocking."""
     try:
         folder = _kept_folder(result_id)
         for name in (KEPT_RECORD, KEPT_ZIP):
             (folder / name).unlink(missing_ok=True)
+        if folder.is_dir():
+            drop_stale_parts(folder, (KEPT_ZIP, KEPT_RECORD))
         if folder.is_dir() and not any(folder.iterdir()):
             folder.rmdir()
     except (OSError, ValueError) as exc:
@@ -2021,15 +2095,21 @@ def keep(result_id: str, data: bytes, digest: str | None = None) -> None:
     downloaded. A zip the kept one already is (the record's sha256, the
     file's size and its own sha256) is not written again; its record is. The
     copies kept :func:`keep_hours` ago or longer are removed first
-    (:func:`_prune_kept`); with 0 hours nothing is kept. ``digest``: the
-    zip's sha256 when the caller has it already. Blocking: the handler calls
-    it in a worker thread."""
+    (:func:`_prune_kept`); with 0 hours nothing is kept and the copies kept
+    before are removed (round r5-n, files/F5: every copy whose record can be
+    read, this result's too). The parts a killed keep of this result left an
+    hour ago or more are removed once its folder is there (files/F4).
+    ``digest``: the zip's sha256 when the caller has it already. Blocking:
+    the handler calls it in a worker thread."""
     hours = keep_hours()
     if hours <= 0:
+        # The limit is now, and "" names no folder: every readable copy goes.
+        _prune_kept(0.0, "")
         return
     _prune_kept(hours, result_id)
     folder = _kept_folder(result_id)
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    drop_stale_parts(folder, (KEPT_ZIP, KEPT_RECORD))
     if digest is None:
         digest = hashlib.sha256(data).hexdigest()
     path = folder / KEPT_ZIP
@@ -2065,6 +2145,31 @@ def _keep_quietly(result_id: str, data: bytes, digest: str | None = None) -> Non
         )
 
 
+def _read_then_keep(
+    data: bytes,
+    plan: FilesPlan,
+    info: ResultInfo,
+    clip: bool,
+    np: Any,
+    rasterio: Any,
+    digest: str | None,
+    copied: str | None,
+) -> tuple[list[Zone], int, bool]:
+    """:func:`read_zones`, then, for a zip downloaded now (``copied`` is
+    ``None``: not read from the kept copy), :func:`_keep_quietly` of it, in
+    one blocking call (round r5-n, concurrency/F2). The handler awaits it in
+    a worker thread; when the handler is stopped meanwhile (the Check card's
+    preparation past its time), the thread runs on, and a zip it read is
+    still kept. The card opened again, even while this thread runs, waits
+    for it to end (:data:`_DECODES`), then reads that copy and does not
+    download and decode the zip a second time. A zip :func:`read_zones`
+    refuses raises first and is never kept (round r5-h H2)."""
+    out = read_zones(data, plan, info, clip, np, rasterio)
+    if copied is None:
+        _keep_quietly(info.result_id, data, digest)
+    return out
+
+
 async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
     """Handler for ``olmoearth_scores_from_studio``.
 
@@ -2078,7 +2183,10 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
     (:func:`keep`), and a kept copy of another zip is removed before its
     decode (:func:`_forget_other_copy`). Both under the result's lock
     (:func:`_read_lock`), and each step told to :data:`PROGRESS`
-    (:func:`report_progress`).
+    (:func:`report_progress`). Round r5-n (concurrency/F2): under that lock a
+    decode a stopped read left running ends first (:data:`_DECODES`), and
+    this read's own decode is shielded, so a stop leaves it there for the
+    read that follows.
     """
     try:
         # The API's own format for it, so no path or query reaches Studio.
@@ -2120,7 +2228,7 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         np = importlib.import_module("numpy")
         inferencex.load("readers.olmoearth")
     except ImportError as exc:
-        return scores_file._missing(f"rasterio: {exc}")
+        return scores_file._missing(f"rasterio: {exc}", package_imports=True)
 
     if not isinstance(token, str) or not token:
         raise ValueError(
@@ -2146,6 +2254,14 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
     # One read of this result at a time in this process (round r5-h H2): a
     # second waits, then reads the copy the first kept.
     async with _read_lock(result_id):
+        key = (id(asyncio.get_running_loop()), result_id)
+        stopped = _DECODES.get(key)
+        if stopped is not None:
+            # A read stopped while it decoded let the lock go, but its thread
+            # runs on: it ends, and keeps its zip, before this read looks for
+            # a copy or downloads (round r5-n, concurrency/F2). Its error is
+            # not this read's, and this read's own stop still goes through.
+            await asyncio.wait({stopped})
         copied: str | None = None
         kept: tuple[bytes, str] | None = None
         digest: str | None = None
@@ -2164,13 +2280,19 @@ async def _scores_from_studio(args: dict[str, Any], ctx: ToolContext) -> dict[st
         del token, kept
         # Unzipping, decoding and writing run in a worker thread, as the
         # certificate route's package calls do: the event loop keeps serving.
-        zones, ignored, unused = await asyncio.to_thread(
-            read_zones, data, plan, info, clip, np, rasterio
+        # The zip as downloaded is kept in the same call, once it read (round
+        # r5-n, concurrency/F2): a read stopped while it decodes still keeps
+        # it. The decode is shielded and noted in _DECODES until it ends, so
+        # a stop leaves it running there, and the read asked for again, even
+        # at once, waits for it and then reads that copy.
+        work = asyncio.create_task(
+            asyncio.to_thread(
+                _read_then_keep, data, plan, info, clip, np, rasterio, digest, copied
+            )
         )
-        if copied is None:
-            # The zip as downloaded, kept once it read: a zip that is refused
-            # is never kept (round r5-h H2).
-            await asyncio.to_thread(_keep_quietly, result_id, data, digest)
+        _DECODES[key] = work
+        work.add_done_callback(lambda done: _decode_ended(key, done))
+        zones, ignored, unused = await asyncio.shield(work)
         del data
 
     facts: list[dict[str, Any]] = []

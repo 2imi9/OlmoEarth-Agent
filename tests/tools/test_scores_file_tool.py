@@ -678,11 +678,18 @@ async def test_a_file_that_is_not_a_raster_is_refused_not_an_exit(
     """The package's ``read_raster`` (``oe_inferencex.common.raster``) ends a file
     it cannot read with ``SystemExit``, which the registry does not catch: it
     would end the agent. The tool refuses instead, in the reader's words. With
-    the size check off, the file reaches the package's reader itself."""
+    the size check off, the file reaches the package's reader itself. Round
+    r5-n (files/F2): a file that is not a TIFF by its first bytes (text here)
+    is refused before any reader opens it, so the reader's words are those of
+    a file that starts as a TIFF and is cut."""
     _bad_raster_run(_scores_root, "text", b"not a GeoTIFF, just text\n")
+    _bad_raster_run(_scores_root, "cut", b"II*\x00 and then nothing a TIFF holds\n")
     if not size_check:
         monkeypatch.setattr(scores_file, "_check_size", lambda *_args: None)
-    out = await _call("olmoearth_scores_from_file", {"run_dir": "text"})
+    text = await _call("olmoearth_scores_from_file", {"run_dir": "text"})
+    assert text["ok"] is False
+    assert "scores.tif is not a plain GeoTIFF by its first bytes" in text["error"]
+    out = await _call("olmoearth_scores_from_file", {"run_dir": "cut"})
     assert out["ok"] is False
     assert out["error"].startswith("ValueError: ")
     assert "not a raster rasterio can read" in out["error"]
@@ -714,9 +721,14 @@ def test_the_packages_reader_exit_becomes_a_refusal(tmp_path: Path) -> None:
 async def test_missing_extra_is_a_clear_answer_not_a_crash(
     _scores_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Simulate an install without olmoearth-inferencex, then without rasterio."""
+    """Simulate an install without olmoearth-inferencex, then without rasterio.
+    Round r5-n (errors/B6): without it means none installed, on a Python the
+    extra installs on; a release installed whose import fails is said
+    otherwise."""
     with monkeypatch.context() as m:
         m.setitem(sys.modules, "oe_inferencex.review.assess", None)
+        m.setattr(scores_file.inferencex, "version", lambda: None)
+        m.setattr(scores_file.inferencex, "python_version", lambda: (3, 12))
         out = await _ok("olmoearth_scores_from_file", {"run_dir": "anything"})
     assert out["available"] is False
     assert out["install"] == "pip install 'olmoearth-agent[inferencex]'"

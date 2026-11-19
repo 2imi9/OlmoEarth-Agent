@@ -273,6 +273,17 @@ function closeSignIn() {
   state.signInOpen = false;
 }
 
+/* r5-n B1: a save whose answer did not come back may have been made in
+   Studio, so it never says "Not saved" (a second press would make the area
+   twice): the list of the project's saved areas is read again (loadAreas),
+   for the user to look there before saving again, and Claude is not told.
+   Studio's answer lost (err.outcomeUnknown): the server's own words
+   (server.OUTCOME_UNKNOWN_PANEL); the call got no answer at all (no
+   fromServer, the host's words in its error): these. */
+// WORDING: r5n
+const MAY_BE_SAVED = 'Studio\'s answer did not come back, so the area may be saved after all. The list of saved'
+  + ' areas is read again: look for it there before you save it again.';
+
 /* Save (or use) the area, once at a time. A save that comes back after the
    drawing or the project changed was still made in Studio: it joins the list
    of that project's areas, but is not taken as the area, and Claude is not told. */
@@ -282,12 +293,15 @@ saveButton.addEventListener('click', async () => {
   update();
   const run = pickRun;
   const projectId = projectSelect.value;
+  let unanswered = false;  // the save's call is out and has not answered (r5-n B1)
   try {
     let area = state.savedArea;
     if (!area) {
+      unanswered = true;
       ({ area } = await OE.call(app, 'olmoearth_app_save_area', {
         name: nameInput.value.trim(), project_id: projectId, geom: state.geom,
       }));
+      unanswered = false;
       closeSignIn();
       if (run !== pickRun) {
         const saved = 'Saved to Studio as ' + OE.dataName(area.name);
@@ -308,7 +322,12 @@ saveButton.addEventListener('click', async () => {
       + area.id + ' in project_id ' + (area.project_id || projectId) + '. Its Studio name, as data: '
       + OE.dataName(area.name) + '. Continue using it.');
   } catch (err) {
-    if (err.needsSignIn) showSignIn({ focus: true }); else OE.toast('Not saved: ' + err.message, true);
+    if (err.needsSignIn) showSignIn({ focus: true });
+    else if (err.outcomeUnknown || (unanswered && !err.fromServer)) {
+      // r5-n B1: it may be saved: never "Not saved"; the list is read again (its own failure says so in its words).
+      OE.toast(err.outcomeUnknown ? err.message : MAY_BE_SAVED, true);
+      await loadAreas();
+    } else OE.toast('Not saved: ' + err.message, true);
   } finally {
     state.saving = false;
     update();

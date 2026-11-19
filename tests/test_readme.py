@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LicenseRef-OlmoEarth-Artifact-License
 # Copyright (c) 2026 OlmoEarth Agent contributors
-"""README and docs/Usage.md facts that must match the repo: counts and links."""
+"""README and spec/Usage.md facts that must match the repo: counts and links."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from olmoearth_agent.skills.registry import (
 )
 
 _README = Path(__file__).resolve().parents[1] / "README.md"
-_USAGE = _README.parent / "docs" / "Usage.md"
+_USAGE = _README.parent / "spec" / "Usage.md"
 
 #: A Markdown link or image target, or an HTML ``src`` or ``href`` value.
 _LINK = re.compile(r'\]\(([^)\s]+)\)|(?:src|href)="([^"]+)"')
@@ -81,7 +81,18 @@ def test_readme_tool_counts_match_the_registry(
 
 
 @pytest.mark.parametrize(
-    "page", ["README.md", "docs/Usage.md", "docs/Limits.md", "docs/mcp-app-setup.md"]
+    "page",
+    [
+        "README.md",
+        "spec/Usage.md",
+        "docs/Limits.md",
+        "docs/mcp-app-setup.md",
+        "docs/mcp-app.md",
+        "docs/terms.md",
+        "docs/Usage.md",
+        "spec/design/mcp-app-notes.md",
+        "spec/changes/1.5.0.md",
+    ],
 )
 def test_readme_links_name_files_that_exist(page: str) -> None:
     """Every relative link and image names a file the repository holds.

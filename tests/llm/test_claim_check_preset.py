@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import Any
 
 from olmoearth_agent.llm import OlmoEarthLLM, ServingConfig
-from olmoearth_agent.llm.anthropic_client import _sampling_for_anthropic
 from olmoearth_agent.llm.presets import (
     CLAIM_CHECK_MAX_TOKENS,
     CLAIM_CHECK_MODE,
@@ -60,9 +59,9 @@ def test_preserve_thinking_is_merged_into_the_presets_template_switches() -> Non
 
 
 def test_hosted_backends_get_no_template_switch() -> None:
-    assert "extra_body" not in _payload(preserve_thinking=True, openai_compat=True)
-    assert _sampling_for_anthropic(CLAIM_CHECK_MODE) == {
-        "temperature": 0.1,
-        "top_p": 0.8,
-        "top_k": 20,
-    }
+    """A hosted OpenAI-compatible backend keeps the claim check's own cap; Claude
+    gets no sampling parameter at all (r5-n agent/F1, tests/llm/
+    test_anthropic_client.py)."""
+    hosted = _payload(preserve_thinking=True, openai_compat=True)
+    assert "extra_body" not in hosted
+    assert hosted["max_tokens"] == CLAIM_CHECK_MAX_TOKENS  # http://x is not OpenAI's

@@ -1,6 +1,6 @@
 # OlmoEarth Agent: preset quickstart targets.
 # Run on Git Bash / WSL / Linux / macOS. GNU make; recipes use real TABs.
-# The model, server and LLM_* values repeat in docs/Usage.md (LLM backends and
+# The model, server and LLM_* values repeat in spec/Usage.md (LLM backends and
 # serving); keep them in step.
 
 # Default sample brief for `make agent`, override with: make agent Q="..."
@@ -37,6 +37,8 @@ help: ## List the available targets.
 	@echo ""
 	@echo "Default brief (make agent): $(Q)"
 
+# uv reads the interpreter from .python-version (3.12): on Python 3.14 or later
+# the inferencex extra installs nothing, and the sync would still succeed.
 setup: ## Sync the Python env.
 	uv sync --all-extras
 

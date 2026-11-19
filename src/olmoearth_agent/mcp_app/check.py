@@ -475,6 +475,21 @@ def _whole(value: Any) -> int | None:
     return None
 
 
+def _read_as_map(scores_path: Any, n_valid: Any, digest: Any) -> bool:
+    """Whether a zone was read as a map: it has a scores path, a whole count
+    of its squares and its raster's digest. A zone without one of them is
+    refused at read (:data:`REFUSED_READ`, :func:`offer_zones`), so no square
+    of it can be picked; :func:`sheet_context` asks the same of its offer
+    record (round r5-n, numbers/F2)."""
+    return (
+        isinstance(scores_path, str)
+        and bool(scores_path)
+        and _whole(n_valid) is not None
+        and isinstance(digest, str)
+        and bool(digest)
+    )
+
+
 #: The app's own modules that word :func:`_planned`'s answer beside the
 #: package's numbers (the counts' sentences, the offer's order): a kept
 #: answer names their digest, so a release that words it otherwise plans
@@ -752,10 +767,38 @@ def _share_values(inner: dict[str, Any]) -> dict[str, float]:
     return {}
 
 
+def _share_fractions(inner: dict[str, Any]) -> dict[str, float]:
+    """Each zone's share of the result's valid pixels, by file, unrounded:
+    from the ``studio_zones`` fact's ``valid_pixels`` when every zone there
+    carries a count (round r5-n, numbers/F3: a sliver whose share rounds to
+    0.0 at 6 decimals still holds pixels), else its ``share``
+    (:func:`_share_values`)."""
+    for item in inner.get("facts") or []:
+        if isinstance(item, dict) and item.get("id") == "studio_zones":
+            zones = [z for z in item.get("zones") or [] if isinstance(z, dict)]
+            raw = [z.get("valid_pixels") for z in zones]
+            counts = [
+                c
+                for c in raw
+                if isinstance(c, int) and not isinstance(c, bool) and c >= 0
+            ]
+            whole = len(counts) == len(raw)
+            total = sum(counts) if zones and whole else 0
+            if total > 0:
+                return {str(z.get("file")): c / total for z, c in zip(zones, counts)}
+            break
+    return _share_values(inner)
+
+
 def _shares(inner: dict[str, Any]) -> dict[str, str]:
     """Each zone's share of the result's valid pixels, by file, as a percent
-    (:func:`_share_values`, written as the result's sentences write it)."""
-    return {file: rules.percent(value) for file, value in _share_values(inner).items()}
+    (:func:`_share_fractions`, written as the result's sentences write it:
+    ``rules.share_percent``, so a part holding all but a sliver reads
+    ">99.9%", never "100.0%", round r5-n numbers/F3)."""
+    return {
+        file: rules.share_percent(value)
+        for file, value in _share_fractions(inner).items()
+    }
 
 
 def _period(value: Any) -> dict[str, str] | None:
@@ -989,7 +1032,7 @@ def offer_zones(
         refused_at = REFUSED_READ
         if not isinstance(scores_path, str) or not scores_path:
             refused = str(entry.get("refused") or "this zone was not read as a map")
-        elif n_valid is None or not isinstance(digest, str) or not digest:
+        elif n_valid is None or not _read_as_map(scores_path, n_valid, digest):
             # Shown on the card's face: no "window" there (the owner's ruling 6).
             # WORDING: squares
             refused = "this zone's scores file gives no count of its squares"
@@ -1743,9 +1786,13 @@ def sheet_context(labels_path: Any) -> dict[str, Any] | None:
     parts_known, map_name, period, parts}``: ``part`` is this zone's name
     (:func:`part_names`, ``None`` for a map of one part), ``map_name`` and
     ``period`` as its offer record keeps them, and ``parts`` each zone of the
-    result in order, ``{part, share_value, labels_csv_path, this}`` (the
-    sheet of a zone drawn here, else ``None``; for the server's use, never
-    the page's). The map's files are its offer record's; for a record
+    result in order, ``{part, share_value, labels_csv_path, this,
+    readable}`` (the sheet of a zone drawn here, else ``None``; for the
+    server's use, never the page's; ``readable`` false only for a part
+    refused at read, a zone not read as a map: its offer record holds no
+    scores path, or no count of its squares or no raster digest
+    (:func:`_read_as_map`, round r5-n numbers/F2). The map's files are its
+    offer record's; for a record
     written before the files were kept, another offer record's of the same
     result that keeps them (:func:`_result_files`); with neither, this part
     alone, and ``parts_known`` is false (how many parts the map has is not
@@ -1795,6 +1842,15 @@ def sheet_context(labels_path: Any) -> dict[str, Any] | None:
         path = its_draw.get("labels_csv_path") if its_draw is not None else None
         drawn = its_draw is not None and its_draw.get("state") == "drawn"
         share = its_offer.get("share_value") if its_offer is not None else None
+        # Round r5-n (numbers/F2): a part refused at read (its offer record
+        # holds no scores path, or no count of its squares or no raster
+        # digest: offer_zones' own test) was not read as a map, so no square
+        # of it can ever be picked; a part with no record is not known to be so.
+        readable = its_offer is None or _read_as_map(
+            its_offer.get("scores_path"),
+            its_offer.get("n_valid"),
+            its_offer.get("raster_sha256"),
+        )
         parts.append(
             {
                 "part": name,
@@ -1807,6 +1863,7 @@ def sheet_context(labels_path: Any) -> dict[str, Any] | None:
                     path if drawn and isinstance(path, str) and path else None
                 ),
                 "this": this,
+                "readable": readable,
             }
         )
     map_name = offer.get("map_name") if offer else None

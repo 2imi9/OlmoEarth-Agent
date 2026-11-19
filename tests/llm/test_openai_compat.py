@@ -34,10 +34,13 @@ def test_openai_compat_drops_vendor_extras() -> None:
     payload = _payload(openai_compat=True)
     assert "extra_body" not in payload  # no top_k / chat_template_kwargs
     assert payload["model"] == "m"
-    assert payload["messages"] and "max_tokens" in payload
+    # r5-n agent/F2: no local 32,768 cap for a hosted backend, under either name.
+    assert payload["messages"] and "max_tokens" not in payload
+    assert "max_completion_tokens" not in payload
 
 
 def test_default_keeps_vendor_extras() -> None:
     payload = _payload(openai_compat=False)
+    assert payload["max_tokens"] == 32768  # the local model's own budget
     assert "extra_body" in payload
     assert payload["extra_body"]["chat_template_kwargs"] == {"preserve_thinking": True}

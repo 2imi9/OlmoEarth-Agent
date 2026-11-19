@@ -30,10 +30,13 @@ from olmoearth_agent.tools.registry import Capability, ToolRegistry
 
 __all__ = [
     "CARD_TITLE",
+    "DRAW_AREA_TOOL",
+    "NO_MAP",
     "NO_TOOL_CAN",
     "READ_ONLY_STUDIO",
     "beyond_tools",
     "capability_card",
+    "without_map",
 ]
 
 #: The card's heading in the system prompt (the soul's rules name it).
@@ -82,6 +85,21 @@ READ_ONLY_STUDIO = (
     "(OLMOEARTH_READ_ONLY is set), so olmoearth_create_project and "
     "olmoearth_submit_prediction are not offered; skip the submit step of the "
     "typical order and work from existing predictions"
+)
+
+#: The tool that asks the user to draw an area: it only tells a map to open,
+#: which the web UI and the MCP App have.
+DRAW_AREA_TOOL = "olmoearth_request_aoi"
+#: The card's line on a surface with no map to draw on (the command line and
+#: the Claude Code bridge, round r5-n agent/F6): :func:`without_map` leaves
+#: :data:`DRAW_AREA_TOOL` out and sets this line on ``ToolRegistry.cannot``.
+#: The soul asks for the draw tool when a brief gives no area whatever the
+#: registry holds, so the line names it and says what to do instead, as
+#: :data:`READ_ONLY_STUDIO` does for the writes.
+NO_MAP = (
+    "ask the user to draw an area on a map: this surface shows no map, so "
+    "olmoearth_request_aoi is not offered; when a task needs an area and the "
+    "brief gives none, ask the user for the id of an area saved in Studio"
 )
 
 _HEAD = (
@@ -185,3 +203,27 @@ def capability_card(registry: ToolRegistry, loaded_groups: Iterable[str] = ()) -
         lines += ["", "No tool of this agent can:"]
         lines += [f"- {text}." for text in beyond]
     return "\n".join(lines)
+
+
+def without_map(registry: ToolRegistry) -> ToolRegistry:
+    """``registry`` with no draw tool, for a surface that shows no map.
+
+    ``olmoearth_request_aoi`` (:data:`DRAW_AREA_TOOL`) only tells a map in the
+    web UI or the MCP App to open; on the command line and through the Claude
+    Code bridge a brief with no area would end at a map that is not there
+    (round r5-n agent/F6). The tool is left out and the card says what to do
+    instead (:data:`NO_MAP`); a registry without the tool is returned as it
+    is, its card unchanged.
+
+    Parameters
+    ----------
+    registry
+        The tools of the run, changed in place.
+
+    Returns
+    -------
+    ToolRegistry
+        ``registry`` itself.
+    """
+    registry.leave_out(DRAW_AREA_TOOL, reason="draw_area", line=NO_MAP)
+    return registry

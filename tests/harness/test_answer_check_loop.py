@@ -333,7 +333,8 @@ def test_the_web_bridge_streams_the_checks_on_the_web_surface() -> None:
     from olmoearth_agent import serve
 
     answer = f"{_BACKWARDS} The first 30 windows are listed above."
-    with TestClient(serve.app) as client:
+    # A loopback name: the bridge refuses any other Host (r5-n security/SEC-5).
+    with TestClient(serve.app, base_url="http://127.0.0.1") as client:
         serve.app.state.llm = _Scripted(
             [_compare_call(), _answer(answer), _answer(answer)]
         )

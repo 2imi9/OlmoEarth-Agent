@@ -16,6 +16,11 @@ from typing import Any, Literal
 Role = Literal["system", "user", "assistant", "tool"]
 FinishReason = Literal["stop", "tool_calls", "length", "content_filter"]
 
+#: The one key of a tool call's arguments that did not decode as one JSON
+#: object (``llm.client.decode_tool_arguments``): what the model sent, kept as
+#: text. The registry refuses such a call before its handler runs.
+RAW_ARGUMENTS = "__raw_arguments"
+
 
 @dataclass
 class ToolCall:
