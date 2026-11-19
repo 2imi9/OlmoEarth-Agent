@@ -181,6 +181,19 @@ VIEWS: dict[str, dict[str, Any]] = {
 }
 
 
+#: The app's own icon, which Claude may show over a view in the side panel and full screen
+#: (Claude's MCP Apps design guidelines, "Declare an app icon for Claude"): the OlmoEarth mark,
+#: a 128 x 128 PNG under 10 KB, declared inline in the server's serverInfo (server.py).
+APP_ICON = "brand/app-icon.png"
+
+
+@cache
+def app_icon_data_url() -> str:
+    """:data:`APP_ICON` as a ``data:image/png;base64,...`` URL (Claude takes no URL and no SVG)."""
+    data = base64.b64encode((VIEW_DIR / APP_ICON).read_bytes()).decode("ascii")
+    return "data:image/png;base64," + data
+
+
 @cache
 def brand_data_url(key: str) -> str:
     """A brand image (:data:`BRAND`) as a ``data:<type>;base64,...`` URL."""

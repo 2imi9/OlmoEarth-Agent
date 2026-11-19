@@ -1213,9 +1213,14 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       // with everything saved before it). A Save button that had the focus as
       // it goes hands it to "Reopen the sheet", and so does the notice's
       // Remove button, which goes here too (r5-i B7: the focus fell to the
-      // page after a removal whose sheet could not be read again).
+      // page after a removal whose sheet could not be read again), and so
+      // does the finish button, whose row "Reopen the sheet" takes over
+      // (r5-n JS-4: a press of it that found the sheet changed elsewhere left
+      // the focus on the page; done holds only that button, its lines and,
+      // once stale, Reopen the sheet, which focused again changes nothing).
       const hadFocus = (!saveButton.hidden && saveButton.contains(document.activeElement))
-        || notice.contains(document.activeElement);
+        || notice.contains(document.activeElement)
+        || done.contains(document.activeElement);
       saveButton.hidden = true;
       // Hidden, it is no contained button either: the page keeps one.
       saveButton.className = '';
@@ -2975,7 +2980,12 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
      saved elsewhere (check, busy with aria-disabled meanwhile): one that
      was, or a take-in during the press that showed a change (changes), is
      taken in and nothing is sent, so the user sees what changed and presses
-     again. */
+     again. One message per press (r5-n JS-1, sheet finish): the button stays
+     busy (finishing, aria-disabled) until the host answers the message, so a
+     press meanwhile does nothing (it was on again while the message went,
+     and a second press asked Claude to grade twice), and the second click of
+     a fast double-click (its detail 2) does nothing, even after the host
+     answered the first; a key's press (detail 0) counts. */
   let finishButton = null;
   let finishing = false;
   // The line beside the finish button once every answer is saved (A/F17);
@@ -3009,6 +3019,10 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       finishButton.setAttribute('aria-disabled', String(!ready()));
     }
     if (changed || state.stale || pending() || !complete()) return;
+    // r5-n JS-1 (sheet finish): busy again, with no wait since the finally
+    // above, until the host answers the message below.
+    finishing = true;
+    finishButton.setAttribute('aria-disabled', 'true');
     // r5-k K2: the result was asked for once Claude took the message; a
     // two-map sheet's switch may then show what the two maps say. A message
     // the host did not take is shown to copy (resultShown): the switch stays
@@ -3018,6 +3032,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     const sent = await OE.sendJob(app, message, finishType);
     if (sent) resultSent = true; else resultShown = true;
     updateProgress();
+    finishing = false;
+    finishButton.setAttribute('aria-disabled', String(!ready()));
   }
   /* The finish button's words (r5-m B5), ok: whether the sheet is ready
      now. The job's label (the server's finish_label); on a sheet that
@@ -3047,7 +3063,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
       finishButton = OE.el('button', {
         class: 'primary',
         'aria-disabled': 'true',
-        onclick: () => finishPress(message),
+        // r5-n JS-1 (sheet finish): the second click of a double-click does nothing.
+        onclick: (e) => { if (e.detail > 1) return; finishPress(message); },
         onkeydown: (e) => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); },
       }, data.finish_label || 'Ask Claude to grade it');
     }

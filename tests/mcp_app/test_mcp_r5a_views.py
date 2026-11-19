@@ -551,7 +551,9 @@ def test_v3_tell_claude_this_project_is_a_text_button_that_opens_it() -> None:
     for text in (
         "(app, text, kind, name, cls = 'small', also = null) =>",
         "class: cls, 'aria-label': TELL.label(kind) + ' (' + name + ')',",
-        "e.stopPropagation(); OE.say(app, text); if (also) also();",
+        # Round r5-n JS-1: one message per press (OE.oncePerPress).
+        "e.stopPropagation(); const said = OE.say(app, text); if (also) also();"
+        " return said;",
     ):
         assert text in use, text
     assert "sendJob" not in use and "primary" not in use

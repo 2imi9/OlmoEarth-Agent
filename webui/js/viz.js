@@ -31,23 +31,30 @@ async function pool(items, n, worker) {
   await Promise.all(runners);
 }
 
-/* One pixel value, RETRYING transient failures. The grid + sample points are
-   deterministic, so the only thing that made a re-scan of the same pair give
-   different stats was cells dropped on a flaky fetch (a transient HTTP/timeout
-   error was swallowed, so that cell wasn't counted). Retrying gives consistent
-   coverage -> reproducible stats. A valid response with a non-numeric value is
-   genuine nodata, so it's returned as null without retrying (consistently). */
+/* One pixel value: a number, null for a valid answer with no value (off the
+   raster, or no-data, returned without retrying), or PIXEL_FAILED once the
+   tries run out, so a cell Studio did not answer is never counted as no-data
+   (r5-n errors/B10). A fetch that never reached the bridge (a network error)
+   is retried with a short backoff, which keeps a re-scan's coverage the same.
+   An HTTP 5xx from the bridge is tried once more only: the bridge's Studio
+   client has already retried it, and more tries on a rate limit make it
+   worse. A refused key (HTTP 401 or 403, which the bridge passes on) is
+   PIXEL_REFUSED at once: Studio did answer, and no retry or wait helps. */
+const PIXEL_FAILED = 'failed';
+const PIXEL_REFUSED = 'refused';
 async function pixelAt(resultId, lon, lat, property, tries = 4) {
   for (let t = 0; t < tries; t++) {
     try {
       const r = await apiPixelValue(resultId, lon, lat, property);
       return r && typeof r.value === 'number' ? r.value : null;
     } catch (e) {
-      if (t === tries - 1) return null;
+      if (/HTTP 40[13]/.test(String(e && e.message))) return PIXEL_REFUSED;
+      const bridged = /HTTP 5\d\d/.test(String(e && e.message));
+      if (t === tries - 1 || (bridged && t >= 1)) return PIXEL_FAILED;
       await new Promise((res) => setTimeout(res, 120 * (t + 1)));  // 120/240/360ms backoff
     }
   }
-  return null;
+  return PIXEL_FAILED;
 }
 
 /* Intersection of two [minLon,minLat,maxLon,maxLat] boxes, or null. */
@@ -436,11 +443,20 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     setTimeout(() => el.classList.remove('is-scanning'), 600);  // let the sweep finish a pass
   };
 
+  // Cells Studio did not answer for, and cells whose key it refused, kept
+  // apart from no-data and from each other (r5-n errors/B10).
+  let failed = 0;
+  let refused = 0;
   await pool(cells, 8, async (c) => {
     const va = await pixelAt(a.resultId, c.lon, c.lat, opts.property);
-    const vb = await pixelAt(b.resultId, c.lon, c.lat, opts.property);
+    // B is not asked once A failed or was refused: one more request would not count the cell.
+    const vb = va === PIXEL_FAILED || va === PIXEL_REFUSED ? va : await pixelAt(b.resultId, c.lon, c.lat, opts.property);
     done++;
-    if (typeof va === 'number' && typeof vb === 'number') {
+    if (va === PIXEL_REFUSED || vb === PIXEL_REFUSED) {
+      refused++;
+    } else if (va === PIXEL_FAILED || vb === PIXEL_FAILED) {
+      failed++;
+    } else if (typeof va === 'number' && typeof vb === 'number') {
       c.diff = vb - va; xs.push(va); ys.push(vb); absd.push(Math.abs(c.diff));
       if (Math.abs(c.diff) > scaleMax) { scaleMax = Math.abs(c.diff); recolor(); }
       c.rect = L.rectangle(c.bounds, { ...diffStyle(c.diff, scaleMax), className: 'viz-cell' }).addTo(map);
@@ -454,8 +470,18 @@ export async function renderDiffScan(container, a, b, opts = {}) {
   const m = absd.length;
   // Cells where either map had no value: off-raster, or Studio's no-data
   // sentinel, which the bridge (serve.py api_pixel_value) returns as null.
-  const skipped = total - m;
-  if (!m) { status.textContent = 'No overlapping valid pixels to difference (' + skipped + ' no-data cells skipped).'; return null; }
+  // A cell Studio did not answer for, or refused the key for, is not one of
+  // them (r5-n errors/B10).
+  const skipped = total - m - failed - refused;
+  if (!m) {
+    // WORDING: r5n (a refused key is no outage: no "try again later" for it)
+    status.textContent = refused
+      ? 'Studio refused the key for ' + refused + ' of ' + total + ' cells; check the Studio key.'
+      : failed
+        ? 'Studio did not answer for ' + failed + ' of ' + total + ' cells; try again later.'
+        : 'No overlapping valid pixels to difference (' + skipped + ' no-data cells skipped).';
+    return null;
+  }
   const tol = opts.tolerance || 0.1;
   const diffs = cells.filter((c) => c.diff != null).map((c) => c.diff);
   const meanAbs = absd.reduce((p, q) => p + q, 0) / m;
@@ -473,14 +499,19 @@ export async function renderDiffScan(container, a, b, opts = {}) {
     mean_diff_b_minus_a: Number(meanDiff.toFixed(6)),
     rmse_between_models: Number(rmse.toFixed(6)),
     tolerance: tol,
+    n_failed: failed,
+    n_refused: refused,
   };
   const v = compareVocab(opts.kind);
+  // WORDING: r5n (the tails of cells not read and of cells refused)
   status.innerHTML =
     v.mapTitle + ' over ' + m + ' sampled cells · mean |' + v.diffWord + '| <strong>' + meanAbs.toFixed(3) +
     '</strong>' + (v.kind === 'temporal' ? ' · net <strong>' + meanDiff.toFixed(3) + '</strong>' : '') +
     ' · corr <strong>' + (r == null ? 'n/a' : r.toFixed(3)) + '</strong> · ' +
     (within * 100).toFixed(0) + '% ' + v.agreeWord + ' (±' + tol + ')' +
-    (skipped ? ' · ' + skipped + ' no-data cells skipped' : '') + '. ' + legendHtml(v.kind);
+    (skipped ? ' · ' + skipped + ' no-data cells skipped' : '') +
+    (failed ? ' · ' + failed + ' cells could not be read from Studio' : '') +
+    (refused ? ' · Studio refused the key for ' + refused + ' cells' : '') + '. ' + legendHtml(v.kind);
 
   // Captured straight from the live scan (real values), so a saved comparison
   // is never fabricated. Offer to store it in the Results panel.

@@ -787,13 +787,14 @@ def test_l1_a_chat_sheet_no_record_speaks_for_leaves_the_general_rule(
 
 
 def test_l1_the_changelog_and_the_usage_say_the_rule_is_general() -> None:
-    """L1: the CHANGELOG's marker is replaced by the round's line, and
-    docs/Usage.md gives the general rule and its scope."""
+    """L1: the 1.5.0 detail file's marker (spec/changes/1.5.0.md) is replaced
+    by the round's line, and
+    spec/Usage.md gives the general rule and its scope."""
     stage = Path(__file__).resolve().parents[2]
-    changelog = (stage / "CHANGELOG.md").read_text(encoding="utf-8")
+    changelog = (stage / "spec" / "changes" / "1.5.0.md").read_text(encoding="utf-8")
     assert "@@R5L-CORE@@" not in changelog
     assert "\n    - L1: " in changelog
-    usage = (stage / "docs" / "Usage.md").read_text(encoding="utf-8")
+    usage = (stage / "spec" / "Usage.md").read_text(encoding="utf-8")
     flat = " ".join(usage.split())
     assert GENERAL_SCOPE in flat
     assert "`imagery.RULE_KELP_ONLY`) follows the scope" not in flat

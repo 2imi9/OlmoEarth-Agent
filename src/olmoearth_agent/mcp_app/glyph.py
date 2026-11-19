@@ -3,7 +3,7 @@
 """The property glyph's fields, computed here from Studio records.
 
 The Studio panel draws a small glyph that says what a thing is, never how
-good it is (docs/Usage.md, "In Claude, with views"):
+good it is (spec/Usage.md, "In Claude, with views"):
 
 - a prediction: the months its requested range covers, as a ring of twelve,
   with the year beside it;

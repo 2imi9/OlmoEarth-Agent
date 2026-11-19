@@ -86,8 +86,43 @@ NOT_SIGNED_IN = (
     "tool again."
 )
 
-#: How long a sign-in page stays open (seconds).
+#: How long a sign-in page stays open (seconds); opening it again while it is
+#: open starts this again (round r5-n SEC-7).
 SIGN_IN_SECONDS = 600
+
+#: How long the sign-in page waits for each part of a request (its head, then
+#: its form) before it answers "Bad request" (round r5-n B5).
+READ_SECONDS = 60
+
+#: How long the sign-in page waits for Studio's check of a typed key
+#: (:func:`check_key`: ``/users/me`` and one page of projects, each retried)
+#: before it says Studio did not answer in time (round r5-n B5).
+CHECK_KEY_SECONDS = 100
+
+#: Why a key could not be checked when Studio's answer is not JSON (round
+#: r5-n B8, :class:`StudioNotJson`): not a refusal of the key, and not
+#: offline. The sign-in page adds that nothing was saved; the server's status
+#: carries it as ``studio_unreachable``.
+# WORDING: r5n
+STUDIO_NOT_JSON = (
+    "Studio's address answered with a web page instead of Studio, so the key "
+    "could not be checked; if this lasts, whoever installed the app should "
+    "check Studio's address (OLMOEARTH_BASE_URL)"
+)
+
+#: The sign-in page's error when Studio's check of the key took longer than
+#: :data:`CHECK_KEY_SECONDS` (round r5-n B5).
+# WORDING: r5n
+CHECK_TOO_SLOW = "Studio did not answer in time; nothing was saved. Try again."
+
+#: What a sign-in with "remember" says when the app was installed with its
+#: own key, which outranks the key file after a restart (round r5-n SEC-3).
+# WORDING: r5n
+INSTALLED_KEY_NOTE = (
+    "Saved on this computer, but this app was installed with its own key "
+    f"({KEY_ENV}): after a restart, that key is used again. Only whoever "
+    "installed the app can remove it."
+)
 
 #: The largest request the sign-in page reads (headers, then a form body).
 _MAX_HEAD_BYTES = 16 * 1024
@@ -99,6 +134,14 @@ class NotSignedIn(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__(NOT_SIGNED_IN)
+
+
+class StudioNotJson(RuntimeError):
+    """Studio's address answered with a body that is not JSON (a proxy's or
+    maintenance page, or ``OLMOEARTH_BASE_URL`` set to the site's root; round
+    r5-n B8): the key could not be checked. Not a ``ValueError``, so never
+    read as a refused key; its text is :data:`STUDIO_NOT_JSON`, which the
+    page and the server show in place of "could not be reached"."""
 
 
 class _SignedOutTransport(httpx.AsyncBaseTransport):
@@ -179,12 +222,18 @@ def read_key_file(path: Path) -> str | None:
 
 
 def _replace_file(path: Path, text: str) -> None:
-    """Write ``text`` to ``path``, mode 600, through a file beside it moved over it."""
+    """Write ``text`` to ``path``, mode 600, through a file beside it moved over it.
+
+    The mode is set on the staged file's path (``os.chmod``), which every
+    platform has: ``os.fchmod`` is missing on Windows before Python 3.13
+    (round r5-n SEC-1). The file object owns the descriptor from the start,
+    so a failure closes it before the staged file is removed.
+    """
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd, staged = tempfile.mkstemp(prefix=".studio-key-", dir=path.parent)
     try:
-        os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            os.chmod(staged, 0o600)
             fh.write(text)
         os.replace(staged, path)
     except BaseException:
@@ -255,7 +304,11 @@ async def check_key(key: str, base_url: str) -> Account:
 
     Reads ``/users/me`` and one page of projects; writes nothing. A transport
     failure (no network) is raised as it is, so the page can say Studio could
-    not be reached rather than that the key is wrong.
+    not be reached rather than that the key is wrong. So is an answer that is
+    not JSON (a proxy's page, or ``OLMOEARTH_BASE_URL`` set to the site's
+    root), as :class:`StudioNotJson`, a ``RuntimeError`` (round r5-n B8):
+    only a refusal is a ``ValueError``, which the page and the server read as
+    a refused key.
     """
     async with StudioClient(StudioConfig(api_key=key, base_url=base_url)) as studio:
         try:
@@ -265,6 +318,8 @@ async def check_key(key: str, base_url: str) -> Account:
                 "Studio did not accept this key (it may be mistyped, expired "
                 "or revoked); nothing was saved."
             ) from exc
+        except ValueError as exc:  # a 2xx body that is not JSON: not a refusal
+            raise StudioNotJson(STUDIO_NOT_JSON) from exc
     return Account(
         user_name=context.user_name,
         organization=context.organization,
@@ -285,6 +340,10 @@ class KeyStore:
         self._environ = os.environ if environ is None else environ
         self._key: str | None = None
         self.account: Account | None = None
+        # The key :attr:`account` was read for (round r5-n SEC-6): a key file
+        # another server rewrote puts another key in effect, whose account
+        # this one is not.
+        self._account_key: str | None = None
 
     @property
     def path(self) -> Path:
@@ -310,7 +369,10 @@ class KeyStore:
         """Use ``key`` (already checked) from now on; save it when ``remember``.
 
         Returns why the key could not be remembered (the key file could not
-        be read or written), or ``None``; the key is in effect either way.
+        be read or written), or, once it is saved, that the app was installed
+        with a key of its own (``OLMOEARTH_API_KEY``, another key than this
+        one), which comes back after a restart (:data:`INSTALLED_KEY_NOTE`,
+        round r5-n SEC-3); else ``None``. The key is in effect either way.
         """
         problem = None
         if remember:
@@ -321,25 +383,50 @@ class KeyStore:
                     f"The key could not be saved to {self.path} "
                     f"({type(exc).__name__}); it is used for this session only."
                 )
+            else:
+                raw = self._environ.get(KEY_ENV, "")
+                try:
+                    installed = clean_key(raw) if raw.strip() else None
+                except ValueError:
+                    installed = None
+                if installed and installed != key:
+                    problem = INSTALLED_KEY_NOTE
         self._key = key
-        self.account = account
+        self.note_account(key, account)
         return problem
 
     def sign_out(self) -> dict[str, Any]:
         """Forget the process's key and the key file's key line; say what remains."""
         self._key = None
-        self.account = None
+        self.forget_account()
         removed = remove_key_from_file(self.path)
         still = bool(self._environ.get(KEY_ENV, "").strip())
         return {"key_file_removed": removed, "environment_key_remains": still}
 
+    def account_of(self, key: str) -> Account | None:
+        """The account read for ``key``, or ``None``: none was read, or the
+        one held was read for another key (round r5-n SEC-6)."""
+        return self.account if key == self._account_key else None
+
+    def note_account(self, key: str, account: Account) -> None:
+        """Keep ``account`` as the one ``key`` signs in as."""
+        self.account, self._account_key = account, key
+
+    def forget_account(self) -> None:
+        """Forget the account read, and the key it was read for."""
+        self.account, self._account_key = None, None
+
     def status(self) -> dict[str, Any]:
-        """Whether a key is in effect, its source and account; never the key."""
+        """Whether a key is in effect, its source and account; never the key.
+
+        The account is the one read for the key in effect (:meth:`account_of`),
+        never an earlier key's (round r5-n SEC-6)."""
         held = self.current()
+        account = self.account_of(held[0]) if held else None
         return {
             "signed_in": held is not None,
             "source": held[1] if held else None,
-            "account": self.account.as_dict() if self.account else None,
+            "account": account.as_dict() if account else None,
             "key_file": str(self.path),
         }
 
@@ -465,9 +552,16 @@ class BrowserSignIn:
         return max(0, int(self._deadline - time.monotonic())) if self.url else 0
 
     async def start(self) -> str:
-        """Open the page (or keep the open one) and return its URL."""
+        """Open the page (or keep the open one) and return its URL.
+
+        The page is open for :data:`SIGN_IN_SECONDS` from this call: an open
+        page kept starts its time again (round r5-n SEC-7), with the same URL
+        and token, so a tab already opened on it keeps working and the ten
+        minutes Claude and the panel are told hold from now.
+        """
         existing = self.url
         if existing:
+            self._close_later()
             return existing
         await self.close()
         self._token = secrets.token_urlsafe(32)
@@ -475,12 +569,19 @@ class BrowserSignIn:
             self._handle, host="127.0.0.1", port=0, limit=_MAX_HEAD_BYTES
         )
         self._port = int(self._server.sockets[0].getsockname()[1])
+        self._close_later()
+        return f"http://127.0.0.1:{self._port}/sign-in/{self._token}"
+
+    def _close_later(self) -> None:
+        """Close the page :data:`SIGN_IN_SECONDS` from now, in place of any
+        earlier time set."""
+        if self._closer is not None:
+            self._closer.cancel()
         self._deadline = time.monotonic() + SIGN_IN_SECONDS
         loop = asyncio.get_running_loop()
         self._closer = loop.call_later(
             SIGN_IN_SECONDS, lambda: loop.create_task(self.close())
         )
-        return f"http://127.0.0.1:{self._port}/sign-in/{self._token}"
 
     async def close(self) -> None:
         """Stop listening; the URL stops working."""
@@ -500,10 +601,21 @@ class BrowserSignIn:
     async def _handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Answer one request (one per connection)."""
+        """Answer one request (one per connection).
+
+        Only reading the request is bounded (:data:`READ_SECONDS` for each
+        part, a ``TimeoutError`` that is a bad request); Studio's check of
+        the key has its own bound inside :meth:`_answer`, so a slow Studio is
+        never called a bad request and a sign-in is never cut off part way
+        (round r5-n B5)."""
         try:
-            status, body = await asyncio.wait_for(self._answer(reader), timeout=60)
-        except (asyncio.TimeoutError, asyncio.LimitOverrunError, ValueError):
+            status, body = await self._answer(reader)
+        except (
+            asyncio.TimeoutError,
+            asyncio.LimitOverrunError,
+            asyncio.IncompleteReadError,
+            ValueError,
+        ):
             status, body = 400, self._page("<h1>Bad request</h1>")
         except Exception:  # noqa: BLE001 - never echo internals, and never the key
             logger.warning("sign-in page request failed", exc_info=False)
@@ -533,7 +645,7 @@ class BrowserSignIn:
 
     async def _answer(self, reader: asyncio.StreamReader) -> tuple[int, bytes]:
         """The status and page for one request."""
-        raw = await reader.readuntil(b"\r\n\r\n")
+        raw = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), READ_SECONDS)
         lines = raw.decode("latin-1").split("\r\n")
         method, path, _version = (lines[0].split(" ") + ["", "", ""])[:3]
         headers: dict[str, str] = {}
@@ -557,16 +669,34 @@ class BrowserSignIn:
         length = int(headers.get("content-length", "0") or 0)
         if length < 0 or length > _MAX_BODY_BYTES:
             return 400, self._page("<h1>Bad request</h1>")
-        form = parse_qs((await reader.readexactly(length)).decode("utf-8"))
+        posted = await asyncio.wait_for(reader.readexactly(length), READ_SECONDS)
+        form = parse_qs(posted.decode("utf-8"))
         remember = bool(form.get("remember"))
         try:
             key = clean_key((form.get("api_key") or [""])[0])
-            account = await check_key(key, self.base_url)
+            # Its own bound (round r5-n B5): each of Studio's two reads may
+            # retry three times, 30 s each.
+            async with asyncio.timeout(CHECK_KEY_SECONDS):
+                account = await check_key(key, self.base_url)
         except ValueError as exc:
             # An alert tied to the key field (aria-describedby="key-error").
             error = (
                 '<p class="error" id="key-error" role="alert">'
                 f"{html.escape(str(exc))}</p>"
+            )
+            return 200, self._page(_FORM.format(error=error))
+        except TimeoutError:
+            error = (
+                '<p class="error" id="key-error" role="alert">'
+                f"{html.escape(CHECK_TOO_SLOW)}</p>"
+            )
+            return 200, self._page(_FORM.format(error=error))
+        except StudioNotJson as exc:
+            # Studio's address answered, with a page (round r5-n B8): its own
+            # words, never "could not be reached" with a class name.
+            error = (
+                '<p class="error" id="key-error" role="alert">'
+                f"{html.escape(str(exc))}; nothing was saved.</p>"
             )
             return 200, self._page(_FORM.format(error=error))
         except Exception as exc:  # noqa: BLE001 - offline or Studio down, not the key

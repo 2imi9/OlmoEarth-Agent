@@ -192,7 +192,7 @@ async def test_text_tool_call_hermes_xml_recovered(
 
     The llama.cpp server falls back to this when launched without
     ``--jinja`` (vLLM without a matching ``--tool-call-parser``;
-    docs/Usage.md). The client must
+    spec/Usage.md). The client must
     recover the call so the agent loop does not mistake it for an answer.
     """
     content = (
@@ -342,14 +342,14 @@ async def test_live_function_call_round_trip() -> None:
     """Run against a real LLM server.
 
     Set ``LLM_ENDPOINT`` to a running OpenAI-compatible server (the
-    llama.cpp server from docs/Usage.md) to exercise the actual
+    llama.cpp server from spec/Usage.md) to exercise the actual
     function-calling path on the Qwen3.6 backbone. Skipped otherwise so
     unit-only runs stay fast.
 
     IMPORTANT: the server must be started with tool-calling enabled
     (``--enable-auto-tool-choice --tool-call-parser ...``) or it will
     return the tool call as plain text and this test will fail at the
-    ``finish_reason == "tool_calls"`` assertion. See ``docs/Usage.md``,
+    ``finish_reason == "tool_calls"`` assertion. See ``spec/Usage.md``,
     LLM backends and serving, for the full command.
     """
     if not os.environ.get("LLM_ENDPOINT"):

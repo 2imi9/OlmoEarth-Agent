@@ -56,9 +56,10 @@ from olmoearth_agent.bridge.errors import BridgeError, BridgeHalt
 from olmoearth_agent.bridge.replay import ToolCache, replay_registry
 from olmoearth_agent.bridge.scripted import RecordedResponse, ScriptedLLM
 from olmoearth_agent.bridge.store import RunDir
-from olmoearth_agent.cli import figure_lines, figure_of
+from olmoearth_agent.cli import figure_lines, figure_of, no_answer_note
 from olmoearth_agent.harness import spill
 from olmoearth_agent.harness.agent import AgentResult, LeadAgent
+from olmoearth_agent.harness.capabilities import without_map
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm.client import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message, Role, ToolSpec
@@ -109,6 +110,17 @@ RESPOND_WITHOUT_TOOLS = (
 )
 
 RegistryFactory = Callable[[], ToolRegistry]
+
+
+def _default_registry() -> ToolRegistry:
+    """The bridge's tools by default: the default registry with no draw tool.
+
+    A Claude Code session that plays the model shows no map to draw on, as
+    the command line shows none (round r5-n agent/F6): ``olmoearth_request_aoi``
+    is left out and the card says to ask for a saved area's id
+    (:func:`~olmoearth_agent.harness.capabilities.without_map`).
+    """
+    return without_map(build_default_registry())
 
 
 # --- the agent -------------------------------------------------------------
@@ -316,7 +328,8 @@ async def begin(
         The system prompt's skill index; by default read now
         (``SkillLoader().index()``) and kept for the whole run.
     registry_factory
-        Builds the tool registry each step; ``build_default_registry``.
+        Builds the tool registry each step; by default the default registry
+        with no draw tool (``_default_registry``).
     studio
         A Studio client to use (not closed here); by default each step makes
         one with ``StudioClient.from_env`` and closes it.
@@ -347,7 +360,7 @@ async def begin(
             "read_only": opted_in(READ_ONLY_ENV),
         },
     }
-    factory = registry_factory or build_default_registry
+    factory = registry_factory or _default_registry
     probe = build_agent(ScriptedLLM([]), factory(), None, record)
     record["settings"]["check_numbers"] = probe.check_numbers
     record["settings"]["check_answer"] = probe.check_answer
@@ -489,7 +502,7 @@ async def _step(
 
     cache = ToolCache(run, saved=saved, model_call=len(responses))
     llm = ScriptedLLM(responses)
-    registry = replay_registry((registry_factory or build_default_registry)(), cache)
+    registry = replay_registry((registry_factory or _default_registry)(), cache)
     client = StudioClient.from_env() if studio is None else studio
     try:
         agent = build_agent(llm, registry, client, brief)
@@ -574,7 +587,7 @@ def system_prompt(
         "run_id": "prompt",
         "settings": {"skill_index": skill_index},
     }
-    factory = registry_factory or build_default_registry
+    factory = registry_factory or _default_registry
     return build_agent(ScriptedLLM([]), factory(), None, record).system_prompt
 
 
@@ -597,7 +610,7 @@ def tool_specs(
     With ``run_dir``, the tools offered on the run's pending call (none when
     it offers none, or when the run has ended).
     """
-    registry = (registry_factory or build_default_registry)()
+    registry = (registry_factory or _default_registry)()
     if run_dir is None:
         names = [s.name for s in registry.active_specs()]
     else:
@@ -701,9 +714,16 @@ def _collect(events: Iterable[dict[str, Any]], state: ThreadState) -> AgentResul
 
 
 def cli_notes(result: AgentResult, max_turns: int) -> list[str]:
-    """The notes ``olmoearth-agent`` prints to stderr beside the answer (``cli.py``)."""
-    if result.final_content is None:
-        return ["(no answer, hit the turn cap)"]
+    """The notes ``olmoearth-agent`` prints to stderr beside the answer (``cli.py``).
+
+    A blank answer is no answer, and the turn cap is named only when the run
+    reached it (``cli.no_answer_note``, round r5-n agent/F5). The notes are
+    those of ``olmoearth-agent --show-trace``: the final view holds the trace
+    (:func:`cli_trace`), so the note names no flag, which the bridge lacks.
+    """
+    missing = no_answer_note(result, trace_shown=True)
+    if missing is not None:
+        return [missing]
     notes: list[str] = []
     if result.hit_max_turns:
         notes.append(

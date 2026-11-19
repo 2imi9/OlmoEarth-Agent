@@ -173,9 +173,11 @@ def test_f6_a_press_with_no_reply_holds_the_press_and_says_one_line() -> None:
     press = _between(page, "  async function drawPicked() {", "\n  }\n")
     line = "    if (gateHeld() && ruleLost) { OE.toast(RULE_LOST); return; }\n"
     assert line in press and "focus" not in line
+    # Round r5-n JS-2: no press starts while a part's sheet is being opened
+    # either (tests/mcp_app/test_r5n_views.py).
     assert _in_order(
         press,
-        "if (busy) return;",
+        "if (busy || models.some((x) => x.opening)) return;",
         line,
         "if (!picked.length) { updatePress(); return; }",
         "if (gateHeld()) { updatePress(); OE.focusIfHere(ruleInput); return; }",
@@ -185,8 +187,8 @@ def test_f6_a_press_with_no_reply_holds_the_press_and_says_one_line() -> None:
     assert "ruleLost = true;" in press
     update = _between(page, "  function updatePress() {", "\n  }\n")
     assert (
-        "press.setAttribute('aria-disabled', String(busy || !plan.send.length"
-        " || plan.over > 0 || gateHeld()));" in update
+        "press.setAttribute('aria-disabled', String(busy || models.some((x) => "
+        "x.opening) || !plan.send.length || plan.over > 0 || gateHeld()));" in update
     )
     fold = _between(page, "  function fillFold() {", "\n  }\n")
     assert "if (!ruleLost && rule.source !== 'owner')" in fold
@@ -377,7 +379,8 @@ def test_o3_the_class_check_button_under_the_uncovered_lines() -> None:
     through OE.sendJob with an OE.typeSlot beside it; its Details line only
     beside it, after the rare classes' counted lines and the unseen names.
     Round r5-b, J23: the rule used is no longer on the face under the
-    button; it is the Details fold's first line."""
+    button; it is the Details fold's first line. Round r5-n JS-1: the press
+    sends one message per press (OE.oncePerPress)."""
     page = _read("result.html")
     check = _between(page, "function classCheckOf(r, unit) {", "\n}\n")
     for text in (
@@ -396,7 +399,8 @@ def test_o3_the_class_check_button_under_the_uncovered_lines() -> None:
     for text in (
         "const typed = OE.typeSlot();",
         "OE.el('div', { class: 'row oe-class-check' },",
-        "onclick: () => OE.sendJob(app, OE.JOB_TEXT.byClass(classCheck), typed) },",
+        "onclick: OE.oncePerPress(() => "
+        "OE.sendJob(app, OE.JOB_TEXT.byClass(classCheck), typed)) },",
         "RESULT_WORDS.classCheck),\n      typed));",
     ):
         assert text in button, text

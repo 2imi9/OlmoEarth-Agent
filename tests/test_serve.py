@@ -34,6 +34,14 @@ def _clear_bridge_caches() -> Any:
     serve._STUDIO_POOL.clear()
 
 
+@pytest.fixture(autouse=True)
+def _testclient_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bridge answers loopback names only (r5-n security/SEC-5); the test
+    client sends ``Host: testserver``, added here as an operator would add a
+    LAN name. tests/mcp_app/test_r5n_agent.py checks the refusal."""
+    monkeypatch.setenv(serve.ALLOWED_HOSTS_ENV, "testserver")
+
+
 class _FakeLLM:
     """Minimal stand-in for OlmoEarthLLM: scripted responses + a config."""
 
@@ -301,7 +309,12 @@ def test_run_auto_route_demotes_simple_brief_to_local(
         async def run_stream(self, *_a: Any, **_kw: Any) -> Any:
             yield {"type": "final", "turn": 1, "content": "ok"}
 
+    async def local_up(_endpoint: str, _api_key: str | None = None) -> bool:
+        """The local model answers (r5-n agent/F4: a run moves only then)."""
+        return True
+
     monkeypatch.setattr(serve, "LeadAgent", _CapAgent)
+    monkeypatch.setattr(serve, "_local_llm_up", local_up)
     hosted = {
         "X-Olmoearth-Key": "k",
         "X-LLM-Backend": "openai",

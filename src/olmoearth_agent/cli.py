@@ -23,12 +23,36 @@ import sys
 from collections.abc import AsyncIterator, Iterable, Mapping
 from typing import Any
 
+import httpx
+import openai
+
 from olmoearth_agent.harness import AgentResult, LeadAgent
+from olmoearth_agent.harness.capabilities import without_map
 from olmoearth_agent.harness.state import ThreadState
 from olmoearth_agent.llm import OlmoEarthLLM
 from olmoearth_agent.llm.types import Message
 from olmoearth_agent.skills import SkillLoader, build_default_registry
 from olmoearth_agent.studio import StudioClient
+from olmoearth_agent.tools.registry import ToolRegistry
+
+#: The note for a run that ended with no answer at the turn cap, and for one
+#: whose model returned no text before it (round r5-n agent/F5: a blank answer
+#: printed an empty line and exited 0, and no answer blamed the turn cap
+#: though it was not reached): the flag is named only where the trace is not
+#: shown already (:func:`no_answer_note`); the Claude Code bridge, which has no
+#: such flag and shows the trace, gives the plain note.
+# WORDING: r5n agent/F5
+NO_ANSWER_AT_CAP = "(no answer: the run reached the turn cap)"
+NO_ANSWER_TEXT = "(no answer: the model returned no text before the turn cap)"
+NO_ANSWER_TEXT_HINT = (
+    "(no answer: the model returned no text before the turn cap; run with "
+    "--show-trace to see its tool calls)"
+)
+#: Said after a failure to reach the model server (round r5-n errors/B7).
+LLM_DOWN_HINT = (
+    "Is the model server running? Start it with make serve, or set "
+    "LLM_ENDPOINT to one that is."
+)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -84,6 +108,48 @@ def figure_lines(figures: Iterable[tuple[str, str]]) -> list[str]:
     return ["", *lines] if lines else []
 
 
+def no_answer_note(result: AgentResult, *, trace_shown: bool = False) -> str | None:
+    """The note for a run with no answer, or None when it answered.
+
+    A blank answer is no answer; the turn cap is blamed only when the run
+    reached it (round r5-n agent/F5): a local model whose output budget went
+    on thinking returns no text and no tool call before the cap. Its note
+    names ``--show-trace`` only when the trace is not shown already
+    (``trace_shown``: the flag was given, or the Claude Code bridge, whose
+    final view holds the trace and which has no such flag).
+    """
+    if (result.final_content or "").strip():
+        return None
+    if result.hit_max_turns:
+        return NO_ANSWER_AT_CAP
+    return NO_ANSWER_TEXT if trace_shown else NO_ANSWER_TEXT_HINT
+
+
+def error_line(exc: BaseException) -> str:
+    """The one line ``olmoearth-agent`` prints for a run that failed to run.
+
+    The error's own text (its class name when it has none), and, when the
+    model server could not be reached, :data:`LLM_DOWN_HINT` (round r5-n
+    errors/B7: a missing key or a model server not running printed a
+    Python traceback).
+    """
+    text = str(exc).strip() or type(exc).__name__
+    if isinstance(exc, openai.APIConnectionError):
+        text = f"{text} {LLM_DOWN_HINT}"
+    return f"olmoearth-agent: {text}"
+
+
+def cli_registry() -> ToolRegistry:
+    """The command line's tools: the default registry with no draw tool.
+
+    ``olmoearth_request_aoi`` only tells a map in the web UI or the MCP App
+    to open, and the command line shows none (round r5-n agent/F6): it is
+    left out, and the capability card says to ask for a saved area's id
+    (:func:`~olmoearth_agent.harness.capabilities.without_map`).
+    """
+    return without_map(build_default_registry())
+
+
 class _FigureAgent(LeadAgent):
     """A :class:`LeadAgent` that keeps each figure its run's tools wrote.
 
@@ -125,12 +191,13 @@ async def run_brief(
     """Assemble a :class:`LeadAgent` and run one brief.
 
     Dependencies default to the env-configured production objects but can
-    be injected (for tests). Owns the :class:`StudioClient` lifecycle
+    be injected (for tests); the default registry is :func:`cli_registry`,
+    with no draw tool. Owns the :class:`StudioClient` lifecycle
     only when it creates one. ``figures``, when given, receives each figure
     a tool of the run wrote (:func:`figure_of`): its path and caption.
     """
     llm = llm or OlmoEarthLLM()
-    registry = registry or build_default_registry()
+    registry = registry or cli_registry()
     if skill_index is None:
         skill_index = SkillLoader().index()
 
@@ -158,13 +225,20 @@ def main(argv: list[str] | None = None) -> int:
 
     stdout is the answer followed by any figure lines (:func:`figure_lines`:
     a blank line, then each figure's path and caption); the trace and the
-    notes go to stderr.
+    notes go to stderr. A run that could not start or finish (no Studio key,
+    the model server down, an error of the model's API) prints one line,
+    :func:`error_line`, and returns 2; a run with no answer returns 1
+    (:func:`no_answer_note`).
     """
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     figures: dict[str, str] = {}
-    result = asyncio.run(
-        run_brief(args.brief, max_turns=args.max_turns, figures=figures)
-    )
+    try:
+        result = asyncio.run(
+            run_brief(args.brief, max_turns=args.max_turns, figures=figures)
+        )
+    except (RuntimeError, openai.APIError, httpx.HTTPError) as exc:
+        print(error_line(exc), file=sys.stderr)
+        return 2
 
     if args.show_trace:
         for name, ok in result.tool_calls:
@@ -191,8 +265,9 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
-    if result.final_content is None:
-        print("(no answer, hit the turn cap)", file=sys.stderr)
+    missing = no_answer_note(result, trace_shown=args.show_trace)
+    if missing is not None:
+        print(missing, file=sys.stderr)
         return 1
     if result.hit_max_turns:
         # The web UI shows the same note above the answer (webui/js/run.js).

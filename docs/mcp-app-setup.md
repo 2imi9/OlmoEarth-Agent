@@ -20,8 +20,8 @@ Claude Code in a terminal: `/mcp` shows `olmoearth-agent`, and Claude names the 
   you read goes to the model whether you print it or not. The user adds the entry (step 5a).
 - Show the user the Claude Code command (step 5b) and ask before running it.
 - Ask before installing uv or git. Never use sudo.
-- Install only from `git+https://github.com/2imi9/OlmoEarth-Agent` (main) or a commit of it, never from PyPI or a
-  tag up to v1.4.0: they have no MCP App. A `pip install` line in an error message does not apply here.
+- Install only from `git+https://github.com/2imi9/OlmoEarth-Agent` (main), a release tag from v1.5.0 on, or a commit
+  of it; never from PyPI or a tag up to v1.4.0: they have no MCP App. A `pip install` line in an error message does not apply here.
 - The user quits and reopens the host. Do not stop its process yourself.
 
 ## Steps
@@ -169,10 +169,20 @@ Add an `env` block next to `args` (Claude Desktop: the user, in Edit Config; Cla
   can write saves it.
 - `OLMOEARTH_OUTPUT_ROOT`: the folder the app works and writes in (default `~/olmoearth-agent-outputs`). The tools
   read files only from it, so name a new folder for this app alone, never your home folder.
-- Pin a commit: `olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent@<commit>`. To
-  update, pin a newer commit and restart the host.
+- Pin a release or a commit: `olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent@v1.5.0`
+  (or `@<commit>`). To update, pin a newer one and restart the host.
 - Keep `--python 3.12`: on Python 3.14 the statistics package
   ([olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX)) does not install.
+
+**Ai2's Asta research skills** (optional; they find and summarise scientific papers):
+
+- Install them in Claude Code: `/plugin marketplace add allenai/asta-plugins`, then `/plugin install asta-tools`.
+- They work in Claude Code only (not the chat in Claude Desktop), and some of their commands need an Ai2 login.
+- Then turn Asta on in **Settings** (the text button at the bottom left of every card): the start card shows
+  **Search papers with Asta**, and the app asks for Asta only when you press it.
+
+Once installed, Claude Code may also use Asta when you ask for it in the chat;
+the switch only shows or hides the app's tile.
 
 ## What runs where
 
@@ -186,8 +196,8 @@ Add an `env` block next to `args` (Claude Desktop: the user, in Edit Config; Cla
 - **Claude** shows the panels and passes your presses on. Your key never goes through it, and nothing checks its
   replies against the tools.
 
-The words on the panels (square, point, part, range) and every panel in detail:
-[Usage.md](Usage.md#in-claude-with-views-mcp-app).
+Every panel, step by step: [mcp-app.md](mcp-app.md). The words on the panels (square, point, part, range):
+[terms.md](terms.md).
 
 ## Limits
 

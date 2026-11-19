@@ -104,6 +104,9 @@ CLAIMS = "claims"
 
 #: The marker appended to a sentence a check still flags after the rewrite.
 MARK = "[unverified: {check}]"
+#: How each marker starts, and a run of markers after a flagged sentence.
+_MARK_START = MARK.split("{", 1)[0]
+_MARKS_RE = re.compile(r"(?:\s*" + re.escape(_MARK_START) + r"\w+\])+")
 
 #: A concentration claim about a band contradicts the facts when that band
 #: holds less than this share of the differing windows.
@@ -151,6 +154,34 @@ class ToolRecord:
         return self.envelope
 
 
+def _passed_part(message: str) -> str:
+    """An earlier answer without the sentences its checks left marked.
+
+    :func:`mark_answer` puts ``[unverified: <check>]`` right after each
+    sentence still flagged when the answer was shown, or, for one it could
+    not place, at the start of a line at the end. Those sentences failed the
+    checks, so a later turn takes no figure and no claim from them (round
+    r5-n agent/F3): each is left out, and so is each such line at the end. A
+    table row whose last cell holds a marker is one sentence, left out whole.
+
+    Examples
+    --------
+    >>> _passed_part("300 labels. About 23% are wrong. [unverified: numbers]")
+    '300 labels.'
+    """
+    kept: list[str] = []
+    for line in message.splitlines():
+        if line.lstrip().startswith(_MARK_START):
+            continue  # a flagged sentence mark_answer appended at the end
+        parts = _MARKS_RE.split(line)
+        for i, part in enumerate(parts):
+            found = sentences(part)
+            if i < len(parts) - 1:
+                found = found[:-1]  # the sentence right before a marker run
+            kept.extend(s.text for s in found)
+    return "\n".join(kept)
+
+
 @dataclass
 class RunEvidence:
     """What the answer may rest on: the run's tool calls and the user's words.
@@ -159,7 +190,8 @@ class RunEvidence:
     never the system prompt or an assistant message.
     ``assistant_messages`` are the assistant's earlier turns of the history:
     on the ``"web"`` surface they were checked when first shown, so a number
-    they state may be restated; on ``"cli"`` they are no source.
+    a sentence of theirs that passed states may be restated
+    (:attr:`checked_earlier`); on ``"cli"`` they are no source.
     """
 
     tools: list[ToolRecord] = field(default_factory=list)
@@ -167,17 +199,31 @@ class RunEvidence:
     surface: str = "cli"
     assistant_messages: list[str] = field(default_factory=list)
 
+    @property
+    def checked_earlier(self) -> list[str]:
+        """The earlier assistant turns as far as they passed the checks.
+
+        On the ``"web"`` surface only: each turn without the sentences still
+        marked ``[unverified: ...]`` when it was shown (:func:`_passed_part`),
+        so a figure or a claim the checks flagged on one turn is no source
+        on the next (round r5-n agent/F3). On ``"cli"`` there are none.
+        """
+        if self.surface != "web":
+            return []
+        return [_passed_part(m) for m in self.assistant_messages]
+
     @cached_property
     def pool(self) -> NumberPool:
         """The numbers of the tool results and the user's messages.
 
         Also the paths the harness spilled results to (the model is told
-        them), and, on the ``"web"`` surface, the earlier assistant turns. A
+        them), and, on the ``"web"`` surface, the earlier assistant turns as
+        far as they passed the checks (:attr:`checked_earlier`). A
         result's keys listed under its ``not_a_source`` are left out
         (:func:`_as_source`): they render the call's own arguments, so a
         number the model typed into them is the model's.
         """
-        earlier = self.assistant_messages if self.surface == "web" else []
+        earlier = self.checked_earlier
         return NumberPool(
             [
                 *(_as_source(t.envelope) for t in self.tools),
@@ -189,8 +235,9 @@ class RunEvidence:
 
     @cached_property
     def earlier_turns_pool(self) -> NumberPool:
-        """The numbers of the earlier assistant turns alone (``"web"`` only)."""
-        return NumberPool(self.assistant_messages if self.surface == "web" else [])
+        """The numbers of the earlier assistant turns alone (``"web"`` only),
+        as far as they passed the checks (:attr:`checked_earlier`)."""
+        return NumberPool(self.checked_earlier)
 
     def contract(self, key: str) -> Iterator[tuple[ToolRecord, Any]]:
         """Every item of the list a successful tool result holds under ``key``."""
@@ -2275,7 +2322,9 @@ def _restated_from_an_earlier_turn(s: str, run: RunEvidence) -> bool:
     On the ``"web"`` surface each message is a run of its own, and its earlier
     turns were checked when first shown (:attr:`RunEvidence.pool` takes them
     as a source): a rate measured in an earlier message is restated, not
-    invented. On ``"cli"`` they are no source.
+    invented. A sentence those checks left marked ``[unverified: ...]`` is no
+    source (:attr:`RunEvidence.checked_earlier`, round r5-n agent/F3). On
+    ``"cli"`` they are no source.
     """
     if run.surface != "web" or not run.assistant_messages:
         return False

@@ -3,7 +3,7 @@
 """Provenance: record every tool call so a run can be audited and replayed.
 
 Implements skill #3 (``olmoearth-provenance``) and operational rule
-13 (``docs/Usage.md``). The :class:`ProvenanceLog` lives on the run's ``ThreadState``;
+13 (``spec/Usage.md``). The :class:`ProvenanceLog` lives on the run's ``ThreadState``;
 the lead agent appends one entry per dispatched tool call.
 """
 

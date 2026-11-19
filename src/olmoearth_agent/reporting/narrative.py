@@ -172,6 +172,38 @@ SECOND_LOOK = (
     "{changed} once that result was seen, a second look that falls outside "
     "what the guarantee covers."
 )
+#: An estimate the MCP App withdrew (round r5-k K1): its sheet's answers
+#: changed after its first result, so the card and Claude state no rate. Its
+#: recorded result carries ``withdrawn`` (round r5-n numbers/F1); the report
+#: states no rate or range from it either, and a request that measured
+#: nothing else says :data:`WITHDRAWN_NOT_MEASURED`.
+# WORDING: r5n numbers/F1
+WITHDRAWN = (
+    "- Withdrawn: the answers on this sheet changed after its first result, so "
+    "this result does not count; this report states no rate or range from it."
+)
+#: A zone or certificate call on the design file of a withdrawn estimate
+#: (round r5-n numbers/F1): it graded the same sheet, whose answers changed
+#: after its first result (a zone's whole-map figure from those labels is the
+#: withdrawn rate), so no verdict, rate or range of it is stated.
+# WORDING: r5n numbers/F1
+WITHDRAWN_SAME_SHEET = (
+    "- Withdrawn: this call graded the same sheet as an estimate withdrawn in "
+    "this request: the sheet's answers changed after its first result, so this "
+    "result does not count; this report states no verdict, rate or range from it."
+)
+#: The heading of a withdrawn result, by its tool: it states no error rate.
+# WORDING: r5n numbers/F1
+WITHDRAWN_HEADING = "### Withdrawn result (`{tool}`)"
+#: The section's first line when nothing measured but an estimate was
+#: withdrawn (round r5-n numbers/F1): :data:`NOT_MEASURED` said no call graded
+#: labels, above the withdrawn call that did.
+# WORDING: r5n numbers/F1
+WITHDRAWN_NOT_MEASURED = (
+    "No error rate of this map is stated in this request: its estimate was "
+    "withdrawn (below), so this report states no error rate, accuracy or "
+    "interval for it."
+)
 #: Labels on a design file that differ from an earlier call's on it.
 LABELS_CHANGED = (
     "- Labels changed after a result was seen: an earlier call of this request "
@@ -943,7 +975,14 @@ def accuracy_section(verification: Iterable[Any]) -> tuple[list[str], dict[str, 
         map, design, seed, design file, labels and figures, copied from the
         tool result, with whether its labels changed after an earlier result
         on its design file and, for a zone, what it changed after an earlier
-        zone call (then not stated as certified).
+        zone call (then not stated as certified). An estimate whose recorded
+        result is marked ``withdrawn`` (the MCP App withdrew it: its sheet's
+        answers changed after its first result) states no rate or range and
+        measures nothing: its statement's kind is ``withdrawn``, with its map
+        and design file only (round r5-n numbers/F1); so does a zone or
+        certificate call on its design file, which graded the same sheet,
+        and a section that measured nothing else leads with
+        :data:`WITHDRAWN_NOT_MEASURED`.
 
     Examples
     --------
@@ -976,7 +1015,27 @@ def accuracy_section(verification: Iterable[Any]) -> tuple[list[str], dict[str, 
         return _map_of_arguments(plan[0]) or "not named by its plan"
 
     looks = _second_looks(calls)
-    indexed = list(enumerate(calls))
+    # An estimate the MCP App withdrew states no rate or verdict (round r5-n
+    # numbers/F1): it is named apart, and measures nothing; so does a zone or
+    # certificate call on its design file, which graded the same sheet (a
+    # zone's whole-map figure from those labels is the withdrawn rate).
+    withdrawn_paths = {
+        str(_design_path(a, r))
+        for tool, a, r in calls
+        if tool == ESTIMATE_TOOL and r.get("withdrawn") is True and _design_path(a, r)
+    }
+
+    def gone(call: _Call) -> bool:
+        """Whether a call is withdrawn: the estimate, or a zone or certificate
+        call on the design file of one."""
+        tool, a, r = call
+        if tool == ESTIMATE_TOOL:
+            return r.get("withdrawn") is True
+        same_sheet = str(_design_path(a, r)) in withdrawn_paths
+        return tool in (CERTIFY_TOOL, WRITE_CERTIFICATE_TOOL) and same_sheet
+
+    withdrawn = [call for call in calls if gone(call)]
+    indexed = [(i, call) for i, call in enumerate(calls) if not gone(call)]
     rates = [
         (i, a, r)
         for i, (tool, a, r) in indexed
@@ -1024,6 +1083,23 @@ def accuracy_section(verification: Iterable[Any]) -> tuple[list[str], dict[str, 
         )
         body += [*lines, ""]
         statements.append(statement)
+    for tool, a, r in withdrawn:
+        map_named = map_of(a, r)
+        body += [
+            WITHDRAWN_HEADING.format(tool=tool),
+            "",
+            f"- Map: {map_named}.",
+            WITHDRAWN if tool == ESTIMATE_TOOL else WITHDRAWN_SAME_SHEET,
+            "",
+        ]
+        statements.append(
+            {
+                "kind": "withdrawn",
+                "tool": tool,
+                "map": map_named,
+                "design_path": _design_path(a, r),
+            }
+        )
     for i, a, r in zones:
         path = str(_design_path(a, r))
         lines, statement = _zone(
@@ -1095,7 +1171,9 @@ def accuracy_section(verification: Iterable[Any]) -> tuple[list[str], dict[str, 
     elif graded:
         lines += [MEASURED_LEAD, "", *body, NEITHER_MAP_MEASURED, ""]
     else:
-        lines += [NOT_MEASURED, "", HOW_TO_MEASURE, "", *body]
+        # NOT_MEASURED says no call graded labels: not above a withdrawn one.
+        lead = WITHDRAWN_NOT_MEASURED if withdrawn else NOT_MEASURED
+        lines += [lead, "", HOW_TO_MEASURE, "", *body]
     accuracy: dict[str, Any] = {
         "measured": measured,
         "which_map": bool(graded),

@@ -13,7 +13,9 @@ live API; the areas' ``project_id`` filter, the search limits and offsets and
 the write bodies come from the spec alone (unverified live).
 
 A 401 or 403 raises :class:`StudioAccessError` and is never retried: Studio
-refused the key, and a retry cannot change that. The read-only methods for
+refused the key, and a retry cannot change that. A create, sent once, whose
+answer is lost after it went out raises :class:`StudioOutcomeUnknown`: Studio
+may have made it. The read-only methods for
 Studio's annotations and datasets leave out the ids of the people behind a
 record, and a result's download token never reaches an error text or httpx's
 request log.
@@ -139,6 +141,28 @@ FILES_REFUSED_HINT = (
 #: The path of the result files download, whose query carries a token.
 _FILES_PATH = "/prediction-results/files"
 
+#: The hint of a create whose answer was lost (:class:`StudioOutcomeUnknown`,
+#: round r5-n B1): Studio may have made the record, so the next step is a
+#: read, never the same write again.
+# WORDING: r5n errors/B1
+OUTCOME_UNKNOWN_HINT = (
+    "Studio's answer to this write was lost, so Studio may have created it. Do "
+    "not submit it again: first search the project's areas, predictions or "
+    "projects by name to see whether it is there, and tell the user."
+)
+#: Transport errors raised once a request may have reached Studio: a create
+#: sent once may then have been made (round r5-n B1). A failure to connect
+#: sent nothing and stays a plain failure.
+_ANSWER_LOST = (
+    httpx.ReadTimeout,
+    httpx.WriteTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.RemoteProtocolError,
+)
+#: A gateway's statuses whose request the backend may still have applied.
+_GATEWAY_LOST = frozenset({502, 504})
+
 
 def _refusal_cause(method: str, path: str, status_code: int) -> tuple[str, str, str]:
     """Why Studio refused a request: the error text's cause, must_state's, the hint.
@@ -256,6 +280,66 @@ class StudioAccessError(RuntimeError):
         }
 
 
+class StudioOutcomeUnknown(RuntimeError):
+    """A create, sent once, whose answer from Studio was lost (round r5-n B1).
+
+    A read or write timeout, a dropped connection, or a gateway's 502 or 504
+    once the request went out (:func:`_answer_lost`): Studio may have made
+    the record, so this is not a plain failure, which would invite a second
+    write and a duplicate. A failure to connect sent nothing and stays the
+    transport error it is. The text names the method, the path without its
+    query string and the failure's kind, never the body sent (an area's
+    geometry) nor the key. :attr:`hint` and :attr:`contract` are as
+    :class:`StudioAccessError`'s.
+    """
+
+    #: The failed envelope's hint (:data:`OUTCOME_UNKNOWN_HINT`).
+    hint: str = OUTCOME_UNKNOWN_HINT
+
+    def __init__(self, method: str, path: str, cause: Exception) -> None:
+        """The lost answer of ``method path``; ``cause`` is the failure seen."""
+        self.method = method.upper()
+        self.path = path.split("?", 1)[0]
+        what = (
+            f"HTTP {cause.response.status_code}"
+            if isinstance(cause, httpx.HTTPStatusError)
+            else type(cause).__name__
+        )
+        super().__init__(
+            f"Studio's answer to {self.method} {self.path} was lost ({what}); "
+            "Studio may have created it."
+        )
+        # WORDING: r5n errors/B1 (the sentence the model states)
+        self.contract: dict[str, Any] = {
+            "must_state": [
+                "Studio's answer was lost, so this may already have been created "
+                "in Studio; look for it before creating it again."
+            ]
+        }
+
+
+def _answer_lost(method: str, retry: bool, exc: Exception) -> bool:
+    """Whether ``exc``, the last failure of a request, leaves its outcome
+    unknown: a ``POST`` sent once (a create; a search is retried) that may
+    have reached Studio (:data:`_ANSWER_LOST`, :data:`_GATEWAY_LOST`).
+
+    Examples
+    --------
+    >>> import httpx
+    >>> _answer_lost("POST", False, httpx.ReadTimeout("slow"))
+    True
+    >>> _answer_lost("POST", False, httpx.ConnectError("offline"))
+    False
+    >>> _answer_lost("GET", True, httpx.ReadTimeout("slow"))
+    False
+    """
+    if retry or method.upper() != "POST":
+        return False
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _GATEWAY_LOST
+    return isinstance(exc, _ANSWER_LOST)
+
+
 def _studio_error(
     resp: httpx.Response, *, secret: str | None = None
 ) -> tuple[str | None, str | None]:
@@ -360,10 +444,11 @@ class StudioConfig:
         """
         key = os.environ.get("OLMOEARTH_API_KEY", "").strip()
         if not key or key == "replace-me":
+            # WORDING: r5n errors/B7 (no entry point reads a .env by itself)
             msg = (
-                "OLMOEARTH_API_KEY is not set. Copy .env.example to .env "
-                "and paste your Studio API key (Studio UI -> profile -> "
-                "API Keys)."
+                "OLMOEARTH_API_KEY is not set. Export it in this shell (export "
+                "OLMOEARTH_API_KEY=<your key>), or run with uv run --env-file "
+                ".env; a key is in Studio under profile -> API Keys."
             )
             raise RuntimeError(msg)
         return cls(
@@ -449,7 +534,9 @@ class StudioClient:
         transport errors like timeouts) are retried with a short backoff.
         Use it only for idempotent reads, never for creates: a retried POST
         could duplicate a write. A 401 or 403 raises
-        :class:`StudioAccessError` at once, never retried.
+        :class:`StudioAccessError` at once, never retried. A create (a POST
+        sent once) whose answer was lost once it went out raises
+        :class:`StudioOutcomeUnknown` (:func:`_answer_lost`, round r5-n B1).
         """
         attempts = _MAX_ATTEMPTS if retry else 1
         for attempt in range(attempts):
@@ -467,9 +554,13 @@ class StudioClient:
                     exc.response.status_code in _RETRY_STATUSES
                     and attempt < attempts - 1
                 ):
+                    if _answer_lost(method, retry, exc):
+                        raise StudioOutcomeUnknown(method, path, exc) from exc
                     raise
-            except httpx.TransportError:
+            except httpx.TransportError as exc:
                 if attempt >= attempts - 1:
+                    if _answer_lost(method, retry, exc):
+                        raise StudioOutcomeUnknown(method, path, exc) from exc
                     raise
             await asyncio.sleep(0.4 * (attempt + 1))
         raise RuntimeError("unreachable retry state")  # pragma: no cover

@@ -300,11 +300,15 @@ def test_s01_the_account_card_names_the_key_and_keeps_its_sign_out_off() -> None
         "        ['Key', SOURCE[status.source] || null],\n" in page
     )
     card = _between(page, "function accountCard(", "\n}\n")
+    # Round r5-n JS-5: the card drawn again after a Sign out puts the focus on
+    # its main button (tests/mcp_app/test_r5n_views.py).
     assert (
         "const actions = OE.el('div', { class: 'row' }, "
         "status.source === 'environment' ? null\n"
         "    : OE.signOutButton(app, { cls: 'small', "
-        "onSignOut: (s) => render(app, s) }));" in card
+        "onSignOut: (s) => { render(app, s); "
+        "OE.focusIfHere(root.querySelector('button.primary') "
+        "|| root.querySelector('button')); } }));" in card
     )
     for gone in ("Key source", "server\\'s configuration", "for this session"):
         assert gone not in _code(page), gone

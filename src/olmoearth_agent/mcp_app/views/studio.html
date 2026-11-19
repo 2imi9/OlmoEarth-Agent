@@ -245,7 +245,9 @@ function inProgressCard(app, s) {
    and outlined on an area's row; a text button ('link') on a project (r5-a
    V3), where "Show its maps" is the button to see first. also, when given,
    runs after the message is sent: a project's opens it in the panel when it
-   is closed (r5-a V3), so its maps show at once. */
+   is closed (r5-a V3), so its maps show at once. One message per press
+   (OE.oncePerPress, r5-n JS-1): a double-click tells Claude once; a click
+   it drops reaches the card under it, whose own press skips a button. */
 // WORDING: r4p2
 const TELL = {
   label: (kind) => 'Tell Claude: this ' + kind,
@@ -253,7 +255,7 @@ const TELL = {
 };
 const useButton = (app, text, kind, name, cls = 'small', also = null) => OE.el('button', {
   class: cls, 'aria-label': TELL.label(kind) + ' (' + name + ')', title: TELL.title,
-  onclick: (e) => { e.stopPropagation(); OE.say(app, text); if (also) also(); },
+  onclick: OE.oncePerPress((e) => { e.stopPropagation(); const said = OE.say(app, text); if (also) also(); return said; }),
 }, TELL.label(kind));
 
 /* The button on every project that opens and closes it (r5-a V3), named for
@@ -384,14 +386,18 @@ const JOBS = { check: 'Check how wrong it is', first: 'Where to look first' };
 let firstInStudio = false;
 
 /* A small button whose press runs fn, one press at a time: aria-disabled
-   while it runs, so it keeps the focus. */
+   while it runs, so it keeps the focus. Each fn sends Claude one message, so
+   the second click of a fast double-click (its detail 2) does nothing, even
+   when the host answered the first, as OE.oncePerPress runs (r5-n JS-1); a
+   key's press (detail 0) counts. Its own press is stopped first, so a click
+   it drops does not reach the row under it either. */
 function busyButton(attrs, text, fn) {
   let busy = false;
   const button = OE.el('button', {
     class: 'small', ...attrs,
     onclick: async (e) => {
       e.stopPropagation();
-      if (busy || button.disabled) return;
+      if (busy || button.disabled || e.detail > 1) return;
       busy = true;
       button.setAttribute('aria-disabled', 'true');
       try { await fn(); } finally {

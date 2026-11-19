@@ -200,6 +200,26 @@ def percent(value: float | None) -> str:
     return f"{pct:.2g}%"
 
 
+def share_percent(value: float | None) -> str:
+    """A part's share of a map's pixels as a percent, as :func:`percent`
+    writes it, but never one that rounding makes untrue (round r5-n,
+    numbers/F3): a part under the whole map whose share rounds to "100.0%"
+    is ">99.9%" (a sliver beside it holds the rest), and a part above 0 under
+    0.0001% is "<0.0001%" (:func:`percent` would write it in scientific
+    notation, and a share rounded first would read "0.0%"). Pass the
+    unrounded fraction."""
+    if value is None:
+        return "n/a"
+    v = float(value)
+    # WORDING: r5n (the two forms rounding no longer hides)
+    if 0.0 < v < 1e-6:
+        return "<0.0001%"
+    text = percent(v)
+    if v < 1.0 and text == "100.0%":
+        return ">99.9%"
+    return text
+
+
 # --------------------------------------------------------------------------- the result card
 
 #: The result key of a result's card: the few rows a panel shows above its

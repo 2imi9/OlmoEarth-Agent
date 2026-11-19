@@ -16,12 +16,19 @@ same arguments; else "the run diverged at call k"). Past the cache, the
 handler runs and its outcome is appended, before the loop goes on. A handler
 that raised is replayed by raising an exception with the same class name,
 text and ``contract``, and, for a refused key
-(:class:`~olmoearth_agent.studio.client.StudioAccessError`), the same
-``hint``, which is all the registry builds the failed envelope from
-(``ToolRegistry._execute``, ``registry.own_hint``): the first, live call is
-served from its record too, so every step's envelope is the live loop's. A
-record cached before the hint was kept has none, and its refusal gets the
-generic hint.
+(:class:`~olmoearth_agent.studio.client.StudioAccessError`) or a create
+whose answer was lost
+(:class:`~olmoearth_agent.studio.client.StudioOutcomeUnknown`, round r5-n
+B1), the same ``hint``, which is all the registry builds the failed
+envelope from (``ToolRegistry._execute``, ``registry.own_hint``): the
+first, live call is served from its record too, so every step's envelope is
+the live loop's. Studio itself failing (a timeout, a dropped connection, a
+429 or a 5xx: ``registry.studio_busy``) is recorded with the registry's
+``STUDIO_BUSY_HINT`` and a timeout's empty text as ``TIMEOUT_TEXT``
+(``registry.error_message``, round r5-n errors/B2), since the replayed class
+is no httpx error. A record cached before the hint was kept has none, and
+its refusal, or its Studio failure, gets the generic hint, as when the model
+first read it.
 
 Each record names the model call whose response made it. A step saves the
 response it was given only once it has stopped cleanly, so a step that
@@ -46,8 +53,15 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 from olmoearth_agent.bridge.errors import BridgeHalt
-from olmoearth_agent.studio.client import StudioAccessError
-from olmoearth_agent.tools.registry import Handler, ToolContext, ToolRegistry
+from olmoearth_agent.tools.registry import (
+    STUDIO_BUSY_HINT,
+    Handler,
+    ToolContext,
+    ToolRegistry,
+    error_message,
+    own_hint,
+    studio_busy,
+)
 
 if TYPE_CHECKING:
     from olmoearth_agent.bridge.store import RunDir
@@ -93,7 +107,8 @@ class ReplayedToolError(Exception):
     ``str(exc)``, ``exc.contract`` and ``exc.hint`` give the registry the
     envelope the live call gave. ``replays_hint`` tells the registry
     (``registry.own_hint``, which cannot import this module) that a hint here
-    is a recorded one: the cache records only a refused key's.
+    is a recorded one: the cache records only a refused key's and a lost
+    create's (round r5-n B1), and Studio failing's (round r5-n errors/B2).
     """
 
     contract: dict[str, Any] | None = None
@@ -108,8 +123,11 @@ def replayed_error(error: dict[str, Any]) -> ReplayedToolError:
     """The exception to raise for a cached ``{"type", "message", "contract"}``.
 
     The record's ``hint``, kept only for a refused key
-    (:class:`~olmoearth_agent.studio.client.StudioAccessError`), is put on
-    the exception too.
+    (:class:`~olmoearth_agent.studio.client.StudioAccessError`), a create
+    whose answer was lost
+    (:class:`~olmoearth_agent.studio.client.StudioOutcomeUnknown`, round
+    r5-n B1) and Studio failing (``registry.STUDIO_BUSY_HINT``, round r5-n
+    errors/B2), is put on the exception too.
 
     Examples
     --------
@@ -303,12 +321,17 @@ class ToolCache:
                 contract = None
             record["error"] = {
                 "type": type(exc).__name__,
-                "message": str(exc),
+                # A timeout's empty text as the registry words it (round r5-n
+                # errors/B2): the replayed class is no httpx timeout.
+                "message": error_message(exc),
                 "contract": contract,
             }
-            # A refused key's own hint, which the registry gives in place of
-            # the generic one; no other exception's attributes are kept.
-            hint = exc.hint if isinstance(exc, StudioAccessError) else None
+            # The hint the registry gives in place of the generic one: a
+            # refused key's or a lost create's own (round r5-n B1), else
+            # Studio failing's (a timeout, a dropped connection, a 429 or a
+            # 5xx; round r5-n errors/B2), which the replayed class, no httpx
+            # error, would not get. No other exception's attributes are kept.
+            hint = own_hint(exc) or (STUDIO_BUSY_HINT if studio_busy(exc) else None)
             if isinstance(hint, str) and hint:
                 record["error"]["hint"] = hint
             return record

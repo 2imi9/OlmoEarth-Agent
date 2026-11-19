@@ -172,7 +172,7 @@ async def test_the_tools_refuse_a_release_older_than_the_minimum(
     assert "this environment has version 1.20.2, which is older" in out["reason"]
     assert "not installed" not in out["reason"]
     assert out["install"] == inferencex.UPGRADE_HINT
-    if tool == "olmoearth_scores_from_file":  # the one answer that keeps the error
+    if tool == "olmoearth_scores_from_file":  # the error after the package's name
         assert out["missing"] == (
             "olmoearth-inferencex: version 1.20.2 is installed; "
             "the tools need >= 1.20.3"
@@ -202,16 +202,26 @@ async def test_compare_review_does_not_read_dates_on_an_older_release(
 def test_missing_extra_says_not_installed_only_when_no_older_release_is(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for installed in (None, "1.20.3"):  # absent, or numpy missing under it
-        monkeypatch.setattr(inferencex, "version", lambda v=installed: v)
-        absent = inferencex.missing_extra("Certifying a trusted zone")
-        assert absent["available"] is False
-        assert absent["reason"].startswith(
-            "Certifying a trusted zone needs the optional package "
-            "olmoearth-inferencex (>= 1.20.3), which is not installed in this "
-            "environment. Nothing was computed;"
-        )
-        assert absent["install"] == "pip install 'olmoearth-agent[inferencex]'"
+    # On Python 3.11 to 3.13, where the extra installs (round r5-n, errors/B6).
+    monkeypatch.setattr(inferencex, "python_version", lambda: (3, 12))
+    monkeypatch.setattr(inferencex, "version", lambda: None)  # absent
+    absent = inferencex.missing_extra("Certifying a trusted zone")
+    assert absent["available"] is False
+    assert absent["reason"].startswith(
+        "Certifying a trusted zone needs the optional package "
+        "olmoearth-inferencex (>= 1.20.3), which is not installed in this "
+        "environment. Nothing was computed;"
+    )
+    assert absent["install"] == "pip install 'olmoearth-agent[inferencex]'"
+    # Round r5-n (errors/B6): a current release whose import fails (numpy
+    # missing under it) is installed but cannot be imported, never "not
+    # installed", and the line reinstalls it.
+    monkeypatch.setattr(inferencex, "version", lambda: "1.20.3")
+    broken = inferencex.missing_extra("Certifying a trusted zone")
+    said = "which is installed here but cannot be imported. Nothing was computed;"
+    assert said in broken["reason"]
+    assert "not installed" not in broken["reason"]
+    assert broken["install"] == inferencex.REINSTALL_HINT
     monkeypatch.setattr(inferencex, "version", lambda: "1.18.1")
     old = inferencex.missing_extra("Certifying a trusted zone")
     assert old["available"] is False
@@ -259,6 +269,8 @@ async def test_scores_from_file_on_a_release_without_review_assess_names_it(
     assert "do not rank" in out["reason"]
     assert "olmoearth-inferencex" in out["missing"]
     assert out["install"] == inferencex.UPGRADE_HINT
+    # On Python 3.11 to 3.13, where the extra installs (round r5-n, errors/B6).
+    monkeypatch.setattr(inferencex, "python_version", lambda: (3, 12))
     monkeypatch.setattr(inferencex, "version", lambda: None)
     absent = await _ok("olmoearth_scores_from_file", {"run_dir": "anything"})
     assert "which is not installed in this environment" in absent["reason"]
@@ -279,6 +291,8 @@ async def test_the_certificate_tools_without_the_package_say_so(
     """Both certificate tools load ``oe_inferencex.certify.certificate``
     (1.17.0 and later): without it they answer with the install line."""
     monkeypatch.setitem(sys.modules, "oe_inferencex.certify.certificate", None)
+    # On Python 3.11 to 3.13, where the extra installs (round r5-n, errors/B6).
+    monkeypatch.setattr(inferencex, "python_version", lambda: (3, 12))
     monkeypatch.setattr(inferencex, "version", lambda: None)
     out = await _ok(tool, args)
     assert out["available"] is False

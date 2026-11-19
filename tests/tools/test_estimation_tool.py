@@ -750,9 +750,15 @@ async def test_plans_the_later_tools_read_apart_keep_their_own_designs(
 async def test_missing_extra_is_a_clear_answer_not_a_crash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Simulate an install without olmoearth-inferencex (and so without numpy)."""
+    """Simulate an install without olmoearth-inferencex (and so without numpy).
+    Round r5-n (errors/B6): with none installed, on a Python the extra
+    installs on; a release installed whose import fails is said otherwise."""
     monkeypatch.setitem(sys.modules, "oe_inferencex.estimate", None)
     monkeypatch.setitem(sys.modules, "oe_inferencex.compare", None)
+    monkeypatch.setattr("olmoearth_agent.tools.inferencex.version", lambda: None)
+    monkeypatch.setattr(
+        "olmoearth_agent.tools.inferencex.python_version", lambda: (3, 12)
+    )
     for name, args in (
         ("olmoearth_plan_label_sample", {"scores": [[0.2, 0.8]], "budget": 1}),
         ("olmoearth_estimate_map_error", {"design_path": "x.json", "wrong": [1]}),

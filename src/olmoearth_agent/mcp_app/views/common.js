@@ -341,6 +341,48 @@ select[aria-disabled="true"], input[type=text][aria-disabled="true"] { cursor: d
    colour. */
 input[type=checkbox][aria-disabled="true"] { cursor: default; opacity: .38; }
 label.oe-locked { cursor: default; color: rgba(0,0,0,.26); }
+/* r5-n S1 (the owner, 19 Nov 2026): every card ends with one quiet Settings text button at its bottom left, after its
+   Details fold and the page's status line, outside any sticky footer (on the label sheet under the sheet, after its
+   footer): a gear drawn in
+   the text's colour (an outline, aria-hidden) and the word, a text button of one size on every card, its gear at the
+   cards' left edge. Its box opens in place under it (OE.settingsBlock): a white card of three rows, each a short
+   label, its state in plain words and one control; on a panel under 480 px the control goes under the words. */
+.oe-settings { margin-top: 16px; }
+.oe-settings > button.oe-settings-button { display: inline-flex; align-items: center; gap: 6px; margin-left: -5px; }
+.oe-settings-button svg { width: 16px; height: 16px; flex: none; display: block; }
+.oe-settings-box { margin-top: 8px; background: var(--paper); border: 1px solid var(--divider); border-radius: 4px;
+  padding: 12px 16px; }
+.oe-settings-box[hidden] { display: none; }
+.oe-set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px;
+  align-items: center; }
+.oe-set-row + .oe-set-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.oe-set-label { grid-column: 1; font-weight: 600; }
+.oe-set-state { grid-column: 1; overflow-wrap: anywhere; }
+.oe-set-state:focus { outline: none; }
+.oe-set-state:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 2px; }
+.oe-set-control { grid-column: 2; grid-row: 1 / span 2; justify-self: end; }
+.oe-set-note { grid-column: 1 / -1; margin-top: 2px; overflow-wrap: anywhere; }
+.oe-set-note button.link { font-size: 12px; line-height: 18px; padding: 0; text-decoration: underline;
+  text-underline-offset: 2px; }
+.oe-set-said { margin-top: 10px; overflow-wrap: anywhere; }
+.oe-set-said:first-child { margin-top: 0; }
+.oe-set-said:empty { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 480px) {
+  .oe-set-row { grid-template-columns: minmax(0, 1fr); }
+  .oe-set-control { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 4px; }
+}
+/* r5-n S2: the box's switch (role switch): a track with a knob, off at the left on white, on at the right in the
+   secondary text colour (never the view's dark button); its state is said in words beside it too. Busy
+   (aria-disabled) it is faint and keeps the focus. */
+button.oe-switch { border: 0; padding: 4px; border-radius: 14px; line-height: 0; background: none; }
+button.oe-switch:hover { background: var(--wash); }
+.oe-switch .oe-track { display: inline-block; position: relative; width: 36px; height: 20px; border-radius: 10px;
+  border: 1px solid var(--outline); background: var(--paper); transition: background .2s, border-color .2s; }
+.oe-switch .oe-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--text-2); transition: transform .2s, background .2s; }
+.oe-switch[aria-checked="true"] .oe-track { background: var(--text-2); border-color: var(--text-2); }
+.oe-switch[aria-checked="true"] .oe-track::after { transform: translateX(16px); background: var(--paper); }
+button.oe-switch[aria-disabled="true"], button.oe-switch[aria-disabled="true"]:hover { background: none; opacity: .5; }
 `;
 
 /* HTML-escape any value. */
@@ -392,10 +434,13 @@ OE.viewData = (params) => (params && params._meta && params._meta['olmoearth/vie
    the server's own message, needsSignIn when the key is missing or refused,
    and stale when a save was refused because the sheet was saved elsewhere
    since the panel read it (sheet.StaleSheet: read it again, then save).
-   fromServer: the server answered and refused; an Error without it is a call
-   that got no answer (the host's timeout, a dropped bridge), so the server
-   may have done the work. options go to app.callServerTool as they are
-   ({ timeout } in ms, for a call that may run long). */
+   outcomeUnknown: a write whose answer from Studio was lost (r5-n B1, the
+   server's StudioOutcomeUnknown), so it may have been made: look before
+   writing again. fromServer: the server answered and refused; an Error
+   without it is a call that got no answer (the host's timeout, a dropped
+   bridge), so the server may have done the work. options go to
+   app.callServerTool as they are ({ timeout } in ms, for a call that may run
+   long). */
 OE.call = async (app, name, args = {}, options = undefined) => {
   const result = await app.callServerTool({ name, arguments: args }, options);
   if (result.isError) {
@@ -407,6 +452,7 @@ OE.call = async (app, name, args = {}, options = undefined) => {
     const err = new Error((body && body.error) || 'The call failed.');
     err.needsSignIn = Boolean(body && body.needs_sign_in);
     err.stale = Boolean(body && body.stale);
+    err.outcomeUnknown = Boolean(body && body.outcome_unknown);
     err.fromServer = true;
     throw err;
   }
@@ -1127,6 +1173,8 @@ OE.start = async (name, { onResult, onInput, onContext } = {}) => {
   if (root && root.textContent === OE.NOT_STARTED && waiting.length) root.replaceChildren(...waiting);
   OE.takeContext(app, null);
   report('start');
+  // r5-n S1: the Settings text button at the card's foot, once it is connected (its box asks the server).
+  OE.settingsBlock(app);
   return app;
 };
 
@@ -1202,6 +1250,16 @@ OE.accountLine = (account) => {
   const org = account.organization ? ' (' + account.organization + ')' : '';
   return 'Signed in to OlmoEarth Studio as ' + who + org + '.';
 };
+
+/* r5-n B3: the line the start card and the sign-in card draw, as an error
+   card, while a key is held but Studio could not be asked about it (the
+   status's studio_unreachable): the key is kept and the card stays signed
+   in. The status's own text is never drawn (offline, it names an error's
+   kind); one line covers offline, Studio down and Studio's address set
+   wrong (the server tells Claude which). */
+// WORDING: r5n
+OE.STUDIO_UNREACHABLE = 'Studio is not answering right now, so your key could not be checked. It is kept: there is'
+  + ' no need to sign in again. Try again in a little while; if this lasts, tell whoever installed the app.';
 
 /* The account in the top line, short (r5-a V2): "Ana (Lab)"; "Your account
    (Lab)" when Studio gave no name; "Signed in" with no account at all. With
@@ -1422,19 +1480,50 @@ OE.placeAccountReply = (resized = false) => {
 // The panel's width changed: the reply follows where Sign out stands, or would stand.
 window.addEventListener('resize', () => OE.placeAccountReply(true));
 
+/* A one-shot button's press (r5-n JS-1): its click handler, fn run once per
+   press and never twice at a time, with the checks the app's other job
+   buttons run on their own (start.html jobRow, studio.html busyButton, the
+   sheet's finish button: sheet.js finishControl). While fn runs the button
+   is aria-disabled, so it keeps the focus, and a press does nothing; so does
+   the second click of a fast double-click (its detail is 2 or more), even
+   when the host answered the first before it came, so a double-click never
+   sends Claude a request twice, and a job button's slot never says to copy
+   a message Claude already took (OE.sendJob). A press of a key or of an
+   assistive technology (detail 0) always counts; a disabled button does
+   nothing. fn gets the click event; what it returns is waited for. */
+OE.oncePerPress = (fn) => {
+  let busy = false;
+  return async (e) => {
+    const button = e.currentTarget;
+    if (busy || button.disabled || e.detail > 1) return;
+    busy = true;
+    button.setAttribute('aria-disabled', 'true');
+    try { await fn(e); } finally {
+      busy = false;
+      button.setAttribute('aria-disabled', 'false');
+    }
+  };
+};
+
 /* A Sign out button: a text button in the top line's account item ('link',
    OE.setAccount), small outlined on the account card ('small'). Its reply
    (r5-k K5): under it in the top line (OE.accountReply); the account card's
-   (sign_in.html) keeps the status line. */
+   (sign_in.html) keeps the status line. While its call runs it is
+   aria-disabled, not disabled, so it keeps the focus (r5-n JS-5: disabled
+   dropped the focus to the page, and a sign-out that failed left a keyboard
+   or a screen reader there), and a press then does nothing. */
 OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
+  let busy = false;
   const out = OE.el('button', {
     class: cls,
     onclick: async () => {
+      if (busy) return;
       const inLine = Boolean(out.closest('.oe-line'));
       // Where it stands, taken now, while it is drawn: its reply goes under it (OE.placeAccountReply).
       const at = inLine ? OE.signOutAt(out) : null;
       const reply = (text, isError, state) => (inLine ? OE.accountReply(text, isError, state, at) : OE.toast(text, isError));
-      out.disabled = true;
+      busy = true;
+      out.setAttribute('aria-disabled', 'true');
       try {
         const result = await OE.call(app, 'olmoearth_app_sign_out');
         // WORDING: r5c S01 (the first; the second: r4p2). By the key in effect,
@@ -1448,7 +1537,7 @@ OE.signOutButton = (app, { onSignOut, cls = 'link' } = {}) => {
       } catch (err) {
         // The press changed nothing: the reply is about what the line shows now, with this Sign out.
         reply(err.message, true, drawnState);
-      } finally { out.disabled = false; }
+      } finally { busy = false; out.setAttribute('aria-disabled', 'false'); }
     },
   }, 'Sign out');
   return out;
@@ -1487,4 +1576,233 @@ OE.setAccount = (app, { signedIn = false, account = null, source = null, onSignO
   item.replaceChildren(...[OE.el('span', { class: 'who', title: said }, OE.accountShort(account, source)), out]
     .filter(Boolean));
   return out;
+};
+
+/* ------------------------------------------------------------------ Settings (round r5-n S1, S2)
+
+   The owner, 19 Nov 2026: "let's make a setting button at bottom left that handles some status like on and off of
+   asta". Every card ends with one quiet text button, a gear and the word Settings (OE.settingsBlock, which OE.start
+   puts after #root and the page's status line once the card is connected: after the card's Details fold, and on the
+   label sheet under the sheet, after its sticky footer, never inside it; the same button on every card; a status
+   still sits under what caused it, r5-k K5, never under Settings). Its press opens the box in
+   place, under the button (aria-expanded, aria-controls): a fold, closed by pressing the button again or by Escape,
+   the focus then back on the button. On each opening the box reads its three rows from the server
+   (olmoearth_app_settings: server-side settings.state), so every card shows the same; then the focus goes to its
+   first control, the switch, while it is still on the button (and this panel's frame has it). Each row is a short
+   label, its state in plain words (the server's words for the pictures and the kept copies) and one control:
+   - Asta research skills: a switch (role switch), off by default, with its line on what it does and a "setup"
+     link to the setup page's lines;
+   - Satellite pictures: "Forget my yes" while they are allowed (the next square asks again);
+   - Maps kept on this computer: "Remove kept copies" while some are kept.
+   A press changes one setting (olmoearth_app_setting) and draws the rows its answer gives; when the control pressed
+   goes with the change, the focus goes to its row's state. A press that fails says why in the box's own status line
+   under the rows (an alert) and changes nothing. A press while one is answered does nothing. The box's words are
+   there only while it is open (it is emptied when it closes), so while the switch is off no word of Asta is on a
+   card until the box is opened. Neither a read nor a change tells Claude anything: no message, no context update.
+   A card that shows something by a setting (the start card's tile) sets OE.onSettings(state), called with each
+   state read or changed. */
+// WORDING: r5n
+OE.SETTINGS = 'Settings';
+// WORDING: r5n
+OE.SETTINGS_READING = 'Reading the settings...';
+// WORDING: r5n
+OE.SETTINGS_NOT_READ = 'The settings could not be read: ';
+// WORDING: r5n
+OE.SETTING_NOT_CHANGED = 'Not changed: ';
+// WORDING: r5n
+OE.SET_ASTA = 'Asta research skills';
+// WORDING: r5n
+OE.SET_ON = 'On';
+// WORDING: r5n
+OE.SET_OFF = 'Off';
+/* The switch's line, before and after its "setup" link. */
+// WORDING: r5n
+OE.SET_ASTA_LINE = ['On: the start card shows Search papers with Asta. Asta runs only when you press it. Needs Ai2\'s Asta skills in Claude Code (', ').'];
+// WORDING: r5n
+OE.SET_SETUP = 'setup';
+// WORDING: r5n
+OE.SET_PICTURES = 'Satellite pictures';
+// WORDING: r5n
+OE.SET_FORGET = 'Forget my yes';
+// WORDING: r5n
+OE.SET_KEPT = 'Maps kept on this computer';
+// WORDING: r5n
+OE.SET_REMOVE = 'Remove kept copies';
+
+/* The setup page's lines on Ai2's Asta skills (docs/mcp-app-setup.md, its Options), public and fixed: what the
+   switch line's "setup" link opens, and the page the start card's Asta tile names when the skills are missing. */
+OE.SETUP_URL = 'https://github.com/2imi9/OlmoEarth-Agent/blob/main/docs/mcp-app-setup.md#options';
+
+/* The gear beside the word: an outline (a ring, its hub and eight teeth) drawn in the text's colour (currentColor),
+   16 px, hidden from a screen reader (the word names the button); drawn in code, as the views' other small
+   figures are, no picture file. */
+OE.GEAR_TEETH = 'M18.5 12H21.5M16.6 16.6L18.7 18.7M12 18.5V21.5M7.4 16.6L5.3 18.7M5.5 12H2.5M7.4 7.4L5.3 5.3M12 5.5V2.5M16.6 7.4L18.7 5.3';
+OE.gear = () => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const make = (tag, attrs) => {
+    const node = document.createElementNS(NS, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+    return node;
+  };
+  const svg = make('svg', { viewBox: '0 0 24 24', width: 16, height: 16, fill: 'none', stroke: 'currentColor',
+    'aria-hidden': 'true', focusable: 'false' });
+  svg.append(make('circle', { cx: 12, cy: 12, r: 6.5, 'stroke-width': 1.6 }),
+    make('circle', { cx: 12, cy: 12, r: 2.6, 'stroke-width': 1.6 }),
+    make('path', { d: OE.GEAR_TEETH, 'stroke-width': 2.6 }));
+  return svg;
+};
+
+/* The switch line's "setup" text button and its slot: [button, slot], in the shape of OE.docsLink. The host opens
+   OE.SETUP_URL (OE.open, quiet), the page never does; aria-disabled while the host is asked, so it keeps the focus.
+   When the host does not open it, the slot says so in the docs link's words (OE.LINK_NOT_OPENED, then
+   OE.DOCS_BY_HAND) and shows the address, whole and selectable: it is public and fixed, no id and no place in it. */
+OE.setupLink = (app) => {
+  const slot = OE.el('div', { class: 'oe-link-slot small', role: 'status' });
+  let busy = false;
+  const button = OE.el('button', { type: 'button', class: 'link' }, OE.SET_SETUP);
+  button.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    button.setAttribute('aria-disabled', 'true');
+    try {
+      const opened = await OE.open(app, OE.SETUP_URL, { quiet: true });
+      slot.replaceChildren(...(opened ? [] : [OE.el('div', {}, OE.LINK_NOT_OPENED + ' ' + OE.DOCS_BY_HAND), OE.el('code', {}, OE.SETUP_URL)]));
+    } finally {
+      busy = false;
+      button.setAttribute('aria-disabled', 'false');
+    }
+  });
+  return [button, slot];
+};
+
+/* The Settings button and its box, put after #root and the page's status line (once per page); returns the block. */
+OE.settingsBlock = (app) => {
+  const had = document.getElementById('oe-settings');
+  if (had) return had;
+  const button = OE.el('button', { type: 'button', id: 'oe-settings-button', class: 'link oe-settings-button',
+    'aria-expanded': 'false', 'aria-controls': 'oe-settings-box' }, OE.gear(), OE.el('span', {}, OE.SETTINGS));
+  const box = OE.el('div', { id: 'oe-settings-box', class: 'oe-settings-box', role: 'group', 'aria-label': OE.SETTINGS,
+    hidden: true });
+  const block = OE.el('div', { id: 'oe-settings', class: 'oe-settings' }, button, box);
+  let open = false;
+  let turn = 0;  // each opening and closing takes the next number: a late answer to an earlier one draws nothing
+  let busy = false;  // a change is being answered
+  // A card that shows something by a setting follows each state read or changed (the start card's tile).
+  const tell = (state) => {
+    if (typeof OE.onSettings !== 'function') return;
+    try { OE.onSettings(state); } catch (_) { /* the box still draws */ }
+  };
+  const saidLine = () => OE.el('div', { class: 'small oe-set-said', role: 'status', 'aria-live': 'polite' });
+  const say = (line, text, isError) => {
+    line.setAttribute('role', isError ? 'alert' : 'status');
+    line.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+    line.className = 'small oe-set-said ' + (isError ? 'error' : 'muted');
+    line.textContent = text;
+  };
+  const row = (key, label, said, control, line) => OE.el('div', { class: 'oe-set-row', 'data-row': key },
+    OE.el('div', { class: 'oe-set-label', id: 'oe-set-' + key }, label),
+    OE.el('div', { class: 'oe-set-state', 'data-said': key, tabindex: '-1' }, said),
+    control ? OE.el('div', { class: 'oe-set-control' }, control) : null,
+    line || null);
+  let draw = null;
+  const change = async (control, args) => {
+    if (busy) return;
+    busy = true;
+    control.setAttribute('aria-disabled', 'true');
+    const mine = turn;
+    const line = box.querySelector('.oe-set-said');
+    if (line) say(line, '', false);
+    try {
+      const got = await OE.call(app, 'olmoearth_app_setting', args);
+      tell(got);
+      if (mine === turn) draw(got, false);
+    } catch (err) {
+      if (mine !== turn) return;
+      control.setAttribute('aria-disabled', 'false');
+      const now = box.querySelector('.oe-set-said');
+      if (now) say(now, OE.SETTING_NOT_CHANGED + err.message, true);
+    } finally {
+      busy = false;
+    }
+  };
+  draw = (state, first) => {
+    const s = state && typeof state === 'object' ? state : {};
+    const was = box.contains(document.activeElement) ? document.activeElement : null;
+    const key = was && was.dataset ? (was.dataset.set || was.dataset.said || null) : null;
+    const on = Boolean(s.asta && s.asta.on === true);
+    const toggle = OE.el('button', { type: 'button', role: 'switch', class: 'oe-switch', 'aria-checked': String(on),
+      'aria-labelledby': 'oe-set-asta', 'aria-describedby': 'oe-set-asta-line', 'data-set': 'asta' },
+      OE.el('span', { class: 'oe-track', 'aria-hidden': 'true' }));
+    toggle.addEventListener('click', () => change(toggle, { name: 'asta', on: !on }));
+    const [setup, address] = OE.setupLink(app);
+    const astaLine = OE.el('div', { class: 'small oe-set-note', id: 'oe-set-asta-line' },
+      OE.SET_ASTA_LINE[0], setup, OE.SET_ASTA_LINE[1], address);
+    const text = (value) => (typeof value === 'string' ? value : '');
+    const pictures = s.pictures && typeof s.pictures === 'object' ? s.pictures : {};
+    let forget = null;
+    if (pictures.allowed === true) {
+      forget = OE.el('button', { type: 'button', class: 'small', 'data-set': 'pictures' }, OE.SET_FORGET);
+      forget.addEventListener('click', () => change(forget, { name: 'forget_pictures' }));
+    }
+    const kept = s.kept && typeof s.kept === 'object' ? s.kept : {};
+    let remove = null;
+    if (Number.isInteger(kept.count) && kept.count > 0) {
+      remove = OE.el('button', { type: 'button', class: 'small', 'data-set': 'kept' }, OE.SET_REMOVE);
+      remove.addEventListener('click', () => change(remove, { name: 'remove_kept' }));
+    }
+    box.replaceChildren(
+      row('asta', OE.SET_ASTA, on ? OE.SET_ON : OE.SET_OFF, toggle, astaLine),
+      row('pictures', OE.SET_PICTURES, text(pictures.said), forget),
+      row('kept', OE.SET_KEPT, text(kept.said), remove),
+      saidLine());
+    if (first) {
+      // The first control takes the focus only while it is still on the button (or nowhere): never from elsewhere.
+      const now = document.activeElement;
+      if (now === button || now === document.body || !now) OE.focusIfHere(toggle);
+      return;
+    }
+    if (key) OE.focusIfHere(box.querySelector('[data-set="' + key + '"]') || box.querySelector('[data-said="' + key + '"]'));
+  };
+  const close = () => {
+    turn += 1;
+    open = false;
+    button.setAttribute('aria-expanded', 'false');
+    box.hidden = true;
+    box.replaceChildren();
+    OE.focusIfHere(button);
+  };
+  const openBox = async () => {
+    turn += 1;
+    const mine = turn;
+    open = true;
+    button.setAttribute('aria-expanded', 'true');
+    const line = saidLine();
+    say(line, OE.SETTINGS_READING, false);
+    box.replaceChildren(line);
+    box.hidden = false;
+    let got = null;
+    try {
+      got = await OE.call(app, 'olmoearth_app_settings');
+    } catch (err) {
+      if (mine === turn) say(line, OE.SETTINGS_NOT_READ + err.message, true);
+      return;
+    }
+    tell(got);
+    if (mine === turn) draw(got, true);
+  };
+  button.addEventListener('click', () => { if (open) close(); else openBox(); });
+  // Escape on the button or anywhere in its open box closes the box, the focus back on the button.
+  block.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !open || e.defaultPrevented) return;
+    e.preventDefault();
+    close();
+  });
+  const root = document.getElementById('root');
+  // After #root, then the page's status line put back between them (a line the Check card holds inside #root stays).
+  if (root) {
+    root.after(block);
+    const bar = document.getElementById('oe-toast');
+    if (bar && bar.parentElement === document.body) root.after(bar);
+  } else document.body.append(block);
+  return block;
 };

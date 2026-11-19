@@ -73,12 +73,14 @@ for the labelling sheet.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib
 import json
 import math
 import os
 import re
+import stat
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -119,6 +121,13 @@ CHECKPOINT_NOTE = (
 
 #: The raster read when the manifest names none.
 DEFAULT_RASTER = "scores.tif"
+
+#: A GeoTIFF's first four bytes: classic TIFF and BigTIFF, little- and
+#: big-endian. A run's raster is opened only when it starts with one of
+#: them, and only by GDAL's GeoTIFF driver (round r5-n, files/F2): a file
+#: named ``.tif`` that holds a VRT would let GDAL read the paths inside it,
+#: any local file or a ``/vsicurl/`` URL, around the read roots.
+TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
 #: Window side in pixels (``oe-inferencex assess --patch``'s default).
 DEFAULT_PATCH = 4
@@ -202,20 +211,35 @@ _PIXEL_CONFIDENCE = {
 }
 
 
-def _missing(detail: str) -> dict[str, Any]:
+#: Round r5-n: the clause when olmoearth-inferencex imported and rasterio (or
+#: numpy) did not; neither "not installed" nor "cannot be imported" is true of
+#: the package then.
+# WORDING: r5n
+RASTERIO_UNUSABLE = "; olmoearth-inferencex imports here, but rasterio does not"
+
+
+def _missing(detail: str, *, package_imports: bool = False) -> dict[str, Any]:
     """The answer when the extra (or rasterio under it) is not importable.
 
     A release older than ``inferencex.MIN_VERSION`` has no ``review.assess``
     or ``common.raster`` (before 1.19.0), or ``inferencex.load`` refuses it
     (1.19.0 to 1.20.2): the reason names its version and the upgrade line.
+    ``package_imports``: the package's modules loaded and rasterio did not
+    (round r5-n), so the clause is :data:`RASTERIO_UNUSABLE`, whatever
+    ``inferencex.unavailable`` would say of the package, and the line
+    reinstalls the extra, which installs its geo extra too.
     """
-    status, install = inferencex.unavailable()
+    if package_imports:
+        clause, install = RASTERIO_UNUSABLE, inferencex.REINSTALL_HINT
+    else:
+        status, install = inferencex.unavailable()
+        clause = f", {status}"
     return {
         "available": False,
         "reason": (
             "Reading a model run's scores raster needs the optional package "
             f"olmoearth-inferencex (>= {inferencex.MIN_VERSION}) with rasterio "
-            f"(its geo extra), {status}. Nothing was read; do not rank the map's "
+            f"(its geo extra){clause}. Nothing was read; do not rank the map's "
             "windows by hand."
         ),
         "missing": detail,
@@ -265,8 +289,33 @@ def resolve_run_dir(raw: str) -> Path:
     return resolve_run(raw)[0]
 
 
+def _plain_tiff(path: str | Path) -> bool:
+    """Whether ``path`` is a regular file whose first bytes are a TIFF's
+    (:data:`TIFF_MAGIC`); ``False`` for anything else (a folder, a pipe or
+    another device), or one that cannot be read. The callers have checked
+    that the path, resolved, lies inside a read root."""
+    try:
+        if not stat.S_ISREG(os.stat(path).st_mode):
+            return False
+        with open(path, "rb") as fh:
+            return fh.read(4).startswith(TIFF_MAGIC)
+    except OSError:
+        return False
+
+
+def _not_plain_tiff(name: str) -> ValueError:
+    """The refusal of a run's raster that is not a GeoTIFF by its first bytes
+    (round r5-n, files/F2)."""
+    # WORDING: r5n
+    return ValueError(
+        f"{name} is not a plain GeoTIFF by its first bytes (a VRT or another "
+        "format); write the scores as a GeoTIFF"
+    )
+
+
 def _raster_path(run_dir: Path, manifest: dict[str, Any]) -> Path:
-    """The raster the manifest names: a plain .tif name inside the run directory."""
+    """The raster the manifest names: a plain .tif name inside the run directory,
+    a GeoTIFF by its first bytes (:func:`_plain_tiff`)."""
     name = str((manifest.get("scores") or {}).get("file") or DEFAULT_RASTER)
     if name != os.path.basename(name) or not name.endswith((".tif", ".tiff")):
         raise ValueError(
@@ -276,6 +325,8 @@ def _raster_path(run_dir: Path, manifest: dict[str, Any]) -> Path:
     real = os.path.realpath(run_dir / name)
     if not _inside(real, read_roots()) or not os.path.isfile(real):
         raise ValueError(f"the run directory has no raster {name!r}")
+    if not _plain_tiff(real):
+        raise _not_plain_tiff(name)
     return Path(real)
 
 
@@ -567,7 +618,8 @@ def _check_size(rasterio: Any, path: Path, patch: int, strip_io: Any = None) -> 
     :data:`MAX_VALUES`.
     """
     try:
-        src = rasterio.open(path)
+        # The GeoTIFF driver alone (round r5-n, files/F2), as for Studio's files.
+        src = rasterio.open(path, driver="GTiff")
     except rasterio.errors.RasterioIOError as exc:
         raise ValueError(
             f"{path.name}: not a raster rasterio can read ({exc})"
@@ -660,12 +712,16 @@ def _class_ids(rasterio: Any, np: Any, path: Path) -> str | None:
     (``readers.olmoearth._probabilities``): bands of an integer type (one
     band of class ids, or C bands that truncate probabilities to 0 and 1), or
     one float band of whole numbers beyond 1. Read from the raster's first
-    block of at most 512 x 512 pixels.
+    block of at most 512 x 512 pixels. A file that is not a GeoTIFF by its
+    first bytes (:func:`_plain_tiff`) is not opened: ``None`` (round r5-n,
+    files/F2), so none of its values reach a refusal.
     """
+    if not _plain_tiff(path):
+        return None
     from rasterio.windows import Window
 
     try:
-        src = rasterio.open(path)
+        src = rasterio.open(path, driver="GTiff")
     except rasterio.errors.RasterioIOError:
         return None
     with src:
@@ -855,6 +911,9 @@ def read_run_files(
             f"the run directory has no raster {name!r}, which its {SUMMARY} lists"
         )
     raster = Path(real)
+    if not _plain_tiff(real):
+        # Before any open: the package's whole reader opens it with any driver.
+        raise _not_plain_tiff(name)
     reason = _class_ids(rasterio, np, raster)
     if reason is not None:
         raise class_id_refusal(name, reason, fix)
@@ -1093,7 +1152,7 @@ def _pool_strips(
     from rasterio.windows import Window
 
     manifest, raster = run.manifest, run.raster
-    with rasterio.open(raster) as src:
+    with rasterio.open(raster, driver="GTiff") as src:
         count, height, width = int(src.count), int(src.height), int(src.width)
         geo = {"transform": src.transform, "crs": src.crs}
     full = [height, width] if count == 1 else [count, height, width]
@@ -1131,7 +1190,7 @@ def _pool_strips(
     fill_argmax = 0
     step = _strip_rows(count, width, patch)
     last = grid[0] * patch
-    with rasterio.open(raster) as src:
+    with rasterio.open(raster, driver="GTiff") as src:
         for top in range(0, last, step):
             # The last strip also takes the rows under the last whole window:
             # in no window, they still count among the pixels with no
@@ -1198,7 +1257,19 @@ def _pool_strips(
 
 
 async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str, Any]:
-    """Handler for ``olmoearth_scores_from_file``."""
+    """Handler for ``olmoearth_scores_from_file``: the read and the pooling run
+    in a worker thread (:func:`_scores_from_file_sync`), so the event loop
+    keeps serving while a large raster is hashed, read and pooled (round
+    r5-n, concurrency/F1). ``olmoearth_scores_from_studio`` awaits this for
+    each zone; its refusals (``ValueError``) and its missing-extra answer
+    reach the caller unchanged."""
+    return await asyncio.to_thread(_scores_from_file_sync, args)
+
+
+def _scores_from_file_sync(args: dict[str, Any]) -> dict[str, Any]:
+    """The read and the pooling of ``olmoearth_scores_from_file``, blocking:
+    :func:`_scores_from_file` runs it in a worker thread. It reads no state of
+    the loop; the context it is given is not needed."""
     try:
         # The feature-folder paths of olmoearth-inferencex >= 1.19.0. The
         # 1.18.1 path `assess` still resolves through the package's alias
@@ -1215,7 +1286,7 @@ async def _scores_from_file(args: dict[str, Any], _ctx: ToolContext) -> dict[str
         # write probabilities; it imports rasterio only when it reads.
         reader = inferencex.load("readers.olmoearth")
     except ImportError as exc:
-        return _missing(f"rasterio: {exc}")
+        return _missing(f"rasterio: {exc}", package_imports=True)
 
     patch = int(args.get("patch", DEFAULT_PATCH))
     if patch < 1:

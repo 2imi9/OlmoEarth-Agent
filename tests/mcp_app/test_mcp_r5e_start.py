@@ -201,7 +201,7 @@ def test_s2_each_jobs_line_is_inside_its_button() -> None:
     (aria-describedby, the line's id from the job's key); the row holds the
     button and the slot, no loose line under it."""
     page = _read("start.html")
-    row = _between(page, "function jobRow(app, job, on) {", "\n}\n")
+    row = _between(page, "function jobRow(app, job, on, press = null) {", "\n}\n")
     for text in (
         "const lineId = 'job-line-' + job.key;",
         "OE.el('button', { type: 'button', class: 'job' + (main && on ? ' primary' "

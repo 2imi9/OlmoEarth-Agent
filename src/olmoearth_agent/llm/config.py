@@ -4,7 +4,7 @@
 
 The agent reads ``LLM_ENDPOINT``, ``LLM_MODEL``, and ``LLM_API_KEY`` from
 the environment (see ``.env.example``). Defaults assume the local
-llama.cpp server serving the 4-bit GGUF. See ``docs/Usage.md`` (LLM
+llama.cpp server serving the 4-bit GGUF. See ``spec/Usage.md`` (LLM
 backends and serving) for the values.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-#: Default served model id: the 4-bit GGUF (see docs/Usage.md, LLM backends).
+#: Default served model id: the 4-bit GGUF (see spec/Usage.md, LLM backends).
 DEFAULT_MODEL = "unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ4_XS"
 
 #: Default OpenAI-compatible endpoint for the local llama.cpp server.

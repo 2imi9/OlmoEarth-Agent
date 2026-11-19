@@ -245,10 +245,12 @@ def test_b5_only_those_two_links_are_quiet_and_every_other_keeps_its_toast() -> 
         name: re.findall(r"OE\.open\(app, [^)]*\)", _code(_read(name)))
         for name in ("common.js", "result.html", "sheet.js", "start.html")
     }
+    # r5-n S2: the Settings box's "setup" link says a decline in its own slot.
     assert calls["common.js"] == [
         "OE.open(app, OE.DOCS_URL, { quiet: true })",
         "OE.open(app, OE.ACCESS_URL, { quiet: true })",
         "OE.open(app, page.url)",
+        "OE.open(app, OE.SETUP_URL, { quiet: true })",
     ]
     # r5-k K5: the look-first Street map's own line says a decline.
     assert calls["result.html"] == ["OE.open(app, url, { quiet: true })"]
@@ -257,7 +259,7 @@ def test_b5_only_those_two_links_are_quiet_and_every_other_keeps_its_toast() -> 
     for name in views.VIEWS:
         html = views.view_html(name)
         mine = 1 if name == "result" else 0  # r5-k K5
-        assert html.count("{ quiet: true })") <= 2 + mine, name
+        assert html.count("{ quiet: true })") <= 3 + mine, name  # r5-n S2
         assert html.count("OE.open(app, url, { quiet") == mine, name
 
 
@@ -330,11 +332,14 @@ def test_b7_the_toast_after_a_removal_whose_read_failed_says_what_went() -> None
     ) in script
     progress = _between(script, "  function updateProgress() {", "\n  }\n")
     stale = _between(progress, "    if (state.stale) {", "      return;\n    }")
+    # Round r5-n JS-4: and the finish button's, which the stale row drops too
+    # (tests/mcp_app/test_r5n_views.py).
     assert _in_order(
         stale,
         "      const hadFocus = (!saveButton.hidden && "
         "saveButton.contains(document.activeElement))\n"
-        "        || notice.contains(document.activeElement);\n",
+        "        || notice.contains(document.activeElement)\n"
+        "        || done.contains(document.activeElement);\n",
         "      notice.replaceChildren();\n",
         "      if (hadFocus && !quietSave) OE.focusIfHere(reopenButton);\n",
     )

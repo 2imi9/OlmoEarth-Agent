@@ -399,7 +399,8 @@ def test_the_web_bridge_streams_the_check() -> None:
 
     from olmoearth_agent import serve
 
-    with TestClient(serve.app) as client:
+    # A loopback name: the bridge refuses any other Host (r5-n security/SEC-5).
+    with TestClient(serve.app, base_url="http://127.0.0.1") as client:
         serve.app.state.llm = _Scripted(
             [_summary_call(), _answer(_DRAFT), _answer(_STILL)]
         )

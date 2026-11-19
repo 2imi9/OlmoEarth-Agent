@@ -901,7 +901,8 @@ function reviewBlock(app, block) {
 /* A review set of a Studio result (its block's check_request, the server's):
    one button that sends the projects card's check request for this map
    (OE.JOB_TEXT.check), with the reader test's line (B/R10). A host that does
-   not take the message shows it to type (OE.sendJob). */
+   not take the message shows it to type (OE.sendJob). One message per press
+   (OE.oncePerPress, r5-n JS-1): a double-click asks Claude once. */
 // WORDING: r4p2
 const CHECK_WORDS = {
   line: 'You label a random sample. This list is not one.',
@@ -925,7 +926,7 @@ function checkBlock(app, request) {
   return OE.el('div', { class: 'card stack' },
     OE.el('div', {}, CHECK_WORDS.line),
     OE.el('div', { class: 'row' },
-      OE.el('button', { class: 'primary', onclick: () => OE.sendJob(app, text, typed) }, CHECK_WORDS.button)),
+      OE.el('button', { class: 'primary', onclick: OE.oncePerPress(() => OE.sendJob(app, text, typed)) }, CHECK_WORDS.button)),
     typed);
 }
 
@@ -1200,12 +1201,13 @@ function resultCard(app, data) {
   }
   // Under them, the second check picked class by class (r4-i O3): one
   // outlined button whose press sends Claude the request; a message the host
-  // does not take shows beside it, to type (OE.sendJob).
+  // does not take shows beside it, to type (OE.sendJob). One message per
+  // press (OE.oncePerPress, r5-n JS-1).
   const classCheck = classCheckOf(r, unit);
   if (classCheck) {
     const typed = OE.typeSlot();
     card.append(OE.el('div', { class: 'row oe-class-check' },
-      OE.el('button', { type: 'button', onclick: () => OE.sendJob(app, OE.JOB_TEXT.byClass(classCheck), typed) },
+      OE.el('button', { type: 'button', onclick: OE.oncePerPress(() => OE.sendJob(app, OE.JOB_TEXT.byClass(classCheck), typed)) },
         RESULT_WORDS.classCheck),
       typed));
   }
@@ -1317,10 +1319,11 @@ function show(app, params) {
       onDone: (status) => {
         // Signed in: one contained button, the one that runs the tool again,
         // which takes the focus the sign-in's button had. A message the host
-        // does not take shows under it, to type (OE.sendJob).
+        // does not take shows under it, to type (OE.sendJob). One message per
+        // press (OE.oncePerPress, r5-n JS-1).
         const typed = OE.typeSlot();
         const again = OE.el('button', {
-          class: 'primary', onclick: () => OE.sendJob(app, 'I have signed in to OlmoEarth Studio. Run ' + data.tool + ' again.', typed),
+          class: 'primary', onclick: OE.oncePerPress(() => OE.sendJob(app, 'I have signed in to OlmoEarth Studio. Run ' + data.tool + ' again.', typed)),
         }, 'Run it again');
         panel.replaceWith(OE.el('div', { class: 'card stack' },
           OE.el('div', {}, OE.accountLine(status.account)),
