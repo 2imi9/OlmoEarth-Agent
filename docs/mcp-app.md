@@ -19,6 +19,8 @@ turned on in [Settings](#settings), one more box stands last under "Other jobs":
 **What to press.** Press a job, or ask Claude in the chat. A job's press sends its request to Claude as your message,
 and Claude shows your projects, where you pick the map or model. While you are signed out the jobs are off and the
 card shows the sign-in. **Search papers with Asta** works signed in or out: Claude asks what to search first.
+One job at a time: once a job's message is in the chat, the job boxes turn off. If the message waits in Claude's
+message box, press Send. To start another job, ask Claude.
 
 **What it means.** The main job checks a random sample of a map's squares and tells you how often the map is wrong.
 The other jobs compare two maps, or make a new map, which needs a Studio key that can write.
@@ -56,7 +58,8 @@ computer that are part done, "In progress" lists them above the search, each wit
 
 **What to press.** Press **Show its maps** on the project that holds your map, then **Check how wrong it is** beside
 the map. To compare, tick two finished maps of the same area and dates in one project and press **Which is more
-accurate?**. To make a map, open **Make a new map** and press **Run on an area** on a model.
+accurate?**. To make a map, open **Make a new map** and press **Run on an area** on a model. One job at a time
+here too: once a job's message is in the chat, the job buttons turn off; to start another, ask Claude.
 
 **What it means.** Each prediction is a model run over an area and a period; its output is the map. A run that made
 more than one map opens its list; Studio names them only by ids, so ask whoever made the run which is yours. A line
@@ -232,7 +235,8 @@ stopped the step, for example when you pressed Stop or a large map took too long
 Carry on in the chat." means the card could not connect.
 
 **What to press.** Ask Claude to run the step again, or carry on in the chat. A button whose message did not reach
-Claude shows "Claude did not get this message. Copy it into the chat:" and the text; copy it into the chat.
+Claude shows "Claude did not get this message. Copy it into the chat:" and the text, with **Copy message** under it;
+copy it into the chat. A message that waits in Claude's message box is sent when you press Send.
 
 **What it means.** A stopped card does not say whether the step finished: it may have done its work. What the app
 saved on this computer before, such as picked squares and answers, is kept.

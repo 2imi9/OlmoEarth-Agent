@@ -294,13 +294,25 @@ def test_j20_a_job_buttons_slot_says_what_became_of_its_message() -> None:
     ]
     send = _between(common, "OE.sendJob = async (app, text, slot) => {", "\n};")
     # r5-d R07: with a slot, OE.say is quiet (the slot says it, no toast).
+    # Round r5-o (T2, T3): a job's slot sends one job at a time and says the
+    # one-job line; beside the message not taken, a Copy message button.
     assert send.splitlines()[1:] == [
+        "  const job = slot ? slot.getAttribute('data-oe-job-slot') : null;",
+        "  if (job !== null && (jobLockedBy !== null || jobSending)) return false;",
+        "  if (job !== null) jobSending = true;",
         "  const sent = await OE.say(app, text, { quiet: Boolean(slot) });",
+        "  if (job !== null) jobSending = false;",
+        "  if (sent && job !== null) OE.lockJobs(job);",
         "  if (slot) {",
         "    const line = OE.clearSlot(slot);",
-        "    if (!sent) slot.append(OE.el('code', {}, text));",
+        "    if (!sent) {",
+        "      const code = OE.el('code', {}, text);",
+        "      // WORDING: r5o",
+        "      slot.append(code, OE.copyButton(text, code, 'Copy message'));",
+        "    }",
         "    line.className = sent ? 'muted' : 'error';",
-        "    line.textContent = sent ? OE.JOB_SENT : OE.JOB_NOT_SENT;",
+        "    line.textContent = sent ? (job !== null ? OE.JOB_SENT_ONE : OE.JOB_SENT)"
+        " : OE.JOB_NOT_SENT;",
         "  }",
         "  return sent;",
     ]

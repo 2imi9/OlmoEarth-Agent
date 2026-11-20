@@ -131,8 +131,9 @@ def test_k8_the_start_card_places_the_figure_after_the_jobs_when_wide() -> None:
     code = _code(page)
     assert code.count("wideMedia.addEventListener('change', placeOverview);") == 1
     # The job tile's press, this, and (r5-n S3, after review) the two that read
-    # the Settings switch again when the panel is shown or takes the focus.
-    assert code.count("addEventListener(") == 4
+    # the Settings switch again when the panel is shown or takes the focus, and
+    # (r5-o T2, after review) the one that hears the jobs were locked.
+    assert code.count("addEventListener(") == 5
     # When Claude closes the card, the listener goes (r4-k K1: OE.cleanups).
     assert (
         "OE.cleanups.add(() => wideMedia.removeEventListener('change', "

@@ -127,6 +127,8 @@ button:disabled, button:disabled:hover { cursor: default; background: transparen
 button.primary:disabled, button.primary:disabled:hover { background: rgba(0,0,0,.12); color: rgba(0,0,0,.26); }
 /* Busy (aria-disabled): looks disabled, keeps the keyboard focus. */
 button[aria-disabled="true"], button[aria-disabled="true"]:hover { cursor: default; background: transparent;
+/* A job button off once a job is in the chat (r5-o): plainly off, the main job and the others alike. */
+button[data-oe-locked], button[data-oe-locked]:hover { opacity: .45; }
   color: rgba(0,0,0,.26); border-color: var(--divider); box-shadow: none; }
 button.primary[aria-disabled="true"], button.primary[aria-disabled="true"]:hover { background: rgba(0,0,0,.12); }
 button.link { border: 0; background: none; padding: 4px 5px; border-radius: 4px; box-shadow: none;
@@ -219,6 +221,9 @@ details[open] > summary::after { transform: rotate(-135deg); }
   clip-path: inset(50%); }
 .oe-type code { display: block; margin-top: 2px; padding: 6px 8px; background: var(--paper); border: 1px solid var(--divider);
   border-radius: 4px; user-select: all; overflow-wrap: anywhere; white-space: pre-wrap; }
+/* The Copy message button under that box (r5-o T3, after review): sized as
+   the slot's small line, its words on the box's left edge. */
+.oe-type > button.link { font-size: 12px; line-height: 18px; padding: 0 4px; margin: 4px 0 0 -4px; }
 /* The label sheet's footer: sticky, a hairline above, the counter and the one button. */
 /* No scroll anchoring on a sheet (r5-f F01, after the check): when the pictures pane under the answers grows,
    the browser kept a node below it in place and scrolled the face's heading and answers away, and undid the
@@ -522,23 +527,123 @@ OE.clearSlot = (slot) => {
   return line;
 };
 
+/* One job at a time (r5-o T2; the owner's screenshot of 19 Nov 2026: six job
+   requests piled up in Claude's message box). A panel cannot take back a
+   message the host queued, so once a job button's message reached the chat
+   every job button of the card goes off: aria-disabled and greyed, and a
+   press does nothing (a key's too). The pressed button's slot says
+   OE.JOB_SENT_ONE. A message the host did not take locks nothing. The lock
+   is the page's: a card drawn again (after a sign-in, with the Settings
+   box) keeps it, its buttons made off and the line back in the pressed
+   job's slot; a new card is a new page and starts unlocked. Only job
+   buttons (OE.jobButton: the start card's tiles, the projects panel's job
+   buttons) lock; the other sends (the sheet's finish, the result card's
+   buttons, the sign-in's Continue) do not, and keep OE.JOB_SENT. */
+// WORDING: r5o
+OE.JOB_SENT_ONE = 'Sent to the chat. If it waits there, press Send.';
+let jobLockedBy = null;  // the key (data-oe-job-slot) of the slot of the job whose message reached the chat; null: no lock
+let jobSending = false;  // a job button's message is with the host: no other job is sent meanwhile
+/* Every job button made before the lock that is still alive, in the page or
+   not (a row behind "See all"), held weakly (after review): the buttons of a
+   project's summary that was closed, or of a card drawn again, are not kept
+   alive by this set, and their entries go when the next one is made. */
+const jobButtons = new Set();
+/* What a locked job button's tooltip, and so its description, says (after
+   review): the pressed button's slot, the one place with the reason, may be
+   folded away or far from the other buttons. */
+// WORDING: r5o
+OE.JOB_LOCKED_TITLE = 'One job at a time: to start another, ask Claude.';
+
+/* Whether the card's jobs are locked. Given a button: whether that button is
+   a job button (data-oe-job) that is locked, which a job button's press
+   handler checks first. */
+OE.jobLocked = (button = null) => jobLockedBy !== null && (!button || button.hasAttribute('data-oe-job'));
+
+/* A job button after its press ended, or made: off (aria-disabled, and
+   data-oe-locked for the style, its title OE.JOB_LOCKED_TITLE) when the jobs
+   are locked, on when not. */
+OE.jobIdle = (button) => {
+  const locked = OE.jobLocked(button);
+  button.setAttribute('aria-disabled', String(locked));
+  if (locked) button.setAttribute('data-oe-locked', 'true');
+  if (locked) button.title = OE.JOB_LOCKED_TITLE;
+};
+
+/* Mark a button as a job button (data-oe-job, its key: one per job of the
+   card, the same at each drawing) and slot (OE.typeSlot) as a job's slot
+   (data-oe-job-slot: the key of the first job button that shares it), which
+   is how OE.sendJob knows a job's message from the other sends. Made while
+   the jobs are locked the button is off from the start, and a slot whose
+   key is the pressed job's says the one-job line again (a card drawn
+   again). Returns the button. */
+OE.jobButton = (button, key, slot) => {
+  button.setAttribute('data-oe-job', String(key));
+  const first = !slot.hasAttribute('data-oe-job-slot');
+  if (first) slot.setAttribute('data-oe-job-slot', String(key));
+  if (jobLockedBy === null) {
+    for (const r of jobButtons) if (!r.deref()) jobButtons.delete(r);
+    jobButtons.add(new WeakRef(button));
+    return button;
+  }
+  OE.jobIdle(button);
+  if (first && String(key) === jobLockedBy) {
+    const line = OE.clearSlot(slot);
+    line.className = 'muted';
+    line.textContent = OE.JOB_SENT_ONE;
+  }
+  return button;
+};
+
+/* Lock the card's jobs: the pressed job's slot key is kept, and every job
+   button made so far goes off, in the page or out of it. The page is then
+   told (the event oe-jobs-locked on the document, after review), so a card
+   that is not drawn again changes the lines that said to press a job. */
+OE.lockJobs = (key) => {
+  jobLockedBy = String(key);
+  for (const r of jobButtons) {
+    const b = r.deref();
+    if (b) OE.jobIdle(b);
+  }
+  jobButtons.clear();
+  // The other jobs' slots are emptied: a line that said an earlier press was not
+  // taken no longer stands beside the job now in the chat (r5-o, the owner's screenshot).
+  document.querySelectorAll('[data-oe-job-slot]').forEach((s) => {
+    if (s.getAttribute('data-oe-job-slot') !== jobLockedBy) OE.clearSlot(s);
+  });
+  document.dispatchEvent(new Event('oe-jobs-locked'));
+};
+
 /* A job button's press: its request goes to Claude as the user's words, and
    slot says what became of it beside the button (r5-b J20), so a press never
    seems to have done nothing and the reason for a text to copy is where the
    text is. Sent: the line says OE.JOB_SENT, muted. Not sent (the host
    declined it): OE.JOB_NOT_SENT in the error colour, then, outside the line,
-   the whole text, selectable, so its ids are not lost. Each press replaces
+   the whole text, selectable, so its ids are not lost, and under it a
+   "Copy message" button (OE.copyButton, r5-o T3). Each press replaces
    what the one before left; a press that ends before sending clears it
    (OE.clearSlot). With a slot, OE.say writes no toast (quiet, r5-d R07):
    the slot says it; a toast an earlier press without a slot wrote goes once
-   a later message is taken. */
+   a later message is taken. A job's slot (OE.jobButton, r5-o T2): nothing
+   is sent, and false is returned, while the jobs are locked or another
+   job's message is with the host; a message taken locks the card's jobs
+   (OE.lockJobs) and the line says OE.JOB_SENT_ONE; a message not taken
+   locks nothing. */
 OE.sendJob = async (app, text, slot) => {
+  const job = slot ? slot.getAttribute('data-oe-job-slot') : null;
+  if (job !== null && (jobLockedBy !== null || jobSending)) return false;
+  if (job !== null) jobSending = true;
   const sent = await OE.say(app, text, { quiet: Boolean(slot) });
+  if (job !== null) jobSending = false;
+  if (sent && job !== null) OE.lockJobs(job);
   if (slot) {
     const line = OE.clearSlot(slot);
-    if (!sent) slot.append(OE.el('code', {}, text));
+    if (!sent) {
+      const code = OE.el('code', {}, text);
+      // WORDING: r5o
+      slot.append(code, OE.copyButton(text, code, 'Copy message'));
+    }
     line.className = sent ? 'muted' : 'error';
-    line.textContent = sent ? OE.JOB_SENT : OE.JOB_NOT_SENT;
+    line.textContent = sent ? (job !== null ? OE.JOB_SENT_ONE : OE.JOB_SENT) : OE.JOB_NOT_SENT;
   }
   return sent;
 };
@@ -565,6 +670,39 @@ OE.open = async (app, url, { quiet = false } = {}) => {
     if (!quiet) OE.toast(OE.LINK_NOT_OPENED, true);
     return false;
   }
+};
+/* What the sign-in panel says when the host did not open its page, over the
+   address and its Copy button (r5-o). */
+// WORDING: r5o
+OE.SIGN_IN_NOT_OPENED = 'Claude did not open the page. Copy this address into a browser on this computer:';
+/* A text button that copies text (an address the host did not open; with
+   label 'Copy message', a message Claude did not get: OE.sendJob, r5-o T3) to the
+   clipboard. Where the panel may not write the clipboard, it selects the
+   shown element and asks for the keyboard's copy instead (r5-o). */
+// WORDING: r5o
+OE.COPIED = 'Copied';
+// WORDING: r5o
+OE.COPY_BY_HAND = 'Selected: press Cmd+C (Ctrl+C on Windows) to copy';
+OE.copyButton = (text, shown, label = 'Copy address') => {
+  const button = OE.el('button', { type: 'button', class: 'link' }, label);
+  button.addEventListener('click', async () => {
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (_) { copied = false; }
+    if (!copied && shown) {
+      const range = document.createRange();
+      range.selectNodeContents(shown);
+      const picked = window.getSelection();
+      picked.removeAllRanges();
+      picked.addRange(range);
+    }
+    button.textContent = copied ? OE.COPIED : OE.COPY_BY_HAND;
+  });
+  return button;
 };
 
 /* The OlmoEarth docs' address (public and fixed): what the start card's
@@ -1360,12 +1498,16 @@ OE.signInPanel = (app, { onDone, note, primary = true, acceptCurrent = false } =
         if (now && now.signed_in && !now.key_problem) { signedIn(now); return; }
       }
       const page = await OE.call(app, 'olmoearth_app_begin_sign_in');
-      const opened = await OE.open(app, page.url);
+      // The host may decline to open the page (a local http address, say): the
+      // line above the address says so once, with a Copy button (r5-o), and no
+      // toast repeats it at the panel's foot.
+      const opened = await OE.open(app, page.url, { quiet: true });
       status.className = 'small muted';
       status.textContent = opened
         ? 'Waiting for you to sign in on the page that opened in your browser...'
-        : 'Open this address in a browser on this computer to sign in:';
-      link.replaceChildren(OE.el('code', { style: 'user-select:all;overflow-wrap:anywhere' }, page.url));
+        : OE.SIGN_IN_NOT_OPENED;
+      const address = OE.el('code', { style: 'user-select:all;overflow-wrap:anywhere' }, page.url);
+      link.replaceChildren(address, opened ? null : OE.copyButton(page.url, address));
       stop();
       const mine = run;
       timer = setTimeout(() => poll(mine, Number(page.sign_ins) || 0), 2000);

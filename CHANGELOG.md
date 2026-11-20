@@ -10,6 +10,14 @@ See [Development](spec/Usage.md#development) for the convention.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-19
+
+### Fixes
+- Sign-in: when Claude does not open the sign-in page in your browser, the panel says so once and gives a Copy address button beside the address.
+- One job at a time: once a job's message is in the chat, the job buttons of the start card and the projects panel turn off, and the card says to press Send if the message waits there and to ask Claude to start another.
+- Once the job buttons are off, no line of those two cards still says to press a job, and each button that is off says why when you point at it.
+- A message Claude did not get has a Copy message button under it.
+
 ## [1.5.0] - 2026-11-19
 
 Short notes. Every detail is in [spec/changes/1.5.0.md](spec/changes/1.5.0.md).

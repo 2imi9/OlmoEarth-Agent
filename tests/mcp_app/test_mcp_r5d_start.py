@@ -301,7 +301,12 @@ def test_r09_a_run_of_several_maps_drops_the_rows_own_jobs() -> None:
     assert row.count("show(") == 3
     toggled = _between(row, "toggle.addEventListener('click', async () => {", "\n  });")
     assert "show(results.hidden);" in toggled
-    assert _between(row, "const job = (key) => ", "\n  });").count("show(true);") == 2
+    assert (
+        _between(row, "const job = (key) => ", "\n  }, slot, 'pred:").count(
+            "show(true);"
+        )
+        == 2
+    )
 
 
 def test_r09_a_rows_press_on_several_says_so_under_the_row() -> None:
@@ -316,7 +321,7 @@ def test_r09_a_rows_press_on_several_says_so_under_the_row() -> None:
     changes; the line that said how many maps (OUTPUTS.several) is gone."""
     page = _read("studio.html")
     row = _between(page, "function predictionRow(", "\n}\n")
-    job = _between(row, "const job = (key) => ", "\n  });")
+    job = _between(row, "const job = (key) => ", "\n  }, slot, 'pred:")
     assert job.index("OE.clearSlot(slot);") < job.index("const out = await read();")
     opened = "    if (list.length > 1) {\n      show(true);\n"
     several = _between(job, opened, "return;")
