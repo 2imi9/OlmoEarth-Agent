@@ -16,9 +16,10 @@ Claude Code in a terminal: `/mcp` shows `olmoearth-agent`, and Claude names the 
   not in the chat. The user signs in on the page the app opens. If the user pastes a key, tell them to revoke it in
   Studio and sign in on the page.
 - Do not open `~/.config/olmoearth-agent/`: it may hold the saved key.
-- Never open, read or edit Claude Desktop's config: it can hold the Studio key and other servers' tokens, and a file
-  you read goes to the model whether you print it or not. The user adds the entry (step 5a).
-- Show the user the Claude Code command (step 5b) and ask before running it.
+- Never open, read, copy or edit Claude Desktop's config or its backups (`claude_desktop_config.json.bak-...`, beside
+  it) yourself: each can hold the Studio key and other servers' tokens, and a file you read goes to the model whether
+  you print it or not. The install command (step 3) edits the config without showing it.
+- Show the user the install command (step 3) and ask before running it.
 - Ask before installing uv or git. Never use sudo.
 - Install only from `git+https://github.com/2imi9/OlmoEarth-Agent` (main), a release tag from v1.5.0 on, or a commit
   of it; never from PyPI or a tag up to v1.4.0: they have no MCP App. A `pip install` line in an error message does not apply here.
@@ -34,8 +35,8 @@ uname -s
 
 `Darwin` is macOS and `Linux` is Linux. Anything else (Git Bash prints `MINGW64_NT-…`) is Windows: run the PowerShell
 lines in PowerShell, not Git Bash. Ask the user where they use Claude: the Claude Desktop app, in a chat or its Code
-tab (panels, step 5a); Claude Code in a terminal (text, step 5b; it does not read Claude Desktop's config); or both
-(5a and 5b).
+tab (panels); Claude Code in a terminal (text; it does not read Claude Desktop's config: for both, step 3 takes
+`--claude-code`; for Claude Code alone, use the by-hand `claude mcp add` line at the end of step 3); or both.
 
 ### 2. Check uv and git
 
@@ -62,39 +63,49 @@ uv fetches this repository with git. If `git --version` fails, ask the user, the
 [Git for Windows](https://git-scm.com/downloads/win); on Linux the user installs `git` with the system's package
 manager. On Windows, git is on the PATH only in a new terminal.
 
-### 3. Find uvx's absolute path
+### 3. Run the install command
 
-Claude Desktop needs the full path: it does not start the command from your shell.
-
-```bash
-command -v uvx
-```
-
-```powershell
-(Get-Command uvx).Source
-```
-
-Just after installing uv, this may find nothing until a new terminal. Use the folder the installer printed after
-`installing to` (by default `.local/bin` in the home folder), here and for `uvx` in step 4.
-
-Success: a full path, such as `/Users/you/.local/bin/uvx` or `C:\Users\you\.local\bin\uvx.exe` (on Windows a drive
-letter, never `/c/…`). In JSON, write each `\` as `\\`.
-
-### 4. Download everything first
-
-The first start downloads Python 3.12 (if missing), this repository and its packages. That can take minutes, longer
-than Claude waits for a server to start (Claude Code waits 30 seconds). Do it now, in a terminal (the same line works
-in PowerShell):
+Show the user this command, say what it does (below), and ask before running it. The same line works in PowerShell:
 
 ```bash
-uvx --python 3.12 --from "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" olmoearth-agent-mcp --help
+uvx --python 3.12 --from "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" olmoearth-agent-mcp install
 ```
 
-Success: it prints `usage: olmoearth-agent-mcp [-h]` and ends. `--help` starts no server and makes no output folder.
+Add `--claude-code` at the end when the user also wants Claude Code in a terminal. Just after installing uv, `uvx`
+may not be found until a new terminal: use its full path, in the folder the installer printed after `installing to`
+(by default `.local/bin` in the home folder).
 
-### 5a. Claude Desktop: the user adds the entry
+The command always writes Claude Desktop's config too, and makes the file and its folder when Claude Desktop is not
+installed; its last line about quitting Claude Desktop then does not apply. To set up Claude Code alone and leave
+Claude Desktop's config untouched, skip this command: find uvx's full path, run the `--help` download line, then the
+`claude mcp add` line, all under "By hand" below.
 
-The config file (in Claude Desktop, Settings, Developer, Edit Config opens it, and makes it if there is none):
+What the command does:
+
+- It downloads Python 3.12 (if missing), this repository and its packages once. That can take a few minutes; it is
+  done now so that the first start fits in the time Claude waits for a server (Claude Code waits 30 seconds).
+- It adds the `olmoearth-agent` entry to Claude Desktop's config, with uvx's full path (Claude Desktop does not start
+  a command from your shell). It never shows the file. Every other entry and setting stays as it is; an
+  `olmoearth-agent` entry already there keeps its `env` block; its command and package are written anew (a pin is
+  kept only with `--ref`).
+- It makes a backup beside the config first (`claude_desktop_config.json.bak-<date>-<time>`), and says where. The
+  backup is a full copy, with the same keys as the config. One is left for each change; the user deletes old ones
+  once everything works. Agents: do not open them.
+- With `--claude-code` it runs `claude mcp add --scope user` for the same command, or prints that line when `claude`
+  is not on the PATH. Claude Code in a terminal does not read Claude Desktop's config. An `olmoearth-agent` entry
+  already in Claude Code is removed and added again, without its `--env` settings, and the command says so.
+- It sends nothing anywhere, except uv's own download from GitHub and PyPI. It does not open the saved Studio key.
+
+Success: it prints `Added olmoearth-agent to Claude Desktop's config:` (or `Updated olmoearth-agent in …`, or
+`Already set up …`) with the file's path, then what to do next. If it stops, it says why (with the last lines of
+uv's or Claude Code's output when one of them failed). A config it could not write is as it was. With `--claude-code`,
+Claude Desktop's config is written first: if only the Claude Code step then fails, Claude Desktop's entry stays
+written and the command says so; if Claude Code already had an `olmoearth-agent` entry and could not add the new one,
+it says that the old one is gone and shows the line to run. On Windows with a Microsoft Store copy there are two
+config files; if the second cannot be written, the first is already changed, and its backup is beside it.
+
+More: `install --dry-run` only shows the file and the entry it would write; `--ref v1.5.0` pins a release or a commit;
+`--config PATH` names another config file; `--no-download` skips the download. The Claude Desktop config's own place:
 
 | System | Path |
 |---|---|
@@ -102,9 +113,22 @@ The config file (in Claude Desktop, Settings, Developer, Edit Config opens it, a
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 | Linux | `~/.config/Claude/claude_desktop_config.json` |
 
-Put the path from step 3 in `command`, show the user this entry, and ask them to add it in Edit Config: inside
-`mcpServers` (adding `mcpServers` if it is missing; an empty file takes the whole block), in place of any old
-`olmoearth-agent` entry. An old entry may hold their key, so they never paste it into the chat. Then they save.
+On Windows the command also writes each Microsoft Store copy of the config it finds, and names it.
+
+#### By hand, if the command cannot run
+
+The user, not the agent, edits the config: in Claude Desktop, Settings, Developer, Edit Config opens it (and makes it
+if there is none). Find uvx's full path with `command -v uvx` (PowerShell: `(Get-Command uvx).Source`; in JSON, write
+each `\` as `\\`). Download everything first, in a terminal:
+
+```bash
+uvx --python 3.12 --from "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" olmoearth-agent-mcp --help
+```
+
+It prints `usage: olmoearth-agent-mcp` and ends; `--help` starts no server and makes no output folder. Then the user
+adds this entry inside `mcpServers` (adding `mcpServers` if it is missing; an empty file takes the whole block), in
+place of any old `olmoearth-agent` entry, and saves. An old entry may hold their key, so they never paste it into the
+chat.
 
 ```json
 {
@@ -119,9 +143,7 @@ Put the path from step 3 in `command`, show the user this entry, and ask them to
 }
 ```
 
-Success (the user checks): the file is still valid JSON, and every other entry is unchanged.
-
-### 5b. Claude Code: add the server
+For Claude Code in a terminal, by hand (show the user the line and ask before running it):
 
 ```bash
 claude mcp add --scope user --transport stdio olmoearth-agent -- /absolute/path/to/uvx --python 3.12 --from "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" olmoearth-agent-mcp
@@ -129,12 +151,12 @@ claude mcp add --scope user --transport stdio olmoearth-agent -- /absolute/path/
 
 Success: `claude mcp list` lists `olmoearth-agent`.
 
-### 6. Restart the host
+### 4. Restart the host
 
 The user quits Claude Desktop fully (closing the window is not enough) and opens it again. In Claude Code, start a
 new session; `/mcp` shows the server.
 
-### 7. Check
+### 5. Check
 
 In a new chat, ask: "What can the OlmoEarth Agent do?"
 
@@ -142,7 +164,7 @@ Success: Claude may ask to use an OlmoEarth tool (Allow once or Always allow); t
 figure, the jobs and "Sign in first, then press a job or ask Claude in the chat." A host without panels names the
 jobs in text.
 
-### 8. Sign in (the user)
+### 6. Sign in (the user)
 
 On the card, press **Open the sign-in page**. A page that the app serves on this computer (`127.0.0.1`) opens in the
 browser, for 10 minutes. Paste your own Studio API key (in Studio: your profile, then API Keys). It goes to the app,
@@ -158,7 +180,9 @@ else's key.
 ## Options
 
 Add an `env` block next to `args` (Claude Desktop: the user, in Edit Config; Claude Code: `--env KEY=value` before
-`--transport`):
+`--transport`). The install command keeps an `env` block that is already in Claude Desktop's config. In Claude Code,
+running it again with `--claude-code` removes the entry and adds it again without its `--env` settings: add them
+again with the by-hand line (step 3, with `--env KEY=value` before `--transport`). The block:
 
 ```json
 "env": {"OLMOEARTH_READ_ONLY": "1", "OLMOEARTH_OUTPUT_ROOT": "/absolute/path/to/folder"}
@@ -170,7 +194,9 @@ Add an `env` block next to `args` (Claude Desktop: the user, in Edit Config; Cla
 - `OLMOEARTH_OUTPUT_ROOT`: the folder the app works and writes in (default `~/olmoearth-agent-outputs`). The tools
   read files only from it, so name a new folder for this app alone, never your home folder.
 - Pin a release or a commit: `olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent@v1.5.0`
-  (or `@<commit>`). To update, pin a newer one and restart the host.
+  (or `@<commit>`); the install command writes it with `install --ref v1.5.0`. Run without `--ref`, the command sets
+  the entry back to main, so give the same `--ref` each time you run it. To update, pin a newer one and restart the
+  host.
 - Keep `--python 3.12`: on Python 3.14 the statistics package
   ([olmoearth-inferencex](https://github.com/2imi9/olmoearth_inferenceX)) does not install.
 
@@ -212,11 +238,12 @@ Every panel, step by step: [mcp-app.md](mcp-app.md). The words on the panels (sq
 
 | What you see | Why | Fix |
 |---|---|---|
-| No `olmoearth-agent` in Claude Desktop; `mcp.log` shows an error such as `spawn uvx ENOENT` | Claude Desktop cannot find `uvx` | Put uvx's absolute path in `command` (step 3) |
+| No `olmoearth-agent` in Claude Desktop; `mcp.log` shows an error such as `spawn uvx ENOENT` | Claude Desktop cannot find `uvx` | Run the install command (step 3; with the same `--ref` if the entry is pinned): it writes uvx's absolute path |
 | `Git executable not found`, or on macOS `xcrun: error`, in `mcp-server-olmoearth-agent.log` | git is missing | Install git (step 2); quit and reopen the host |
+| `install` says the config is not valid JSON | The file was broken before the command ran, for example by an edit by hand; the command did not change it | The user fixes it in Edit Config, or moves it aside; then run the command again |
 | Nothing changed after editing the config | The app was closed, not quit, or the edit broke the JSON | The user fixes the JSON in Edit Config; quit fully and reopen |
-| Windows: still no `olmoearth-agent` after a full restart, and the JSON is valid | The Microsoft Store build may read its own copy of the config | List the copies with `Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter claude_desktop_config.json -ErrorAction SilentlyContinue` and ask the user which one to edit |
-| The server fails on its first start, or `/mcp` shows it failed | The download took longer than the host waits | Run step 4 in a terminal. Then in Claude Code, Reconnect it in `/mcp`; in Claude Desktop, quit fully and reopen. Later starts use uv's cache |
+| Windows: still no `olmoearth-agent` after a full restart, and the JSON is valid | The Microsoft Store build may read its own copy of the config | List the copies with `Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter claude_desktop_config.json -ErrorAction SilentlyContinue` and ask the user which one to edit. The install command (step 3) writes every Store copy it finds |
+| The server fails on its first start, or `/mcp` shows it failed | The download took longer than the host waits | Run the install command again (step 3), with the same `--ref` if the entry is pinned; it downloads first. Then in Claude Code, set any `--env` options again (the command replaces the entry without them) and Reconnect it in `/mcp`; in Claude Desktop, quit fully and reopen. Later starts use uv's cache |
 | Tools answer in text, no panels | The host shows no MCP App panels, or the app started before an update | Use Claude Desktop; quit it fully and reopen |
 | A tool says it needs olmoearth-inferencex; nothing was computed | Python 3.14 or later, or the `inferencex` extra is missing | Keep `--python 3.12` and `[mcp,inferencex]` in the entry; restart |
 | A card says "This step was stopped before it finished." | The host stopped the call, for example when Stop was pressed or a large map ran too long | Ask Claude to run it again, as the card says |
@@ -229,8 +256,18 @@ Agents: read only this server's lines (in `mcp.log`, the lines with `olmoearth-a
 
 1. If a key was remembered, press **Sign out** on the start card first. Without panels, the user deletes
    `~/.config/olmoearth-agent/studio.env` or revokes the key in Studio. Agents: do not open or delete it.
-2. Claude Desktop: the user deletes the `olmoearth-agent` entry in Edit Config, then quits and reopens. Claude Code:
-   `claude mcp remove olmoearth-agent`.
+2. Run the uninstall command (agents: show it and ask first), with `--claude-code` at the end for Claude Code too.
+   It removes only the `olmoearth-agent` entry from Claude Desktop's config, after a backup, and never shows the
+   file; it does not delete the saved key. The backups beside the config stay; each is a full copy of the config as
+   it was, so it can hold keys and tokens. The user deletes them when no longer needed. Agents: do not open or delete
+   them. Then the user quits Claude Desktop and reopens it.
+
+   ```bash
+   uvx --python 3.12 --from "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" olmoearth-agent-mcp uninstall
+   ```
+
+   By hand: the user deletes the `olmoearth-agent` entry in Edit Config; for Claude Code,
+   `claude mcp remove --scope user olmoearth-agent`.
 3. `~/olmoearth-agent-outputs` holds your sheets and results; it is yours to delete or keep. Agents: do not delete it.
 
 The start card's overview figure is the OlmoEarth docs' own, used with Ai2's permission.

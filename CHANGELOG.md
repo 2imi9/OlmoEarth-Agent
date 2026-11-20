@@ -10,6 +10,11 @@ See [Development](spec/Usage.md#development) for the convention.
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-11-20
+
+### Added
+- Setup in one line: `olmoearth-agent-mcp install` adds the app to Claude Desktop's config for you (and to Claude Code with `--claude-code`), without showing the file; every other entry is kept and a backup is made first. `olmoearth-agent-mcp uninstall` removes it again.
+
 ## [1.5.2] - 2026-11-20
 
 ### Fixes

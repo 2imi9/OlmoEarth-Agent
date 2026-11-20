@@ -92,22 +92,14 @@ https://raw.githubusercontent.com/2imi9/OlmoEarth-Agent/main/docs/mcp-app-setup.
 follow it step by step, copying its commands and JSON exactly.
 ```
 
-**Quick setup by hand.** Needs [uv](https://docs.astral.sh/uv/) and git. In Claude Desktop's config (Settings,
-Developer, Edit Config), add the `olmoearth-agent` entry inside `mcpServers` and keep any other entries. `which uvx`
-gives the path (Windows: `where.exe uvx`, each `\` written `\\`). Then quit Claude Desktop and open it again:
+**Quick setup.** Needs [uv](https://docs.astral.sh/uv/) and git. Run this one line; it adds the app to Claude
+Desktop's config without showing the file, and keeps every other entry (a backup is made first):
 
-```json
-{
-  "mcpServers": {
-    "olmoearth-agent": {
-      "command": "/absolute/path/to/uvx",
-      "args": ["--python", "3.12", "--from",
-               "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent",
-               "olmoearth-agent-mcp"]
-    }
-  }
-}
+```bash
+uvx --python 3.12 --from "olmoearth-agent[mcp,inferencex] @ git+https://github.com/2imi9/OlmoEarth-Agent" olmoearth-agent-mcp install
 ```
+
+Then quit Claude Desktop fully and open it again. For Claude Code in a terminal too, add `--claude-code`.
 
 Then ask Claude what the OlmoEarth Agent can do. On the card, press **Open the sign-in page** and paste your own
 Studio API key; it never passes through Claude. No Studio account yet? **Request access** at
