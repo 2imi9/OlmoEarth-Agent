@@ -116,11 +116,15 @@ const SIGN_IN_STUDIO_JOB = 'Sign in to start a Studio job.';
 /* r5-o T2 (after review): once the tiles are locked (one job at a time) no
    line of the card says to press a job: the card's line says to ask Claude
    (signed out: to sign in first, then ask), and the line over the tiles,
-   which said to sign in to start a job, goes (lockedWords). */
-// WORDING: r5o
-const START_NEXT_LOCKED = 'One job is in the chat. To start another, ask Claude in the chat.';
-// WORDING: r5o
-const START_NEXT_LOCKED_OUT = 'Sign in first, then ask Claude in the chat to start another job.';
+   which said to sign in to start a job, goes (lockedWords). r5-p J1: the
+   line then ends with the Choose another job text button, so it no longer
+   says to ask Claude to start another; signed out it says that one job is
+   in the chat and that the Studio jobs need a sign-in (true with the Asta
+   tile, which the button gives again, and without it). */
+// WORDING: r5p
+const START_NEXT_LOCKED = 'One job is in the chat.';
+// WORDING: r5p
+const START_NEXT_LOCKED_OUT = 'One job is in the chat. Sign in for the Studio jobs.';
 
 /* Each drawing of the card takes the next number; the status read on mount,
    when it answers after a later drawing, is dropped. */
@@ -292,19 +296,46 @@ function offWords() {
 /* r5-o T2 (after review): the card's words while its tiles are locked, set
    in place: at each drawing and at each change of the switch (offWords),
    and at the moment of the lock (the event oe-jobs-locked, OE.lockJobs),
-   when the card is not drawn again. The card's line says to ask Claude
-   (START_NEXT_LOCKED; signed out START_NEXT_LOCKED_OUT), and the line over
-   the tiles (signed out) is taken away. True when the tiles are locked. */
+   when the card is not drawn again. The card's line says one job is in the
+   chat (START_NEXT_LOCKED; signed out START_NEXT_LOCKED_OUT), and the line over
+   the tiles (signed out) is taken away. True when the tiles are locked.
+   r5-p J1: the card's line ends with the Choose another job text button
+   (OE.chooseAnotherButton), which lifts the lock; a line that already holds
+   it keeps that button (and its focus), only its words are set again. */
 function lockedWords() {
   if (!OE.jobLocked()) return false;
   if (!jobsDrawn) return true;
   const next = root.querySelector(':scope > .oe-lead p.next');
-  if (next) next.textContent = jobsDrawn.on ? START_NEXT_LOCKED : START_NEXT_LOCKED_OUT;
+  if (next) {
+    const words = (jobsDrawn.on ? START_NEXT_LOCKED : START_NEXT_LOCKED_OUT) + ' ';
+    if (next.querySelector('button.oe-choose-another')) next.firstChild.textContent = words;
+    else next.replaceChildren(words, OE.chooseAnotherButton());
+  }
   const list = root.querySelector('ul.jobs');
   const line = list ? list.previousElementSibling : null;
   if (line) line.remove();
   return true;
 }
+/* r5-p J1: the lock lifted (Choose another job, OE.unlockJobs): the card's
+   line and the line over the tiles are as a drawing with no lock has them,
+   for the card as it is now (signed in or out; the Asta tile shown or not:
+   offWords), so a sign-in or a turn of the switch made while the tiles were
+   locked is not undone. The Choose another job button went with the locked
+   line, so the focus goes to the first job that can be pressed (signed out
+   with no Asta tile every tile is disabled: then to the card's one
+   contained button, the sign-in's), only while this panel's frame has it. */
+function unlockedWords() {
+  if (!jobsDrawn) return;
+  const next = root.querySelector(':scope > .oe-lead p.next');
+  if (next) next.textContent = jobsDrawn.on ? START_NEXT_IN : START_LEAD.next;
+  const list = root.querySelector('ul.jobs');
+  // Signed out, the line over the tiles the lock took away stands there again, as render makes it; offWords sets its words.
+  if (list && !jobsDrawn.on && !list.previousElementSibling) list.before(OE.el('div', {}, ''));
+  offWords();
+  OE.focusIfHere(root.querySelector('.jobs button.job:not(:disabled)') || root.querySelector('button.primary:not(:disabled)'));
+}
+document.addEventListener('oe-jobs-unlocked', unlockedWords);
+OE.cleanups.add(() => document.removeEventListener('oe-jobs-unlocked', unlockedWords));
 document.addEventListener('oe-jobs-locked', lockedWords);
 // When Claude closes the card, the listener goes too (OE.start's teardown runs OE.cleanups).
 OE.cleanups.add(() => document.removeEventListener('oe-jobs-locked', lockedWords));

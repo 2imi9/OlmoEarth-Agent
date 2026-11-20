@@ -10,6 +10,16 @@ See [Development](spec/Usage.md#development) for the convention.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-20
+
+### Fixes
+- Label sheet pictures: each month now shows the date with the least cloud and shadow on the square itself, by Sentinel-2's own cloud mask, and the dates the mask marks cloudy are folded away under the others ("3 cloudy dates"). The review set's pictures and the public test scene do the same. The sheet's Details note now says the cloud mask is a guide that is sometimes wrong, and that you decide from the square itself. The cloud masks of all the months are read first, in their own time (up to 15 seconds), so they never make the pictures late. A square that is white in the picture counts as cloudy too, since the mask can miss thick cloud right at a coastline.
+- Choose another job: once a job's message is in the chat, the line of the start card and of the projects panel ends with a "Choose another job" button that turns the job buttons back on.
+- The pressed job now says "Sent to the chat. Press Send in the message box below."
+- Settings: "Remove kept copies" takes two presses; after the first it says "Press again to remove" for six seconds. A double-click counts as one press, and a screen reader hears the new words.
+- Before Claude runs a model on Studio's compute, it tells you the model, the area and the dates and waits for your yes.
+- Check card and result card: each step's picture and sentence now sit together in the middle of their box.
+
 ## [1.5.1] - 2026-11-19
 
 ### Fixes

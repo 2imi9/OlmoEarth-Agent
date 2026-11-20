@@ -539,6 +539,10 @@ def test_a_default_turn_carries_under_8000_spec_tokens(default_env: None) -> Non
     about 7,991 - 750 + 10 = 7,251. Its final review takes 20 characters off
     olmoearth_load_skill's description ("pitfall numbers and ", which only
     the removed data-prep package had): 5 tokens, 7,251 - 5 = 7,246. The
-    bound stays at 8,000, now looser by about that much.
+    bound stays at 8,000, now looser by about that much. Round r5-p adds 159
+    characters to olmoearth_submit_prediction's description (the sentence
+    that says to tell the user the model, the area and the dates and to wait
+    for their yes, with the space before it): 40 tokens, about 7,286, under
+    the same bound.
     """
     assert _turn_chars(build_default_registry()) / 4 < 8_000

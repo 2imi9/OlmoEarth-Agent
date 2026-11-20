@@ -112,7 +112,7 @@ OE.fig = (() => {
 .oe-fig .rate-bar { fill: var(--text); }
 .oe-steps { list-style: none; margin: 12px 0 0; padding: 0; display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 12px; }
-.oe-steps > li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0;
+.oe-steps > li { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; min-width: 0;
   padding: 10px; background: var(--paper); border: 1.5px solid var(--text-2); border-radius: 6px; }
 .oe-steps .oe-step-pic { display: block; flex: none; align-self: center; }
 .oe-steps .cell { fill: var(--wash-2); stroke: var(--outline); stroke-width: 1; }

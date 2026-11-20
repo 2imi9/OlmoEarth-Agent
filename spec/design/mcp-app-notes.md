@@ -24,6 +24,12 @@ change is in [changes/1.5.0.md](../changes/1.5.0.md); the short release notes ar
 - Every card's fold has the same name, "Details", so a reader learns one word.
 - Controls of one kind have one size, so a tick, a long word or a four-digit count never moves the layout.
 - "Sent to the chat" is said in one place, under the button pressed, so a screen reader hears it once.
+- One job at a time: a sent job turns the job buttons off, because a panel cannot take back a message that waits in
+  Claude's message box. The host never tells the panel that the message was deleted there, so the user lifts the lock:
+  "Choose another job" ends the card's line, and the focus then goes to the first job.
+- A press that deletes something the app would have to download again ("Remove kept copies") takes two presses within
+  six seconds; Escape, or the focus moved away, takes the first press back. A double-click is one press, and the armed
+  words are also said in a line only a screen reader gets.
 - "Copy it into the chat" (not "type it"): the box under it selects the whole message with one click.
 - A message or an error sits under what caused it: the reply to a press under the press, a link's failure beside the
   link. At the card's foot it stood far below the press, and was sometimes said twice.
@@ -220,6 +226,38 @@ change is in [changes/1.5.0.md](../changes/1.5.0.md); the short release notes ar
 - The outline is yellow with black lines inside and outside, so it shows on cloud, sand and snow; it sits one pixel
   out, so no line covers the square.
 - Scene cloud is in a fold: it is the whole image's cloud, not the square's, and would mislead on the face.
+- The cloud rule (round r5-p). Each month's date is the scene with the least cloud and shadow on the outlined square
+  by the scene's own Scene Classification Layer (SCL, made by ESA's Sen2Cor with every L2A product; a 20 m file on the
+  same file store as the bands, so no new host and no change to the question). Covered classes: 3 (cloud shadow), 8 and
+  9 (cloud of medium and of high probability), 10 (thin cirrus), the default of rslearn's `Sentinel2SCLToMask`. Snow
+  (11), dark features (2) and unclassified (7) are not covered: they are often the real ground. Up to 6 masks are read
+  per month, least scene cloud first, stopping at the first that marks nothing on the square; then up to 3 scenes'
+  bands. When the scene its mask shows clear has too little data on the square, mask reading resumes before the next
+  band read, so no scene is picked unscored while its mask can be read. A mask counts when it has data on
+  at least half of the square. A date is "cloudy" on the pane (`cloud_here` "covered", folded) when the mask marks at
+  least one pixel of the square. A mask with data on less than half of the square never counts as clear: the record
+  keeps it as "covered", and when it marks nothing the pane shows its date as one with no mask ("unknown", not
+  folded); its Details line says "no data on most of the square", with no share.
+- The picture is checked too (20 Nov 2026, a coastal map's label sheets pictured live): Sen2Cor's SCL classed squares
+  white with thick cloud right at a coastline as land and water (classes 5 and 6, the same counts as on a clear date,
+  cloud probability 0), so the date picked was a white square. A scene whose picture is white on at least 25% of the
+  outlined square (red, green and blue reflectance all at least 0.4: the missed cloud was 0.8 to 1.0; clear water,
+  plants, sand, concrete and most beaches stay below) counts as cloudy whatever its mask says; the next
+  scene is tried. When every scene tried is white there, the least cloudy by both signals is shown, folded, with the line
+  "picture: white on N% of the square (cloud, fog, or bright ground such as snow)". The month keeps `white_share`; the pick is
+  `scl-cover@2`.
+- Cloudy dates are folded away, never dropped: the mask is sometimes wrong (bright roofs, sand, surf, snow), so the
+  labeller can still open them. When every date is marked, all show and one line says so. A date with no mask is shown
+  as before. The masks have their own small budget (15 seconds, 32 MiB, 250 requests): a mask that cannot be read never
+  fails the pictures, and that date is ranked by scene cloud as before. The request cap was 150 before the round's
+  review: 12 months of 6 masks are 72 masks, each up to 3 requests. The 15 seconds can still end the mask reads first
+  on a cold call; a mask left unread falls back to the least-scene-cloud order (not yet measured on live masks).
+- The masks of all the months are read first (up to 8 months at a time), then the bands: which months are scored does
+  not depend on when a month's bands start. The time that pass took (at most 15 seconds) is added to the bands' 40
+  seconds, so slow masks never make the bands late; the reads of one call can now take up to 55 seconds in all. When
+  the band reads fail, the masks' time is ended too, so no mask read holds the failing call.
+- Sources of the cloud rule: ESA SentiWiki, the Sentinel-2 L2A Scene Classification table (the class numbers); rslearn
+  `Sentinel2SCLToMask` (the excluded classes 3, 8, 9, 10).
 - A label read from these pictures is a reading of the map's own sensor, so the result is agreement with that reading,
   not ground truth; the result says so.
 

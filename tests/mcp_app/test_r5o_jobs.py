@@ -20,6 +20,12 @@ harness (scripts/mcp_views_e2e.py) draws them: 11_start_card,
 19k_start_jobs_once and 4_studio_projects (T2: the lock and its line at 780
 and 380 px, a press of another job by a click and by Enter; T3: the Copy
 message button, pressed), and 11g_start_settings_asta (T2: the Asta tile).
+
+Round r5-p (19 Nov 2026) changed what T2 pins, and the pins here follow:
+the pressed job's line says where to press Send (J2), and the user lifts
+the lock with Choose another job (J1: the locked lines end with that text
+button and no longer say to ask Claude for another job; a locked button's
+title names it). Its own tests are in test_r5p_jobs.py.
 """
 
 from __future__ import annotations
@@ -31,21 +37,20 @@ from olmoearth_agent.mcp_app import views
 ROOT = Path(__file__).resolve().parents[2]
 
 #: T2: what the pressed job button's slot says once its message is in the chat.
-JOB_SENT_ONE = "Sent to the chat. If it waits there, press Send."
+#: Round r5-p J2: it says where to press Send.
+JOB_SENT_ONE = "Sent to the chat. Press Send in the message box below."
 #: What the other sends' slots say, as before.
 JOB_SENT = "Sent to the chat. Claude answers there."
-#: T2, after review: a locked job button's title.
-JOB_LOCKED_TITLE = "One job at a time: to start another, ask Claude."
+#: T2, after review: a locked job button's title. Round r5-p J1: it names
+#: Choose another job.
+JOB_LOCKED_TITLE = "One job at a time: press Choose another job first, or ask Claude."
 #: T2, after review: the start card's line once its tiles are locked, signed in
-#: and signed out, and the projects panel's.
-START_NEXT_LOCKED = "One job is in the chat. To start another, ask Claude in the chat."
-START_NEXT_LOCKED_OUT = (
-    "Sign in first, then ask Claude in the chat to start another job."
-)
-PROJECTS_NEXT_LOCKED = (
-    "One job is in the chat. To start another, ask Claude. "
-    '"Show its maps" still opens a project.'
-)
+#: and signed out, and the projects panel's. Round r5-p J1: each is followed
+#: by the Choose another job text button, so no line says to ask Claude for
+#: another job; signed out it says that the Studio jobs need a sign-in.
+START_NEXT_LOCKED = "One job is in the chat."
+START_NEXT_LOCKED_OUT = "One job is in the chat. Sign in for the Studio jobs."
+PROJECTS_NEXT_LOCKED = 'One job is in the chat. "Show its maps" still opens a project.'
 
 
 def _read(name: str) -> str:
@@ -69,12 +74,13 @@ def _in_order(text: str, *pieces: str) -> bool:
 
 
 def test_t2_the_one_job_line_is_a_new_constant_and_the_old_line_stays() -> None:
-    """T2: OE.JOB_SENT_ONE holds the spec's words, marked r5o; OE.JOB_SENT is
-    as it was, for the other sends; the lock's state is the page's (module
-    variables in common.js), unlocked at first."""
+    """T2: OE.JOB_SENT_ONE holds the spec's words (round r5-p J2: its new
+    words, marked r5p); OE.JOB_SENT is as it was, for the other sends; the
+    lock's state is the page's (module variables in common.js), unlocked at
+    first."""
     common = _read("common.js")
     for text in (
-        f"// WORDING: r5o\nOE.JOB_SENT_ONE = '{JOB_SENT_ONE}';\n",
+        f"// WORDING: r5p\nOE.JOB_SENT_ONE = '{JOB_SENT_ONE}';\n",
         f"// WORDING: r5b J20\nOE.JOB_SENT = '{JOB_SENT}';\n",
         "let jobLockedBy = null;",
         "let jobSending = false;",
@@ -153,12 +159,16 @@ def test_t2_a_job_button_is_marked_goes_off_and_is_made_off_once_locked() -> Non
         "jobLockedBy = String(key);",
         "for (const r of jobButtons) {",
         "const b = r.deref();",
-        "if (b) OE.jobIdle(b);",
+        "if (b) { OE.jobIdle(b); lockedButtons.add(new WeakRef(b)); }",
         "jobButtons.clear();",
         "document.dispatchEvent(new Event('oe-jobs-locked'));",
     )
-    # Nothing unlocks while the page lives: the key is set in one place only.
-    assert common.count("jobLockedBy = ") == 2
+    # The key is set in three places: its declaration, the lock, and (round
+    # r5-p J1) the unlock, which only the user's Choose another job runs.
+    assert common.count("jobLockedBy = ") == 3
+    unlock = _between(common, "OE.unlockJobs = () => {", "\n};")
+    assert unlock.count("jobLockedBy = null;") == 1
+    assert common.count("OE.unlockJobs(") == 1
 
 
 def test_t2_the_start_cards_tiles_are_job_buttons() -> None:
@@ -292,7 +302,7 @@ def test_t2_a_locked_job_button_says_why_in_its_title() -> None:
     its title (OE.jobIdle sets it: buttons locked by OE.lockJobs, and those
     made after the lock)."""
     common = _read("common.js")
-    assert f"// WORDING: r5o\nOE.JOB_LOCKED_TITLE = '{JOB_LOCKED_TITLE}';\n" in common
+    assert f"// WORDING: r5p\nOE.JOB_LOCKED_TITLE = '{JOB_LOCKED_TITLE}';\n" in common
     idle = _between(common, "OE.jobIdle = (button) => {", "\n};")
     assert "if (locked) button.title = OE.JOB_LOCKED_TITLE;" in idle
 
@@ -328,20 +338,24 @@ def test_t2_no_line_says_to_press_a_job_once_the_jobs_are_locked() -> None:
     its tiles goes, at each drawing, at each change of the Settings switch
     (offWords asks lockedWords first) and at the moment of the lock (the
     event); the projects panel's line says the same and that "Show its maps"
-    still opens a project, when it is drawn and at the lock."""
+    still opens a project, when it is drawn and at the lock. Round r5-p J1:
+    each of those lines ends with the Choose another job text button
+    (OE.chooseAnotherButton), so no line says to ask Claude any more: signed
+    out the start card's says that the Studio jobs need a sign-in."""
     start = _read("start.html")
-    for name, text in (
-        ("START_NEXT_LOCKED", START_NEXT_LOCKED),
-        ("START_NEXT_LOCKED_OUT", START_NEXT_LOCKED_OUT),
+    for name, text, mark in (
+        ("START_NEXT_LOCKED", START_NEXT_LOCKED, "r5p"),
+        ("START_NEXT_LOCKED_OUT", START_NEXT_LOCKED_OUT, "r5p"),
     ):
-        assert f"// WORDING: r5o\nconst {name} = '{text}';\n" in start, name
+        assert f"// WORDING: {mark}\nconst {name} = '{text}';\n" in start, name
         assert "ress a job" not in text, name
     words = _between(start, "function lockedWords() {", "\n}\n")
     assert _in_order(
         words,
         "if (!OE.jobLocked()) return false;",
         "if (!jobsDrawn) return true;",
-        "next.textContent = jobsDrawn.on ? START_NEXT_LOCKED : START_NEXT_LOCKED_OUT;",
+        "(jobsDrawn.on ? START_NEXT_LOCKED : START_NEXT_LOCKED_OUT) + ' ';",
+        "else next.replaceChildren(words, OE.chooseAnotherButton());",
         "const line = list ? list.previousElementSibling : null;",
         "if (line) line.remove();",
         "\n  return true;",
@@ -355,13 +369,13 @@ def test_t2_no_line_says_to_press_a_job_once_the_jobs_are_locked() -> None:
     assert "document.addEventListener('oe-jobs-locked', lockedWords);" in start
     studio = _read("studio.html")
     name = "PROJECTS_NEXT_LOCKED"
-    assert f"// WORDING: r5o\nconst {name} = '{PROJECTS_NEXT_LOCKED}';\n" in studio
+    assert f"// WORDING: r5p\nconst {name} = '{PROJECTS_NEXT_LOCKED}';\n" in studio
     words = _between(studio, "function lockedWords() {", "\n}\n")
     assert _in_order(
         words,
         "if (!OE.jobLocked()) return;",
         "root.querySelector(':scope > .oe-lead p.next');",
-        "if (next) next.textContent = PROJECTS_NEXT_LOCKED;",
+        "next.replaceChildren(PROJECTS_NEXT_LOCKED + ' ', OE.chooseAnotherButton());",
     )
     render = _between(studio, "function renderProjects(", "\n}\n")
     assert _in_order(render, "OE.lead(PROJECTS_LEAD),", "  fill();\n  lockedWords();")
@@ -424,9 +438,11 @@ def test_the_changelog_and_the_panel_guide_say_both() -> None:
     guide = (ROOT / "docs" / "mcp-app.md").read_text(encoding="utf-8")
     start = _between(guide, "## Start card", "\n## ")
     assert "One job at a time: once a job's message is in the chat" in start
-    assert "press Send. To start another job, ask Claude." in start
+    # Round r5-p (J1, J2): the line's new words, and Choose another job.
+    assert "Press Send in the message box below." in start
+    assert "press **Choose another job** at the end of" in start
     projects = _between(guide, "## Projects panel", "\n## ")
-    assert "the job buttons turn off; to start another, ask Claude." in projects
+    assert "to start another, press **Choose another\njob** at the end" in projects
     fails = _between(guide, "## When a card stops or fails", "\n**What it means.**")
     assert "with **Copy message** under it" in fails
     assert "is sent when you press Send." in fails

@@ -325,7 +325,11 @@ def build_predict_tools() -> list[RegisteredTool]:
                     "(ISO-8601). Get a model_id by reusing one from "
                     "olmoearth_search_predictions. Returns the new "
                     "prediction id and status; poll it with "
-                    "olmoearth_get_prediction."
+                    "olmoearth_get_prediction. "
+                    # WORDING: r5p
+                    "It runs a model on Studio's compute and uses the "
+                    "account's credit: before calling it, tell the user the "
+                    "model, the area and the dates, and wait for their yes."
                 ),
                 parameters={
                     "type": "object",

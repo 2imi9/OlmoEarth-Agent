@@ -663,7 +663,9 @@ def test_m8_a_dates_heading_leaves_its_scene_cloud_to_the_panes_fold() -> None:
     for text in (
         "if (!said.length) return null;",
         "OE.el('details', { class: 'oe-clouds small' }, OE.el('summary', {}, W.cloudFold),",
-        "OE.el('div', {}, W.cloudWhole), ...said.map((label) => OE.el('div', {}, label))",
+        # Round r5-p: each label whole, then its cloud mask line when it has one.
+        "OE.el('div', {}, W.cloudWhole), ...said.map((d) => "
+        "[OE.el('div', {}, String(d.label)),",
     ):
         assert text in fold, text
     # Not the sheet's own "Details" fold, nor the cards' oe-more.

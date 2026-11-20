@@ -434,8 +434,11 @@ OE.sheetWords = (unit) => {
     // WORDING: r4h S3 E/sheet-1; r4m M6
     whatPlaced: 'This sheet has no pictures. See where each ' + one + ' is, then say what was there from your own'
       + ' imagery or records, without looking at the map.',
-    clear: 'The panel marks no date as clear: you decide, from the outlined square itself.'
-      + ' Scene cloud is for the whole satellite image, not this square.',
+    // r5-p: the pane now folds the dates the cloud mask marks, so "the panel
+    // marks no date as clear" was no longer true; the mask is a guide only.
+    // WORDING: r5p
+    clear: 'Sentinel-2\'s own cloud mask is a guide and is sometimes wrong: you decide, from the outlined square'
+      + ' itself. Scene cloud is for the whole satellite image, not this square.',
     // Under the rule, on a face that takes Cannot tell and can show pictures
     // (r4-m M8): the sheet's rule block, or the pictures pane where the page
     // copy has no rule. Only the case the rule leaves open: one clear date
@@ -828,7 +831,31 @@ OE.picture = (p, date, what, caption = null, unit = 'square') => {
    and its pictures under it (A/F24). heading: what a date's block is headed
    by, from its label (the label sheet's pane leaves its scene cloud out,
    r4-m M8); by default the label as it is. The pictures' names keep the
-   whole label. */
+   whole label.
+   r5-p (the owner, labelling live: "a lot of can't-decide cloud pictures"):
+   a date whose scene's own cloud mask marks cloud or shadow on the outlined
+   square (the server's cloud_here: 'covered', imagery._dates) is folded
+   away, in one closed fold right after the shown dates (.oe-cloudy-dates),
+   whose summary says how many (OE.CLOUDY_DATES) and whose first line says
+   whose mark it is and that it is sometimes wrong (OE.CLOUDY_WHY); the
+   folded dates keep their pictures and their month order. When every date
+   with a scene is marked, nothing is folded: all the dates show and one
+   line above them says so (OE.ALL_CLOUDY, .oe-all-cloudy). A date with no
+   mask ('unknown', or no cloud_here at all: an older server) is shown as
+   before, never folded. The face, the list, the test scene and a review
+   set's pane (result.html) all draw their dates here, so all fold alike.
+   The fold stays open across a redraw of the same pictures (the colour
+   switch, an answer): OE.cloudyOpen keeps the names (what) whose fold the
+   user opened. Each date's block carries data-cloud (its cloud_here). */
+// WORDING: r5p
+OE.CLOUDY_DATES = (n) => (n === 1 ? '1 cloudy date' : n + ' cloudy dates');
+// WORDING: r5p
+OE.CLOUDY_WHY = (unit) => 'Sentinel-2\'s own cloud mask marks cloud or shadow on the ' + (unit === 'point' ? 'point' : 'square')
+  + ' on these dates, or it is white in the picture. Both are sometimes wrong (bright roofs, sand, surf, snow).';
+// WORDING: r5p
+OE.ALL_CLOUDY = (unit) => 'Sentinel-2\'s own cloud mask marks cloud or shadow on the ' + (unit === 'point' ? 'point' : 'square')
+  + ' on every date, or it is white in the picture.';
+OE.cloudyOpen = new Set();
 OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, heading = null, unit = 'square' } = {}) => {
   // "False colour" names the near-infrared rendering (r5-b J24: the longer
   // name wrapped the switch to two lines on a narrow panel; the caption
@@ -838,18 +865,42 @@ OE.datesBlock = (dates, what, { colour = 'nir', choose = null, strip = false, he
   const colours = OE.toggle(kinds, colour, (kind) => { if (choose) choose(kind); },
     { label: 'Colours of the pictures', small: true });
   colours.querySelectorAll('button').forEach((b, i) => b.setAttribute('data-focus', 'colour:' + kinds[i][0]));
+  const all = (Array.isArray(dates) ? dates : []).filter((d) => d && typeof d === 'object');
+  const one = (d) => {
+    const shown = (Array.isArray(d.pictures) ? d.pictures : []).filter((p) => OE.goodPicture(p) && p.kind === colour);
+    const label = String(d.label || d.month || '');
+    const block = OE.el('div', { class: 'stack', style: 'gap:4px;border:1px solid var(--rule);border-radius:4px;padding:8px' },
+      OE.el('div', { class: 'small', style: 'font-weight:600' }, heading ? heading(label) : label),
+      shown.length ? OE.el('div', { class: 'row', style: 'align-items:flex-start;gap:12px;flex-wrap:wrap' },
+        shown.map((p) => OE.picture(p, String(d.label || ''), what, null, unit))) : null);
+    if (typeof d.cloud_here === 'string') block.setAttribute('data-cloud', d.cloud_here);
+    return block;
+  };
+  // r5-p: the dates the cloud mask marks on the square, folded away unless
+  // they are every date with a scene (then all show, under one line).
+  const cloudy = all.filter((d) => d.cloud_here === 'covered');
+  const masked = all.filter((d) => typeof d.cloud_here === 'string');
+  const every = cloudy.length > 0 && cloudy.length === masked.length;
+  const folds = cloudy.length > 0 && !every;
+  const open = folds ? all.filter((d) => d.cloud_here !== 'covered') : all;
+  let fold = null;
+  if (folds) {
+    const key = String(what);
+    fold = OE.el('details', { class: 'oe-cloudy-dates', open: OE.cloudyOpen.has(key) },
+      OE.el('summary', { class: 'small' }, OE.CLOUDY_DATES(cloudy.length)),
+      OE.el('div', { class: 'small', style: 'margin:6px 0 8px' }, OE.CLOUDY_WHY(unit)),
+      OE.el('div', strip ? { class: 'face-dates' } : { class: 'stack' }, cloudy.map(one)));
+    fold.addEventListener('toggle', () => {
+      if (fold.open) OE.cloudyOpen.add(key); else OE.cloudyOpen.delete(key);
+    });
+  }
   return OE.el('div', { class: 'stack', style: 'gap:10px' },
     OE.el('div', {}, colours),
+    every ? OE.el('div', { class: 'small oe-all-cloudy' }, OE.ALL_CLOUDY(unit)) : null,
     OE.el('div', strip
       ? { class: 'face-dates', role: 'region', 'aria-label': 'Dates, ' + what }
-      : { class: 'stack' }, dates.map((d) => {
-      const shown = (Array.isArray(d.pictures) ? d.pictures : []).filter((p) => OE.goodPicture(p) && p.kind === colour);
-      const label = String(d.label || d.month || '');
-      return OE.el('div', { class: 'stack', style: 'gap:4px;border:1px solid var(--rule);border-radius:4px;padding:8px' },
-        OE.el('div', { class: 'small', style: 'font-weight:600' }, heading ? heading(label) : label),
-        shown.length ? OE.el('div', { class: 'row', style: 'align-items:flex-start;gap:12px;flex-wrap:wrap' },
-          shown.map((p) => OE.picture(p, String(d.label || ''), what, null, unit))) : null);
-    })));
+      : { class: 'stack' }, open.map(one)),
+    fold);
 };
 
 OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
@@ -2337,12 +2388,19 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     const m = sceneCloud(label);
     return m ? m[1] : label;
   }
+  /* r5-p: after each date's label, its cloud mask line as the server words
+     it (the date's mask_line, imagery.mask_line: none on the square, cloud or
+     shadow on a share of it, or no mask for the date), set in a little
+     (.oe-mask-line). The labels stay word for word; an answer with no such
+     line (an older server) draws the fold as before. */
   function cloudFold(dates) {
-    const said = dates.map((d) => String((d && d.label) || '')).filter((label) => sceneCloud(label) !== null);
+    const said = dates.filter((d) => d && sceneCloud(String(d.label || '')) !== null);
     if (!said.length) return null;
     // WORDING: r4m M8 (W.cloudFold, W.cloudWhole)
     return OE.el('details', { class: 'oe-clouds small' }, OE.el('summary', {}, W.cloudFold),
-      OE.el('div', {}, W.cloudWhole), ...said.map((label) => OE.el('div', {}, label)));
+      OE.el('div', {}, W.cloudWhole), ...said.map((d) => [OE.el('div', {}, String(d.label)),
+        typeof d.mask_line === 'string' && d.mask_line
+          ? OE.el('div', { class: 'oe-mask-line', style: 'padding-left:12px' }, d.mask_line) : null]));
   }
 
   /* A rule's two halves (r4-m M8), each in the rule's own words: up to its
@@ -3262,8 +3320,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // small line hangs loose under the rule; before, the scope was a line of
   // the block). Who set the rule and when (data.rule_scope) is history, in
   // the Details fold (scopeNote; since r5-l L1 no line after it says which
-  // maps the rule is for); that no date is marked clear
-  // (A/sheet-3) is in the fold too, only on a sheet that can show pictures:
+  // maps the rule is for); that the cloud mask is a guide and the labeller
+  // decides (A/sheet-3; r5-p, before: that no date is marked clear) is in the fold too, only on a sheet that can show pictures:
   // one that cannot shows no date to mark. The rule itself is at body size,
   // "Rule: " in bold (r5-b J14: the one text needed at every answer was the
   // smallest on the card), and the block stands right above the answers and

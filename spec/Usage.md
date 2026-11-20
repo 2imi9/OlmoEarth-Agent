@@ -750,8 +750,11 @@ map from the docs; its wide form is the docs' own figure.
 
 **The line under a job button.** A job button's press shows under the button: "Sent to the chat. Claude answers
 there." once Claude took the message; when the host does not take it, "Claude did not get this message. Copy it into
-the chat:" in red, over the whole text in a box that one click selects whole, to copy. The same holds for the start
-card's jobs, the projects card's, the Check card's and a result card's buttons and a sheet's finish button. That line
+the chat:" in red, over the whole text in a box that one click selects whole, to copy. The same holds for the Check
+card's and a result card's buttons and a sheet's finish button. A start card tile or a projects panel job button says
+"Sent to the chat. Press Send in the message box below." instead, and turns the card's other job buttons off (pointing
+at one says "One job at a time: press Choose another job first, or ask Claude."); "Choose another job", at the end of
+the card's line, turns them back on, empties the job lines and puts the focus on the first job. That line
 is the only place that says it: the status line (at the card's foot; on the Check card once it shows its press or a
 sheet, right under that press or sheet) does not repeat it, so a screen reader hears it once. "Tell Claude: this
 project" and the sign-in's "Continue in the chat" show no line under them; a message the host does not take says so
@@ -808,7 +811,8 @@ width (at least 86 px tall), the line inside its tile, named by its label with t
 out, a tile that is off keeps its label and its line in the readable secondary text colour, and "Sign in to start a
 job." stands over the tiles, inside their card, at body size in the body colour. Each request asks Claude to show the
 user's projects, where the projects card's job buttons pick the prediction or the model. A job's press says under its
-row "Sent to the chat. Claude answers there." ([the line under a job button](#every-panel)). With Asta on in the
+row "Sent to the chat. Press Send in the message box below.", and the other tiles turn off until "Choose another job"
+is pressed ([the line under a job button](#every-panel)). With Asta on in the
 card's Settings box, one more tile, "Search papers with Asta", stands last under "Other jobs", on signed in or out
 ([Settings](#settings)).
 
@@ -1814,7 +1818,8 @@ look-first list. It is off until the user switches it on in the panel, after a q
 what each receives: the catalogue (`earth-search.aws.element84.com`) the map's extent, rounded outward to 0.1 degree,
 and its period, once per sheet or review set (one search per month, paged; sent again only if the searches did not
 complete); the bucket (`e84-earth-search-sentinel-data.s3.us-west-2.amazonaws.com`) byte-range requests for parts of
-four band files for each scene tried (at most three per month); both see the computer's IP address. Nothing goes to
+four band files for each scene tried (at most three per month) and of the scene's own cloud mask (at most six per
+month); both see the computer's IP address. Nothing goes to
 Studio or to Claude.
 
 **The question.** Its face is three short lines: "Show satellite (Sentinel-2) pictures of each square? To fetch them,
@@ -1849,9 +1854,12 @@ raster's header; the window's centre is checked against the sheet's row before a
 Studio result without a scores file has no raster to place the window, so it gets no pictures ("Street map" stays).
 
 **The dates and the views.** For each calendar month of the map's period (at most 12; a period ending on the first day
-of a month does not add that month), the scene with the least scene cloud whose data covers the picture and at least
-90% of the outlined square, up to three scenes tried; the same rule for every window, blind to its map class, stratum
-and order. Per date: near-infrared false colour (B08, B04, B03, reflectance 0 to 0.30) and true colour (B04, B03, B02,
+of a month does not add that month), the scene with the least cloud and shadow on the outlined square by the scene's
+own cloud mask (its Scene Classification Layer, classes 3, 8, 9 and 10), whose data covers the picture and at least
+90% of the outlined square; up to six masks read and up to three scenes' bands tried, least scene cloud first; a date
+without a mask is ranked by scene cloud; the same rule for every window, blind to its map class, stratum and order.
+Dates the mask marks cloudy are folded away in the pane, not dropped. Per date: near-infrared false colour (B08, B04,
+B03, reflectance 0 to 0.30) and true colour (B04, B03, B02,
 0 to 0.20), one fixed stretch, nearest neighbour onto the map's own grid; a context view (7 squares a side) with the
 square outlined over the picture ("Context, square outlined"), and a detail view (3 squares a side). The outline is 2
 pixels of yellow with a 1-pixel black line outside and inside it, so it shows on cloud, sand or snow; the frame sits one
@@ -2285,9 +2293,11 @@ The box's words exist only while it is open: with the switch off, no word of Ast
 - "Maps kept on this computer": "2 maps kept for 24 h, so they open without downloading again." (the copies
   downloaded less than `OLMOEARTH_STUDIO_KEEP_HOURS` ago, 24 by default) or "None kept."; reading the row first
   removes the copies past that limit (every readable copy at 0), as the next download would
-  (`studio_scores._prune_kept`), so no expired copy stays behind "None kept."; while some are kept, "Remove kept
-  copies" removes every kept copy whose record names its folder, an expired one too (`studio_scores.forget_kept` for
-  each).
+  (`studio_scores._prune_kept`), so no expired copy stays behind "None kept."; while some are kept, the first press of
+  "Remove kept copies" only changes the button to "Press again to remove" for six seconds, and a second press in that
+  time removes every kept copy whose record names its folder, an expired one too (`studio_scores.forget_kept` for
+  each); Escape on the button, the focus moved away or the six seconds passing puts the words back and removes
+  nothing.
 
 **The tools.** Two app-only tools, listed to a client with panels with `visibility: ["app"]` and quiet (the model
 reads `{"ok": true}` from them on every path, a failure too): `olmoearth_app_settings` (no argument) answers the
