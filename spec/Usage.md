@@ -640,6 +640,22 @@ host's server list or a bug report tells one build from another.
 
 **Quick setup.** Step by step, for a person or a coding agent: [mcp-app-setup.md](../docs/mcp-app-setup.md).
 
+**The install command.** `olmoearth-agent-mcp install` (`mcp_app/install.py`) writes the `olmoearth-agent` entry into
+Claude Desktop's config, so nobody edits the file by hand; `uninstall` removes only that entry. With no subcommand the
+program serves on stdio, as a host starts it. Its safety rules: it never prints the config, any `env` value or another
+server's entry; every other entry and top-level key is kept, in the same order, and an entry already there in Claude
+Desktop's config keeps its `env` block (only `command` and `args` are replaced); a backup is made beside the file
+first (mode 600; a full copy, so an agent must not open it either) and the new content replaces the file by an atomic
+rename, keeping its mode; a config that is not a valid JSON object, or that holds `NaN`, `Infinity` or a number too
+large to keep, is left as it is (exit 1); a config that cannot be written is as it was, and the line says so; the
+download runs first, and a failed download changes nothing; it never opens the saved Studio key; and it sends nothing
+anywhere except uv's own download from GitHub and PyPI. `--claude-code` also runs `claude mcp add --scope user`, after
+Claude Desktop's config is written (an entry already in Claude Code is removed and added again, without its `--env`
+settings, which must be given again; the command says so, and says when the old entry is gone and the new one was not
+added); `--ref` pins a release or commit (without it the entry is set back to main); `--config` names another file
+(an empty value is refused, exit 2); `--dry-run` only shows the file and the entry; `--no-download` skips the
+download. Exit codes: 0 done or nothing to do, 1 a failure, 2 no uv, a bad `--ref` or an empty `--config`.
+
 **Claude Desktop.** Settings, Developer, Edit Config, then add the server. Use uv's absolute path (`which uv`), because
 an app started from the Dock does not have the shell's PATH:
 

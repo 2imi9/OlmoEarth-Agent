@@ -140,7 +140,16 @@ from olmoearth_agent.harness import ThreadState
 from olmoearth_agent.harness.soul import load_soul, with_capability_card
 from olmoearth_agent.harness.spill import SPILL_BYTES_ENV, compact_result_for_llm
 from olmoearth_agent.llm.types import ToolCall
-from olmoearth_agent.mcp_app import auth, check, glyph, imagery, review, settings, sheet
+from olmoearth_agent.mcp_app import (
+    auth,
+    check,
+    glyph,
+    imagery,
+    install,
+    review,
+    settings,
+    sheet,
+)
 from olmoearth_agent.mcp_app.views import (
     UI_EXTENSION,
     VIEW_MIME,
@@ -7257,12 +7266,19 @@ def _enter_output_root(environ: dict[str, str] | Any) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the MCP App on stdio (``olmoearth-agent-mcp``)."""
+    """Run the MCP App on stdio (``olmoearth-agent-mcp``).
+
+    With ``install`` or ``uninstall`` (round r5-q, :mod:`install`) it edits a
+    host's config and ends; with no subcommand it serves, as before.
+    """
     parser = argparse.ArgumentParser(
         prog="olmoearth-agent-mcp",
         description="The OlmoEarth Agent's tools and views as an MCP App, on stdio.",
     )
-    parser.parse_args(argv)
+    install.add_subcommands(parser)
+    args = parser.parse_args(argv)
+    if args.command:
+        return install.run(args)
     try:
         import anyio
         from mcp.server.stdio import stdio_server
