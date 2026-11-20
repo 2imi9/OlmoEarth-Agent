@@ -659,10 +659,9 @@ def test_j12_the_last_line_is_under_the_range_at_body_size() -> None:
     assert card.count("r.last_line") == 2
     assert "{ class: 'small' }, r.last_line" not in page
     assert re.search(r"\.oe-last\s*\{", page) is None
-    # The sentence itself is the server's, unchanged.
+    # The sentence itself is the server's (its words are round r5-s W3's).
     assert server.LAST_LINE_PICTURES == (
-        "Checked against satellite pictures, not a site visit; no verdict on "
-        "whether the map is good enough."
+        "Compared with what you saw in the satellite pictures."
     )
 
 
@@ -672,7 +671,7 @@ def test_j12_the_last_line_is_under_the_range_at_body_size() -> None:
 def test_j23_the_rule_and_the_class_lines_are_in_details() -> None:
     """J23: the "Rule you used" line and each class line are pushed first
     into the Details fold; the face, which ends where the fold's lines start,
-    appends neither; under the squares only the no-split line stays."""
+    appends neither; under the squares no line stays (round r5-s W2)."""
     page = _read("result.html")
     card = _between(page, "function resultCard(", "\n}\n")
     face, fold = card.split("  const folded = [];\n")
@@ -689,10 +688,9 @@ def test_j23_the_rule_and_the_class_lines_are_in_details() -> None:
         "let classLines = [];",
         ".filter((c) => c && typeof c === 'object' && text(c.line))",
         ".map((c) => OE.el('p', { class: 'small oe-class-line' }, c.line));",
-        "OE.fig.squares(sq),\n      text(sq.no_split) ? OE.el('p', { class: 'small"
-        " oe-no-split' }, sq.no_split) : null));",
+        "OE.fig.squares(sq)));\n",
     )
-    assert "classLines" not in face.split("OE.fig.squares(sq),")[1]
+    assert "classLines" not in face.split("OE.fig.squares(sq)));")[1]
     assert "...classLines" not in card and "...lines" not in card
     # The fold's order: the rule, the class lines, then what it held before.
     assert _in_order(

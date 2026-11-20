@@ -113,7 +113,9 @@ cloud at a coastline. Both are sometimes wrong (bright roofs, sand, surf, snow).
 **What to press.** Press **Pictures**; the first time, the app asks before it sends anything (the box around the map,
 rounded out, and its months, to the public Earth Search catalogue). Look at the outlined square and press what you
 see, or **Cannot tell**; the next square without an answer shows, and the left and right arrow keys move between
-squares. When every square is answered, press **Estimate the error rate**.
+squares. **Next unlabelled**, beside Previous and Next (key U, unless an answer on the sheet already uses U), shows the
+next square with no answer; when 1 to 3 squares are left the counter names them ("Unlabelled: Square 29"), and a press
+on one opens it. When every square is answered, press **Estimate the error rate**.
 
 **What it means.** You label blind: the sheet does not show what the map says at a square, and the app works out
 right or wrong. Do not guess: a Cannot tell widens the range, a guess can make the result wrong. Answers are saved
@@ -129,18 +131,22 @@ were not saved. Press **Reopen the sheet**, then answer those squares again.
 ![Result card: the error rate with its 95% range, and the squares checked, counted by kind](images/mcp-app/panels/result.png)
 
 **What you see.** The part and map checked, the dates and the number of squares, then one sentence: how often the
-map is wrong, in words and as a percent, with its 95% range. The line under it draws the rate as a dot and the range
-as a band. Then the squares you checked, counted by kind (a red edge: the map said otherwise), and on a map in parts
+map is wrong, in words and as a percent, with its 95% range, in an outlined box. The line under it draws the rate as
+a dot and the range as a band. Then the squares you checked, counted by kind (a red edge: the map said otherwise), and on a map in parts
 one box per part.
 
 **What to press.** Nothing more is needed. **Check each class the map draws** asks Claude for a second, separate
 check, picked class by class. To check another part, ask Claude to open the Check card again. **Details** holds the
-rule you used and the numbers behind the card.
+rule you used and the numbers behind the card. **Export the labels** writes your answers next to the sheet as a CSV
+file and a GeoJSON file (each square's outline, or its centre point where the map's grid cannot be read) and shows
+where they are, with **Copy path** for each file. It is refused once the sheet's answers changed after its result.
 
-**What it means.** The rate holds for that part only, checked against satellite pictures, not a site visit; the
-card gives no verdict on whether the map is good enough. With Cannot tell answers the sentence gives two rates: if
-each Cannot tell were right, or if each were wrong. Report each part with its own range, side by side; never average
-them.
+**What it means.** The rate holds for that part only. Under it the card says what the map was compared with:
+"Compared with what you saw in the satellite pictures." (or "Compared with your answers."). That is a reading of
+pictures, not a site visit, and no verdict on whether the map is good enough. With Cannot tell answers the sentence
+gives two rates: if each Cannot tell were right, or if each were wrong; the squares then have no line per class,
+since a Cannot tell square could hold any class. On a map in parts the heading "Parts of this map" stands over one
+box per part: report each part with its own range, side by side; never average them.
 
 **When it fails.** "Not finished yet" means some squares have no answer: answer them on the sheet and press its
 button again. "This result is out of date" means the sheet's answers changed after its first result, which showed

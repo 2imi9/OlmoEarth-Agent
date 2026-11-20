@@ -126,8 +126,12 @@ POINTS_REQUEST = (
     "First ask me how many points to check and which way to pick them."
 )
 
-#: The result card's parts lines (r4-h R3, A/F03 FINAL), with the reason
-#: r4-m M2 gives.
+#: The model's parts lines (r4-h R3, A/F03 FINAL), with the reason r4-m M2
+#: gives; the result card's face has their first sentence, and since round
+#: r5-s its Details line describes (:data:`SIDE_BY_SIDE`).
+SIDE_BY_SIDE = (
+    "Each part has its own result: this check gives no range for a combined rate."
+)
 OTHER_PART = (
     "Check the other part too. Report the parts' results side by side; do not "
     "average or add them: this check gives no range for a combined rate."
@@ -716,15 +720,17 @@ def test_r4h_the_result_cards_headline_and_line() -> None:
     assert at == sorted(at)
 
 
-def test_r4h_the_result_cards_parts_are_never_averaged() -> None:
-    """r4-h R3 (B/result-parts-not-averaged, A/F03 FINALs): the parts' heading
-    says one result per part, never averaged; the line while a part is not
-    checked is the server's SAY_OTHER (SAY_OTHERS for k parts), word for
-    word: since round r5-e, R4 its first sentence on the face and its second
-    (the server's SAY_SIDE_BY_SIDE) in Details (sideBySide)."""
+def test_r4h_the_result_cards_parts_line() -> None:
+    """r4-h R3 (B/result-parts-not-averaged, A/F03 FINALs): the line while a
+    part is not checked is the first sentence of the server's SAY_OTHER
+    (SAY_OTHERS for k parts), word for word, on the face since round r5-e,
+    R4. Round r5-s: the parts' heading names what is under it (W1: "Parts of
+    this map"), and Details' line (sideBySide) describes, a result for each
+    part and the reason (W8); the server's second sentence, which tells how
+    to report the parts, is the model's alone."""
     page = _read("result.html")
     words = _between(page, "const RESULT_WORDS = {", "\n};")
-    assert "  partsHead: 'One result per part, never averaged'," in words
+    assert "  // WORDING: r5s\n  partsHead: 'Parts of this map'," in words
     assert "Which part this is" not in page
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
@@ -735,10 +741,13 @@ def test_r4h_the_result_cards_parts_are_never_averaged() -> None:
     many_said = _concat(many, {"k": "3"})
     assert one_said.endswith(ask) and many_said.endswith(ask)
     side = _concat(_entry(words, "sideBySide: "), {})
-    assert side == server.SAY_SIDE_BY_SIDE.strip()
-    first = one_said.removesuffix(ask) + " " + side
+    assert side == SIDE_BY_SIDE
+    assert "  // WORDING: r5e R4 (in Details)\n  sideBySide: '" in words
+    told = server.SAY_SIDE_BY_SIDE.strip()
+    assert told not in page and told.split(";")[0] not in page
+    first = one_said.removesuffix(ask) + " " + told
     assert first == OTHER_PART == server.SAY_OTHER.strip()
-    shown = many_said.removesuffix(ask) + " " + side
+    shown = many_said.removesuffix(ask) + " " + told
     assert shown == OTHER_PARTS == server.SAY_OTHERS.format(k="3").strip()
 
 

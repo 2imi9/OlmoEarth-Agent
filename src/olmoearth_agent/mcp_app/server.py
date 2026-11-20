@@ -98,7 +98,11 @@ extension keys and the UI extension's ``mimeTypes``. A look-first card
 gives a square's or point's street map link (``olmoearth_app_review_link``)
 and the list with its places as a CSV file (``olmoearth_app_review_csv``) at
 the user's press (r4-k K7, K8): places go only to the user's browser or a
-file the user saves. None of them takes the Studio key: the key
+file the user saves. The result card of a labelled sheet writes the sheet's
+answers as two files next to it at the user's press
+(``olmoearth_app_export_labels``, round r5-r R2, :mod:`labels_export`): the
+model reads that they were written and their paths, never their contents
+(:data:`EXPORT_TOOL`). None of them takes the Studio key: the key
 is typed into a page this server serves on ``127.0.0.1``
 (:class:`~olmoearth_agent.mcp_app.auth.BrowserSignIn`), so it is in no MCP
 message. A client without views gets the same page as a link in the text of
@@ -146,6 +150,7 @@ from olmoearth_agent.mcp_app import (
     glyph,
     imagery,
     install,
+    labels_export,
     review,
     settings,
     sheet,
@@ -802,6 +807,13 @@ SETTINGS_TOOLS = frozenset({"olmoearth_app_settings", "olmoearth_app_setting"})
 QUIET_APP_TOOLS = (
     IMAGERY_TOOLS | frozenset({HOST_REPORT_TOOL, CHECK_STATUS_TOOL}) | SETTINGS_TOOLS
 )
+
+#: The views' tool that writes a labelled sheet's answers as two files next
+#: to it, at the user's press on the result card (round r5-r R2,
+#: :mod:`labels_export`). The one views' tool whose answer the model reads
+#: more of than ``{"ok": true}``: that the files were written and their
+#: paths, never their contents (:func:`_app_said`).
+EXPORT_TOOL = "olmoearth_app_export_labels"
 
 #: A host report's events: a panel started, or its host tore it down.
 HOST_EVENTS = ("start", "teardown")
@@ -2292,12 +2304,9 @@ LEGEND_WRONG = "Outlined in red: the map said otherwise"
 #: (``squares.legend``'s ``{"unjudged": true}`` entry): the sheet's own word.
 # WORDING: r4i O2
 LEGEND_CANNOT = sheet.CANNOT_TELL
-#: In place of the class lines under the squares when some were Cannot tell
-#: (any of them may hold any class): ``{k}`` of them, or one.
-# WORDING: r4i O2
-NO_SPLIT = "No split by class: {k} {units} were Cannot tell, and each could be either."
-# WORDING: r4i O2
-NO_SPLIT_ONE = "No split by class: 1 {unit} was Cannot tell, and it could be either."
+# Round r5-s W2: the card has no line in place of the class lines when some
+# squares were Cannot tell (it said "No split by class: ..."); the squares'
+# own dashed row shows them. The view's ``squares.no_split`` stays, ``None``.
 # WORDING: squares
 RANGE_ROW = "95% range"
 # WORDING: squares
@@ -2316,17 +2325,13 @@ RANGE_ROW_DETAIL_POINTS = (
 # WORDING: r4p2
 METHOD_ROW = "Method (the statistics package's words)"
 #: The card's last line, one sentence (the reader test's E/est-5): what the
-#: map was checked against, and no verdict.
-# WORDING: r4h R5, E/est-5
-LAST_LINE_PICTURES = (
-    "Checked against satellite pictures, not a site visit; no verdict on whether "
-    "the map is good enough."
-)
-# WORDING: r4h R5
-LAST_LINE_ANSWERS = (
-    "Checked against your answers, not a site visit; no verdict on whether the "
-    "map is good enough."
-)
+#: map was compared with. Round r5-s W3: the card says that and no more; that
+#: it is no visit on site and no verdict on the map is the model's third
+#: say-first line (:data:`SAY_LIMITS`), as before.
+# WORDING: r5s
+LAST_LINE_PICTURES = "Compared with what you saw in the satellite pictures."
+# WORDING: r5s
+LAST_LINE_ANSWERS = "Compared with your answers."
 #: Said when the map's own classes number more than two: the rate is a share
 #: of squares, never an area of one class. Added to the model's third
 #: say-first line (:data:`SAY_LIMITS`); the card says it in Details, in words
@@ -2855,10 +2860,10 @@ def _squares(
     ``unjudged``: an empty dashed square each, never wrong) the grid stays,
     the at most :data:`SQUARES_MAX_CLASSES` classes counted over the judged
     squares, but no class row has a line or a range (a Cannot tell square
-    may hold any class): ``no_split`` says so in their place
-    (:data:`NO_SPLIT`, :data:`NO_SPLIT_ONE`), and the legend names the
-    dashed square (:data:`LEGEND_CANNOT`) after the classes, before the red
-    outline. ``no_split`` is ``None`` and ``n_unjudged`` 0 without them.
+    may hold any class), and the legend names the dashed square
+    (:data:`LEGEND_CANNOT`) after the classes, before the red outline.
+    ``n_unjudged`` is 0 without them. ``no_split`` is always ``None`` (round
+    r5-s W2: the card has no line in the class lines' place).
     """
     if not isinstance(got, dict) or got.get("face") == "wrong":
         return None
@@ -2905,7 +2910,7 @@ def _squares(
         elif k <= CLASS_FEW_MAX:
             line = None  # said under the headline (_uncovered)
         elif cannot:
-            line = None  # any Cannot tell square may hold it: no_split
+            line = None  # any Cannot tell square may hold it
         elif span:
             line = CLASS_LINE.format(
                 name=name,
@@ -2940,14 +2945,8 @@ def _squares(
         }
         for c in used
     ]
-    no_split: str | None = None
     if cannot:
         legend.append({"unjudged": True, "text": LEGEND_CANNOT})
-        no_split = (
-            NO_SPLIT_ONE.format(unit=_unit_word(unit))
-            if cannot == 1
-            else NO_SPLIT.format(k=f"{cannot:,}", units=_units(unit, cannot))
-        )
     legend.append({"wrong": True, "text": LEGEND_WRONG})
     unseen_detail = _unseen_lines(unseen, unit)[1]
     return {
@@ -2956,7 +2955,8 @@ def _squares(
         "legend": legend,
         "unseen_line": None,
         "unseen_detail": unseen_detail,
-        "no_split": no_split,
+        # Round r5-s W2: no line in the class lines' place; the key stays.
+        "no_split": None,
         "n_unjudged": cannot,
     }
 
@@ -3122,6 +3122,30 @@ def _finish_label(path: str | None) -> str | None:
     except Exception:  # noqa: BLE001 - unknown: the estimate's own words
         return None
     return label if isinstance(label, str) and label else None
+
+
+def _export_offer(
+    name: str, graded_path: str | None, envelope: dict[str, Any], view: dict[str, Any]
+) -> dict[str, str] | None:
+    """What an estimate's view offers to export (round r5-r R2): the two
+    paths the result card's press sends back (``labels_export.offer``), or
+    ``None``.
+
+    Only for the estimate tool, on the sheet it graded (``graded_path``),
+    with an ok result that is not withdrawn (``view["result"]["withdrawn"]``,
+    round r5-k K1), and only for a sheet the export would take (every square
+    answered, the graded mark written, its answers those first graded).
+    Reads only; never raises.
+    """
+    result = view.get("result")
+    if (
+        name != ESTIMATE_TOOL
+        or graded_path is None
+        or envelope.get("ok") is not True
+        or (isinstance(result, dict) and result.get("withdrawn"))
+    ):
+        return None
+    return labels_export.offer(graded_path)
 
 
 def _grade_mark(
@@ -4815,6 +4839,13 @@ class AppServer:
             unit,
             press,
         )
+        # The result of a labelled sheet offers the export of its labels
+        # (round r5-r R2, :func:`_export_offer`).
+        export = await asyncio.to_thread(
+            _export_offer, name, graded_path, envelope, view
+        )
+        if export is not None:
+            view["export"] = export
         block = view.get("review")
         pictured = views and isinstance(block, dict) and block.get("pictures") is True
         if pictured:
@@ -6215,6 +6246,31 @@ class AppServer:
         key = args.get("review_key")
         return await asyncio.to_thread(lambda: review.review_csv(key, save=save))
 
+    async def _app_export_labels(self, args: dict[str, Any]) -> dict[str, Any]:
+        """A labelled sheet's answers as two files next to it, at the user's
+        press on its result card (round r5-r R2,
+        ``labels_export.export_labels``): ``<stem>_labels_export.csv`` and
+        ``<stem>_labels_export.geojson``.
+
+        ``labels_csv_path`` is checked as every sheet tool checks it (a
+        plan's sheet inside the output root) and ``design_path`` must be the
+        design file beside it; refused while a square has no answer, while the
+        sheet has no result yet, and once its answers changed after that
+        result. ``text`` (a host that saves files): each
+        file's text beside its name, which the page passes straight on to
+        the host. The answer names the files and their folder; the model
+        reads that they were written and their paths, never their contents
+        (:func:`_app_said`)."""
+        path = _required_text(args, "labels_csv_path")
+        design = _required_text(args, "design_path")
+        text = args.get("text", False)
+        if not isinstance(text, bool):
+            # WORDING: r5r
+            raise ValueError("text must be true or false")
+        return await asyncio.to_thread(
+            lambda: labels_export.export_labels(path, design, text=text)
+        )
+
     async def _app_host_report(self, args: dict[str, Any]) -> dict[str, Any]:
         """A panel's one report of what its host supports, after it connects
         or when its host tears it down (r4-k K3): checked
@@ -6513,6 +6569,16 @@ class AppServer:
             error = str(exc) if isinstance(exc, ValueError) else check.UNREADABLE
             return {**record, "state": "failed", "error": error, "retry": False}
         return finished
+
+
+def _app_said(name: str, result: dict[str, Any]) -> dict[str, Any]:
+    """What the model reads of a views' tool's answer: ``{"ok": true}``, and
+    for the labels export (:data:`EXPORT_TOOL`, round r5-r R2) that the files
+    were written and their paths (``labels_export.model_text``), never
+    their contents."""
+    if name == EXPORT_TOOL:
+        return labels_export.model_text(result)
+    return {"ok": True}
 
 
 def _required_text(args: dict[str, Any], key: str) -> str:
@@ -6874,6 +6940,22 @@ APP_TOOLS: dict[str, tuple[str, dict[str, Any]]] = {
             "required": ["review_key"],
         },
     ),
+    # WORDING: r5r
+    EXPORT_TOOL: (
+        "Write a labelled sheet's answers next to it as a CSV file and a GeoJSON "
+        "file, at the user's press on its result card: only once every square is "
+        "answered and the sheet has its result. With text, each file's text for "
+        "the host's download.",
+        {
+            "type": "object",
+            "properties": {
+                "labels_csv_path": {"type": "string"},
+                "design_path": {"type": "string"},
+                "text": {"type": "boolean"},
+            },
+            "required": ["labels_csv_path", "design_path"],
+        },
+    ),
 }
 
 #: The app's tools for the model, beside the agent's: name -> (view or None,
@@ -7144,9 +7226,10 @@ def build_server(app: AppServer | None = None) -> Any:
         """Route a call: the app's own tools, the views' tools, else the agent's.
 
         A views' tool's answer is the view's (``structuredContent``); the
-        model reads ``{"ok": true}``, and a failure's error, but for
-        :data:`QUIET_APP_TOOLS`, whose failure it reads as ``{"ok": true}``
-        too."""
+        model reads ``{"ok": true}`` (of the labels export, that its files
+        were written and their paths: :func:`_app_said`, round r5-r R2), and
+        a failure's error, but for :data:`QUIET_APP_TOOLS`, whose failure it
+        reads as ``{"ok": true}`` too."""
         arguments = arguments or {}
         if name == "olmoearth_sign_in":
             return await app.sign_in_tool(views=client_renders_views(server))
@@ -7175,7 +7258,7 @@ def build_server(app: AppServer | None = None) -> Any:
                 failed = app_error(exc, f"{type(exc).__name__}: the call failed")
             else:
                 return types.CallToolResult(
-                    content=_text({"ok": True}), structuredContent=result
+                    content=_text(_app_said(name, result)), structuredContent=result
                 )
             if name in QUIET_APP_TOOLS:
                 # The pictures' tools and the host report tell the model

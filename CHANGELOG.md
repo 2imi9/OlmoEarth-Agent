@@ -10,6 +10,17 @@ See [Development](spec/Usage.md#development) for the convention.
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-11-20
+
+### Added
+- Label sheet: a "Next unlabelled" button beside Previous and Next (key U, unless an answer on the sheet already uses U) shows the next square with no answer, so a sheet does not stop at 99/100 with the empty square hard to find. It shows only while a square has no answer.
+- Label sheet: while 1 to 3 squares are left, the counter names them ("Unlabelled: Square 29") and each opens at a press; the line by the grey finish button now reads "Answer every square first: go to the next unlabelled." and its last words go there too.
+- Result card: "Export the labels". Once a labelled sheet has its result, one press writes its answers next to the sheet as two files, `<sheet>_labels_export.csv` (one row per square: the map's answer, what you chose, right or wrong, the place) and `<sheet>_labels_export.geojson` (for a GIS: each square's outline, or its centre point where the map's grid cannot be read, which the card then says). The card names the files and their folder, with **Copy path** for each (a file's whole path shows only when it has to be copied by hand), and **Download** where the host saves files. The places stay in the files: none is shown on the card or told to Claude. The export is refused, in one plain sentence, once the sheet's answers changed after its result.
+- Result card: the main sentence (how often the map is wrong, with its 95% range) now sits in an outlined box, so it stands out; the range figure stays right under it.
+
+### Fixes
+- Cards say what you see in plain words: the result card's heading over the parts is "Parts of this map", its line under the range is "Compared with what you saw in the satellite pictures." (or "Compared with your answers."), and the "No split by class" line under the squares is gone; the Check card's Details say "Each part gets its own result."; the second check "gets its own result"; the label sheet's Details say "Your answers are a reading of satellite pictures." The rules behind these lines (report parts side by side, never average them; a reading of pictures is not a site visit and no verdict on the map) stay in what Claude says with a result and in the docs. No number changes.
+
 ## [1.5.3] - 2026-11-20
 
 ### Added

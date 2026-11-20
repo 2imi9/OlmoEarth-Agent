@@ -758,17 +758,32 @@ def _inside_roots(real: str) -> bool:
     )
 
 
-def _load_map(path: Any) -> _Map:
-    """A scores file's map, cached by the file's identity; :class:`_Refused`."""
-    try:
-        real = os.path.realpath(str(path))
-        st = os.stat(real)
-    except (OSError, ValueError) as exc:
-        raise _Refused(NO_FOOTPRINT) from exc
-    key = (real, st.st_mtime_ns, st.st_size)
-    with _maps_lock:
-        if key in _maps:
-            return _maps[key]
+@dataclass(frozen=True)
+class _Grid:
+    """What a square's outline needs of a map: its grid and raster header,
+    no period (r5-r: the labels export outlines a map with none recorded)."""
+
+    scores_name: str
+    raster_sha256: str | None
+    crs: str
+    transform: tuple[float, float, float, float, float, float]
+    grid: tuple[int, int]
+    patch: int
+
+
+def _read_grid(
+    real: str, *, period: bool
+) -> tuple[_Grid, tuple[datetime, datetime] | None, Any, Any]:
+    """A scores file's grid and its raster's header: the grid, the map's
+    period (``None`` without ``period``), and the raster's own crs and
+    bounds; :class:`_Refused`.
+
+    The raster must be a ``.tif`` inside the read roots (the same rule for
+    the pictures and the outlines), the grid must fit it and its recorded
+    shape must be the raster's. With ``period`` the scores file must record
+    its ``date_window`` (:data:`NO_PERIOD`), checked where the pictures
+    always checked it.
+    """
     try:
         loaded = review_set.load_scores_file(real)
         meta = loaded.meta
@@ -785,16 +800,23 @@ def _load_map(path: Any) -> _Map:
         or patch < 1
     ):
         raise _Refused(NO_FOOTPRINT)
-    window = meta.get("date_window")
-    if not isinstance(window, dict) or not window.get("start") or not window.get("end"):
-        raise _Refused(NO_PERIOD)
-    try:
-        start = s2_fetch.parse_moment(window["start"], end=False)
-        end = s2_fetch.parse_moment(window["end"], end=True)
-    except (TypeError, ValueError) as exc:
-        raise _Refused(NO_PERIOD) from exc
+    span: tuple[datetime, datetime] | None = None
+    if period:
+        window = meta.get("date_window")
+        if (
+            not isinstance(window, dict)
+            or not window.get("start")
+            or not window.get("end")
+        ):
+            raise _Refused(NO_PERIOD)
+        try:
+            span = (
+                s2_fetch.parse_moment(window["start"], end=False),
+                s2_fetch.parse_moment(window["end"], end=True),
+            )
+        except (TypeError, ValueError) as exc:
+            raise _Refused(NO_PERIOD) from exc
     rasterio = importlib.import_module("rasterio")
-    warp = importlib.import_module("rasterio.warp")
     try:
         with rasterio.open(raster_real) as src:  # the header only, on disk
             crs, transform = src.crs, src.transform
@@ -810,13 +832,7 @@ def _load_map(path: Any) -> _Map:
         or (isinstance(shape, list) and shape[-2:] != [height, width])
     ):
         raise _Refused(NO_FOOTPRINT)
-    try:
-        extent = s2_fetch.rounded(
-            warp.transform_bounds(crs, "EPSG:4326", *bounds, densify_pts=21)
-        )
-    except ValueError as exc:  # across the antimeridian
-        raise _Refused(NO_FOOTPRINT) from exc
-    found = _Map(
+    found = _Grid(
         scores_name=os.path.basename(real),
         raster_sha256=(
             raster.get("sha256") if isinstance(raster.get("sha256"), str) else None
@@ -825,8 +841,52 @@ def _load_map(path: Any) -> _Map:
         transform=tuple(transform)[:6],
         grid=(int(grid[0]), int(grid[1])),
         patch=patch,
-        start=start,
-        end=end,
+    )
+    return found, span, crs, bounds
+
+
+def _load_grid(path: Any) -> _Grid:
+    """A scores file's grid and raster header, whether or not it records a
+    period (r5-r: the labels export's outlines); not cached;
+    :class:`_Refused`."""
+    try:
+        real = os.path.realpath(str(path))
+        os.stat(real)
+    except (OSError, ValueError) as exc:
+        raise _Refused(NO_FOOTPRINT) from exc
+    return _read_grid(real, period=False)[0]
+
+
+def _load_map(path: Any) -> _Map:
+    """A scores file's map, cached by the file's identity; :class:`_Refused`."""
+    try:
+        real = os.path.realpath(str(path))
+        st = os.stat(real)
+    except (OSError, ValueError) as exc:
+        raise _Refused(NO_FOOTPRINT) from exc
+    key = (real, st.st_mtime_ns, st.st_size)
+    with _maps_lock:
+        if key in _maps:
+            return _maps[key]
+    grid, span, crs, bounds = _read_grid(real, period=True)
+    if span is None:  # not reached: period=True gives one or refuses
+        raise _Refused(NO_PERIOD)
+    warp = importlib.import_module("rasterio.warp")
+    try:
+        extent = s2_fetch.rounded(
+            warp.transform_bounds(crs, "EPSG:4326", *bounds, densify_pts=21)
+        )
+    except ValueError as exc:  # across the antimeridian
+        raise _Refused(NO_FOOTPRINT) from exc
+    found = _Map(
+        scores_name=grid.scores_name,
+        raster_sha256=grid.raster_sha256,
+        crs=grid.crs,
+        transform=grid.transform,
+        grid=grid.grid,
+        patch=grid.patch,
+        start=span[0],
+        end=span[1],
         extent=extent,
     )
     with _maps_lock:

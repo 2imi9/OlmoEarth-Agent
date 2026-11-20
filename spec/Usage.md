@@ -1612,7 +1612,9 @@ ignored), and their Details say the seen sheet's blind line.
 #### The finish button
 
 The finish button sits in the footer from the first open, greyed until every window is labelled and saved. While a
-window has no answer, "Answer every square first." ("point" on a sheet of points) stands beside it, so the grey button
+window has no answer, "Answer every square first: go to the next unlabelled." ("point" on a sheet of points) stands
+beside it, its last words a text button that shows the next window with no answer (as "Next unlabelled" does; in the
+list, the first row with no answer takes the focus), so the grey button
 has its reason in words, and the button names that line as its description (`aria-describedby`), so a screen reader
 that reaches it hears why (not while the sheet stopped saving, which has its own footer words, not while only a save is
 pending, and never on a sheet that already gave its result, whose answers are locked: there that place says "A square
@@ -1656,7 +1658,7 @@ square, two sets of answers: nothing in the panel can fill or remove them) keeps
 What the panel tells Claude names the button by the words it shows. So the panel cannot blank a square of a graded
 sheet; a square still blank on one (blanked in a spreadsheet after the grading) leaves its finish button grey, with "A
 square has no answer; a new result needs a fresh sheet." beside it as its description, never "Answer every square
-first.". A graded sheet that holds two sets of answers keeps its notice of them but offers no button that removes one;
+first: go to the next unlabelled.". A graded sheet that holds two sets of answers keeps its notice of them but offers no button that removes one;
 its notice says only "This sheet now holds two sets of answers." (the note and the footer say that a new result needs
 a fresh sheet).
 
@@ -1667,7 +1669,8 @@ line): what to do, "Say what you see in each square's satellite pictures, withou
 sheet "..., without looking at the two maps.", and the locked line above once its maps' answers were shown; a sheet
 with no pictures and no places has its own line, below); and one Cannot tell line, "Cannot judge a square? Press
 Cannot tell; do not guess." (what a guess costs is in Details; or a certificate's own need; none on a two-map sheet).
-There is no third line: the footer says "Answer every square first." beside the greyed finish button.
+There is no third line: the footer says "Answer every square first: go to the next unlabelled." beside the greyed
+finish button.
 
 Then the face's own instruction where it has one, and never on a graded sheet, which asks for no answer, nor on a
 two-map sheet whose maps' answers were shown, whose answers are locked (right or wrong; the class seen with the period,
@@ -1680,7 +1683,7 @@ its Details fold after the file name.
 **Details.** The fold says what Cannot tell does: you still get a result, with a wider range, but without the
 per-class lines. Everything else (the file name, the rule's scope, on a sheet that already gave its result why its
 answers must not change now, the keys, what Cannot tell does to the result, what never reaches the panel, the Street
-map line, the clear-date note, that the answers are a reading of satellite pictures and not a visit on site, and with
+map line, the clear-date note, that the answers are a reading of satellite pictures, and with
 the example pictures "A public place, not your map. Contains modified Copernicus Sentinel data <year>.") is in one
 closed "Details" fold under the answers.
 
@@ -1747,7 +1750,17 @@ each date is its own outlined block.
 
 **Answers.** An answer's key sets the answer, never clears it, and the next window not yet labelled shows, in the
 sheet's order, wrapping round; the left and right arrow keys move to the window before or after. A press on the answer
-given clears it. The answer given is told by a pale fill, a dark outline, bold words and a tick before them (left out
+given clears it. While a window has no answer, a third button stands beside Previous and Next, "Next unlabelled": it
+shows the next window with no answer after the one shown, wrapping round, and the focus stays on it, as on Next; it is
+grey while the window shown is the only one with no answer; its key is U where no answer of the sheet has that key (the
+keys line in Details then ends "U shows the next unlabelled square." while a window has no answer). The three are equal
+columns, one size, two to a row on a narrow panel; Previous and Next keep that size and place once every window is
+answered. While 1 to 3 windows are left and at least one is answered, the counter's row names them, "Unlabelled: Square
+29" or "Unlabelled: Squares 7, 29 and 80", each a text button ("Go to square 29" for a screen reader) that shows it on
+the face; from the footer (these, and the jump of the grey finish button's line) the face takes the focus, so an
+answer's key works at once. Showing a window is not answering: nothing is saved, and it works on a locked sheet. A
+window's place only: never what the map says there.
+The answer given is told by a pale fill, a dark outline, bold words and a tick before them (left out
 of the button's name for a screen reader), not by the dark fill of the sheet's one action button; the pressed button of
 a joined toggle (the two views, the pictures' colours, an answer in the list) is bold with a dark line inside its edge.
 The answers are equal cells of one grid, every row as tall as the tallest (two a row on a narrow panel, four on a wide
@@ -1946,8 +1959,9 @@ at 0, where the headline writes the rate "0.0% wrong"). Below 0.95 the words are
 inside the 95% range as printed; when none does, the headline gives the rate plainly ("Error rate: 44.0%, 95% range
 41.9% to 46.1%."). Only the words change with the phrase: the exact rate and the range are the estimate's.
 
-**Under the range.** At the size of the other text, the headline block's last line: "Checked against satellite pictures
-(or your answers), not a site visit; no verdict on whether the map is good enough." Directly under that block, what
+**Under the range.** At the size of the other text, the headline block's last line says what the map was compared with:
+"Compared with what you saw in the satellite pictures." (or "Compared with your answers."); that this is no site visit
+and no verdict on whether the map is good enough is in Claude's own lines, not on the card. Directly under that block, what
 the check did not cover: one class too few squares had ('Only 3 of the 80 squares had "present"; the map agreed on 0
 of them. Too few to say how well the map finds "present".'); two or more, or any with Cannot tell answers, by name only
 in one line ('Too few squares to say how well the map finds: "A", "B".'), with each one's counted line first under
@@ -1963,7 +1977,7 @@ shows for a random design only, a simple random sample of the whole map or part,
 part's file), one outlined button, "Check each class the map draws", sends Claude a request for a new check of that
 result and part picked class by class (`olmoearth_plan_label_sample` on the `scores_path` that `olmoearth_check_map`
 gives for that part, since the planner has no part argument and by result id samples the whole result; points by
-result id), its own check and ranges, never pooled with this one, asking first how many squares (or points); Details
+result id), which "gets its own result", asking first how many squares (or points); Details
 say what that check is.
 
 **The tally.** Then the squares checked as a tally, one row per kind of square that occurs, at every number of
@@ -1977,7 +1991,7 @@ otherwise are the only red of the figure. Every row is one height and the counts
 (as the parts' labels); there is no legend, since each row says what it is, and the figure has one name for a screen
 reader, each row's words with its count.
 
-**Parts.** "One result per part, never averaged" with the parts figure (each part's words, "West part: this result",
+**Parts.** "Parts of this map" with the parts figure (each part's words, "West part: this result",
 inside its own box, every box in the row one height; a part's width follows its share from 561 px up, never narrower
 than its label on one line, and the parts that do not fit one row go on to the next, never wider than their shares
 there, so a short last row stays short, at the left; on a panel of 560 px or less the parts are stacked, each full
@@ -1989,8 +2003,8 @@ came with the app)" (the earlier kelp rule, on a sheet made with it, keeps "(the
 day (Claude gets the app's rule with its scope and nothing more, and no day for a typed rule); a count line per class
 seen in 5 squares or more, its name in straight quotes as the sheet gives it ('Where you saw "Present" (74 squares),
 the map also said "Present" on 70; agreement range: ...', from what the reader saw; an all-digit name 'class "3"'), so
-the face holds one range; on a map of two parts or more, "Report the parts' results side by side; do not average or
-add them: this check gives no range for a combined rate." (Claude's lines and the Check card's say the same reason);
+the face holds one range; on a map of two parts or more, "Each part has its own result: this check gives no range for a
+combined rate." (Claude's lines give the same reason, and say to report the parts side by side, never averaged);
 the rare classes' counted lines, and on a map of more than two classes "This check says nothing about the area of any
 one class." (Claude's line keeps "It says nothing about the area of any one class."); the unseen classes' names; what
 the second check is; the tool's rows, with the range's method; the figure and where the sheet file is; the notes.
@@ -2004,7 +2018,7 @@ or 12.5%" ("between 10.0% and 12.5%" with no Cannot tell, a label long enough th
 inward from that end, so the figure's edge never cuts it), and the figure named "10.0% or 12.5%; 95% range 6.1% to
 21.7%" for a screen reader (Claude's line and the Details keep their words; no number changes). The squares stay: a
 Cannot tell square is an empty dashed square, its row ("Cannot tell") the last of the tally, and no class has a count
-line; one line takes their place ("No split by class: 2 squares were Cannot tell, and each could be either."). Claude's
+line, and no line takes their place. Claude's
 lines add a fourth with the classes seen too rarely or not at all (with Cannot tell, "You saw X in no square." for
 those no square had); the third ends with the area sentence on a map of more than two classes, and on a map of two
 parts or more whose parts are all graded the second still says to report the parts side by side. A graded part whose
@@ -2063,6 +2077,44 @@ from it either, nor from a zone or certificate on its design file; an estimate's
 knows whether it is withdrawn (`server._estimate_recorded`), so a report made meanwhile finds no rate rather than this
 one.
 
+#### The boxed headline and the labels' export
+
+**The box.** The card's main sentence (the headline: how often the map is wrong, with its 95% range) sits in an
+outlined box: a 1.5 px border in the card's text colour, 6 px corners, on the paper background. The range figure stays
+right under the box, outside it. A withdrawn result's out-of-date rate, in its Details, keeps its warning words and
+the box. No other card has it.
+
+**Export the labels.** The result of a labelled sheet (one map, a part, or a two-map comparison) offers "Export the
+labels", a plain button over the card's Details fold; the server offers it only for the sheet the estimate graded,
+with every square answered and its result recorded, never for a withdrawn result or a sheet whose answers changed
+since its first result (the view's `export`: `server._export_offer`, `labels_export.offer`). The press calls the
+app-only tool `olmoearth_app_export_labels` with the sheet's
+`labels_csv_path` and `design_path` (the sheet checked as every sheet tool checks it, inside the output folder; the
+design must be the file beside it), which writes next to the sheet, each whole and mode 0600:
+
+- `<stem>_labels_export.csv`: plain CSV, one row per square in the order the sheet showed them: `square` (1 to n),
+  `window_index`, `row`, `col`, `lon`, `lat`, `map_answer` (the map's class, by its name where the sheet names it),
+  `seen` (what the reviewer chose, or "Cannot tell") and `wrong` (1, 0 or ?); a two-map sheet adds `map_b_answer` and
+  `wrong_b`.
+- `<stem>_labels_export.geojson`: a FeatureCollection, one Polygon per square (its window's square on the map's grid,
+  as the pictures outline it, in EPSG:4326; a map that records no period is outlined too), its properties the CSV row
+  without the place and as the sheet holds them (the CSV alone puts `'` before an answer a spreadsheet would read as
+  a formula, so a class written `-1` is `'-1` in the CSV and `-1` here). Where the map's grid cannot be read here (a
+  sheet of points, no raster or one outside the read folders, a grid that does not match the raster, a row that
+  disagrees with the grid, no `inferencex` extra), each feature is the row's centre as a Point, and a row with no
+  place has a null geometry; the answer's `outline` says which (`square`, `point`, `none`), and the card says so in
+  one small line when it is not `square`.
+
+The tool refuses, in one plain sentence the card shows as it is, while a square has no answer ("Answer every square
+on the sheet first: ..."), before the sheet has its result, and once the sheet's answers changed after that result
+(changed since the first result, or graded again after a change: the result on the card is not theirs); any other
+failure gets the card's one fixed sentence. The card then says once "Saved on this computer, in the app's folder." (a
+status line, so a screen reader hears it), shows the folder once and, for each file, its name with a "Copy path"
+button (the file's whole path shows only when the panel may not write the clipboard and it has to be copied by hand),
+and where the host saves files a "Download" button (Claude offers none today, so the path is the way there). No place
+is on the card, in a toast or in what Claude is told; the model reads that the files were written and their paths,
+never their contents.
+
 ### The plan card
 
 A plan's card (`olmoearth_plan_label_sample`) holds the rows, the figure and the notes of [the result
@@ -2074,8 +2126,8 @@ square (or point) is answered, while the sheet is not open in it, the second lin
 "Open the sheet" to get the result.' (the button is named by its label in double quotes, never repeated bare), and a
 later read below the whole sheet puts the first words back. A read of the counts that answers only after another card
 was drawn in its place changes nothing on the new card. Once the sheet opens in the card, the second line goes with the
-button: the sheet's footer then says "Answer every square first." beside its grey finish button, so the card says it
-once.
+button: the sheet's footer then says "Answer every square first: go to the next unlabelled." beside its grey finish
+button, so the card says it once.
 
 **Its button.** The card's one contained button comes right under those lines and before the closed "Details" fold,
 the card's last block; once the sheet opens in the card, Details sits under the sheet. The button remembers its sheet.

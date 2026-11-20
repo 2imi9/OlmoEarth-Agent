@@ -211,20 +211,38 @@ def test_l1_the_figure_saves_only_where_the_host_saves_files() -> None:
 
 
 def test_l1_every_download_a_view_asks_for_is_gated() -> None:
-    """r4-l L1: the views ask the host for a download in two places only, the
-    figure's save button and the look-first CSV (K8), each after
-    OE.canDownload(app) in the same block; no other page calls it."""
+    """r4-l L1: the views ask the host for a download in three places only,
+    the figure's save button, the look-first CSV (K8) and the labels export
+    (round r5-r R2), each gated by OE.canDownload(app) in the same block; no
+    other page calls it."""
     calls = {
         name: len(re.findall(r"\bapp\.downloadFile\(", views.view_html(name)))
         for name in views.VIEWS
     }
-    assert calls == {name: 2 if name == "result" else 0 for name in views.VIEWS}
+    assert calls == {name: 3 if name == "result" else 0 for name in views.VIEWS}
     page = views.view_html("result")
     figure = _between(page, "function figureBlock(app, data,", "\n}\n")
     csv = _between(page, "  function csvBlock() {", "\n  }\n")
     for block in (figure, csv):
         assert block.count("app.downloadFile(") == 1
         assert block.index("OE.canDownload(app)") < block.index("app.downloadFile(")
+    # r5-r R2: the export's Download button is defined before the press that
+    # reads the gate, so it is held by its one call, which the gate guards.
+    export = _between(page, "function exportBlock(app, offer) {", "\n}\n")
+    assert export.count("app.downloadFile(") == 1
+    assert (
+        "const canSave = typeof OE.canDownload === 'function' && OE.canDownload(app);"
+        in export
+    )
+    assert export.count("downloadButton(file)") == 1
+    assert (
+        "if (canSave && typeof file.text === 'string' && file.text)"
+        " buttons.append(downloadButton(file));" in export
+    )
+    assert (
+        "draw(list, got && text(got.folder) ? got.folder : '', canSave,"
+        " got ? got.outline : undefined);" in export
+    )
 
 
 # --------------------------------------------------------------------------- L2

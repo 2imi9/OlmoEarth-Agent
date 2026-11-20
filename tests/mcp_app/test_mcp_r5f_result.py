@@ -24,7 +24,7 @@ the scripts):
   tally, one row per kind of square (tests/mcp_app/test_mcp_r5g_result.py):
   here only that the bar is gone and that the server's cells still come
   grouped, which is the tally's order;
-- F07: under "One result per part, never averaged" the face's line says
+- F07: under the parts' heading the face's line says
   where the other part is checked: "Check the other part too. Ask Claude to
   open the Check card again."; the model's lines keep their words;
 - F10: a plan card's lead says that the squares were picked at random and
@@ -92,6 +92,10 @@ BAR_GONE = (
 ASK_CHECK = "Ask Claude to open the Check card again."
 OTHER_ONE = "Check the other part too. Ask Claude to open the Check card again."
 OTHER_THREE = "Check the other 3 parts too. Ask Claude to open the Check card again."
+#: Round r5-s W8: the Details line on the parts, in words that describe.
+SIDE_BY_SIDE = (
+    "Each part has its own result: this check gives no range for a combined rate."
+)
 
 #: F10: the plan's two sentences, of squares and of points, and the words it
 #: had; the second is the lead's "next" line since track SHEET's F02 (after
@@ -318,7 +322,7 @@ def test_f06_the_servers_cells_come_in_runs() -> None:
 
 
 def test_f07_the_other_part_line_says_where_to_check_it() -> None:
-    """F07: under "One result per part, never averaged" the face's line is
+    """F07: under the parts' heading the face's line is
     the first sentence of the server's SAY_OTHER (SAY_OTHERS for k parts) and
     then, in a sentence of its own, where that check is started: "Ask Claude
     to open the Check card again.", words the Check card itself uses, since no
@@ -352,7 +356,8 @@ def test_f07_the_other_part_line_says_where_to_check_it() -> None:
 def test_f07_the_models_lines_keep_their_words() -> None:
     """F07 changes the card's face only: the model's lines (SAY_OTHER,
     SAY_OTHERS) are as r4-m M2 wrote them and do not name the Check card, and
-    Details keeps the side-by-side sentence, the server's word for word."""
+    Details' sentence on the parts was the server's word for word (words that
+    describe since round r5-s W8; the server's sentence the model's alone)."""
     assert server.SAY_OTHER == (
         " Check the other part too. Report the parts' results side by side; do not "
         "average or add them: this check gives no range for a combined rate."
@@ -365,7 +370,8 @@ def test_f07_the_models_lines_keep_their_words() -> None:
         assert "Check card" not in said
     words = _between(_read("result.html"), "const RESULT_WORDS = {", "\n};")
     side = _concat(_entry(words, "sideBySide: "), {})
-    assert side == server.SAY_SIDE_BY_SIDE.strip()
+    assert side == SIDE_BY_SIDE != server.SAY_SIDE_BY_SIDE.strip()
+    assert "side by side" not in side and "do not" not in side
 
 
 # --------------------------------------------------------------------------- F10
