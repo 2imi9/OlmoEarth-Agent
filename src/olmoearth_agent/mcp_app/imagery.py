@@ -22,7 +22,10 @@ The owner agreed on 11 Nov 2026 (spec/Usage.md, "In Claude, with views"):
   raster's header (CRS, transform). The window's centre is checked against
   the sheet's own row before anything is fetched.
 - Which dates: for each calendar month of the map's period, the scene with
-  the least scene cloud whose data covers the picture (:data:`PICK_RULE`).
+  the least cloud and shadow on the outlined square by the scene's own cloud
+  mask, whose data covers the picture (:data:`PICK_RULE`, round r5-p; before,
+  the least scene cloud, :data:`R5_PICK_RULE`). Dates the mask marks are
+  folded away in the pane, never dropped (``cloud_here``, ``mask_line``).
   The pick never looks at the window's map class, stratum or order, so a
   blind sheet stays blind. Pictures per date: near-infrared false colour and
   true colour, a context view with the window outlined and a detail view, on
@@ -145,8 +148,10 @@ CONSENT_ASK = "\n".join(CONSENT_LINES)
 #: The question's fold (``ask_full``): each host by name and what it gets
 #: (:mod:`s2_fetch`: the catalogue, the extent and the month of each search,
 #: kept in the record, so the squares of a sheet or a review set are searched
-#: once; the file store, byte-range requests for parts of four band files),
-#: and that no credential is sent. The test scene's question
+#: once; the file store, byte-range requests for parts of four band files
+#: and, since round r5-p, of the scene's cloud mask: "parts of image files"
+#: holds for both, so the words and their hash stay), and that no credential
+#: is sent. The test scene's question
 #: (:data:`TEST_ASK`, :data:`REVIEW_TEST_ASK`) follows it in the fold.
 # WORDING: r5k K7
 CONSENT_FULL = (
@@ -258,13 +263,47 @@ APP_RULES: dict[str, str] = {
     R5L_READING_RULE: RULE_SCOPE,
 }
 
-#: How the dates are chosen (the record; the caption says it shorter).
-PICK_RULE = (
+#: How the dates were chosen before round r5-p (the least scene cloud): kept
+#: word for word for readers of the records made with it; no new record
+#: carries it.
+R5_PICK_RULE = (
     "For each calendar month of the map's period, the scene with the least scene "
     "cloud whose data footprint covers the picture and whose data covers at least "
     f"{round(s2_fetch.DATA_SHARE * 100)}% of the outlined square, up to "
     f"{s2_fetch.TRIES_PER_MONTH} scenes tried; the same rule for every window, "
     "blind to its map class, stratum and order."
+)
+
+#: The version of the pick, beside :data:`PICK_RULE` in a record's context
+#: line (round r5-p: the scene's own cloud mask on the square).
+PICK = "scl-cover@2"
+
+#: How the dates are chosen (the record; the caption says it shorter). Round
+#: r5-p: by the scene's own cloud mask on the outlined square
+#: (:func:`s2_fetch.month_stack`).
+# WORDING: r5p
+PICK_RULE = (
+    "For each calendar month of the map's period, the scene with the least cloud "
+    "and shadow on the outlined square by the scene's own Scene Classification "
+    "Layer (Sentinel-2's cloud mask; classes "
+    f"{'/'.join(str(c) for c in s2_fetch.COVERED_CLASSES)}: cloud shadow, cloud "
+    "of medium and of high probability, thin cirrus), among the scenes whose data "
+    "footprint covers the picture and whose data covers at least "
+    f"{round(s2_fetch.DATA_SHARE * 100)}% of the outlined square; up to "
+    f"{s2_fetch.MASK_TRIES} masks read and up to {s2_fetch.TRIES_PER_MONTH} "
+    "scenes' bands read, least scene cloud first; when a scene its mask shows clear "
+    "has too little data on the square, mask reading resumes. A date the mask marks "
+    "cloudy (any marked pixel on the square) is folded away in the pane, not "
+    f"dropped. A mask with data on less than {round(s2_fetch.MASK_VALID * 100)}% of "
+    "the square does not count as clear. A scene whose picture is white on at "
+    f"least {round(s2_fetch.BRIGHT_SHARE * 100)}% of the outlined square (red, "
+    f"green and blue reflectance all at least {s2_fetch.BRIGHT}: thick cloud or "
+    "fog, which the mask can miss at a coastline) counts as cloudy whatever its "
+    "mask says, and the next scene is tried; when every scene tried is white "
+    "there, the least cloudy of them (the larger of its white share and its "
+    "mask's covered share) is shown, folded. A date without a mask is ranked by "
+    "scene cloud as before. The same rule for every window, blind to its map "
+    "class, stratum and order."
 )
 
 #: The fixed stretch, frozen on a public scene unrelated to any project
@@ -279,11 +318,32 @@ STRETCH: dict[str, Any] = {
     "resampling": "nearest neighbour, onto the map's own grid",
 }
 
-#: The pane's caption under the dates.
+#: The pane's caption under the dates (round r5-p: the date is picked by the
+#: cloud mask on the square, and the dates it marks are folded away).
+# WORDING: r5p
 CAPTION = (
-    "One date for each month of the map's period: the scene with the least scene "
-    "cloud that has data here (dates in UTC). Near-infrared false colour shows "
-    "vegetation red and water dark. Magenta: no data."
+    "One date for each month of the map's period: the date with the least cloud "
+    "and shadow on the square by Sentinel-2's own cloud mask and how white the "
+    "square is (dates in UTC); dates marked cloudy are folded away. Near-infrared "
+    "false colour shows vegetation red and water dark. Magenta: no data."
+)
+
+#: A date's line in the Details fold, after its label: what the scene's own
+#: cloud mask says on the outlined square (:func:`mask_line`).
+# WORDING: r5p
+MASK_CLEAR = "cloud mask: none on the square"
+# WORDING: r5p
+MASK_COVERED = "cloud mask: cloud or shadow on {share} of the square"
+# WORDING: r5p
+MASK_HOLE = "cloud mask: no data on most of the square"
+# WORDING: r5p
+MASK_NONE = "cloud mask: none for this date"
+#: A date picked although its picture is white on the square (every scene
+#: tried was: :func:`s2_fetch.white_share`), whatever its mask says.
+# WORDING: r5p
+MASK_WHITE = (
+    "picture: white on {share} of the square (cloud, fog, or bright ground such as "
+    "snow)"
 )
 
 #: Said in front of :data:`CAPTION` on a sheet's own pictures: how big the
@@ -489,13 +549,13 @@ def _failed(said: str) -> dict[str, Any]:
     return out
 
 
-def _no_image(results: list[tuple[s2_fetch.Scene | None, Any, int]]) -> bool:
+def _no_image(results: Iterable[tuple[Any, ...]]) -> bool:
     """Whether no month of the map's period has a scene with data on the
     square (r5-a L2): every month's scene is ``None`` (:func:`_dates` then
     lists empty months only). The pane says one fixed line in place of that
     list. A search cut short (``complete`` false in the record's search
     line) is told by the record alone, never by the pane."""
-    return all(scene is None for scene, _, _ in results)
+    return all(result[0] is None for result in results)
 
 
 # ------------------------------------------------------------------ consent
@@ -969,6 +1029,7 @@ def _header(
             "rule_source": source if rule else None,
             "label_is": LABEL_IS,
             "pick_rule": PICK_RULE,
+            "pick": PICK,
             "stretch": STRETCH,
             "source": {
                 "search": s2_fetch.SEARCH_URL,
@@ -988,6 +1049,7 @@ def _review_header(key: str) -> dict[str, Any]:
             "format": 1,
             "review": key,
             "pick_rule": PICK_RULE,
+            "pick": PICK,
             "stretch": STRETCH,
             "source": {
                 "search": s2_fetch.SEARCH_URL,
@@ -1097,15 +1159,95 @@ def _pictures(stack: Any, square: tuple[int, int, int, int]) -> list[dict[str, A
     return out
 
 
+def mask_line(mask: dict[str, Any]) -> str:
+    """A date's cloud mask line for the Details fold, from what the masks said
+    (:func:`s2_fetch.month_stack`'s ``mask_info``): nothing marked on the
+    square, the share of it marked as cloud or shadow (rounded; "under 1%"
+    below one), a mask with data on too little of the square (less than
+    :data:`s2_fetch.MASK_VALID` of it, where a share of the square cannot be
+    said), or no mask read for the date."""
+    here, covered = mask.get("here"), mask.get("covered_share")
+    valid = mask.get("valid_share")
+    if _white(mask):
+        line = MASK_WHITE.format(share=_share(float(mask["white_share"])))
+        if covered and covered > 0 and (valid is None or valid >= s2_fetch.MASK_VALID):
+            line += "; " + MASK_COVERED.format(share=_share(covered))
+        return line
+    if here == "clear":
+        return MASK_CLEAR
+    if here != "covered" or covered is None:
+        return MASK_NONE
+    if covered <= 0 or (valid is not None and valid < s2_fetch.MASK_VALID):
+        return MASK_HOLE
+    return MASK_COVERED.format(share=_share(covered))
+
+
+def _share(value: float) -> str:
+    """A share of the square in words: a rounded percent, "under 1%" below one."""
+    percent = value * 100
+    return "under 1%" if percent < 1 else f"{round(percent)}%"
+
+
+def _white(mask: dict[str, Any]) -> bool:
+    """Whether the picked scene's picture is white on at least
+    :data:`s2_fetch.BRIGHT_SHARE` of the square (``white_share``, recorded
+    since the white check; absent in an older record)."""
+    white = mask.get("white_share")
+    return (
+        isinstance(white, (int, float))
+        and not isinstance(white, bool)
+        and white >= s2_fetch.BRIGHT_SHARE
+    )
+
+
+def _marked(mask: dict[str, Any]) -> bool:
+    """Whether the cloud mask marks at least one pixel on the square: what
+    the pane folds as a cloudy date. A mask with data on too little of the
+    square and nothing marked, or with no data there at all, is ``"covered"``
+    in the record (it never counts as clear) and is not marked here: the pane
+    shows its date unfolded, as a date with no usable mask. A picture white
+    on the square (:func:`_white`) is marked whatever its mask says."""
+    if _white(mask):
+        return True
+    covered, valid = mask.get("covered_share"), mask.get("valid_share")
+    return (
+        mask.get("here") == "covered"
+        and covered is not None
+        and covered > 0
+        and valid is not None
+        and valid > 0
+    )
+
+
+def cloud_totals(dates: list[dict[str, Any]]) -> dict[str, Any]:
+    """The pane answer's two totals over its dates: ``cloudy_dates``, how many
+    the cloud mask marks on the square (``cloud_here`` is ``"covered"``: at
+    least one marked pixel, :func:`_marked`), and ``all_cloudy``, whether
+    every date with a scene is marked (and there is one). For the model's
+    text and the tests; the view reads each date."""
+    seen = [d["cloud_here"] for d in dates if "cloud_here" in d]
+    cloudy = sum(1 for here in seen if here == "covered")
+    return {"cloudy_dates": cloudy, "all_cloudy": bool(seen) and cloudy == len(seen)}
+
+
 def _dates(
     months: list[tuple[str, datetime, datetime]],
-    results: list[tuple[s2_fetch.Scene | None, Any, int]],
+    results: list[tuple[s2_fetch.Scene | None, Any, int, dict[str, Any]]],
     square: tuple[int, int, int, int],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """The pane's dates and the record's months."""
+    """The pane's dates and the record's months. A date with a scene says
+    what the scene's cloud mask marks on the square (``cloud_here``:
+    ``"clear"``, ``"covered"`` or ``"unknown"``; ``mask_line``, the Details
+    fold's words); a month with no scene has neither. On the pane
+    ``"covered"`` means the mask marks at least one pixel on the square
+    (:func:`_marked`): a mask with data on too little of the square and
+    nothing marked is ``"unknown"`` there, so its date is not folded as
+    cloudy. The record's month keeps what the masks said unchanged
+    (``mask``, where that mask's ``here`` stays ``"covered"``) and the mask's
+    link (``mask_link``)."""
     dates: list[dict[str, Any]] = []
     served: list[dict[str, Any]] = []
-    for (label, _, _), (scene, stack, tried) in zip(months, results):
+    for (label, _, _), (scene, stack, tried, mask) in zip(months, results):
         if scene is None:
             dates.append(
                 {
@@ -1114,16 +1256,25 @@ def _dates(
                     "pictures": [],
                 }
             )
-            served.append({"month": label, "scene": None, "tried": tried})
+            served.append({"month": label, "scene": None, "tried": tried, "mask": mask})
             continue
+        here = mask["here"]
+        if here == "covered" and not _marked(mask):
+            here = "unknown"  # nothing marked on the square: never folded
         dates.append(
             {
                 "month": label,
                 "label": _date_label(scene),
+                "cloud_here": here,
+                "mask_line": mask_line(mask),
                 "pictures": _pictures(stack, square),
             }
         )
-        served.append({"month": label, "tried": tried, **scene.as_record()})
+        kept = scene.as_record()
+        link = kept.pop("mask")
+        served.append(
+            {"month": label, "tried": tried, **kept, "mask_link": link, "mask": mask}
+        )
     return dates, served
 
 
@@ -1272,6 +1423,7 @@ def _window_image(
         "label_is": LABEL_IS,
         "caption": square_size_text(size) + CAPTION,
         "dates": dates,
+        **cloud_totals(dates),
         "pictures": [],
     }
     # No month has a scene with data on this square (r5-a L2): the pane says
@@ -1437,6 +1589,7 @@ def _review_image(
         "label_is": None,
         "caption": CAPTION,
         "dates": dates,
+        **cloud_totals(dates),
         "pictures": [],
     }
     if _no_image(results):  # as a sheet's square (r5-a L2)
@@ -1526,6 +1679,7 @@ def _public_test_scene(*, review: bool = False) -> dict[str, Any]:
         "label_is": None,
         "caption": REVIEW_TEST_CAPTION if review else TEST_CAPTION,
         "dates": dates,
+        **cloud_totals(dates),
         "pictures": [],
     }
 
@@ -1559,8 +1713,9 @@ def example_scene(
     32701-32760) whose 10 m grid the pictures are drawn on; ``period`` the
     first and last day (ISO dates, at most :data:`MAX_MONTHS` months);
     ``patch`` the outlined square's side in pixels (the kelp map's 11, as
-    the test scene's). The same path as a sheet's square: one least-cloud
-    scene per month (:data:`PICK_RULE`), near-infrared false colour and true
+    the test scene's). The same path as a sheet's square: one scene per
+    month, picked by the cloud mask on the square (:data:`PICK_RULE`),
+    near-infrared false colour and true
     colour, each a context view with the square outlined and a detail view
     (:func:`_fixed_box`, :func:`_pictures`), one fixed stretch
     (:data:`STRETCH`). The answer: ``dates`` as a sheet's pane has them,

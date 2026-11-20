@@ -132,8 +132,9 @@ def test_k8_the_start_card_places_the_figure_after_the_jobs_when_wide() -> None:
     assert code.count("wideMedia.addEventListener('change', placeOverview);") == 1
     # The job tile's press, this, and (r5-n S3, after review) the two that read
     # the Settings switch again when the panel is shown or takes the focus, and
-    # (r5-o T2, after review) the one that hears the jobs were locked.
-    assert code.count("addEventListener(") == 5
+    # (r5-o T2, after review) the one that hears the jobs were locked, and
+    # (r5-p J1) the one that hears the lock was lifted (Choose another job).
+    assert code.count("addEventListener(") == 6
     # When Claude closes the card, the listener goes (r4-k K1: OE.cleanups).
     assert (
         "OE.cleanups.add(() => wideMedia.removeEventListener('change', "
@@ -186,7 +187,10 @@ def test_k8_the_figure_keeps_its_caption_and_link_and_one_dark_button() -> None:
         "docs, address));",
     )
     code = _code(page)
-    assert code.count("primary") == 2
+    # Round r5-p J1: a third, unlockedWords' focus on the card's one dark
+    # button when no job tile can be pressed.
+    assert code.count("primary") == 3
+    assert "root.querySelector('button.primary:not(:disabled)')" in code
     assert "class: 'job' + (main && on ? ' primary' : '')" in code
     assert "OE.focusIfHere(root.querySelector('button.primary'));" in code
     style = _between(page, "<style>", "</style>")

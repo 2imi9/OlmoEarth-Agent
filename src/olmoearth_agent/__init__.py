@@ -6,4 +6,4 @@ See ``spec/Usage.md`` at the repository root for the skills, tools and
 operational rules that this package implements at runtime.
 """
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"

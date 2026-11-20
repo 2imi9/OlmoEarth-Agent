@@ -5,7 +5,8 @@ catalogue and bucket (the label sheet's pictures, :mod:`imagery`).
 
 What leaves this computer: one search per month of the period to
 :data:`CATALOGUE_HOST` (an extent rounded outward to 0.1 degree, and the
-month), and byte-range requests for parts of four band files to
+month), and byte-range requests for parts of four band files and of the
+scene's own cloud mask (its Scene Classification Layer, :data:`MASK`) to
 :data:`BUCKET_HOST`. Nothing else, and no credential.
 
 How that is held:
@@ -17,7 +18,9 @@ How that is held:
   end of the call;
 - GDAL opens no socket: rasterio reads each band through a Python opener
   (rasterio 1.4), and this module fetches every byte;
-- one deadline, a byte budget and a request cap per call (:class:`Budget`).
+- one deadline, a byte budget and a request cap per call (:class:`Budget`);
+  the cloud masks have their own, smaller one (:func:`mask_fetch`), and a
+  mask that cannot be read never fails the pictures.
 
 numpy and rasterio are imported lazily (the ``inferencex`` extra), so the
 core install never needs them.
@@ -51,12 +54,45 @@ BANDS = ("red", "green", "blue", "nir")
 SEARCH_LIMIT = 100
 #: Scenes tried per month before the month shows no data here.
 TRIES_PER_MONTH = 3
+#: The scene's own cloud mask, by its Earth Search asset key: the Scene
+#: Classification Layer (SCL) that ESA's Sen2Cor makes with every L2A product,
+#: a 20 m uint8 file beside the bands (0 is no data).
+MASK = "scl"
+#: The SCL classes that hide the ground: cloud shadow (3), cloud of medium (8)
+#: and of high (9) probability, thin cirrus (10); rslearn's Sentinel2SCLToMask
+#: excludes the same four by default. Snow (11), dark features (2),
+#: unclassified (7), water, vegetation and bare ground are not covered: they
+#: are often the real ground.
+COVERED_CLASSES = (3, 8, 9, 10)
+#: Scenes whose mask is read per month at most.
+MASK_TRIES = 6
+#: Share of the outlined square the mask must have data on (SCL != 0) for its
+#: score to count.
+MASK_VALID = 0.5
+#: The cloud masks' own time for one call (:func:`mask_fetch`), and the most
+#: that the masks' pass adds back to the bands' deadline (:func:`dated`).
+MASK_SECONDS = 15.0
+#: Months whose masks are read at a time (one small read each).
+MASK_WORKERS = 8
 
 _JSON_CAP = 20 << 20  # a search answer
 #: Share of the outlined square that must have data in all four bands: L2A
 #: water holds scattered no-data pixels (seen live, 12 Nov 2026), and a
 #: strict "every pixel" would turn water windows away.
 DATA_SHARE = 0.9
+#: A pixel the picture itself shows white: red, green and blue reflectance
+#: all at least this. The thick cloud Sen2Cor's SCL classed as land and water
+#: at a coastline (seen live on 20 Nov 2026 on a coastal map) was 0.8
+#: to 1.0; clear water, plants, sand, concrete and most beaches stay below 0.4
+#: (snow, salt flats and white roofs may not: the fold says the check can be
+#: wrong).
+BRIGHT = 0.4
+#: The share of the square's pixels with data that are white from which a
+#: picture counts as covered, whatever its mask says.
+BRIGHT_SHARE = 0.25
+#: Another band read for a white scene starts only while the band budget has
+#: spent under this share of its requests and bytes.
+WHITE_ROOM = 0.7
 #: Search pages followed at most (the next link is a POST with a token).
 SEARCH_PAGES = 5
 
@@ -125,6 +161,16 @@ class Budget:
         if time.monotonic() > self.deadline:
             raise FetchError("deadline")
 
+    def extend(self, seconds: float) -> None:
+        """Move the deadline ``seconds`` later (never earlier)."""
+        with self._lock:
+            self.deadline += max(0.0, seconds)
+
+    def stop(self) -> None:
+        """End the time now: no further request starts on this budget."""
+        with self._lock:
+            self.deadline = min(self.deadline, time.monotonic())
+
 
 def _default_client() -> httpx.Client:
     return httpx.Client(
@@ -156,6 +202,8 @@ class Scene:
     baseline: str = ""
     #: Outer rings of the item's data footprint (lon, lat); empty: unknown.
     footprint: tuple[tuple[tuple[float, float], ...], ...] = ()
+    #: The scene's cloud mask file (:data:`MASK`); empty: none known.
+    mask_href: str = ""
 
     def as_record(self) -> dict[str, Any]:
         """What the record keeps of the scene."""
@@ -170,6 +218,7 @@ class Scene:
             "hrefs": dict(self.hrefs),
             "baseline": self.baseline,
             "footprint": [[list(p) for p in ring] for ring in self.footprint],
+            "mask": self.mask_href,
         }
 
     def covers(self, points: Iterable[tuple[float, float]]) -> bool:
@@ -181,7 +230,9 @@ class Scene:
 
     @classmethod
     def from_record(cls, data: dict[str, Any]) -> Scene | None:
-        """A scene back from the record, checked as a search answer is."""
+        """A scene back from the record, checked as a search answer is. A
+        record written before the cloud mask (no ``"mask"`` key) derives the
+        mask's link from the red band's (:func:`_derived_mask`)."""
         try:
             hrefs = {b: str(data["hrefs"][b]) for b in BANDS}
             bbox = tuple(float(v) for v in data["bbox"])
@@ -200,9 +251,32 @@ class Scene:
                 hrefs=hrefs,
                 baseline=str(data.get("baseline", "")),
                 footprint=_rings(data.get("footprint") or []),
+                mask_href=(
+                    _mask_link(data["mask"])
+                    if "mask" in data
+                    else _derived_mask(hrefs["red"])
+                ),
             )
         except (KeyError, TypeError, ValueError):
             return None
+
+
+def _mask_link(href: Any) -> str:
+    """A cloud mask's link when it is a .tif on the bucket, else ``""`` (the
+    scene is then used without a mask)."""
+    if not isinstance(href, str) or not allowed(href, BUCKET_HOST):
+        return ""
+    return href if urlsplit(href).path.endswith(".tif") else ""
+
+
+def _derived_mask(red: str) -> str:
+    """The cloud mask's link of a scene recorded before masks were kept: the
+    file ``SCL.tif`` in the red band's folder, when that band is ``B04.tif``;
+    else ``""``. A wrong guess only fails that mask's read."""
+    tail = "/B04.tif"
+    if not urlsplit(red).path.endswith(tail) or not red.endswith(tail):
+        return ""
+    return _mask_link(red[: -len(tail)] + "/SCL.tif")
 
 
 def _inside(point: tuple[float, float], ring: tuple[tuple[float, float], ...]) -> bool:
@@ -255,7 +329,9 @@ def _epsg(props: dict[str, Any]) -> int | None:
 
 def scene_of(feature: Any) -> Scene | None:
     """A search feature as a :class:`Scene`, or ``None`` when it lacks a field
-    the pictures need or a band link is not on the bucket."""
+    the pictures need or a band link is not on the bucket. A cloud mask link
+    (:data:`MASK`) that is missing or not on the bucket leaves the scene
+    usable, without a mask."""
     if not isinstance(feature, dict):
         return None
     props = feature.get("properties")
@@ -278,6 +354,7 @@ def scene_of(feature: Any) -> Scene | None:
         if not urlsplit(href).path.endswith(".tif"):
             return None
         hrefs[band] = href
+    mask = assets.get(MASK)
     ident, when = feature.get("id"), props.get("datetime")
     datatake, grid = props.get("s2:datatake_id"), props.get("grid:code")
     if not all(isinstance(v, str) and v for v in (ident, when, datatake, grid)):
@@ -295,6 +372,7 @@ def scene_of(feature: Any) -> Scene | None:
         hrefs=hrefs,
         baseline=str(props.get("s2:processing_baseline", "")),
         footprint=_footprint(feature.get("geometry")),
+        mask_href=_mask_link(mask.get("href") if isinstance(mask, dict) else None),
     )
 
 
@@ -760,10 +838,10 @@ class Box:
         return list(zip(lons, lats))
 
 
-def read_box(fetch: Fetch, scene: Scene, box: Box) -> Any:
-    """The four bands of ``scene`` on the box's grid (uint16, 0 where there is
-    no data), by nearest neighbour. Raises :class:`FetchError`."""
-    np = importlib.import_module("numpy")
+def _read_band(fetch: Fetch, href: str, scene: Scene, box: Box, out: Any) -> None:
+    """One file of ``scene`` (a band, or its cloud mask) onto the box's grid,
+    written into ``out`` (height, width; 0 where there is no data), by nearest
+    neighbour. Raises :class:`FetchError`."""
     rasterio = importlib.import_module("rasterio")
     warp = importlib.import_module("rasterio.warp")
     windows = importlib.import_module("rasterio.windows")
@@ -773,57 +851,94 @@ def read_box(fetch: Fetch, scene: Scene, box: Box) -> Any:
     corners = [dst * (0, 0), dst * (box.width, box.height)]
     left, right = sorted(p[0] for p in corners)
     bottom, top = sorted(p[1] for p in corners)
+    name = _name()
+    opener = _container(fetch, {name: href})
+    try:
+        # Only the GeoTIFF driver (a VRT or WMS body could make GDAL fetch on
+        # its own), no .netrc, no signing, no session from the environment.
+        with rasterio.Env(
+            session=session_mod.DummySession(),
+            GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR",
+            GDAL_NUM_THREADS="1",
+            GDAL_HTTP_NETRC="NO",
+            AWS_NO_SIGN_REQUEST="YES",
+        ):
+            with rasterio.open(name, driver="GTiff", opener=opener) as src:
+                if src.crs is None or src.crs.to_epsg() != scene.epsg:
+                    raise FetchError("fetch")
+                b = warp.transform_bounds(
+                    box.crs, src.crs, left, bottom, right, top, densify_pts=21
+                )
+                w = windows.from_bounds(*b, transform=src.transform)
+                col0 = max(0, math.floor(w.col_off) - 2)
+                row0 = max(0, math.floor(w.row_off) - 2)
+                col1 = min(src.width, math.ceil(w.col_off + w.width) + 3)
+                row1 = min(src.height, math.ceil(w.row_off + w.height) + 3)
+                if col1 <= col0 or row1 <= row0:
+                    return  # the file does not reach the picture: no data
+                win = windows.Window(col0, row0, col1 - col0, row1 - row0)
+                arr = src.read(1, window=win)
+                if fetch.failed is not None:
+                    raise FetchError("fetch")
+                warp.reproject(
+                    source=arr,
+                    destination=out,
+                    src_transform=src.window_transform(win),
+                    src_crs=src.crs,
+                    src_nodata=0,
+                    dst_transform=dst,
+                    dst_crs=box.crs,
+                    dst_nodata=0,
+                    resampling=warp.Resampling.nearest,
+                )
+    except FetchError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - rasterio's error after a failed fetch
+        if isinstance(fetch.failed, FetchError):
+            raise fetch.failed from exc
+        raise FetchError("fetch") from exc
+    if fetch.failed is not None:
+        raise FetchError("fetch") from fetch.failed
+
+
+def read_box(fetch: Fetch, scene: Scene, box: Box) -> Any:
+    """The four bands of ``scene`` on the box's grid (uint16, 0 where there is
+    no data), by nearest neighbour. Raises :class:`FetchError`."""
+    np = importlib.import_module("numpy")
     out = np.zeros((len(BANDS), box.height, box.width), dtype=np.uint16)
     for k, band in enumerate(BANDS):
-        name = _name()
-        opener = _container(fetch, {name: scene.hrefs[band]})
-        try:
-            # Only the GeoTIFF driver (a VRT or WMS body could make GDAL fetch on
-            # its own), no .netrc, no signing, no session from the environment.
-            with rasterio.Env(
-                session=session_mod.DummySession(),
-                GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR",
-                GDAL_NUM_THREADS="1",
-                GDAL_HTTP_NETRC="NO",
-                AWS_NO_SIGN_REQUEST="YES",
-            ):
-                with rasterio.open(name, driver="GTiff", opener=opener) as src:
-                    if src.crs is None or src.crs.to_epsg() != scene.epsg:
-                        raise FetchError("fetch")
-                    b = warp.transform_bounds(
-                        box.crs, src.crs, left, bottom, right, top, densify_pts=21
-                    )
-                    w = windows.from_bounds(*b, transform=src.transform)
-                    col0 = max(0, math.floor(w.col_off) - 2)
-                    row0 = max(0, math.floor(w.row_off) - 2)
-                    col1 = min(src.width, math.ceil(w.col_off + w.width) + 3)
-                    row1 = min(src.height, math.ceil(w.row_off + w.height) + 3)
-                    if col1 <= col0 or row1 <= row0:
-                        continue  # the band file does not reach the picture: no data
-                    win = windows.Window(col0, row0, col1 - col0, row1 - row0)
-                    arr = src.read(1, window=win)
-                    if fetch.failed is not None:
-                        raise FetchError("fetch")
-                    warp.reproject(
-                        source=arr,
-                        destination=out[k],
-                        src_transform=src.window_transform(win),
-                        src_crs=src.crs,
-                        src_nodata=0,
-                        dst_transform=dst,
-                        dst_crs=box.crs,
-                        dst_nodata=0,
-                        resampling=warp.Resampling.nearest,
-                    )
-        except FetchError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - rasterio's error after a failed fetch
-            if isinstance(fetch.failed, FetchError):
-                raise fetch.failed from exc
-            raise FetchError("fetch") from exc
-        if fetch.failed is not None:
-            raise FetchError("fetch") from fetch.failed
+        _read_band(fetch, scene.hrefs[band], scene, box, out[k])
     return out
+
+
+def read_mask(fetch: Fetch, scene: Scene, box: Box) -> Any:
+    """The cloud mask of ``scene`` (:data:`MASK`, its Scene Classification
+    Layer) on the box's grid: a uint8 array (box.height, box.width) of SCL
+    classes, 0 where there is no data, by nearest neighbour, read as one band
+    of :func:`read_box` is. Raises :class:`FetchError` (also for a scene with
+    no mask link)."""
+    np = importlib.import_module("numpy")
+    if not scene.mask_href:
+        raise FetchError("fetch")
+    out = np.zeros((box.height, box.width), dtype=np.uint8)
+    _read_band(fetch, scene.mask_href, scene, box, out)
+    return out
+
+
+def cover(mask: Any, square: tuple[int, int, int, int]) -> tuple[float, float]:
+    """How much of the outlined square (x, y, w, h) a cloud mask marks:
+    (covered share, valid share). Covered: the pixels of
+    :data:`COVERED_CLASSES` over the pixels with data (SCL != 0); valid: the
+    pixels with data over all the square's. No pixel with data: (1.0, 0.0),
+    so a hole in the mask never reads as clear."""
+    np = importlib.import_module("numpy")
+    x, y, w, h = square
+    part = mask[y : y + h, x : x + w]
+    valid = int((part != 0).sum()) if part.size else 0
+    if not valid:
+        return 1.0, 0.0
+    covered = int(np.isin(part, COVERED_CLASSES).sum())
+    return covered / valid, valid / int(part.size)
 
 
 def has_data(stack: Any, square: tuple[int, int, int, int]) -> bool:
@@ -836,6 +951,222 @@ def has_data(stack: Any, square: tuple[int, int, int, int]) -> bool:
     return float((part != 0).all(axis=0).mean()) >= DATA_SHARE
 
 
+def white_share(stack: Any, square: tuple[int, int, int, int]) -> float:
+    """The share of the outlined square's pixels with data (all four bands)
+    that the picture itself shows white: red, green and blue reflectance all
+    at least :data:`BRIGHT` (thick cloud or fog; clear water, plants and most
+    bare ground stay well below). 0.0 when no pixel has data."""
+    np = importlib.import_module("numpy")
+    x, y, w, h = square
+    part = stack[:, y : y + h, x : x + w]
+    data = (part != 0).all(axis=0)
+    n = int(data.sum()) if part.size else 0
+    if not n:
+        return 0.0
+    idx = [BANDS.index(b) for b in ("red", "green", "blue")]
+    refl = (part[idx].astype(np.float32) - 1000.0) / 10000.0
+    white = (refl >= BRIGHT).all(axis=0) & data
+    return int(white.sum()) / n
+
+
+def mask_fetch(fetch: Fetch) -> Fetch:
+    """The cloud masks' own fetching for one call: the band fetch's client,
+    and a budget of its own (15 seconds, 32 MiB, 250 requests: up to 72 masks
+    a call, up to 3 requests each), so a mask read never spends the bands'
+    bytes or requests and never fails their fetch. The time the masks' pass
+    takes is added back to the bands' deadline (:func:`dated`)."""
+    budget = Budget(seconds=MASK_SECONDS, max_bytes=32 << 20, max_requests=250)
+    return Fetch(fetch.client, budget)
+
+
+def _room(budget: Budget) -> bool:
+    """Whether a read may still start on ``budget`` (time, bytes, requests)."""
+    return (
+        time.monotonic() < budget.deadline
+        and budget.requests < budget.max_requests
+        and budget.bytes < budget.max_bytes
+    )
+
+
+def _score(
+    masks: Fetch, scene: Scene, box: Box, square: tuple[int, int, int, int]
+) -> tuple[float, float] | None:
+    """:func:`cover` of one scene's cloud mask on the square, or ``None`` when
+    the mask could not be read (the scene is then ranked as one without a
+    mask). Each mask is read through a fetch of its own on the masks' client
+    and budget, so one mask that fails stops no other read; the masks' fetch
+    keeps the first failure (``masks.failed``) and every request
+    (``masks.log``)."""
+    one = Fetch(masks.client, masks.budget)
+    one.log = masks.log
+    try:
+        return cover(read_mask(one, scene, box), square)
+    except Exception as exc:  # noqa: BLE001 - a mask never fails the pictures
+        masks.fail(exc)
+        return None
+
+
+def _mask_info(
+    found: list[Scene],
+    scores: dict[int, tuple[float, float]],
+    winner: int | None,
+    white: float | None = None,
+) -> dict[str, Any]:
+    """What the masks said, for the record and the pane: ``here`` for the
+    scene picked (``"clear"``: the mask marks nothing on the square;
+    ``"covered"``: it marks cloud or shadow there, or has data on less than
+    :data:`MASK_VALID` of it, or the picture is white on at least
+    :data:`BRIGHT_SHARE` of the square (``white_share``, :func:`white_share`)
+    whatever the mask says; ``"unknown"``: its mask was not read and the
+    picture is not white, or no scene was picked), its shares, and the score
+    of every mask read."""
+    score = scores.get(winner) if winner is not None else None
+    here = "unknown"
+    if score is not None:
+        here = "covered" if score[0] > 0 or score[1] < MASK_VALID else "clear"
+    if white is not None and white >= BRIGHT_SHARE:
+        here = "covered"
+    return {
+        "here": here,
+        "white_share": white,
+        "covered_share": None if score is None else score[0],
+        "valid_share": None if score is None else score[1],
+        "scored": [
+            {"id": found[i].id, "covered": scores[i][0], "valid": scores[i][1]}
+            for i in sorted(scores)
+        ],
+    }
+
+
+#: A month between its two halves: its candidates, the score of each mask
+#: read (by the candidate's index), and the indices whose mask read was made.
+_Scored = tuple[list[Scene], dict[int, tuple[float, float]], set[int]]
+
+
+def _clear(score: tuple[float, float] | None) -> bool:
+    """Whether a mask's score says it marks nothing on the square and has
+    data on at least :data:`MASK_VALID` of it."""
+    return score is not None and score[0] == 0 and score[1] >= MASK_VALID
+
+
+def _score_more(
+    fetch: Fetch,
+    masks: Fetch,
+    state: _Scored,
+    box: Box,
+    square: tuple[int, int, int, int],
+) -> None:
+    """Read the masks of the month's candidates not read yet, in their order
+    (the first :data:`MASK_TRIES` candidates only), and stop at the first that
+    marks nothing on the square. A candidate with no mask link is passed
+    over; no read starts once the band fetch has failed or the masks' budget
+    has no room; a read that fails leaves its scene unscored and is not made
+    again."""
+    found, scores, asked = state
+    for i, scene in enumerate(found[:MASK_TRIES]):
+        if i in asked or not scene.mask_href:
+            continue
+        if fetch.failed is not None or not _room(masks.budget):
+            break
+        asked.add(i)
+        got = _score(masks, scene, box, square)
+        if got is None:
+            continue
+        scores[i] = got
+        if _clear(got):
+            break  # nothing marked on the square: it wins
+
+
+def _month_masks(
+    fetch: Fetch,
+    masks: Fetch,
+    scenes: list[Scene],
+    box: Box,
+    square: tuple[int, int, int, int],
+    tries: int = TRIES_PER_MONTH,
+) -> _Scored:
+    """The first half of :func:`month_stack`: the month's candidates and
+    their masks' scores, read until one marks nothing on the square
+    (:func:`_score_more`). No band is read."""
+    found = candidates(scenes, box.lonlat(), box.points())[: max(MASK_TRIES, tries)]
+    state: _Scored = (found, {}, set())
+    _score_more(fetch, masks, state, box, square)
+    return state
+
+
+def _month_bands(
+    fetch: Fetch,
+    masks: Fetch,
+    state: _Scored,
+    box: Box,
+    square: tuple[int, int, int, int],
+    tries: int = TRIES_PER_MONTH,
+) -> tuple[Scene | None, Any, int, dict[str, Any]]:
+    """The second half of :func:`month_stack`: the bands, read in the masks'
+    rank, at most ``tries`` scenes; the first with data in the square whose
+    picture is not white there (:func:`white_share` under
+    :data:`BRIGHT_SHARE`) wins. When a scene its mask shows clear has too
+    little data in the square, or a scene's picture is white on the square
+    (Sen2Cor's mask can miss thick cloud right at a coastline), the masks'
+    reading resumes (:func:`_score_more`) and the scenes left are ranked
+    again (after a white scene, only when its mask had called it clear), so
+    no scene is picked unscored while its mask can be read. No further read
+    for whiteness starts once the band budget is short (:func:`_band_room`).
+    When every scene read with data is white on the square, the least cloudy
+    of them by both signals (the larger of its white share and its mask's
+    covered share; the first on a tie) is picked, ``"covered"``."""
+    found, scores, _ = state
+    # The fallback so far: (its cloud by both signals, index, stack, white share).
+    whitest: tuple[float, int, Any, float] | None = None
+
+    def rank(i: int) -> tuple[int, float, int]:
+        """Clear scenes, then the unscored in their order, then the rest."""
+        if i not in scores:
+            return (1, 0.0, i)
+        if _clear(scores[i]):
+            return (0, 0.0, i)
+        return (2, scores[i][0], i)
+
+    left = set(range(len(found)))
+    tried = 0
+    while left and tried < tries:
+        i = min(left, key=rank)
+        left.discard(i)
+        tried += 1
+        stack = read_box(fetch, found[i], box)
+        if has_data(stack, square):
+            white = white_share(stack, square)
+            if white < BRIGHT_SHARE:
+                return found[i], stack, tried, _mask_info(found, scores, i, white)
+            # The fallback: the least cloud by both signals, the first on a tie
+            # (the least white alone would favour a darker, shadowed scene).
+            worst = max(white, scores[i][0] if i in scores else 0.0)
+            if whitest is None or worst < whitest[0]:
+                whitest = (worst, i, stack, white)
+            if not _band_room(fetch.budget):
+                break  # no further read for whiteness on a short budget
+            if _clear(scores.get(i)):
+                _score_more(fetch, masks, state, box, square)
+            continue
+        if _clear(scores.get(i)):
+            _score_more(fetch, masks, state, box, square)
+    if whitest is not None:
+        _, i, stack, white = whitest
+        return found[i], stack, tried, _mask_info(found, scores, i, white)
+    return None, None, tried, _mask_info(found, scores, None)
+
+
+def _band_room(budget: Budget) -> bool:
+    """Whether another band read for a white scene may start: time left, and
+    under :data:`WHITE_ROOM` of the band budget's requests and bytes spent (a
+    spent band budget fails the whole call)."""
+    return (
+        time.monotonic() < budget.deadline
+        and budget.requests < budget.max_requests * WHITE_ROOM
+        and budget.bytes < budget.max_bytes * WHITE_ROOM
+    )
+
+
 def month_stack(
     fetch: Fetch,
     scenes: list[Scene],
@@ -843,16 +1174,31 @@ def month_stack(
     square: tuple[int, int, int, int],
     *,
     tries: int = TRIES_PER_MONTH,
-) -> tuple[Scene | None, Any, int]:
-    """The least-cloud scene of the month with data in the square: (scene,
-    stack, scenes tried). Blind to the window's class, stratum and order."""
-    tried = 0
-    for scene in candidates(scenes, box.lonlat(), box.points())[:tries]:
-        tried += 1
-        stack = read_box(fetch, scene, box)
-        if has_data(stack, square):
-            return scene, stack, tried
-    return None, None, tried
+    masks: Fetch | None = None,
+) -> tuple[Scene | None, Any, int, dict[str, Any]]:
+    """The scene of the month with the least cloud and shadow on the outlined
+    square by its own cloud mask, with data in the square: (scene, stack,
+    scenes whose bands were tried, what the masks said, :func:`_mask_info`).
+
+    The month's candidates (least scene cloud first) have their masks read,
+    at most :data:`MASK_TRIES`, until one marks nothing on the square. They
+    are then ranked: a scene whose mask marks nothing first; then the scenes
+    with no mask read (no link, no room left on the masks' budget, a read
+    that failed), in the candidates' order; then the others, least covered
+    first. Bands are read in that order, at most ``tries`` scenes, and the
+    first with data in the square whose picture is not white there wins
+    (:func:`white_share`); when the scene its mask shows clear
+    has too little data there, mask reading resumes before the next band
+    read. With no mask anywhere this is the least-scene-cloud rule. The time
+    the masks take (at most :data:`MASK_SECONDS`) is added to the bands'
+    deadline. ``masks``: the masks' own fetch (:func:`mask_fetch`, made here
+    when not given). Blind to the window's
+    class, stratum and order."""
+    masks = masks if masks is not None else mask_fetch(fetch)
+    began = time.monotonic()
+    state = _month_masks(fetch, masks, scenes, box, square, tries)
+    fetch.budget.extend(min(time.monotonic() - began, MASK_SECONDS))
+    return _month_bands(fetch, masks, state, box, square, tries)
 
 
 def dated(
@@ -862,24 +1208,46 @@ def dated(
     square: tuple[int, int, int, int],
     *,
     workers: int = 4,
-) -> list[tuple[Scene | None, Any, int]]:
-    """:func:`month_stack` for every month, a few months at a time; in month
-    order. Any failure fails the whole call (no label on a partial set)."""
+    masks: Fetch | None = None,
+) -> list[tuple[Scene | None, Any, int, dict[str, Any]]]:
+    """:func:`month_stack` for every month, in month order, in two passes:
+    first every month's masks (up to :data:`MASK_WORKERS` months at a time),
+    so which months are scored does not depend on when a month's bands start;
+    then the bands, ``workers`` months at a time. The time the first pass
+    took (at most :data:`MASK_SECONDS`) is added to the bands' deadline: the
+    masks never take the bands' time. Any failure of the band reads fails the
+    whole call (no label on a partial set) and stops the mask reads too; a
+    cloud mask that cannot be read fails nothing. ``masks``: the masks' own
+    fetch, one for all the months (:func:`mask_fetch`, made here when not
+    given)."""
     if not scenes_by_month:
         return []
+    masks = masks if masks is not None else mask_fetch(fetch)
     futures_mod = importlib.import_module("concurrent.futures")
-    pool = futures_mod.ThreadPoolExecutor(
-        max_workers=max(1, min(workers, len(scenes_by_month)))
-    )
+    count = len(scenes_by_month)
+    scoring = futures_mod.ThreadPoolExecutor(max_workers=min(count, MASK_WORKERS))
+    pool = futures_mod.ThreadPoolExecutor(max_workers=max(1, min(workers, count)))
     try:
+        began = time.monotonic()
         jobs = [
-            pool.submit(month_stack, fetch, s, box, square) for s in scenes_by_month
+            scoring.submit(_month_masks, fetch, masks, s, box, square)
+            for s in scenes_by_month
+        ]
+        states = [job.result() for job in jobs]
+        fetch.budget.extend(min(time.monotonic() - began, MASK_SECONDS))
+        jobs = [
+            pool.submit(_month_bands, fetch, masks, state, box, square)
+            for state in states
         ]
         return [job.result() for job in jobs]
     except BaseException as exc:
-        fetch.fail(exc)  # the other months' reads stop at their next byte
+        # The other months' band reads stop at their next read, and the mask
+        # reads at their next request or chunk.
+        fetch.fail(exc)
+        masks.budget.stop()
         raise
     finally:
+        scoring.shutdown(wait=True, cancel_futures=True)
         pool.shutdown(wait=True, cancel_futures=True)
 
 

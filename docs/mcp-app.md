@@ -19,8 +19,9 @@ turned on in [Settings](#settings), one more box stands last under "Other jobs":
 **What to press.** Press a job, or ask Claude in the chat. A job's press sends its request to Claude as your message,
 and Claude shows your projects, where you pick the map or model. While you are signed out the jobs are off and the
 card shows the sign-in. **Search papers with Asta** works signed in or out: Claude asks what to search first.
-One job at a time: once a job's message is in the chat, the job boxes turn off. If the message waits in Claude's
-message box, press Send. To start another job, ask Claude.
+One job at a time: once a job's message is in the chat, the job boxes turn off and the box you pressed says "Sent
+to the chat. Press Send in the message box below." To start another job, press **Choose another job** at the end of
+the card's line (if the first message still waits in the message box, delete it there first), or ask Claude.
 
 **What it means.** The main job checks a random sample of a map's squares and tells you how often the map is wrong.
 The other jobs compare two maps, or make a new map, which needs a Studio key that can write.
@@ -59,7 +60,8 @@ computer that are part done, "In progress" lists them above the search, each wit
 **What to press.** Press **Show its maps** on the project that holds your map, then **Check how wrong it is** beside
 the map. To compare, tick two finished maps of the same area and dates in one project and press **Which is more
 accurate?**. To make a map, open **Make a new map** and press **Run on an area** on a model. One job at a time
-here too: once a job's message is in the chat, the job buttons turn off; to start another, ask Claude.
+here too: once a job's message is in the chat, the job buttons turn off; to start another, press **Choose another
+job** at the end of the panel's line, or ask Claude.
 
 **What it means.** Each prediction is a model run over an area and a period; its output is the map. A run that made
 more than one map opens its list; Studio names them only by ids, so ask whoever made the run which is yours. A line
@@ -103,7 +105,10 @@ Claude open the Check card again.
 **What you see.** One square at a time ("Square 1 of 3"), the rule, and the answers as buttons with their keys:
 Present (P), Absent (A), Cannot tell (?). On a map of classes the answers are the map's class names. **Pictures**
 shows the square outlined on satellite pictures, one date for each month of the map's period; **Street map** opens
-its place on OpenStreetMap. **List** shows every square as a row.
+its place on OpenStreetMap. **List** shows every square as a row. Each month shows the date with the least cloud and
+shadow on the square, by Sentinel-2's own cloud mask. Dates the mask marks cloudy are folded under the others ("3 cloudy
+dates"): open the fold to see them. A square that is white in the picture counts as cloudy too: the mask can miss thick
+cloud at a coastline. Both are sometimes wrong (bright roofs, sand, surf, snow).
 
 **What to press.** Press **Pictures**; the first time, the app asks before it sends anything (the box around the map,
 rounded out, and its months, to the public Earth Search catalogue). Look at the outlined square and press what you
@@ -195,7 +200,8 @@ and the project's saved areas. The title says what the area is for, when Claude 
 
 **What to press.** Draw a rectangle or polygon, or pick a saved area. Choose the project, name the area and press
 **Save to Studio and continue** (for a saved area, **Use this saved area**). Claude then asks for the dates and
-starts the prediction in Studio.
+starts the prediction in Studio. Before it starts one, Claude tells you the model, the area and the dates and waits
+for your yes: the run uses Studio's compute and the account's credit.
 
 **What it means.** The area is saved in your Studio project, and the card tells Claude its id, never its place. The
 new map is a prediction in that project, made by Studio; it then shows among the project's predictions.
@@ -214,8 +220,10 @@ sheet, under the sheet). Press it and a box opens under it with three rows, each
   "None kept.".
 
 **What to press.** Press the switch to turn Asta on or off. Press **Forget my yes** to be asked again before the next
-square's pictures. Press **Remove kept copies** to delete the kept maps; the next check downloads them again. Press
-**Settings** again, or Escape, to close the box.
+square's pictures. Press **Remove kept copies** twice to delete the kept maps: after the first press the button says
+"Press again to remove" for six seconds, and a second press in that time removes them; the next check downloads them
+again. Press **Settings** again, or Escape, to close the box. Escape on the button after its first press only takes
+that press back; the box stays open.
 
 **What it means.** Every card shows the same settings, and every start card follows the switch, one already open
 too. The app asks for Asta only when you press **Search papers with Asta**: Ai2's research skills then search papers

@@ -127,10 +127,13 @@ button:disabled, button:disabled:hover { cursor: default; background: transparen
 button.primary:disabled, button.primary:disabled:hover { background: rgba(0,0,0,.12); color: rgba(0,0,0,.26); }
 /* Busy (aria-disabled): looks disabled, keeps the keyboard focus. */
 button[aria-disabled="true"], button[aria-disabled="true"]:hover { cursor: default; background: transparent;
-/* A job button off once a job is in the chat (r5-o): plainly off, the main job and the others alike. */
-button[data-oe-locked], button[data-oe-locked]:hover { opacity: .45; }
   color: rgba(0,0,0,.26); border-color: var(--divider); box-shadow: none; }
 button.primary[aria-disabled="true"], button.primary[aria-disabled="true"]:hover { background: rgba(0,0,0,.12); }
+/* r5-p: a stray rule for button[data-oe-locked] stood inside the rule above, where it styled nothing; it is taken out.
+   A job button off once a job is in the chat (r5-o) is aria-disabled, so it looks off by the busy rule. */
+/* r5-p: Choose another job, a text button inside a card's line: underlined, in the line's size, no box of its own. */
+.oe-lead button.oe-choose-another { font-size: inherit; line-height: inherit; padding: 0 2px; text-decoration: underline;
+  text-underline-offset: 2px; }
 button.link { border: 0; background: none; padding: 4px 5px; border-radius: 4px; box-shadow: none;
   font-size: 13px; line-height: 22.75px; font-weight: 500; color: var(--text-2); }
 button.link:hover { background: var(--wash); }
@@ -372,6 +375,8 @@ label.oe-locked { cursor: default; color: rgba(0,0,0,.26); }
 .oe-set-said { margin-top: 10px; overflow-wrap: anywhere; }
 .oe-set-said:first-child { margin-top: 0; }
 .oe-set-said:empty { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
+/* r5-p J3: the armed Remove button's words for a screen reader, never seen. */
+.oe-set-armed { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); }
 @media (max-width: 480px) {
   .oe-set-row { grid-template-columns: minmax(0, 1fr); }
   .oe-set-control { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 4px; }
@@ -538,9 +543,12 @@ OE.clearSlot = (slot) => {
    job's slot; a new card is a new page and starts unlocked. Only job
    buttons (OE.jobButton: the start card's tiles, the projects panel's job
    buttons) lock; the other sends (the sheet's finish, the result card's
-   buttons, the sign-in's Continue) do not, and keep OE.JOB_SENT. */
-// WORDING: r5o
-OE.JOB_SENT_ONE = 'Sent to the chat. If it waits there, press Send.';
+   buttons, the sign-in's Continue) do not, and keep OE.JOB_SENT. r5-p J2:
+   the line says where to press Send (the owner, 19 Nov 2026: the message
+   waits in the message box under the panel until Send is pressed); r5-p J1:
+   the user lifts the lock with Choose another job (OE.unlockJobs). */
+// WORDING: r5p
+OE.JOB_SENT_ONE = 'Sent to the chat. Press Send in the message box below.';
 let jobLockedBy = null;  // the key (data-oe-job-slot) of the slot of the job whose message reached the chat; null: no lock
 let jobSending = false;  // a job button's message is with the host: no other job is sent meanwhile
 /* Every job button made before the lock that is still alive, in the page or
@@ -548,11 +556,18 @@ let jobSending = false;  // a job button's message is with the host: no other jo
    project's summary that was closed, or of a card drawn again, are not kept
    alive by this set, and their entries go when the next one is made. */
 const jobButtons = new Set();
+/* The job buttons the lock turned off, held weakly, so Choose another job (OE.unlockJobs) turns them on again. */
+const lockedButtons = new Set();
+/* The title each of them had before the lock wrote its own (null: none), put back by the unlock (r5-p). */
+const titleBefore = new WeakMap();
+/* The slots that say OE.JOB_SENT_ONE, held weakly: the unlock empties them in the page or out of it (r5-p). */
+const sentSlots = new Set();
 /* What a locked job button's tooltip, and so its description, says (after
    review): the pressed button's slot, the one place with the reason, may be
-   folded away or far from the other buttons. */
-// WORDING: r5o
-OE.JOB_LOCKED_TITLE = 'One job at a time: to start another, ask Claude.';
+   folded away or far from the other buttons. r5-p J1: it names Choose
+   another job, which lifts the lock. */
+// WORDING: r5p
+OE.JOB_LOCKED_TITLE = 'One job at a time: press Choose another job first, or ask Claude.';
 
 /* Whether the card's jobs are locked. Given a button: whether that button is
    a job button (data-oe-job) that is locked, which a job button's press
@@ -561,10 +576,11 @@ OE.jobLocked = (button = null) => jobLockedBy !== null && (!button || button.has
 
 /* A job button after its press ended, or made: off (aria-disabled, and
    data-oe-locked for the style, its title OE.JOB_LOCKED_TITLE) when the jobs
-   are locked, on when not. */
+   are locked, on when not. The title it had is kept for the unlock (r5-p). */
 OE.jobIdle = (button) => {
   const locked = OE.jobLocked(button);
   button.setAttribute('aria-disabled', String(locked));
+  if (locked && !titleBefore.has(button)) titleBefore.set(button, button.getAttribute('title'));
   if (locked) button.setAttribute('data-oe-locked', 'true');
   if (locked) button.title = OE.JOB_LOCKED_TITLE;
 };
@@ -586,10 +602,12 @@ OE.jobButton = (button, key, slot) => {
     return button;
   }
   OE.jobIdle(button);
+  lockedButtons.add(new WeakRef(button));
   if (first && String(key) === jobLockedBy) {
     const line = OE.clearSlot(slot);
     line.className = 'muted';
     line.textContent = OE.JOB_SENT_ONE;
+    sentSlots.add(new WeakRef(slot));
   }
   return button;
 };
@@ -602,16 +620,63 @@ OE.lockJobs = (key) => {
   jobLockedBy = String(key);
   for (const r of jobButtons) {
     const b = r.deref();
-    if (b) OE.jobIdle(b);
+    if (b) { OE.jobIdle(b); lockedButtons.add(new WeakRef(b)); }
   }
   jobButtons.clear();
   // The other jobs' slots are emptied: a line that said an earlier press was not
   // taken no longer stands beside the job now in the chat (r5-o, the owner's screenshot).
+  // The pressed job's slot, where OE.sendJob then writes the one-job line, is kept for the unlock (r5-p).
   document.querySelectorAll('[data-oe-job-slot]').forEach((s) => {
     if (s.getAttribute('data-oe-job-slot') !== jobLockedBy) OE.clearSlot(s);
+    else sentSlots.add(new WeakRef(s));
   });
   document.dispatchEvent(new Event('oe-jobs-locked'));
 };
+
+/* Choose another job (r5-p; the owner, 19 Nov 2026: after deleting the queued
+   message from the box he could no longer pick another job). The host never
+   tells a panel that its message was taken back, so the user lifts the lock:
+   every job button the lock turned off is on again (aria-disabled false, no
+   data-oe-locked, the title it had before the lock or none), every job's
+   slot is emptied, in the page or out of it (a row a search hid), and the
+   page is told (oe-jobs-unlocked) so the cards put back the words they had
+   and give the focus to the first job. A press of a job then sends as at
+   first. A tile that is disabled (signed out) stays disabled. */
+OE.unlockJobs = () => {
+  if (jobLockedBy === null) return;
+  jobLockedBy = null;
+  for (const r of lockedButtons) {
+    const b = r.deref();
+    if (!b) continue;
+    b.removeAttribute('data-oe-locked');
+    const title = titleBefore.get(b);
+    titleBefore.delete(b);
+    if (typeof title === 'string') b.setAttribute('title', title); else b.removeAttribute('title');
+    b.setAttribute('aria-disabled', 'false');
+    jobButtons.add(new WeakRef(b));
+  }
+  lockedButtons.clear();
+  for (const r of sentSlots) {
+    const s = r.deref();
+    if (s) OE.clearSlot(s);
+  }
+  sentSlots.clear();
+  document.querySelectorAll('[data-oe-job-slot]').forEach((s) => OE.clearSlot(s));
+  document.dispatchEvent(new Event('oe-jobs-unlocked'));
+};
+// WORDING: r5p
+OE.CHOOSE_ANOTHER = 'Choose another job';
+// WORDING: r5p
+OE.CHOOSE_ANOTHER_TITLE = 'If the first message still waits in the message box, delete it there first.';
+/* The text button that lifts the lock, at the end of a card's line while its
+   jobs are locked (start.html and studio.html lockedWords): a button, so a
+   click, Enter and Space press it; its title says what to do first with a
+   message that still waits. The press takes it away with the locked line,
+   so the card then gives the focus to its first job (unlockedWords). */
+OE.chooseAnotherButton = () => OE.el('button', {
+  type: 'button', class: 'link oe-choose-another', title: OE.CHOOSE_ANOTHER_TITLE,
+  onclick: () => OE.unlockJobs(),
+}, OE.CHOOSE_ANOTHER);
 
 /* A job button's press: its request goes to Claude as the user's words, and
    slot says what became of it beside the button (r5-b J20), so a press never
@@ -1735,7 +1800,8 @@ OE.setAccount = (app, { signedIn = false, account = null, source = null, onSignO
    - Asta research skills: a switch (role switch), off by default, with its line on what it does and a "setup"
      link to the setup page's lines;
    - Satellite pictures: "Forget my yes" while they are allowed (the next square asks again);
-   - Maps kept on this computer: "Remove kept copies" while some are kept.
+   - Maps kept on this computer: "Remove kept copies" while some are kept; it takes two presses (r5-p J3: the
+     first makes it say "Press again to remove" for six seconds).
    A press changes one setting (olmoearth_app_setting) and draws the rows its answer gives; when the control pressed
    goes with the change, the focus goes to its row's state. A press that fails says why in the box's own status line
    under the rows (an alert) and changes nothing. A press while one is answered does nothing. The box's words are
@@ -1770,6 +1836,11 @@ OE.SET_FORGET = 'Forget my yes';
 OE.SET_KEPT = 'Maps kept on this computer';
 // WORDING: r5n
 OE.SET_REMOVE = 'Remove kept copies';
+/* r5-p J3: what "Remove kept copies" says after its first press, and for how long (ms): a second press within that
+   time removes; the kept copies are downloaded again only at the next check, so one stray press removes nothing. */
+// WORDING: r5p
+OE.SET_REMOVE_AGAIN = 'Press again to remove';
+OE.SET_REMOVE_WAIT = 6000;
 
 /* The setup page's lines on Ai2's Asta skills (docs/mcp-app-setup.md, its Options), public and fixed: what the
    switch line's "setup" link opens, and the page the start card's Asta tile names when the skills are missing. */
@@ -1888,15 +1959,49 @@ OE.settingsBlock = (app) => {
     }
     const kept = s.kept && typeof s.kept === 'object' ? s.kept : {};
     let remove = null;
+    let heard = null;
     if (Number.isInteger(kept.count) && kept.count > 0) {
       remove = OE.el('button', { type: 'button', class: 'small', 'data-set': 'kept' }, OE.SET_REMOVE);
-      remove.addEventListener('click', () => change(remove, { name: 'remove_kept' }));
+      // r5-p J3: two presses remove. The first only arms the button (its words say to press again) for
+      // OE.SET_REMOVE_WAIT; the second, within that time, removes. Escape on it, the focus moved away, or the
+      // time passed, puts its words back and removes nothing. A press while a change is being answered (this one or
+      // another setting's) does nothing at all; the answer draws a new button, to be pressed twice again. The second
+      // click of a double-click (detail 2) is no second press: it leaves the button armed.
+      let armed = 0;  // the timer of the armed button; 0: not armed
+      // For a screen reader, which does not read the focused button's new words: a line nobody sees says them.
+      heard = OE.el('span', { class: 'oe-set-armed', 'aria-live': 'polite' });
+      const disarm = () => {
+        if (armed) clearTimeout(armed);
+        armed = 0;
+        remove.textContent = OE.SET_REMOVE;
+        heard.textContent = '';
+      };
+      remove.addEventListener('click', (e) => {
+        if (busy) return;
+        if (!armed) {
+          remove.textContent = OE.SET_REMOVE_AGAIN;
+          heard.textContent = OE.SET_REMOVE_AGAIN;
+          armed = setTimeout(disarm, OE.SET_REMOVE_WAIT);
+          return;
+        }
+        if (e.detail > 1) return;
+        disarm();
+        change(remove, { name: 'remove_kept' });
+      });
+      remove.addEventListener('blur', disarm);
+      // Escape on the armed button only disarms it (the box stays open: its own Escape sees the key was taken).
+      remove.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || !armed) return;
+        e.preventDefault();
+        disarm();
+      });
     }
     box.replaceChildren(
       row('asta', OE.SET_ASTA, on ? OE.SET_ON : OE.SET_OFF, toggle, astaLine),
       row('pictures', OE.SET_PICTURES, text(pictures.said), forget),
       row('kept', OE.SET_KEPT, text(kept.said), remove),
       saidLine());
+    if (remove) remove.after(heard);
     if (first) {
       // The first control takes the focus only while it is still on the button (or nowhere): never from elsewhere.
       const now = document.activeElement;

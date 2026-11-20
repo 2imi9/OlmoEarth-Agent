@@ -263,7 +263,7 @@ def _no_scenes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         s2_fetch,
         "dated",
-        lambda _fetch, scenes, _box, _square: [(None, None, 0) for _ in scenes],
+        lambda _fetch, scenes, _box, _square: [(None, None, 0, {}) for _ in scenes],
     )
 
 
@@ -517,13 +517,15 @@ def test_l2_no_scene_in_any_month_is_said_once(
 def test_l2_a_month_with_a_scene_has_no_flag(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert imagery._no_image([(None, None, 3), (None, None, 0)]) is True
-    assert imagery._no_image([(None, None, 3), (object(), object(), 1)]) is False
+    assert imagery._no_image([(None, None, 3, {}), (None, None, 0, {})]) is True
+    assert (
+        imagery._no_image([(None, None, 3, {}), (object(), object(), 1, {})]) is False
+    )
     path = _kelp_sheet(root)
     _no_scenes(monkeypatch)
 
     def one_scene(_fetch: Any, scenes: Any, _box: Any, _square: Any) -> Any:
-        return [(object(), object(), 1)] + [(None, None, 0) for _ in scenes[1:]]
+        return [(object(), object(), 1, {})] + [(None, None, 0, {}) for _ in scenes[1:]]
 
     def plain_dates(months: Any, _results: Any, _square: Any) -> Any:
         dates = [{"month": m[0], "label": m[0], "pictures": []} for m in months]
@@ -553,7 +555,7 @@ def test_l2_a_search_cut_short_stays_in_the_record_only(
     monkeypatch.setattr(
         s2_fetch,
         "dated",
-        lambda _fetch, scenes, _box, _square: [(None, None, 0) for _ in scenes],
+        lambda _fetch, scenes, _box, _square: [(None, None, 0, {}) for _ in scenes],
     )
     out = _pictures(path, 14)
     assert out["ok"] is True and out["no_image"] is True, out
@@ -568,6 +570,9 @@ def test_l2_a_search_cut_short_stays_in_the_record_only(
         "label_is",
         "caption",
         "dates",
+        # Round r5-p: how many dates the cloud mask marks, and whether all.
+        "cloudy_dates",
+        "all_cloudy",
         "pictures",
         "no_image",
     }

@@ -93,7 +93,7 @@ def no_scenes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         s2_fetch,
         "dated",
-        lambda _fetch, scenes, _box, _square: [(None, None, 0) for _ in scenes],
+        lambda _fetch, scenes, _box, _square: [(None, None, 0, {}) for _ in scenes],
     )
 
 
@@ -352,11 +352,14 @@ def test_the_square_size_sentence_is_said_as_the_check_card_says_it() -> None:
         assert said({"pixels": 11, "metres": metres}) == plain, metres
     for size in (None, {}, {"pixels": 0}, {"pixels": True}, {"pixels": 2.5}, "11"):
         assert said(size) == "", size
-    # The caption it leads stays word for word (works well, do not change).
+    # The caption it leads, word for word (round r5-p: the date is picked by
+    # the scene's own cloud mask on the square, and marked dates are folded).
     assert imagery.CAPTION == (
-        "One date for each month of the map's period: the scene with the least "
-        "scene cloud that has data here (dates in UTC). Near-infrared false "
-        "colour shows vegetation red and water dark. Magenta: no data."
+        "One date for each month of the map's period: the date with the least "
+        "cloud and shadow on the square by Sentinel-2's own cloud mask and how "
+        "white the square is (dates in UTC); dates marked cloudy are folded away. "
+        "Near-infrared false colour shows vegetation red and water dark. Magenta: "
+        "no data."
     )
 
 

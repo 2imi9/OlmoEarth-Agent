@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "olmoearth-agent"
-version = "1.5.1"
+version = "1.5.2"
 description = "A beta version by a collaborator, not the final OlmoEarth Agent: drives OlmoEarth Studio from natural-language briefs."
 readme = "README.md"
 requires-python = ">=3.11"

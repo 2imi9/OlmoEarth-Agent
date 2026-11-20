@@ -290,15 +290,51 @@ const PROJECTS_LEAD = {
    to press the button says how a comparison works again (.compare-hint; the
    boxes stay, so Claude is still told what is ticked). Set in place when the
    card is drawn (renderProjects) and at the moment of the lock (the event
-   oe-jobs-locked, OE.lockJobs). */
-// WORDING: r5o
-const PROJECTS_NEXT_LOCKED = 'One job is in the chat. To start another, ask Claude. "Show its maps" still opens a project.';
+   oe-jobs-locked, OE.lockJobs). r5-p J1: the line ends with the Choose
+   another job text button (OE.chooseAnotherButton), which lifts the lock,
+   so it no longer says to ask Claude to start another; a line that already
+   holds the button keeps it. */
+// WORDING: r5p
+const PROJECTS_NEXT_LOCKED = 'One job is in the chat. "Show its maps" still opens a project.';
+/* Every compare hint made (comparer), held weakly, and its which-map button
+   (hintButton): a project's card a search hid is out of the page, and its
+   hint follows the lock and the unlock all the same (r5-p). */
+const compareHints = new Set();
+const hintButton = new WeakMap();
 function lockedWords() {
   if (!OE.jobLocked()) return;
   const next = root.querySelector(':scope > .oe-lead p.next');
-  if (next) next.textContent = PROJECTS_NEXT_LOCKED;
+  if (next && !next.querySelector('button.oe-choose-another')) {
+    next.replaceChildren(PROJECTS_NEXT_LOCKED + ' ', OE.chooseAnotherButton());
+  }
   for (const hint of root.querySelectorAll('.compare-hint')) hint.textContent = COMPARE.how;
+  for (const r of compareHints) {
+    const hint = r.deref();
+    if (hint) hint.textContent = COMPARE.how; else compareHints.delete(r);
+  }
 }
+/* r5-p J1: the lock lifted (Choose another job, OE.unlockJobs): the panel's
+   line says its own words again (PROJECTS_LEAD) and each compare hint what
+   its boxes now make it say (two ticked: its button is on, COMPARE.ready;
+   else COMPARE.how), so boxes ticked while the jobs were locked count. The
+   Choose another job button went with the locked line, so the focus goes
+   to the first job button that is shown and on, or, with none shown (no
+   project open), to the first button of the panel that is; only while this
+   panel's frame has the focus. */
+function unlockedWords() {
+  const next = root.querySelector(':scope > .oe-lead p.next');
+  if (next) next.textContent = PROJECTS_LEAD.next;
+  for (const r of compareHints) {
+    const hint = r.deref();
+    if (hint) hint.textContent = hintButton.get(hint).disabled ? COMPARE.how : COMPARE.ready; else compareHints.delete(r);
+  }
+  const shown = (b) => !b.disabled && b.getClientRects().length > 0;
+  const first = [...root.querySelectorAll('button[data-oe-job]')].find(shown)
+    || [...root.querySelectorAll('button')].find(shown);
+  if (first) OE.focusIfHere(first);
+}
+document.addEventListener('oe-jobs-unlocked', unlockedWords);
+OE.cleanups.add(() => document.removeEventListener('oe-jobs-unlocked', unlockedWords));
 document.addEventListener('oe-jobs-locked', lockedWords);
 // When Claude closes the card, the listener goes too (OE.start's teardown runs OE.cleanups).
 OE.cleanups.add(() => document.removeEventListener('oe-jobs-locked', lockedWords));
@@ -641,6 +677,9 @@ function comparer(app, project) {
     }
     await OE.sendJob(app, OE.JOB_TEXT.which(chosen[0], chosen[1]), slot);
   }, slot, 'which:' + project.id);
+  // r5-p J1: the hint is kept with its button, so the unlock makes it say what the boxes now give (unlockedWords).
+  compareHints.add(new WeakRef(hint));
+  hintButton.set(hint, button);
   const sync = () => {
     const two = picked.size === 2;
     button.disabled = !two;
