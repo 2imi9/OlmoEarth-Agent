@@ -165,8 +165,13 @@ def test_f08_the_job_slot_says_copy_and_its_box_selects_whole() -> None:
     that selects whole on one click; no view says "Type it in" any more."""
     common = _read("common.js")
     assert f"// WORDING: r5f F08\nOE.JOB_NOT_SENT = '{JOB_NOT_SENT}';" in common
-    assert "line.textContent = sent ? OE.JOB_SENT : OE.JOB_NOT_SENT;" in common
-    assert "if (!sent) slot.append(OE.el('code', {}, text));" in common
+    # Round r5-o: a job button's own sent line (T2), a Copy message button (T3).
+    assert (
+        "line.textContent = sent ? (job !== null ? OE.JOB_SENT_ONE : OE.JOB_SENT)"
+        " : OE.JOB_NOT_SENT;"
+    ) in common
+    assert "const code = OE.el('code', {}, text);" in common
+    assert "slot.append(code, OE.copyButton(text, code, 'Copy message'));" in common
     box = _between(common, ".oe-type code {", "}")
     assert "user-select: all;" in box
     for name in views.VIEWS:

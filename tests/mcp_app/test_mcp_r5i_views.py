@@ -245,11 +245,12 @@ def test_b5_only_those_two_links_are_quiet_and_every_other_keeps_its_toast() -> 
         name: re.findall(r"OE\.open\(app, [^)]*\)", _code(_read(name)))
         for name in ("common.js", "result.html", "sheet.js", "start.html")
     }
-    # r5-n S2: the Settings box's "setup" link says a decline in its own slot.
+    # r5-n S2: the Settings box's "setup" link says a decline in its own slot; r5-o: so does the sign-in page,
+    # over its address and Copy button.
     assert calls["common.js"] == [
         "OE.open(app, OE.DOCS_URL, { quiet: true })",
         "OE.open(app, OE.ACCESS_URL, { quiet: true })",
-        "OE.open(app, page.url)",
+        "OE.open(app, page.url, { quiet: true })",
         "OE.open(app, OE.SETUP_URL, { quiet: true })",
     ]
     # r5-k K5: the look-first Street map's own line says a decline.
@@ -259,7 +260,7 @@ def test_b5_only_those_two_links_are_quiet_and_every_other_keeps_its_toast() -> 
     for name in views.VIEWS:
         html = views.view_html(name)
         mine = 1 if name == "result" else 0  # r5-k K5
-        assert html.count("{ quiet: true })") <= 3 + mine, name  # r5-n S2
+        assert html.count("{ quiet: true })") <= 4 + mine, name  # r5-n S2, r5-o
         assert html.count("OE.open(app, url, { quiet") == mine, name
 
 

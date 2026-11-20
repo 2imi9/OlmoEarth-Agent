@@ -193,7 +193,7 @@ const sheetCounts = (line) => {
 function sheetRow(app, row) {
   const slot = OE.typeSlot();
   const resume = busyButton({ 'aria-label': 'Resume: ' + row.name }, 'Resume',
-    () => OE.sendJob(app, String(row.resume_message), slot));
+    () => OE.sendJob(app, String(row.resume_message), slot), slot, 'resume:' + String(row.resume_message));
   // The words in the list's first column, Resume in its second (.in-progress in the style).
   return OE.el('li', {},
     OE.el('div', { class: 'words' },
@@ -284,6 +284,24 @@ const showState = (button, name, open) => {
 const PROJECTS_LEAD = {
   next: 'Press "Show its maps" on the project that holds your map, then "Check how wrong it is" beside the map.',
 };
+/* r5-o T2 (after review): once the panel's job buttons are locked (one job at
+   a time), no line says to press one: the card's line says to ask Claude,
+   and that "Show its maps" still opens a project; a compare hint that said
+   to press the button says how a comparison works again (.compare-hint; the
+   boxes stay, so Claude is still told what is ticked). Set in place when the
+   card is drawn (renderProjects) and at the moment of the lock (the event
+   oe-jobs-locked, OE.lockJobs). */
+// WORDING: r5o
+const PROJECTS_NEXT_LOCKED = 'One job is in the chat. To start another, ask Claude. "Show its maps" still opens a project.';
+function lockedWords() {
+  if (!OE.jobLocked()) return;
+  const next = root.querySelector(':scope > .oe-lead p.next');
+  if (next) next.textContent = PROJECTS_NEXT_LOCKED;
+  for (const hint of root.querySelectorAll('.compare-hint')) hint.textContent = COMPARE.how;
+}
+document.addEventListener('oe-jobs-locked', lockedWords);
+// When Claude closes the card, the listener goes too (OE.start's teardown runs OE.cleanups).
+OE.cleanups.add(() => document.removeEventListener('oe-jobs-locked', lockedWords));
 
 /* What the ring on each project card shows, said once, above the cards
    (r5-e S7: it was the same caption beside every ring); shown only while a
@@ -390,23 +408,32 @@ let firstInStudio = false;
    the second click of a fast double-click (its detail 2) does nothing, even
    when the host answered the first, as OE.oncePerPress runs (r5-n JS-1); a
    key's press (detail 0) counts. Its own press is stopped first, so a click
-   it drops does not reach the row under it either. */
-function busyButton(attrs, text, fn) {
+   it drops does not reach the row under it either. r5-o T2, one job at a
+   time: every such button sends a job, so each is a job button
+   (OE.jobButton; its key is key, built from ids, never from a name: one per
+   job of the page, so a row of the same name in another project is not
+   taken for the pressed one) and slot, where fn's OE.sendJob writes, a
+   job's slot: once one job's message reached the chat every job button of the panel is off
+   (aria-disabled, greyed), a press does nothing, and the pressed button's
+   slot (slot, where its line is written again when the panel is drawn
+   again) says OE.JOB_SENT_ONE. */
+function busyButton(attrs, text, fn, slot, key) {
   let busy = false;
   const button = OE.el('button', {
     class: 'small', ...attrs,
     onclick: async (e) => {
       e.stopPropagation();
       if (busy || button.disabled || e.detail > 1) return;
+      if (OE.jobLocked(button)) return;
       busy = true;
       button.setAttribute('aria-disabled', 'true');
       try { await fn(); } finally {
         busy = false;
-        button.setAttribute('aria-disabled', 'false');
+        OE.jobIdle(button);
       }
     },
   }, text);
-  return button;
+  return OE.jobButton(button, key, slot);
 }
 
 /* A failed read behind a button: the sign-in when the key is missing or
@@ -427,10 +454,11 @@ const titleButton = (name) => OE.el('button', { type: 'button', class: 'title', 
    server offers it and this result is a class map with top-k scores
    (OE.firstOffered). kind is the prediction's model's kind (null when not
    recorded). */
-function resultRow(app, p, r, done, kind) {
+function resultRow(app, p, r, done, kind, project) {
   const slot = OE.typeSlot();
   const job = (key) => busyButton({ 'aria-label': JOBS[key] + ': result ' + r.id }, JOBS[key],
-    () => OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: r.id, prediction_id: p.id, name: p.name }), slot));
+    () => OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: r.id, prediction_id: p.id, name: p.name }), slot), slot,
+    'result:' + project.id + ':' + p.id + ':' + r.id);
   const jobs = !done ? [] : [
     OE.checkOffered(kind) ? job('check') : null,
     firstInStudio && OE.firstOffered(kind, r.property_names || []) ? job('first') : null,
@@ -464,7 +492,7 @@ function resultRow(app, p, r, done, kind) {
    several is open, the row's own job buttons are away (r5-d R09): the
    outputs' buttons are the ones to press; they come back when it closes,
    and a press on them opens it again. */
-function predictionRow(app, p, compare, kind, model = null) {
+function predictionRow(app, project, p, compare, kind, model = null) {
   const done = p.status === 'completed';
   const results = OE.el('ul', { class: 'items sub', hidden: true });
   const slot = OE.typeSlot();
@@ -480,7 +508,7 @@ function predictionRow(app, p, compare, kind, model = null) {
     const list = out.results || [];
     // r5-c S05: a lone output has no buttons of its own (the row's use it),
     // and only a list of several opens with OUTPUTS.first.
-    const rows = list.map((r) => resultRow(app, p, r, done && list.length > 1, kind));
+    const rows = list.map((r) => resultRow(app, p, r, done && list.length > 1, kind, project));
     results.replaceChildren(...(!list.length ? [OE.el('li', { class: 'faint' }, OUTPUTS.none)]
       : hasJobs && list.length > 1 ? [OE.el('li', { class: 'small faint' }, OUTPUTS.first), ...rows] : rows));
     // r5-d R09: a run of several maps: while its list is open, the row's
@@ -550,7 +578,7 @@ function predictionRow(app, p, compare, kind, model = null) {
       return;
     }
     await OE.sendJob(app, OE.JOB_TEXT[key]({ result_id: list[0].id, prediction_id: p.id, name: p.name }), slot);
-  });
+  }, slot, 'pred:' + project.id + ':' + p.id);
   const jobs = !done ? [] : [
     OE.checkOffered(kind) ? job('check') : null,
     firstInStudio && OE.firstOffered(kind) ? job('first') : null,
@@ -592,7 +620,7 @@ function comparer(app, project) {
   const s = onScreen;  // what the panel tells Claude: the ids picked, by project
   const slot = OE.typeSlot();
   // How to compare, until two are ticked; then that the button is live (announced).
-  const hint = OE.el('span', { class: 'small faint', 'aria-live': 'polite' }, COMPARE.how);
+  const hint = OE.el('span', { class: 'small faint compare-hint', 'aria-live': 'polite' }, COMPARE.how);
   const button = busyButton({ disabled: true }, 'Which is more accurate?', async () => {
     // r5-b J20: a press that sends nothing leaves no word of the last one.
     OE.clearSlot(slot);
@@ -612,11 +640,13 @@ function comparer(app, project) {
       chosen.push({ result_id: list[0].id, prediction_id: p.id, name: p.name });
     }
     await OE.sendJob(app, OE.JOB_TEXT.which(chosen[0], chosen[1]), slot);
-  });
+  }, slot, 'which:' + project.id);
   const sync = () => {
     const two = picked.size === 2;
     button.disabled = !two;
     hint.textContent = two ? COMPARE.ready : COMPARE.how;
+    // r5-o T2 (after review): while the jobs are locked the button is off, so the hint does not say to press it.
+    if (OE.jobLocked(button)) hint.textContent = COMPARE.how;
     for (const box of boxes) box.disabled = two && !box.checked;
     if (s) {
       if (picked.size) s.picked.set(project.id, [...picked.keys()]); else s.picked.delete(project.id);
@@ -679,7 +709,8 @@ function modelsCard(app, project, out) {
     const g = OE.glyph.modelRow(m);
     const slot = OE.typeSlot();
     const run = busyButton({ 'aria-label': 'Run on an area: model ' + m.name, title: RUN_TITLE },
-      'Run on an area', () => OE.sendJob(app, OE.JOB_TEXT.run({ ...m, project_id: project.id }), slot));
+      'Run on an area', () => OE.sendJob(app, OE.JOB_TEXT.run({ ...m, project_id: project.id }), slot), slot,
+      'run:' + project.id + ':' + m.id);
     // The tile a fixed track, the name and its badges a column that wraps
     // inside itself, the caption under the name (.lead, .lead-caption).
     return OE.el('li', { style: 'display:block' },
@@ -718,7 +749,7 @@ function projectSummary(app, project, out) {
   const modelsBox = modelsCard(app, project, out);
   return OE.el('div', { class: 'stack', style: 'margin-top:12px' },
     summaryCard('Predictions', out.predictions,
-      (p) => predictionRow(app, p, compare, kindOf.get(p.model_id) || null, modelOf.get(p.model_id) || null),
+      (p) => predictionRow(app, project, p, compare, kindOf.get(p.model_id) || null, modelOf.get(p.model_id) || null),
       // r5-c S06: what the boxes do, under the heading, only where boxes are drawn.
       compare ? compare.footer() : null, compare ? PREDICTIONS_NOTE + ' ' + COMPARE.tick : PREDICTIONS_NOTE),
     summaryCard('Areas', out.areas, (a) => OE.el('li', { class: 'area' }, OE.el('span', { class: 'name' }, a.name),
@@ -885,6 +916,7 @@ function renderProjects(app, projects, account, source = null) {
     ringSays ? OE.el('div', { class: 'ring-block' }, ringSays, container) : container,
   ].filter(Boolean));
   fill();
+  lockedWords();  // r5-o T2: drawn again while the jobs are locked, the line does not say to press a job
   tellScreen(app, onScreen);
   // Cards (eight projects or fewer) get their rings: one predictions read per
   // project, in one call. Compact rows draw none (that would be a read per row).

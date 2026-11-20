@@ -184,7 +184,7 @@ def test_s05_a_lone_output_has_no_buttons_of_its_own() -> None:
     fill = _between(row, "const fill = (out) => {", "\n  };")
     assert (
         "const rows = list.map((r) => resultRow(app, p, r, done && list.length > 1,"
-        " kind));" in fill
+        " kind, project));" in fill
     )
     assert (
         ": hasJobs && list.length > 1 ? [OE.el('li', { class: 'small faint' },"
@@ -192,7 +192,7 @@ def test_s05_a_lone_output_has_no_buttons_of_its_own() -> None:
     )
     # A row's job on a run with several: the list opens, and (r5-d R09) its
     # first line alone says so: no toast, no line in the row's slot.
-    job = _between(row, "const job = (key) => ", "\n  });")
+    job = _between(row, "const job = (key) => ", "\n  }, slot, 'pred:")
     assert _in_order(
         job,
         "    if (list.length > 1) {\n      show(true);\n",

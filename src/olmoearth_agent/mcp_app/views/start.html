@@ -31,6 +31,8 @@
   .jobs .job-label { font-weight: 600; }
   .jobs .job-line { font-size: 12px; line-height: 18px; font-weight: 400; }
   .jobs button.job:disabled .job-label, .jobs button.job:disabled .job-line { color: var(--text-2); }
+  /* r5-o T2: the tiles off after one job's message reached the chat (OE.lockJobs) stay readable too. */
+  .jobs button.job[data-oe-locked] .job-label, .jobs button.job[data-oe-locked] .job-line { color: var(--text-2); }
   .jobs li.jobs-head > h2 { font-size: 12px; line-height: 18px; font-weight: 600; color: var(--text-2); }
   /* The overview figure (overview.js), its one small caption and the docs
      link in the caption's line, sized as it (r5-a V1), underlined, so more
@@ -111,6 +113,14 @@ const START_NEXT_IN = 'Press a job, or ask Claude in the chat.';
 const START_NEXT_STUDIO = 'Sign in first for the Studio jobs. Press a job or ask Claude in the chat.';
 // WORDING: r5n
 const SIGN_IN_STUDIO_JOB = 'Sign in to start a Studio job.';
+/* r5-o T2 (after review): once the tiles are locked (one job at a time) no
+   line of the card says to press a job: the card's line says to ask Claude
+   (signed out: to sign in first, then ask), and the line over the tiles,
+   which said to sign in to start a job, goes (lockedWords). */
+// WORDING: r5o
+const START_NEXT_LOCKED = 'One job is in the chat. To start another, ask Claude in the chat.';
+// WORDING: r5o
+const START_NEXT_LOCKED_OUT = 'Sign in first, then ask Claude in the chat to start another job.';
 
 /* Each drawing of the card takes the next number; the status read on mount,
    when it answers after a later drawing, is dropped. */
@@ -131,7 +141,13 @@ const signedIn = (status) => Boolean(status && status.signed_in && !status.key_p
    of a fast double-click (its detail 2) does nothing, even when the host
    answered the first; a key's press (detail 0) counts. press: the row's own
    press, given the slot (the Asta tile's, astaRow); else the job's message
-   is sent. */
+   is sent. r5-o T2, one job at a time: each tile is a job button and its
+   slot a job's slot (OE.jobButton, the key 'start:' and the job's key), so
+   OE.sendJob locks the tiles: once a tile's
+   message reached the chat every tile is off (aria-disabled, greyed, its
+   label and line still readable), a press does nothing, and the pressed
+   tile's slot says OE.JOB_SENT_ONE; a card drawn again (a sign-in, the
+   Settings switch) keeps that. */
 function jobRow(app, job, on, press = null) {
   const slot = OE.typeSlot();
   let busy = false;
@@ -139,13 +155,15 @@ function jobRow(app, job, on, press = null) {
   const lineId = 'job-line-' + job.key;
   const button = OE.el('button', { type: 'button', class: 'job' + (main && on ? ' primary' : ''), disabled: !on, 'aria-label': job.label, 'aria-describedby': lineId },
     OE.el('span', { class: 'job-label' }, job.label), OE.el('span', { class: 'job-line', id: lineId }, job.line));
+  OE.jobButton(button, 'start:' + job.key, slot);
   button.addEventListener('click', async (e) => {
     if (busy || button.disabled || e.detail > 1) return;
+    if (OE.jobLocked(button)) return;
     busy = true;
     button.setAttribute('aria-disabled', 'true');
     try { await (press ? press(slot) : OE.sendJob(app, job.message, slot)); } finally {
       busy = false;
-      button.setAttribute('aria-disabled', 'false');
+      OE.jobIdle(button);
     }
   });
   return OE.el('li', { class: main ? 'main' : null }, button, slot);
@@ -259,8 +277,10 @@ OE.onSettings = (state) => {
    no sign-in) they say the sign-in is for the Studio jobs
    (START_NEXT_STUDIO, SIGN_IN_STUDIO_JOB); else they are render's own
    words. Set in place at each drawing and when the switch changes; signed
-   in, or with no jobs (no tile then), nothing changes. */
+   in, or with no jobs (no tile then), nothing changes. r5-o T2: while the
+   tiles are locked the locked words stand instead (lockedWords). */
 function offWords() {
+  if (lockedWords()) return;
   if (!jobsDrawn || jobsDrawn.on) return;
   const next = root.querySelector(':scope > .oe-lead p.next');
   if (next) next.textContent = astaOn ? START_NEXT_STUDIO : START_LEAD.next;
@@ -268,6 +288,26 @@ function offWords() {
   const line = list ? list.previousElementSibling : null;
   if (line) line.textContent = astaOn ? SIGN_IN_STUDIO_JOB : 'Sign in to start a job.';
 }
+
+/* r5-o T2 (after review): the card's words while its tiles are locked, set
+   in place: at each drawing and at each change of the switch (offWords),
+   and at the moment of the lock (the event oe-jobs-locked, OE.lockJobs),
+   when the card is not drawn again. The card's line says to ask Claude
+   (START_NEXT_LOCKED; signed out START_NEXT_LOCKED_OUT), and the line over
+   the tiles (signed out) is taken away. True when the tiles are locked. */
+function lockedWords() {
+  if (!OE.jobLocked()) return false;
+  if (!jobsDrawn) return true;
+  const next = root.querySelector(':scope > .oe-lead p.next');
+  if (next) next.textContent = jobsDrawn.on ? START_NEXT_LOCKED : START_NEXT_LOCKED_OUT;
+  const list = root.querySelector('ul.jobs');
+  const line = list ? list.previousElementSibling : null;
+  if (line) line.remove();
+  return true;
+}
+document.addEventListener('oe-jobs-locked', lockedWords);
+// When Claude closes the card, the listener goes too (OE.start's teardown runs OE.cleanups).
+OE.cleanups.add(() => document.removeEventListener('oe-jobs-locked', lockedWords));
 
 /* The switch as the server holds it now (olmoearth_app_settings: quiet and
    read-only, it tells Claude nothing), read by this card itself (r5-n,
