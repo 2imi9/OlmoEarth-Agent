@@ -22,9 +22,10 @@ here runs the scripts):
   button) comes right under the lines that lead to it, before the card's one
   Details fold, whose last node is the look-first numbers (a closed fold of
   their own);
-- R4: under "One result per part, never averaged" the face says "Check the
-  other part too." and Details the side-by-side sentence with its reason
-  (the server's SAY_SIDE_BY_SIDE); the area sentence of a map of more than
+- R4: under the parts' heading the face says "Check the other part too." and
+  Details a sentence on the parts with its reason (the server's
+  SAY_SIDE_BY_SIDE until round r5-s, W8: words that describe since, the
+  server's sentence the model's alone); the area sentence of a map of more than
   two classes is the Details' last counted line, in words of its own there
   ("This check says ..."), no longer the end of the last line; the model's
   lines keep both;
@@ -83,7 +84,12 @@ OTHER_ONE = "Check the other part too."
 OTHER_THREE = "Check the other 3 parts too."
 #: Round r5-f, F07: the face's own second sentence, after the server's first.
 ASK_CHECK = "Ask Claude to open the Check card again."
+#: Round r5-s W8: Details' line describes; the server's SAY_SIDE_BY_SIDE,
+#: which tells how to report the parts, is the model's alone (:data:`TOLD`).
 SIDE_BY_SIDE = (
+    "Each part has its own result: this check gives no range for a combined rate."
+)
+TOLD = (
     "Report the parts' results side by side; do not average or add them: this check "
     "gives no range for a combined rate."
 )
@@ -600,26 +606,28 @@ def test_r3_the_numbers_are_the_last_node_of_details() -> None:
 
 
 def test_r4_the_parts_line_says_one_sentence_and_details_the_reason() -> None:
-    """R4: under "One result per part, never averaged" the face says the first
+    """R4: under the parts' heading the face says the first
     sentence of the server's SAY_OTHER (SAY_OTHERS for k parts); the second,
-    with its reason, is sideBySide, the server's SAY_SIDE_BY_SIDE word for
+    with its reason, was sideBySide, the server's SAY_SIDE_BY_SIDE word for
     word, in the card's Details once the map has two parts or more, after the
     rule and the class lines, before the rare classes' counted lines; marked.
+    Since round r5-s, W8 sideBySide describes (a result for each part, and
+    the reason), and the server's sentence is the model's alone.
     Since round r5-f, F07 the face's line ends with a sentence of its own
     (ASK_CHECK: where to check the other part), which the model's lines lack."""
     page = _read("result.html")
     words = _between(page, "const RESULT_WORDS = {", "\n};")
     assert "  // WORDING: r5e R4\n  // WORDING: r4m M2\n  otherPart: (k) => " in words
-    marked = "  // WORDING: r5e R4\n  // WORDING: r4m M2 (server SAY_SIDE_BY_SIDE"
+    marked = "  // WORDING: r5s\n  // WORDING: r5e R4 (in Details)\n  sideBySide: '"
     assert marked in words
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
     assert _concat(one, {}) == OTHER_ONE + " " + ASK_CHECK
     assert _concat(many, {"k": "3"}) == OTHER_THREE + " " + ASK_CHECK
     side = _concat(_entry(words, "sideBySide: "), {})
-    assert side == SIDE_BY_SIDE == server.SAY_SIDE_BY_SIDE.strip()
-    assert OTHER_ONE + " " + side == server.SAY_OTHER.strip()
-    assert OTHER_THREE + " " + side == server.SAY_OTHERS.format(k="3").strip()
+    assert side == SIDE_BY_SIDE and TOLD == server.SAY_SIDE_BY_SIDE.strip()
+    assert OTHER_ONE + " " + TOLD == server.SAY_OTHER.strip()
+    assert OTHER_THREE + " " + TOLD == server.SAY_OTHERS.format(k="3").strip()
     card = _between(page, "function resultCard(app, data) {", "\n}\n")
     face = "other ? OE.el('p', { class: 'small' }, RESULT_WORDS.otherPart(other))"
     assert face + " : null" in card

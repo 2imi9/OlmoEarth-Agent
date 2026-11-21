@@ -68,8 +68,9 @@ WHAT_BARE = (
 #: finish button and the counter say it). The script joined the unit word in
 #: as a name, so the pieces around it are what must be gone.
 NO_RESULT = ("No result until every", "You can change an answer until you press")
-#: J13: in the Details fold of a sheet that can show pictures (W.reading).
-READING = "Your answers are a reading of satellite pictures, not a visit on site."
+#: J13: in the Details fold of a sheet that can show pictures (W.reading);
+#: round r5-s W8: what the answers are, and no more.
+READING = "Your answers are a reading of satellite pictures."
 #: J15: beside "Reopen the sheet" with no answer waiting; with some, the other
 #: branch of W.changedElsewhere says how many were not saved.
 CHANGED_NONE = "This sheet was changed somewhere else. Reopen the sheet to carry on."
@@ -314,8 +315,9 @@ def test_j13_the_lead_is_three_lines() -> None:
 
 
 def test_j13_the_reading_line_is_in_the_fold() -> None:
-    """That the answers are a reading of satellite pictures, not a visit on
-    site, is in the sheet's one Details fold, only on a sheet that can show
+    """That the answers are a reading of satellite pictures (round r5-s W8:
+    no longer "not a visit on site", the model's caution)
+    is in the sheet's one Details fold, only on a sheet that can show
     pictures; it is no longer on the lead."""
     assert _said("reading", "square") == READING
     editor = _editor()

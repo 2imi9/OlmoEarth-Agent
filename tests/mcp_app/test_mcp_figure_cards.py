@@ -1298,9 +1298,9 @@ async def test_the_estimate_card_is_figure_first(
     ]
     # One last line (R5), one sentence; three classes of the map's own: the
     # area sentence is in Details (round r5-e, R4), above.
+    # Round r5-s W3: what the map was compared with, and no more.
     assert card["last_line"] == (
-        "Checked against satellite pictures, not a site visit; no verdict on "
-        "whether the map is good enough."
+        "Compared with what you saw in the satellite pictures."
     )
     assert card["last_line"] == server.LAST_LINE_PICTURES
     assert server.LAST_LINE_AREA.strip() == (
@@ -1486,7 +1486,7 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     class by name only, never its counts (a Cannot tell square may hold it,
     F1), then the unseen line; nothing counted for Details. The grid of the
     squares checked stays (O2): the 2 Cannot tell squares marked, no class
-    line or range, the no-split line in their place and the legend's
+    line or range, no line in their place (round r5-s W2) and the legend's
     dashed square after the classes, before the red outline. The fold keeps
     the tool's own card rows; the model's fourth line says the classes no
     square had in the card's words, then the rare one by name."""
@@ -1540,9 +1540,8 @@ async def test_cannot_tell_gives_a_range_the_grid_and_the_rare_class_by_name(
     assert sum(c["wrong"] for c in squares["cells"]) == 8
     assert [c["line"] for c in squares["classes"]] == [None, None, None]
     assert [c["range"] for c in squares["classes"]] == [None, None, None]
-    assert squares["no_split"] == (
-        "No split by class: 2 squares were Cannot tell, and each could be either."
-    )
+    # Round r5-s W2: no line in the class lines' place.
+    assert squares["no_split"] is None
     assert squares["n_unjudged"] == 2
     assert squares["legend"] == [
         {"code": "1", "text": 'You saw "Kelp"'},
@@ -1616,9 +1615,10 @@ async def test_cannot_tell_on_another_design_draws_no_grid_and_says_the_same_lin
 
 
 def test_one_cannot_tell_point_and_no_cannot_tell() -> None:
-    """O2 in points: one Cannot tell point says so in the singular; the
+    """O2 in points: one Cannot tell point gives no class line; the
     legend's dashed square comes after the classes, before the outline. No
-    Cannot tell: no no-split line, the legend as before."""
+    Cannot tell: the legend as before. Round r5-s W2: no no-split line either
+    way (``no_split`` is ``None``)."""
     got = {
         "n": 9,
         "n_unjudged": 1,
@@ -1630,9 +1630,7 @@ def test_one_cannot_tell_point_and_no_cannot_tell() -> None:
     }
     one = server._squares(got, {}, "point")
     assert one is not None
-    assert one["no_split"] == (
-        "No split by class: 1 point was Cannot tell, and it could be either."
-    )
+    assert one["no_split"] is None
     assert one["n_unjudged"] == 1
     assert [c["line"] for c in one["classes"]] == [None]
     assert [c["unjudged"] for c in one["cells"]] == [False] * 8 + [True]
@@ -1920,10 +1918,8 @@ async def test_a_grid_over_the_whole_result_is_the_whole_map_in_points(
     ]
     # A map of three classes: the area sentence (E/est-5), in Details since
     # round r5-e, R4; the last line one sentence.
-    assert card["last_line"] == (
-        "Checked against your answers, not a site visit; no verdict on whether the "
-        "map is good enough."
-    )
+    # Round r5-s W3: what the map was compared with, and no more.
+    assert card["last_line"] == "Compared with your answers."
     assert card["uncovered_detail"] == [
         "This check says nothing about the area of any one class."
     ]
@@ -2897,9 +2893,9 @@ def test_the_last_line_says_the_area_only_for_three_classes_or_more() -> None:
     assert many["say_first"][2] == plain["say_first"][2] + server.LAST_LINE_AREA
     assert server.LAST_LINE_AREA == area
     assert server.LAST_LINE_PICTURES == (
-        "Checked against satellite pictures, not a site visit; no verdict on "
-        "whether the map is good enough."
+        "Compared with what you saw in the satellite pictures."
     )
+    assert server.LAST_LINE_ANSWERS == "Compared with your answers."
     assert server._design_classes(None) is None
     assert server._design_classes({"population": {"classes": []}}) is None
 

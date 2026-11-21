@@ -9,8 +9,8 @@ test here runs the scripts), each string as the round's string table gives it:
 - F8: a review set's picture, with the tool's caption, is the first thing in
   the closed fold, and its one legend line follows it there (r4-j J4);
 - O2: with Cannot tell answers the grid of checked squares is still drawn, a
-  Cannot tell square empty and dashed, with the server's one line in place of
-  the per-class lines;
+  Cannot tell square empty and dashed; since round r5-s W2 no line stands in
+  place of the per-class lines;
 - O3: the outlined button "Check each class the map draws" under the
   uncovered lines, its message (OE.JOB_TEXT.byClass, with r4-j J1's route
   that keeps to the part) and its Details line;
@@ -47,8 +47,8 @@ CLASS_CHECK = "Check each class the map draws"
 CLASS_CHECK_DETAIL = (
     "Check each class the map draws: a separate check with its own ranges. It "
     "picks {many} for each class the map draws, which need not be the classes you "
-    "did not see. It is planned after this result was read, so it is its own "
-    "check and is never pooled with this one."
+    "did not see. It is planned after this result was read, so it gets its own "
+    "result."
 )
 #: The message on squares names the route that keeps to the part (r4-j J1):
 #: the scores_path olmoearth_check_map gives for that part ({which}: "that
@@ -56,13 +56,13 @@ CLASS_CHECK_DETAIL = (
 BY_CLASS_SQUARES = (
     "Check each class the map draws: a new check of Studio prediction result "
     "r1{part}, picked class by class (olmoearth_plan_label_sample on the "
-    "scores_path that olmoearth_check_map gives for {which}). Its own check and "
-    "ranges, never pooled with this one. First ask me how many squares to check."
+    "scores_path that olmoearth_check_map gives for {which}). It gets its own "
+    "result. First ask me how many squares to check."
 )
 BY_CLASS_POINTS = (
     "Check each class the map draws: a new check of Studio prediction result "
-    "r1, picked class by class (olmoearth_plan_label_sample by result_id). Its "
-    "own check and ranges, never pooled with this one. First ask me how many "
+    "r1, picked class by class (olmoearth_plan_label_sample by result_id). It "
+    "gets its own result. First ask me how many "
     "points to check."
 )
 #: A zone's file name as Studio gives it, and its words in the message.
@@ -306,19 +306,16 @@ def test_o2_the_grid_draws_a_cannot_tell_square_empty_and_dashed() -> None:
     assert _OFF_FACE.search("Cannot tell") is None
 
 
-def test_o2_the_result_card_says_no_split_in_place_of_the_class_lines() -> None:
-    """r4-i O2: under the squares, the server's squares.no_split (a string)
-    as p.small.oe-no-split; the heading is as before (n_checked counts the
-    Cannot tell squares). Round r5-b, J23: the class lines with text are
-    made beside the squares (p.small.oe-class-line) but go to the Details
-    fold, after the rule used; only the no-split line stays under the
-    squares, since it explains the dashed ones."""
-    card = _between(_read("result.html"), "function resultCard(", "\n}\n")
-    said = (
-        "text(sq.no_split) ? OE.el('p', { class: 'small oe-no-split' },"
-        " sq.no_split) : null));"
-    )
-    assert said in card
+def test_o2_the_result_card_has_no_line_in_place_of_the_class_lines() -> None:
+    """r4-i O2: the heading is as before (n_checked counts the Cannot tell
+    squares). Round r5-b, J23: the class lines with text are made beside the
+    squares (p.small.oe-class-line) but go to the Details fold, after the
+    rule used. Round r5-s W2: no line under the squares stands in the class
+    lines' place (the card drew the server's squares.no_split there, as
+    p.small.oe-no-split); the tally's dashed row shows the Cannot tell."""
+    page = _read("result.html")
+    card = _between(page, "function resultCard(", "\n}\n")
+    assert "no_split" not in page and "oe-no-split" not in page
     assert "lines.push(" not in card and "...lines" not in card
     assert _in_order(
         card,
@@ -326,7 +323,7 @@ def test_o2_the_result_card_says_no_split_in_place_of_the_class_lines() -> None:
         "classLines = (Array.isArray(sq.classes) ? sq.classes : [])",
         ".map((c) => OE.el('p', { class: 'small oe-class-line' }, c.line));",
         "RESULT_WORDS.squaresHead(n !== null ? n : sq.cells.length, unit)),"
-        " OE.fig.squares(sq),\n      text(sq.no_split) ? OE.el(",
+        " OE.fig.squares(sq)));\n",
         "const folded = [];",
         "RESULT_WORDS.ruleUsed(",
         "classLines.forEach((line) => folded.push(line));",

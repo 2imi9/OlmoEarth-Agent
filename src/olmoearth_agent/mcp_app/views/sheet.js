@@ -75,6 +75,16 @@
      instead), and the answer. With a row's pane open, its head holds that
      window's one Street map (r5-e H4). The filter (any, unlabelled,
      labelled) applies to the list only.
+   r5-r (the owner, 20 Nov 2026: "a button to the next empty one, so we will
+   not have this 99/100 scenario"): while a window has no answer, the face
+   has a third button beside Previous and Next, "Next unlabelled" (N1: the
+   next window with no answer after the one shown, wrapping round; the key U
+   where no answer of the sheet has that key; one size with the other two,
+   in equal columns that wrap to a second row on a narrow panel). While 1 to
+   3 windows are left and at least one is answered, the counter's row names
+   them, each a text button that shows it ("Unlabelled: Square 29"), and the
+   grey finish button's line ends with a text button that does the same as
+   N1 (N2). They show a window's place only, never what the map says.
 
    A class map's sheet has no switch of face (the owner's O1 of 14 Nov
    2026): it is labelled with the class seen, and the panel never shows the
@@ -282,7 +292,7 @@
    sheet's first sentence and what Cannot tell does to the result, the keys,
    what never reaches this panel (the blind, code or right-or-wrong line),
    the Street map line, the note that no date is marked clear, that the
-   answers are a reading of pictures and not a visit on site (J13), and, on
+   answers are a reading of satellite pictures (J13; r5-s W8), and, on
    a sheet that holds two sets of answers, the server's sentence on them
    (J21). While pictures are off and no pane is open, one line in the pane's
    place, at body size (J05), says how to see them. */
@@ -409,9 +419,12 @@ OE.sheetWords = (unit) => {
     // left to answer from records.
     barePairTail: ', without looking at the maps. No records? Stop and tell Claude.',
     // In the Details fold of a sheet that can show pictures (r5-b J13;
-    // before, on the lead's third line).
+    // before, on the lead's third line). r5-s W8: it says what the answers
+    // are and no more (it ended with the caution on what they are not; that
+    // is in the model's line, the server's SAY_LIMITS, and the docs).
+    // WORDING: r5s
     // WORDING: r5b J13
-    reading: 'Your answers are a reading of satellite pictures, not a visit on site.',
+    reading: 'Your answers are a reading of satellite pictures.',
     // A sheet with no pictures and no places cannot show where a point is
     // (r5-b J11: "say what is there" left every answer a guess): it says
     // what to answer from, and to stop with nothing to answer from. The way
@@ -557,6 +570,28 @@ OE.sheetWords = (unit) => {
     howToShow: 'How to show the ' + many,
     prevLabel: 'Previous ' + one,
     nextLabel: 'Next ' + one,
+    // r5-r N1: the third button beside Previous and Next while a square has
+    // no answer, and its name for a screen reader (never "Next square" in a
+    // row: that is Next's own name).
+    // WORDING: r5r
+    nextOpen: 'Next unlabelled',
+    // WORDING: r5r
+    nextOpenLabel: 'Next unlabelled ' + one,
+    // r5-r N1: the key's sentence, at the end of the face's keys line, where
+    // no answer of the sheet has the key U, while a square has no answer.
+    // WORDING: r5r
+    nextOpenKey: ' U shows the next unlabelled ' + one + '.',
+    // r5-r N2: beside the counter while 1 to 3 squares are left: the line's
+    // start, then the squares by their place ("Square 29"; "Squares " before
+    // "7, 29 and 80"), each a text button named goTo.
+    // WORDING: r5r
+    leftLead: 'Unlabelled: ',
+    // WORDING: r5r
+    leftOne: (k) => One + ' ' + k,
+    // WORDING: r5r
+    leftMany: One + 's ',
+    // WORDING: r5r
+    goTo: (k) => 'Go to ' + one + ' ' + k,
     none: 'No ' + many,
     pictures: (k) => 'Pictures: ' + one + ' ' + k,
     // A row's pictures button in the list (r5-e H4, after review): its name
@@ -593,9 +628,14 @@ OE.sheetWords = (unit) => {
     everyDone: 'After you press, do not change an answer.',
     // In everyDone's place while a square has no answer yet (r5-f F02): why
     // the finish button is grey, in words (the grey button and the counter
-    // say it in none).
+    // say it in none). r5-r N2: it ends with a text button that shows the
+    // next square with no answer (goOpen, then a full stop): "Answer every
+    // square first: go to the next unlabelled."
+    // WORDING: r5r
     // WORDING: r5f F02
-    notYet: 'Answer every ' + one + ' first.',
+    notYet: 'Answer every ' + one + ' first: ',
+    // WORDING: r5r
+    goOpen: 'go to the next unlabelled',
     // In everyDone's place on a sheet that already gave its result (r5-d
     // R06): its notice says not to change an answer now, so the footer does
     // not say an answer may change until the press (r5-k K3 left it as it
@@ -1035,6 +1075,19 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const saveSaid = OE.el('div', { class: 'small muted oe-save-said', role: 'status', 'aria-live': 'polite' });
   const progress = OE.el('span', { class: 'row', style: 'gap:6px;align-items:baseline' },
     counterNum, OE.el('span', {}, 'labelled'), counterNote, savedNote, countSaid);
+  // r5-r N2: the last of the counter's row while 1 to 3 squares are left and
+  // at least one is answered: which squares they are, by their place, each a
+  // text button that shows it (updateOpen). No status: it changes with each
+  // answer near the end, and the counter beside it is none either.
+  const leftLine = OE.el('span', { class: 'small oe-left' });
+  // A text button inside a small line (the squares named there, and the jump
+  // at the end of the grey finish button's line): underlined, in the line's
+  // size, 24 px tall and at least 24 px wide (a square's number may be one
+  // digit).
+  const LINE_LINK = 'font-size:inherit;line-height:inherit;padding:3px 4px;min-width:24px;'
+    + 'text-decoration:underline;text-underline-offset:2px';
+  leftLine.hidden = true;
+  progress.append(leftLine);
   // A press of Save starts the re-sends after a stale refusal afresh (save()).
   // Shown only while a change waits, a save runs or one failed (updateProgress).
   const saveButton = OE.el('button', { class: 'primary', onclick: () => { staleResends = 0; save(); } }, 'Save labels');
@@ -1094,6 +1147,31 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   const nextButton = OE.el('button', {
     class: 'small', 'data-focus': 'next', 'aria-label': W.nextLabel, onclick: () => pageBy(1),
   }, 'Next');
+  // r5-r N1 (the owner, 20 Nov 2026): a third button of the same kind, shown
+  // only while a square has no answer (updateOpen): the next square with no
+  // answer after the one shown, wrapping round (jumpOpen; true: a press
+  // inside the face). Its key is U where no answer of the sheet has that key
+  // (a class named "Urban" keeps it: openKey is then null, and the button
+  // names no key). Grey (aria-disabled, as Previous at the first square)
+  // while the square shown is the only one with no answer (updateOpen).
+  const openKey = answers.some((a) => a.keys.includes('U')) ? null : 'U';
+  const nextOpenButton = OE.el('button', {
+    class: 'small', 'data-focus': 'next-open', 'aria-label': W.nextOpenLabel, 'aria-keyshortcuts': openKey,
+    onclick: () => jumpOpen(true),
+  }, W.nextOpen);
+  nextOpenButton.hidden = true;
+  // The row of the three (two once every square is answered): one layout in
+  // both states, so Previous and Next keep their size and place when the
+  // third button comes or goes. Equal columns at least 132 px wide that
+  // wrap, two to a row on a narrow panel, each as wide and as tall as the
+  // others: design rule, same kind, same size, at 780 and 380 px. The row
+  // flow is set here because common.js gives .face-top > .row a column flow
+  // (one row, a new column per button), under which the third button never
+  // wrapped; auto-fill keeps the third column's place while its button is
+  // hidden.
+  const PAGER = 'display:grid;grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));'
+    + 'grid-auto-rows:1fr;align-items:stretch;gap:8px;flex:0 1 412px;min-width:0';
+  const pager = OE.el('div', { class: 'row', style: PAGER }, prevButton, nextButton, nextOpenButton);
   const faceExtra = OE.el('div', {});
   const faceAnswerArea = OE.el('div', { class: 'stack' });
   // No Pictures button on a sheet that can show no pictures (finding 10).
@@ -1113,7 +1191,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     // tell. The answers stood above the pictures, so a square could be
     // answered before its pictures were looked at.
     faceEl.append(
-      OE.el('div', { class: 'face-top' }, faceLive, OE.el('div', { class: 'row', style: 'gap:8px' }, prevButton, nextButton)),
+      OE.el('div', { class: 'face-top' }, faceLive, pager),
       OE.el('div', { class: 'row', style: 'gap:8px' }, facePicturesButton, faceMapButton),
       facePictures,
       faceExtra, faceAnswerArea);
@@ -1253,6 +1331,8 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     // them again: the editor is drawn again then, once.
     lockAnswers();
     if (syncPairLock()) { render(); return; }
+    // r5-r N1, N2: "Next unlabelled" and the line of the last squares left, as the answers stand.
+    updateOpen();
     if (state.stale) {
       // Nothing saves any more (r5-b J15): no Save button (before, a greyed
       // button that read "Not saved": a status dressed as a dead button).
@@ -1544,6 +1624,120 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     return null;
   }
 
+  /* r5-r: the windows with no answer, in the order of the handles. */
+  const openRows = () => windows.filter((w) => !isLabelledRow(w));
+
+  /* r5-r: a move asked for from outside the face (the footer's jump, a
+     window named in the counter's row) gives the face the focus, so the
+     answers' keys work at once; a press inside the face ("Next unlabelled",
+     U) keeps the focus where it is. Where a click gives a button no focus
+     (the focus is then on no control), the face takes it too. The window
+     shows as Next shows one (pageBy, by as many places as lie between; none
+     when it is the one shown, which is drawn again and its heading brought
+     into view). */
+  function showFromAnywhere(h) {
+    pageBy(place(h) - place(state.at));
+    if (!faceEl.contains(document.activeElement)) { OE.focusIfHere(faceEl); headInView(); }
+  }
+
+  /* r5-r N1: "Next unlabelled", its key U (inFace true), and the jump at the
+     end of the grey finish button's line (N2). On the face: the next window
+     with no answer after the one shown, wrapping round to the first from the
+     top (nextUnanswered), or the one shown when it alone has none: the
+     button (grey then, updateOpen) and U then do nothing, and the footer's
+     jump brings its heading back into view. It shows as Next shows a window
+     (showFromAnywhere: the focus stays on the button pressed inside the
+     face, which stays while a window has no answer; from the footer the
+     face takes the focus). Showing is not answering: it
+     works on a locked sheet, as Previous and Next do. In the list (only the
+     footer's jump is there): the first row with no answer takes the focus,
+     at its answers, as after an answer (advance); where the filter hides it
+     (Labelled), that window shows on the face. */
+  function jumpOpen(inFace) {
+    const left = openRows();
+    if (!left.length) return;
+    if (state.view === 'face') {
+      const next = nextUnanswered(state.at) || left[0];
+      if (inFace && next.handle === state.at) return;
+      showFromAnywhere(next.handle);
+      return;
+    }
+    const first = left[0];
+    if (!visibleRows().includes(first)) { setView('face', first.handle); return; }
+    render(firstAnswerFocusKey(first));
+    followPictures(first.handle);
+  }
+
+  /* r5-r N2: a named window opens: on the face it shows, as Next shows one,
+     and the face takes the focus (showFromAnywhere: the press came from the
+     footer); from the list it shows on the face, as a press of its row's
+     number does (setView, which gives the face the focus). */
+  function openRow(h) {
+    if (state.view === 'face') { showFromAnywhere(h); return; }
+    setView('face', h);
+  }
+
+  /* r5-r: "Next unlabelled" and the line of the last windows left, as the
+     answers stand (run by updateProgress, so after every answer, every
+     render and every take-in of a save made elsewhere).
+     N1: the button shows only while a window has no answer, and the keys
+     line offers its key only then (faceHintText, written here too, as a
+     save taken in may not draw the sheet again). When
+     it goes while it holds the focus (the last answer taken in from
+     elsewhere), the face takes the focus, where it waits after an answer.
+     It is grey (aria-disabled, which keeps the focus) while the window shown
+     is the only one with no answer: there is no other to show.
+     N2: while 1 to 3 windows are left and at least one is answered (the
+     last few of a sheet, not the whole of a fresh sheet of three), the
+     counter's row ends with "Unlabelled: Square 29" or "Unlabelled: Squares
+     7, 29 and 80", each window a text button named "Go to square 29" that
+     opens it (openRow). The line is drawn again only when its windows
+     change, so a button of it keeps the focus across an answer elsewhere;
+     when it goes while it holds the focus, the finish button takes it. A
+     window's place only: nothing of what the map says there. */
+  let leftShown = '';
+  function updateOpen() {
+    const left = openRows();
+    const show = left.length > 0;
+    if (nextOpenButton.hidden === show) {
+      const had = !show && nextOpenButton.contains(document.activeElement);
+      nextOpenButton.hidden = !show;
+      if (state.view === 'face') { hint.textContent = faceHintText(); hint.hidden = !hint.textContent; }
+      if (had && !quietSave) OE.focusIfHere(faceEl);
+      // The jump of the footer's line goes with that line (updateFinish): the finish button takes its focus.
+      if (!show && goOpenLink.contains(document.activeElement) && !quietSave) OE.focusIfHere(finishControl());
+    }
+    const only = state.view === 'face' && left.length === 1 && left[0].handle === state.at;
+    nextOpenButton.setAttribute('aria-disabled', String(only));
+    const few = left.length >= 1 && left.length <= 3 && left.length < n;
+    const key = few ? left.map((w) => w.handle).join(' ') : '';
+    if (key === leftShown) return;
+    const had = leftLine.contains(document.activeElement);
+    leftShown = key;
+    leftLine.hidden = !few;
+    if (!few) {
+      leftLine.replaceChildren();
+      if (had && !quietSave) OE.focusIfHere(finishControl());
+      return;
+    }
+    const link = (w, words) => OE.el('button', {
+      class: 'link', style: LINE_LINK, 'data-focus': 'left:' + w.handle, 'aria-label': W.goTo(place(w.handle)),
+      onclick: () => openRow(w.handle),
+    }, words);
+    const parts = [W.leftLead];
+    if (left.length === 1) {
+      parts.push(link(left[0], W.leftOne(place(left[0].handle))));
+    } else {
+      parts.push(W.leftMany);
+      left.forEach((w, i) => {
+        if (i) parts.push(i === left.length - 1 ? ' and ' : ', ');
+        parts.push(link(w, String(place(w.handle))));
+      });
+    }
+    leftLine.replaceChildren(...parts);
+    if (had && !quietSave) OE.focusIfHere(leftLine.querySelector('button'));
+  }
+
   /* The data-focus key of the control a window's answer is given at, once
      the focus moves on to it: its group of answers (tabindex -1, so Tab
      still reaches each answer), never an answer button, so Enter or Space
@@ -1614,7 +1808,11 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   function faceHintText() {
     const named = answers.filter((a) => a.keys.length)
       .map((a) => a.keys[0] + ' ' + (closed || a.value === OE.UNJUDGED ? a.label.toLowerCase() : a.label));
-    return 'Keys: ' + (named.length ? named.join(', ') + '; the' : 'the') + W.faceKeys;
+    // r5-r N1: the key of "Next unlabelled", where no answer has it, and
+    // only while a window has no answer (the button is gone after, and the
+    // key does nothing; updateOpen writes the line again when that changes).
+    return 'Keys: ' + (named.length ? named.join(', ') + '; the' : 'the') + W.faceKeys
+      + (openKey && openRows().length ? W.nextOpenKey : '');
   }
 
   const BROWSE = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
@@ -1689,6 +1887,15 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
     }
     const pressed = k.length === 1 ? k.toUpperCase() : '';
     const hit = pressed && state.at ? answers.find((a) => a.keys.includes(pressed)) : null;
+    // r5-r N1: U, where no answer has that key (openKey), shows the next
+    // window with no answer, as a press of "Next unlabelled" does; with every
+    // window answered it does nothing. Showing is not answering: it works on
+    // a locked sheet, as the arrow keys do.
+    if (!hit && openKey && pressed === openKey && state.at) {
+      e.preventDefault();
+      jumpOpen(true);
+      return;
+    }
     if (!hit) return;
     e.preventDefault();
     if (blocked()) return;  // the editor is about to be drawn again: no answer now
@@ -3055,11 +3262,19 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // already graded, whose answers are locked (r5-k K3), what is missing and
   // what a new result needs (W.gradedBlank), never to answer it. The finish
   // button names it as its description meanwhile (updateFinish), so a
-  // screen reader that reaches the grey button hears why.
+  // screen reader that reaches the grey button hears why. r5-r N2: the line
+  // ends with a text button that shows the next square with no answer
+  // (goOpenLink, jumpOpen: what "Next unlabelled" does), then its full stop:
+  // "Answer every square first: go to the next unlabelled." Not on a graded
+  // sheet, which takes no answer.
+  // WORDING: r5r
+  const goOpenLink = OE.el('button', {
+    class: 'link', style: LINE_LINK, 'data-focus': 'go-open', onclick: () => jumpOpen(),
+  }, W.goOpen);
   // WORDING: r5f F02
   // WORDING: r5k K3 (gradedBlank on a graded sheet)
   const notYetLine = OE.el('span', { class: 'small', id: 'oe-not-yet-' + Math.random().toString(36).slice(2) },
-    gaveResult ? W.gradedBlank : W.notYet);
+    gaveResult ? W.gradedBlank : [W.notYet, goOpenLink, '.']);
   /* Whether the sheet can be sent for grading now: complete and saved. */
   const ready = () => complete() && !pending() && !state.stale;
   async function finishPress(message) {
@@ -3344,7 +3559,7 @@ OE.sheetEditor = (app, data, { headerAction = null, onSaved = null } = {}) => {
   // two maps (W.noRulePair).
   const noRuleLine = !pageRule && picturesPossible && !gradedNote
     ? OE.el('div', { class: 'oe-no-rule' }, twoMap ? W.noRulePair : W.noRule) : null;
-  // That the answers are a reading of pictures, not a visit on site: in the
+  // That the answers are a reading of satellite pictures: in the
   // Details fold, only on a sheet that can show pictures (r5-b J13; before,
   // on the lead's third line).
   const readingNote = picturesPossible ? OE.el('div', { class: 'small' }, W.reading) : null;

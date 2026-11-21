@@ -28,7 +28,10 @@ missing space between two joined pieces fails here as it would on the face.
   untruly) not on a sheet with no square, nor on one whose every square is
   answered but which holds two sets of answers. The lead stays two lines.
   On a plan card with its sheet open the card's own line to answer every one
-  goes (with track RESULT's F10), so it is said once.
+  goes (with track RESULT's F10), so it is said once. Round r5-r (N2) gave
+  the line a text button at its end: it reads "Answer every square first: go
+  to the next unlabelled." (``W.notYet``, the button's ``W.goOpen``, a full
+  stop; tests/mcp_app/test_r5r_sheet.py).
 - F12: a sheet with no pictures and no places ends its line "... without
   looking at the map. No records? Stop and tell Claude."; the tail it had
   after a semicolon is gone; a two-map sheet's says "the maps".
@@ -44,8 +47,9 @@ import re
 
 from olmoearth_agent.mcp_app import views
 
-#: F02: beside the grey finish button while a square has no answer (W.notYet).
-NOT_YET = "Answer every {one} first."
+#: F02: beside the grey finish button while a square has no answer (W.notYet);
+#: since round r5-r (N2) the line's start, before its text button and full stop.
+NOT_YET = "Answer every {one} first: "
 #: F02, unchanged: beside the ready finish button (W.everyDone), and there on
 #: a sheet that already gave its result (W.everyDoneGraded).
 EVERY_DONE = "After you press, do not change an answer."
@@ -331,7 +335,7 @@ def test_f02_the_footer_says_why_the_finish_button_is_grey() -> None:
         "  // WORDING: r5k K3 (gradedBlank on a graded sheet)\n"
         "  const notYetLine = OE.el('span', { class: 'small', id: 'oe-not-yet-' "
         "+ Math.random().toString(36).slice(2) },\n"
-        "    gaveResult ? W.gradedBlank : W.notYet);\n"
+        "    gaveResult ? W.gradedBlank : [W.notYet, goOpenLink, '.']);\n"
     )
     assert made in editor
     assert editor.index("  const everyDoneLine = ") < editor.index(made)
@@ -475,7 +479,8 @@ def test_every_r5f_string_of_the_sheet_carries_its_wording_comment() -> None:
     tags = {
         "whatBare": ["// WORDING: r4m M6; r5b J11", "// WORDING: r5f F12"],
         "whatBarePair": ["// WORDING: r5b J28", "// WORDING: r5f F12"],
-        "notYet": ["// WORDING: r5f F02"],
+        # Round r5-r (N2) changed its end; its mark stands above this round's.
+        "notYet": ["// WORDING: r5f F02", "// WORDING: r5r"],
     }
     for key, want in tags.items():
         assert _tags_above(key) == want, key

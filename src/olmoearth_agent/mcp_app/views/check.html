@@ -471,12 +471,15 @@ const EXAMPLES_SOURCE = 'Example pictures from a kelp canopy map.';
 // The fold (Details): the words a non-expert does not need first.
 // WORDING: r4p2
 const DETAILS = 'Details';
+// r5-s W4: after how many parts there are, one sentence says what the reader
+// gets, a result for each part. Before, the line also told the reader how to
+// report the parts' rates; that is the model's text (the server's
+// SAY_CHECK_NONE_PARTS and CHECK_PREPARING_RULES) and the docs', unchanged.
+// WORDING: r5s
 // WORDING: squares
 const SEVERAL = (n) => 'Studio saved this map as ' + n + ' files, one per UTM zone (a north-south strip of the world'
-  + ' map grid). Each part is checked as a map of its own: its own squares, its own result with its own range.'
-  + ' The app gives no single rate for all of them. Do not average them yourself, and do not report one part as'
-  + ' the whole map. To cover the whole map, check every part and report each part\'s rate with its own range,'
-  + ' side by side. Pick a count for each part you want checked.';
+  + ' map grid). Each part gets its own result. To cover the whole map, check every part. Pick a count for each'
+  + ' part you want checked.';
 // WORDING: squares
 const FIXED = 'Fixed and recorded when you press: your count, a simple random pick of squares, and seed 0 (the'
   + ' number that lets the same pick be made again). The count is fixed now because the range is only valid for'

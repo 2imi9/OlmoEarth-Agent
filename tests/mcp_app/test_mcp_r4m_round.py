@@ -323,18 +323,20 @@ def test_m2_side_by_side_carries_its_reason_everywhere() -> None:
     after = _after(words, "otherPart: (k) => (k === 1\n    ? ", "),\n")
     one, many = after.split("\n    : ")
     # Round r5-e, R4: the first sentence on the card's face, the second (with
-    # its reason, the server's SAY_SIDE_BY_SIDE word for word) in Details.
+    # its reason) in Details: the server's SAY_SIDE_BY_SIDE word for word until
+    # round r5-s W8, words that describe since; the reason stays in both.
     # Round r5-f, F07: the face's line then says where, in a sentence of its
     # own that the model's lines do not have.
     ask = " Ask Claude to open the Check card again."
     side = _concat(_entry(words, "sideBySide: "), {})
-    assert side == server.SAY_SIDE_BY_SIDE.strip()
+    assert side == "Each part has its own result" + REASON + "."
+    told = server.SAY_SIDE_BY_SIDE.strip()
     one_said = _concat(one, {})
     assert one_said.endswith(ask)
-    assert one_said.removesuffix(ask) + " " + side == server.SAY_OTHER.strip()
+    assert one_said.removesuffix(ask) + " " + told == server.SAY_OTHER.strip()
     many_said = _concat(many, {"k": "3"})
     assert many_said.endswith(ask)
-    many_first = many_said.removesuffix(ask) + " " + side
+    many_first = many_said.removesuffix(ask) + " " + told
     assert many_first == server.SAY_OTHERS.format(k="3").strip()
 
 

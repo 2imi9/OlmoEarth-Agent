@@ -71,6 +71,27 @@
   .oe-result .oe-more > * + * { margin-top: 12px; }
   .oe-rate { display: flex; flex-direction: column; gap: 8px; }
   .oe-rate p.big { font-size: 20px; line-height: 28px; font-weight: 600; }
+  /* r5-r R1 (the owner, 20 Nov 2026, on the result card's headline:
+     "outline-boxed, to make it highlighted"): the card's main sentence sits
+     in an outlined box, a 1.5 px border in the card's text colour, 6 px
+     corners, 12 px 14 px inside, on the paper background; the range figure
+     stays right under the box, outside it. The out-of-date rate of a
+     withdrawn result (in its Details, with its warning words as they were)
+     keeps the box. No other card and no other line has it. The colours'
+     second values are OE.STYLE's own, for the moment before it loads. */
+  .oe-rate p.big, .oe-result p.oe-out-of-date { border: 1.5px solid var(--text, #0a3235); border-radius: 6px;
+    padding: 12px 14px; background: var(--paper, #ffffff); }
+  /* r5-r R2: the exported files under "Export the labels": each file's name
+     and its buttons, 4 px apart. The folder is said once; a file's whole
+     path (which wraps anywhere, .csv-path) stays hidden until Copy path has
+     to select it, to be copied by hand. */
+  .oe-export-name { overflow-wrap: anywhere; }
+  .oe-export-file > * + * { margin-top: 4px; }
+  .oe-export-path[hidden] { display: none; }
+  /* Its two lines and its files take no room while they are empty (kept in
+     place, so each line's first words are heard). */
+  .oe-export.stack > .oe-export-said:empty, .oe-export.stack > .oe-export-saved:empty,
+  .oe-export.stack > .oe-export-files:empty { margin-top: 0; }
   @media (max-width: 560px) {
     .review-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -987,12 +1008,15 @@ const RESULT_WORDS = {
   // WORDING: r5d R03 (counts)
   squaresHead: (n, unit) => (n === 1 ? 'The ' + unitOf(unit) + ' you checked'
     : 'The ' + n.toLocaleString('en-US') + ' ' + unitOf(unit) + 's you checked'),
-  partsHead: 'One result per part, never averaged',
+  // r5-s W1: the heading names what is under it; before, it stated the rule
+  // for the parts' results, which stays in the model's lines and the docs.
+  // WORDING: r5s
+  partsHead: 'Parts of this map',
   // k: the parts not checked yet (round 4 pass 2, finding 17); the first
   // sentence of the server's SAY_OTHER and SAY_OTHERS, word for word. Their
-  // second sentence, with its reason (r4-m M2: this check gives no range for
-  // a combined rate, so readers do not average), is sideBySide, in Details
-  // since r5-e R4: on the face it said the heading over it again. The face
+  // second sentence is the model's; its reason (r4-m M2: this check gives no
+  // range for a combined rate) is sideBySide's, in Details since r5-e R4, in
+  // words that describe since r5-s. The face
   // adds a sentence of its own (r5-f F07): "Check the other part too." read
   // as an instruction, yet nothing on this card checks a part and nothing
   // said how, so the line now says where: the Check card's own words for a
@@ -1005,19 +1029,23 @@ const RESULT_WORDS = {
   otherPart: (k) => (k === 1
     ? 'Check the other part too. Ask Claude to open the Check card again.'
     : 'Check the other ' + k + ' parts too. Ask Claude to open the Check card again.'),
-  // WORDING: r5e R4
-  // WORDING: r4m M2 (server SAY_SIDE_BY_SIDE, word for word), in Details since r5-e
-  sideBySide: 'Report the parts\' results side by side; do not average or add them: this check gives no range for a'
-    + ' combined rate.',
+  // r5-s W8: Details says what the card shows, a result for each part, and
+  // the reason r4-m M2 gave. Before, it was the server's SAY_SIDE_BY_SIDE
+  // word for word, which tells the reader how to report: that is the model's
+  // line, and stays there.
+  // WORDING: r5s
+  // WORDING: r5e R4 (in Details)
+  sideBySide: 'Each part has its own result: this check gives no range for a combined rate.',
   details: 'Details',
   // The second check, picked class by class: the outlined button under the
   // uncovered lines, and what it is, in Details beside it only (r4-i O3).
   // WORDING: r4i O3
   classCheck: 'Check each class the map draws',
+  // WORDING: r5s (its last clause: "so it gets its own result.")
   // WORDING: r4i O3
   classCheckDetail: (unit) => 'Check each class the map draws: a separate check with its own ranges. It picks '
     + unitOf(unit) + 's for each class the map draws, which need not be the classes you did not see. It is planned'
-    + ' after this result was read, so it is its own check and is never pooled with this one.',
+    + ' after this result was read, so it gets its own result.',
   sheetFile: (name, unit) => 'To see where the sampled ' + unitOf(unit) + 's are, open the label sheet file ('
     + name + ') in a spreadsheet or GIS. It lists each ' + unitOf(unit) + '\'s place and whether the map was'
     + ' right there. These are sampled ' + unitOf(unit) + 's only, not all of the map\'s errors.',
@@ -1044,7 +1072,7 @@ const RESULT_WORDS = {
    and high_text, r4-k K6), then, when which part of its map the sheet is is
    not known, the
    server's hedge (r4-h R4), then the server's last line (p.oe-last, r5-b
-   J12: what the map was checked against and that the card gives no verdict,
+   J12: what the map was compared with, r5-s W3: the pictures or the answers,
    the sentence every result is said with, at body size directly under the
    range; before, the card's last and smallest line, under three figures).
    No other text: without the figure helpers, the headline, the hedge and
@@ -1143,6 +1171,174 @@ function withdrawnCard(data) {
   return card;
 }
 
+/* Export after the result (r5-r R2, the owner of 20 Nov 2026: "after
+   labelling finishes and the estimate, the labelling data is exported and
+   downloadable"): once a labelled sheet's estimate is shown, its card
+   offers "Export the labels", a plain button (the view's one dark button
+   is never this one). The server says when (the view's export: the sheet's
+   labels_csv_path and its design_path, only for a sheet whose every square
+   is answered and whose result is recorded; exportOf). The press sends
+   those two back (olmoearth_app_export_labels), and the server writes two
+   files next to the sheet: a CSV, one row per square, and a GeoJSON, one
+   outline per square.
+
+   The card then says once, small, that they are saved on this computer, in
+   the app's folder (a status line of its own, there before its words, so
+   a screen reader hears it), and shows the folder once and, for each
+   file, its name with a "Copy path" button (OE.copyButton, described by
+   the file's name: where the panel may not write the clipboard it shows
+   the file's whole path, hidden until then, and selects it, to copy by
+   hand) and,
+   where the host saves files (OE.canDownload; Claude today offers no
+   downloadFile, so the path is the way there), a "Download" button, which
+   hands the host the file's text (app.downloadFile). That text is asked
+   for only where it can be saved (text: true), is held here in memory and
+   never enters the page's text. No place appears in the card's text, in a
+   toast or in what Claude is told (OE.tellClaude: the folder and the two
+   names only); the host's own download error is never shown, since it may
+   repeat the file's text.
+
+   The line under the button tells the latest press only, as the look-first
+   CSV's does (r5-b J27): a press empties it; a refusal or a failure is said
+   there in red and announced at once (role alert), the files' block
+   emptied. The server's refusal is a whole sentence and is said as it is;
+   any other failure (no two files in the answer, a call with no answer)
+   gets the one fixed sentence, never the host's words. Where the GeoJSON
+   holds centre points or no places in place of the squares' outlines (the
+   answer's outline), one small line says so. Busy while asked
+   (aria-disabled keeps the focus); a second press writes the files again. */
+// WORDING: r5r
+const EXPORT_WORDS = {
+  button: 'Export the labels',
+  saved: 'Saved on this computer, in the app\'s folder.',
+  folder: 'Folder: ',
+  centres: 'The GeoJSON file holds each square\'s centre point, not its outline.',
+  noPlaces: 'The GeoJSON file holds no places: this sheet has none.',
+  copy: 'Copy path',
+  download: 'Download',
+  downloadOf: (name) => 'Download ' + name,
+  notExported: (why) => 'The labels were not exported: ' + why + '.',
+  notMade: 'the files could not be written',
+  notAllowed: 'The download was not allowed.',
+  downloadFailed: 'The download failed.',
+};
+/* What the view's export names, checked: the two paths the press sends
+   back, each a non-empty string; else null, and no button is drawn. */
+function exportOf(data) {
+  const e = data && data.export && typeof data.export === 'object' ? data.export : null;
+  const path = (v) => (typeof v === 'string' && v.trim() ? v : null);
+  if (!e || !path(e.labels_csv_path) || !path(e.design_path)) return null;
+  return { labels_csv_path: e.labels_csv_path, design_path: e.design_path };
+}
+/* An exported file's name as the host's download takes it (a name, never
+   a path), else a fixed one for its kind. */
+const exportName = (file) => (/^[A-Za-z0-9_.-]{1,200}\.(csv|geojson)$/.test(file.name) ? file.name
+  : (file.kind === 'geojson' ? 'labels_export.geojson' : 'labels_export.csv'));
+/* How many export blocks were drawn: each one's file names get ids of
+   their own (what its Copy path buttons are described by). */
+let exportBlocks = 0;
+/* The export's block (r5-r R2, described above EXPORT_WORDS): the button,
+   the line that tells its latest press, the saved line and the files
+   written. */
+function exportBlock(app, offer) {
+  exportBlocks += 1;
+  const block = exportBlocks;
+  const said = OE.el('div', { class: 'small oe-export-said', role: 'status', 'aria-live': 'polite' });
+  // A status line there before its words, so they are announced.
+  const saved = OE.el('div', { class: 'small muted oe-export-saved', role: 'status', 'aria-live': 'polite' });
+  const files = OE.el('div', { class: 'stack oe-export-files' });
+  const say = (words, failed = false) => {
+    said.setAttribute('role', failed ? 'alert' : 'status');
+    said.setAttribute('aria-live', failed ? 'assertive' : 'polite');
+    said.className = failed ? 'small error oe-export-said' : 'small oe-export-said';
+    said.textContent = words;
+  };
+  /* One file's Download button (only where the host saves files): the text
+     the server gave goes straight to the host. */
+  const downloadButton = (file) => {
+    const button = OE.el('button', {
+      type: 'button', class: 'small', 'data-focus': 'download:' + file.kind, 'aria-label': EXPORT_WORDS.downloadOf(file.name),
+      onclick: async () => {
+        if (button.getAttribute('aria-disabled') === 'true') return;
+        button.setAttribute('aria-disabled', 'true');
+        say('');
+        try {
+          const mimeType = file.kind === 'geojson' ? 'application/geo+json' : 'text/csv';
+          const answer = await app.downloadFile({ contents: [{ type: 'resource', resource: { uri: 'file:///' + exportName(file), mimeType, text: file.text } }] });
+          if (answer && answer.isError) say(EXPORT_WORDS.notAllowed, true);
+        } catch (_) {
+          // The host's own error is never shown: it may repeat the file's text.
+          say(EXPORT_WORDS.downloadFailed, true);
+        } finally {
+          button.setAttribute('aria-disabled', 'false');
+        }
+      },
+    }, EXPORT_WORDS.download);
+    return button;
+  };
+  /* The files written: the one small saved line (its own status line),
+     what the GeoJSON holds when it is not the outlines, the folder once,
+     then each file's name and its buttons; a file's whole path is hidden
+     until Copy path has to select it (OE.copyButton unhides what it
+     selects). Each Copy path is described by its file's name, so the two
+     are told apart; its own words stay its name (Copied, or copy by hand).
+     Then Claude is told, names only, and the folder only when there is one. */
+  function draw(list, folder, canSave, outline) {
+    const rows = list.map((file) => {
+      const nameId = 'oe-export-name-' + block + '-' + file.kind;
+      const path = OE.el('div', { class: 'small mono csv-path oe-export-path', hidden: true }, file.path);
+      const copy = OE.copyButton(file.path, path, EXPORT_WORDS.copy);
+      copy.setAttribute('aria-describedby', nameId);
+      const buttons = OE.el('div', { class: 'row' }, copy);
+      if (canSave && typeof file.text === 'string' && file.text) buttons.append(downloadButton(file));
+      return OE.el('div', { class: 'oe-export-file', 'data-kind': file.kind },
+        OE.el('div', { class: 'oe-export-name', id: nameId }, file.name), path, buttons);
+    });
+    const held = outline === 'point' ? EXPORT_WORDS.centres : (outline === 'none' ? EXPORT_WORDS.noPlaces : '');
+    saved.textContent = EXPORT_WORDS.saved;
+    files.replaceChildren(...[
+      held ? OE.el('div', { class: 'small muted oe-export-outline' }, held) : null,
+      folder ? OE.el('div', { class: 'small csv-path oe-export-folder' }, EXPORT_WORDS.folder,
+        OE.el('span', { class: 'mono' }, folder)) : null,
+      ...rows,
+    ].filter(Boolean));
+    const where = folder ? ' to the folder ' + folder : '';
+    OE.tellClaude(app, 'Result card: the labels were exported' + where + ' as '
+      + list.map((file) => file.name).join(' and ') + '.', 'export');
+  }
+  let busy = false;
+  const button = OE.el('button', {
+    type: 'button', 'data-focus': 'export',
+    onclick: async () => {
+      if (busy) return;
+      busy = true;
+      button.setAttribute('aria-disabled', 'true');
+      say('');
+      saved.textContent = '';
+      try {
+        const canSave = typeof OE.canDownload === 'function' && OE.canDownload(app);
+        const got = await OE.call(app, 'olmoearth_app_export_labels',
+          { labels_csv_path: offer.labels_csv_path, design_path: offer.design_path, text: canSave });
+        const text = (v) => typeof v === 'string' && v !== '';
+        const list = (got && Array.isArray(got.files) ? got.files : [])
+          .filter((f) => f && typeof f === 'object' && text(f.name) && text(f.path) && (f.kind === 'csv' || f.kind === 'geojson'));
+        if (list.length !== 2) throw new Error(EXPORT_WORDS.notMade);
+        draw(list, got && text(got.folder) ? got.folder : '', canSave, got ? got.outline : undefined);
+      } catch (err) {
+        files.replaceChildren();
+        saved.textContent = '';
+        // The server's refusal, a whole sentence, as it is; else the fixed one, never the host's words.
+        const refusal = err && err.fromServer === true && typeof err.message === 'string' ? err.message.trim() : '';
+        say(refusal || EXPORT_WORDS.notExported(EXPORT_WORDS.notMade), true);
+      } finally {
+        busy = false;
+        button.setAttribute('aria-disabled', 'false');
+      }
+    },
+  }, EXPORT_WORDS.button);
+  return OE.el('div', { class: 'stack oe-export' }, OE.el('div', { class: 'row' }, button), said, saved, files);
+}
+
 /* The estimate's result card (data.result, the server's, for an ok
    olmoearth_estimate_map_error on a label sheet), figure first, three
    lines (r4-h): the title and what was checked (with how many were Cannot
@@ -1150,7 +1346,7 @@ function withdrawnCard(data) {
    withdrawnCard in place of this card since r5-k K1: r5-b J07 said it in
    red over the full headline here);
    (1) the headline with its line, the hedge and (3) the last line (the
-   server's: what it was checked against, no verdict; in rateBlock since
+   server's: what the map was compared with; in rateBlock since
    r5-b J12, directly under the range); (2) what
    the check did not cover (the server's uncovered lines: one rare class
    with its counts, or the rare classes' names only; the classes no square
@@ -1160,16 +1356,16 @@ function withdrawnCard(data) {
    checked as a tally (r5-g G1: one row per kind of square, its own square
    coloured by the class seen, outlined in red where the map said
    otherwise, a Cannot tell square empty and dashed, r4-i O2, then "× N"
-   and the row's words; no mark per square, and no legend), and with Cannot
-   tell answers the server's one line under them (squares.no_split: it
-   explains the dashed square's row) (OE.fig.squares); the parts,
-   one result each and never averaged (OE.fig.parts, only with two or more
+   and the row's words; no mark per square, and no legend; with Cannot
+   tell answers no line under them since r5-s W2: the dashed square's
+   row shows them) (OE.fig.squares); the parts,
+   one result each (OE.fig.parts, only with two or more
    parts), and to check the other part while one is not; then the rest
    in a closed Details fold: first the rule used and the count line of each
    class seen with enough squares (r5-b J23: both were on the face, where a
    class line put a second range beside the rate's), then, on a map of two
-   parts or more, that the parts' results are reported side by side, never
-   averaged (sideBySide, r5-e R4: on the face it said the parts' heading
+   parts or more, that each part has its own result and why no one rate
+   covers them (sideBySide, r5-e R4: on the face it said the parts' heading
    again), then the rare classes' counted lines
    (uncovered_detail, r4-i F2; since r5-e R4 the server's area sentence of
    a map of more than two classes ends it), the unseen classes' names
@@ -1221,14 +1417,13 @@ function resultCard(app, data) {
   if (sq && Array.isArray(sq.cells) && sq.cells.length && OE.fig && typeof OE.fig.squares === 'function') {
     // A class seen in enough squares gets its line; the others have none
     // (null): the uncovered lines above say them. With Cannot tell answers no
-    // class has a line, and the server's one line stays under the squares,
-    // since it explains the dashed ones (r4-i O2).
+    // class has a line, and since r5-s W2 no line stands in their place: the
+    // tally's dashed row shows the Cannot tell squares (r4-i O2).
     classLines = (Array.isArray(sq.classes) ? sq.classes : [])
       .filter((c) => c && typeof c === 'object' && text(c.line))
       .map((c) => OE.el('p', { class: 'small oe-class-line' }, c.line));
     card.append(OE.el('div', { class: 'stack' },
-      OE.el('h3', {}, RESULT_WORDS.squaresHead(n !== null ? n : sq.cells.length, unit)), OE.fig.squares(sq),
-      text(sq.no_split) ? OE.el('p', { class: 'small oe-no-split' }, sq.no_split) : null));
+      OE.el('h3', {}, RESULT_WORDS.squaresHead(n !== null ? n : sq.cells.length, unit)), OE.fig.squares(sq)));
   }
   const parts = (Array.isArray(r.parts) ? r.parts : []).filter((p) => p && typeof p === 'object');
   if (parts.length > 1 && OE.fig && typeof OE.fig.parts === 'function') {
@@ -1255,8 +1450,8 @@ function resultCard(app, data) {
     folded.push(OE.el('p', { class: 'small oe-rule-used' }, RESULT_WORDS.ruleUsed(r.rule.text) + (whose ? ' ' + whose : '')));
   }
   classLines.forEach((line) => folded.push(line));
-  // On a map of two parts or more: the parts' results side by side, never
-  // averaged, with its reason (r5-e R4: off the face, where it said the
+  // On a map of two parts or more: each part has its own result, with the
+  // reason no one rate covers them (r5-e R4: off the face, where it said the
   // parts' heading again; the face keeps "Check the other part too.", and
   // since r5-f F07 where that check is started).
   if (parts.length > 1) folded.push(OE.el('p', { class: 'small oe-side-by-side' }, RESULT_WORDS.sideBySide));
@@ -1276,6 +1471,10 @@ function resultCard(app, data) {
     if (text(r.sheet_name)) folded.push(OE.el('p', { class: 'small' }, RESULT_WORDS.sheetFile(r.sheet_name, unit)));
   }
   if (Array.isArray(data.must_state) && data.must_state.length) folded.push(notesBlock(data.must_state));
+  // r5-r R2: the labels' export, the face's last block, over the Details
+  // fold; only when the server offers it (a labelled sheet's estimate).
+  const offer = exportOf(data);
+  if (offer) card.append(exportBlock(app, offer));
   if (folded.length) card.append(OE.fold(RESULT_WORDS.details, ...folded));
   return card;
 }
@@ -1412,6 +1611,10 @@ function show(app, params) {
   const ask = data.review && typeof data.review === 'object' ? checkBlock(app, data.review.check_request) : null;
   if (ask) root.append(ask);
   if (plan) root.append(sheetButton(app, data, figureSlot));
+  // r5-r R2: an estimate without the figure-first card (a two-map
+  // comparison) offers its labels' export here, over the Details fold.
+  const offer = exportOf(data);
+  if (offer) root.append(exportBlock(app, offer));
   if (inFold.length) root.append(OE.fold(FOLD_LABEL, ...inFold));
   if (root.children.length === 1) root.append(OE.el('div', {}, 'Done.'));
 }

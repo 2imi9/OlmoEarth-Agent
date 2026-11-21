@@ -743,7 +743,9 @@ OE.SIGN_IN_NOT_OPENED = 'Claude did not open the page. Copy this address into a 
 /* A text button that copies text (an address the host did not open; with
    label 'Copy message', a message Claude did not get: OE.sendJob, r5-o T3) to the
    clipboard. Where the panel may not write the clipboard, it selects the
-   shown element and asks for the keyboard's copy instead (r5-o). */
+   shown element (unhiding it first, r5-r: the result card keeps an exported
+   file's path hidden until then) and asks for the keyboard's copy instead
+   (r5-o). */
 // WORDING: r5o
 OE.COPIED = 'Copied';
 // WORDING: r5o
@@ -759,6 +761,8 @@ OE.copyButton = (text, shown, label = 'Copy address') => {
       }
     } catch (_) { copied = false; }
     if (!copied && shown) {
+      // r5-r R2: a path kept hidden until it is needed is shown to be copied by hand.
+      shown.hidden = false;
       const range = document.createRange();
       range.selectNodeContents(shown);
       const picked = window.getSelection();
@@ -996,8 +1000,9 @@ OE.counted = (n, noun) => n + ' ' + noun + (n === 1 ? '' : 's');
    one source for any later sender of that request. byClass is the result
    card's button under its uncovered lines (r4-i O3): r is { result_id,
    part_file, unit }, a new check of that result (and of the part in that
-   file, on a map in several parts) picked class by class, its own check
-   never pooled with this one; Claude asks how many squares (or points)
+   file, on a map in several parts) picked class by class, which gets its
+   own result (r5-s W5: the message says that and no more; it shows in the
+   chat's message box); Claude asks how many squares (or points)
    first. It names a route that keeps to the part (r4-j J1): squares are
    planned on the scores_path that olmoearth_check_map gives for that part
    (olmoearth_plan_label_sample has no part argument, and by result_id it
@@ -1011,15 +1016,16 @@ OE.JOB_TEXT = {
   points: (r) => 'Check this map on points: Studio prediction result ' + r.result_id
     + (r.prediction_id ? ' (prediction_id ' + r.prediction_id + ')' : '')
     + '. First ask me how many points to check and which way to pick them.',
+  // WORDING: r5s (both: "It gets its own result.")
   // WORDING: r4j J1
   byClass: (r) => (r.unit === 'point'
     ? 'Check each class the map draws: a new check of Studio prediction result ' + r.result_id
-      + ', picked class by class (olmoearth_plan_label_sample by result_id). Its own check and ranges, never pooled'
-      + ' with this one. First ask me how many points to check.'
+      + ', picked class by class (olmoearth_plan_label_sample by result_id). It gets its own result.'
+      + ' First ask me how many points to check.'
     : 'Check each class the map draws: a new check of Studio prediction result ' + r.result_id
       + (r.part_file ? ' (the part in file ' + r.part_file + ')' : '')
       + ', picked class by class (olmoearth_plan_label_sample on the scores_path that olmoearth_check_map gives for '
-      + (r.part_file ? 'that part' : 'this map') + '). Its own check and ranges, never pooled with this one. First'
+      + (r.part_file ? 'that part' : 'this map') + '). It gets its own result. First'
       + ' ask me how many squares to check.'),
   // WORDING: held for the reader test
   first: (r) => 'Find the windows of this map to look at first: rank the windows of the Studio prediction result '

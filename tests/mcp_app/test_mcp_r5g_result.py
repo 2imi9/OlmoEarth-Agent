@@ -505,20 +505,20 @@ def test_g1_the_rows_words_are_marked() -> None:
     assert said["TIMES"] == "× "
 
 
-def test_g1_the_card_keeps_its_heading_and_the_line_under_the_squares() -> None:
+def test_g1_the_card_keeps_its_heading_over_the_squares() -> None:
     """G1: the card's heading stays ("The N squares you checked", over the
-    tally), and with Cannot tell the server's no-split line under it; the
-    card draws the figure as before (OE.fig.squares) and has no legend of
-    its own; its comment says the squares are a tally."""
+    tally); the card draws the figure as before (OE.fig.squares) and has no
+    legend of its own; its comment says the squares are a tally. Since round
+    r5-s W2 no line follows the tally (with Cannot tell it was the server's
+    no-split line)."""
     page = _read("result.html")
     card = _between(page, "function resultCard(", "\n}\n")
     said = (
         "OE.el('h3', {}, RESULT_WORDS.squaresHead(n !== null ? n : sq.cells.length,"
-        " unit)), OE.fig.squares(sq),\n"
-        "      text(sq.no_split) ? OE.el('p', { class: 'small oe-no-split' },"
-        " sq.no_split) : null));"
+        " unit)), OE.fig.squares(sq)));\n"
     )
     assert said in card
+    assert "no_split" not in page
     assert "oe-sq" not in page
     start = "/* The estimate's result card (data.result"
     head = " ".join(_between(page, start, "function resultCard(").split())

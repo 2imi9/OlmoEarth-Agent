@@ -516,7 +516,8 @@ def test_k3_a_graded_sheet_with_a_blank_square_says_why_it_cannot_finish() -> No
     assert _said("gradedBlank", "point") == GRADED_BLANK.replace("square", "point")
     assert _tags_above("gradedBlank") == ["// WORDING: r5k K3"]
     editor = _editor()
-    assert "    gaveResult ? W.gradedBlank : W.notYet);\n" in editor
+    # Round r5-r (N2): notYet's line ends in a text button; a graded sheet's does not.
+    assert "    gaveResult ? W.gradedBlank : [W.notYet, goOpenLink, '.']);\n" in editor
     finish = _between(editor, "  function updateFinish() {", "\n  }\n")
     assert "    const waits = !ok && !state.stale && count() < n;\n" in finish
     assert (
@@ -624,7 +625,7 @@ def test_k4_an_answer_that_moves_on_brings_the_heading_into_view() -> None:
     assert "headInView" not in last
     page = _between(editor, "  function pageBy(step) {", "\n  }\n")
     assert page.endswith("    goTo(windows[to].handle);\n    headInView();")
-    assert _code(editor).count("headInView()") == 3
+    assert _code(editor).count("headInView()") == 4  # r5-r: the jump to the next unlabelled square
 
 
 # --------------------------------------------------------------------------- K5
